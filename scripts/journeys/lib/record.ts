@@ -47,9 +47,16 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
   for (const [i, { name, run }] of steps.entries()) {
     const entry: StepResult = { name }
     result.steps.push(entry)
+    const page = () => context.evidencePage ?? pair.page
+    const picture = `${String(i + 1).padStart(2, '0')}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}.png`
+    const savePicture = async () => {
+      await page().shot(join(folder, picture))
+      entry.picture = `${spec.id}-${shape}/${picture}`
+    }
     try {
       pair.abort.signal.throwIfAborted()
       await Promise.race([run(context), stop])
+      if (spec.tier === 3) await savePicture()
       console.log(`PASS ${spec.id} ${shape} ${name}`)
     } catch (error) {
       entry.error = words(error)
@@ -62,18 +69,12 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
           return undefined
         }
       }
-      const page = context.evidencePage ?? pair.page
-      const picture = `${String(i + 1).padStart(2, '0')}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}.png`
-      const [savedPicture, toasts, saveLine] = await Promise.all([
-        evidence('picture', async () => {
-          await page.shot(join(folder, picture))
-          return picture
-        }),
-        evidence('toasts', () => page.toasts()),
-        evidence('save line', () => page.saveLine())
+      const [, toasts, saveLine] = await Promise.all([
+        evidence('picture', savePicture),
+        evidence('toasts', () => page().toasts()),
+        evidence('save line', () => page().saveLine())
       ])
-      entry.hostErrors = [...new Set(context.evidencePage ? page.hostErrors : pair.hostErrors.slice(hostErrorStart))]
-      if (savedPicture) entry.picture = `${spec.id}-${shape}/${savedPicture}`
+      entry.hostErrors = [...new Set([...pair.hostErrors.slice(hostErrorStart), ...(context.evidencePage?.hostErrors ?? [])])]
       entry.toasts = toasts
       entry.saveLine = saveLine
       break

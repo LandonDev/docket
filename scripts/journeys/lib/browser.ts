@@ -11,6 +11,7 @@ export async function browser(pair: Pair, profile: string, url: URL, width = 390
   const chrome = chromePath({})
   if (!chrome) throw new Error('No Playwright Chromium on the box')
   const port = await freePort()
+  pair.trackPort(port)
   mkdirSync(profile, { recursive: true, mode: 0o700 })
   const proc = spawn(chrome, [
     '--no-sandbox', '--disable-gpu', '--no-first-run', '--disable-background-networking', '--no-proxy-server',

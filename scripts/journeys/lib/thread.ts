@@ -20,15 +20,19 @@ export function toolCall(sessionId: string, seed: string, seq: number, tool: str
   return { sessionId, appToken: sign('app-bridge:' + sessionId), token: sign(sessionId), call: seq, tool, args }
 }
 
-export async function workTool<T = unknown>(pair: Pair, sessionId: string, tool: string, args: object) {
-  const answer = await pair.rpc<ToolReply<T>>(pair.box, 'app.workCall', toolCall(sessionId, pair.seed, ++call, tool, args), 60_000)
+export async function workTool<T = unknown>(pair: Pair, sessionId: string, tool: string, args: object, timeout = 60_000) {
+  const answer = await pair.rpc<ToolReply<T>>(pair.box, 'app.workCall', toolCall(sessionId, pair.seed, ++call, tool, args), timeout)
   const text = (answer.content ?? []).map(({ text }) => text ?? '').join('\n')
   return { text, value: answer.structuredContent, error: !!answer.isError }
 }
 
 export async function hostRows<T>(pair: Pair, sql: string, ...args: string[]): Promise<T[]> {
+  return rowsAt(pair.box.data, sql, ...args)
+}
+
+export async function rowsAt<T>(data: string, sql: string, ...args: string[]): Promise<T[]> {
   const { Database } = await import('bun:sqlite')
-  const db = new Database(join(pair.box.data, 'temp-code.db'), { readonly: true })
+  const db = new Database(join(data, 'temp-code.db'), { readonly: true })
   try {
     return db.query<T, string[]>(sql).all(...args)
   } finally {

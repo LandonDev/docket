@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_THREAD_DEFAULTS } from '../../../src/shared/defaults'
@@ -39,7 +39,7 @@ type Instance = {
 }
 type Workspace = { id: string; path: string; name: string }
 type Reply<T> = { ok: true; value: T } | { ok: false; error: string }
-export type Cleanup = { revoked: string[]; remainingPids: number[]; errors: string[] }
+export type Cleanup = { revoked: string[]; remainingPids: number[]; errors: string[]; portsChecked: number[]; remainingPorts: number[] }
 
 export const words = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
@@ -67,7 +67,7 @@ async function instance(root: string, name: Seat): Promise<Instance> {
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
 const OFFLINE = 'http://127.0.0.1:0'
-type LaunchOptions = { fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
+type LaunchOptions = { guestTheme?: boolean; zone?: string; chromium?: string; fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
 
 function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
@@ -82,6 +82,7 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     TEMP_CODE_USER_DATA: inst.data,
     ...(['giver', 'given'].includes(inst.name) ? { TEMP_CODE_E2E_DEVICES: '1' } : {}),
     ...(inst.name === 'giver' ? { TEMP_CODE_BUILD_PLATFORM: 'darwin' } : {}),
+    ...(inst.name === 'box' && options.chromium ? { TEMP_CODE_BOX_CHROMIUM: options.chromium } : {}),
     TEMP_CODE_HEADLESS: inst.name === 'box' ? '1' : '0',
     TEMP_CODE_REMOTE_PORT: String(inst.remote),
     ...(inst.debug ? { TEMP_CODE_DEBUG_PORT: String(inst.debug) } : {}),
@@ -90,7 +91,9 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     TEMP_CODE_FAKE_PROVIDERS: options.fakeOrigin ?? 'http://127.0.0.1:9',
     TEMP_CODE_LIFEOS_URL: options.sandbox?.url ?? OFFLINE,
     TEMP_CODE_LIFEOS_MCP_URL: options.sandbox?.mcpUrl ?? OFFLINE + '/mcp',
-    ...(options.sandbox ? { TZ: ZONE, TEMP_CODE_WARM_HARNESS: '0' } : {}),
+    ...(options.sandbox || options.zone ? { TZ: options.zone ?? ZONE } : {}),
+    ...(options.sandbox ? { TEMP_CODE_WARM_HARNESS: '0' } : {}),
+    ...(inst.name === 'box' && options.guestTheme && options.sandbox ? { TEMP_CODE_WORK_LIFEOS_SERVER: 'here' } : {}),
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_WORK_PORT: String(inst.workPort),
     ...(inst.name === 'box' && options.publicOrigin ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: options.publicOrigin } : {}),
@@ -192,6 +195,7 @@ export class Pair {
   private readonly instances: Instance[] = []
   private window?: Window
   private winRelay?: Awaited<ReturnType<typeof relay>>
+  private chromiumTmp?: string
   private launchOptions: LaunchOptions = {}
   private bin = ''
   private givenWindow?: Window
@@ -202,6 +206,7 @@ export class Pair {
   sandbox?: Sandbox
   private fakeProvider?: ReturnType<typeof startFakeProvider>
   fakeMessages = 0
+  private finishFakeBrowserTurn?: () => void
   private stopping = false
   win!: Instance
   box!: Instance
@@ -251,19 +256,23 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; cut?: boolean; sector?: string } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean } = {}): Promise<Workspace> {
     this.win = await instance(this.root, 'win')
     this.box = await instance(this.root, 'box')
     this.desk = withDesk ? await instance(this.root, 'desk') : undefined
     this.instances.push(this.win, this.box, ...(this.desk ? [this.desk] : []))
     this.l1 = dummyLibrary(this.win.home, 'Journey Teams L1')
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
-    const tools = !this.sandbox && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
+    const tools = (!this.sandbox || options.localTools) && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
     if (tools) linkTools(this.box.data)
     this.bin = gioStub(this.root)
     if (options.cut) {
       this.winRelay = await relay('127.0.0.1', this.box.remote)
       this.relays.push(this.winRelay)
+    }
+    if (options.guestTheme) {
+      if (!this.sandbox) throw new Error('Guest theme requires the isolated LifeOS sandbox')
+      this.guestOrigin = 'http://127.0.0.1:' + this.box.workPort
     }
     if (options.guests) {
       const address = Object.values(networkInterfaces()).flat().find((row) => row?.family === 'IPv4' && !row.internal)?.address
@@ -276,10 +285,23 @@ export class Pair {
     this.abort.signal.throwIfAborted()
     if (options.fake) {
       seedFakeAccount(join(this.box.data, 'aliax'))
-      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ })
+      if (options.capture) seedFakeAccount(join(this.win.data, 'aliax'))
+      const browserTurn = options.browser ? new Promise<void>(resolve => { this.finishFakeBrowserTurn = resolve }) : undefined
+      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ }, browserTurn)
+    }
+    let chromium: string | undefined
+    if (options.chromium) {
+      const quote = (path: string) => "'" + path.replaceAll("'", "'\"'\"'") + "'"
+      chromium = join(this.bin, 'journey-chromium')
+      // Chromium puts SingletonSocket under TMPDIR and Unix sockets have a short path limit.
+      this.chromiumTmp = mkdtempSync('/tmp/tc-browser-')
+      writeFileSync(chromium, '#!/bin/sh\nexport TMPDIR=' + quote(this.chromiumTmp) + '\nexec ' + quote(options.chromium) + ' "$@" 2>>' + quote(join(this.root, 'chromium.log')) + '\n', { mode: 0o700 })
     }
     this.launchOptions = {
       sandbox: this.sandbox,
+      guestTheme: options.guestTheme,
+      chromium,
+      zone: options.zone,
       fakeOrigin: this.fakeProvider?.url.origin,
       publicOrigin: this.guestOrigin ?? (options.hosted ? 'http://127.0.0.1:' + this.box.workPort : undefined)
     }
@@ -293,13 +315,30 @@ export class Pair {
       if (this.desk) this.desk.port ||= await deskPort(this.desk, this.seed)
       return this.win.port && this.box.port && (!this.desk || this.desk.port)
     })
-    await this.page.clickOn('[role="dialog"] button', 'Skip')
+    // Win has a loopback account for Capture. In that case onboarding can already be done.
+    if (options.capture) {
+      await wait('Skip or the app rail', async () => {
+        const skip = await this.page.centre('[role="dialog"] button', 'Skip')
+        if (skip) {
+          await this.page.click(skip)
+          return true
+        }
+        return await this.page.centre('button', 'Settings')
+      })
+    } else {
+      await this.page.clickOn('[role="dialog"] button', 'Skip')
+    }
     for (const inst of this.instances) inst.host = (await this.rpc<{ environmentId: string }>(inst, 'remote.status')).environmentId
     for (const inst of this.instances) await this.rpc(inst, 'work.set', { enabled: true })
     if (this.sandbox) {
       await this.rpc(this.box, 'work.lifeos.setToken', { token: this.sandbox.deviceToken })
       await wait('box signed in to sandbox LifeOS', async () =>
         (await this.rpc<{ lifeos: { state: string } }>(this.box, 'work.lifeos.status')).lifeos.state === 'connected')
+    }
+    if (options.capture && this.sandbox) {
+      await this.rpc(this.win, 'work.lifeos.setToken', { token: await this.sandbox.mintDevice() })
+      await wait('win signed in to sandbox LifeOS', async () =>
+        (await this.rpc<{ lifeos: { state: string } }>(this.win, 'work.lifeos.status')).lifeos.state === 'connected')
     }
     const workspace = await this.workspace(name, options.sector)
     await this.link(this.win)
@@ -354,6 +393,16 @@ export class Pair {
       return rows.some((row) => row.environmentId === this.box.host && row.registered)
     }, this.abort.signal)
     await this.rpc(inst, 'macBridge.policy.set', { environmentId: this.box.host, policy: 'read+run' })
+  }
+
+  private readonly ports = new Set<number>()
+
+  releaseFakeBrowserTurn(): void {
+    this.finishFakeBrowserTurn?.()
+  }
+
+  trackPort(port: number): void {
+    if (port) this.ports.add(port)
   }
 
   later(cleanup: () => Promise<void>): void {
@@ -477,9 +526,20 @@ export class Pair {
 
   async stop(): Promise<Cleanup> {
     this.stopping = true
-    const result: Cleanup = { revoked: [], remainingPids: [], errors: [] }
+    const result: Cleanup = { revoked: [], remainingPids: [], errors: [], portsChecked: [], remainingPorts: [] }
+    const listeners = () => execFileSync('ss', ['-H', '-ltnp'], { encoding: 'utf8', timeout: 5000 }).trim().split('\n')
+    const portOf = (line: string) => Number(line.trim().split(/\s+/)[3]?.match(/:(\d+)$/)?.[1] ?? 0)
     const local = <T>(inst: Instance, method: string, params: unknown = {}) => rpc<T>(inst, method, params, this.seed, 5000)
     try {
+      const pids = new Set(instancePids(this.root))
+      for (const line of listeners()) {
+        if ([...line.matchAll(/pid=(\d+)/g)].some(match => pids.has(Number(match[1])))) this.trackPort(portOf(line))
+      }
+      for (const inst of this.instances) {
+        for (const port of [inst.port, inst.remote, inst.debug, inst.workPort]) if (port) this.trackPort(port)
+      }
+      for (const hop of this.relays) this.trackPort(hop.port)
+      if (this.fakeProvider?.port) this.trackPort(this.fakeProvider.port)
       await this.afterWalk().catch((error) => result.errors.push(words(error)))
       if (this.givenIdentity && this.giver) {
         try {
@@ -523,8 +583,13 @@ export class Pair {
             const live = async () => (await local<{ id: string; revokedAt?: number | null; endedAt?: number | null }[]>(inst, list))
               .filter((row) => !row.revokedAt && !row.endedAt)
             for (const { id } of await live()) {
-              const reply = await local<boolean>(inst, revoke, list === 'work.guests.list' ? { linkId: id } : { id })
-              if (reply === false) throw new Error(revoke + ' returned false for ' + id)
+              try {
+                const reply = await local<boolean>(inst, revoke, list === 'work.guests.list' ? { linkId: id } : { id })
+                if (reply === false) throw new Error(revoke + ' returned false for ' + id)
+              } catch (error) {
+                // Guest revoke writes first and waits for LifeOS before answering. Read the saved row if the answer was late.
+                if (list !== 'work.guests.list' || (await live()).some(row => row.id === id)) throw error
+              }
               result.revoked.push(id)
             }
             if ((await live()).length) result.errors.push(list + ' still has live entries')
@@ -534,7 +599,9 @@ export class Pair {
         }
       }
     } finally {
+      await this.sandbox?.stop().catch(error => result.errors.push(words(error)))
       for (const hop of this.relays) await hop.stop().catch((error) => result.errors.push(words(error)))
+      this.releaseFakeBrowserTurn()
       await this.fakeProvider?.stop(true)
       this.window?.close()
       this.givenWindow?.close()
@@ -548,6 +615,10 @@ export class Pair {
         await sleep(100)
       }
       result.remainingPids = instancePids(this.root)
+      if (this.chromiumTmp && !result.remainingPids.length) rmSync(this.chromiumTmp, { recursive: true, force: true })
+      result.portsChecked = [...this.ports].sort((a, b) => a - b)
+      result.remainingPorts = listeners().map(portOf).filter(port => this.ports.has(port))
+      if (result.remainingPorts.length) result.errors.push('Listeners remain on ports ' + result.remainingPorts.join(', '))
     }
     return result
   }

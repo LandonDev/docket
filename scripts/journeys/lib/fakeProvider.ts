@@ -19,6 +19,7 @@ export function seedFakeAccount(dir: string): void {
   writeFileSync(join(secrets, 'claude-code__' + encodeURIComponent(ACCOUNT) + '.bin'), chromiumEncrypt(deriveChromiumKey(password), blob), { mode: 0o600 })
 }
 
+export const BROWSER_PROMPT = 'Keep this practice chat open while I count cones.'
 const REPLY = 'I have the practice list.'
 
 export function fakeMessage(model: string) {
@@ -32,7 +33,7 @@ export function fakeMessage(model: string) {
   ].map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('')
 }
 
-export function startFakeProvider(onMessage: () => void) {
+export function startFakeProvider(onMessage: () => void, browserTurn?: Promise<void>) {
   return Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -44,8 +45,9 @@ export function startFakeProvider(onMessage: () => void) {
       if (pathname === '/api/oauth/usage') return Response.json({ limits: [] })
       if (pathname === '/v1/messages/count_tokens') return Response.json({ input_tokens: 10 })
       if (pathname !== '/v1/messages' || request.method !== 'POST') return Response.json({ error: 'No such dummy endpoint' }, { status: 404 })
-      const { model } = await request.json() as { model?: string }
+      const { model, messages } = await request.json() as { model?: string; messages?: unknown }
       onMessage()
+      if (browserTurn && JSON.stringify(messages ?? []).includes(BROWSER_PROMPT)) await browserTurn
       return new Response(fakeMessage(model ?? 'claude-haiku-5-5'), { headers: { 'content-type': 'text/event-stream' } })
     }
   })

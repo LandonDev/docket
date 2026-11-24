@@ -12,6 +12,11 @@ import { earlySent } from './J33-mail-undo'
 import { scheduledWords } from './J34-mail-scheduled'
 import { taskMatches } from './J40-task-today'
 import { honestAdding } from './J41-agenda-clash'
+import { ledgerHasReceipt } from './J45-receipt'
+import { routineThreadMatches } from './J47-routine'
+import { wearsLight } from './J59-light-windows'
+import { headedResult } from './J60-browser-canvas'
+import { ownedDisplay } from './lib/capture'
 import { withheldWords } from './J55-connections'
 import { assertSandboxKeys } from './lib/lifeos'
 import { FIRST_MAIL, SECOND_MAIL, seedDay, seedLifeos } from './lib/lifeosSeed'
@@ -19,7 +24,7 @@ import { composeRow } from './lib/mailJourney'
 import { wordBodyLayout } from './J05-document-export'
 import { desktopDrop, rowDrop } from './lib/drop'
 import { documentHas } from './lib/edit'
-import { fakeMessage, seedFakeAccount } from './lib/fakeProvider'
+import { BROWSER_PROMPT, fakeMessage, seedFakeAccount, startFakeProvider } from './lib/fakeProvider'
 import { pdfFacts } from './lib/preview'
 import { letterPaper, printViewer } from './lib/print'
 import { AppOpenProof } from './lib/appOpen'
@@ -33,7 +38,7 @@ import { toolCall } from './lib/thread'
 import { mainCheckout, step, walk, type Context } from './lib/record'
 import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
 import { until, Window } from './lib/window'
-import { JOURNEYS, options, requireBuild } from './run'
+import { boxChromium, JOURNEYS, options, requireBuild } from './run'
 import { updateJourneysTable } from './table'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -108,7 +113,7 @@ it('reads tracked source and points deployment, applications, and tool traffic a
   expect(launcher).toMatch(/TEMP_CODE_LIFEOS_MCP_URL: options\.sandbox\?\.mcpUrl \?\? OFFLINE/)
   expect(launcher).toMatch(/this\.rpc\(this\.box, 'work\.lifeos\.setToken', \{ token: this\.sandbox\.deviceToken/)
   expect(launcher).toMatch(/TEMP_CODE_WARM_HARNESS: '0'/)
-  expect(launcher).toMatch(/!this\.sandbox && existsSync/)
+  expect(launcher).toMatch(/\(!this\.sandbox \|\| options\.localTools\) && existsSync/)
 })
 
 it('accepts only the fresh matching JWT pair and omits its values from the audit line', () => {
@@ -612,5 +617,115 @@ it('lets the dummy add-in write only its one approved change to its Word fixture
     expect(fixture.paragraphs()).not.toContain('{{Meeting}}')
   } finally {
     rmSync(folder, { recursive: true, force: true })
+  }
+})
+
+it('registers the last nine walks and gives documents, Capture and guest pages a sandbox', () => {
+  const tier = options(['--tier', '3'])
+  expect(tier.jobs.map(({ spec, shape }) => spec.id + ' ' + shape)).toEqual([
+    'J43 A', 'J45 A', 'J46 A', 'J47 A', 'J48 A', 'J49 A', 'J59 A', 'J59 U', 'J60 A'
+  ])
+  expect(options(['--only', 'J48,J49']).sandbox).toBe(true)
+  expect(options(['--only', 'J59', '--shape', 'U']).sandbox).toBe(true)
+  expect(options(['--only', 'J43,J45,J46,J47,J60']).sandbox).toBe(false)
+})
+
+it('requires the receipt Ref, vendor and numeric amount together in the ledger', () => {
+  const row = { 0: null, 1: { v: 'Practice Cafe' }, 5: { v: 12.5 }, 9: { v: 'm123' } }
+  const ops = (cellValue: unknown) => JSON.stringify([{ mutations: [{ params: { cellValue } }] }])
+  expect(ledgerHasReceipt(ops({ 1: row }), 'm123', 'Practice Cafe', 12.5)).toBe(true)
+  expect(ledgerHasReceipt(ops({ 1: row, 2: { 5: { v: 7 } } }), 'm123', 'Practice Cafe', 7)).toBe(false)
+  expect(ledgerHasReceipt(ops({ 1: row }), 'm456', 'Practice Cafe', 12.5)).toBe(false)
+})
+
+it('compares all four defaults and the workspace and scope of the routine’s own thread', () => {
+  const defaults = { provider: 'claude', permission: 'auto', model: 'claude-haiku-5-5', reasoning: 'high' }
+  const row = { ...defaults, id: 's', workspace_id: 'w', scope: 'work' }
+  expect(routineThreadMatches(row, 'w', defaults)).toBe(true)
+  for (const key of Object.keys(defaults)) {
+    expect(routineThreadMatches({ ...row, [key]: 'different' }, 'w', defaults)).toBe(false)
+  }
+  expect(routineThreadMatches({ ...row, scope: 'code' }, 'w', defaults)).toBe(false)
+  expect(routineThreadMatches(row, 'wrong', defaults)).toBe(false)
+})
+
+it('only sends the global shortcut to the X server owned by this isolated win', () => {
+  const display = ['TEMP_CODE_USER_DATA=/run/win-data', 'DISPLAY=:42', 'XAUTHORITY=/run/win-tmp/xvfb-run.abcd/Xauthority']
+  expect(ownedDisplay(display, '/run/win-data', '/run/win-tmp')).toEqual({ DISPLAY: ':42', XAUTHORITY: '/run/win-tmp/xvfb-run.abcd/Xauthority' })
+  expect(ownedDisplay(display, '/other/win-data', '/run/win-tmp')).toBeNull()
+  expect(ownedDisplay(display, '/run/win-data', '/other/win-tmp')).toBeNull()
+  expect(ownedDisplay(display.map(entry => entry === 'DISPLAY=:42' ? 'DISPLAY=desk:0' : entry), '/run/win-data', '/run/win-tmp')).toBeNull()
+})
+
+it('requires both a light marker and light painted pixels on the measured surface', () => {
+  const light = { marker: 'light', className: '', backgrounds: ['rgb(250, 250, 250)'], rgba: [250, 250, 250, 255] }
+  expect(wearsLight(light)).toBe(true)
+  expect(wearsLight({ ...light, marker: null, className: 'foo theme-light' })).toBe(true)
+  expect(wearsLight({ ...light, marker: null })).toBe(false)
+  expect(wearsLight({ ...light, rgba: [22, 22, 22, 255] })).toBe(false)
+  expect(wearsLight({ ...light, rgba: [250, 250, 250, 0] })).toBe(false)
+})
+
+it('finds a full local Chromium and requires a headed start for the Browser walk', () => {
+  const cache = mkdtempSync(join(tmpdir(), 'journeys-chromium-'))
+  try {
+    const make = (path: string) => {
+      const file = join(cache, path)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, '')
+      return file
+    }
+    expect(boxChromium(join(cache, 'absent'))).toBeUndefined()
+    make('chromium_headless_shell-5000/chrome-linux/chrome')
+    make('chromium-999/chrome-linux/chrome')
+    const newest = make('chromium-1000/chrome-linux64/chrome')
+    expect(boxChromium(cache)).toBe(newest)
+    expect(headedResult('box browser: started headed on :97 (pid 10)', true)).toBeNull()
+    expect(headedResult('box browser: started headless (pid 10)', false)).toMatch(/no headed browser tools/)
+    expect(headedResult('box browser: its display did not start (Xorg stopped); it runs headless', true)).toContain('Xorg stopped')
+  } finally {
+    rmSync(cache, { recursive: true, force: true })
+  }
+})
+
+it('takes a picture at a successful Tier 3 step', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'journeys-picture-'))
+  try {
+    const shot = vi.fn(async (file: string) => writeFileSync(file, 'picture'))
+    const pair = { abort: new AbortController(), hostErrors: [], page: { shot } } as unknown as Pair
+    const result = await walk({
+      id: 'J00', title: 'test', tier: 3, shapes: ['A'], steps: [step('end: done', () => {})]
+    }, { pair, shape: 'A', folder, workspace: { id: 'a', name: 'a', path: folder } }, new Promise<never>(() => undefined))
+    expect(result.steps).toEqual([{ name: 'end: done', picture: 'J00-A/01-end-done.png' }])
+    expect(shot).toHaveBeenCalledExactlyOnceWith(join(folder, '01-end-done.png'))
+  } finally {
+    rmSync(folder, { recursive: true, force: true })
+  }
+})
+
+it('holds the dummy Browser turn while letting other fake model calls finish', async () => {
+  let release!: () => void
+  const hold = new Promise<void>(resolve => { release = resolve })
+  let serve!: (request: Request) => Promise<Response>
+  vi.stubGlobal('Bun', {
+    serve: ({ fetch }: { fetch: typeof serve }) => { serve = fetch }
+  })
+  try {
+    const got = vi.fn()
+    startFakeProvider(got, hold)
+    const request = (text: string) => new Request('http://127.0.0.1/v1/messages', {
+      method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
+    })
+    const finished = vi.fn()
+    const browser = serve(request(BROWSER_PROMPT)).then(finished)
+    expect((await serve(request('Another dummy chat'))).ok).toBe(true)
+    expect(got).toHaveBeenCalledTimes(2)
+    expect(finished).not.toHaveBeenCalled()
+    release()
+    await browser
+    expect(finished).toHaveBeenCalledOnce()
+  } finally {
+    release()
+    vi.unstubAllGlobals()
   }
 })

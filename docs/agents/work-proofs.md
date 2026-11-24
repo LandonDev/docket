@@ -166,6 +166,24 @@ sessions, pairings and keys before stopping the instances.
 | J41 | S | The New event toast follows the calendar operation. A local move changes the clash shown on Agenda. |
 | J55 | S, K | Connections agrees with the hosts. LifeOS views show the sign-in state, and the given computer sees that its key cannot read them. |
 
+### Tier-3 journeys
+
+| Journey | Shape | What the walk checks |
+| --- | --- | --- |
+| J43 | A | A dummy recording reaches the transcript and the Notes tab. The walk asks for Keep as document and reports where it stops. |
+| J45 | A | A receipt waits for Review. Save puts its figures and receipt ref in one row of `Money/Ledger.tcsheet`. |
+| J46 | A | Create prints an invoice PDF to the job's folder. Export writes the year's CSV, Excel file and PDF. |
+| J47 | A | A weekday morning routine uses America/New_York. Run now creates a Work thread on box with the chosen Thread defaults. Pause turns the routine off. |
+| J48 | A | Save as a play keeps a Work thread's instructions with a File input. Start uses a dummy LifeOS document. |
+| J49 | A | Capture uses win's global shortcut on its private X display and files through sandbox LifeOS. `landed.json` records which host holds the file and which holds the thread. |
+| J59 | A, U | Appearance sets Work to Light. Pictures and `surfaces.json` show the theme marker and computed background of each surface. A surface the harness cannot open is marked “not walked”. |
+| J60 | A | A box thread opens a private loopback page in headed Chromium. The owner drives it through the canvas picture. The walk fails if headed Chromium cannot start or the desktop will not draw its picture. |
+
+Run these IDs with `--only J43,J45,J46,J47,J48,J49,J59,J60 --no-table` in a built worktree.
+J48, J49 and J59 start a local LifeOS sandbox. J59 uses a fresh guest browser profile.
+Every Tier-3 step takes a picture. The run's `cleanup` names the ports it
+checked and any listener or process left after it stopped.
+
 ## Running them
 
 Build once (`electron-vite build`), then from the repo root, one at a time:

@@ -40,8 +40,8 @@ export class Window {
 
   private constructor(private readonly cdp: Cdp, private readonly signal: AbortSignal) {}
 
-  static async attach(port: number, signal: AbortSignal, matchesPage?: (url: string) => boolean, width = 1280): Promise<Window> {
-    const cdp = await attach(port, 120_000, signal, matchesPage)
+  static async attach(port: number, signal: AbortSignal, matchesPage?: (url: string) => boolean, width = 1280, height = 800, timeout = 120_000): Promise<Window> {
+    const cdp = await attach(port, timeout, signal, matchesPage)
     const window = new Window(cdp, signal)
     try {
       cdp.onEvent((method, params) => {
@@ -59,7 +59,7 @@ export class Window {
         }
       })
       await cdp.send('Network.enable')
-      await window.resize(width)
+      await window.resize(width, height)
       return window
     } catch (error) {
       cdp.close()
@@ -172,8 +172,8 @@ export class Window {
     await this.cdp.send('Page.close')
   }
 
-  async resize(width: number): Promise<void> {
-    await this.cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false })
+  async resize(width: number, height = 800): Promise<void> {
+    await this.cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
   }
 
   async navigate(url: string): Promise<void> {
@@ -183,6 +183,13 @@ export class Window {
   async reload(): Promise<void> {
     this.signal.throwIfAborted()
     await this.cdp.send('Page.reload')
+  }
+
+  async pixelAt({ x, y }: Point): Promise<string> {
+    const { data } = await this.cdp.send('Page.captureScreenshot', {
+      format: 'png', clip: { x: Math.floor(x), y: Math.floor(y), width: 2, height: 2, scale: 1 }
+    }) as { data: string }
+    return data
   }
 
   async shot(path: string): Promise<void> {

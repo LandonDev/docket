@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import j01 from './J01-deck-title'
@@ -37,6 +38,12 @@ import j33 from './J33-mail-undo'
 import j34 from './J34-mail-scheduled'
 import j40 from './J40-task-today'
 import j41 from './J41-agenda-clash'
+import j43 from './J43-meeting-recording'
+import j45 from './J45-receipt'
+import j46 from './J46-invoice-export'
+import j47 from './J47-routine'
+import j48, { PLAY_SECTOR } from './J48-play'
+import j49 from './J49-capture'
 import j52 from './J52-return'
 import j53 from './J53-work-switch'
 import j54 from './J54-pair-computer'
@@ -44,13 +51,17 @@ import j55 from './J55-connections'
 import j56 from './J56-link-loss'
 import j57 from './J57-two-windows'
 import j58 from './J58-chat-starts'
+import j59 from './J59-light-windows'
+import j60 from './J60-browser-canvas'
 import { startSandbox } from './lib/lifeos'
-import { SECTOR } from './lib/lifeosSeed'
+import { SECTOR, ZONE } from './lib/lifeosSeed'
 import { mainCheckout, saveResults, step, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j40, j41, j52, j53, j54, j55, j56, j57, j58]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j40, j41, j43, j45, j46, j47, j48, j49, j52, j53, j54, j55, j56, j57, j58, j59, j60]
+
+const needsSandbox = ({ id, shapes }: typeof JOURNEYS[number]) => shapes.includes('S') || ['J48', 'J49', 'J59'].includes(id)
 
 export function options(args: string[]) {
   const { values } = parseArgs({
@@ -78,9 +89,15 @@ export function options(args: string[]) {
   if (!jobs.length) throw new Error('No journeys match those flags')
   return {
     jobs, list: values.list, keep: values.keep, noTable: values['no-table'],
-    sandbox: jobs.some(({ spec }) => spec.shapes.includes('S')),
+    sandbox: jobs.some(({ spec }) => needsSandbox(spec)),
     desk: values.desk || jobs.some(({ shape }) => shape === 'B2')
   }
+}
+
+export function boxChromium(cache: string): string | undefined {
+  if (!existsSync(cache)) return undefined
+  return readdirSync(cache).filter(name => /^chromium-\d+$/.test(name)).sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)))
+    .flatMap(name => ['chrome-linux64', 'chrome-linux'].map(dir => join(cache, name, dir, 'chrome'))).find(path => existsSync(path))
 }
 
 export function requireBuild(repo: string): void {
@@ -122,25 +139,36 @@ async function main(): Promise<number> {
     if (flags.sandbox) {
       try {
         pair.sandbox = await startSandbox(root, pair.abort.signal, flags.jobs.some(({ spec }) => spec.id === 'J32'))
+        for (const url of [pair.sandbox.url, pair.sandbox.siteUrl, pair.sandbox.mcpUrl]) pair.trackPort(Number(new URL(url).port))
       } catch (error) {
-        results.journeys = flags.jobs.filter(({ spec }) => spec.shapes.includes('S')).map(({ spec, shape }) => ({
+        results.journeys = flags.jobs.filter(({ spec }) => needsSandbox(spec)).map(({ spec, shape }) => ({
           id: spec.id, title: spec.title, shape, steps: [], notRun: 'no sandbox'
         }))
         throw new Error('not run: no sandbox: ' + words(error))
       }
     }
     let checkedMail = false
+    const has = (id: string) => flags.jobs.some(({ spec }) => spec.id === id)
     const setup = {
-      fake: flags.jobs.some(({ spec }) => ['J12', 'J31', 'J58'].includes(spec.id)),
-      hosted: flags.jobs.some(({ spec }) => spec.id === 'J22' || spec.id === 'J29'),
-      guests: flags.jobs.some(({ spec }) => spec.id === 'J20'),
+      browser: has('J60'),
+      zone: has('J47') ? ZONE : undefined,
+      chromium: has('J60') ? boxChromium(join(homedir(), '.cache/ms-playwright')) : undefined,
+      localTools: ['J43', 'J45', 'J46', 'J59', 'J60'].some(has),
+      fake: flags.jobs.some(({ spec }) => ['J12', 'J31', 'J47', 'J48', 'J49', 'J58', 'J60'].includes(spec.id)),
+      capture: flags.jobs.some(({ spec }) => spec.id === 'J49'),
+      hosted: ['J22', 'J29', 'J59'].some(has),
+      guests: has('J20'),
+      guestTheme: has('J59'),
       cut: flags.jobs.some(({ spec }) => spec.id === 'J56')
     }
     for (const [i, { spec, shape }] of flags.jobs.entries()) {
       pair.abort.signal.throwIfAborted()
       const name = `${spec.id} ${shape} ${root.slice(-6)}`
       const sector = spec.shapes.includes('S') ? SECTOR : undefined
-      const workspace = i === 0 ? await pair.open(!!flags.desk, name, { ...setup, sector }) : await pair.workspace(name, sector)
+      const workspaceSector = spec.id === 'J45' ? 'ref' : spec.id === 'J46' ? 'unify' : spec.id === 'J48' ? PLAY_SECTOR : sector
+      const workspace = i === 0
+        ? await pair.open(!!flags.desk, name, { ...setup, sector: workspaceSector })
+        : await pair.workspace(name, workspaceSector)
       const folder = join(root, `${spec.id}-${shape}`)
       try {
         const steps = sector && !checkedMail
@@ -164,14 +192,7 @@ async function main(): Promise<number> {
     console.error(results.error)
   } finally {
     try {
-      let sandboxError: string | undefined
-      try {
-        await pair.sandbox?.stop()
-      } catch (error) {
-        sandboxError = words(error)
-      }
       results.cleanup = await pair.stop()
-      if (sandboxError) results.cleanup.errors.push(sandboxError)
       if (!flags.keep && !results.cleanup.remainingPids.length && !results.cleanup.errors.length) {
         for (const seat of ['win', 'box', 'desk', 'given', 'giver']) {
           for (const suffix of ['home', 'data', 'tmp']) rmSync(join(root, seat + '-' + suffix), { recursive: true, force: true })
