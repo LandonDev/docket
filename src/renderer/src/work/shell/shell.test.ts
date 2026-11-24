@@ -61,8 +61,12 @@ describe("the Work heading's + menu", () => {
     expect(addMenuState(off, { unanswered: true })).toBe("off");
     const [retry] = addMenuRows(addMenuState(null, { unanswered: true }), ["cosmic"], undefined, "The box did not answer");
     expect(retry).toMatchObject({ id: "work:retry", label: "Retry", description: "The box did not answer" });
-    const [note] = addMenuRows("off", [], undefined, "Work is off on the box");
-    expect(note.kind === "note" && note.content).toMatchObject({ props: { children: "Work is off on the box" } });
+    // Work off: Open Settings, where the switch is, for a key that may turn it on; else who can, with no press.
+    const [settings] = addMenuRows("off", [], undefined, "Work is off on the box");
+    expect(settings).toMatchObject({ kind: "item", id: "work:settings", label: "Open Settings", description: "Work is off on the box" });
+    const [note] = addMenuRows("off", [], undefined, "Work is off on the box", "Changed from a computer that manages the box");
+    expect(note.kind).toBe("note");
+    expect(ids(addMenuRows("off", [], undefined, "Work is off on the box", "Changed from a computer that manages the box"))).toEqual(["work:off", "—", "work:add-unlinked"]);
   });
 });
 

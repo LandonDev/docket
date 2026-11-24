@@ -12,10 +12,10 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
-import { openConnections } from "../shell/open";
+import { openConnections, openWorkSettings } from "../shell/open";
 import { sentState } from "./sentState";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
-import { downIsSilence, downOf, downPress } from "../shell/lifeosDown";
+import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -45,6 +45,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   // LifeOS from is no silence, and asking again cannot help.
   const silent = !!down && downIsSilence(down);
   const words = sessionWords(lifeos);
+  const { press, elsewhere } = useDownPress(down, env);
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
@@ -54,8 +55,15 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   // A file of the mail it answers opens as another item of this pane (files.ts).
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
-  // Any other down state is said once, with the press that can help, if any (`downPress`).
-  if (down && !silent) return <EmptyState title={words} {...(downPress(down) === "sign-in" ? { action: { label: "Sign in", onClick: openConnections } } : {})} />;
+  // Any other down state is said once, with the press that can help, if any (`downPress`), or who can.
+  if (down && !silent)
+    return (
+      <EmptyState
+        title={words}
+        {...(press === "sign-in" ? { action: { label: "Sign in", onClick: openConnections } } : press === "settings" ? { action: { label: "Open Settings", onClick: openWorkSettings } } : {})}
+        {...(elsewhere ? { line: elsewhere } : {})}
+      />
+    );
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;

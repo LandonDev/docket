@@ -13,11 +13,11 @@ import { registerToastAnchor } from "../../lib/toastAnchor";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkPlaceProps } from "../places/registry";
 import { sectorName } from "../shell/actions";
-import { openConnections } from "../shell/open";
+import { openConnections, openWorkSettings } from "../shell/open";
 import { useMinute } from "../tasks/minute";
 import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
-import { downIsSilence, downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
+import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -85,6 +85,7 @@ export function View(_props: WorkPlaceProps) {
           hostName={hostName}
           jobName={jobName}
           lifeosHost={lifeosHost ? hostName(lifeosHost) : null}
+          lifeosEnv={lifeosHost}
           onRetryLifeos={retryLifeos}
           leaving={state.leaving}
           closing={state.closing}
@@ -130,6 +131,7 @@ export function TodayPageView({
   hostName,
   jobName = sectorName,
   lifeosHost = null,
+  lifeosEnv = null,
   onRetryLifeos,
   leaving = NO_KEYS,
   closing = NO_KEYS,
@@ -142,6 +144,8 @@ export function TodayPageView({
   jobName?: (sector: SectorKey) => string;
   /** The computer Today reads LifeOS through, by name ("The box"): the LifeOS line names it. */
   lifeosHost?: string | null;
+  /** That computer's id: whether this window may turn Work on there (Work off's Open Settings). */
+  lifeosEnv?: string | null;
   onRetryLifeos?: (() => void | Promise<void>) | undefined;
   /** Rows on their way out by his own act: fading, then their place closing. */
   leaving?: ReadonlySet<string>;
@@ -223,7 +227,7 @@ export function TodayPageView({
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
-            <LifeosLine down={block.reach} host={lifeosHost} retry={onRetryLifeos} />
+            <LifeosLine down={block.reach} environmentId={lifeosEnv ?? ""} host={lifeosHost} retry={onRetryLifeos} />
           </div>
         ),
       )}
@@ -379,12 +383,20 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
 /**
  * The page's one line while the LifeOS session is down, in its true state's shared words and with the one press that
  * can help (`downPress`): silence, LifeOS's or the host's, is the failed line with Retry; a sign-in missing or refused is muted with Sign in;
- * a sign-in that waits for his approval, Work off and a computer the host keeps LifeOS from are muted, with none.
+ * Work off is muted with Open Settings where this window may turn it on, else who can; a sign-in that waits for his
+ * approval and a computer the host keeps LifeOS from are muted, with none.
  */
-function LifeosLine({ down, host, retry }: { down: LifeosDown; host: string | null; retry: (() => void | Promise<void>) | undefined }) {
-  const press = downPress(down);
-  const action = press === "sign-in" ? { label: "Sign in", run: openConnections } : press === "retry" && retry ? { label: "Retry", run: retry } : undefined;
-  return <PageLine failed={downIsSilence(down)} word={downWords(down, host)} action={action} />;
+function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; environmentId: string; host: string | null; retry: (() => void | Promise<void>) | undefined }) {
+  const { press, elsewhere } = useDownPress(down, environmentId);
+  const action =
+    press === "sign-in"
+      ? { label: "Sign in", run: openConnections }
+      : press === "settings"
+        ? { label: "Open Settings", run: openWorkSettings }
+        : press === "retry" && retry
+          ? { label: "Retry", run: retry }
+          : undefined;
+  return <PageLine failed={downIsSilence(down)} word={downWords(down, host)} note={elsewhere ?? undefined} action={action} />;
 }
 
 /**
@@ -421,7 +433,7 @@ export function hostFailureWords(error: string, name: string): string {
  * ends on the facts' edge. A fault leads with the mark; a sign-in that is
  * only missing is plain muted words.
  */
-function PageLine({ word, detail, failed = false, action }: { word: string; detail?: string; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
+function PageLine({ word, detail, note, failed = false, action }: { word: string; detail?: string; note?: string; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
   const [running, setRunning] = useState(false);
   return (
     <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
@@ -434,6 +446,8 @@ function PageLine({ word, detail, failed = false, action }: { word: string; deta
       ) : (
         <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
           {word}
+          {/* Who can, where this window may not: its own line under the state. */}
+          {note ? <span className="block">{note}</span> : null}
         </span>
       )}
       <span className={cn("col-span-2 flex justify-end", !failed && !action && "hidden")}>

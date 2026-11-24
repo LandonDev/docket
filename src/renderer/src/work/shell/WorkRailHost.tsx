@@ -22,6 +22,7 @@ import { PlaysHost } from "../routines/plays/PlaysHost";
 import { TemplatesHost } from "../templates/TemplatesHost";
 import { ClashHost } from "../clashes/ClashHost";
 import { ReturnHost } from "./ReturnHost";
+import { useDownPress } from "./lifeosDown";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
 
@@ -53,7 +54,7 @@ export function freeSectors(workspaces: readonly Pick<WorkspaceMeta, "kind" | "s
  * the home session's own words for a state that is down (`sessionWords`: "The box did not answer", "Work is off on the
  * box"), so the menu names the computer as every view does.
  */
-export function addMenuRows(state: LifeosStateName | null, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string): MenuRow[] {
+export function addMenuRows(state: LifeosStateName | null, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null): MenuRow[] {
   const top: MenuRow[] =
     state === "connected"
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
@@ -64,7 +65,10 @@ export function addMenuRows(state: LifeosStateName | null, free: readonly string
           : state === "unreachable"
             ? [{ kind: "item", id: "work:retry", label: "Retry", description: said ?? "LifeOS did not answer" }]
             : state === "off"
-              ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">{said ?? "Work is off on this host"}</span> }]
+              ? // Open Settings, where the switch is, for a key that may turn Work on there; else who can (`useDownPress`).
+                elsewhere
+                ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">{said ?? "Work is off on this host"}<span className="block">{elsewhere}</span></span> }]
+                : [{ kind: "item", id: "work:settings", label: "Open Settings", description: said ?? "Work is off on this host" }]
               : [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }];
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
 }
@@ -128,6 +132,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   const session = useLifeosSession(home ?? "", null);
   const state = addMenuState(status, session);
   const said = sessionWords(session);
+  const offPress = useDownPress("off", home ?? "");
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   const names = useMemo(
     () => new Map(listed.status === "ready" ? listed.value.map((s) => [s.key, s.label] as const) : []),
@@ -144,7 +149,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
-      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said),
+      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, offPress.elsewhere),
       sectorRows(path) {
         const workspace = workspaceAt(path);
         if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
@@ -154,6 +159,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       },
       pick(action, path) {
         if (action === "work:signin") return openConnections();
+        if (action === "work:settings") return openWorkSettings();
         if (action === "work:retry") {
           // The host's silence is said already, by the menu's row and the line in Settings, Work, where the press goes: no toast then.
           retryLifeos(home, session.unanswered ? () => {} : fail);
@@ -173,7 +179,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       },
     });
     return () => workRailPort.set(null);
-  }, [home, hosts, names, onOpenWorkspace, order, state, said, session.unanswered, workspaces]);
+  }, [home, hosts, names, onOpenWorkspace, order, state, said, offPress.elsewhere, session.unanswered, workspaces]);
 
   return (
     <>

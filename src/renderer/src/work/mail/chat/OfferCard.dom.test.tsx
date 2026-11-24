@@ -415,8 +415,8 @@ describe("a card whose LifeOS session failed", () => {
     expect(pressOf({ state: "signed-out" })).toEqual(["Not signed in to LifeOS", "Sign in"]);
     expect(pressOf({ state: "refused" })).toEqual(["LifeOS refused this host's sign-in", "Sign in"]);
     expect(pressOf({ state: "unreachable" })).toEqual(["LifeOS did not answer", "Retry"]);
-    // Work off and a sign-in that waits have none: nothing here mends them.
-    expect(pressOf({ state: "off" })).toEqual(["Work is off on this host"]);
+    // Work off: Open Settings, where the switch is; a sign-in that waits has none, nothing here mends it.
+    expect(pressOf({ state: "off" })).toEqual(["Work is off on this host", "Open Settings"]);
     expect(pressOf({ state: "pairing" })).toEqual(["The LifeOS sign-in waits for your approval"]);
     // A computer kept from LifeOS has nothing to press that would mend it.
     expect(pressOf({ state: "unreachable", withheld: true })).toEqual(["This computer cannot read LifeOS through this host"]);

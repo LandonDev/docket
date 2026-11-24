@@ -92,8 +92,8 @@ describe("the mail canvas with LifeOS unreachable", () => {
     await expect(Promise.resolve(run())).resolves.toBeUndefined();
   });
 
-  it("says why it cannot read, once, with the one press that can help: Sign in for signed out or refused, none for Work off or a sign-in waiting", () => {
-    const said = { off: ["Work is off on this host", null], "signed-out": ["Not signed in to LifeOS", "Sign in"], pairing: ["The LifeOS sign-in waits for your approval", null], refused: ["LifeOS refused this host's sign-in", "Sign in"] };
+  it("says why it cannot read, once, with the one press that can help: Sign in for signed out or refused, Open Settings for Work off, none for a sign-in waiting", () => {
+    const said = { off: ["Work is off on this host", "Open Settings"], "signed-out": ["Not signed in to LifeOS", "Sign in"], pairing: ["The LifeOS sign-in waits for your approval", null], refused: ["LifeOS refused this host's sign-in", "Sign in"] };
     for (const [state, [words, press]] of Object.entries(said)) {
       lifeos.state = state;
       const view = body();

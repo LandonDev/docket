@@ -324,7 +324,8 @@ describe("Today", () => {
     line = lineOf("pairing");
     expect(line.textContent).toBe("The LifeOS sign-in waits for your approval");
     expect(presses(line)).toEqual([]);
-    expect(lineOf("off").textContent).toBe("Work is off on this host");
+    // Work off: Open Settings, where the switch is, for a window that may turn it on.
+    expect(lineOf("off").textContent).toBe("Work is off on this host" + "Open Settings");
     line = lineOf("refused");
     expect(line.textContent).toBe("LifeOS refused this host's sign-in" + "Sign in");
     line = lineOf("signed-out");
@@ -339,7 +340,7 @@ describe("Today", () => {
       render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" onRetryLifeos={vi.fn()} />);
       return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"] [data-page-line-words]`)!;
     };
-    for (const reach of ["withheld", "pairing", "off"] as const) {
+    for (const reach of ["withheld", "pairing"] as const) {
       const words = wordsOf(reach);
       expect(words.className, reach).not.toContain("truncate");
       expect(words.className, reach).toContain("col-span-3");
@@ -366,7 +367,7 @@ describe("Today", () => {
     expect(line.textContent).toBe("The box did not answerRetry");
     fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
-    expect(lineOf("off").textContent).toBe("Work is off on the box");
+    expect(lineOf("off").textContent).toBe("Work is off on the boxOpen Settings");
     expect(lineOf("withheld").textContent).toBe("This computer cannot read LifeOS through the box");
     line = lineOf("refused");
     expect(line.textContent).toBe("LifeOS refused the box's sign-inSign in");

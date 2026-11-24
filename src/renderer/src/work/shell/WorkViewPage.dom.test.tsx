@@ -148,14 +148,14 @@ describe("a key the host never hands its LifeOS session", () => {
 describe("what stands between a view and LifeOS", () => {
   const quiet = () =>
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => new Promise(() => {})) } as never);
-  it("Work off on the host says so, the computer named, with no press and never a sign-in", async () => {
+  it("Work off on the host says so, the computer named, with Open Settings and never a sign-in", async () => {
     quiet();
     vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
     setLifeosStatus("env_box", { lifeos: { state: "off" }, keys: [] });
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
     expect(screen.getByText("Work is off on the box")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
     expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
   });
   it("signed out, Sign in opens the sign-in dialog in place; a sign-in waiting says so and shows its code", async () => {

@@ -1702,7 +1702,8 @@ Around the canvas:
   heard from by name with Retry; a host whose link is open but whose
   status ask went unanswered, "<Host> did not answer" in red with Retry
   (bones are for an ask still out, never one that timed out); a computer
-  kept from LifeOS, a sign-in that waits and Work off with no press. A
+  kept from LifeOS and a sign-in that waits with no press; Work off with
+  Open Settings where this window may turn it on, else who can. A
   workspace's Waiting on words its days' failed read from the cause the
   host sent, in the same words ("Not signed in to LifeOS"; "LifeOS did not
   answer" for a wait alone), with Retry at the row's end; the routine's
@@ -2797,9 +2798,10 @@ own selected fill is a card's fill at rest in light.
   in the session's true state, the computer it reads through named: "LifeOS
   did not answer", or "The box did not answer" for a host whose status ask
   went unanswered, in red with Retry; the plain muted "Not signed in to
-  LifeOS" (or "LifeOS refused the box's sign-in") with Sign in; a sign-in
-  that waits, "Work is off on the box", and "This computer cannot read
-  LifeOS through the box", muted with no press. A muted line with no press
+  LifeOS" (or "LifeOS refused the box's sign-in") with Sign in; "Work is off
+  on the box" muted with Open Settings where this window may turn it on,
+  else with who can under it; a sign-in that waits and "This computer cannot
+  read LifeOS through the box", muted with no press. A muted line with no press
   wraps across the columns the press would take, never cut. A cut detail is a Tab stop with its
   whole words in a tip.
 - **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
@@ -3960,8 +3962,11 @@ words with the computer named (`sessionWords`), and never again by a line
 of the body under it. Its one press is `downPress`'s (work/shell/lifeosDown.ts):
 Retry only where LifeOS or the host did not answer, and that Retry asks the
 host again (`reopenLifeos`), never a remount that reads the same session;
-Sign in where it is signed out or refused; none for a computer the host
-keeps LifeOS from, a sign-in that waits, or Work off. A part that stands in
+Sign in where it is signed out or refused; Open Settings (Settings, Work,
+where the switch is) for Work off where this window may turn Work on for
+that host (`useDownPress`, `work.set`), else no press and who can
+(`managedElsewhere`); none for a computer the host keeps LifeOS from or a
+sign-in that waits. A part that stands in
 for what it could not read (a held act's details, a chat card) draws
 `DownLine`. While the session is down, no press whose dialog needs it is
 offered (a view's New task, New event, Add people), and a press made while

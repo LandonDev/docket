@@ -2,7 +2,8 @@
 /**
  * Council round 5, the sweep: every reader of a LifeOS session that is down holds to one rule (lifeosDown.ts). It says
  * the state once, in the session's words with the computer named; its one press is `downPress`'s (Retry only for
- * silence, Sign in for signed out or refused, none for a computer kept from LifeOS, a sign-in waiting or Work off);
+ * silence, Sign in for signed out or refused, Open Settings for Work off where this window may turn it on, else who
+ * can; none for a computer kept from LifeOS or a sign-in waiting);
  * and no header press whose dialog needs the session is offered while it is down. Each reader is mounted on a real
  * session, the host faked through the registry, in each down state.
  */
@@ -31,6 +32,7 @@ const { LifeosLine } = await import("../connections/LifeosLine");
 const { View: ChatReply } = await import("../messages/ChatReplyAct");
 const { View: CalendarAct } = await import("../agenda/CalendarActView");
 const { PageVerbs } = await import("../prep/PrepView");
+const { TodayPageView } = await import("../today/TodayView");
 
 const NOW = Date.UTC(2026, 10, 24, 17);
 const connected = { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
@@ -57,14 +59,16 @@ const WORDS: Record<LifeosDown, string> = {
   pairing: "The LifeOS sign-in waits for your approval",
   off: "Work is off on the box",
 };
-const PRESS = { retry: "Retry", "sign-in": "Sign in" } as const;
+const PRESS = { retry: "Retry", "sign-in": "Sign in", settings: "Open Settings" } as const;
 const DOWN = Object.keys(STATES) as LifeosDown[];
 
 let asked: string[] = [];
-function host(down: LifeosDown): void {
+/** His laptop as a given computer (operate, approve, device): it may not turn Work on for the box. */
+const GIVEN = { transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" } } };
+function host(down: LifeosDown, status: object = { transport: "open" }): void {
   asked = [];
   vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
-  vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open" } as never);
+  vi.spyOn(registry, "statusOf").mockReturnValue(status as never);
   vi.spyOn(registry, "linkOf").mockReturnValue({
     environmentId: "env_box",
     connected: true,
@@ -162,6 +166,56 @@ describe.each(DOWN)("a session %s", (down) => {
     expect(region.querySelector('[role="search"]')).toBeNull();
     // Mail's head is its body's, drawn under the session alone: the frame's header stays, with its name.
     if (view === "mail") expect(document.querySelector("[data-view-heading]")?.textContent).toBe("Mail");
+  });
+});
+
+/** Work off on a window that may not turn Work on there: no press, and who can, in every reader. */
+describe("Work off where this window may not turn it on", () => {
+  const ELSEWHERE = "Changed from a computer that manages the box";
+
+  it("in a part's place, a held chat reply and a held calendar act: the words once, who can, and no press", async () => {
+    host("off", GIVEN);
+    const reply = { kind: "chat.reply", sector: "purdue", payload: { chatId: "c1", source: "slack", chat: "Starboard Games", text: "On it" } };
+    const op = { id: "op1", kind: "update", eventId: "ev1", payload: { title: "Review", startsAt: NOW, endsAt: NOW + 3_600_000 } };
+    for (const part of [
+      <OnSession key="line" sector="purdue">{(session) => <DownLine session={session} />}</OnSession>,
+      <ChatReply key="reply" item={reply as never} env="env_box" />,
+      <CalendarAct key="act" item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="env_box" />,
+    ]) {
+      const view = render(part);
+      await waitFor(() => expect(document.querySelector('[data-session-down="off"]')).toBeTruthy());
+      expect(times(WORDS.off)).toBe(1);
+      expect(times(ELSEWHERE)).toBe(1);
+      expect(presses()).toEqual([]);
+      view.unmount();
+    }
+  });
+
+  it("on Today's page: Open Settings where this window may turn Work on, else who can and no press", async () => {
+    const today = () => <TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach: "off" }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" lifeosEnv="env_box" onRetryLifeos={vi.fn()} />;
+    host("off");
+    const may = render(today());
+    expect(times(WORDS.off)).toBe(1);
+    expect(presses()).toEqual(["Open Settings"]);
+    may.unmount();
+    host("off", GIVEN);
+    render(today());
+    expect(times(WORDS.off)).toBe(1);
+    expect(times(ELSEWHERE)).toBe(1);
+    expect(presses()).toEqual([]);
+  });
+
+  it("in a settings section and the view frame: who can, and no Open Settings", async () => {
+    host("off", GIVEN);
+    const line = render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
+    await waitFor(() => expect(times(WORDS.off)).toBe(1));
+    expect(times(ELSEWHERE)).toBe(1);
+    expect(presses()).toEqual([]);
+    line.unmount();
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await waitFor(() => expect(times(WORDS.off)).toBe(1));
+    expect(times(ELSEWHERE)).toBe(1);
+    expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
   });
 });
 

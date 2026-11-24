@@ -27,7 +27,7 @@ vi.mock("../shell/lifeos", async (original) => ({
     return day.fail ? { status: "failed", error: "Server error" } : { status: "ready", value: [{ _id: "e1", title: "Scrim night", sector: "purdue", startsAt: Date.UTC(2026, 10, 21, 15), allDay: false }] };
   },
 }));
-vi.mock("../shell/open", () => ({ openConnections: vi.fn() }));
+vi.mock("../shell/open", () => ({ openConnections: vi.fn(), openWorkSettings: vi.fn() }));
 const { View } = await import("./CalendarActView");
 const { openConnections } = await import("../shell/open");
 
@@ -144,7 +144,8 @@ describe("a held reply whose LifeOS session is down", () => {
     // Work off and a computer kept from LifeOS name the computer too.
     cleanup();
     day.session = { state: "off", withheld: false };
-    expect(draw().container.querySelector("[data-session-down=off]")!.textContent).toBe("Work is off on the box");
+    // Work off: Open Settings, where the switch is (this window may turn it on).
+    expect(draw().container.querySelector("[data-session-down=off]")!.textContent).toBe("Work is off on the boxOpen Settings");
     named.mockRestore();
   });
 

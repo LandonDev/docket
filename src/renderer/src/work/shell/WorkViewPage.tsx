@@ -14,6 +14,8 @@ import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
+import { openWorkSettings } from "./open";
+import { useDownPress } from "./lifeosDown";
 import { clockTime } from "../../lib/duration";
 import { workErrorWords } from "../../lib/workErrorWords";
 
@@ -106,6 +108,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // A sign-in he started and has not approved yet, and a host whose Work is off: each says so, with its own press.
   const pairing = gated && state === "pairing";
   const off = gated && state === "off";
+  const offPress = useDownPress("off", environmentId);
   // A host never heard from (asleep, offline): its name and Retry, never bones that pulse for ever.
   const link = useEnvironmentStatus(environmentId);
   const away = gated && state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
@@ -184,8 +187,11 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         {away ? (
           <EmptyState title={`${host} is not connected`} action={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />
         ) : off ? (
-          // No press: Work is switched on for a host in Settings, Work, where the line would only send him (lifeosDown.ts).
-          <EmptyState title={sessionFailure("off", false, lifeosHostName(environmentId))} />
+          // Open Settings, where the switch is, for a key that may turn Work on there; else who can (`useDownPress`).
+          <EmptyState
+            title={sessionFailure("off", false, lifeosHostName(environmentId))}
+            {...(offPress.press ? { action: { label: "Open Settings", onClick: openWorkSettings } } : offPress.elsewhere ? { line: offPress.elsewhere } : {})}
+          />
         ) : withheld ? (
           <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (
