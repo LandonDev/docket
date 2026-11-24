@@ -3222,12 +3222,13 @@ decorates the page alone). A socket whose send queue passes the
 backpressure mark sheds the unfocused session and event pushes and asks
 for a `resync` once drained to half; one past 64 MiB closes (`SocketBudget`).
 Server close cancels that registry's thread mirror timers and awaits its mirror and index writes before closing the database; later schedules for that registry do nothing. It calls `SessionRegistry.close()` to block late callbacks and clear pending titles and timers before closing the store. `disposeAll()` puts down the harnesses and keeps the registry usable for later sends.
-The thread mirror and the session index share one 2 s debounced write and
-the launch mirror lands in batches of 200 rows; port scans share helper
-slots and run only around live calls; an overdue bulk request (20 s) runs
-at twice the bulk cap; the local profile's `session.events` reads 4 MiB
-pages on the reader worker, the fold flags live on the fold row, and a
-reader that failed restarts after a backoff. Every `session.send` writes
+The thread mirror and its index share a 2 s debounce. The index yields
+after each slice of 100 files. The launch mirror lands in batches of 200
+rows. Port scans share helper slots and run around live calls. An overdue
+bulk request (20 s) runs at twice the bulk cap. Both `session.events` profiles
+use the reader worker. The local profile returns raw pages capped at 4 MiB,
+and the remote profile keeps its projected page budgets and resume reset.
+Fold flags live on the fold row. A failed reader restarts after a backoff. Every `session.send` writes
 one span line to stalls.log (`send session=<id> accepted=0 prepared=12
 handle=340(warm) delivered=… init=… first-message=… first-content=2100`,
 flushed at the first content or 15 s in; a phase never reached reads `-`),

@@ -316,8 +316,18 @@ function frontmatterOf(head: string): Record<string, string> {
  *  the mirrors' own frontmatter after every mirror write. Mechanical, so
  *  it is always current and costs no model tokens; regenerating from the
  *  directory makes last-writer-wins correct across parallel sessions. */
-export function writeThreadsIndex(dir: string): void {
-  timed('writeThreadsIndex', () => writeThreadsIndexNow(dir))
+export const THREADS_INDEX_SLICE = 100
+const indexByDir = new Map<string, Promise<void>>()
+
+export function writeThreadsIndex(dir: string, between = yieldUntilIdle): Promise<void> {
+  const prior = indexByDir.get(dir)
+  const run = prior ? prior.catch(() => {}).then(() => writeThreadsIndexNow(dir, between)) : writeThreadsIndexNow(dir, between)
+  indexByDir.set(dir, run)
+  const done = (): void => {
+    if (indexByDir.get(dir) === run) indexByDir.delete(dir)
+  }
+  void run.then(done, done)
+  return run
 }
 
 /** The frontmatter lives in the first bytes; a mirror can be megabytes. */
@@ -334,35 +344,43 @@ function readHead(path: string): string {
   }
 }
 
-function writeThreadsIndexNow(dir: string): void {
+async function writeThreadsIndexNow(dir: string, between: () => Promise<void>): Promise<void> {
   const entries: { updated: string; line: string }[] = []
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.md') || file === INDEX_NAME) continue
-    let front: Record<string, string>
-    try {
-      front = frontmatterOf(readHead(join(dir, file)))
-    } catch {
-      continue
-    }
-    if (!front.title) continue
-    const updated = front.updated ?? ''
-    const parts = [
-      updated.slice(0, 10) || '?',
-      front.type ?? 'thread',
-      front.title,
-      front.status ?? '?',
-      front.files ? `files: ${front.files}` : 'files: —',
-      ...(front.plan ? [`plan: ${basename(front.plan)}`] : []),
-      join('threads', file)
-    ]
-    entries.push({ updated, line: `- ${parts.join(' · ')}` })
+  const files = readdirSync(dir)
+  for (let start = 0; start < files.length; start += THREADS_INDEX_SLICE) {
+    if (start) await between()
+    timed('writeThreadsIndex', () => {
+      for (const file of files.slice(start, start + THREADS_INDEX_SLICE)) {
+        if (!file.endsWith('.md') || file === INDEX_NAME) continue
+        let front: Record<string, string>
+        try {
+          front = frontmatterOf(readHead(join(dir, file)))
+        } catch {
+          continue
+        }
+        if (!front.title) continue
+        const updated = front.updated ?? ''
+        const parts = [
+          updated.slice(0, 10) || '?',
+          front.type ?? 'thread',
+          front.title,
+          front.status ?? '?',
+          front.files ? `files: ${front.files}` : 'files: —',
+          ...(front.plan ? [`plan: ${basename(front.plan)}`] : []),
+          join('threads', file)
+        ]
+        entries.push({ updated, line: `- ${parts.join(' · ')}` })
+      }
+    })
   }
-  entries.sort((a, b) => b.updated.localeCompare(a.updated))
-  const body = entries.length ? entries.map((e) => e.line).join('\n') : '_No threads yet._'
-  writeAtomic(
-    join(dir, INDEX_NAME),
-    `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · plan · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
-  )
+  timed('writeThreadsIndex', () => {
+    entries.sort((a, b) => b.updated.localeCompare(a.updated))
+    const body = entries.length ? entries.map((e) => e.line).join('\n') : '_No threads yet._'
+    writeAtomic(
+      join(dir, INDEX_NAME),
+      `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · plan · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
+    )
+  })
 }
 
 /** The project cwd a session's context files live in. Subagents may run in
@@ -412,8 +430,8 @@ async function mirrorSessionNow(
     const cwd = meta && contextCwd(reg, meta)
     if (!meta || !cwd) return
     const content = await renderMirrorOffLoop(reg, meta)
+    const dir = join(cwd, '.temp-code', 'threads')
     timed('mirrorSession', () => {
-      const dir = join(cwd, '.temp-code', 'threads')
       mkdirSync(dir, { recursive: true })
       const name = mirrorName(meta)
       // Sweep copies left by an old title — one file per session, always.
@@ -421,9 +439,9 @@ async function mirrorSessionNow(
         if (f !== name && f.includes(meta.id)) rmSync(join(dir, f), { force: true })
       }
       writeAtomic(join(dir, name), content)
-      if (opts.index !== false) writeThreadsIndex(dir)
       rotateJournal(cwd) // a model append lands shortly before this write
     })
+    if (opts.index !== false) await writeThreadsIndex(dir)
   } catch {
     // Mirrors are best-effort context, never a failure the user sees.
   }
@@ -453,6 +471,16 @@ export function cancelMirrors(): void {
   for (const state of activeStates) clearMirrorTimers(state)
 }
 
+function trackIndexWrite(state: MirrorState, write: Promise<void>): Promise<void> {
+  const tracked = write.catch(() => {}).finally(() => {
+    state.indexWrites.delete(tracked)
+    releaseIdleState(state)
+  })
+  state.indexWrites.add(tracked)
+  activeStates.add(state)
+  return tracked
+}
+
 /** Mirrors in one project's settle window share one index write. */
 function scheduleThreadsIndex(state: MirrorState, dir: string, sessionId: string): void {
   if (state.stopped) return
@@ -473,13 +501,8 @@ function scheduleThreadsIndex(state: MirrorState, dir: string, sessionId: string
         if (!pending) return
         await pending
       }
-    })).then(() => {
-      try { writeThreadsIndex(dir) } catch { /* best-effort context */ }
-    }).finally(() => {
-      state.indexWrites.delete(write)
-      releaseIdleState(state)
-    })
-    state.indexWrites.add(write)
+    })).then(() => writeThreadsIndex(dir))
+    trackIndexWrite(state, write)
   }, MIRROR_DEBOUNCE_MS)
   timer.unref?.()
   indexTimers.set(dir, timer)
@@ -546,11 +569,7 @@ export async function backfillMirrors(reg: SessionRegistry, between: () => Promi
   }
   for (const dir of dirs) {
     if (state.stopped) return
-    try {
-      writeThreadsIndex(dir)
-    } catch {
-      // best-effort, like every other mirror write
-    }
+    await trackIndexWrite(state, writeThreadsIndex(dir))
   }
   bootMark('mirror-backfill done', `${written} rewritten`)
 }
@@ -571,7 +590,7 @@ export function removeMirror(reg: SessionRegistry, meta: SessionMeta): void {
     for (const f of readdirSync(dir)) {
       if (f.includes(meta.id)) rmSync(join(dir, f), { force: true })
     }
-    writeThreadsIndex(dir)
+    void trackIndexWrite(state, writeThreadsIndex(dir))
   } catch {
     // no mirror dir — nothing to remove
   }
