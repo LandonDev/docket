@@ -684,7 +684,8 @@ function EntriesHead() {
   return (
     <TableHeader>
       <TableRow>
-        <TableHead className="w-24 first:pl-2">Date</TableHead>
+        {/* Under 520px the date's 64px still holds "Nov 21" and gives Who 32px more. */}
+        <TableHead className="w-24 first:pl-2 @max-[520px]/money:w-16">Date</TableHead>
         <TableHead>Who</TableHead>
         <TableHead className={cn("w-[26%]", WIDE_ONLY)}>Category</TableHead>
         <TableHead className="w-28 text-end">Amount</TableHead>

@@ -107,7 +107,13 @@ export function Body(props: Props) {
 
   if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
   if (!view) return <DashSkeleton />;
-  if (!view.blocks.length) return <EmptyState title="No numbers yet" line="Ask for one in the thread." />;
+  // A read that failed with nothing to show is the failure, in the body: never "No numbers yet" under a red line.
+  if (!view.blocks.length)
+    return view.failed ? (
+      <OpenFailed kind="dashboard" why={view.failed} onRetry={() => void host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures"))} />
+    ) : (
+      <EmptyState title="No numbers yet" line="Ask for one in the thread." />
+    );
   const proposed = view.blocks.filter((b) => b.proposed);
   const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
   const stale = view.stale || missed;
@@ -181,7 +187,8 @@ function useFeeds(
     return () => shell.review(null);
   }, [shell, host, store, proposedIds, by, current, setCurrent]);
 
-  const failed = view?.failed;
+  // A failed read over figures still shown; with none, the body says it (`OpenFailed`).
+  const failed = view?.blocks.length ? view.failed : undefined;
   useEffect(() => {
     // A first read that failed is the body's to say (`OpenFailed`); the line is for figures that stay on screen.
     shell.statusLine(

@@ -2349,7 +2349,8 @@ Around the canvas:
   inside the column, and what follows an amount (the paperclip, Paid,
   Review and a row's menu) sits in those 120px, ending on the column's
   edge (layout.ts). Under 520px the least fact gives way first: Entries'
-  Category becomes a 12px muted line under Who, By category and Entries
+  Category becomes a 12px muted line under Who and Date narrows to 64px,
+  By category and Entries
   end their amounts 48px in (the paperclip's room), Owed and To confirm
   keep their 120px for their presses, and Month or Year moves to two
   ticked rows at the head of More, so Add and More stay in the header. To confirm leads the column while anything waits: a

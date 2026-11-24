@@ -170,6 +170,12 @@ describe("the dashboard kind", () => {
     open(page({ blocks: [], asOf: null }));
     await waitFor(() => expect(screen.getByText("No numbers yet")).toBeTruthy());
     expect(screen.getByText("Ask for one in the thread.")).toBeTruthy();
+    cleanup();
+    // A read that failed with no figures to show is the failure in the body, never "No numbers yet" under a red line.
+    open(page({ blocks: [], asOf: null, failed: "Invoices!Z9 is not a range" }));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("Invoices!Z9 is not a range"));
+    expect(screen.queryByText("No numbers yet")).toBeNull();
+    expect(screen.queryByText("Couldn't read the figures")).toBeNull();
   });
 
   it("stresses the current bar only on a run of periods", async () => {

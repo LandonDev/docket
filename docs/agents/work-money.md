@@ -534,7 +534,7 @@ the `work.money` push.
   the figures, the year's chart, By category, Owed, Entries and the mileage
   line. `model.ts` is its pure half. Under 520px (the view's `money`
   container, `layout.ts`) Entries' Category gives way to a 12px muted second
-  line under Who, By category and Entries end their amounts 48px in (the
+  line under Who and its Date column narrows to 64px, By category and Entries end their amounts 48px in (the
   paperclip's room) so the names keep theirs, and Month or Year leaves the
   header for two ticked rows at the head of More, so Add and More stay in
   sight.
