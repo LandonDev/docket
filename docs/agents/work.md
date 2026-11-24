@@ -172,9 +172,14 @@ Settings → Work.
   The heading's + opens the menu the chunk answers
   through `workRailPort` (work/shell/WorkRailHost.tsx): one row per sector
   no Work workspace has yet (one click makes it on `workHome()`: the host
-  picked on the Work page, else the box, else this machine), Sign in to
-  LifeOS… signed out, Retry when it is down, then Without a sector…, which
-  asks for a name. A code workspace's row menu gains **LifeOS sector ›**
+  picked on the Work page, else the box, else this machine); while the home
+  session is down, its state in the rule's words as the row's description
+  with the rule's press as the row (Sign in…, Show the code…, both opening
+  the sign-in dialog; Retry; Open Settings), or the state and who can as a
+  note where this window may not, or the state alone for a computer the host
+  keeps LifeOS from, which reads this window's own session once the host
+  says connected (`addMenuState`); then Without a sector…, which asks for a
+  name. A code workspace's row menu gains **LifeOS sector ›**
   (None and the six) while Work is on; `work.lifeos.link` writes it and
   the host's `workspaces` push tells every client. **Work Chats** sits
   after Chats, **Outbox** after Inbox whenever Work is on, with the waiting
@@ -316,7 +321,7 @@ Settings → Work.
   `work.lifeos.jwt` is in `DEVICE_REFUSED`) reads neither: the session is
   `withheld` (work/shell/lifeos.ts asks `linkMay` first and reads a
   "forbidden" answer the same way), and the frame says "This computer cannot
-  read LifeOS here" and where the view opens, with no Retry. The
+  read LifeOS through the box" and where the view opens, with no Retry. The
   rules and accounts are the host's and stay editable, and Save sends
   them; but a name or state he changed and LifeOS cannot take holds Save,
   so nothing he typed is dropped behind a save of the rest. A project

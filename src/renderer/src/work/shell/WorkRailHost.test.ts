@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-/** The Work add menu's Retry: it asks the host's LifeOS status afresh, where a second watch would start nothing. */
+/** The Work add menu's Retry: it asks the host's LifeOS status afresh and the session after it (`reopenLifeos`), where a second watch would start nothing. */
 
-const lifeos = vi.hoisted(() => ({ refresh: vi.fn(async (_env: string) => undefined), watch: vi.fn() }));
-vi.mock("./lifeos", async (original) => ({ ...(await original<object>()), refreshLifeos: lifeos.refresh, watchLifeos: lifeos.watch }));
+const lifeos = vi.hoisted(() => ({ refresh: vi.fn(async (_env: string, _sector: string | null) => undefined), watch: vi.fn() }));
+vi.mock("./lifeos", async (original) => ({ ...(await original<object>()), reopenLifeos: lifeos.refresh, watchLifeos: lifeos.watch }));
 
 const { retryLifeos } = await import("./WorkRailHost");
 
@@ -12,7 +12,7 @@ describe("the add menu's Retry", () => {
     const fail = vi.fn();
     retryLifeos("env_box", fail);
     await Promise.resolve();
-    expect(lifeos.refresh).toHaveBeenCalledWith("env_box");
+    expect(lifeos.refresh).toHaveBeenCalledWith("env_box", null);
     expect(lifeos.watch).not.toHaveBeenCalled();
     expect(fail).not.toHaveBeenCalled();
   });

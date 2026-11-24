@@ -46,6 +46,7 @@ describe("the Work heading's + menu", () => {
 
   it("offers the sign-in signed out, Retry when LifeOS is down, and Without a sector always", () => {
     expect(ids(addMenuRows("signed-out", ["cosmic"]))).toEqual(["work:signin", "—", "work:add-unlinked"]);
+    expect(ids(addMenuRows("pairing", ["cosmic"]))).toEqual(["work:code", "—", "work:add-unlinked"]);
     expect(ids(addMenuRows("refused", []))).toEqual(["work:signin", "—", "work:add-unlinked"]);
     expect(ids(addMenuRows("unreachable", ["cosmic"]))).toEqual(["work:retry", "—", "work:add-unlinked"]);
     expect(ids(addMenuRows("connecting", ["cosmic"]))).toEqual(["work:connecting", "—", "work:add-unlinked"]);
@@ -55,11 +56,11 @@ describe("the Work heading's + menu", () => {
 
   /** Council round 5 (Opus, the rail's Work menu): a host whose status went unanswered read "Connecting to LifeOS…" for good. */
   it("reads a home host whose status went unanswered as down, with Retry, the computer named as the views name it", () => {
-    expect(addMenuState(null, { unanswered: true })).toBe("unreachable");
-    expect(addMenuState(null, {})).toBeNull();
+    expect(addMenuState(null, { client: null, state: "connecting", unanswered: true })).toBe("unanswered");
+    expect(addMenuState(null, { client: null, state: "connecting" })).toBeNull();
     const off = { lifeos: { state: "off" as const }, keys: [] };
-    expect(addMenuState(off, { unanswered: true })).toBe("off");
-    const [retry] = addMenuRows(addMenuState(null, { unanswered: true }), ["cosmic"], undefined, "The box did not answer");
+    expect(addMenuState(off, { client: null, state: "off", unanswered: true })).toBe("off");
+    const [retry] = addMenuRows(addMenuState(null, { client: null, state: "connecting", unanswered: true }), ["cosmic"], undefined, "The box did not answer");
     expect(retry).toMatchObject({ id: "work:retry", label: "Retry", description: "The box did not answer" });
     // Work off: Open Settings, where the switch is, for a key that may turn it on; else who can, with no press.
     const [settings] = addMenuRows("off", [], undefined, "Work is off on the box");
@@ -70,15 +71,28 @@ describe("the Work heading's + menu", () => {
   });
 
   /** Council round 6: a sign-in is offered only where this window may sign the host in, as every reader offers it. */
-  it("offers Sign in and Approve only where this window may sign the host in; else the state and who can", () => {
-    const elsewhere = "Changed from a computer that manages the box";
-    expect(addMenuRows("signed-out", [], undefined, "Not signed in to LifeOS")[0]).toMatchObject({ kind: "item", id: "work:signin", label: "Sign in to LifeOS…" });
-    expect(addMenuRows("pairing", [], undefined, "The LifeOS sign-in waits for your approval")[0]).toMatchObject({ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…" });
+  it("offers Sign in and Show the code only where this window may sign the host in; else the state and who can", () => {
+    const elsewhere = "Sign in from a computer that manages the box";
+    expect(addMenuRows("signed-out", [], undefined, "Not signed in to LifeOS on the box")[0]).toMatchObject({ kind: "item", id: "work:signin", label: "Sign in…", description: "Not signed in to LifeOS on the box" });
+    // Council round 7 (Sol, the rest 1): the row is named for what its press does, the code, and the state is its words.
+    expect(addMenuRows("pairing", [], undefined, "The LifeOS sign-in on the box waits for your approval")[0]).toMatchObject({ kind: "item", id: "work:code", label: "Show the code…", description: "The LifeOS sign-in on the box waits for your approval" });
     for (const state of ["signed-out", "refused", "pairing"] as const) {
       const rows = addMenuRows(state, [], undefined, "Said", elsewhere);
       expect(rows[0]).toMatchObject({ kind: "note", id: "work:signin-elsewhere" });
-      expect(rows.some((row) => row.kind === "item" && row.id === "work:signin")).toBe(false);
+      expect(rows.some((row) => row.kind === "item" && (row.id === "work:signin" || row.id === "work:code"))).toBe(false);
     }
+  });
+
+  /** Council round 7 (Sol, the rest 1): a host signed in to LifeOS that keeps its session from this computer took the connected branch, with no word. */
+  it("reads this window's own session once the host says connected: a withheld one is a note, with no press and no sectors", () => {
+    const connected = { lifeos: { state: "connected" as const, ownerId: "landon", since: 1 }, keys: [] };
+    expect(addMenuState(connected, { client: null, state: "unreachable", withheld: true })).toBe("withheld");
+    expect(addMenuState(connected, { client: null, state: "unreachable", unanswered: true })).toBe("unanswered");
+    // Its JWT still out: on its way, and the sectors stand.
+    expect(addMenuState(connected, { client: null, state: "connected" })).toBe("connected");
+    const rows = addMenuRows("withheld", ["cosmic"], undefined, "This computer cannot read LifeOS through the box");
+    expect(ids(rows)).toEqual(["work:withheld", "—", "work:add-unlinked"]);
+    expect(rows[0].kind).toBe("note");
   });
 });
 
