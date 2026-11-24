@@ -154,6 +154,9 @@ describe("PairDialog", () => {
     const onClose = vi.fn();
     render(<PairDialog onClose={onClose} onChanged={noop} />);
     expect(screen.getByRole("button", { name: "Create code" }).hasAttribute("disabled")).toBe(true);
+    // The toggles are labelled by a noun, never "May" (which reads as the month).
+    expect(screen.getByText("Access")).toBeTruthy();
+    expect(screen.queryByText("May")).toBeNull();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "iPhone" } });
     answers.set("remote.pairings.create", {
       pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 9 * 60_000 + 41_000 },

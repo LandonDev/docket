@@ -2,7 +2,8 @@ import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, MailSettings } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
-import { PageEmpty, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageRowsSkeleton, PageSection } from "../../components/page";
+import { SignedOutLine } from "../connections/SignedOutLine";
 import { sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { mailClientFor } from "./client";
 import { tempcodeMailKit } from "./kit";
@@ -15,7 +16,7 @@ import { tempcodeMailKit } from "./kit";
  */
 export function Section({ environmentId }: { environmentId: string }) {
   const lifeos = useLifeosSession(environmentId, null);
-  if (!lifeos.client) return <PageSection title="Mail">{sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <PageEmpty>Sign in to LifeOS to set up Mail</PageEmpty>}</PageSection>;
+  if (!lifeos.client) return <PageSection title="Mail">{sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <SignedOutLine />}</PageSection>;
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>

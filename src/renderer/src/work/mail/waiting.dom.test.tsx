@@ -70,8 +70,8 @@ describe("the workspace's Waiting on", () => {
     expect(screen.queryByRole("switch")).toBeNull();
     await settle();
     expect(calls).toEqual([{ method: "work.mail.waiting", params: { workspaceId: "ws" } }]);
-    expect(screen.getByText("Questions wait")).toBeTruthy();
-    expect(screen.getByLabelText("Working days a question waits").textContent).toContain("3 working days");
+    expect(screen.getByText("Count as waiting after")).toBeTruthy();
+    expect(screen.getByLabelText("Count as waiting after").textContent).toContain("3 working days");
     const routine = screen.getByRole("switch", { name: "Draft nudges by themselves" });
     expect(routine.getAttribute("aria-checked")).toBe("false");
   });
@@ -90,7 +90,7 @@ describe("the workspace's Waiting on", () => {
     render(<WaitingSection workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByText("LifeOS did not answer: down")).toBeTruthy();
-    expect(screen.queryByLabelText("Working days a question waits")).toBeNull();
+    expect(screen.queryByLabelText("Count as waiting after")).toBeNull();
     expect(screen.getByRole("switch", { name: "Draft nudges by themselves" }).getAttribute("aria-checked")).toBe("true");
   });
 

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { TeamsLibrary, TeamsPlace, TeamsRoot } from "@shared/contract-work-office";
 import { Field } from "../../chrome/DialogField";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -13,14 +13,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/too
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { pickFolder } from "../../lib/fs";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { nativePlatform } from "../../lib/native";
 import { isWebMode } from "../../lib/nativeWeb";
 
 /**
- * Settings → Work, "Where it runs": the folders on one host that Files lists as shared places
- * (docs/agents/work-teams-files.md "Settings"). Each library OneDrive syncs there is found and on by
- * default; he turns one off, adds any folder (a network drive's too), or gives one its web address (a
- * channel's Files → Copy link) for Open on the web. Only this computer's own window edits its list.
+ * Settings → Work, a section a host: the folders on it that Files lists as shared places
+ * (docs/agents/work-teams-files.md "Settings"), under "Folders" or, with two hosts, "Folders on <host>",
+ * Add folder… at the heading's end. Each library OneDrive syncs there is found and on by default; he turns
+ * one off, adds any folder (a network drive's too), or gives one its web address (a channel's Files → Copy
+ * link) for Open on the web. Only this computer's own window edits its list.
  */
 
 type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[]; places?: TeamsPlace[] };
@@ -49,7 +52,13 @@ export function withRoot(roots: readonly TeamsRoot[], folder: string, change: Pa
   return [...rest, next];
 }
 
-export function TeamsFilesRow({ link, title, editable }: { link: Link | null | undefined; title: string; editable: boolean }) {
+/** A failure on a host's folders in his words, naming it: `workErrorWords`, else the act's own line. */
+function folderFailure(err: unknown, host: string | undefined, act: string, write = false): string {
+  const name = host ? nameInLine(host) : undefined;
+  return workErrorWords(err, { host: name, write }) || `${name ? name.charAt(0).toUpperCase() + name.slice(1) : "The computer"} ${act}.`;
+}
+
+export function TeamsFilesRow({ link, title, host, editable }: { link: Link | null | undefined; title: string; host?: string; editable: boolean }) {
   const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
   const [busy, setBusy] = useState<string | null>(null);
   // A row's own save (a switch, Remove) says its failure on the list's top row; a dialog's, in the dialog alone.
@@ -57,16 +66,29 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
   const value = read.value;
-  if (!value) {
-    if (!read.error) return <PageRowsSkeleton rows={1} description control="button" />;
+  const add = editable && value ? (
+    <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "add" })}>
+      Add folder…
+    </Button>
+  ) : undefined;
+  if (!value)
     return (
-      <PageRow title={title} error={read.error}>
-        <Button variant="ghost" size="sm" onClick={read.retry}>
-          Retry
-        </Button>
-      </PageRow>
+      <PageSection title={title}>
+        {read.error ? (
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={read.retry}>
+                Retry
+              </Button>
+            }
+          >
+            {folderFailure(read.error, host, "could not list its folders")}
+          </PageError>
+        ) : (
+          <PageRowsSkeleton rows={1} description control="button" />
+        )}
+      </PageSection>
     );
-  }
   const save = async (roots: TeamsRoot[], key: string, from: "row" | "dialog" = "row"): Promise<boolean> => {
     const say = from === "dialog" ? setDialogError : setError;
     setBusy(key);
@@ -75,7 +97,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
       read.set(await link!.request<Libraries>("work.office.filesSetRoots", { roots }));
       return true;
     } catch (err) {
-      say(errorText(err));
+      say(folderFailure(err, host, "did not save the folders", true));
       return false;
     } finally {
       setBusy(null);
@@ -83,14 +105,9 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
   };
   const shown = [...value.libraries.map((l) => ({ folder: l.path, title: libraryTitle(l), library: l, on: true })), ...value.off.map((folder) => ({ folder, title: folder.split(/[\\/]/).pop() ?? folder, library: null, on: false }))];
   return (
-    <>
-      <PageRow title={title} description={shown.length ? undefined : noneLine(value.places)} error={error ?? undefined}>
-        {editable ? (
-          <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "add" })}>
-            Add folder…
-          </Button>
-        ) : null}
-      </PageRow>
+    <PageSection title={title} action={add}>
+      {error ? <PageError>{error}</PageError> : null}
+      {shown.length ? null : <PageEmpty>{noneLine(value.places)}</PageEmpty>}
       {shown.map((row) => (
         // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip that focus opens as hover does.
         <PageRow
@@ -144,7 +161,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
           error={dialogError}
         />
       ) : null}
-    </>
+    </PageSection>
   );
 }
 

@@ -20,6 +20,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   useWorkspaces: () => [
     { id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" },
     { id: "code", name: "temp-code", environmentId: "env_box", sector: "purdue", kind: "code", path: "/c" },
+    { id: "bare", name: "site", environmentId: "env_box", sector: null, kind: "code", path: "/b" },
   ],
 }));
 const reads = vi.hoisted(() => ({ fail: true, asked: 0, error: "The host did not answer" }));
@@ -35,6 +36,8 @@ vi.mock("./actions", async (original) => ({
   localHostId: async () => "env_mac",
 }));
 
+const requestSettings = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/monaco/debugTab", async (original) => ({ ...(await original<object>()), requestSettings }));
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { CodeWorkspaceSector, SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
@@ -103,7 +106,7 @@ describe("a workspace page for a key that may not change it", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.queryAllByRole("switch")).toEqual([]);
     expect(document.querySelector("[data-defaults]")).toBeNull();
-    expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
+    expect(screen.getAllByText("Computer use is changed from a computer that manages the box")).toHaveLength(1);
     expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
   });
 });
@@ -133,6 +136,19 @@ describe("a code workspace's LifeOS sector", () => {
   });
 });
 
+describe("a code workspace with no sector, LifeOS signed out", () => {
+  it("says Not signed in to LifeOS with Sign in, which opens Settings → Connections", async () => {
+    setWorkOn("env_box", true);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
+    render(<CodeWorkspaceSector workspaceId="bare" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(requestSettings).toHaveBeenCalledWith("connections");
+  });
+});
+
 describe("Sign in to LifeOS", () => {
   const host = (id: string) =>
     vi.spyOn(registry, "linkOf").mockReturnValue({
@@ -156,6 +172,19 @@ describe("Sign in to LifeOS", () => {
     expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     expect(screen.queryByText("ABCD-1234")).not.toBeNull();
+  });
+
+  it("holds the code's 24px line with a bone while it is asked for, so nothing moves when it lands", async () => {
+    let land!: (v: unknown) => void;
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(() => new Promise((r) => (land = r))), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    const bone = screen.getByRole("status", { name: "Asking for a code" });
+    expect(bone.className).toContain("h-6");
+    expect(bone.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    await act(async () => land({ code: "ABCD-1234", expiresAt: Date.now() + 60_000 }));
+    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    expect(screen.getByText("ABCD-1234")).toBeTruthy();
   });
 
   it("offers no token at /ui, where this window's own link is a key's and the token is local-only", async () => {

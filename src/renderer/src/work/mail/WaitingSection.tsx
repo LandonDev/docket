@@ -83,10 +83,10 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       ) : null}
       {value ? (
         <>
-          <PageRow title="Questions wait" error={value.error}>
+          <PageRow title="Count as waiting after" error={value.error}>
             {value.days !== null ? (
               <ChoiceSelect
-                label="Working days a question waits"
+                label="Count as waiting after"
                 size="sm"
                 value={String(value.days)}
                 options={DAY_CHOICES.some((c) => c.value === String(value.days)) ? DAY_CHOICES : [...DAY_CHOICES, { value: String(value.days), label: `${value.days} working days` }]}

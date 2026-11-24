@@ -142,7 +142,7 @@ function Form({ host, reach, onClose, onChanged, pending, setPending, onMade }: 
         <Field label="Name">
           <Input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="iPhone" />
         </Field>
-        <FieldRow label="May">
+        <FieldRow label="Access">
           <CapsPicker value={caps} audience="client" onChange={setCaps} />
         </FieldRow>
         {reach === null ? <Unreachable host={host} /> : null}

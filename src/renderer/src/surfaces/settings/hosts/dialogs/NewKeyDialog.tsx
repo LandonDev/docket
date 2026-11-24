@@ -99,7 +99,7 @@ function Form({
               <ToggleGroupItem value="mcp">Bot (MCP)</ToggleGroupItem>
             </ToggleGroup>
           </FieldRow>
-          <FieldRow label="May">
+          <FieldRow label="Access">
             <CapsPicker value={caps} audience={audience} onChange={setCaps} />
           </FieldRow>
         </div>

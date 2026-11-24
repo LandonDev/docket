@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   cannot: new Set<string>(),
   on: new Set<string>(["env_box"]),
   calls: [] as { env: string; method: string; params: unknown }[],
+  refuse: new Set<string>(),
 }));
 const ENVS = [
   { id: "env_box", name: "The box" },
@@ -16,9 +17,11 @@ const ENVS = [
 vi.mock("../../lib/connection", () => ({
   useEnvironments: () => ENVS,
   registry: {
+    environment: (id: string) => ENVS.find((e) => e.id === id),
     linkOf: (env: string) => ({
       request: async (method: string, params: { enabled: boolean }) => {
         state.calls.push({ env, method, params });
+        if (state.refuse.has(env)) throw new Error("work.set: write failed (EIO)");
         return { enabled: params.enabled };
       },
     }),
@@ -38,6 +41,7 @@ afterEach(() => {
   state.on = new Set(["env_box"]);
   state.cannot = new Set();
   state.calls = [];
+  state.refuse = new Set();
 });
 
 describe("Settings → Work's switch", () => {
@@ -61,6 +65,21 @@ describe("Settings → Work's switch", () => {
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Work" })));
     expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: false } }]);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("draws no switch for a key that may switch no host, and keeps the line that says where", () => {
+    state.cannot = new Set(["env_box", "local"]);
+    render(<WorkPage />);
+    expect(screen.queryByRole("switch", { name: "Work" })).toBeNull();
+    expect(screen.getByText("Work for the box and Purdue laptop is changed from a computer that manages them")).toBeTruthy();
+  });
+
+  it("says a host that did not take the switch in a sentence naming it, never the link's text", async () => {
+    state.on = new Set(["env_box", "local"]);
+    state.refuse = new Set(["local"]);
+    render(<WorkPage />);
+    await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Work" })));
+    expect(screen.getByRole("alert").textContent).toBe("Purdue laptop did not save the change.");
   });
 
   it("offers no such press while every host agrees", () => {

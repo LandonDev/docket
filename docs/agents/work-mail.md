@@ -451,7 +451,7 @@ to draft the nudge" and opens the thread. The draft is held as every draft
 is: it opens beside its thread and goes only on his Send.
 
 **The routine.** A Work workspace's settings page has a Waiting on section:
-"Questions wait" (1 to 10 working days; LifeOS's value for the sector) and
+"Count as waiting after" (1 to 10 working days; LifeOS's value for the sector) and
 "Draft nudges by themselves", off until he turns it on, since each firing
 is a model run. On, it makes one ordinary routine through the routines
 pillar (`work.routines.save`: "Nudge mail with no reply", a LifeOS trigger
@@ -654,8 +654,8 @@ same values. On the page it is one of the page's sections, "Mail"
 (`PageSection`, the kit's own title left out): the kit's four groups sit
 inside it under 12px regular muted headings, 8px to their first row and
 16px apart (mail.css `data-mail-settings`, since the kit has no slot for a
-host's section part); signed out, the section says "Sign in to LifeOS to
-set up Mail" under its heading.
+host's section part); signed out, the section says "Not signed in to
+LifeOS" under its heading, with Sign in opening Settings → Connections.
 
 ## The Outbox
 

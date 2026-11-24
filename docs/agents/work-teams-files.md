@@ -550,8 +550,9 @@ The Files view of before (`src/renderer/src/work/office/view.ts`,
 
 ## Settings
 
-Settings → Work, "Where it runs": **Folders** for each Mac or Windows host
-with Work on (`TeamsFilesRow`): each library found or added, by team, with its
+Settings → Work: a section **Folders** (with two hosts, **Folders on <host>**) for
+each Mac or Windows host with Work on (`TeamsFilesRow`), Add folder… at its heading's
+end: each library found or added, by team, with its
 folder; a found one has a switch, an added one Remove. Add web link… stores
 the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
 Windows) or picked with Browse…, the system's folder picker. Only this computer's own window edits its list; another host's rows
@@ -562,7 +563,7 @@ added there is a shared place, so a thread's change in it is held as `file.act`.
 A box workspace lists a folder on a PC in the PC's own window when two things
 hold. The workspace's page has **Computer use on <PC>** on (`mayUseDesktop`).
 The PC's own Work switch is on: with it off, the PC answers every Files call
-"Work is off on this host" and Settings shows no Folders row for it (Settings →
+"Work is off on this host" and Settings shows no Folders section for it (Settings →
 Work's **Turn on for <host>** turns it on). Opening a file there from a box
 workspace also needs the PC's bridge for the box at **Read** or more (Settings →
 Hosts); while it is Off the open says "This host's bridge is off for that host".

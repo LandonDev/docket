@@ -3,6 +3,7 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../compone
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironments } from "../../lib/connection";
+import { hostFailure } from "../../lib/hostFailure";
 import { linkMay } from "../../lib/linkMay";
 import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
 import { workShellChunk } from "../chunks";
@@ -22,7 +23,9 @@ export function switchLine(environments: readonly { id: string; name: string }[]
 /** The hosts this window's key cannot switch, named: a press here never asks them, so none ends in a refusal. */
 export function elsewhereLine(names: readonly string[]): string | undefined {
   if (names.length === 0) return undefined;
-  return `Work for ${names.map(nameInLine).join(", ")} is changed from a computer that manages ${names.length > 1 ? "them" : "it"}`;
+  const said = names.map(nameInLine);
+  const list = said.length < 2 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`;
+  return `Work for ${list} is changed from a computer that manages ${names.length > 1 ? "them" : "it"}`;
 }
 
 /**
@@ -50,7 +53,7 @@ export function WorkPage() {
           const answer = await registry.linkOf(env.id).request<{ enabled: boolean }>("work.set", { enabled: next });
           setWorkOn(env.id, !!answer.enabled);
         } catch (error) {
-          failed.push(`${env.name}: ${error instanceof Error ? error.message : String(error)}`);
+          failed.push(hostFailure(env.id, error, "did not save the change", true));
         }
       }),
     );
@@ -80,7 +83,8 @@ export function WorkPage() {
                 <BusyLabel busy={joining} label={`Turn on for ${off.map((e) => e.name).join(", ")}`} />
               </Button>
             ) : null}
-            <SettingSwitch label="Work" on={on.size > 0} onChange={(next) => flip(next)} />
+            {/* A key that may switch no host (a phone's, /ui) gets no switch: the line above says where Work is changed. */}
+            {mine.length ? <SettingSwitch label="Work" on={on.size > 0} onChange={(next) => flip(next)} /> : null}
           </div>
         </PageRow>
         {refused.map((line) => (

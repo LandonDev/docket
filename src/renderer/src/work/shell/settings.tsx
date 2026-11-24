@@ -8,6 +8,7 @@ import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { Skeleton } from "../../components/ui/skeleton";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -28,6 +29,7 @@ import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
+import { SignedOutLine } from "../connections/SignedOutLine";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
@@ -95,8 +97,8 @@ export function WorkSettingsBody() {
       <PageSection title="Models">
         <PageRow title="Work threads" description="Same as code threads" onOpen={() => requestSettings("defaults")} openLabel="Thread defaults" />
       </PageSection>
-      <PageSection title="Where it runs">
-        {hosts.length > 1 ? (
+      {hosts.length > 1 ? (
+        <PageSection title="Where it runs">
           <PageRow title="New Work workspaces are made on">
             <ChoiceSelect
               size="sm"
@@ -109,13 +111,14 @@ export function WorkSettingsBody() {
               }}
             />
           </PageRow>
-        ) : null}
-        {hosts
-          .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
-          .map((host) => (
-            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Folders on ${nameInLine(host.name)}` : "Folders"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
-          ))}
-      </PageSection>
+        </PageSection>
+      ) : null}
+      {/* A section a host, as the Windows VM's are: a second host's heading never reads as one more folder. */}
+      {hosts
+        .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
+        .map((host) => (
+          <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} host={host.name} title={hosts.length > 1 ? `Folders on ${nameInLine(host.name)}` : "Folders"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
+        ))}
       {home ? <StartPlacesSection environmentId={home} /> : null}
       <WinvmSection hosts={hosts.map((h) => h.id)} />
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
@@ -231,7 +234,10 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
               {code ? (
                 <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
               ) : (
-                <span className="text-xs text-muted-foreground">Asking for a code…</span>
+                // The code's own 24px line, a bone its width: nothing moves when it lands.
+                <div role="status" aria-label="Asking for a code" data-code-bone className="flex h-6 items-center">
+                  <Skeleton className="h-4 w-24" />
+                </div>
               )}
               {code ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
@@ -340,7 +346,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
       <PageSection title="Where it runs">
         <PageRow title="Threads run on" description={host?.name ?? "A host not linked here"} />
         {!mayWrite ? (
-          <PageEmpty>{managedElsewhere(host?.name ?? "it")}</PageEmpty>
+          // The line names what it stands for: the computer use switches and the copy are hidden from this key.
+          <PageEmpty>{`Computer use is changed from a computer that manages ${nameInLine(host?.name ?? "it")}`}</PageEmpty>
         ) : settings ? (
           desktops.map((desktop) => (
             <PageRow key={desktop.host} title={`Computer use on ${nameInLine(desktop.name)}`}>
@@ -441,7 +448,7 @@ export function CodeWorkspaceSector({ workspaceId }: { workspaceId: string }) {
           />
         </PageRow>
       ) : (
-        <PageEmpty>Sign in to LifeOS to link a sector</PageEmpty>
+        <SignedOutLine />
       )}
     </PageSection>
   );

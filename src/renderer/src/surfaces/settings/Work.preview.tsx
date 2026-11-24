@@ -2,7 +2,8 @@
 // Settings → Work, as the page draws it, over two computers that answer from made-up settings. States: `off` (the
 // switch alone), `on` (the switch and Work's sections: the digest, models, where it runs, the Windows VM, guest links,
 // Mail with LifeOS signed out), and `elsewhere` (on, from a computer whose key cannot switch the box: the switch says so and the
-// box's controls are gone). Rendered by nothing in the app.
+// box's controls are gone), and `nowhere` (on, from a key that may switch no host, a phone's or /ui: no switch, the line
+// says where). Rendered by nothing in the app.
 import { Page } from "../../components/page";
 import { setWorkOn } from "../../lib/workSwitch";
 import { seedDigestHost } from "../../work/digest/store";
@@ -11,7 +12,7 @@ import { answerAs, asGivenComputer, JOB, Unsettled } from "../../work/kit.previe
 import { workDigestChunk, workShellChunk } from "../chunks";
 import { WorkPage } from "./Work";
 
-type State = "off" | "on" | "elsewhere";
+type State = "off" | "on" | "elsewhere" | "nowhere";
 
 const NOW = Date.now();
 // What each host says, by method; a method it does not know is refused, which the page draws as that section's error.
@@ -49,7 +50,7 @@ export function WorkSettingsPreview({ state = "on" }: { state?: State }) {
       throw new Error(`The box did not answer ${method}`);
     });
     // Two computers: this one, and the box; a given key on the box where it cannot switch Work there.
-    asGivenComputer({ on: state === "elsewhere" ? ["local"] : [], computers: [{ id: "local", name: "The box", platform: "linux" }, { id: "mac", name: "MacBook Pro", platform: "darwin" }] });
+    asGivenComputer({ on: state === "elsewhere" ? ["local"] : state === "nowhere" ? ["local", "mac"] : [], computers: [{ id: "local", name: "The box", platform: "linux" }, { id: "mac", name: "MacBook Pro", platform: "darwin" }] });
     if (state !== "off") for (const id of ["local", "mac"]) setWorkOn(id, true);
     // LifeOS is signed out on the box (Connections holds the sign-in): Mail's section says so in one line, and the
     // sectors LifeOS has are not listed. A signed-in LifeOS would open a session a static page cannot.

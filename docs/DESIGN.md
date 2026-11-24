@@ -1664,11 +1664,16 @@ Around the canvas:
   Remove and no confirm. With the switch off, the Work page is the switch
   alone. A Work workspace's sector is shown, never edited. Models is one
   row that opens Thread defaults. "Where it runs" names the host new Work
-  workspaces are made on (only with two or more hosts with Work on) and
-  each host's conversion tools; computer use is one switch per desktop
-  host on each workspace's page. A section that needs an account the person is
-  signed out of shows one muted line naming the sign-in ("Sign in to
-  LifeOS to …"), never disabled controls.
+  workspaces are made on (only with two or more hosts with Work on); each
+  desktop host's folders are a section of their own, "Folders" or, with
+  two hosts, "Folders on <host>", Add folder… at the heading's end;
+  computer use is one switch per desktop host on each workspace's page,
+  and for a key that may not change them one line says so ("Computer use
+  is changed from a computer that manages the box"). A key that may switch
+  no host gets no Work switch, only the line saying where Work is changed.
+  A section that needs LifeOS while it is signed out shows one muted line,
+  "Not signed in to LifeOS", with Sign in at its end opening Settings →
+  Connections (`SignedOutLine`), never disabled controls.
 - **The Files place** (`work/files/`, the Files row): the finder with
   tabs, under the app's strip in the view's own frame. Three regions.
   The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px
