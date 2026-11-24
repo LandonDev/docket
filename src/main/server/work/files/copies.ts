@@ -154,7 +154,10 @@ export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'h
   // (body.ts): found changed with its body as we last read or wrote it, the file is written over by its new version.
   if (!keep && 'conflict' in got && !('gone' in got.conflict)) {
     const now = await freshBytes(ctx, r).catch(() => null)
-    if (now && sameBody(ctx, r, now.data)) got = await deliverOnce(ctx, { ...r, version: now.version }, data, keep)
+    // A send whose answer was lost landed all the same: the file holds these very bytes, so it holds this write, at
+    // the version it has now. Never a change made there, and nothing to send again.
+    if (now && sha(now.data) === sha(data)) got = { version: now.version, changed: Number(now.version.split(':')[1]) || got.conflict.changed }
+    else if (now && sameBody(ctx, r, now.data)) got = await deliverOnce(ctx, { ...r, version: now.version }, data, keep)
   }
   // What that computer holds now is not yet the file in Teams: OneDrive's upload is followed from here (uploads.ts).
   if ('version' in got) {

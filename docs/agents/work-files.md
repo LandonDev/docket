@@ -1845,6 +1845,13 @@ over a file that changed there.
   there as his own save of that library file (`admitChange` as `edit`, a peer only with its origin, a file of a
   library of that host, never its VM), then `saveFile` by the version. The VM: `vmSave`, the guest's versioned
   `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set.
+- **The receipt is of the bytes sent.** `saveFile` answers the version of the bytes it wrote, read off the staged
+  file before its rename (size, time, sha256), never a look after the rename, which a sync's own write coming right
+  after would have answered as ours, so the next send would have gone over it. And it takes a file whose time alone
+  moved, its size and sha256 the same, as the version named (`sameWord`): a sync's touch is no change. A send whose
+  answer was lost after it landed is known as landed on the next try: met as a conflict, the file is read and holds
+  the very bytes being sent, so the copy is held at that version, never said to have changed there (`deliver`;
+  Word's saves go through the same door).
 - **Saved means the file holds his write.** The record counts each time an editor replaced the copy's bytes
   (`writes`, bumped by `copySaved` as `saveFile` or `fileWritten` tells of the copy) and keeps the last of those the
   file is known to hold (`held`): a send landed after it was read, or a look found the copy's bytes the file's own

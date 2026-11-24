@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import { chmod } from 'node:fs/promises'
+import { chmod, rename } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileBytes, FileSaved } from '@shared/contract-work-files'
@@ -16,7 +17,7 @@ import { versionOf } from './write'
 // `chmod` runs between the new bytes' write and the last look at the file: a test puts a second writer there.
 vi.mock('node:fs/promises', async (real) => {
   const fs = await real<typeof import('node:fs/promises')>()
-  return { ...fs, chmod: vi.fn(fs.chmod) }
+  return { ...fs, chmod: vi.fn(fs.chmod), rename: vi.fn(fs.rename) }
 })
 
 let rig: Rig
@@ -113,6 +114,30 @@ describe('saving a file', () => {
     expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toEqual({ conflict: { version: versionWord(await versionOf(notes)), changed: Math.round(statSync(notes).mtimeMs) } })
     expect(readFileSync(notes, 'utf8')).toBe('FIRST line\n')
     expect(readdirSync(join(rig.folder, 'Events')).filter((n) => n.includes('Notes'))).toEqual(['Notes.md'])
+  })
+
+  it("answers the version of the bytes it wrote, never of a sync's write that came right after: the next save meets that as a conflict", async () => {
+    const read = await readFile(fence(), notes, 0, 1024)
+    const real = (await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).rename
+    vi.mocked(rename).mockImplementationOnce(async (from, to) => {
+      await real(from, to)
+      // OneDrive replaces the file between our rename and the answer.
+      writeFileSync(notes, 'from the cloud\n')
+    })
+    const saved = await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)
+    if (!('version' in saved)) throw new Error('not saved')
+    expect(saved.version).not.toBe(versionWord(await versionOf(notes)))
+    expect(saved.version.split(':')[2]).toBe(createHash('sha256').update('mine\n').digest('hex'))
+    // His next save names the receipt: the cloud's bytes are never written over.
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine again\n'), saved.version)).toHaveProperty('conflict')
+    expect(readFileSync(notes, 'utf8')).toBe('from the cloud\n')
+  })
+
+  it('takes a file whose time a sync moved, its bytes the same, as the version it named', async () => {
+    const read = await readFile(fence(), notes, 0, 1024)
+    utimesSync(notes, new Date(), new Date(Date.now() + 5000))
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toHaveProperty('version')
+    expect(readFileSync(notes, 'utf8')).toBe('mine\n')
   })
 
   it('never makes a file again under its old name: one that was moved or deleted is a conflict', async () => {

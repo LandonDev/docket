@@ -41,7 +41,7 @@ export interface WriteFence {
 export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; across?: boolean } = {}
 
 /** A file at most this big is checked by its sha256; a bigger one by its size alone. */
-const HASH_MAX = 64 * 1024 * 1024
+export const HASH_MAX = 64 * 1024 * 1024
 /** The most a folder may hold to be moved to another volume, where a move is a copy. */
 const FOLDER_ACROSS_MAX = 2 * 1024 * 1024 * 1024
 const WEEK = 7 * 24 * 60 * 60 * 1000

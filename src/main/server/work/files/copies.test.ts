@@ -40,6 +40,8 @@ let refuse: string | null
 let hold: Promise<void> | null
 /** each read of the Mac's file waits on this first, when set */
 let readGate: (() => Promise<void>) | null
+/** the next writeBack lands on the Mac and its answer is lost on the way back */
+let loseReply: boolean
 let offSaved: () => void
 
 beforeEach(() => {
@@ -57,6 +59,7 @@ beforeEach(() => {
   refuse = null
   hold = null
   readGate = null
+  loseReply = false
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -69,6 +72,10 @@ beforeEach(() => {
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
           if (!out.handled) throw new Error(`${req.method} is not answered there`)
+          if (loseReply && verb === 'writeBack') {
+            loseReply = false
+            throw new Error('No answer: timed out')
+          }
           return out.result
         }
       }
@@ -446,6 +453,23 @@ describe('the other computer not answering, or refusing', () => {
     box.db.prepare(`UPDATE work_files_copies SET state = 'sending'`).run()
     settleCopies(box.ctx)
     expect((await backOf(tabId))?.is).toBe('away')
+  })
+
+  it('a send that landed but whose answer was lost is known as landed on the next try, never as a change made there', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    loseReply = true
+    await editorSaves(copy, 'two')
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('two')
+    expect((await backOf(tabId))?.is).toBe('away')
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
+    // His next edit goes over his own write, by the version the file holds now.
+    await editorSaves(copy, 'three')
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('three')
+    expect((await backOf(tabId))?.is).toBe('ok')
   })
 
   it("says the Mac's refusal in its own words", async () => {

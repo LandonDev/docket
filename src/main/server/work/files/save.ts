@@ -4,7 +4,7 @@ import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlin
 import { basename, dirname, join } from 'node:path'
 import { freeName, splitName } from '@shared/work/files'
 import { bytesHere } from './places/disk'
-import { admitPath, FileRefused, makeFile, versionOf, withFileLocks, type WriteFence } from './write'
+import { admitPath, FileRefused, HASH_MAX, makeFile, versionOf, withFileLocks, type WriteFence } from './write'
 
 /**
  * A file's own bytes, read and replaced where it lies (docs/agents/work-files.md "Saving"). The other verbs of
@@ -91,6 +91,16 @@ export const READ_MAX = 4 * 1024 * 1024
 type Version = Awaited<ReturnType<typeof versionOf>>
 /** A version as one word a client keeps and hands back: its size, its change time and, where it has one, its sha256. */
 export const versionWord = (v: Version): string => `${v.size}:${Math.round(v.mtimeMs)}:${v.sha256 ?? ''}`
+/**
+ * Whether the file is still the version a save names: the same bytes by size and sha256 where both words carry one (a
+ * sync that only moved the file's time changed nothing in it), else the whole word.
+ */
+export function sameWord(now: string, expect: string): boolean {
+  if (now === expect) return true
+  const [size, , sha] = now.split(':')
+  const [wantSize, , wantSha] = expect.split(':')
+  return !!sha && !!wantSha && size === wantSize && sha === wantSha
+}
 
 export interface FileBytes {
   /** base64 */
@@ -159,13 +169,18 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
     const info = await lstat(real)
     if (!info.isFile()) throw new FileRefused('gone', NOT_A_FILE)
     const before = await versionOf(real)
-    if (versionWord(before) !== expect) return { conflict: { version: versionWord(before), changed: Math.round(before.mtimeMs) } }
+    if (!sameWord(versionWord(before), expect)) return { conflict: { version: versionWord(before), changed: Math.round(before.mtimeMs) } }
     const temp = tempOf(real)
     const out = await open(temp, 'wx', info.mode & 0o777)
+    // The receipt is the version of the bytes written here, read off the staged file (a rename keeps its time), never
+    // a look after the rename, which a sync's own write that came right after would answer as ours.
+    let wrote: Version
     try {
       try {
         await out.writeFile(data)
         await out.sync()
+        const staged = await out.stat()
+        wrote = { size: staged.size, mtimeMs: staged.mtimeMs, ...(staged.size <= HASH_MAX ? { sha256: createHash('sha256').update(data).digest('hex') } : {}) }
       } finally {
         await out.close()
       }
@@ -175,7 +190,7 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
       const last = await lstat(real).catch(() => null)
       if (!last) return { conflict: { gone: true } }
       const now = await versionOf(real)
-      if (last.ino !== info.ino || versionWord(now) !== expect) return { conflict: { version: versionWord(now), changed: Math.round(now.mtimeMs) } }
+      if (last.ino !== info.ino || !sameWord(versionWord(now), expect)) return { conflict: { version: versionWord(now), changed: Math.round(now.mtimeMs) } }
       await rename(temp, real)
     } finally {
       await unlink(temp).catch(() => {})
@@ -183,9 +198,8 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
     const dir = await open(dirname(real), 'r').catch(() => null)
     await dir?.sync().catch(() => {})
     await dir?.close()
-    const after = await versionOf(real)
     fileWritten(real)
-    return { version: versionWord(after), changed: Math.round(after.mtimeMs) }
+    return { version: versionWord(wrote), changed: Math.round(wrote.mtimeMs) }
   })
 }
 
