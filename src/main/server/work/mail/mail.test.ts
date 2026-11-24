@@ -230,6 +230,19 @@ describe('Send from TempCode', () => {
     expect(sends()[0]!.args).not.toHaveProperty('immediate')
   })
 
+  it("says LifeOS's refusal of a draft edited since it was read in the host's words, and asks nothing again", async () => {
+    const held = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    rig.lifeos.failNext.set('compose:send', '[CONVEX M(compose:send)] Server Error Uncaught ConvexError: this mail changed since it was shown at checkShown (../../convex/compose.ts:366:0)')
+    const said = await rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: Date.now() + 3_600_000 }).catch((err: Error) => err.message)
+    expect(said).toBe(CHANGED)
+    expect(sends()).toHaveLength(1)
+    // Any other refusal is LifeOS's own, as it was.
+    rig.lifeos.failNext.set('compose:send', 'the work PC is not there to send Purdue mail')
+    await expect(rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: Date.now() + 3_600_000 })).rejects.toThrow('the work PC is not there')
+  })
+
   it("shows a thread's draft he scheduled in the Outbox with its time, offered to no grant, and Cancel takes it back", async () => {
     const held = rig.lifeos.draft()
     rig.lifeos.fire()

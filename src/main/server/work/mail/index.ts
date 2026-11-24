@@ -131,8 +131,14 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
   }
   if (row.status !== 'draft') throw new Error(`LifeOS holds this mail as ${row.status}`)
   const message = { ...row.message, html: outgoingHtml(String(row.message.html ?? '')) }
-  // The row as it was read and compared a moment ago: LifeOS refuses the send if it was edited since.
-  await owner.mutation('compose:send', { id, message, cause: 'press', ...timeArgs(time), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
+  // The row as it was read and compared a moment ago: LifeOS refuses the send if it was edited since. That refusal is
+  // said in the host's own words, as the compare above says it, never as LifeOS's stack; nothing is asked again.
+  try {
+    await owner.mutation('compose:send', { id, message, cause: 'press', ...timeArgs(time), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
+  } catch (err) {
+    if (/changed since it was shown/.test(err instanceof Error ? err.message : String(err))) throw new Error(CHANGED)
+    throw err
+  }
   return { id, via: 'owner' }
 }
 

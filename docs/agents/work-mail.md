@@ -57,7 +57,10 @@ older client) is refused for a row that has either, so nothing goes unseen:
 - **A draft another host's thread made** is refused: send it from that host.
 - **Anything else is his own mail** and goes as his `compose:send` with
   `cause: 'press'`, at `sendAt` in `sendZone` when he chose a time
-  ("Send later" below).
+  ("Send later" below). It carries the row's `editedAt` as the host read it,
+  and LifeOS refuses the send in the same transaction when the row was
+  written since; the host says that refusal as "The draft changed after you
+  pressed Send…", never as LifeOS's stack, and asks nothing again.
 
 **Undo for a held draft is a wait in the window.** The hold has no queue to
 pull a mail back from, so for a draft that goes through it the composer
