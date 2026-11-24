@@ -14,6 +14,7 @@ import { trashAfterMove as trashSource } from './trash'
 import { libraryEntry, libraryKey, teamsPlaces, type LibraryPlace } from './places/teams'
 import { admitCaller, ASK_FIRST, locate, NO_WORKSPACE, workspaceHere, type DoorPlace, type WorkspaceRow } from './policy'
 import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmWhere } from './vmVerbs'
+import { vmStat } from '../office/vm/files'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
 import { checkName, HELD_MOVED, isHeldMoved, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
@@ -153,6 +154,25 @@ function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { versio
   }
   if (now === null || (o.version && now !== t.version)) throw new Error(HELD_MOVED(basename(w.path)))
 }
+/**
+ * A held act's thing in the Windows VM, as the guest's own helper finds it just before the verb goes to it (round 4):
+ * its key, and its version as the guest states it (`size:modified:`, as the listing says it). No path of this disk.
+ */
+async function boundGuest(p: { origin?: FileOrigin }, i: number, w: Where): Promise<void> {
+  if (p.origin?.from !== 'act' || !p.origin.things) return
+  const t = p.origin.things[i]
+  if (!t) return
+  if (t.key !== w.key) throw new Error(HELD_MOVED(guestName(w.path)))
+  let now: string | null
+  try {
+    const e = await vmStat(w.library!.library.id, w.path)
+    now = `${e.kind === 'folder' ? 0 : e.size}:${e.modified}:`
+  } catch {
+    now = null
+  }
+  if (now !== t.version) throw new Error(HELD_MOVED(guestName(w.path)))
+}
+const guestName = (path: string): string => path.slice(path.lastIndexOf('\\') + 1)
 /** The folder a held act's move or copy was held to go to, by its key, as this host finds it at the write. */
 function boundInto(p: { origin?: FileOrigin }, to: Where): void {
   if (p.origin?.from === 'act' && p.origin.into !== undefined && p.origin.into !== to.key) throw new Error(HELD_MOVED(basename(to.path)))
@@ -315,7 +335,7 @@ export async function renameVerb(ctx: WorkCtx, by: Caller, p: RenameAsk, method:
   if (w.vm ? isTop(vmOf(w)) : w.path === w.top || w.path === w.root) throw new Error(PLACE_ITSELF)
   checkName(p.name)
   if (fileLocked(w.key)) throw new Error(WRITING)
-  if (w.vm) return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, () => vmRename(ctx, p.workspaceId, vmOf(w), p.name, p.op))
+  if (w.vm) return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, async () => (await boundGuest(p, 0, w), vmRename(ctx, p.workspaceId, vmOf(w), p.name, p.op)))
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, async () => {
     const dir = dirname(w.path)
     const to = join(dir, p.name)
@@ -338,7 +358,11 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
   if (to.vm || all.some((w) => w.vm)) {
     // Within one place of the VM: the door has refused a move across places, which no VM place takes.
     if (!to.vm || all.some((w) => !w.vm || w.place.id !== to.place.id)) throw new Error('Files in the Windows VM move only within their place.')
-    return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, () => vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op))
+    boundInto(p, to)
+    return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, async () => {
+      for (const [i, w] of all.entries()) await boundGuest(p, i, w)
+      return vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op)
+    })
   }
   asFolder(to)
   boundInto(p, to)

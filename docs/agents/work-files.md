@@ -811,7 +811,11 @@ verbs and their journal) and holds both ends to OneDrive's mounts again.
   be copied in General from here.". Each thing of a move is one
   `files.move`, a taken name its own refused row. What hangs on the file
   (items, star, recent, tab) follows it (`fileMoved` with `guest`, by the
-  path's prefix: no hook or document row is kept by a file there).
+  path's prefix: no hook or document row is kept by a file there). A held
+  act's press checks each thing first as the guest's helper finds it
+  (`boundGuest`: its key and `files.stat`'s `size:modified:`), and a move
+  its folder's key; another file there now is stale, and the guest is asked
+  nothing.
 - **Edit**: `work.files.read` of a VM file, for his own window only, answers
   its bytes and the version the helper reads (`size:mtime:sha256`, as
   `versionWord`); a file kept in the cloud is never read ("Download it

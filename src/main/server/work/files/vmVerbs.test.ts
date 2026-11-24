@@ -234,6 +234,21 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(changes().at(-1)).toMatchObject({ args: { name: 'Notes 2.txt' } })
     })
 
+    it("renames and moves a held act's thing only as the guest finds it held: another file there now is refused before the guest changes anything", async () => {
+      const file = `${GENERAL}\\Plan.txt`
+      const [entry] = (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: [at(file)] })).entries
+      const asHeld = `${entry!.size ?? 0}:${entry!.changed ?? 0}:`
+      const origin = (version: string) => ({ from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: entry!.key, version }] })
+      const before = changes().length
+      // The file at that name was replaced in the guest since it was held: its version is not the one shown.
+      await expect(call('work.files.rename', { ref: at(file), name: 'Plan v2.txt', op: op(), origin: origin('1:1:') })).rejects.toThrow('Plan.txt is not as it was when this was held')
+      await expect(call('work.files.move', { refs: [at(file)], to: at(`${GENERAL}\\Budgets`), op: op(), origin: origin('1:1:') })).rejects.toThrow('Plan.txt is not as it was when this was held')
+      expect(changes()).toHaveLength(before)
+      // As held: renamed.
+      await call('work.files.rename', { ref: at(file), name: 'Plan v2.txt', op: op(), origin: origin(asHeld) })
+      expect(changes().at(-1)).toMatchObject({ verb: 'files.rename', args: { name: 'Plan v2.txt' } })
+    })
+
     it("makes a Word file from Files' own blank where no maker writes one (New → Document in a Teams library in the VM)", async () => {
       const made = await call<FileDone>('work.files.make', { at: at(GENERAL), kind: 'document', name: 'Minutes', op: op() })
       const blank = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64')
