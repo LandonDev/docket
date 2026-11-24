@@ -496,3 +496,46 @@ describe('the answers read', () => {
     expect(own.result[0]!.forms).toHaveLength(1)
   })
 })
+
+describe('the review’s hold fixes', () => {
+  it('Collect never sends a held item of another act or settings at the same rev', async () => {
+    const view = await withQuestion()
+    const { ref } = await call<{ ref: OutboxItem['ref'] }>('work.msforms.publish', { workspaceId: 'w1', formId: view.formId })
+    await call('work.outbox.send', { ref })
+    await call('work.msforms.close', { workspaceId: 'w1', formId: view.formId, open: false })
+    const { holdPublish } = await import('./forms')
+    const { formReach } = await import('./reach')
+    const at = formReach(work.ctx, { kind: 'local', caps: [] }, { workspaceId: 'w1', formId: view.formId })
+    // An agent's reopen that also widens who can answer waits; his own Reopen must not send it.
+    const wider = holdPublish(work.ctx, at, 'reopen', { ...at.row.settings, accepting: true, orgOnly: false }, 't1').held!
+    const mine = await call<{ ref: OutboxItem['ref'] }>('work.msforms.publish', { workspaceId: 'w1', formId: view.formId })
+    expect(mine.ref).not.toEqual(wider.ref)
+  })
+
+  it('a press is stale when the form’s own settings changed in the page after the hold', async () => {
+    const view = await withQuestion()
+    const { ref } = await call<{ ref: OutboxItem['ref'] }>('work.msforms.publish', { workspaceId: 'w1', formId: view.formId })
+    carrier.forms.get(view.formId)!.settings.orgOnly = false
+    const sent = await call<OutboxItem>('work.outbox.send', { ref })
+    expect(sent.state).toBe('stale')
+    expect(carrier.calls.some((c) => c.op === 'collect')).toBe(false)
+  })
+
+  it('make and collect does not collect when what Forms saved is not what was held', async () => {
+    const original = carrier.make.bind(carrier)
+    carrier.make = async (auth, ask) => {
+      const made = await original(auth, ask)
+      const f = carrier.forms.get(made.read.formId)!
+      f.title = `${f.title} (copy)`
+      return { read: { ...made.read, title: f.title } }
+    }
+    const item = work.ctx.held.create({
+      kind: 'msform.make',
+      sessionId: 't1',
+      payload: { workspaceId: 'w1', sessionId: 't1', folder: { libraryId: TEST_LIBRARY.id, path: 'Esports', siteUrl: 'https://purdue0.sharepoint.com/sites/RecWell' }, title: 'Night survey', description: '', questions: [{ title: 'Which night?', type: 'choice', options: ['Mon'], required: true }], settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true }, collect: true, content: 'Night survey' }
+    })
+    await call('work.outbox.send', { ref: item.ref })
+    expect(carrier.calls.some((c) => c.op === 'collect')).toBe(false)
+    expect(new MsformsStore(db).list('w1')[0]!.state).toBe('draft')
+  })
+})

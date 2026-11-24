@@ -3,7 +3,7 @@ import type { Principal } from '@shared/work/ids'
 import type { ActCtx, ActKindDef, Caller } from '../modules'
 import { ActStale } from '../outbox/kinds'
 import { CarrierRefused, CarrierStop, msCarrier, type FormRead } from './carrier/types'
-import { announce, authFor, formWords, make, storeRead } from './forms'
+import { announce, authFor, basisOf, formWords, make, storeRead } from './forms'
 import { formReach, MsformsError } from './reach'
 import { MsformsStore } from './store'
 
@@ -47,8 +47,9 @@ async function carryPublish(act: ActCtx, p: MsFormPublish): Promise<{ summary: s
     if (err instanceof CarrierRefused || err instanceof CarrierStop) throw new ActStale(`${err.message} No one can answer yet.`)
     throw err
   }
-  // The page is checked against the words he pressed: a change made since, in the page or by anyone, is not collected on this press.
-  if (formWords(fresh.title, fresh.questions, p.settings) !== p.content) throw new ActStale(DIFFERS)
+  // The page is checked against the form as it stood when held, its own settings included: a change made since, in the
+  // page or by anyone, is not collected on this press.
+  if (basisOf(fresh) !== p.basis) throw new ActStale(DIFFERS)
   const store = new MsformsStore(act.db)
   try {
     if (p.act === 'audience') {
@@ -97,8 +98,12 @@ async function carryMake(act: ActCtx, p: MsFormMake): Promise<{ summary: string;
   }
   if (!p.collect) return { summary: `Made ${view.title} in Forms`, ref: { workspaceId: view.workspaceId, formId: view.formId } }
   const row = new MsformsStore(act.db).get(view.workspaceId, view.formId)!
-  const content = formWords(row.title, row.questions, p.settings)
-  return carryPublish(act, { workspaceId: row.workspaceId, formId: row.formId, rev: row.rev, title: row.title, act: 'collect', settings: p.settings, content })
+  // Collect only what he approved: the form Forms saved must be the one held, word for word.
+  const saved = basisOf({ title: row.title, description: row.description, questions: row.questions, settings: p.settings })
+  const approved = basisOf({ title: p.title, description: p.description, questions: p.questions, settings: p.settings })
+  if (saved !== approved) return { summary: `Made ${row.title} in Forms, but not collecting responses: what Forms saved is not exactly what was held. Look at it, then Collect responses.`, ref: { workspaceId: row.workspaceId, formId: row.formId } }
+  const content = formWords(row.title, row.questions, p.settings, row.description)
+  return carryPublish(act, { workspaceId: row.workspaceId, formId: row.formId, rev: row.rev, title: row.title, act: 'collect', settings: p.settings, content, basis: basisOf(row) })
 }
 
 export const msformMakeKind: ActKindDef<MsFormMake, never> = {

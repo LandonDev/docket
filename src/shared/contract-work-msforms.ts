@@ -246,7 +246,9 @@ export const MsFormPublishSchema = z.object({
   act: z.enum(['collect', 'audience', 'reopen']),
   settings: SettingsSchema,
   /** the form in words as people will see it */
-  content: z.string().max(60_000)
+  content: z.string().max(60_000),
+  /** a digest of the form as it stood when held (title, description, questions, its settings then): the press reads the page again and is stale on any difference */
+  basis: z.string().regex(/^[0-9a-f]{64}$/)
 })
 export type MsFormPublish = z.infer<typeof MsFormPublishSchema>
 

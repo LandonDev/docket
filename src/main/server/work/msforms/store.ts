@@ -18,6 +18,8 @@ export interface MsFormRow {
   /** the job's sector when the form was made: its answers stay in that sector */
   sector: string | null
   title: string
+  /** the form's description as the page last showed it */
+  description: string
   folder: MsFormFolder
   workbook: MsFormWorkbook | null
   state: MsFormState
@@ -33,7 +35,8 @@ export interface MsFormRow {
   lastAnswerAt: number | null
   check: MsFormCheck
   suggestions: MsSuggestion[]
-  held: { ref: HeldRef; rev: number } | null
+  /** a held publish: its ref, the rev and what it holds (`intent`: a digest of its act and settings) */
+  held: { ref: HeldRef; rev: number; intent?: string } | null
   madeBy: Principal
   signedInAs: string | null
   /** the count he last saw on the Responses half */
@@ -52,6 +55,7 @@ export function ensureMsformsTables(db: DatabaseSync): void {
     tenant TEXT NOT NULL,
     sector TEXT,
     title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
     folder TEXT NOT NULL,
     workbook TEXT,
     state TEXT NOT NULL DEFAULT 'draft',
@@ -75,6 +79,9 @@ export function ensureMsformsTables(db: DatabaseSync): void {
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, form_id)
   )`)
+  // Columns added after the table first shipped (master 71af89810): added where an older table lacks them.
+  const has = new Set((db.prepare("SELECT name FROM pragma_table_info('work_msforms')").all() as { name: string }[]).map((c) => c.name))
+  if (!has.has('description')) db.exec("ALTER TABLE work_msforms ADD COLUMN description TEXT NOT NULL DEFAULT ''")
   db.exec(`CREATE TABLE IF NOT EXISTS work_msforms_versions (
     workspace_id TEXT NOT NULL,
     form_id TEXT NOT NULL,
@@ -104,6 +111,7 @@ function rowOf(r: Raw): MsFormRow {
     tenant: String(r.tenant),
     sector: (r.sector as string | null) ?? null,
     title: String(r.title),
+    description: String(r.description ?? ''),
     folder: json<MsFormFolder>(r.folder, { libraryId: '', path: '', siteUrl: '' }),
     workbook: json<MsFormWorkbook | null>(r.workbook, null),
     state: r.state as MsFormState,
@@ -133,6 +141,7 @@ const COLUMNS: Record<keyof Omit<MsFormRow, 'workspaceId' | 'formId'>, [string, 
   tenant: ['tenant', (v: string) => v],
   sector: ['sector', (v: string | null) => v],
   title: ['title', (v: string) => v],
+  description: ['description', (v: string) => v],
   folder: ['folder', (v: MsFormFolder) => JSON.stringify(v)],
   workbook: ['workbook', (v: MsFormWorkbook | null) => (v ? JSON.stringify(v) : null)],
   state: ['state', (v: MsFormState) => v],
@@ -188,6 +197,7 @@ export class MsformsStore {
   create(row: Pick<MsFormRow, 'workspaceId' | 'formId' | 'tenant' | 'sector' | 'title' | 'folder' | 'madeBy'> & Partial<MsFormRow>): MsFormRow {
     const at = this.now()
     const full: MsFormRow = {
+      description: '',
       workbook: null,
       state: 'draft',
       mode: 'suggests',
@@ -211,8 +221,8 @@ export class MsformsStore {
     }
     this.db
       .prepare(
-        `INSERT INTO work_msforms (workspace_id, form_id, tenant, sector, title, folder, workbook, state, mode, settings, questions, rev, read_at, answers_read_at, count, last_id, last_answer_at, "check", suggestions, held, made_by, signed_in_as, seen_count, stopped, closed_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO work_msforms (workspace_id, form_id, tenant, sector, title, description, folder, workbook, state, mode, settings, questions, rev, read_at, answers_read_at, count, last_id, last_answer_at, "check", suggestions, held, made_by, signed_in_as, seen_count, stopped, closed_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, form_id) DO NOTHING`
       )
       .run(
@@ -221,6 +231,7 @@ export class MsformsStore {
         full.tenant,
         full.sector,
         full.title,
+        full.description,
         JSON.stringify(full.folder),
         full.workbook ? JSON.stringify(full.workbook) : null,
         full.state,

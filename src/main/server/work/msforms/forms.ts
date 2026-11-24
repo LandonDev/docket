@@ -4,7 +4,7 @@ import type { HeldItem } from '@shared/work/acts'
 import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
 import type { Caller, WorkCtx } from '../modules'
-import { authorize, CarrierRefused, CarrierStop, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
+import { authorize, CarrierRefused, digestOf, CarrierStop, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
 import { folderOf, folderPageOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
@@ -79,6 +79,7 @@ export function authFor(ctx: Pick<WorkCtx, 'host'>, at: { workspaceId: string; f
 export function readPatch(read: FormRead): Partial<MsFormRow> {
   return {
     title: read.title || 'Untitled form',
+    description: read.description,
     questions: read.questions,
     settings: read.settings,
     readAt: Date.now(),
@@ -193,17 +194,30 @@ export function formWords(title: string, questions: readonly MsAnyQuestion[], se
   return lines.join('\n').trim()
 }
 
-/** Holds Collect responses (or a change of who can answer, or a reopen) for his press. One held at this rev is the one. */
+/**
+ * A digest of the form as it stands: title, description, the questions (Forms' refs aside) and its settings. A held
+ * publish carries the basis it was held on; the press reads the page again and is stale on any difference.
+ */
+export function basisOf(f: { title: string; description: string; questions: readonly MsAnyQuestion[]; settings: MsFormSettings }): string {
+  const questions = f.questions.map((q) => {
+    const { ref: _ref, ...rest } = q as MsAnyQuestion & { ref?: string }
+    return rest
+  })
+  return digestOf({ title: f.title, description: f.description.trim(), questions, settings: f.settings })
+}
+
+/** Holds Collect responses (or a change of who can answer, or a reopen) for his press. Only a held item of this very act and settings, at this rev, is reused. */
 export function holdPublish(ctx: MsCtx, at: Reached, act: MsFormPublish['act'], settings: MsFormSettings, sessionId: string | null): { view: MsFormView; held: HeldItem | null } {
   const { row } = at
   if (act === 'collect' && row.state === 'collecting') throw new MsformsError(`${row.title} is collecting responses already.`)
   if (act === 'reopen' && row.state !== 'closed') throw new MsformsError(`${row.title} is not closed.`)
   if (!row.questions.some((q) => q.type !== 'section')) throw new MsformsError('A form needs a question before it collects responses.')
-  if (row.held && row.held.rev === row.rev) return { view: viewOf(row), held: null }
-  const payload: MsFormPublish = { workspaceId: row.workspaceId, formId: row.formId, rev: row.rev, title: row.title, act, settings, content: formWords(row.title, row.questions, settings) }
+  const intent = digestOf({ act, settings })
+  if (row.held && row.held.rev === row.rev && row.held.intent === intent) return { view: viewOf(row), held: null }
+  const payload: MsFormPublish = { workspaceId: row.workspaceId, formId: row.formId, rev: row.rev, title: row.title, act, settings, content: formWords(row.title, row.questions, settings, row.description), basis: basisOf(row) }
   const held = ctx.held.create({ kind: 'msform.publish', sessionId, payload })
   const store = new MsformsStore(ctx.db)
-  const next = held.state === 'held' ? store.update(row.workspaceId, row.formId, { held: { ref: held.ref, rev: row.rev } }) : (store.get(row.workspaceId, row.formId) ?? row)
+  const next = held.state === 'held' ? store.update(row.workspaceId, row.formId, { held: { ref: held.ref, rev: row.rev, intent } }) : (store.get(row.workspaceId, row.formId) ?? row)
   return { view: announce(ctx, next), held }
 }
 
