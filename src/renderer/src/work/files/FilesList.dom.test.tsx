@@ -190,6 +190,34 @@ describe("Move to…", () => {
   });
 });
 
+describe("Move to… across computers", () => {
+  it("leaves Copy Here off in a folder on another computer, with the reason, and says why a press that fails carried nothing", async () => {
+    const { MoveDialog } = await import("./MoveDialog");
+    const { listingSeams } = await import("./store");
+    listingSeams.fetch = async () => ({ entries: [] });
+    try {
+      const mac = { place: { ...PLACE, id: "mac", name: "Documents", host: "MacBook", env: "env_mac", root: { at: "file" as const, host: "env_mac", path: "/Users/l/Documents" } }, link: "mac", host: "MacBook", wire: "files" as const };
+      const sidebar = { folder: COPY, rows: [{ name: "Documents", group: "", copies: [mac] }] } as never;
+      let fail!: (why: string) => void;
+      const onPick = vi.fn(async (_to: unknown, said: (why: string) => void) => ((fail = said), false));
+      render(<MoveDialog verb="copy" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={sidebar} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={onPick} onClose={() => undefined} />);
+      fireEvent.click(screen.getByRole("button", { name: "Places" }));
+      fireEvent.click(screen.getByRole("option", { name: "Documents" }));
+      expect((screen.getByRole("button", { name: "Copy Here" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText("Copy between computers is not available yet.")).toBeTruthy();
+      // On its own computer the press goes; one that carries nothing says why in the same line.
+      fireEvent.click(screen.getByRole("button", { name: "Places" }));
+      fireEvent.click(screen.getByRole("option", { name: "Dummy Esports" }));
+      fireEvent.click(screen.getByRole("button", { name: "Copy Here" }));
+      await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1));
+      act(() => fail("The disk on the box is full."));
+      expect(await screen.findByText("The disk on the box is full.")).toBeTruthy();
+    } finally {
+      delete listingSeams.fetch;
+    }
+  });
+});
+
 describe("Home", () => {
   it("shows each file once, in the first list it belongs to, and a row being opened says so with the list's spinner and word", async () => {
     const { HomePage } = await import("./Home");

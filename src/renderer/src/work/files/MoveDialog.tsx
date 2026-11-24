@@ -8,15 +8,15 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { KindGlyph } from "./KindGlyph";
-import { placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./model";
+import { carryRefusal, placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./model";
 import { useListing, type ListFrom } from "./store";
 
 /**
  * Move to…, Copy to… and Save as Word to… (docs/DESIGN.md "The Files place"): one dialog that walks to a folder. It
  * starts in the folder the things are in (Save as Word: on the places); the places are one press away, each with its
  * folders under it. The verb is off, with the place's own sentence beside it, where the grammar refuses it
- * (`refusal`, the rule the host holds; for Save as Word, New's in that folder), so nothing is offered that would be
- * refused.
+ * (`refusal`, the rule the host holds; for Save as Word, New's in that folder) or the folder is on another computer
+ * (`carryRefusal`), so nothing is offered that would be refused. A press that fails anyway says why in the same place.
  */
 
 export interface MoveTarget {
@@ -54,13 +54,15 @@ export function MoveDialog({
   waiting?: boolean;
   sidebar: Sidebar;
   workspace: { id: string; name: string };
-  /** he chose a folder: the caller carries the things there; the dialog waits for it */
-  onPick(to: MoveTarget): Promise<boolean>;
+  /** he chose a folder: the caller carries the things there; the dialog waits for it, and says why through `fail` when nothing went */
+  onPick(to: MoveTarget, fail: (why: string) => void): Promise<boolean>;
   onClose(): void;
 }) {
   // Where the dialog stands: a place's copy and a folder in it; null is the list of places.
   const [at, setAt] = useState<MoveTarget | null>(start && from ? { copy: from, at: start.at, name: start.name } : null);
   const [pending, setPending] = useState(false);
+  // Why the last press carried nothing, for the folder it was pressed in.
+  const [failed, setFailed] = useState<{ at: MoveTarget; why: string } | null>(null);
   const what = named ?? (entries.length === 1 ? entries[0]!.name : `${entries.length} things`);
   const places: MoveTarget[] = [
     ...(sidebar.folder ? [{ copy: sidebar.folder, at: placePage(sidebar.folder, workspace.name).at, name: workspace.name }] : []),
@@ -70,10 +72,11 @@ export function MoveDialog({
     }),
   ];
   // The grammar's refusal for the folder shown, for any of the things; a Word file is a new thing made there.
-  const no = !at ? null : verb === "word" || !from ? refusal(at.copy.place, "make") : (entries.map((entry) => refusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
+  const no = !at ? null : verb === "word" || !from ? refusal(at.copy.place, "make") : (entries.map((entry) => carryRefusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
   // A thing cannot go into itself or stay where it is.
   const same = !!at && (start && samePage(at.at, start.at) && verb === "move" ? "It is in this folder already." : entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null);
   const why = no?.text ?? same ?? null;
+  const note = why ?? (failed?.at === at ? failed.why : null);
   return (
     <Modal onClose={onClose} title={verb === "word" ? `Save ${what} as Word` : `${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-3">
@@ -84,11 +87,12 @@ export function MoveDialog({
         confirmLabel={at ? `${VERB[verb]} Here` : VERB[verb]}
         pending={pending}
         disabled={!at || why !== null}
-        note={why ? <span className="text-xs text-muted-foreground">{why}</span> : undefined}
+        note={note ? <span className="text-xs text-muted-foreground">{note}</span> : undefined}
         onConfirm={() => {
           if (!at || pending) return;
           setPending(true);
-          void onPick(at)
+          setFailed(null);
+          void onPick(at, (said) => setFailed({ at, why: said }))
             .then((went) => went && onClose())
             .finally(() => setPending(false));
         }}

@@ -25,6 +25,7 @@ import { KindGlyph } from "./KindGlyph";
 import { DetailsPane, FileBeside, FileGallery, type BesideSeatOf } from "./Looks";
 import {
   actsFor,
+  carryRefusal,
   DEFAULT_TILE,
   GROUP_WORDS,
   groupEntries,
@@ -1086,7 +1087,7 @@ function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked
     if (!drag || !(types.includes(ROWS_MIME) || types.includes("Files"))) return null;
     const verb = dropVerb(event, drag.from.place.id === acts.place.id);
     // Never onto itself, and only where the place the rows come from takes the verb for every row dragged.
-    if (drag.entries.some((e) => e.key === into.key) || drag.entries.some((e) => refusal(drag.from.place, verb, e, acts.place) !== null)) return null;
+    if (drag.entries.some((e) => e.key === into.key) || drag.entries.some((e) => carryRefusal(drag.from.place, verb, e, acts.place) !== null)) return null;
     return { verb, files: false };
   };
   const clear = (): void => {

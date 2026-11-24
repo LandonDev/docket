@@ -647,6 +647,15 @@ library is refused by the grammar ("Teams files stay in Teams.").
 ("notes 2.txt"). Into a library it is asked first; out of one it is
 refused.
 
+**Not between computers yet.** The things' own host carries them on its
+own disk (`copyNoReplace`), so a move or a copy into a folder of another
+computer cannot work. The window does not offer one: Move to… and Copy
+to… leave Move Here and Copy Here off in such a folder with "Copy between
+computers is not available yet." (or Move), and a drag onto it is not
+taken (model.ts `carryRefusal`: the grammar first, then `place.env`). A
+press that fails anyway says why on the dialog's own line
+(`workErrorWords`), and the dialog stays on that folder.
+
 **What a rename or a move carries** (`files/moved.ts` `fileMoved`). The
 file moves on disk first; then one savepoint carries, for the file or each
 file under a moved folder:

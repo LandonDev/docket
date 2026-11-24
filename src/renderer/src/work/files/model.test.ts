@@ -5,6 +5,7 @@ import type { MenuRow } from "../../chrome/menuRows";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsLibrary } from "@shared/contract-work-office";
 import type { FileEntry, FilePlace } from "@shared/work/files";
 import {
+  carryRefusal,
   appOpens,
   appVerb,
   clampDock,
@@ -744,5 +745,21 @@ describe("a file at another's side", () => {
     expect(sitsAtSide({ at: "file", host: "env_box", path: "/w/Plan.pdf" })).toBe(true);
     expect(sitsAtSide({ at: "lifeos", table: "docs", id: "d1" } as never)).toBe(false);
     expect(sitsAtSide({ at: "google", fileId: "g1" } as never)).toBe(false);
+  });
+});
+
+describe("where Move to… and Copy to… may put things", () => {
+  const mine = place({ id: "folder", kind: "folder", name: "Dummy Esports", can: ["move", "copy", "trash"] });
+  const mac = place({ id: "mac-docs", kind: "folder", name: "Documents", env: "env_mac", host: "MacBook", can: ["move", "copy", "trash"] });
+  const teams = place({ id: "b1", kind: "teams", name: "General", env: "env_mac", host: "MacBook", can: ["copy"] });
+
+  it("offers a folder on the computer the things are on, and none on another computer", () => {
+    expect(carryRefusal(mine, "copy", null, place({ id: "f2", kind: "folder", name: "Other", can: ["copy"] }))).toBeNull();
+    expect(carryRefusal(mine, "copy", null, mac)?.text).toBe("Copy between computers is not available yet.");
+    expect(carryRefusal(mine, "move", null, mac)?.text).toBe("Move between computers is not available yet.");
+  });
+
+  it("says the grammar's own sentence first where it refuses too", () => {
+    expect(carryRefusal(teams, "copy", null, mine)?.text).toBe("Teams files stay in Teams.");
   });
 });

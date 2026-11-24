@@ -7,7 +7,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { doneWords, refusedWords, type PlaceCopy } from "./model";
+import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
 import { closeTab, tabsNow } from "./store";
 
 /**
@@ -103,10 +103,21 @@ export interface CameFrom {
  * is asked first. Answers whether anything went. A move inside one place, of rows from one folder (`back`), says
  * so with Undo, which moves what went back there through the same verb.
  */
-export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy, entries: readonly FileEntry[], to: { copy: PlaceCopy; at: FolderRef; name: string }, back?: CameFrom): Promise<boolean> {
+export async function carryTo(
+  of: ActsOf,
+  verb: "move" | "copy",
+  from: PlaceCopy,
+  entries: readonly FileEntry[],
+  to: { copy: PlaceCopy; at: FolderRef; name: string },
+  back?: CameFrom,
+  /** says why nothing went where he asked (Move to…'s own line); else a toast says it */
+  fail?: (why: string) => void,
+): Promise<boolean> {
   if (!entries.length) return false;
-  const no = entries.map((entry) => refusal(from.place, verb, entry, to.copy.place)).find((r) => r !== null);
-  if (no) return (failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", new Error(no.text)), false);
+  const title = verb === "move" ? "Nothing was moved" : "Nothing was copied";
+  const didNot = (err: unknown): false => (fail ? fail(workErrorWords(err, { host: from.host, write: true }) || `${title}.`) : failed(title, err), false);
+  const no = entries.map((entry) => carryRefusal(from.place, verb, entry, to.copy.place)).find((r) => r !== null);
+  if (no) return didNot(new Error(no.text));
   const question = questionFor(from.place, verb, entries[0], to.copy.place);
   if (question && !(await confirmAction({ title: question.split("? ")[0]! + "?", body: question.split("? ").slice(1).join("? ") || undefined, action: verb === "move" ? "Move" : "Copy" }))) return false;
   try {
@@ -116,12 +127,11 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
     if (verb === "move") await copiesFollow(of, from, movedPairs(entries, done));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
     const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
-    if (done.entries.length) said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });
-    else failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", new Error(leftovers(done) ?? "The folder took nothing."));
-    return done.entries.length > 0;
+    if (!done.entries.length) return didNot(new Error(leftovers(done) ?? "The folder took nothing."));
+    said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });
+    return true;
   } catch (err) {
-    failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", err);
-    return false;
+    return didNot(err);
   }
 }
 

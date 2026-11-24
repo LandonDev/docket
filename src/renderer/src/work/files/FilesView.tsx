@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
-import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FolderRef } from "@shared/work/files";
+import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FolderRef } from "@shared/work/files";
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
@@ -31,7 +31,7 @@ import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
-import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
@@ -556,7 +556,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     // Rows the system carries read as files; they are still the rows being dragged.
     if (!drag || !(types.includes(ROWS_MIME) || types.includes("Files"))) return null;
     const verb = dropVerb(event, drag.from.place.id === to.copy.place.id && drag.from.link === to.copy.link);
-    if (drag.entries.some((e) => (e.folder && samePage(e.folder, to.at)) || refusal(drag.from.place, verb, e, to.copy.place) !== null)) return null;
+    if (drag.entries.some((e) => (e.folder && samePage(e.folder, to.at)) || carryRefusal(drag.from.place, verb, e, to.copy.place) !== null)) return null;
     return { verb, drag };
   };
   const sideDrop: SideDrop = {
@@ -707,7 +707,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
           sidebar={reach.sidebar}
           workspace={workspace}
           // Rows of one folder go back to it on Undo; a lens's rows each live somewhere of their own.
-          onPick={(to) => carryTo(of, carrying.verb, carrying.from, carrying.entries, to, carrying.entries.some((e) => e.where) ? undefined : carrying.start)}
+          onPick={(to, fail) => carryTo(of, carrying.verb, carrying.from, carrying.entries, to, carrying.entries.some((e) => e.where) ? undefined : carrying.start, fail)}
           onClose={() => setCarrying(null)}
         />
       ) : null}

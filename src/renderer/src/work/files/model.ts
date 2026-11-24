@@ -2,7 +2,7 @@ import type { FileCrumb, FilePage, FileSearchFilter, FilesPlaces, FileTab } from
 import { clampDock as clampDockIn, DOCK_FOLD_AT, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds } from "../dock/shapes";
 import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
-import { kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
+import { kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind, type Refusal } from "@shared/work/files";
 import { placesIn, type LibraryPlace } from "@shared/work/filePlaces";
 import { passesFilter } from "@shared/work/fileSearch";
 
@@ -767,3 +767,12 @@ export const savedSearchPage = (search: { id: string; name: string; query: strin
 export const isSearchPage = (at: FolderRef): boolean => at.at === "place" && (at.id === SEARCH_ID || at.id.startsWith(`${SEARCH_ID}:`));
 /** The saved search a page stands on; null for a search he has not saved. */
 export const savedIdOf = (at: FolderRef): string | null => (at.at === "place" && at.id.startsWith(`${SEARCH_ID}:`) ? at.id.slice(SEARCH_ID.length + 1) : null);
+
+/**
+ * Move to… and Copy to…'s refusal in this window: the grammar's (`refusal`), then a folder on another computer than
+ * the things are on. The things' own host carries them on its own disk, so it cannot put them on another computer's
+ * yet (docs/agents/work-files.md "Moves and copies"): that folder is no target, and nothing is sent.
+ */
+export function carryRefusal(from: FilePlace, verb: "move" | "copy", entry: FileEntry | null | undefined, to: FilePlace): Refusal | null {
+  return refusal(from, verb, entry, to) ?? (from.env !== to.env ? { text: `${verb === "move" ? "Move" : "Copy"} between computers is not available yet.` } : null);
+}
