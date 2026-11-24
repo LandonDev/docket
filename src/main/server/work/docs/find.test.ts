@@ -7,6 +7,7 @@ import type { CanvasItem, WorkScope } from '@shared/work'
 import { DEFAULT_SPEC } from '@shared/work/docFind'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { ensureGuestTables, GuestStore } from '../guests/store'
+import { ensureFilesTables } from '../files/tables'
 import { ensureOutboxTables, HELD_TABLE } from '../outbox/store'
 import { canonicalPath } from '../service/ctx'
 import { setSearchCaps } from '../files/search'
@@ -62,6 +63,7 @@ function rig(o: { lifeos?: 'down'; reaches?: (path: string) => boolean; items?: 
   const ctx = {
     db,
     host: 'env_box',
+    dataDir: join(dir, 'data'),
     reaches: (_by: Caller, path: string) => (o.reaches ? o.reaches(path) : true),
     lifeos: {
       connected: () => true,
@@ -120,7 +122,13 @@ describe('work.docs.find', () => {
     )
     expect(byKey.get('lifeos:docs:d1')).toMatchObject({ kind: 'document', where: 'lifeos', guest: true, comments: 1, lastBy: 'owner' })
     expect(byKey.get('lifeos:sheets:s1')).toMatchObject({ kind: 'sheet', projectId: 'p1', held: 1, waiting: 2 })
-    expect(byKey.get(`file:${join(folder, 'Plan.tcdoc')}`)).toMatchObject({ title: 'Plan', kind: 'document', where: 'folder' })
+    expect(byKey.get(`file:${join(folder, 'Plan.tcdoc')}`)).toMatchObject({ title: 'Plan', kind: 'document', where: 'folder', shared: false })
+    expect(byKey.get(`file:${join(folder, 'sub', 'costs.csv')}`)).toMatchObject({ shared: false })
+    // The document kept for a Word file of another computer is shared, as the document tools read it.
+    ensureFilesTables(db)
+    db.prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, at) VALUES ('w1', 'env_mac', '/Teams/Plan.docx', 0, 'Plan.docx', 'v1', ?, 1)`).run(join(folder, 'Plan.tcdoc'))
+    const again = new Map((await findDocs(ctx, LOCAL, { workspaceId: 'w1' })).entries.map((e) => [e.key, e]))
+    expect(again.get(`file:${join(folder, 'Plan.tcdoc')}`)).toMatchObject({ shared: true })
     expect(byKey.get('google:g1')).toMatchObject({ kind: 'sheet', where: 'google', shared: true })
     expect(byKey.get('item:i2')).toMatchObject({ kind: 'form', where: 'thread', sessionId: 't1' })
     // A path that only begins like the file's counts nothing against it.

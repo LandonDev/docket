@@ -8,6 +8,7 @@ import { FIND_KINDS, kindOfFile, kindOfMime, queryTerms, snippetOf, type FindBy,
 import type { FindAnswer } from '@shared/contract-work-docs'
 import type { Caller, WorkCtx } from '../modules'
 import { GuestStore } from '../guests/store'
+import { madeFromShared } from './target'
 import { HELD_TABLE } from '../outbox/store'
 import { canonicalPath } from '../service/ctx'
 import { fileRows } from './threads'
@@ -344,7 +345,8 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
         source: { at: 'file', host: ctx.host, path: f.path },
         editedAt: f.editedAt,
         createdAt: f.createdAt,
-        shared: false,
+        // Shared as the document tools read it (docs/target.ts): a library's, the cloud folder's, a Word file's kept document.
+        shared: madeFromShared(ctx, { at: 'file', host: ctx.host, path: f.path }),
         guest: false,
         comments: f.path.toLowerCase().endsWith('.tcdoc') ? fileComments(ctx.db, f.path) : 0,
         waiting: 0,

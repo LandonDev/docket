@@ -72,7 +72,8 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
     let live = true;
     setFailed(false);
     shell.statusLine(null);
-    importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: latest.current } }).then(
+    // Keyed as the effect is, by host and source too: a file renamed while it imports is a new import, not the old one's answer.
+    importOnce(env, `${env}#${item.id}#${sourceKey}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: latest.current } }).then(
       (a) => {
         if (said.current) return;
         said.current = true;

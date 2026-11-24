@@ -94,6 +94,22 @@ describe("Import", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 
+  it("a file renamed while it imports is imported as itself, never answered with the old name's failure", async () => {
+    let fail: (error: Error) => void = () => {};
+    answer = () => new Promise((_, reject) => (fail = reject));
+    const s = shell();
+    const item = { id: "i7", sessionId: "t1" } as CanvasItem;
+    const at = (path: string) => <ImportBody item={item} source={{ at: "file", host: "env_box", path }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />;
+    const { rerender } = render(at("/w/Old name.docx"));
+    await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ from: { source: { path: "/w/Old name.docx" } } }));
+    answer = async () => ({ source: { at: "file", host: "env_box", path: "/w/New name.tcdoc" }, title: "New name", itemId: "i7", warnings: [], outsiders: false });
+    rerender(at("/w/New name.docx"));
+    await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ from: { source: { path: "/w/New name.docx" } } }));
+    await act(async () => fail(new Error("that file is not there any more")));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(s.lines.at(-1)).not.toMatchObject({ tone: "failed" });
+  });
+
   it("a failed import is not run again when a canvas push hands the same file afresh", async () => {
     answer = () => Promise.reject(new Error("LibreOffice could not read it"));
     const s = shell();
