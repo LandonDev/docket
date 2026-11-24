@@ -1,8 +1,9 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/shell/settings.preview.tsx#WorkspacePagePreview --props '{"state":"page"}'`:
 // a Work workspace's settings page, over two computers that answer from made-up settings. States: `page` (its
 // sector, where it runs with computer use on each desktop and the Windows VM, its house rules, Waiting on), `failed`
-// (its settings did not load: Retry), and `given` (opened from a computer whose key cannot change it: one line in
-// the switches' place). Rendered by nothing in the app.
+// (its settings did not load: Retry), `given` (opened from a computer whose key cannot change it: one line in
+// the switches' place), and `signedout` (the box signed out of LifeOS after Waiting on read its days: the sector's key
+// waits on the box's sign-in, and the days' row is down, the switch kept). Rendered by nothing in the app.
 import { Page } from "../../components/page";
 import { setWorkOn } from "../../lib/workSwitch";
 import { answerAs, asGivenComputer, JOB, Unsettled } from "../kit.preview";
@@ -10,7 +11,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setLifeosStatus } from "./lifeos";
 import { WorkWorkspacePage } from "./settings";
 
-type State = "page" | "failed" | "given";
+type State = "page" | "failed" | "given" | "signedout";
 
 const ANSWERS: Record<string, unknown> = {
   "workspace.list": [JOB],
@@ -46,7 +47,7 @@ export function WorkspacePagePreview({ state = "page" }: { state?: State }) {
     workspaceStore.reset();
     workspaceStore.attach(link);
     for (const id of ["local", "mac"]) setWorkOn(id, true);
-    setLifeosStatus("local", { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [{ workspaceId: JOB.id, sectors: ["purdue"], state: "ready" }] });
+    setLifeosStatus("local", state === "signedout" ? { lifeos: { state: "signed-out" }, keys: [{ workspaceId: JOB.id, sectors: ["purdue"], state: "waiting" }] } : { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [{ workspaceId: JOB.id, sectors: ["purdue"], state: "ready" }] });
   }
   return (
     <div className="w-full" style={{ maxWidth: 720 }}>

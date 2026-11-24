@@ -254,10 +254,13 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
                   <Skeleton className="h-4 w-24" />
                 </div>
               )}
-              {code ? (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Expired"}
-                </span>
+              {code && left > 0 ? (
+                <span className="text-xs text-muted-foreground tabular-nums">{`${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`}</span>
+              ) : code ? (
+                // A code past its life asks the same computer for a new one, in the timer's place (the ask's effect).
+                <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={() => setCode(null)}>
+                  New code
+                </Button>
               ) : codeError ? (
                 <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={() => setAsks((n) => n + 1)}>
                   Retry
@@ -280,10 +283,10 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
 
 // ── a workspace's page ─────────────────────────────────────────────────
 
-/** A workspace's key, as the status lists it, in one line; null when it is ready. */
-export function keyLine(key: LifeosKeyState | undefined): { line: string; failed?: boolean } | null {
+/** A workspace's key, as the status lists it, in one line, `host` (the workspace's host, "The box") named; null when it is ready. */
+export function keyLine(key: LifeosKeyState | undefined, host?: string | null): { line: string; failed?: boolean } | null {
   if (!key || key.state === "ready") return null;
-  if (key.state === "waiting") return { line: "Its key is made once LifeOS is signed in on this host" };
+  if (key.state === "waiting") return { line: `Its key is made once LifeOS is signed in on ${nameInLine(host || "this host")}` };
   if (key.state === "elsewhere") return { line: "Its key is made on the host that holds its add-ons" };
   return { line: key.error ?? "Its key could not be made", failed: true };
 }
@@ -330,7 +333,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   if (!workspace) return null;
   const host = environments.find((e) => e.id === workspace.environmentId);
   const desktops = desktopRows(environments, far, localHost);
-  const key = keyLine(status?.keys.find((k) => k.workspaceId === workspace.id));
+  const key = keyLine(status?.keys.find((k) => k.workspaceId === workspace.id), host?.name);
   /** The desktops it may use other than its own host: where a Teams file lies that a copy would bring here. */
   const otherDesktops = (list: readonly string[]): string[] => list.filter((id) => id !== workspace.environmentId && id !== hostIdOfLink(workspace.environmentId, localHost));
   // The list holds host ids; this machine's link is "local" in the window, its host id on every host.
@@ -445,7 +448,7 @@ export function CodeWorkspaceSector({ workspaceId }: { workspaceId: string }) {
       </PageSection>
     );
   }
-  const key = workspace.sector ? keyLine(status?.keys.find((k) => k.workspaceId === workspace.id)) : null;
+  const key = workspace.sector ? keyLine(status?.keys.find((k) => k.workspaceId === workspace.id), host) : null;
   return (
     <PageSection title="LifeOS">
       {connected || workspace.sector ? (

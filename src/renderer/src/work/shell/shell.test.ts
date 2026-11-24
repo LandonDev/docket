@@ -141,6 +141,9 @@ describe("Settings → Work's lines", () => {
     expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "ready" })).toBeNull();
     expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "failed", error: "a lifeos row is in the way" })).toEqual({ line: "a lifeos row is in the way", failed: true });
     expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "elsewhere" })?.failed).toBeUndefined();
+    // Council round 9 (Opus, Settings 2): a key that waits names the workspace's computer, never "this host" from afar.
+    expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "waiting" }, "The box")).toEqual({ line: "Its key is made once LifeOS is signed in on the box" });
+    expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "waiting" }, "MacBook")?.line).toBe("Its key is made once LifeOS is signed in on MacBook");
   });
 });
 

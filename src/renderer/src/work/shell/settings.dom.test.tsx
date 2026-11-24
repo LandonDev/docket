@@ -67,7 +67,7 @@ describe("Settings → Work", () => {
     render(<WorkSettingsBody />);
     expect(screen.queryByText("The box")).toBeNull();
     expect(screen.queryByText("Not signed in")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
   it("a workspace page whose settings did not load offers Retry, which reads them again", async () => {
@@ -270,6 +270,22 @@ describe("Sign in to LifeOS", () => {
     expect(linkOf.mock.calls.every(([id]) => id === "env_box")).toBe(true);
     expect(screen.getByText("ABCD-1234")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /** Council round 9 (Opus, Settings 1): a code past its life said Expired, and nothing in the dialog asked for a new one. */
+  it("puts New code where the timer stood once the code expires, which asks the same computer for a new one", async () => {
+    const request = vi.fn(() => Promise.resolve({ code: "WXYZ-5678", expiresAt: Date.now() + 60_000 }));
+    const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<SignInDialog environmentId="env_box" state={{ state: "pairing", code: "ABCD-1234", expiresAt: Date.now() - 1_000 } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    expect(screen.getByText("ABCD-1234")).toBeTruthy();
+    expect(screen.queryByText("Expired")).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+    await act(async () => screen.getByRole("button", { name: "New code" }).click());
+    expect(request).toHaveBeenCalledWith("work.lifeos.pairStart", {});
+    expect(linkOf.mock.calls.every(([id]) => id === "env_box")).toBe(true);
+    expect(screen.getByText("WXYZ-5678")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New code" })).toBeNull();
   });
 
   it("offers no token at /ui, where this window's own link is a key's and the token is local-only", async () => {
