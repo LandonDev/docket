@@ -13,8 +13,8 @@ Two separate steps, on purpose, over one gate.
     only `--full` or `--only vitest` runs the whole suite. The whole suite
     is the building thread's job, in its own worktree, before it lands;
     the gate no longer runs it a second time on every landing.
-    `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
-    renderer-soak-scroll (the build lane, after the build, one after the
+    `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing,
+    renderer-soak-scroll and renderer-soak-reconnect (the build lane, after the build, one after the
     other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client,
     computer:test (native/tc-computer, the computer-use service's package),
     the store proofs e2e-addons, e2e-addon-grants, e2e-skills-store and

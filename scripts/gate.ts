@@ -145,6 +145,7 @@ const SOAK_PATHS = [
   'scripts/lib/packagedApp.ts',
   'scripts/lib/heightReport.ts',
   'scripts/lib/revealReport.ts',
+  'scripts/lib/slowLink.ts',
   ...BUILD_WAIT_LIBS
 ]
 const STORE_LIBS = [...BUILD_WAIT_LIBS, 'scripts/lib/appToken.ts', 'scripts/lib/procScan.ts', 'scripts/lib/proofCleanup.ts', 'scripts/lib/proofElectron.ts', 'scripts/lib/gateCli.ts', 'scripts/lib/fake*.ts']
@@ -336,6 +337,18 @@ export const STEPS: Step[] = [
     // The same lane, after the typing scene: one instance at a time.
     lane: 'build',
     why: "the master's transcript, its board, the rail and the workspace column each turned by the wheel at 60 Hz for 4 s and flung under the board's load: every one moves and no long task runs while it does; the frame rate and the longest frame are reported against the target until a run on the Mac sizes them (scripts/measure-renderer-soak.ts --gate --scene scroll, 90 s at most)",
+    mac: true,
+    paths: SOAK_PATHS
+  },
+  {
+    name: 'renderer-soak-reconnect',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'reconnect', '--still'],
+    capMs: SOAK_CAP_MS,
+    // The same lane, after the scroll scene: one instance at a time.
+    lane: 'build',
+    why: "six long transcripts of another host, their socket cut for 6 s and the window reloaded: the catch-up makes no long task over 100 ms, never holds 2 MiB unsent on the socket, opens one socket a window and folds every row once, in order (scripts/measure-renderer-soak.ts --gate --scene reconnect --still, about 2 min)",
     mac: true,
     paths: SOAK_PATHS
   },

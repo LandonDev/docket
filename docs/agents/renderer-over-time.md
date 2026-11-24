@@ -103,8 +103,14 @@
     reaches 2 MiB unsent on a socket, opens zero or several connections,
     loses row order or coverage, fails to load all six panes, or stops
     folding the focused stream. The reconnect rule lives in
-    `scripts/lib/soakJudge.ts`. Run the scene directly as a report or a
-    gate step. See
+    `scripts/lib/soakJudge.ts`. The publish tier's row
+    `renderer-soak-reconnect` runs `--gate --scene reconnect --still`.
+  - `--link <KiB/s>` puts a relay between the window and the host
+    (scripts/lib/slowLink.ts) that gives the window that many bytes a
+    second, as the Mac's tunnel to the box; its backlog is reported as
+    `linkHeldBytes` and judged like a socket's. `--probe-every <ms>` brings
+    the window forward that often (`registry.probeAll('foreground')`), as
+    his clicks did. See
     [.temp-code/plans/landed/F-reconnect-catchup/before.md](../../.temp-code/plans/landed/F-reconnect-catchup/before.md)
     for the Linux baseline.
 - A push re-renders only what it changed, and these keep it so: an equal
