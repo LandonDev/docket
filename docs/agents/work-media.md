@@ -230,8 +230,10 @@ frame and shows its region.
 - **An image** fits the stage (`--stage`) inside a 24px inset; the bar
   holds its size, its bytes and zoom (Fit, 25% to 400%).
 - **States**: bones while the host reads the file; a bar with the share
-  done while a proxy or a conversion is made; the pane's state line, with
-  Retry, when a version fails, over the empty stage.
+  done while a proxy or a conversion is made; when the file does not open
+  or the shown version fails, the centred "Couldn't open this file" with
+  its reason and Retry (`OpenFailed`); the pane's state line, with Retry,
+  only when the version beside it in a compare fails.
 
 ## Frame.io (milestone 48)
 

@@ -23,7 +23,7 @@ export const progressWords = (received: number, total: number): string => `${mb(
  * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
  * dropped while the content stays.
  */
-export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; onRetry(): void }) {
+export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first) */ onRetry?: (() => void) | undefined }) {
   // A host's reason in his words (`workErrorWords`): a raw line says nothing, and the title stands alone.
   const said = why ? workErrorWords(why) : "";
   return (
@@ -32,9 +32,11 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
         <EmptyTitle>{`Couldn't open this ${kindNoun(kind)}`}</EmptyTitle>
         {said ? <EmptyDescription>{said}</EmptyDescription> : null}
       </EmptyHeader>
-      <Button size="sm" variant="secondary" onClick={onRetry}>
-        Retry
-      </Button>
+      {onRetry ? (
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          Retry
+        </Button>
+      ) : null}
     </Empty>
   );
 }

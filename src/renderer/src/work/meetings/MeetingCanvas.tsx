@@ -10,6 +10,7 @@ import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from ".
 import { uploadAttachment } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
 import { sayError } from "../canvas/frame";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
 import { Download, Export } from "../icons";
 import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeeting } from "./data";
@@ -89,7 +90,8 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
   const replay = unplayed?.retry;
   useEffect(() => {
     const failed = fileError;
-    if (unreadError && retry) shell.statusLine({ tone: "failed", word: "Couldn't open this meeting", detail: unreadError, action: { label: "Retry", run: retry } });
+    // A read that failed leaves the body empty, so the body says it (`OpenFailed`), not the line.
+    if (unreadError && retry) shell.statusLine(null);
     else if (failed) shell.statusLine({ tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Retry", run: () => decide(failed.ids, "accept") } });
     else shell.statusLine(playError && replay ? { tone: "failed", word: "The recording did not play", detail: playError, action: { label: "Retry", run: replay } } : null);
     return () => shell.statusLine(null);
@@ -251,10 +253,10 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
         (err: unknown) => setStartError(err instanceof Error ? err.message : String(err)),
       );
     };
-    return <Failed meeting={{ from: null, error: startError }} onRetry={retry} title="Could not open the recording" />;
+    return <OpenFailed kind="meeting" why={startError} onRetry={() => void retry()} />;
   }
-  // A read that failed is the state line's alone: nothing under it pretends to load.
-  if (error && !meeting) return null;
+  // A read that failed is the centred failure with Retry: nothing under it pretends to load.
+  if (error && !meeting) return <OpenFailed kind="meeting" why={error} onRetry={() => void retry()} />;
   if (!loaded || (needsFile && hasFile(source))) return <TurnsSkeleton />;
   if (!meeting || meeting.status === "empty") {
     return (

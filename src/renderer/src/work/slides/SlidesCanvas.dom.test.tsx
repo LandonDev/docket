@@ -781,14 +781,14 @@ describe("the slides kind", () => {
       await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
       fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
       await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
-      // The host refuses the press, and reading the deck again fails: the stage leaves for the state line.
+      // The host refuses the press, and reading the deck again fails: the stage leaves for the centred failure.
       const opened = deckHost.open;
       deckHost.review = async () => {
         throw new Error("The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.");
       };
       deckHost.open = () => Promise.reject(new Error("The deck is not where it was."));
       fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
-      const line = await found('[data-canvas-state="failed"]');
+      const line = await found("[data-canvas-failed]");
       await waitFor(() => expect(document.querySelector("[data-slides-stage]")).toBeNull());
       // Retry brings the deck back on the same slide, its paint waiting: no verdict over the blank stage.
       deckHost.open = opened;
@@ -914,19 +914,19 @@ describe("the slides kind", () => {
     expect(stage.className).toContain("pb-(--slide-stage-inset)");
   });
 
-  it("draws a deck the host could not open as the state line with Retry, with no bones under it", async () => {
+  it("draws a deck the host could not open as the centred failure with its reason and Retry, with no bones and no state line", async () => {
     let fail = true;
     open(deckView(), () => (fail ? Promise.reject(new Error("The deck is not where it was.")) : Promise.resolve(deckHost.view)));
-    const line = await found('[data-canvas-state="failed"]');
-    expect(line.textContent).toContain("Couldn't open this deck");
-    expect(line.textContent).toContain("The deck is not where it was.");
+    const failed = await found("[data-canvas-failed]");
+    expect(failed.textContent).toContain("Couldn't open this deck");
+    expect(failed.textContent).toContain("The deck is not where it was.");
+    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
     expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
     expect(document.querySelector('[data-canvas-bar] [data-slot="skeleton"]')).toBeNull();
-    expect(screen.queryByText("Couldn't open this deck", { selector: "[data-slot=empty] *" })).toBeNull();
     fail = false;
-    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
     expect(await found("[data-slides-stage]")).toBeTruthy();
-    await waitFor(() => expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull());
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).toBeNull());
   });
 
   it("shows a change to the speaker notes once, in the Notes section", async () => {
@@ -1001,8 +1001,8 @@ describe("slide imports and Google", () => {
     open(deckView(), async () => {
       throw new Error(KEYNOTE_EXPORT);
     });
-    const line = await found('[data-canvas-state="failed"]');
-    expect(line.textContent).toBe(KEYNOTE_EXPORT);
+    const failed = await found("[data-canvas-failed]");
+    expect(failed.textContent).toBe(`Couldn't open this deck${KEYNOTE_EXPORT}`);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     cleanup();
     open(deckView(), async () => {

@@ -1217,7 +1217,11 @@ thread; nothing answers inside the canvas.
   show, is the centred `Empty` in the body's place: "Couldn't open this
   document", the reason in his words (`workErrorWords`) when there is one,
   and Retry (`OpenFailed`, work/canvas/FetchState.tsx); never a red line
-  over a blank pane.
+  over a blank pane. The document, the sheet, the PDF, the deck, the
+  media viewer and the meeting all draw it; a Keynote file he must export
+  first has no Retry. The state line stays for a failure that leaves
+  content shown (a picture the deck could not draw, a version beside the
+  one shown, a task not filed).
 - **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
   28px on the strip's chip shape (6px radius, 2px apart, 6px from the
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected

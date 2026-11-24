@@ -15,6 +15,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { sayError } from "../canvas/frame";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import { OpenFailed } from "../canvas/FetchState";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
@@ -317,11 +318,12 @@ export function SlidesBody({
   const [naming, setNaming] = useState<NameAsk | null>(null);
   const editable = !!view?.hand;
   const slideHand = useMemo<SlideHand | null>(() => (editable ? { session, store, askName: setNaming } : null), [editable, session, store]);
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload, copyDraft);
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retryRender, reviewRev, held, store, hand, session, reload, copyDraft);
   const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
 
-  // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
-  if (error) return null;
+  // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
+  // export first has nothing to try again.
+  if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : () => void retry()} />;
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => void openInPowerPoint(item.id, source, env)} />;
 
@@ -465,7 +467,6 @@ function useFeeds(
   select: (key: string) => void,
   host: DeckHost,
   run: (work: Promise<DeckView>, fallback: string) => Promise<void>,
-  retry: () => Promise<void>,
   retryRender: (() => void) | undefined,
   reviewRev: string | undefined,
   held: boolean,
@@ -488,10 +489,9 @@ function useFeeds(
   const failure = hand.failure;
   useEffect(() => {
     shell.statusLine(
+      // A deck that did not open says so in the body (`OpenFailed`), not on the line.
       error
-        ? error === KEYNOTE_EXPORT
-          ? { tone: "failed", word: error }
-          : { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
+        ? null
         : failure?.conflict
           ? failure.message === SHAPE_GONE
             ? { tone: "failed", word: failure.message, detail: "Copy your words before you go on", action: { label: "Copy words", run: copyDraft } }
@@ -503,7 +503,7 @@ function useFeeds(
               : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, error, renderError, retry, retryRender, failure, reload, copyDraft, session]);
+  }, [shell, error, renderError, retryRender, failure, reload, copyDraft, session]);
 
   // What saved means for the file, where he can edit it by hand (FILES-SEAM.md "Save state").
   const editable = !!view?.hand && !inPowerPoint;

@@ -9,6 +9,7 @@ import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
 import { Notes, NotesSkeleton } from "./Notes";
@@ -136,11 +137,12 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
     shell.written(w ? { text: `${w.text}, ${dayTime(w.at)}`, undo: () => actions.undo(w.id) } : null);
   }, [shell, view?.lastWrite, actions]);
   useEffect(() => {
-    const failed = [shown, other].find((v) => unshowable(v) !== undefined);
+    // A failure that leaves the body empty says so there (`OpenFailed`); the line is for one that leaves content shown.
+    const failed = [shown, other].find((v) => unshowable(v) !== undefined && !(v === shown && blank(v)));
     shell.statusLine(
       failed
         ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
-        : error
+        : error && view
           ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
           : pictureFailed
             ? {
@@ -182,8 +184,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
     </Button>
   );
 
-  // A host that did not answer is the pane's state line, over the empty stage: no bones under a failure.
-  if (!view && error) return <Stage />;
+  // A host that did not answer, or a version that cannot be shown, is the centred failure with Retry: no bones under it.
+  if (!view && error) return <Failed why={error} onRetry={() => void loadMedia(env, item.id)} />;
+  if (shown && blank(shown)) return <Failed why={unshowable(shown)} onRetry={() => void loadMedia(env, item.id, { retry: true })} />;
   if (!view || !shown) return <Loading kind={IMAGE_EXT.test(item.source.at === "file" ? item.source.path : item.title) ? "image" : "video"} />;
 
   const play = shownPlay(shown);
@@ -263,15 +266,24 @@ function unshowable(v: MediaVersion | undefined): string | undefined {
   return !v ? undefined : v.state === "failed" ? v.error : !shownPlay(v) && v.proxyError ? v.proxyError : undefined;
 }
 
-/** The empty stage a failure leaves: the pane's state line says why, with Retry. */
-function Stage() {
-  return <div data-media-failed className="size-full bg-(--stage)" />;
+/** A version with nothing to draw because it failed: no picture and no player under the failure. */
+function blank(v: MediaVersion): boolean {
+  return unshowable(v) !== undefined && !shownPlay(v);
+}
+
+/** A failure that leaves nothing to show (docs/DESIGN.md "The canvas pane"): the centred `Empty`, its reason and Retry. */
+function Failed({ why, onRetry }: { why: string | undefined; onRetry(): void }) {
+  return (
+    <div data-media-failed className="flex size-full">
+      <OpenFailed kind="media" why={why} onRetry={onRetry} />
+    </div>
+  );
 }
 
 /** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way. */
 function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVersion }) {
-  // A failure is the pane's state line alone, over the empty stage: never bones that wait for nothing.
-  if (version && unshowable(version) !== undefined) return <Stage />;
+  // A failure is never bones that wait for nothing (the body draws `Failed` before it comes here).
+  if (version && unshowable(version) !== undefined) return null;
   const word = version?.state !== "preparing" || version.proxyError ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
   if (kind === "image")
     return (

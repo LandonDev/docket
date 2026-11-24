@@ -158,20 +158,26 @@ describe("the media canvas", () => {
     expect(host.calls.find((c) => c.method === "work.media.mode")?.params).toEqual({ itemId: "item1", mode: "suggests" });
   });
 
-  it("shows a version that failed by the pane's state line alone, with Retry asking the host to start it again", async () => {
+  it("shows a version that failed as the centred failure with its reason, Retry asking the host to start it again", async () => {
     host.view = { itemId: "item1", kind: "video", versions: [{ ...V3, state: "failed", error: "ffprobe could not read it", plays: [] }], notes: [], mode: "writes", shared: false, rev: 1 };
     const shell = fakeShell();
     render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />);
-    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "trailer v3.mp4 could not be shown", detail: "ffprobe could not read it" })));
+    const failed = await waitFor(() => {
+      const el = document.querySelector("[data-media-failed] [data-canvas-failed]");
+      if (!el) throw new Error("no failure drawn yet");
+      return el;
+    });
+    expect(failed.textContent).toContain("Couldn't open this file");
+    expect(failed.textContent).toMatch(/ffprobe could not read it/i);
+    // Said once: no state line over it, and never the player's bones waiting for nothing.
+    expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(document.body.textContent).not.toContain("Making a copy");
-    // The empty stage under the line, never the player's bones waiting for nothing.
-    expect(document.querySelector("[data-media-failed]")).not.toBeNull();
     expect(document.querySelector("[data-media-loading]")).toBeNull();
-    const line = shell.statusLine.mock.lastCall![0] as { action: { run(): Promise<void> } };
-    await act(() => line.action.run());
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
   });
+
 
   it("says a Play the video refused on the state line, with Retry that reads the view again and plays", async () => {
     let refuse = true;
@@ -285,7 +291,7 @@ describe("the media canvas", () => {
     expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ word: "Couldn't play this video" }));
   });
 
-  it("draws a host that did not answer as the empty stage under the state line, with no bones in the body or the bar", async () => {
+  it("draws a host that did not answer as the centred failure, with no state line and no bones in the body or the bar", async () => {
     host.viewFails = "The host did not answer";
     host.view = { itemId: "item1", kind: "video", versions: [V3], notes: [], mode: "writes", shared: false, rev: 1 };
     const shell = fakeShell();
@@ -297,8 +303,13 @@ describe("the media canvas", () => {
         </div>
       </>,
     );
-    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this file" })));
-    expect(document.querySelector("[data-media-failed]")).not.toBeNull();
+    const failed = await waitFor(() => {
+      const el = document.querySelector("[data-media-failed] [data-canvas-failed]");
+      if (!el) throw new Error("no failure drawn yet");
+      return el;
+    });
+    expect(failed.textContent).toContain("Couldn't open this file");
+    expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     expect(document.querySelector("[data-media-loading]")).toBeNull();
     expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
   });

@@ -86,7 +86,7 @@ async function seat(meeting: Meeting | null, item: CanvasItem = ITEM) {
     </CanvasSeat>,
   );
   await waitFor(() => expect(canvasOf("t1").loaded).toBe(true));
-  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-meeting-skeleton], [data-meeting-failed], [data-canvas-state]")).toBeTruthy());
+  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-meeting-skeleton], [data-meeting-failed], [data-canvas-failed], [data-canvas-state]")).toBeTruthy());
   await act(async () => {});
   return view;
 }
@@ -392,12 +392,13 @@ describe("the meeting canvas", () => {
     expect(container.querySelector('[data-turn="s10"]')!.textContent).toContain("Speaker 416:03Sounds like Coach Reyes");
   });
 
-  it("a host that does not answer says so on the state line, with Retry, never as an empty meeting", async () => {
+  it("a host that does not answer says so as the centred failure with Retry, never as an empty meeting", async () => {
     host.down = true;
     const { container } = await seat(sampleMeeting());
-    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("Couldn't open this meeting"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this recording"));
+    expect(container.querySelector("[data-canvas-state=failed]")).toBeNull();
     expect(container.querySelector("[data-meeting-empty]")).toBeNull();
-    // The failure is the state line's alone: no skeleton pulses under it, and the bar holds no bone.
+    // Said once: no skeleton pulses under it, and the bar holds no bone.
     expect(container.querySelector("[data-meeting-skeleton]")).toBeNull();
     expect(container.querySelector("[data-meeting-bar-bone]")).toBeNull();
     host.down = false;
@@ -460,7 +461,7 @@ describe("the meeting canvas", () => {
   it("a start the host never answered says so in the transcript's place, and Retry asks again", async () => {
     host.refuseStart = true;
     const { container } = await seat(null);
-    await waitFor(() => expect(container.querySelector("[data-meeting-failed]")?.textContent).toContain("Could not open the recordingsocket closed"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this recording"));
     host.refuseStart = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-meeting=transcribing]")).toBeTruthy());
