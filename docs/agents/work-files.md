@@ -202,7 +202,7 @@ the first paint.
 | a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the copy is a file of its own, with marks of its own |
 | a Google deck a thread already holds | in that thread, folded (`held`): a Google deck is no file of this disk, so its state is kept by item. The only open the host answers with `held` |
 | a Drive file that is no Google file (a picked PDF or workbook) | in a tab, as the `file` kind's facts (`googleSeatOf {facts: true}`), with Open in Drive alone: its bytes are not read here, and the google pillar keeps no row of it |
-| anything, where the workspace's host keeps no tabs | in its own app where it lies (`work.office.filesOpen`): no thread is made for it |
+| anything, where the workspace's host keeps no tabs | a library's file in its own app where it lies (`work.office.filesOpen`; the old wire lists no other place, and the line over the list says to update the host): no thread is made for it |
 
 **A folder's shapes** (`PAGE_SHAPES` in model.ts; the window keeps each
 folder's own, `PageLook`). List; Grid (tiles at 96, 144 or 208px); Columns
@@ -691,6 +691,10 @@ library's delete goes to the computer's own bin and Trash keeps only its row
   is shared (asked then; no answer counts as shared) needs his window or a
   key that may approve, as its delete did (`pressesFor`): a batch with one
   such row is refused whole, "Others can open this file: …", and nothing moves.
+  The selection is admitted whole before any of it runs (`admitRestore`,
+  ahead of the LifeOS branch, which puts its own rows back first): a LifeOS
+  row LifeOS says others can open counts too (`lifeosTrashShared`), and a
+  `lifeos:` id in the batch is no way past the check.
 - **Empty Trash** (`purge`, `approve`, never relayed) claims rows `held` →
   `purging` the same way, removes their bytes, then the rows; with no `ids`,
   every held row of the workspace. A restore and a purge racing for one row
@@ -1403,8 +1407,8 @@ its paths; a LifeOS ref never reaches it.
 | New | a LifeOS document (`docs:create`) or sheet (the sheets service's `create` into LifeOS), at the top or in a project; a folder is refused "A project is made in Projects.", a deck or a text file "LifeOS holds documents and sheets. Make anything else in your workspace's folder." |
 | Rename | `docs:rename`, `sheets:rename`: the title, whole |
 | Move | between projects, or to the top (`docs:setProject`, `sheets:setProject`); out of LifeOS the grammar's "A LifeOS document lives in LifeOS. Export a copy instead."; a file of a disk into LifeOS "Only a LifeOS document lives in LifeOS. Make one there instead." |
-| Delete | into LifeOS's own trash (`docs:remove`, `sheets:remove`), and the row's live guest links end here at once (`guestRuntime(ctx).revoke`); before LifeOS's trash is live, "LifeOS cannot put a document back yet. Delete it in LifeOS." |
-| Put back | the Trash lens lists LifeOS's trash (`catalog:trash`) beside the folder's, keyed `trash:lifeos:<table>:<id>`; `restore` sends each id to its own place, and a LifeOS id only when it is in this sector's trash. Empty Trash empties the folder's rows; LifeOS's go after its 30 days |
+| Delete | into LifeOS's own trash (`docs:remove`, `sheets:remove`), and the row's live guest links end here at once (`guestRuntime(ctx).revoke`); before LifeOS's trash is live, "LifeOS cannot put a document back yet. Delete it in LifeOS." A selection with other rows passes their door first (`admitTrash`): one refused refuses the whole delete, and no LifeOS row goes |
+| Put back | the Trash lens lists LifeOS's trash (`catalog:trash`) beside the folder's, keyed `trash:lifeos:<table>:<id>`; `restore` sends each id to its own place, and a LifeOS id only when it is in this sector's trash; a row LifeOS says others can open needs his press, as its delete does. The whole selection is admitted first ("Trash"). Empty Trash empties the folder's rows; LifeOS's go after its 30 days |
 
 Each passes `admitWrite` with the row's `shared`: a row with a live guest
 link counts as shared, so a key needs `approve`, his window asks "Delete for
@@ -1706,6 +1710,8 @@ over a file that changed there.
   is read once more, then refused. A file's copy is made, or read again for a reseat, one at a time
   (`oneCopyAtATime`, handle.ts: `copyIn` writes one path a file), and an open that waited looks for the tab first:
   two windows opening the file at once get one tab, and the second never reads the file over an edit the first took.
+  The tab is found by where the file lies as well as by its key, so a library row and a file chip, which name one file
+  by two keys, open one tab on one copy.
 - **One send** (`sendBack`): reads the copy as it lies and sends it only when its hash differs from `sent`. One send
   a copy is in flight; one asked while it runs runs once after it, reading the copy then, so the newest bytes go
   once. Another host: the peer verb `work.files.writeBack {ref, data, version, origin: {from: 'window'}}`, admitted
@@ -1794,7 +1800,10 @@ document, a Google Doc) goes as a NEW Word file into a folder he picks.
   grammar's sentence (`refusal(place, 'make')`). Save Here, then one toast: "Saved as Word in General" with Show, which
   opens that folder in a Files tab.
 - **The host** (`work.files.saveAsWord {workspaceId, source, at, name?, op}`, asked of the workspace's own host, where
-  the document lives). The door first, before anything is exported: a folder of this host as New there (`admitChange`
+  the document lives). The document must be the workspace's own: an open item of it shows it (a Files tab, a pane's,
+  a thread's), or it is the document a mail's attachment open there was read into; else "That document is not open in
+  this workspace.", so no job's document is written into another's folder. The door next, before anything is
+  exported: a folder of this host as New there (`admitChange`
   as `make`, so a key needs `approve` where others can open it); a folder of another host of his as his own edit
   there (`admitOwner`). A thread is refused at the wire (`CHANGES`), a read key by its capability (and again here).
   Then `exportDoc` writes Word from the live text (the Work service's), named for the document unless `name` says, and
