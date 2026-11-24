@@ -41,9 +41,22 @@ while Work is on for some host).
   (`workErrorWords`) and Retry; only one that ran out of time is "Did not
   answer", with no reason after the word, which would only say it again
   (`checkFailure`).
+- A LifeOS row that names a down state (`HealthRow.lifeos`) is worded by
+  the window in the rule's words, its computer named (`lifeosLine`): "Not
+  signed in to LifeOS on the box", "The LifeOS sign-in on the box waits for
+  your approval", "LifeOS refused the box's sign-in", "The box is still
+  connecting to LifeOS", "LifeOS did not answer the box. Still trying since
+  2:02 PM" on the sign-in row, "LifeOS did not answer Mac" on LifeOS answers.
+  Once the page lists more than one host every LifeOS row names its
+  computer once: in that line, else in its title ("LifeOS on Mac", "Agents'
+  LifeOS keys on Mac"). A host a build behind names no state: its own line
+  stands. LifeOS answers' row has Retry, which checks that host again alone,
+  spinning while it does; the sign-in row keeps Sign out.
 - **Check again** (the page's one ghost verb) runs every linked host's
-  checks again. The checks run when the page opens and on that press; never
-  on a timer. While a host checks again its rows stay where they are.
+  checks again. The checks run when the page opens and on that press, and a
+  host's checks run again when its LifeOS state changes (its `work.lifeos`
+  push: a sign-in approved, LifeOS back), so a LifeOS row is true again with
+  no press; never on a timer. While a host checks again its rows stay where they are.
   With no host linked it is off, and each host's row says Offline.
 - The first check draws a heading's bone over six row bones with no
   press, so the first section lands where they stood; the page's chunk
@@ -73,8 +86,9 @@ One optional field on the module, two core reads and one frame tool
 (src/main/server/work/health.ts, src/shared/work/health.ts):
 
 - `WorkModule.health?: { check(ctx, signal): Promise<HealthRow[]>; lapses?(ctx): Lapse[] }`.
-  `check` runs only when the page opens, on Check again, or when a thread
-  reads `work_connections`. It must be cheap; it never signs in, sends,
+  `check` runs only when the page opens, on Check again, when the host's
+  LifeOS state changes while the page is open, or when a thread reads
+  `work_connections`. It must be cheap; it never signs in, sends,
   launches, starts, installs or changes anything; it starts no poller. A
   row for what this host does not have (Office on the box) is left out, not
   reported broken. A signed-out LifeOS gives one needs-you row, not a
@@ -145,7 +159,7 @@ sessions have no end to read.
 
 | Pillar | Rows | Where |
 |---|---|---|
-| lifeos | `lifeos.signin` (Sign out working; Show the code… pairing; Sign in… signed out or refused; broken with no button while unreachable, since the session retries by itself), `lifeos.key:<workspace>` (a sector key that failed), `lifeos.answers` (`health:ping` failed, or gave no answer in `LIFEOS_ANSWER_MS`, 6 s, under the frame's 10 s: "Did not answer", the sign-in row kept; Check again asks again), `lifeos.source:<id>` per enabled email, gcal or ics source, titled by its name and what it is ("Cosmic mail", "landon@cosmic.games calendar"; group Mail and calendar; carries its sector). An error is broken; idle with a reason (disconnected) needs him. Silence is judged as LifeOS's own health rule judges it (`SOURCE_SILENT_MINUTES`), by when it last checked in and only for a kind that checks in on every poll: mail after 10 minutes, an ICS feed after a day and an hour (`SOURCE_SILENT_MS`). A Google calendar reports only when its state changes, so its times say when LifeOS's worker last started: it is judged by its status and error alone | lifeos/health.ts |
+| lifeos | `lifeos.signin` (Sign out working; Show the code… pairing; Sign in… signed out or refused; Sign out while connecting or unreachable, since the session retries by itself), `lifeos.key:<workspace>` (a sector key that failed), `lifeos.answers` (`health:ping` failed, or gave no answer in `LIFEOS_ANSWER_MS`, 6 s, under the frame's 10 s: "LifeOS did not answer", the sign-in row kept; its Retry asks that host again). Both carry the session's state by name (`HealthRow.lifeos`); their lines name no computer ("Not signed in to LifeOS"), since a thread reads them under its host's name and the window names it, `lifeos.source:<id>` per enabled email, gcal or ics source, titled by its name and what it is ("Cosmic mail", "landon@cosmic.games calendar"; group Mail and calendar; carries its sector). An error is broken; idle with a reason (disconnected) needs him. Silence is judged as LifeOS's own health rule judges it (`SOURCE_SILENT_MINUTES`), by when it last checked in and only for a kind that checks in on every poll: mail after 10 minutes, an ICS feed after a day and an hour (`SOURCE_SILENT_MS`). A Google calendar reports only when its state changes, so its times say when LifeOS's worker last started: it is judged by its status and error alone | lifeos/health.ts |
 | google | `google.clientId` (the Picker's client id, Mac and Windows only), `google.consent:<account>` (Drive files allowed, else reconnect in LifeOS) | google/health.ts |
 | guests | `guests.service` (the Work service answers on its port), and on the box `guests.hosted` and `guests.links`: one GET each through the tunnel to `/w/hosted/` and a guest page, working only on a 200 carrying the service's own headers | guests/health.ts |
 | frameio | `frameio.signin` (as whom; ran out; never used here gives no row) | frameio/health.ts |

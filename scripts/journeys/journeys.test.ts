@@ -892,6 +892,10 @@ it('checks the Connections status and detail independently of the status word', 
   expect(connectionMatches(row, seen)).toBe(true)
   expect(connectionMatches(row, { ...seen, words: 'Ready', detail: 'Needs a key' })).toBe(false)
   expect(connectionMatches(row, { ...seen, state: 'waiting' })).toBe(false)
+  // A down LifeOS row is worded by the window, its computer named: its state is checked, not the host's line.
+  const pairing = { ...row, state: 'needs-you', lifeos: 'pairing', line: 'The LifeOS sign-in waits for your approval' } as const
+  expect(connectionMatches(pairing, { ...seen, title: 'LifeOS', state: 'waiting', detail: 'The LifeOS sign-in on box waits for your approval' })).toBe(true)
+  expect(connectionMatches(pairing, { ...seen, title: 'LifeOS', state: 'failed', detail: 'The LifeOS sign-in on box waits for your approval' })).toBe(false)
 })
 
 it('rechecks the hit after hovering before it clicks a moving control', async () => {

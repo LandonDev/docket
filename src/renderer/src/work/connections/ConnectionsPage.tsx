@@ -16,7 +16,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { AddinRow } from "../office/AddinRow";
 import { SignInDialog } from "../shell/settings";
-import { useLifeosStatus } from "../shell/lifeos";
+import { useLifeosStatus, useLifeosStatusHeard } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
 import { FirstCheckBones } from "./FirstCheckBones";
 import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
@@ -24,9 +24,9 @@ import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, typ
 /**
  * Settings → Connections (docs/agents/work-connections.md): every sign-in
  * and helper Work leans on, per host, as working, broken or needs you, with
- * the fix beside each. The checks run when the page opens and on Check
- * again, never on a timer; a host this window is not linked to now is
- * offline, not broken.
+ * the fix beside each. The checks run when the page opens, on Check again
+ * and when a host's LifeOS state changes, never on a timer; a host this
+ * window is not linked to now is offline, not broken.
  */
 
 /** A host's checks can take each pillar's 10 s at once, then the trip: past this the host is said not to answer. */
@@ -83,8 +83,28 @@ export function ConnectionsPage() {
         </Button>
       </PageActions>
       <ConnectionsView hosts={shown} onRecheck={(id) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id)} />
+      {hosts.map((host) => (linked(host.id) ? <LifeosWatch key={host.id} environmentId={host.id} onChange={() => void checkHost(host.id, host.name)} /> : null))}
     </>
   );
+}
+
+/**
+ * A host's LifeOS state as its push says it: when it changes (signed in elsewhere, LifeOS back, a sign-out), that host
+ * is checked again, so its LifeOS rows are true with no press. The first state it hears is what the page opened on.
+ */
+function LifeosWatch({ environmentId, onChange }: { environmentId: string; onChange: () => void }) {
+  // Heard, not asked: the page's own check asks the host, and the rail already watches it.
+  const state = useLifeosStatusHeard(environmentId)?.lifeos.state ?? null;
+  const heard = useRef<string | null>(null);
+  useEffect(() => {
+    if (state === null) return;
+    const was = heard.current;
+    heard.current = state;
+    if (was !== null && was !== state) onChange();
+    // `onChange` is a new function each render; the state alone says when to ask.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+  return null;
 }
 
 const viewReport = (view: HostView | undefined): HealthReport | undefined => (view && "report" in view ? view.report : undefined);
@@ -110,6 +130,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
   const sections = sectionsOf(hosts);
   const away = unchecked(hosts);
   const waiting = hosts.filter((h) => h.status === "checking" && !h.report);
+  const checking = new Set(hosts.filter((h) => h.status === "checking").map((h) => h.id));
   return (
     <>
       {away.length ? (
@@ -130,7 +151,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
       {sections.map((section) => (
         <PageSection key={section.group} title={section.titled ? section.group : undefined} aria-label={section.titled ? undefined : section.group}>
           {section.rows.map((placed) => (
-            <ConnectionRow key={placed.key} placed={placed} now={now} onDone={() => onRecheck(placed.hostId)} />
+            <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} onDone={() => onRecheck(placed.hostId)} />
           ))}
         </PageSection>
       ))}
@@ -150,13 +171,14 @@ const OWN_ROWS: Record<string, (hostId: string, title: string) => ReactNode> = {
 };
 
 /** One connection: what it is, its state and its one line, then when it lapses and the fix. */
-function ConnectionRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
+function ConnectionRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: number; checking: boolean; onDone: () => void }) {
   const own = OWN_ROWS[placed.row.id];
   if (own) return <>{own(placed.hostId, placed.title)}</>;
-  return <FixRow placed={placed} now={now} onDone={onDone} />;
+  return <FixRow placed={placed} now={now} checking={checking} onDone={onDone} />;
 }
 
-function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
+/** `checking`: the row's host is being asked again; `onDone` asks it again, that host alone. */
+function FixRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: number; checking: boolean; onDone: () => void }) {
   const { row, hostId } = placed;
   const mark = markOf(row.state);
   const usable = usableFix(row.fix, registry.primary().environmentId === hostId);
@@ -168,6 +190,9 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  // LifeOS's silence with no fix of its own: Retry asks the row's host again, that host alone, as Check again would.
+  const retry = !fix && row.lifeos === "unreachable";
+  const line = placed.line ?? row.line;
   const press = async (fix: HealthFix): Promise<void> => {
     setError(null);
     if (fix.kind === "open") return void openUrl(fix.url).catch((err: unknown) => setError(workErrorWords(err) || "The page did not open."));
@@ -189,13 +214,13 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   };
   return (
     <>
-      {/* A row that ends on a date is wide: under 480px of page its date and press take a line under the words, which keep their room. */}
+      {/* A row that ends on a date is wide: under 480px of page its date and press take a line under the words, which keep their room. So is a LifeOS row the page words, whose sentence names the computer, when a press follows it. */}
       <PageRow
-        wide={Boolean(row.until)}
+        wide={Boolean(row.until) || Boolean(placed.line && (fix || retry))}
         title={placed.title}
         description={
           <>
-            <StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />
+            <StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? line : [line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />
             {whoCan ? <span data-who-can className="block">{whoCan}</span> : null}
           </>
         }
@@ -205,6 +230,10 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>
             <BusyLabel busy={busy} label={fix.label} />
+          </Button>
+        ) : retry ? (
+          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onDone}>
+            <BusyLabel busy={checking} label="Retry" />
           </Button>
         ) : null}
       </PageRow>

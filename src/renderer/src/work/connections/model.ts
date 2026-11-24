@@ -1,6 +1,7 @@
 import { fixAllowed, HEALTH_OWN_COMPUTER, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
 import type { ThreadState } from "../../components/ui/status";
 import { nameInLine } from "../../lib/hostWords";
+import { atHead, lifeosDownWords } from "../shell/lifeosWords";
 
 /**
  * Connections, as the page lays it out (docs/agents/work-connections.md):
@@ -21,6 +22,8 @@ export interface PlacedRow {
   hostId: string;
   /** the row's title, with its host when more than one host is listed: "Excel on Mac" */
   title: string;
+  /** the line the page draws in place of the host's, where the page words it (`lifeosLine`) */
+  line?: string;
   row: HealthRow;
 }
 
@@ -44,8 +47,10 @@ const rank = (group: string): number => {
  * pillar marks `shared` (a LifeOS source, which every signed-in host reads
  * the same) is shown once when two hosts give it alike; a host's own row
  * never is, nor one with a fix, whose press belongs to its host; a title two hosts both give is told apart by its
- * host ("LifeOS on Mac"), and only then. A host still checking keeps the
- * rows it had, so Check again moves nothing.
+ * host ("LifeOS on Mac"), and only then. A LifeOS row names its computer whenever the page lists more than one host:
+ * in its line where the page words it in the rule's words ("Not signed in to LifeOS on the box", `lifeosLine`), else
+ * in its title ("LifeOS answers on Mac"), never in both. A host still checking keeps the rows it had, so Check again
+ * moves nothing.
  */
 export function sectionsOf(hosts: readonly HostView[]): Section[] {
   const placed: (PlacedRow & { hostName: string })[] = [];
@@ -54,17 +59,35 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
     for (const row of host.report.rows) {
       const twin = row.shared && !row.fix && placed.find((p) => p.row.shared && p.row.id === row.id && p.row.state === row.state && p.row.line === row.line && p.row.group === row.group);
       if (twin) continue;
-      placed.push({ key: `${host.id}\0${row.id}`, hostId: host.id, hostName: host.name, title: row.title, row });
+      const line = lifeosLine(row, host.name);
+      placed.push({ key: `${host.id}\0${row.id}`, hostId: host.id, hostName: host.name, title: row.title, ...(line ? { line } : {}), row });
     }
   }
   const byGroup = new Map<string, PlacedRow[]>();
   for (const one of placed) {
     const shared = placed.some((p) => p !== one && p.row.group === one.row.group && p.row.title === one.row.title && p.hostId !== one.hostId);
+    const named = !one.line && (shared || (one.row.group === "LifeOS" && hosts.length > 1));
     const list = byGroup.get(one.row.group) ?? [];
-    list.push({ key: one.key, hostId: one.hostId, title: shared ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, row: one.row });
+    list.push({ key: one.key, hostId: one.hostId, title: named ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, ...(one.line ? { line: one.line } : {}), row: one.row });
     byGroup.set(one.row.group, list);
   }
   return [...byGroup.entries()].map(([group, rows], order) => ({ group, rows, order })).sort((a, b) => rank(a.group) - rank(b.group) || a.order - b.order).map(({ group, rows }) => ({ group, titled: !(rows.length === 1 && rows[0]!.title === group), rows }));
+}
+
+/**
+ * A LifeOS row's line in the rule's words, its computer named (docs/DESIGN.md "Loading and empty states"), from the
+ * state the host names on it (`HealthRow.lifeos`): "Not signed in to LifeOS on the box", "LifeOS did not answer Mac".
+ * Null where the host's line says it whole ("Signed in", a key), and for a host a build behind, which names no state.
+ */
+export function lifeosLine(row: HealthRow, hostName: string): string | null {
+  if (row.pillar !== "lifeos" || !row.lifeos || row.lifeos === "connected") return null;
+  if (row.lifeos === "connecting") return `${atHead(hostName)} is still connecting to LifeOS`;
+  const words = lifeosDownWords(row.lifeos, false, hostName);
+  if (row.lifeos !== "unreachable") return words;
+  // The sign-in row's time follows ("since 2:02 PM"); the answers row keeps a cause the host gave.
+  if (row.id !== "lifeos.answers") return `${words}. Still trying since`;
+  const why = /^(?:LifeOS )?did not answer: (.+)$/i.exec(row.line ?? "")?.[1];
+  return why ? `${words}: ${why}` : words;
 }
 
 /**

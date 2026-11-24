@@ -1,4 +1,5 @@
 import { dateIn, dayOf, timeIn } from './clock'
+import type { LifeosStateName } from '../contract-work-lifeos'
 import type { PillarId, SectorKey } from './ids'
 
 /**
@@ -47,6 +48,11 @@ export interface HealthRow {
   shared?: true
   /** its title or line names his accounts, tenants or folders and it has no one sector: a thread of a sector reads its state alone */
   personal?: true
+  /**
+   * A LifeOS row's session state by name (the sign-in row, and `unreachable` on "LifeOS answers"), so a window words
+   * it with the computer named (docs/DESIGN.md "Loading and empty states"); `line` is the host's own words for a thread.
+   */
+  lifeos?: LifeosStateName
 }
 
 /** One host's answer to `work.health`. */

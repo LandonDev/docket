@@ -59,25 +59,28 @@ export function sourceTitle(s: Pick<LifeosSource, 'kind' | 'label' | 'accountNam
 const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } as const
 const SIGN_OUT = { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } as const
 
-/** The sign-in row: what Settings → Work showed, with its button. Null when Work is off here. */
+/**
+ * The sign-in row: what Settings → Work showed, with its button. Null when Work is off here. Its line is for a thread,
+ * which reads it under this host's name; `lifeos` names the state, so a window words it with the computer named.
+ */
 export function signInRow(state: LifeosStatus['lifeos']): HealthRow | null {
-  const row = { id: 'lifeos.signin', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS' } as const
+  const row = { id: 'lifeos.signin', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS', lifeos: state.state } as const
   switch (state.state) {
     case 'off':
       return null
     case 'connected':
       return { ...row, state: 'working', line: 'Signed in', fix: SIGN_OUT }
     case 'pairing':
-      return { ...row, state: 'needs-you', line: 'A sign-in waits for your approval in LifeOS', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } }
+      return { ...row, state: 'needs-you', line: 'The LifeOS sign-in waits for your approval', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } }
     case 'signed-out':
-      return { ...row, state: 'needs-you', line: 'Not signed in on this host', fix: SIGN_IN }
+      return { ...row, state: 'needs-you', line: 'Not signed in to LifeOS', fix: SIGN_IN }
     case 'refused':
-      return { ...row, state: 'needs-you', line: "LifeOS refused this host's sign-in. Sign in again.", fix: SIGN_IN }
+      return { ...row, state: 'needs-you', line: 'LifeOS refused the sign-in. Sign in again.', fix: SIGN_IN }
     // Signed in but not answering: Sign out stays, so a host stuck on a wrong address can sign in again. No retry method: the session tries again on its own steps.
     case 'connecting':
-      return { ...row, state: 'broken', line: 'Still connecting', fix: SIGN_OUT }
+      return { ...row, state: 'broken', line: 'Still connecting to LifeOS', fix: SIGN_OUT }
     case 'unreachable':
-      return { ...row, state: 'broken', line: 'Still trying. No answer since', at: state.since, fix: SIGN_OUT }
+      return { ...row, state: 'broken', line: 'LifeOS did not answer. Still trying since', at: state.since, fix: SIGN_OUT }
   }
 }
 
@@ -133,8 +136,8 @@ export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient;
   const [ping, sources] = await Promise.allSettled([within(o.owner.query('health:ping', {}), ms), within(o.owner.query<LifeosSource[]>('sources:list', {}), ms)])
   if (ping.status === 'rejected') {
     // Silence is said as silence; any other failure with its reason.
-    const line = ping.reason instanceof NoAnswer ? 'Did not answer' : `Did not answer: ${redact(errorText(ping.reason))}`
-    rows.push({ id: 'lifeos.answers', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS answers', state: 'broken', line })
+    const line = ping.reason instanceof NoAnswer ? 'LifeOS did not answer' : `LifeOS did not answer: ${redact(errorText(ping.reason))}`
+    rows.push({ id: 'lifeos.answers', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS answers', state: 'broken', line, lifeos: 'unreachable' })
     return rows
   }
   if (sources.status === 'rejected') {

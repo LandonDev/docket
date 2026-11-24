@@ -115,6 +115,11 @@ describe('cleanRow', () => {
     expect(cleanRow(row({ fix: { kind: 'page', label: 'Pair…', page: 'settings:work' } }), 'office').fix).toEqual({ kind: 'page', label: 'Pair…', page: 'settings:work' })
   })
 
+  it("carries a LifeOS row's state by its name, and no word that is not one", () => {
+    expect(cleanRow(row({ lifeos: 'pairing' }), 'lifeos').lifeos).toBe('pairing')
+    expect(cleanRow(row({ lifeos: 'asleep' as never }), 'lifeos')).not.toHaveProperty('lifeos')
+  })
+
   it('blanks whatever looks like a secret in a line, whichever pillar wrote it', () => {
     const jwt = `eyJ${'a'.repeat(12)}.${'b'.repeat(12)}.${'c'.repeat(12)}`
     expect(redactLine(`refused ${jwt} with Bearer abc.def at https://x/cb?code=SECRET1&state=ok and lo_${'z'.repeat(12)}`)).toBe('refused [jwt] with Bearer [secret] at https://x/cb?code=[secret]&state=ok and [secret]')

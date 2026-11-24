@@ -24,6 +24,7 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { ConnectionsPage, ConnectionsView } = await import("./ConnectionsPage");
 const { FirstCheckBones } = await import("./FirstCheckBones");
+const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
 const { Page } = await import("../../components/page");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -31,6 +32,7 @@ const settle = () => act(async () => void (await new Promise((r) => setTimeout(r
 afterEach(() => {
   links.box = "open";
   cleanup();
+  resetLifeos();
   vi.restoreAllMocks();
   resetTestKey();
 });
@@ -58,8 +60,8 @@ describe("Connections", () => {
       at: 1,
       rows: [
         tools === "broken"
-          ? { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "broken", line: "Still connecting", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }
-          : { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", line: "Not signed in on this host" },
+          ? { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "broken", lifeos: "connecting", line: "Still connecting to LifeOS", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }
+          : { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS" },
       ],
     });
     const request = vi.fn(async (method: string) => {
@@ -72,12 +74,13 @@ describe("Connections", () => {
     expect(linkOf).not.toHaveBeenCalledWith("mac");
     expect(screen.getByText("Offline")).toBeTruthy();
     expect(screen.getByText("Broken")).toBeTruthy();
-    expect(screen.getByText("Still connecting")).toBeTruthy();
+    expect(screen.getByText("The box is still connecting to LifeOS")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await settle();
     await settle();
     expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
     expect(screen.getByText("Needs you")).toBeTruthy();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 
@@ -109,7 +112,7 @@ describe("Connections", () => {
       host: "env_box",
       at: 1,
       rows: [
-        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", line: "Not signed in on this host", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
+        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
         { id: "lifeos.other", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
       ],
     }));
@@ -119,6 +122,45 @@ describe("Connections", () => {
     expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
     expect(document.querySelectorAll("[data-who-can]").length).toBe(1);
     expect(screen.getByText("Sign in from a computer that manages the box")).toBeTruthy();
+  });
+
+  /** Council round 8 (Opus Settings 1, Sol Settings 2): LifeOS's silence named no computer and had no way back. */
+  it("says LifeOS's silence with its computer named, and its Retry asks that host again, alone, spinning meanwhile", async () => {
+    let release!: () => void;
+    let asks = 0;
+    const request = vi.fn(
+      (): Promise<HealthReport> =>
+        new Promise((done) => {
+          const report: HealthReport = {
+            host: "env_box",
+            at: 1,
+            rows: [
+              { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "working", lifeos: "connected", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
+              { id: "lifeos.answers", pillar: "lifeos", group: "LifeOS", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" },
+            ],
+          };
+          if (++asks === 1) done(report);
+          else release = () => done(report);
+        }),
+    );
+    const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    // Two hosts listed: the line that words the state names its computer; the row whose line does not, its title.
+    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    expect(screen.getByText("LifeOS on the box", { selector: "[data-slot=item-title]" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    // The long sentence keeps its room in a narrow window: its press takes a line of its own there.
+    expect(screen.getByText("LifeOS did not answer the box").closest("[data-slot=page-row]")!.hasAttribute("data-wide")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(request.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["work.health", "work.health"]);
+    // The health asks went to the box alone ("local" is this window's own link, read by the key check).
+    expect(linkOf.mock.calls.map(([id]) => id).filter((id) => id !== "local")).toEqual(["box", "box"]);
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => release());
+    await settle();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {
@@ -152,6 +194,23 @@ describe("Connections", () => {
     expect(screen.getAllByText("Offline")).toHaveLength(2);
     links.box = "open";
     view.rerender(<ConnectionsPage />);
+    await settle();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  /** Council round 8 (the walk, after Sol Settings 1): a LifeOS row stayed signed out after he signed in elsewhere. */
+  it("checks a host again when its LifeOS state changes, so its LifeOS rows are true with no press", async () => {
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] });
+    const request = vi.fn(async () => ({ host: "env_box", at: 1, rows: [] }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request, onPush: () => () => {}, onOpen: () => () => {}, connected: true } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] }));
+    await settle();
+    expect(request).toHaveBeenCalledTimes(2);
+    // The same state again asks nothing.
+    await act(async () => setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "landon", since: 2 }, keys: [] }));
     await settle();
     expect(request).toHaveBeenCalledTimes(2);
   });

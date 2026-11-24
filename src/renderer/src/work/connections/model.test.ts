@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HealthRow } from "@shared/work/health";
-import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
+import { checkFailure, fixVariant, lifeosLine, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
 
 const row = (over: Partial<HealthRow>): HealthRow => ({ id: "x", pillar: "office", group: "Office", title: "Excel", state: "working", ...over });
 const ready = (id: string, name: string, rows: HealthRow[]): HostView => ({ id, name, status: "ready", report: { host: id, at: 0, rows } });
@@ -19,6 +19,38 @@ describe("sectionsOf", () => {
       ready("mac", "Mac", [row({ id: "signin", group: "LifeOS", title: "LifeOS", state: "needs-you" }), row({ id: "excel" })]),
     ]);
     expect(sections.flatMap((s) => s.rows.map((r) => r.title))).toEqual(["LifeOS on the box", "LifeOS on Mac", "Excel", "Windows VM"]);
+  });
+
+  /** Council round 8 (Opus Settings 1, Sol Settings 2): the host's "this host" words, and "LifeOS answers" with no computer. */
+  it("names the computer on every LifeOS row once two hosts are listed: in the line it words, else in the title", () => {
+    const lifeos = (over: Partial<HealthRow>): HealthRow => row({ pillar: "lifeos", group: "LifeOS", title: "LifeOS", ...over });
+    const sections = sectionsOf([
+      ready("box", "the box", [lifeos({ id: "lifeos.signin", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS" })]),
+      ready("mac", "Mac", [lifeos({ id: "lifeos.signin", lifeos: "connected", line: "Signed in" }), lifeos({ id: "lifeos.answers", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }), lifeos({ id: "lifeos.keys:enrolled", title: "Agents' LifeOS keys", state: "broken", line: "x" })]),
+    ]);
+    expect(sections[0]!.rows.map((r) => [r.title, r.line ?? r.row.line])).toEqual([
+      ["LifeOS", "Not signed in to LifeOS on the box"],
+      ["LifeOS on Mac", "Signed in"],
+      ["LifeOS answers", "LifeOS did not answer Mac"],
+      ["Agents' LifeOS keys on Mac", "x"],
+    ]);
+    // One host listed: the line still names its computer, the title stays plain.
+    const one = sectionsOf([ready("mac", "Mac", [lifeos({ id: "lifeos.signin", lifeos: "connected", line: "Signed in" })])]);
+    expect(one[0]!.rows[0]!.title).toBe("LifeOS");
+  });
+
+  it("words each LifeOS state by the rule, the computer named, and keeps the host's line from a build that names none", () => {
+    const signIn = (lifeos: HealthRow["lifeos"], line = "") => lifeosLine(row({ pillar: "lifeos", id: "lifeos.signin", group: "LifeOS", lifeos, line }), "The box");
+    expect(signIn("signed-out")).toBe("Not signed in to LifeOS on the box");
+    expect(signIn("pairing")).toBe("The LifeOS sign-in on the box waits for your approval");
+    expect(signIn("refused")).toBe("LifeOS refused the box's sign-in");
+    expect(signIn("connecting")).toBe("The box is still connecting to LifeOS");
+    expect(signIn("unreachable")).toBe("LifeOS did not answer the box. Still trying since");
+    expect(signIn("connected")).toBeNull();
+    expect(signIn(undefined, "Not signed in on this host")).toBeNull();
+    const answers = (line: string) => lifeosLine(row({ pillar: "lifeos", id: "lifeos.answers", group: "LifeOS", lifeos: "unreachable", line }), "Mac");
+    expect(answers("LifeOS did not answer")).toBe("LifeOS did not answer Mac");
+    expect(answers("LifeOS did not answer: fetch failed")).toBe("LifeOS did not answer Mac: fetch failed");
   });
 
   it("shows a row two hosts give alike once: a LifeOS source both hosts read", () => {

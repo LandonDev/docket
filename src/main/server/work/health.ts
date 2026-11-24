@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LifeosStateSchema } from '@shared/contract-work-lifeos'
 import { errorText, fixAllowed, fixParams, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
 import { dateIn, dayOf, hisZone, timeIn } from './clock'
 import type { WorkCtx, WorkModule, WorkTool } from './modules'
@@ -58,9 +59,12 @@ export function cleanRow(row: HealthRow, pillar: PillarId): HealthRow {
     ...(typeof row.until === 'number' && Number.isFinite(row.until) ? { until: row.until } : {}),
     ...(row.sector ? { sector: row.sector } : {}),
     ...(row.shared ? { shared: true as const } : {}),
-    ...(row.personal ? { personal: true as const } : {})
+    ...(row.personal ? { personal: true as const } : {}),
+    ...(row.lifeos && LIFEOS_STATES.has(row.lifeos) ? { lifeos: row.lifeos } : {})
   }
 }
+
+const LIFEOS_STATES = new Set<string>(LifeosStateSchema.options.map((o) => o.shape.state.value))
 
 /** The group a pillar's fault sits under: what the pillar is to him. */
 const FAULT_GROUP: Partial<Record<PillarId, string>> = { lifeos: 'LifeOS', google: 'Google', office: 'Office', browser: 'Browser', formats: 'Tools', frameio: 'Frame.io', guests: 'Hosting' }
