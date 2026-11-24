@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FileBytes, FileSaved } from "@shared/contract-work-files";
+import type { CloudBack, CopyBack, FileBytes, FileSaved, WordBack } from "@shared/contract-work-files";
 import type { SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import type { SavedLine } from "./canvas/kind";
 import { FileSession } from "./files/fileSession";
-import { savedWords } from "./files/fileText";
+import { cloudLine, copyLine, savedWords } from "./files/fileText";
+import { wordLine } from "./files/wordSave";
 import type { SheetHost } from "./sheets/host";
 import { savedLine } from "./sheets/model";
 import { SheetSync } from "./sheets/sync";
@@ -145,5 +146,39 @@ describe("the save line waits for the newest edit", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(line()).toMatch(/^Saved\b/);
     off();
+  });
+
+  // The lines a Files tab lays over a kind's own (FileTabView.tsx): a Word file's (wordSave.ts `wordLine`) and the
+  // upload's (fileText.ts `cloudLine`). Each reads facts the host sends with the tab, so each step is the tab as the
+  // host would send it: an older save's time and an older upload's receipt must not stand for the newest edit.
+  it("a Word file's line and its upload line wait for the newest save", () => {
+    const T1 = Date.UTC(2026, 10, 24, 15, 0);
+    const T2 = T1 + 60_000;
+    const now = T2 + 1_000;
+    const said = (word: WordBack, cloud?: CloudBack) => cloudLine(wordLine(word, "Teams", "MacBook", now), cloud, "Teams", "MacBook", now);
+    // A saved, uploaded; he types B: the file holds A alone, whatever OneDrive said of A.
+    expect(said({ since: false, auto: true, at: T1 }, { is: "uploaded", at: T1 }).words).toMatch(/^In Teams/);
+    const typing = said({ since: true, auto: true, at: T1 }, { is: "uploaded", at: T1 });
+    expect(typing.state).toBe("saving");
+    expect(typing.words).not.toMatch(/^(Saved|In Teams)/);
+    // B written on the Mac, not yet uploaded: saved there, not in Teams.
+    const written = said({ since: false, auto: true, at: T2 }, { is: "uploading", at: T2 });
+    expect(written).toMatchObject({ state: "saving", words: "Saved, uploading to Teams…" });
+    expect(said({ since: false, auto: true, at: T2 }, { is: "uploaded", at: T2 }).words).toMatch(/^In Teams/);
+    // Saved by his press alone: edits after the last save say so, and never read as saved or uploaded.
+    const asked = said({ since: true, auto: false, at: T1 }, { is: "uploaded", at: T1 });
+    expect(asked.state).toBe("copy");
+    expect(asked.words).toMatch(/^Changes since/);
+  });
+
+  it("a copy's line and its upload line wait for the write the file holds", () => {
+    const T1 = Date.UTC(2026, 10, 24, 15, 0);
+    const now = T1 + 61_000;
+    const said = (back: CopyBack, cloud?: CloudBack) => cloudLine(copyLine({ state: "saved", words: "Saved" }, back, "MacBook", now), cloud, "Teams", "MacBook", now);
+    // Two writes, the file holds the first: saving, whatever OneDrive said of the first.
+    const behind = said({ is: "ok", at: T1, writes: 2, held: 1 }, { is: "uploaded", at: T1 });
+    expect(behind).toMatchObject({ state: "saving", words: "Saving to MacBook…" });
+    expect(said({ is: "ok", at: T1, writes: 2, held: 2 }, { is: "uploading", at: T1 })).toMatchObject({ state: "saving", words: "Saved, uploading to Teams…" });
+    expect(said({ is: "ok", at: T1, writes: 2, held: 2 }, { is: "uploaded", at: T1 }).words).toMatch(/^In Teams/);
   });
 });

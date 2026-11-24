@@ -233,6 +233,8 @@ export const GUARD_TESTS = [
   'src/renderer/src/lib/stateLinesGuard.test.ts',
   'src/renderer/src/lib/typeScaleGuard.test.ts',
   'src/renderer/src/lib/workAsksGuard.test.ts',
+  'src/renderer/src/lib/workControlsGuard.test.ts',
+  'src/renderer/src/work/sheets/fullOffer.dom.test.tsx',
   'src/renderer/src/lib/tokenContrast.test.ts',
   'src/renderer/src/lib/darkHeld.test.ts',
   'src/renderer/src/lib/scrollbarRule.test.ts',

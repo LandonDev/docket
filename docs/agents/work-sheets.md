@@ -1697,7 +1697,10 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   the kind's `TabEnd` before the Office control), and the line names it;
   where it does not, no switch, and the line says the computer it opens on
   ("A pivot table opens in the full editor on the box", `waitsWords`'s
-  `on`). The host's own rule is the raw `admin` cap
+  `on`). work/sheets/fullOffer.dom.test.tsx draws both in every kind of
+  window (his own, an owner's key, a given computer's key, a read key, the
+  browser) with the box's page carried and not, and holds that they agree
+  and that a press reaches the host once. The host's own rule is the raw `admin` cap
   (fullEditor/index.ts), not a method of the capability table, so there is
   no method for `linkMay` to ask. What a caller can still reach is one plain
   sentence: a thread ("a thread cannot open it"), a key short of admin, a

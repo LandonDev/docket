@@ -80,7 +80,13 @@ with its six views, linking a workspace to a sector, and Settings → Work
   project; a Work project card no branch line. What its agent is told is
   in [work-scope.md](work-scope.md) "No code words in a Work thread's
   instructions". The surfaces left as they are, and why, are in
-  .temp-code/plans/landed/F-work-no-code.md.
+  .temp-code/plans/landed/F-work-no-code.md. lib/workControlsGuard.test.ts
+  holds it: the thread menu, the title bar, the panel's sections and the
+  menu bar, asked for a stamped Work thread, a Work draft and a code
+  thread, must offer exactly the ids its Work, shared and code lists say;
+  a new id fails until it is put in one. Its `KNOWN` names the code rows
+  that still reach a Work thread: the menu bar's Go to Symbol… and Type
+  Hierarchy, which open the code symbol picker.
 - While it is off: no module's `start` or `onPush` runs, nothing a part of
   the context keeps running is up, no tool is listed to any thread, and
   every pillar method answers `Work is off on this host`. `work.get` and
@@ -365,7 +371,11 @@ when a preload call changes.
 with the fact the code reads. The guard checks that each entry still has
 a line in Work and that “Saved” and “Sent” have stronger facts than a queue
 entry or a stored token. The save tests hold one write open while another
-edit comes in and check the line for text files, sheets and decks.
+edit comes in and check the line for text files, sheets and decks, and,
+in work/savedLine.test.ts, the Word line and the upload line a Files tab
+lays over them: an older save's time or an older upload never stands for
+the newest edit. A line that starts "In Teams" is no state word to the
+scan; those tests hold it instead.
 
 ## Mirrors follow LifeOS
 
