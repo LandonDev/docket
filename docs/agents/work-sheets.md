@@ -651,6 +651,11 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   where the tab holds what would go with it: a cell the grid kept open (it
   refused the value), or edits that wait for Retry; an edit refused for good
   goes with the tab as before.
+- **A save's receipt is not the grid's revision.** The grid stands at the
+  revision a save answers only when nothing landed between; else (another
+  window's op landed first) it catches up, passing its own, before what it
+  sends next, so it shows theirs and a whole list it sends is made over
+  theirs.
 - **A reload holds the grid.** While catch-up reads the file again (a rule's
   list landed, a shared workbook's edit, a change from outside), the grid is
   `reloading` and takes no edit: a cell still open in the editor is ended

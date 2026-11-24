@@ -793,6 +793,28 @@ describe("the sheet kind", () => {
     expect(await closing()).toBe("closed");
   });
 
+  it("catches up past an op it never saw when its own save's receipt skips it, so what it sends next is made over that one", async () => {
+    // Council r2 (Sol 4): the receipt jumped the grid past another window's chart, and its next chart list took it out.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    // Dana's cell lands at 4; its push is not here yet
+    sheetHost.rev = 4;
+    sheetHost.ops.push({ rev: 4, by: "person:dana", mutations: [set(0, 5, "Dana")] });
+    // (a package takes a cell edit made on an older revision when only cell edits came between)
+    sheetHost.edit = async (baseRev, mutations) => {
+      sheetHost.calls.push(["edit", { baseRev, mutations }]);
+      sheetHost.rev++;
+      sheetHost.ops.push({ rev: sheetHost.rev, by: "owner", mutations });
+      return { rev: sheetHost.rev };
+    };
+    act(() => grid.edit(set(1, 1, 15)));
+    await waitFor(() => expect(cell("F1").textContent).toBe("Dana"));
+    expect(sheetHost.calls).toContainEqual(["since", 3]);
+    act(() => grid.edit(set(2, 1, 8)));
+    await waitFor(() => expect(edits()).toHaveLength(2), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[1]!.baseRev).toBe(5);
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

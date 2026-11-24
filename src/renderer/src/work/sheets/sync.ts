@@ -498,6 +498,8 @@ export class SheetSync {
     if (this.queue.length === 0) return;
     const batch = this.batch();
     const move = SHEET_MOVES.has(batch[0]!.id);
+    // A receipt past an op the grid has not laid (someone's that landed between): caught up before what comes next.
+    let behind = false;
     try {
       for (let tries = 0; ; tries++) {
         // A chart or picture list is the tab's as the grid holds it at the send: one queued before a conflict's catch-up
@@ -506,7 +508,10 @@ export class SheetSync {
         const answer = await this.host.edit(this.rev, sent);
         if (!answer.conflict) {
           this.mine.add(answer.rev);
-          this.rev = Math.max(this.rev, answer.rev);
+          // The receipt is not the grid's revision: the grid stands at it only when nothing landed between, else it
+          // catches up (passing its own), so it shows theirs and a list it sends next is made over theirs.
+          if (answer.rev <= this.rev + 1) this.rev = Math.max(this.rev, answer.rev);
+          else behind = true;
           for (const m of sent) if (isObjectList(m)) for (const [part] of listMedia(m)) this.sentMedia.add(part);
           if (answer.ids) this.rekey(answer.ids);
           break;
@@ -518,6 +523,7 @@ export class SheetSync {
         // its rows moved): the batch names cells of a sheet that is gone, so it is not sent again. He is told what it held.
         if (await this.catchUp(batch)) return;
       }
+      if (behind) await this.catchUp();
       // (an opened Excel file's refused batch is still not in the file: its line stays until Reload makes the grid the file again)
       if (this.state.sendError && this.state.view?.store !== "package") this.set({ sendError: null });
       if (this.queue.length === 0) this.set({ saving: false, savedAt: Date.now() });
