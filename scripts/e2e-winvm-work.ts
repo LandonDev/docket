@@ -16,9 +16,10 @@
  * (`TEMP_CODE_DIRECT_PROVIDERS=claude`): an isolated instance does not own the gateway's marker. Warm harnesses
  * are off, so the one thread is the only model process. Everything this run made is taken away at its end:
  * the thread stopped, the VM put to sleep and its disk deleted (so the owner's Set up starts clean), the
- * instance killed and its root removed. Run it after `electron-vite build`, under the standing machine's lock:
+ * instance killed and its root removed. Run it after `electron-vite build`, on a scratch machine alone
+ * (`scratchMachineRefusal`: a root with `base` and `keys` linked in, a TPM folder and a port of its own):
  *
- *   mkdir -p /srv/agents/win-vm/standing && flock -o -n /srv/agents/win-vm/standing/.lock \
+ *   WINVM_DIR=/tmp/<root> WINVM_TPM_DIR=/tmp/win-vm-tpm-<name> WINVM_SSH_PORT=<port> \
  *     env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-winvm-work.ts [--out <dir>]
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
@@ -31,6 +32,10 @@ import { encodePowerShell, psQuote } from '../src/main/server/work/winvm/machine
 import { qmp, screendump } from '../src/main/server/work/winvm/machine/qmp'
 import { SshGuest } from '../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../src/main/server/work/winvm/standing'
+import { requireScratchMachine } from '../src/main/server/work/winvm/machine/config'
+
+// Before anything else: with WINVM_DIR, WINVM_TPM_DIR or WINVM_SSH_PORT unset the standing machine is the owner's.
+requireScratchMachine()
 
 const REPO = resolve(import.meta.dir, '..')
 const flag = process.argv.indexOf('--out')

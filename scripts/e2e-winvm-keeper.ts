@@ -11,8 +11,9 @@
  *      same boot time, and the door knocked again.
  *
  * TEMP_CODE_WINVM_EXE names the tc-computer.exe to copy in. `--keep` leaves the standing disk; by default it
- * is deleted after, so the owner's own setup starts clean. Run it under the standing machine's lock:
- *   flock -o -n /srv/agents/win-vm/standing/.lock bun scripts/e2e-winvm-keeper.ts
+ * is deleted after. It runs only on a scratch machine (`scratchMachineRefusal`): a root with `base` and `keys`
+ * linked in, and a TPM folder and a port of its own:
+ *   WINVM_DIR=/tmp/<root> WINVM_TPM_DIR=/tmp/win-vm-tpm-<name> WINVM_SSH_PORT=<port> bun scripts/e2e-winvm-keeper.ts
  */
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,6 +26,10 @@ import { tcComputerExe } from '../src/main/server/work/winvm/serviceBin'
 import { SshGuest } from '../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../src/main/server/work/winvm/standing'
 import { log, PROOF_TEXT, readDesktop, startNotepad } from './lib/winvmProof'
+import { requireScratchMachine } from '../src/main/server/work/winvm/machine/config'
+
+// Before anything else: with WINVM_DIR, WINVM_TPM_DIR or WINVM_SSH_PORT unset the standing machine is the owner's.
+requireScratchMachine()
 
 const keep = process.argv.includes('--keep')
 const machine = new StandingMachine('standing')

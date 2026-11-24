@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 /** Microsoft's own download of Windows 11 Enterprise Evaluation, 25H2, x64, en-US (the Evaluation Center's link). */
 export const ISO_URL = 'https://go.microsoft.com/fwlink/?linkid=2334167&clcid=0x409&culture=en-us&country=us'
@@ -152,4 +152,44 @@ export function onTheBase(root: string): string[] {
 export function locksFor(cmd: string, c: RigConfig): string[] {
   const lockOf = (i: Instance) => rigPaths(rigConfig({ WINVM_DIR: c.root }, 0, i)).lock
   return cmd === 'install' ? [lockOf('standing'), lockOf('rig')] : [lockOf(c.instance)]
+}
+
+/** The owner's machines: the root both live under, and the ports their guests' SSH answers on. */
+const OWNER_ROOT = '/srv/agents/win-vm'
+const OWNER_PORTS = [DEFAULTS.rig.sshPort, DEFAULTS.standing.sshPort]
+
+/**
+ * Why a script that starts a machine may not run with this environment, or null. With any of the three unset a
+ * `standing` machine's folder, TPM folder and SSH port are the owner's, and `startTpm` clears the TPM folder it
+ * is given. So a bench or a proof names a scratch root (with `base` and `keys` linked in), a TPM folder and a
+ * port of its own, and calls this before anything else.
+ */
+export function scratchMachineRefusal(env: NodeJS.ProcessEnv = process.env, uid = process.getuid?.() ?? 0, real: (path: string) => string = realOrSelf): string | null {
+  const missing = ['WINVM_DIR', 'WINVM_TPM_DIR', 'WINVM_SSH_PORT'].filter((k) => !env[k])
+  if (missing.length) return `${missing.join(', ')} not set: the machine would be the owner's`
+  const root = real(resolve(env.WINVM_DIR!))
+  const owner = real(OWNER_ROOT)
+  if (root === owner || root.startsWith(`${owner}/`)) return `WINVM_DIR ${env.WINVM_DIR} is the owner's machines' folder`
+  const tpm = resolve(env.WINVM_TPM_DIR!)
+  if (tpm === `/tmp/win-vm-tpm-${uid}` || tpm.endsWith('-standing')) return `WINVM_TPM_DIR ${env.WINVM_TPM_DIR} is the owner's TPM folder`
+  const port = Number(env.WINVM_SSH_PORT)
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return `WINVM_SSH_PORT ${env.WINVM_SSH_PORT} is not a port`
+  if (OWNER_PORTS.includes(port)) return `WINVM_SSH_PORT ${port} is the owner's machine's`
+  return null
+}
+
+function realOrSelf(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/** For a script's first line: exits with the refusal, so nothing of the owner's machine is ever opened. */
+export function requireScratchMachine(env: NodeJS.ProcessEnv = process.env): void {
+  const why = scratchMachineRefusal(env)
+  if (!why) return
+  console.error(`refused: ${why}. Set WINVM_DIR (a scratch root with base and keys linked in), WINVM_TPM_DIR and WINVM_SSH_PORT.`)
+  process.exit(2)
 }

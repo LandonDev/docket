@@ -7,9 +7,10 @@
  * then a still desktop. Sizes interleaved, one cold boot each (A, B, A, B), the engine pinned to its own cores,
  * the load average beside every run (MASTER-NOTES "Measuring on a busy box").
  *
- *   flock -o -n /srv/agents/win-vm/standing.lock bun scripts/e2e-winvm-picture.ts [--sizes 1280x800,1920x1200] [--boots 4] [--runs 3] [--secs 10]
+ *   WINVM_DIR=/tmp/<root> WINVM_TPM_DIR=/tmp/win-vm-tpm-<name> WINVM_SSH_PORT=<port> bun scripts/e2e-winvm-picture.ts [--sizes 1280x800,1920x1200] [--boots 4] [--runs 3] [--secs 10]
  *
- * It refuses a standing machine that already has a disk (another thread's), and deletes the disk it made.
+ * It runs only on a scratch machine (`scratchMachineRefusal`), refuses one that already has a disk, and deletes
+ * the disk it made.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -28,6 +29,10 @@ import { VM_COMPUTER, VmPicture } from '../src/main/server/work/winvm/picture'
 import { SshGuest } from '../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../src/main/server/work/winvm/standing'
 import { pictureToolsAt, VmScreen } from '../src/main/server/work/winvm/window'
+import { requireScratchMachine } from '../src/main/server/work/winvm/machine/config'
+
+// Before anything else: with WINVM_DIR, WINVM_TPM_DIR or WINVM_SSH_PORT unset the standing machine is the owner's.
+requireScratchMachine()
 
 const arg = (name: string, d: string): string => {
   const i = process.argv.indexOf(`--${name}`)

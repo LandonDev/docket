@@ -5,7 +5,8 @@
  * the file changed; the machine asleep again and taken back to the point; at the next wake the file is as it
  * was. Then the point is deleted, the machine shut down and, unless `--keep`, the standing disk deleted.
  *
- *   flock -o -n /srv/agents/win-vm/standing/.lock bun scripts/e2e-winvm-points.ts
+ * The same scratch machine as that run (`scratchMachineRefusal`):
+ *   WINVM_DIR=/tmp/<root> WINVM_TPM_DIR=/tmp/win-vm-tpm-<name> WINVM_SSH_PORT=<port> bun scripts/e2e-winvm-points.ts
  */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,6 +18,10 @@ import { tcComputerExe } from '../src/main/server/work/winvm/serviceBin'
 import { SshGuest } from '../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../src/main/server/work/winvm/standing'
 import { log } from './lib/winvmProof'
+import { requireScratchMachine } from '../src/main/server/work/winvm/machine/config'
+
+// Before anything else: with WINVM_DIR, WINVM_TPM_DIR or WINVM_SSH_PORT unset the standing machine is the owner's.
+requireScratchMachine()
 
 const keep = process.argv.includes('--keep')
 const FILE = 'C:\\Users\\tcuser\\Documents\\point-proof.txt'

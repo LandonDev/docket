@@ -5,7 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { makePassword, renderAnswerFile, xmlEscape } from './answer'
-import { daemonEnv, instanceName, locksFor, onTheBase, rigConfig, rigPaths, snapshotName } from '../../src/main/server/work/winvm/machine/config'
+import { daemonEnv, instanceName, locksFor, onTheBase, rigConfig, rigPaths, scratchMachineRefusal, snapshotName } from '../../src/main/server/work/winvm/machine/config'
 import { keepLiveTpm, kvmWrapped, liveTpmIsNewer } from '../../src/main/server/work/winvm/machine/daemons'
 import { encodePowerShell, PS_STDIN_MAX, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from '../../src/main/server/work/winvm/machine/guest'
 import { parseGuestFwd, qemuArgs, swtpmArgs } from '../../src/main/server/work/winvm/machine/qemu'
@@ -34,6 +34,44 @@ describe('the rig config', () => {
 
   it('takes overrides from the environment', () => {
     expect(rigConfig({ WINVM_CPUS: '4', WINVM_MEM: '8G', WINVM_SSH_PORT: '2300' }, 1)).toMatchObject({ cpus: 4, memory: '8G', sshPort: 2300 })
+  })
+})
+
+describe('a script that starts a machine', () => {
+  const scratch = { WINVM_DIR: '/tmp/vm-scratch', WINVM_TPM_DIR: '/tmp/win-vm-tpm-bench', WINVM_SSH_PORT: '22241' }
+  const same = (p: string) => p
+  const refusal = (env: NodeJS.ProcessEnv, real = same) => scratchMachineRefusal(env, 999, real)
+
+  it('runs on a scratch root, TPM folder and port of its own', () => {
+    expect(refusal(scratch)).toBeNull()
+  })
+
+  it('is refused with any of the three unset: the standing machine would be the owner\'s', () => {
+    expect(refusal({})).toContain('WINVM_DIR, WINVM_TPM_DIR, WINVM_SSH_PORT not set')
+    for (const k of Object.keys(scratch)) expect(refusal({ ...scratch, [k]: '' })).toContain(`${k} not set`)
+  })
+
+  it('is refused on the owner\'s folder, under it, and through a link to it', () => {
+    expect(refusal({ ...scratch, WINVM_DIR: '/srv/agents/win-vm' })).toContain("the owner's machines' folder")
+    expect(refusal({ ...scratch, WINVM_DIR: '/srv/agents/win-vm/' })).toContain("the owner's machines' folder")
+    expect(refusal({ ...scratch, WINVM_DIR: '/srv/agents/win-vm/standing' })).toContain("the owner's machines' folder")
+    expect(refusal({ ...scratch, WINVM_DIR: '/srv/agents/win-vm/../win-vm' })).toContain("the owner's machines' folder")
+    expect(refusal({ ...scratch, WINVM_DIR: '/tmp/link' }, (p) => (p === '/tmp/link' ? '/srv/agents/win-vm/standing' : p))).toContain("the owner's machines' folder")
+    expect(refusal({ ...scratch, WINVM_DIR: '/srv/agents/win-vm-scratch' })).toBeNull()
+  })
+
+  it('is refused on the owner\'s TPM folders: the rig\'s by uid, and any that ends -standing', () => {
+    expect(refusal({ ...scratch, WINVM_TPM_DIR: '/tmp/win-vm-tpm-999' })).toContain("the owner's TPM folder")
+    expect(refusal({ ...scratch, WINVM_TPM_DIR: '/tmp/win-vm-tpm-999/' })).toContain("the owner's TPM folder")
+    expect(refusal({ ...scratch, WINVM_TPM_DIR: '/tmp/win-vm-tpm-999-standing' })).toContain("the owner's TPM folder")
+    expect(refusal({ ...scratch, WINVM_TPM_DIR: '/tmp/anything-standing' })).toContain("the owner's TPM folder")
+  })
+
+  it('is refused on the owner\'s ports, and on a port that is none', () => {
+    expect(refusal({ ...scratch, WINVM_SSH_PORT: '22220' })).toContain("the owner's machine's")
+    expect(refusal({ ...scratch, WINVM_SSH_PORT: '22230' })).toContain("the owner's machine's")
+    expect(refusal({ ...scratch, WINVM_SSH_PORT: 'x' })).toContain('is not a port')
+    expect(refusal({ ...scratch, WINVM_SSH_PORT: '80' })).toContain('is not a port')
   })
 })
 
