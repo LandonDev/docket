@@ -42,7 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: () => ({ name: "The box" }), environments: () => [], onLink: () => () => undefined, statusOf: () => ({ transport: "open" }) } };
 });
 vi.mock("../shell/actions", () => ({ workspaceSettings: async () => ({ mayUseDesktop: [], windowsVm: false }), localHostId: async () => null, windowDesktops: async () => [], linkIdOfHost: () => "box" }));
-vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> }));
+vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> , useKindModule: () => null }));
 vi.mock("../../components/ui/toaster", async (original) => ({
   ...(await original<typeof import("../../components/ui/toaster")>()),
   loadToast: async () => ({

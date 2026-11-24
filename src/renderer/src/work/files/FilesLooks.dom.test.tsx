@@ -40,7 +40,7 @@ vi.mock("../../lib/connection", async (original) => {
   });
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: (id: string) => ({ id, name: "The box", platform: "linux" }), environments: () => [], onLink: () => () => undefined } };
 });
-vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: ({ item }: { item: { title: string } }) => <div data-testid="pane">{item.title}</div> }));
+vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: ({ item }: { item: { title: string } }) => <div data-testid="pane">{item.title}</div> , useKindModule: () => null }));
 
 const { PageView } = await import("./Page");
 const { forgetPictures } = await import("./previews");

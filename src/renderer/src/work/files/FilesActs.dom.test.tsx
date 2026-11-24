@@ -68,7 +68,7 @@ vi.mock("../shell/actions", () => ({
   allowComputers: vi.fn(),
 }));
 vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () => undefined) }));
-vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> }));
+vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> , useKindModule: () => null }));
 // What a change says is one toast: here each is kept, with its Undo.
 vi.mock("../../components/ui/toaster", () => {
   const put = (kind: string) => (title: string, o: { description?: string; action?: { onClick(): void } } = {}) => void world.toasts.push({ kind, title, ...(o.description ? { description: o.description } : {}), ...(o.action ? { undo: o.action.onClick } : {}) });

@@ -722,7 +722,7 @@ export function Bar(props: Props) {
   if (failed) return null;
   // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut. An opened
   // Excel file says what waits in Excel, in words that give way before any control does.
-  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={reachHere(view.reach, props.env)} store={view.store} />;
+  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={view.reach} store={view.store} env={props.env} />;
   return <Skeleton className="h-3 w-30" />;
 }
 

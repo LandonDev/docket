@@ -1,5 +1,7 @@
 import type { SheetReach, SheetStoreKind } from "@shared/contract-work-sheets";
 import { TruncateTip } from "../../components/tip";
+import { registry } from "../../lib/connection";
+import { reachHere } from "./fullHere";
 
 /**
  * What waits in Excel, on the kind's bar (docs/agents/work-sheets.md "The switch"): one 12px muted line beside
@@ -8,17 +10,21 @@ import { TruncateTip } from "../../components/tip";
  *
  * Said only for an opened Excel file: there the parts are things the file holds. A workbook Excel or Google
  * holds has the switch for another reason (what our grid does not do there), and its bar says nothing.
+ *
+ * The line and the switch come from one check (fullHere.ts `reachHere`): where the full editor opens from this
+ * window the switch names it; where it does not, no switch is drawn and the line says the computer it opens on.
  */
 
 const listed = (names: readonly string[]): string => (names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
-/** The line, or null where there is nothing to say. One thing opens; many open. */
-export function waitsWords(reach: SheetReach | undefined, store: SheetStoreKind | undefined): string | null {
+/** The line, or null where there is nothing to say. One thing opens; many open. `on`: the computer the full editor opens on, where it does not open from here. */
+export function waitsWords(reach: SheetReach | undefined, store: SheetStoreKind | undefined, on: string | null = null): string | null {
   if (!reach || store !== "package" || reach.to === "google" || reach.parts.length === 0) return null;
   const list = listed(reach.parts);
   // Every phrase for one thing has no plural ending ("a pivot table", "Power Query"); "macros" is always many.
   const one = reach.parts.length === 1 && !reach.parts[0]!.endsWith("s");
-  return `${list[0]!.toUpperCase()}${list.slice(1)} ${one ? "opens" : "open"} in ${reach.to === "excel" ? "Excel" : "the full editor"}`;
+  const where = reach.to === "excel" ? "Excel" : on ? `the full editor on ${on}` : "the full editor";
+  return `${list[0]!.toUpperCase()}${list.slice(1)} ${one ? "opens" : "open"} in ${where}`;
 }
 
 /**
@@ -26,8 +32,8 @@ export function waitsWords(reach: SheetReach | undefined, store: SheetStoreKind 
  * the bar's start, which is the same muted text. It gives way through its words: cut at the bar's room, whole in
  * the tip while it is cut.
  */
-export function ExcelWaits({ reach, store }: { reach: SheetReach | undefined; store: SheetStoreKind | undefined }) {
-  const words = waitsWords(reach, store);
+export function ExcelWaits({ reach, store, env }: { reach: SheetReach | undefined; store: SheetStoreKind | undefined; env: string }) {
+  const words = waitsWords(reach, store, reachHere(reach, env) ? null : (registry.environment(env)?.name ?? "its host"));
   if (!words) return null;
   return (
     <TruncateTip text={words}>

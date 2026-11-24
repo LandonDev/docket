@@ -40,7 +40,7 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: (listener: () => void) => (host.opens.add(listener), () => host.opens.delete(listener)),
     onClose: () => () => undefined,
   };
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined), environment: () => ({ name: "the box" }) } };
 });
 
 /** The side sheet itself is work-kit's (its own tests draw it on a real grid): here a stand-in that shows what the body gives it. */
@@ -1169,6 +1169,30 @@ describe("the sheet kind", () => {
     expect(sheetHost.calls.filter((c) => c[0] === "switch")).toHaveLength(1);
     started();
     await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(false));
+  });
+
+  describe("the full editor's line and switch, from one check", () => {
+    const carry = (): void => {
+      (window as { api?: unknown }).api = { app: { openFullEditor: async () => {} } };
+      onTestFinished(() => void delete (window as { api?: unknown }).api);
+    };
+    const pivot = () => sheetView({ store: "package", reach: { parts: ["a pivot table"], to: "full", carried: true } });
+
+    it("where it opens from this window: the switch, and the line names the full editor", async () => {
+      carry();
+      open(pivot());
+      await gridUp();
+      const tabs = await screen.findByRole("tablist", { name: "Open in" });
+      expect(within(tabs).getByRole("tab", { name: "Full editor" })).toBeTruthy();
+      expect(document.querySelector("[data-sheet-waits]")?.textContent).toBe("A pivot table opens in the full editor");
+    });
+
+    it("where it does not: no switch, and the line says the computer it opens on", async () => {
+      open(pivot());
+      await gridUp();
+      await waitFor(() => expect(document.querySelector("[data-sheet-waits]")?.textContent).toBe("A pivot table opens in the full editor on the box"));
+      expect(screen.queryByRole("tablist", { name: "Open in" })).toBeNull();
+    });
   });
 
   it("says what waits in Excel on the bar of an opened Excel file, beside the switch, and nothing on any other sheet", async () => {

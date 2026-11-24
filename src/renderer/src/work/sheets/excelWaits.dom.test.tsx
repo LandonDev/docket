@@ -23,6 +23,9 @@ describe("the words", () => {
 
   it("names the full editor where the switch goes there", () => {
     expect(waitsWords({ parts: ["2 pivot tables"], to: "full" }, "package")).toBe("2 pivot tables open in the full editor");
+    // Where it does not open from this window, the line says where it does.
+    expect(waitsWords({ parts: ["2 pivot tables"], to: "full" }, "package", "the box")).toBe("2 pivot tables open in the full editor on the box");
+    expect(waitsWords({ parts: ["2 pivot tables"], to: "excel" }, "package", "the box")).toBe("2 pivot tables open in Excel");
   });
 
   it("says nothing with nothing counted, and nothing for a workbook Excel or Google holds", () => {
@@ -38,7 +41,7 @@ describe("the bar's line", () => {
   const draw = (parts: string[]) =>
     render(
       <TooltipProvider>
-        <ExcelWaits reach={{ parts, to: "excel" }} store="package" />
+        <ExcelWaits reach={{ parts, to: "excel" }} store="package" env="local" />
       </TooltipProvider>,
     );
 

@@ -14,7 +14,9 @@ import { registry } from "../../lib/connection";
 import { shortcutFor } from "../../lib/settings";
 import { shell as appShell } from "../../stores/shell";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { CanvasPane } from "../canvas/CanvasPane";
+import { CanvasPane, useKindModule } from "../canvas/CanvasPane";
+import { CANVAS, kindDefOf } from "../canvas/registry";
+import { useKeptState } from "../canvas/store";
 import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasKindDef, CanvasSelection, SavedAction, SavedLine } from "../canvas/kind";
@@ -400,6 +402,10 @@ export function FileTabView({
   // Only the four forms Office for the web edits are asked about (the host's `LIVE_FORMS`).
   const offersLive = /\.(docx|xlsx|xlsm|pptx)$/i.test(tab.name) || !!live;
   const liveOf = useLiveOf(() => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }), offersLive ? (item?.id ?? null) : null);
+  // The kind's own switch in the header, as beside a thread (CanvasSeat): the sheet's Excel or Full editor, a deck's PowerPoint.
+  const module = useKindModule(kindDefOf(kinds ?? CANVAS, item?.kind ?? "document").chunk);
+  const KindEnd = item && !live ? module?.TabEnd : undefined;
+  const [kindState, setKindState] = useKeptState(item?.id ?? "");
   const [switching, setSwitching] = useState<string | null>(null);
   const [switchBusy, setSwitchBusy] = useState(false);
   const runSwitch = (to: "here" | "live"): void => {
@@ -484,19 +490,22 @@ export function FileTabView({
         note={note}
         progress={liveProgress}
         end={
-          offersLive && registry.has(link) ? (
-            <LiveControl
-              inTab={liveLayer.can()}
-              of={liveOf}
-              live={!!live}
-              busy={switchBusy}
-              desktops={liveOf && desktopsOf ? desktopsOf(liveOf) : []}
-              onSwitch={runSwitch}
-              onNoAddress={(why) =>
-                void loadToast().then((toast) => toast.message(why, { action: { label: "Open Settings", onClick: () => appShell.openSettings("work") } }))
-              }
-            />
-          ) : null
+          <>
+            {KindEnd && item ? <KindEnd item={item} source={item.source} env={link} state={kindState} setState={setKindState} shell={shell} /> : null}
+            {offersLive && registry.has(link) ? (
+              <LiveControl
+                inTab={liveLayer.can()}
+                of={liveOf}
+                live={!!live}
+                busy={switchBusy}
+                desktops={liveOf && desktopsOf ? desktopsOf(liveOf) : []}
+                onSwitch={runSwitch}
+                onNoAddress={(why) =>
+                  void loadToast().then((toast) => toast.message(why, { action: { label: "Open Settings", onClick: () => appShell.openSettings("work") } }))
+                }
+              />
+            ) : null}
+          </>
         }
       />
       <div ref={body} data-files-body className="relative flex min-h-0 min-w-0 flex-1">

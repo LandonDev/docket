@@ -83,6 +83,8 @@ vi.mock("../canvas/CanvasPane", () => ({
       </button>
     </>
   ),
+  // The kind's own switch (a sheet's Excel or Full editor): here one that names the kind it was handed.
+  useKindModule: () => ({ TabEnd: ({ item }: { item: { kind: string } }) => <span data-testid="kind-end">{`${item.kind} switch`}</span> }),
 }));
 // The docked chat: a stand-in for the thread's view whose composer shows its chips and sends through App's handler.
 const dock = vi.hoisted(() => ({ submit: (_sessionId: string, _text: string) => undefined as void }));
@@ -604,6 +606,15 @@ describe("tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Dummy Esports" }));
     await waitFor(() => expect(calls(host, "work.files.tabClose")).toHaveLength(2));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
+  });
+
+  it("draws the kind's own switch in a file tab's header, as beside a thread", async () => {
+    await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(screen.getByTestId("pane").textContent).toBe("sheet: Budget.xlsx"));
+    expect(document.querySelector("[data-files-header]")!.contains(screen.getByTestId("kind-end"))).toBe(true);
+    expect(screen.getByTestId("kind-end").textContent).toBe("sheet switch");
   });
 
   it("sends what the file at a tab's side holds before it closes, as the tab's own close does", async () => {

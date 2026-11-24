@@ -1686,7 +1686,15 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   and its "opens in the full editor" line, only in the desktop app, and from
   another computer only with `carried` and an admin key
   (work/sheets/fullHere.ts `reachHere`); a browser, the phone and a key short
-  of admin are never offered it. What a caller can still reach is one plain
+  of admin are never offered it. The switch and the line come from that one
+  check: where it opens from this window the switch is drawn, beside a
+  thread (CanvasSeat) and in a Files tab's header alike (FileTabView draws
+  the kind's `TabEnd` before the Office control), and the line names it;
+  where it does not, no switch, and the line says the computer it opens on
+  ("A pivot table opens in the full editor on the box", `waitsWords`'s
+  `on`). The host's own rule is the raw `admin` cap
+  (fullEditor/index.ts), not a method of the capability table, so there is
+  no method for `linkMay` to ask. What a caller can still reach is one plain
   sentence: a thread ("a thread cannot open it"), a key short of admin, a
   host whose pages stay on it ("The full editor opens only in a window on
   the box."), an older desktop that sends no `carry` ("Update TempCode on
