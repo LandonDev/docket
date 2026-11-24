@@ -36,7 +36,9 @@ carries a fallback of its own. The table of every path and what it did before is
   the dialog; never the planning thread's. The host's own start on `plan_complete` holds to the plan
   thread's access as a ceiling (a plan an agent started at `edits` builds at `edits` at most).
 - Work threads the host starts (routines, plays, meeting prep, the Waiting on nudge, digest, review)
-  take his default for their workspace. They used to be fixed at Full access.
+  take his default for their workspace. They used to be fixed at Full access. Their provider, model
+  and effort are his Thread defaults for the workspace too (work/threads.ts passes none), unless a
+  routine names its own model or effort; the per-workspace Work model they used to read is unread.
 - His own pick on a thread (the picker on a thread, or on a draft before its first send) stays.
   A thread that is lower only because an old build fell back stays as it is; he raises it with the
   composer's access picker on that thread.

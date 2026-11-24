@@ -204,7 +204,11 @@ Settings → Work.
   (Work on) each Work workspace led by its dot; they leave the Workspaces
   group. The Work page (surfaces/settings/Work.tsx, then
   `WorkSettingsBody`): the switch; the sectors LifeOS has; Work threads'
-  model (the code threads' default, opening Thread defaults); where new
+  model, which is his Thread defaults for the workspace, as a code
+  thread's is (the row opens Thread defaults; new-thread-access.md "The
+  model"): a thread the host starts (a routine, Run now, a play, a meeting
+  brief or follow-up, a Waiting on nudge, a capture) takes them too unless
+  a routine names its own model; where new
   Work workspaces are made. **Connections** follows it in the group
   ([work-connections.md](work-connections.md)): each host's LifeOS
   sign-in (pairing, the code and its countdown, a device token, sign out),
@@ -234,8 +238,7 @@ Settings → Work.
   workspace's page gains its LifeOS sector while Work is on. Keybindings
   lists the Work group (Ask about the selection, ⌘L) only while Work is on.
 - **The host's side** (contract-work.ts core): `work.workspace.get` (read)
-  and `work.workspace.set` (admin; a null model or reasoning goes back to
-  the default), `work.project.open` (operate), and the `url` on
+  and `work.workspace.set` (admin), `work.project.open` (operate), and the `url` on
   `work.lifeos.jwt`'s answer. Tests: work/core.test.ts.
 - **A Work project's card menu** (chrome/WorkspaceSessions.tsx): New chat,
   Open project (its page in the Projects view; a card with no mirror yet

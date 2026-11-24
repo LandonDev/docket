@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { Capability } from '@shared/capabilities'
+import type { Reasoning } from '@shared/catalog'
 import type { ClientRequest } from '@shared/contract'
 import type { AddonRow } from '@shared/contract-addons'
 import type { RoutineJobOpen } from '@shared/contract-work-routines'
@@ -280,7 +281,8 @@ export interface WorkCtx {
   threads: {
     /** `title` names the thread, and no model is asked for one. */
     /** `by`: who pressed for it; a remote key's thread holds to the key's ceiling (no full access without approve). */
-    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller }): Promise<string>
+    /** His Thread defaults for the workspace decide its provider, model and effort unless `model` (a routine's own) is named; `reasoning` is fitted to the model it runs (sessions.ts `create`). */
+    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; reasoning?: Reasoning; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
     /**
      * whether the owner typed this quote in the thread; with `about`, in a message that also names one of those, and with

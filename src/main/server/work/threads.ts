@@ -1,5 +1,4 @@
 import { harnessDeniedOf, unloadedRefusal } from './narrowing'
-import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import { writtenByOwner, type SessionMeta, type UserTextBy } from '@shared/events'
 import { accessCeiling, type Capability } from '@shared/capabilities'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
@@ -206,19 +205,16 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
     threads: {
       async start(o) {
         if (!ctx.enabled()) throw new Error('Work is off on this host')
-        // A workspace's own model and reasoning, unless the caller names a model.
         const chat = o.workspaceId === WORK_HOME
-        const settings = chat ? null : ctx.settings.workspace(o.workspaceId)
-        const asked = o.model ?? settings?.model
-        const provider: ProviderId | undefined = asked ? resolveModel('claude', asked).provider : undefined
-        const reasoning = !o.model && settings?.reasoning ? (settings.reasoning as SessionMeta['reasoning']) : undefined
         const thread = await registry.startWith(
           {
             scope: 'work',
             threadType: 'chat',
             ...(o.projectId ? { projectId: o.projectId } : { workspaceId: chat ? null : o.workspaceId }),
-            ...(asked && provider ? { provider, model: asked } : {}),
-            ...(reasoning && (!provider || CATALOG[provider]) ? { reasoning } : {}),
+            // His Thread defaults for the workspace, the rule a window's draft takes (sessions.ts create), unless the
+            // caller names a model (a routine's own); the host fits the effort to the model it resolves to.
+            ...(o.model ? { model: o.model } : {}),
+            ...(o.reasoning ? { reasoning: o.reasoning } : {}),
             // Its access is his default for the workspace (sessions.ts create); what leaves is held by the Outbox at any access.
             ...(o.about ? { about: o.about } : {}),
             ...(o.title ? { title: o.title } : {})

@@ -215,6 +215,19 @@ describe('the schedule', () => {
 })
 
 describe('a weekday routine on a fake clock', () => {
+  it("passes its own model and effort to the start, and names none when it has none (his Thread defaults decide)", async () => {
+    rig.add({ trigger: WEEKDAYS_7AM, model: 'claude-opus-5-5', reasoning: 'max' })
+    rig.add({ trigger: WEEKDAYS_7AM, name: 'Plain' })
+    rig.add({ trigger: WEEKDAYS_7AM, name: 'Odd', reasoning: 'loud' })
+    await tickAt(at(16, '07:00'))
+    expect(rig.started).toHaveLength(3)
+    expect(rig.started[0]).toMatchObject({ model: 'claude-opus-5-5', reasoning: 'max' })
+    for (const o of rig.started.slice(1)) {
+      expect(o).not.toHaveProperty('model')
+      expect(o).not.toHaveProperty('reasoning')
+    }
+  })
+
   it('fires once per due time, and only on weekdays', async () => {
     const id = rig.add({ trigger: WEEKDAYS_7AM })
     await tickAt(at(16, '06:59'))

@@ -171,10 +171,12 @@ the loaded list, as work/threads.ts does for the preamble parts.
 
 ### `ctx.threads`
 
-- `start({workspaceId, projectId?, text, model?, routineRunId?, about?})`
+- `start({workspaceId, projectId?, text, model?, reasoning?, routineRunId?, about?})`
   starts a Work chat at his default access for the workspace (no access of
-  its own: new-thread-access.md; a lower default means a card can wait) with
-  the workspace's own model and reasoning unless one is named. `workspaceId:
+  its own: new-thread-access.md; a lower default means a card can wait) on
+  his Thread defaults' provider, model and effort for the workspace unless a
+  model is named (a routine's own; `reasoning?` with it, fitted to the model
+  by the host's `clampReasoning`). `workspaceId:
   WORK_HOME` starts a Work Chat. `routineRunId` is stamped on the row; it is
   never a client's to say.
 - `resume(sessionId, notice)` wakes a settled Work thread with the app's own

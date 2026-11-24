@@ -11,6 +11,7 @@ import {
   type RoutineRun
 } from '@shared/contract-work-routines'
 import { errorText, type Trigger, type TriggerSource } from '@shared/work'
+import { REASONING_LEVELS, type Reasoning } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import type { AddonCallResult } from '../../addons/addonWire'
 import type { Caller, WorkCtx } from '../modules'
@@ -359,7 +360,9 @@ export class RoutinesEngine {
         workspaceId: r.workspaceId,
         ...(r.projectId ? { projectId: r.projectId } : {}),
         text,
+        // Its own model and effort when it names them; else his Thread defaults for the workspace (work/threads.ts).
         ...(r.model ? { model: r.model } : {}),
+        ...(r.reasoning && (REASONING_LEVELS as readonly string[]).includes(r.reasoning) ? { reasoning: r.reasoning as Reasoning } : {}),
         routineRunId: run.id,
         ...(o.by ? { by: o.by } : {})
       })

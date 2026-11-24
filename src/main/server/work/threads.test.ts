@@ -114,13 +114,17 @@ describe('ctx.threads.start', () => {
     expect(registry.get(approve)?.permission).toBe('auto')
   })
 
-  it("takes the workspace's own model and reasoning unless the caller names a model, starts in a project, and starts a Work Chat", async () => {
+  it("takes his Thread defaults for the workspace, never the old Work model setting, unless the caller names a model; starts in a project, and starts a Work Chat", async () => {
     const purdue = await workWorkspace('purdue')
+    // A Work model and effort stored by an older build: read by nothing now.
     work.ctx.settings.set(purdue, { model: 'claude-sonnet-5-5', reasoning: 'high' })
+    registry.setThreadDefaults(purdue, { provider: 'claude', model: 'claude-fable-5-1', reasoning: 'low', permission: 'edits' })
     const byDefault = registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'a' }))!
-    expect(byDefault).toMatchObject({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'high' })
+    expect(byDefault).toMatchObject({ provider: 'claude', model: 'claude-fable-5-1', reasoning: 'low' })
     const named = registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'b', model: 'claude-opus-5-5' }))!
-    expect(named).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
+    expect(named).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5', reasoning: 'low' })
+    // A routine's own effort reaches the create.
+    expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'r', model: 'claude-opus-5-5', reasoning: 'max' }))).toMatchObject({ reasoning: 'max' })
     // a model of a harness with no fence is refused, whoever names it: the workspace's setting or the caller (Cursor; Codex is offered since F1)
     await expect(work.ctx.threads.start({ workspaceId: purdue, text: 'x', model: 'composer-2.5' })).rejects.toThrow(/not offered for Work/)
     expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'e', model: 'gpt-6.1-sol' }))).toMatchObject({ scope: 'work', provider: 'codex' })
@@ -130,6 +134,15 @@ describe('ctx.threads.start', () => {
     expect(chat).toMatchObject({ scope: 'work', workspaceId: null, projectId: null })
     // a Work Chat has no sector, so the rules module adds nothing
     expect(sent.get(chat.id)![0]).not.toContain('House rules')
+  })
+
+  it("never runs an effort the model it resolved to does not serve: his default's, or a routine's", async () => {
+    const purdue = await workWorkspace('purdue')
+    // His default effort, ultra, is Codex's; a routine names a Claude model, whose ladder stops at max.
+    registry.setThreadDefaults(purdue, { provider: 'codex', model: 'gpt-6.2-sol', reasoning: 'ultra', permission: 'edits' })
+    expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'a', model: 'claude-fable-5-2' }))).toMatchObject({ provider: 'claude', reasoning: 'high' })
+    // A routine's own max on a Codex model that stops at xhigh: that model's own default.
+    expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'b', model: 'gpt-5.5', reasoning: 'max' }))).toMatchObject({ provider: 'codex', reasoning: 'medium' })
   })
 
   it('refuses a workspace that is not a Work workspace, and everything while Work is off', async () => {

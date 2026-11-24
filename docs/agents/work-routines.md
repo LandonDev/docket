@@ -153,8 +153,14 @@ form is Name, Starts and Ends only. A run's row opens its thread, else its
 page sets; with no port set, or nothing to open, the row is plain text.
 
 A firing starts a root Work thread through `ctx.threads.start({workspaceId,
-projectId, text, model, routineRunId})` (registry `startWith`: the queue
-and the running cap apply; `startedBy` stays null). Its first message is
+projectId, text, model, reasoning, routineRunId})` (registry `startWith`: the queue
+and the running cap apply; `startedBy` stays null). Its provider, model and
+effort are his Thread defaults for the workspace (the rule a window's draft
+takes, `resolveThreadDefaults`; new-thread-access.md "The model"), unless the
+routine stores its own: its `model` and its `reasoning` each ride when set;
+the host fits any effort to the model it resolves to (`clampReasoning`), so
+his Codex effort never reaches a Claude model. The per-workspace Work `model`
+and `reasoning` an older build stored stay in the database, read by nothing. Its first message is
 the prompt, then "Started by the routine “…”: <cause>." and what it heard.
 A watch an agent set (`resume_session_id`) instead wakes that thread
 (`ctx.threads.resume`, an agent report, never a user row) with the read's
