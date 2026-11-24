@@ -25,7 +25,7 @@ It links to `box` so the workspace can use its files.
 - **B2** is for L2 on `desk`.
 - **V**, **S**, **K**, and **U** are for the Windows VM, sandbox LifeOS,
   a given computer's key, and a browser or guest page, in that order.
-  The tier-1 Files and editor journeys use A, B1 and B2.
+  The tier-1 shell and hold journeys also use K and U.
 
 Build the worktree with `heavy bunx electron-vite build`, then run this
 from that worktree:
@@ -96,6 +96,44 @@ PDF viewer stand-in so the real Electron print call can finish without a
 printer. The evidence folder holds the Word save readings, the Legacy
 copy hashes, the chart PDF and the three print PDFs when those steps reach
 their files.
+
+### Tier-1 shell and hold journeys
+
+| Journey | Shapes | What it checks |
+| --- | --- | --- |
+| J20 | A, U | A file's Share yields a reachable guest link. The guest comments, and the revoked link answers gone. |
+| J21 | B2 | The Word switch offers the dummy SharePoint address, the local tab names its editor, and the holder's bytes stay the same. The built webview needs a public Microsoft origin, so the journey stops at the offered address before navigation. |
+| J24 | B2 | Desk's place shows an away notice and Retry. The open copy waits, then sends the edit to desk after it returns. |
+| J27 | A, U | A phone-width /ui clicker can advance, go back, blank and end the separate slideshow. The host and the audience page agree. A read key can watch. |
+| J28 | A | The made Word file contains the field value. The starter opens as a job copy, and Save as template puts a file on the shelf. |
+| J29 | B1, B2 | The shared Word bytes change only after Make the change in Outbox. A stale second press does nothing and gives a reason. |
+| J30 | A | A private document changes through the Work tool. The editor's Undo restores its words on disk. |
+| J31 | A | A file made through the Work tool is on disk and under Made by threads. Its chip opens that same file. |
+| J52 | A | Files, its selected file and the Ask draft return after a workspace switch, a reload and a relaunch. |
+| J53 | A, K | Work writes only to hosts the key can manage. Workspace creation and Add folder persist or say who can act. |
+| J54 | K | The pairing dialog gives a reachable link and matching QR or explains why there is none. Cancel revokes its pairing. |
+| J56 | A, B1 | Text typed before and during a cut to box reaches the file after reconnect. |
+| J57 | A, K | An owner's edit reaches the open tab in a second window. The given computer's key limits its controls. |
+| J58 | A | New chats keep box's access, provider, model, effort and Work scope across start surfaces. The walks that need LifeOS are skipped. |
+
+For the first run, use
+`--only J20,J27,J28,J29,J30,J31,J52,J53,J54,J56,J57,J58 --shape A,B1,K,U --no-table`.
+Run `--only J21,J24,J29 --shape B2 --desk --no-table` for the far library.
+Use `heavy` for both. With `--no-table`, the runner keeps its evidence in
+the run folder and skips the shared Journeys table.
+
+K uses a second window with the given computer's actual device key, bound
+through the app's isolated device proof. The owner window stays connected.
+U uses Playwright's Chromium with a new profile for each pairing or guest
+visit. The runner waits for Chromium to exit before removing its profile.
+A TCP relay cuts just win's link to box in J56. J24 stops and restarts
+desk on the same data. The thread journeys call the Work bridge with the
+run's own thread tokens. J29 pairs a dummy Word add-in on the isolated
+Work service. It answers reads of the fixture and writes only the named
+change. The SharePoint address names the file in the Office protocol.
+J31 and J58 send only through the fake provider. J58 checks each session
+row as soon as it exists. The runner revokes the browser
+sessions, pairings and keys before stopping the instances.
 
 ## Running them
 

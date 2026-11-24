@@ -1,3 +1,6 @@
+import { once } from 'node:events'
+import { createConnection, createServer } from 'node:net'
+import { createHmac } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,6 +18,9 @@ import { closeSelectedFile, dummyLibrary, dummyPdf, fixtures, gioStub, holds } f
 import { holderFolder, selectFolderTab } from './lib/place'
 import { explainsMissingContent, searchVerdict } from './lib/search'
 import { cellValue, falseSaveLine } from './lib/sheet'
+import { relay } from './lib/relay'
+import { wordFixture } from './lib/wordAddin'
+import { toolCall } from './lib/thread'
 import { mainCheckout, step, walk, type Context } from './lib/record'
 import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
 import { until, Window } from './lib/window'
@@ -283,6 +289,8 @@ it('drives the context menu and selection with mouse events, and reloads the pag
   })
   await page.click({ x: 4, y: 5 }, 1, 'right')
   expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mousePressed', x: 4, y: 5, button: 'right', clickCount: 1 }])
+  await page.click({ x: 4, y: 5 }, 1, 'left', 8)
+  expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mousePressed', x: 4, y: 5, button: 'left', modifiers: 8, clickCount: 1 }])
   send.mockClear()
   await page.drag({ x: 9, y: 10 }, { x: 17, y: 10 })
   expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 13, y: 10, buttons: 1 }])
@@ -416,5 +424,71 @@ it('puts the fake profile and its sealed credential in the run vault', () => {
     expect(credential.includes(Buffer.from('JOURNEY-LOOPBACK'))).toBe(false)
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('runs K and U without desk and can keep the shared table untouched', () => {
+  const picks = options(['--only', 'J20,J54', '--shape', 'K,U', '--no-table'])
+  expect(picks.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J20', 'U'], ['J54', 'K']])
+  expect(picks.desk).toBe(false)
+  expect(picks.noTable).toBe(true)
+  const context = { workspace: { path: '/tmp/dummy' } } as Context
+  for (const shape of ['K', 'U'] as const) expect(holderFolder({ ...context, shape })).toBe('/tmp/dummy')
+})
+
+it('signs the Work call as the named thread using both bridge tokens', () => {
+  const seed = 'fe'.repeat(32)
+  const sign = (input: string) => createHmac('sha256', Buffer.from(seed, 'hex')).update(input).digest('base64url')
+  expect(toolCall('thread-test', seed, 5, 'files_places', {})).toEqual({
+    sessionId: 'thread-test', appToken: sign('app-bridge:thread-test'), token: sign('thread-test'), call: 5, tool: 'files_places', args: {}
+  })
+})
+
+it('cuts only the relayed link and reconnects to the same live host', async () => {
+  const host = createServer((socket) => socket.on('data', (data) => socket.write(data)))
+  host.listen(0, '127.0.0.1')
+  await once(host, 'listening')
+  const port = (host.address() as { port: number }).port
+  const hop = await relay('127.0.0.1', port)
+  const sockets = [hop.port, port].map((port) => createConnection(port, '127.0.0.1'))
+  const echo = async (socket: typeof sockets[number], text: string) => {
+    const got = once(socket, 'data')
+    socket.write(text)
+    expect(String((await got)[0])).toBe(text)
+  }
+  try {
+    await echo(sockets[0]!, 'first')
+    const closed = once(sockets[0]!, 'close')
+    hop.cut(true)
+    await closed
+    const refused = createConnection(hop.port, '127.0.0.1')
+    await once(refused, 'close')
+    await echo(sockets[1]!, 'still up')
+    hop.cut(false)
+    const restored = createConnection(hop.port, '127.0.0.1')
+    sockets.push(restored)
+    await echo(restored, 'again')
+  } finally {
+    for (const socket of sockets) socket.destroy()
+    await hop.stop()
+    await new Promise<void>((resolve) => host.close(() => resolve()))
+  }
+})
+
+it('lets the dummy add-in write only its one approved change to its Word fixture', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'journeys-word-'))
+  try {
+    const file = join(folder, 'dummy.docx')
+    const before = readFileSync(join(REPO, 'resources/work-templates/any/Meeting notes.docx'))
+    writeFileSync(file, before)
+    const fixture = wordFixture(file, '{{Meeting}}', 'Practice time')
+    expect(fixture.paragraphs()).toContain('{{Meeting}}')
+    expect(() => fixture.edit({ tracked: true, edit: { find: '{{Meeting}}', replace: 'Practice time' } })).toThrow('plain Word edit')
+    expect(readFileSync(file)).toEqual(before)
+    expect(fixture.edit({ tracked: false, edit: { find: '{{Meeting}}', replace: 'Practice time' } })).toBe(1)
+    expect(fixture.paragraphs()).toContain('Practice time')
+    expect(fixture.paragraphs()).not.toContain('{{Meeting}}')
+  } finally {
+    rmSync(folder, { recursive: true, force: true })
   }
 })

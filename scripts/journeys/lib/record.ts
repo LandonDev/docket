@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import type { Window } from './window'
 import { words, type Cleanup, type Pair, type Shape } from './shape'
 
 export type Context = {
@@ -8,6 +9,7 @@ export type Context = {
   shape: Shape
   workspace: Awaited<ReturnType<Pair['workspace']>>
   folder: string
+  evidencePage?: Window
 }
 type Step = { name: string; run(context: Context): void | Promise<void> }
 type Journey = { id: string; title: string; tier: number; shapes: readonly Shape[]; steps: readonly Step[] }
@@ -59,16 +61,17 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
           return undefined
         }
       }
+      const page = context.evidencePage ?? pair.page
       const picture = `${String(i + 1).padStart(2, '0')}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}.png`
       const [savedPicture, toasts, saveLine] = await Promise.all([
         evidence('picture', async () => {
-          await pair.page.shot(join(folder, picture))
+          await page.shot(join(folder, picture))
           return picture
         }),
-        evidence('toasts', () => pair.page.toasts()),
-        evidence('save line', () => pair.page.saveLine())
+        evidence('toasts', () => page.toasts()),
+        evidence('save line', () => page.saveLine())
       ])
-      entry.hostErrors = [...new Set(pair.hostErrors.slice(hostErrorStart))]
+      entry.hostErrors = [...new Set(context.evidencePage ? page.hostErrors : pair.hostErrors.slice(hostErrorStart))]
       if (savedPicture) entry.picture = `${spec.id}-${shape}/${savedPicture}`
       entry.toasts = toasts
       entry.saveLine = saveLine

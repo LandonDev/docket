@@ -1,6 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_THREAD_DEFAULTS } from '../../../src/shared/defaults'
 import { freePort, linkTools, sleep, TOOLS } from '../../e2e-work-lib'
@@ -8,6 +9,7 @@ import { withAppToken } from '../../lib/appToken'
 import { dummyLibrary, gioStub } from './files'
 import { seedFakeAccount, startFakeProvider } from './fakeProvider'
 import { until, Window } from './window'
+import { relay } from './relay'
 
 export const SHAPES = ['A', 'B1', 'B2', 'V', 'S', 'K', 'U'] as const
 export type Shape = typeof SHAPES[number]
@@ -17,7 +19,7 @@ export const KEY_CAPS = {
   read: ['read']
 } as const
 
-type Seat = 'win' | 'box' | 'desk'
+type Seat = 'win' | 'box' | 'desk' | 'given' | 'giver'
 type Instance = {
   name: Seat
   home: string
@@ -31,6 +33,7 @@ type Instance = {
   port: number
   host: string
   proc?: ChildProcess
+  halted?: boolean
 }
 type Workspace = { id: string; path: string; name: string }
 type Reply<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -52,7 +55,7 @@ async function instance(root: string, name: Seat): Promise<Instance> {
   return {
     name, home, data, tmp, work,
     remote: await freePort(),
-    ...(name === 'win' ? { debug: await freePort() } : {}),
+    ...(name === 'win' || name === 'given' ? { debug: await freePort() } : {}),
     workPort: await freePort(),
     log: join(root, name + '.log'),
     port: 0,
@@ -61,7 +64,7 @@ async function instance(root: string, name: Seat): Promise<Instance> {
 }
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
-type LaunchOptions = { fakeOrigin?: string; fullEditor?: boolean }
+type LaunchOptions = { fakeOrigin?: string; publicOrigin?: string }
 
 function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
@@ -74,6 +77,8 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     CLAUDE_CONFIG_DIR: join(inst.home, '.claude'),
     CODEX_HOME: join(inst.home, '.codex'),
     TEMP_CODE_USER_DATA: inst.data,
+    ...(['giver', 'given'].includes(inst.name) ? { TEMP_CODE_E2E_DEVICES: '1' } : {}),
+    ...(inst.name === 'giver' ? { TEMP_CODE_BUILD_PLATFORM: 'darwin' } : {}),
     TEMP_CODE_HEADLESS: inst.name === 'box' ? '1' : '0',
     TEMP_CODE_REMOTE_PORT: String(inst.remote),
     ...(inst.debug ? { TEMP_CODE_DEBUG_PORT: String(inst.debug) } : {}),
@@ -82,7 +87,7 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     TEMP_CODE_FAKE_PROVIDERS: options.fakeOrigin ?? 'http://127.0.0.1:9',
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_WORK_PORT: String(inst.workPort),
-    ...(inst.name === 'box' && options.fullEditor ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: `http://127.0.0.1:${inst.workPort}` } : {}),
+    ...(inst.name === 'box' && options.publicOrigin ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: options.publicOrigin } : {}),
     TEMP_CODE_APP_TOKEN_SEED: seed,
     TEMP_CODE_WORK_TOKEN_SEED: seed,
     AGENT_CLI_CREDENTIAL_STORE: 'file',
@@ -176,9 +181,18 @@ async function deskPort(inst: Instance, seed: string): Promise<number> {
 export class Pair {
   readonly seed = randomBytes(32).toString('hex')
   readonly abort = new AbortController()
-  private readonly keys: string[] = []
+  private readonly cleanups: (() => Promise<void>)[] = []
+  private readonly relays: Awaited<ReturnType<typeof relay>>[] = []
   private readonly instances: Instance[] = []
   private window?: Window
+  private winRelay?: Awaited<ReturnType<typeof relay>>
+  private launchOptions: LaunchOptions = {}
+  private bin = ''
+  private givenWindow?: Window
+  givenInstance?: Instance
+  private givenIdentity?: string
+  private giver?: Instance
+  guestOrigin?: string
   private fakeProvider?: ReturnType<typeof startFakeProvider>
   fakeMessages = 0
   private stopping = false
@@ -203,7 +217,7 @@ export class Pair {
     const proc = launch(this.repo, inst, this.seed, bin, options, tools)
     inst.proc = proc
     const early = (detail: string): void => {
-      if (!this.stopping) this.abort.abort(new Error(`${inst.name} exited early (${detail}). See ${inst.log}`))
+      if (!this.stopping && !inst.halted && inst.proc === proc) this.abort.abort(new Error(`${inst.name} exited early (${detail}). See ${inst.log}`))
     }
     proc.once('error', (error) => early(words(error)))
     proc.once('exit', (code, signal) => early(String(signal ?? code)))
@@ -230,7 +244,7 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; fullEditor?: boolean } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; cut?: boolean } = {}): Promise<Workspace> {
     this.win = await instance(this.root, 'win')
     this.box = await instance(this.root, 'box')
     this.desk = withDesk ? await instance(this.root, 'desk') : undefined
@@ -239,14 +253,29 @@ export class Pair {
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
     const tools = existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
     linkTools(this.box.data)
-    const bin = gioStub(this.root)
+    this.bin = gioStub(this.root)
+    if (options.cut) {
+      this.winRelay = await relay('127.0.0.1', this.box.remote)
+      this.relays.push(this.winRelay)
+    }
+    if (options.guests) {
+      const address = Object.values(networkInterfaces()).flat().find((row) => row?.family === 'IPv4' && !row.internal)?.address
+      if (address) {
+        const publicLink = await relay(address, this.box.workPort)
+        this.relays.push(publicLink)
+        this.guestOrigin = 'http://' + address + ':' + publicLink.port
+      }
+    }
     this.abort.signal.throwIfAborted()
     if (options.fake) {
       seedFakeAccount(join(this.box.data, 'aliax'))
       this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ })
     }
-    const fakeOrigin = this.fakeProvider?.url.origin
-    for (const inst of this.instances) this.start(inst, bin, { fullEditor: options.fullEditor, fakeOrigin }, inst === this.box ? tools : undefined)
+    this.launchOptions = {
+      fakeOrigin: this.fakeProvider?.url.origin,
+      publicOrigin: this.guestOrigin ?? (options.hosted ? 'http://127.0.0.1:' + this.box.workPort : undefined)
+    }
+    for (const inst of this.instances) this.start(inst, this.bin, this.launchOptions, inst === this.box ? tools : undefined)
     this.window = await Window.attach(this.win.debug!, this.abort.signal)
     const wait = (label: string, test: () => unknown | Promise<unknown>) => until(label, 90_000, test, this.abort.signal)
     await wait('local ports', async () => {
@@ -276,7 +305,7 @@ export class Pair {
     return { id, path, name }
   }
 
-  async mint(kind: keyof typeof KEY_CAPS, name: string): Promise<string> {
+  async mint(kind: keyof typeof KEY_CAPS, name: string): Promise<{ token: string; id: string }> {
     this.abort.signal.throwIfAborted()
     // Finish reading a mint even if a child exits, so the finally can revoke it.
     const key = await rpc<{ token: string; id?: string; key?: { id: string } }>(this.box, 'remote.keys.create', {
@@ -284,13 +313,12 @@ export class Pair {
     }, this.seed, 15_000)
     const id = key.id ?? key.key?.id
     if (!id) throw new Error('Key creation returned no key id')
-    this.keys.push(id)
-    return key.token
+    return { token: key.token, id }
   }
 
   private async link(inst: Instance): Promise<void> {
-    const key = await this.mint('owner', `Journey ${inst.name}`)
-    await this.rpc(inst, 'remote.environments.add', { url: `http://127.0.0.1:${this.box.remote}`, key, name: 'box' })
+    const { token: key } = await this.mint('owner', `Journey ${inst.name}`)
+    await this.rpc(inst, 'remote.environments.add', { url: `http://127.0.0.1:${inst === this.win ? this.winRelay?.port ?? this.box.remote : this.box.remote}`, key, name: 'box' })
     await until(`${inst.name} registers with box`, 90_000, async () => {
       const rows = await this.rpc<{ environmentId: string; registered: boolean }[]>(inst, 'macBridge.policy.get')
       return rows.some((row) => row.environmentId === this.box.host && row.registered)
@@ -298,34 +326,176 @@ export class Pair {
     await this.rpc(inst, 'macBridge.policy.set', { environmentId: this.box.host, policy: 'read+run' })
   }
 
+  later(cleanup: () => Promise<void>): void {
+    this.cleanups.push(cleanup)
+  }
+
+  async afterWalk(): Promise<void> {
+    const errors: unknown[] = []
+    for (const cleanup of this.cleanups.splice(0).reverse()) {
+      try {
+        await cleanup()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    if (errors.length) throw new Error(errors.map(words).join(' | '))
+  }
+
+  cutWindowLink(on: boolean): void {
+    if (!this.winRelay) throw new Error('This run has no socket hop for win')
+    this.winRelay.cut(on)
+  }
+
+  async halt(inst: Instance): Promise<void> {
+    inst.halted = true
+    const pid = inst.proc?.pid
+    if (pid) kill(-pid, 'SIGTERM')
+    await sleep(750)
+    if (pid) kill(-pid, 'SIGKILL')
+    inst.port = 0
+    for (const owned of instancePids(inst.data)) kill(owned, 'SIGKILL')
+    await until(inst.name + ' to stop', 5000, () => !instancePids(inst.data).length)
+  }
+
+  async restart(inst: Instance): Promise<void> {
+    if (!inst.halted) return
+    inst.halted = false
+    if (inst === this.win) this.window?.close()
+    this.start(inst, this.bin, this.launchOptions)
+    if (inst === this.win) {
+      this.window = await Window.attach(inst.debug!, this.abort.signal)
+      await this.page.until('win’s own listener after relaunch', 30_000, async () =>
+        (inst.port = (await this.page.eval<number>('window.api?.getServerPort?.()')) ?? 0))
+    } else {
+      await until('desk’s own listener after relaunch', 35_000, async () => (inst.port = await deskPort(inst, this.seed)), this.abort.signal)
+      await until('desk registers again', 35_000, async () => {
+        const rows = await this.rpc<{ environmentId: string; registered: boolean }[]>(inst, 'macBridge.policy.get')
+        return rows.some((row) => row.environmentId === this.box.host && row.registered)
+      }, this.abort.signal)
+    }
+  }
+
+  async deviceWindow(): Promise<Window> {
+    if (this.givenWindow) return this.givenWindow
+    const giver = this.giver = await instance(this.root, 'giver')
+    this.instances.push(giver)
+    this.start(giver, this.bin, this.launchOptions)
+    await until('the giver’s listener', 30_000, async () => (giver.port = await deskPort(giver, this.seed)), this.abort.signal)
+    const box = { envId: this.box.host, origin: 'http://127.0.0.1:' + this.box.remote }
+    const owner = await this.mint('owner', 'Journey giver')
+    await this.rpc(this.box, 'devices.setGiver', { keyId: owner.id, name: 'Journey giver' })
+    await this.rpc(giver, 'remote.environments.add', { url: box.origin, key: owner.token, name: 'box' })
+    type Identity = { envId: string; identity: { signPublic: string; sealPublic: string } }
+    const from = await this.rpc<Identity>(giver, 'devices.proof', { op: 'identity' })
+    await until('the giver is claimed on box', 30_000, async () => {
+      const { giver } = await this.rpc<{ giver: { identity?: Identity['identity'] } | null }>(this.box, 'devices.giver')
+      return giver?.identity?.signPublic === from.identity.signPublic
+    }, this.abort.signal)
+    const inst = this.givenInstance = await instance(this.root, 'given')
+    this.instances.push(inst)
+    this.start(inst, this.bin, this.launchOptions)
+    const page = await Window.attach(inst.debug!, this.abort.signal)
+    await page.until('the given computer’s listener', 35_000, async () =>
+      (inst.port = (await page.eval<number>('window.api?.getServerPort?.()')) ?? 0))
+    await page.clickOn('[role="dialog"] button', 'Skip')
+    try {
+      const key = await this.mint('read', 'Journey given computer')
+      const who = await this.rpc<Identity>(inst, 'devices.proof', { op: 'identity' })
+      this.givenIdentity = who.envId
+      const give = await this.rpc<{ activated: boolean; manifested: boolean }>(giver, 'devices.proof', {
+        op: 'give', args: { ...who, keyId: key.id, generation: 1, name: 'Journey given computer' }
+      })
+      if (!give.activated || !give.manifested) throw new Error('The isolated giver did not activate the computer')
+      const pin = await this.rpc<{ environment: { id: string; caps: string[] } }>(inst, 'devices.proof', {
+        op: 'pin', args: {
+          giver: { signPublic: from.identity.signPublic, envId: from.envId, name: 'Journey giver' },
+          box, boxKey: key.token, name: 'box', generation: 1
+        }
+      })
+      if (pin.environment.id !== box.envId || !KEY_CAPS.device.every((cap) => pin.environment.caps.includes(cap)) || pin.environment.caps.includes('admin')) {
+        throw new Error('The given computer did not receive its own device key')
+      }
+      await page.eval('window.__monocode.loadSavedEnvironments()')
+      const host = JSON.stringify(this.box.host)
+      await page.until('the given computer’s proved link to box', 35_000, () => page.eval(
+        `window.__monocode.registry.has(${host}) && window.__monocode.registry.statusOf(${host}).transport === 'open'
+          && window.__monocode.registry.linkOf(${host}).request('workspace.list').then(() => true, () => false)`
+      ))
+      this.givenWindow = page
+      return page
+    } catch (error) {
+      page.close()
+      throw error
+    }
+  }
+
   async stop(): Promise<Cleanup> {
     this.stopping = true
     const result: Cleanup = { revoked: [], remainingPids: [], errors: [] }
+    const local = <T>(inst: Instance, method: string, params: unknown = {}) => rpc<T>(inst, method, params, this.seed, 5000)
     try {
-      for (const id of this.keys) {
+      await this.afterWalk().catch((error) => result.errors.push(words(error)))
+      if (this.givenIdentity && this.giver) {
         try {
-          const revoked = await rpc<boolean>(this.box, 'remote.keys.revoke', { id }, this.seed, 5000)
-          if (!revoked) throw new Error(`Revocation of ${id} returned false`)
-          result.revoked.push(id)
-          console.log(`Revoked key ${id}`)
+          const envId = this.givenIdentity
+          await local(this.giver, 'devices.computer', { envId, action: 'remove' })
+          await until('the given computer’s key to be revoked', 25_000, async () => {
+            const { bindings } = await local<{ bindings: { envId: string; keyId: string }[] }>(this.box, 'devices.list')
+            const id = bindings.find((row) => row.envId === envId)?.keyId
+            const keys = await local<{ id: string }[]>(this.box, 'remote.keys.list')
+            if (id && keys.some((key) => key.id === id)) return false
+            if (id) result.revoked.push(id)
+            return true
+          })
         } catch (error) {
           result.errors.push(words(error))
         }
       }
-      if (this.keys.length) {
+      if (this.box?.port && this.launchOptions.publicOrigin) {
         try {
-          const live = await rpc<{ id: string }[]>(this.box, 'remote.keys.list', {}, this.seed, 5000)
-          if (live.some(({ id }) => this.keys.includes(id))) result.errors.push('A journey key is still live')
+          const list = async () => (await local<{ keys: { id: string; name: string }[] }>(this.box, 'work.office.addin.list')).keys
+          for (const { id } of (await list()).filter(({ name }) => name === 'Journey Word')) {
+            if (!(await local<{ removed: boolean }>(this.box, 'work.office.addin.remove', { id })).removed) throw new Error('The dummy Word key did not revoke')
+            result.revoked.push(id)
+          }
+          if ((await list()).some(({ name }) => name === 'Journey Word')) result.errors.push('A dummy Word key is still live')
         } catch (error) {
           result.errors.push(words(error))
+        }
+      }
+      // Only this run can mint credentials in these fresh databases, including portal and setup-link credentials.
+      for (const inst of this.instances) {
+        for (const [list, revoke] of [
+          ['remote.pairings.list', 'remote.pairings.revoke'],
+          ['remote.sessions.list', 'remote.sessions.revoke'],
+          ['remote.keys.list', 'remote.keys.revoke'],
+          ['work.guests.list', 'work.guests.revoke']
+        ] as const) {
+          if (!inst.port || inst.halted) break
+          if (list === 'work.guests.list' && inst !== this.box) continue
+          try {
+            const live = async () => (await local<{ id: string; revokedAt?: number | null; endedAt?: number | null }[]>(inst, list))
+              .filter((row) => !row.revokedAt && !row.endedAt)
+            for (const { id } of await live()) {
+              const reply = await local<boolean>(inst, revoke, list === 'work.guests.list' ? { linkId: id } : { id })
+              if (reply === false) throw new Error(revoke + ' returned false for ' + id)
+              result.revoked.push(id)
+            }
+            if ((await live()).length) result.errors.push(list + ' still has live entries')
+          } catch (error) {
+            result.errors.push(words(error))
+          }
         }
       }
     } finally {
+      for (const hop of this.relays) await hop.stop().catch((error) => result.errors.push(words(error)))
       await this.fakeProvider?.stop(true)
       this.window?.close()
-      for (const inst of this.instances) if (inst.proc?.pid) kill(-inst.proc.pid, 'SIGTERM')
+      this.givenWindow?.close()
+      for (const inst of this.instances) if (!inst.halted && inst.proc?.pid) kill(-inst.proc.pid, 'SIGTERM')
       await sleep(750)
-      for (const inst of this.instances) if (inst.proc?.pid) kill(-inst.proc.pid, 'SIGKILL')
+      for (const inst of this.instances) if (!inst.halted && inst.proc?.pid) kill(-inst.proc.pid, 'SIGKILL')
       for (let i = 0; i < 10; i++) {
         result.remainingPids = instancePids(this.root)
         if (!result.remainingPids.length) break

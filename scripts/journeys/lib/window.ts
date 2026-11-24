@@ -40,7 +40,7 @@ export class Window {
 
   private constructor(private readonly cdp: Cdp, private readonly signal: AbortSignal) {}
 
-  static async attach(port: number, signal: AbortSignal, matchesPage?: (url: string) => boolean): Promise<Window> {
+  static async attach(port: number, signal: AbortSignal, matchesPage?: (url: string) => boolean, width = 1280): Promise<Window> {
     const cdp = await attach(port, 120_000, signal, matchesPage)
     const window = new Window(cdp, signal)
     try {
@@ -59,7 +59,7 @@ export class Window {
         }
       })
       await cdp.send('Network.enable')
-      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false })
+      await window.resize(width)
       return window
     } catch (error) {
       cdp.close()
@@ -79,12 +79,12 @@ export class Window {
     this.cdp.close()
   }
 
-  async click({ x, y }: Point, count = 1, button: 'left' | 'right' = 'left'): Promise<void> {
+  async click({ x, y }: Point, count = 1, button: 'left' | 'right' = 'left', modifiers?: number): Promise<void> {
     this.signal.throwIfAborted()
     await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
     for (let c = 1; c <= count; c++) {
       for (const type of ['mousePressed', 'mouseReleased']) {
-        await this.cdp.send('Input.dispatchMouseEvent', { type, x, y, button, clickCount: c })
+        await this.cdp.send('Input.dispatchMouseEvent', { type, x, y, button, ...(modifiers === undefined ? {} : { modifiers }), clickCount: c })
       }
     }
   }
@@ -156,6 +156,14 @@ export class Window {
 
   async closePage(): Promise<void> {
     await this.cdp.send('Page.close')
+  }
+
+  async resize(width: number): Promise<void> {
+    await this.cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false })
+  }
+
+  async navigate(url: string): Promise<void> {
+    await this.cdp.send('Page.navigate', { url })
   }
 
   async reload(): Promise<void> {

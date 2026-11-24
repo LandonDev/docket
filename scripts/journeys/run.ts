@@ -24,11 +24,25 @@ import j22 from './J22-full-sheet-editor'
 import j23 from './J23-legacy-copies'
 import j25 from './J25-document-history'
 import j26 from './J26-print-editors'
+import j20 from './J20-guest-link'
+import j21 from './J21-office-live'
+import j24 from './J24-away-library'
+import j27 from './J27-show-clicker'
+import j28 from './J28-templates'
+import j29 from './J29-held-word'
+import j30 from './J30-direct-undo'
+import j31 from './J31-thread-file'
+import j52 from './J52-return'
+import j53 from './J53-work-switch'
+import j54 from './J54-pair-computer'
+import j56 from './J56-link-loss'
+import j57 from './J57-two-windows'
+import j58 from './J58-chat-starts'
 import { mainCheckout, saveResults, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j22, j23, j25, j26]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j52, j53, j54, j56, j57, j58]
 
 export function options(args: string[]) {
   const { values } = parseArgs({
@@ -39,7 +53,8 @@ export function options(args: string[]) {
       tier: { type: 'string' },
       list: { type: 'boolean' },
       keep: { type: 'boolean' },
-      desk: { type: 'boolean' }
+      desk: { type: 'boolean' },
+      'no-table': { type: 'boolean' }
     }
   })
   const ids = values.only?.split(',')
@@ -52,7 +67,7 @@ export function options(args: string[]) {
     return spec.shapes.filter((shape) => !shapes || shapes.includes(shape)).map((shape) => ({ spec, shape }))
   })
   if (!jobs.length) throw new Error('No journeys match those flags')
-  return { jobs, list: values.list, keep: values.keep, desk: values.desk || jobs.some(({ shape }) => shape === 'B2') }
+  return { jobs, list: values.list, keep: values.keep, noTable: values['no-table'], desk: values.desk || jobs.some(({ shape }) => shape === 'B2') }
 }
 
 export function requireBuild(repo: string): void {
@@ -92,8 +107,10 @@ async function main(): Promise<number> {
   console.log(`Journey run ${root}`)
   try {
     const setup = {
-      fake: flags.jobs.some(({ spec }) => spec.id === 'J12'),
-      fullEditor: flags.jobs.some(({ spec }) => spec.id === 'J22')
+      fake: flags.jobs.some(({ spec }) => ['J12', 'J31', 'J58'].includes(spec.id)),
+      hosted: flags.jobs.some(({ spec }) => spec.id === 'J22' || spec.id === 'J29'),
+      guests: flags.jobs.some(({ spec }) => spec.id === 'J20'),
+      cut: flags.jobs.some(({ spec }) => spec.id === 'J56')
     }
     for (const [i, { spec, shape }] of flags.jobs.entries()) {
       pair.abort.signal.throwIfAborted()
@@ -102,6 +119,7 @@ async function main(): Promise<number> {
       const folder = join(root, `${spec.id}-${shape}`)
       results.journeys.push(await walk(spec, { pair, shape, workspace, folder }, stop))
       saveResults(root, results)
+      await pair.afterWalk()
     }
     pair.abort.signal.throwIfAborted()
   } catch (error) {
@@ -111,7 +129,7 @@ async function main(): Promise<number> {
     try {
       results.cleanup = await pair.stop()
       if (!flags.keep && !results.cleanup.remainingPids.length && !results.cleanup.errors.length) {
-        for (const seat of ['win', 'box', 'desk']) {
+        for (const seat of ['win', 'box', 'desk', 'given', 'giver']) {
           for (const suffix of ['home', 'data', 'tmp']) rmSync(join(root, seat + '-' + suffix), { recursive: true, force: true })
         }
         rmSync(join(root, 'bin'), { recursive: true, force: true })
@@ -125,7 +143,7 @@ async function main(): Promise<number> {
       saveResults(root, results)
     }
   }
-  writeJourneysTable(join(base, 'plans/landed/POLISH-work.md'), results)
+  if (!flags.noTable) writeJourneysTable(join(base, 'plans/landed/POLISH-work.md'), results)
   console.log(`Results ${join(root, 'results.json')}`)
   const failed = results.error || results.cleanup?.errors.length || results.cleanup?.remainingPids.length
     || results.journeys.some(({ steps }) => steps.some((step) => step.error))
