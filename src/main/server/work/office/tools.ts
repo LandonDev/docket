@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { heldChange } from '../outbox/words'
 import { z, type ZodType } from 'zod'
 import { OfficeCellSchema, type OfficeCell } from '@shared/contract-work-office'
 import { workText, type Principal, type WorkToolResult } from '@shared/work'
@@ -356,7 +357,7 @@ async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string
   const spots = 'find' in edit ? spotsOf(texts, edit.find) : undefined
   const placed = 'find' in edit ? placedOf(texts, edit.find) : undefined
   const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(spots ? { spots, placed } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
-  return workText(`Others can open ${name}, so nothing in it changed: "${item.summary}" waits for the owner, and nobody else sees it. It is written only when he approves it.`)
+  return workText(heldChange(item as { n?: number | null; ref?: { id: string } }, 'Nothing in the file changed.'))
 }
 
 /** A file's name from its key: the last part of a path or a URL, without a query. */

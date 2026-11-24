@@ -56,7 +56,7 @@ describe('every agent route into a folder others can open', () => {
       ['files_copy', { place: 'folder', paths: ['notes.txt'], to: { place: 'Events', path: '' } }],
       ['files_trash', { place: 'General', paths: ['Plan.docx'] }]
     ] as const)
-      expect((await tool(name, args)).text, name).toMatch(/^Held as item \d+\./)
+      expect((await tool(name, args)).text, name).toMatch(/^Held as item \d+: /)
     expect(held).toHaveLength(5)
     // The wire itself: a thread's change by work.files.* is refused, whatever it claims.
     for (const [method, params] of [

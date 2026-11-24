@@ -191,7 +191,7 @@ describe('a held edit on a live file', () => {
     const { carrier, run } = box(hubWith(ADDIN_KEY, doc, ops), vmWord)
     expect(text(await run('office_doc_read', { document: TAB }))).toContain('Draft one.')
     const r = await run('office_doc_edit', { document: TAB, find: 'one', replace: 'two', because: 'own' })
-    expect(text(r)).toMatch(/nothing in it changed/)
+    expect(text(r)).toMatch(/Nothing in the file changed/)
     expect(held).toHaveLength(1)
     expect(held[0]).toMatchObject({ kind: 'office.edit', payload: { app: 'word', key: ADDIN_KEY, places: 1 } })
     expect(held[0]!.payload).not.toHaveProperty('vm')

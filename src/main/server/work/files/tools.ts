@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { heldChange } from '../outbox/words'
 import { basename, dirname } from 'node:path'
 import { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
@@ -454,7 +455,7 @@ async function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEnt
   if (payload.into && at.group && at.group !== at.name) payload.into = { ...payload.into, name: `${at.group}, ${at.name}` }
   const held = ctx.held.create({ kind: 'file.act', sessionId: ctx.sessionId, payload }) as { n?: number | null; summary: string; ref: { id: string } }
   return {
-    ...workText(`Held as item ${held.n ?? held.ref.id}. It waits for the owner's press: ${held.summary} This is a finished step, not a failure: do not ask him to press, and do not look for another way to do it.`),
+    ...workText(heldChange(held, 'Nothing in the place changed.')),
     structuredContent: { held: held.n ?? held.ref.id }
   }
 }

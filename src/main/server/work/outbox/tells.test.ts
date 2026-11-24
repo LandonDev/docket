@@ -4,7 +4,7 @@ import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
 import type { Tell } from '@shared/work/tell'
 import type { ActKindDef, Caller, WorkCtx } from '../modules'
 import { seenBy } from './index'
-import { PRIVATE_ERROR } from './words'
+import { discardedNote, failedNote, heldChange, PRIVATE_ERROR, sentNote, staleNote } from './words'
 import { OfficeCalendarSchema } from '../office/held'
 import { calendarOpKind } from './lifeosHeld'
 import { failedKey, heldKey, offerKey, OUTBOX_TELLS, syncTells, tellFailed, tellHeld, tellOffer, WAITING_MAX, type TellsDeps, type TellsSource } from './tells'
@@ -100,12 +100,31 @@ describe('a held change to a file others can open', () => {
     const read = seenBy({ kind: 'remote', caps: ['read', 'operate'] }, rename)
     expect(JSON.stringify(read)).not.toMatch(/Layoffs/)
     expect(read.payload).toMatchObject({ verb: 'rename', things: [{ name: 'Plan.docx' }] })
+    // Its card's display alone: no refs, no digest, no operation id, no versions.
+    expect(Object.keys(read.payload as object).sort()).toEqual(['audience', 'from', 'request', 'things', 'verb'])
+    expect(read.payload).not.toHaveProperty('digest')
+    expect(read.payload).not.toHaveProperty('op')
     told = []
     tellHeld(deps, rename)
     expect(told[0]!.title).toBe('Held: a change to a file others can open')
     // Every other kind is listed as before.
     const mail = item()
     expect(seenBy({ kind: 'remote', caps: ['read'] }, mail)).toBe(mail)
+  })
+})
+
+describe("a thread's own lines about its held change", () => {
+  it('name the item and the plain line, never the file, the words or a reason that could quote them; other kinds as before', () => {
+    const row = { n: 3, kind: 'office.edit', summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', error: 'Brief.docx changed since: "Q3 draft" stands in other paragraphs now.', decidedBy: 'owner' }
+    const lines = [sentNote(row), failedNote(row), discardedNote(row), staleNote(row), heldChange({ n: 3 }, 'Nothing in the file changed.')]
+    for (const line of lines) {
+      expect(line).toContain('a change to a file others can open')
+      expect(line).not.toMatch(/Brief|Q3/)
+    }
+    expect(staleNote(row)).toContain('read the file again and propose it again')
+    const mail = { ...row, kind: 'office.mail.send', summary: 'Send to Dana Reyes: Re: budget', error: 'Outlook is not open.' }
+    expect(failedNote(mail)).toContain('Send to Dana Reyes: Re: budget')
+    expect(failedNote(mail)).toContain('Outlook is not open.')
   })
 })
 

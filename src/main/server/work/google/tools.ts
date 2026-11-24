@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { heldChange } from '../outbox/words'
 import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { SheetCell } from 'work-kit/sheet/source'
@@ -50,7 +51,7 @@ const tool = <S extends z.ZodRawShape>(t: { name: string; description: string; i
 /** An agent's change, held on this host for his press: nothing of it is in Google until then. */
 function held(ctx: ToolCtx, edit: GoogleEdit): WorkToolResult {
   const item = ctx.held.create({ kind: 'google.edit', sessionId: ctx.sessionId, account: edit.account, payload: edit })
-  return workText(`Held for the owner: "${item.summary}". Nothing went to Google and nobody else sees it; it is written only when he approves it.`)
+  return workText(heldChange(item as { n?: number | null; ref?: { id: string } }, 'Nothing went to Google.'))
 }
 
 /** A cell an agent writes: a formula when it starts with `=`, else the value. */

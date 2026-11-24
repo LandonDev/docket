@@ -68,8 +68,9 @@ export function seenBy(by: Caller, item: OutboxItem): OutboxItem {
   // A Files act keeps the things it names as they are (a reader draws its card from them), less the name it would give.
   if (item.kind === 'file.act') {
     const p = item.payload as FileAct
-    const { name: _proposed, ...request } = p.request
-    return { ...item, summary: summaryFor(item), error, payload: { ...p, request }, result: item.result ? { summary: item.state === 'sent' ? item.result.summary : PRIVATE_CHANGE } : null }
+    // What its card draws, and nothing else: no refs, no digest, no operation id, no versions, no name it would give.
+    const card = { verb: p.verb, request: { ...(p.request.kind ? { kind: p.request.kind } : {}) }, things: p.things.map((t) => ({ name: t.name })), from: p.from, ...(p.into ? { into: { place: p.into.place, name: p.into.name, trail: p.into.trail } } : {}), audience: p.audience }
+    return { ...item, summary: summaryFor(item), error, payload: card, result: item.result ? { summary: item.state === 'sent' ? item.result.summary : PRIVATE_CHANGE } : null }
   }
   return { ...item, summary: summaryFor(item), error, payload: null, result: item.result ? { summary: item.result.summary } : null }
 }

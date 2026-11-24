@@ -285,7 +285,7 @@ describe('Word edits', () => {
     const short = word('one, one', { does: (t) => t.replace('one', 'two') })
     expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false }, short.apps)).toBe(1)
     // Told what his press was shown, the script reads it again in the same call and writes nothing on another count,
-    nor when a match moved to another paragraph with the count alike; as shown, it writes.
+    // nor when a match moved to another paragraph with the count alike; as shown, it writes.
     const added = word('one, one, one')
     expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false, bound: { places: 2, at: [[0, 'one, one, one']] } }, added.apps)).toEqual({ refused: 'The words stand in 3 places now, not the 2 shown.' })
     expect([added.finds, added.text()]).toEqual([[], 'one, one, one'])

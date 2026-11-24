@@ -351,16 +351,23 @@ describe("a thread's change", () => {
 
   it('to a file others can open, or into a folder they can, is held for his press, a delete there too, which his press sends to Drive\'s bin alone', async () => {
     const held = await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], name: 'Letter' })
-    expect(held.text).toMatch(/^Held as item 1\. It waits for the owner's press: Rename Open letter to Letter in landon@example\.com\. Whoever landon@example\.com is shared with can open it\./)
+    expect(held.text).toMatch(/^Held as item 1: a change to a file others can open\. /)
     expect(fake.files.get('dOpen')!.name).toBe('Open letter')
     const into = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Staff' } })
-    expect(into.text).toMatch(/^Held as item 2\. .*Move Budget to landon@example\.com, Staff\./)
+    expect(into.text).toMatch(/^Held as item 2: /)
     const inside = await tool('files_make', { place: PLACE_ID, path: 'Staff', kind: 'sheet', name: 'Roster' })
-    expect(inside.text).toMatch(/^Held as item 3\. .*Make Roster in landon@example\.com, Staff\./)
+    expect(inside.text).toMatch(/^Held as item 3: /)
     expect(fake.files.get('sBudget')!.parents).toEqual([FAKE_ROOT])
     expect(results).toEqual([])
     const deleted = await tool('files_trash', { place: PLACE_ID, paths: ['Staff/Plan'] })
-    expect(deleted.text).toMatch(/^Held as item 4\. .*Delete Plan from landon@example\.com, Staff\./)
+    expect(deleted.text).toMatch(/^Held as item 4: /)
+    // The thread's own result names nothing; the item says what it is, to his press.
+    expect(outbox.store.list({}).map((r) => r.summary)).toEqual([
+      expect.stringMatching(/^Rename Open letter to Letter in landon@example\.com\./),
+      expect.stringMatching(/^Move Budget to landon@example\.com, Staff\./),
+      expect.stringMatching(/^Make Roster in landon@example\.com, Staff\./),
+      expect.stringMatching(/^Delete Plan from landon@example\.com, Staff\./)
+    ])
     expect(fake.files.get('dPlan')!.trashed).toBe(false)
     // His press runs each as his window's change.
     const rows = outbox.store.list({})
@@ -380,7 +387,7 @@ describe("a thread's change", () => {
 
   it("makes a held New under the name its card showed or not at all: one taken there since is stale, never 'Agenda 2'", async () => {
     const held = await tool('files_make', { place: PLACE_ID, path: 'Staff', kind: 'document', name: 'Agenda' })
-    expect(held.text).toMatch(/^Held as item 1\./)
+    expect(held.text).toMatch(/^Held as item 1: /)
     // A co-author makes "agenda" in Staff before his press.
     fake.addItem(ME, 'dTheirs', 'agenda', GOOGLE_MIME.doc, { parents: ['fStaff'] })
     const [row] = outbox.store.list({})
@@ -391,7 +398,7 @@ describe("a thread's change", () => {
   it('goes stale when the folder it goes to was moved under another folder, its id, name and sharing alike', async () => {
     fake.addFolder(ME, 'fOther', 'Other team', { shared: true })
     const into = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Staff' } })
-    expect(into.text).toMatch(/^Held as item 1\./)
+    expect(into.text).toMatch(/^Held as item 1: /)
     const [row] = outbox.store.list({})
     expect((row!.payload as FileAct).into?.parents).toEqual(expect.any(Array))
     // Someone moves Staff into another team's folder: Drive keeps its id, its name and its sharing.
@@ -403,7 +410,7 @@ describe("a thread's change", () => {
   it('to a file in a folder this client cannot see is held: unknown sharing counts as shared, My Drive\'s top as his', async () => {
     // Scan.pdf lies in a folder of his TempCode cannot read the facts of: others may open it.
     const held = await tool('files_move', { place: PLACE_ID, paths: ['Scan.pdf'], name: 'Scan 2.pdf' })
-    expect(held.text).toMatch(/^Held as item 1\./)
+    expect(held.text).toMatch(/^Held as item 1: /)
     expect(fake.files.get('pScan')!.name).toBe('Scan.pdf')
     // Budget lies at My Drive's top, which drive.file cannot read either: that is his own, and the change runs.
     const ran = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], name: 'Budget 2' })

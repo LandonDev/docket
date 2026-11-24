@@ -212,7 +212,9 @@ describe('in a place others can open a change is held as a file.act', () => {
   it('holds a move into a channel with one sentence that carries every fact, bound to the file and the folder', async () => {
     const ctx = toolCtx(workCtx())
     const got = await call('files_move', { place: 'folder', paths: ['Budget.xlsx'], to: { place: TEAM_EVENTS, path: '' } }, ctx)
-    expect(got.text).toMatch(/^Held as item 1\. It waits for the owner's press: Move Budget\.xlsx to Esports Staff, Events\. Everyone in Esports Staff can open it\./)
+    // The thread's result names the item and nothing of the change: its transcript is read by any key that may read the thread.
+    expect(got.text).toMatch(/^Held as item 1: a change to a file others can open\. /)
+    expect(got.text).not.toMatch(/Budget/)
     expect(existsSync(join(rig.folder, 'Budget.xlsx'))).toBe(true)
     expect(existsSync(join(rig.team, 'Events', 'Budget.xlsx'))).toBe(false)
     const [item] = outbox.store.list({})
@@ -233,7 +235,7 @@ describe('in a place others can open a change is held as a file.act', () => {
       await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: TEAM_GENERAL, path: 'Budgets' } }, ctx),
       await call('files_copy', { place: 'folder', paths: ['notes.txt'], to: { place: 'My OneDrive', path: '' } }, ctx)
     ]
-    for (const got of held) expect(got.text).toMatch(/^Held as item \d+\. It waits for the owner's press: /)
+    for (const got of held) expect(got.text).toMatch(/^Held as item \d+: a change to a file others can open\. /)
     expect(outbox.store.list({}).map((r) => r.summary)).toEqual([
       'Make Agenda.txt in Esports Staff, General. Everyone in Esports Staff can open it.',
       'Rename Plan.docx to Plan v2.docx in Esports Staff, General. Everyone in Esports Staff can open it.',
@@ -245,7 +247,7 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
     // A delete there is held too: nothing goes until his press.
     const deleted = await call('files_trash', { place: TEAM_GENERAL, paths: ['Plan.docx'] }, ctx)
-    expect(deleted.text).toMatch(/^Held as item \d+\. It waits for the owner's press: /)
+    expect(deleted.text).toMatch(/^Held as item \d+: a change to a file others can open\. /)
     expect(outbox.store.list({}).at(-1)!.summary).toBe('Delete Plan.docx from Esports Staff, General. Everyone in Esports Staff can open it.')
     expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
     const out = await call('files_move', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: 'folder', path: '' } }, ctx)
@@ -265,7 +267,7 @@ describe('in a place others can open a change is held as a file.act', () => {
       await call('files_copy', { place: 'folder', paths: ['Plan.docx'], to: { place: 'folder', path: 'Archive' } }, ctx),
       await call('files_move', { place: 'folder', paths: ['Plan.docx'], name: 'Plan v2.docx' }, ctx)
     ]
-    for (const got of held) expect(got.text).toMatch(/^Held as item \d+\. It waits for the owner's press: /)
+    for (const got of held) expect(got.text).toMatch(/^Held as item \d+: a change to a file others can open\. /)
     expect(readdirSync(synced).sort()).toEqual(['Archive', 'Plan.docx'])
     expect(existsSync(join(synced, 'Archive', 'Plan.docx'))).toBe(false)
     expect(existsSync(join(synced, 'Plan v2.docx'))).toBe(false)
@@ -288,7 +290,7 @@ describe('in a place others can open a change is held as a file.act', () => {
     setRoots(rig.db, [{ folder: join(rig.folder, 'Team share') }])
     forgetLibraries(rig.db)
     const inside = await call('files_make', { place: 'folder', path: 'Team share', kind: 'text', name: 'Inside' }, ctx)
-    expect(inside.text).toMatch(/^Held as item \d+\./)
+    expect(inside.text).toMatch(/^Held as item \d+: /)
     expect(readdirSync(join(rig.folder, 'Team share'))).toEqual([])
     // The rest of his own folder still runs at once.
     expect((await call('files_make', { place: 'folder', kind: 'text', name: 'Mine' }, ctx)).text).toMatch(/^Made Mine\.md in Dummy Esports\./)
@@ -302,7 +304,7 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect(sent).toMatchObject({ state: 'sent', result: { summary: 'Moved: Budget.xlsx.' } })
     expect(existsSync(join(rig.team, 'Events', 'Budget.xlsx'))).toBe(true)
     expect(existsSync(join(rig.folder, 'Budget.xlsx'))).toBe(false)
-    expect(whispers).toEqual(['The owner sent held item 1 (Move Budget.xlsx to Esports Staff, Events. Everyone in Esports Staff can open it.).'])
+    expect(whispers).toEqual(['The owner sent held item 1 (a change to a file others can open).'])
     // A second press runs nothing.
     expect(await press({ ref: { at: 'host', id: row!.id } })).toMatchObject({ state: 'sent' })
   })
@@ -462,7 +464,8 @@ describe('in a place others can open a change is held as a file.act', () => {
     const mac = workCtx({ host: 'env_mac', far: farBox })
     const ctx = toolCtx(mac)
     const got = await call('files_move', { place: TEAM_GENERAL, host: rig.ctx.host, paths: ['Spring budget.xlsx'], to: { place: TEAM_GENERAL, path: 'Budgets' } }, ctx)
-    expect(got.text).toMatch(/^Held as item 1\. It waits for the owner's press: Move Spring budget\.xlsx to Esports Staff, General, Budgets\./)
+    expect(got.text).toMatch(/^Held as item 1: a change to a file others can open\. /)
+    expect(outbox.store.list({})[0]!.summary).toMatch(/^Move Spring budget\.xlsx to Esports Staff, General, Budgets\./)
     const [row] = outbox.store.list({})
     const p = row!.payload as FileAct
     expect(p.host).toBe(rig.ctx.host)

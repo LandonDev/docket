@@ -167,7 +167,19 @@ open, every way an agent's change is seen or taken asks it:
   or failed), and so its digest row and a webhook's line, says the same, with
   the item's link and no detail: no file name, no words
   (`PRIVATE_CHANGE_KINDS`, outbox/words.ts). Files Home's Waiting on you names
-  a held act's proposed name only to his press (files/waiting.ts).
+  a held act's proposed name only to his press (files/waiting.ts). A
+  `file.act`'s card to such a caller carries its display alone (no refs,
+  digest, operation id or versions).
+- The thread (round 3): the tool that holds such a change answers its thread
+  with the item's number and the plain line (`heldChange`), and the Outbox's
+  lines to the thread when it ends (sent, failed, discarded, stale) name it
+  the same way, with no reason that could quote its words: the thread's
+  transcript is read by any key that may read the thread. The thread made
+  the change and knows what it proposed. Still open, for the owner: the
+  transcript also holds the thread's own tool call, its arguments with the
+  proposed words, and the agent's prose, which every key with `read` on the
+  thread is sent (wire.ts `projectRow`, one projection for every remote
+  socket); hiding them from a key that may not approve is the shell's.
 
 ## Add-on tools: the rule he sets
 
