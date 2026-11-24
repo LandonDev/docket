@@ -139,7 +139,7 @@ async function waiting(ctx: WorkCtx, by: Caller, workspaceId: string, tab: FileT
 function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): void {
   const r = tab.copyOf ? keptDoc(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
   if (!r || unsaved(r)) return
-  recordWord(ctx, { workspaceId, host: r.host, path: r.path, vm: !!r.vm, name: r.name, version: r.version })
+  recordWord(ctx, { workspaceId, host: r.host, path: r.path, vm: !!r.vm, name: r.name, version: r.version, sha: r.sha as string })
   rmSync(r.doc!, { force: true })
 }
 

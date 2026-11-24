@@ -442,7 +442,7 @@ export async function reseat(ctx: WorkCtx, workspaceId: string, tabId: string, b
   const word = tab.copyOf ? wordRow(ctx, workspaceId, file.host, file.path) : null
   const next = ctx.canvas.replace(item.sessionId, item.id, seat.kind, seat.source, name)
   // word.ts `wordFollowed` takes the first document to replace a Word copy's item for the one made of it: a fresh copy is not.
-  if (word && !word.doc && wordRow(ctx, workspaceId, file.host, file.path)?.doc) recordWord(ctx, { workspaceId, host: word.host, path: word.path, vm: !!word.vm, name: word.name, version: word.version })
+  if (word && !word.doc && wordRow(ctx, workspaceId, file.host, file.path)?.doc) recordWord(ctx, { workspaceId, host: word.host, path: word.path, vm: !!word.vm, name: word.name, version: word.version, sha: word.sha as string })
   return next
 }
 
