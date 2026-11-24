@@ -13,7 +13,7 @@ import { sessionWaits, useLifeosSession, type LifeosSession } from "../../shell/
 import { DownLine } from "../../shell/DownLine";
 import { mailClientFor } from "../client";
 import { tempcodeMailKit } from "../kit";
-import { AddRow } from "./AddRow";
+import { AddKeeper, AddRow } from "./AddRow";
 import { CardBones } from "./cardParts";
 import { DraftCard } from "./DraftCard";
 import { RewriteCard } from "./RewriteCard";
@@ -30,7 +30,7 @@ export function MailOfferRow({ block }: { block: Block }) {
   const host = useTranscriptHost();
   if (!offer || !sessionId || !host) return null;
   return (
-    <OfferSession sessionId={sessionId} env={host}>
+    <OfferSession sessionId={sessionId} env={host} offer={offer}>
       {(at) => <OfferCard offer={offer} at={at} />}
     </OfferSession>
   );
@@ -51,24 +51,37 @@ export function OfferCard({ offer, at }: { offer: MailOffer; at: OfferAt }) {
   return <AddRow event={offer.event} at={at} />;
 }
 
-/** The window's LifeOS session for the thread's sector, with Mail's client over it. */
-function OfferSession({ sessionId, env, children }: { sessionId: string; env: string; children(at: OfferAt): ReactNode }) {
+/**
+ * The window's LifeOS session for the thread's sector, with Mail's client over it. A proposed task's or event's form is
+ * kept above the gate (`AddKeeper`): a drop swaps the card for its line, never the form he has open.
+ */
+function OfferSession({ sessionId, env, offer, children }: { sessionId: string; env: string; offer: MailOffer; children(at: OfferAt): ReactNode }) {
   const meta = useSessionMeta(sessionId);
   const workspace = useWorkspaces().find((w) => w.id === meta?.workspaceId);
   const sector = (workspace?.sector ?? null) as SectorKey | null;
   const lifeos = useLifeosSession(env, sector);
   if (!workspace || !sector) return null;
-  if (!lifeos.client) {
-    if (sessionWaits(lifeos)) return <CardBones />;
-    return <SessionLine session={lifeos} env={env} sector={sector} />;
-  }
-  return (
+  const at = { sessionId, workspaceId: workspace.id, sector };
+  const card = !lifeos.client ? (
+    sessionWaits(lifeos) ? (
+      <CardBones />
+    ) : (
+      <SessionLine session={lifeos} env={env} sector={sector} />
+    )
+  ) : (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector)}>
-        <MailKitProvider kit={tempcodeMailKit}>{children({ sessionId, workspaceId: workspace.id, sector })}</MailKitProvider>
+        <MailKitProvider kit={tempcodeMailKit}>{children(at)}</MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>
   );
+  if ("task" in offer || "event" in offer)
+    return (
+      <AddKeeper {...("task" in offer ? { task: offer.task } : { event: offer.event })} at={at} session={lifeos}>
+        {card}
+      </AddKeeper>
+    );
+  return card;
 }
 
 /**

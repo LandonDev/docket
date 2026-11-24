@@ -11,6 +11,7 @@ import type { MailClient, ThreadSummary } from "work-kit/mail";
 
 const convex = vi.hoisted(() => ({ proposed: null as null | { subject?: string; text: string; html: string; at: number; by: string }, settle: vi.fn(), mutations: [] as unknown[], sources: [] as unknown[] }));
 vi.mock("convex/react", () => ({
+  ConvexProvider: ({ children }: { children: unknown }) => children,
   // The New event dialog watches LifeOS's own row for its toast (agenda/added.ts): no row comes in a test.
   useConvex: () => ({ watchQuery: () => ({ onUpdate: () => () => undefined, localQueryResult: () => undefined }) }),
   useQuery: (ref: unknown) => {
@@ -40,6 +41,7 @@ vi.mock("../../../lib/workSwitch", async (original) => ({ ...(await original<obj
 
 const { MailClientProvider } = await import("work-kit/mail");
 const { OfferCard, SessionLine } = await import("./OfferCard");
+const { AddKeeper, AddRow } = await import("./AddRow");
 const { liveDraftIds, pageOf, patch } = await import("../page");
 const { lifeosLinkOf } = await import("../../../surfaces/lifeosLink");
 const { LifeosChip } = await import("./LifeosChip");
@@ -377,6 +379,49 @@ describe("a task or an event", () => {
     expect(screen.getByDisplayValue("12:30")).toBeTruthy();
     expect(screen.getByDisplayValue("13:30")).toBeTruthy();
     expect(screen.getByDisplayValue("Harry's")).toBeTruthy();
+  });
+});
+
+describe("a task's form when LifeOS drops", () => {
+  // Council round 9 (Sol Mail 1, P1): the card gives way to its line, never the form he has open.
+  it("keeps what he typed, says the line and holds Add, then files through the new client once the session is back", async () => {
+    const task = { title: "Book the room", due: "2026-12-01", threadId: "t1" };
+    const reads = { environmentId: "local", sector: "life" as const, client: {} as never, state: "connected" as const };
+    const down = { environmentId: "local", sector: "life" as const, client: null, state: "signed-out" as const };
+    const card = (session: typeof reads | typeof down) =>
+      session.client ? (
+        <MailClientProvider client={client}>
+          <AddRow task={task} at={at} />
+        </MailClientProvider>
+      ) : (
+        <SessionLine session={session} env="local" sector="life" />
+      );
+    const keeper = (session: typeof reads | typeof down) => (
+      <AddKeeper task={task} at={at} session={session}>
+        {card(session)}
+      </AddKeeper>
+    );
+    const { rerender } = render(keeper(reads));
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    const title = (await screen.findByDisplayValue("Book the room")) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Book the big room" } });
+    rerender(keeper(down));
+    // The card is its line now; the form stays, with his words, the line and Add held.
+    expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
+    expect(screen.getByDisplayValue("Book the big room")).toBeTruthy();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("[data-session-down]")!.textContent).toContain("Not signed in to LifeOS");
+    const add = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Add")!;
+    expect(add.disabled).toBe(true);
+    fireEvent.submit(title.closest("form")!);
+    expect(made).toHaveLength(0);
+    rerender(keeper(reads));
+    expect(dialog.querySelector("[data-session-down]")).toBeNull();
+    expect(add.disabled).toBe(false);
+    fireEvent.submit(screen.getByDisplayValue("Book the big room").closest("form")!);
+    await waitFor(() => expect(made).toHaveLength(1));
+    expect(made[0]).toMatchObject({ threadId: "t1", draft: { title: "Book the big room", sector: "life" } });
+    await waitFor(() => expect(screen.getByText("Added")).toBeTruthy());
   });
 });
 

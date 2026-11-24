@@ -100,14 +100,15 @@ function Body({
   const close = useModalClose();
   const [writes, setWrites] = useState<Writes | null>(null);
   const down = session && downOf(session) ? session : null;
+  // Add waits for a client to write through: the form's own writes, or, for Mail's Make task, the session it files on.
+  const held = file ? !!session && !session.client : !writes;
   const [title, setTitle] = useState(initial?.title ?? "");
   const [due, setDue] = useState(initial?.due ?? "");
   const [error, setError] = useState<string | null>(null);
   const save = () => {
     const words = title.trim();
     if (!words) return setError("Say what to do");
-    if (!file && !writes) return;
-    const { add, undo } = writes!;
+    if (held) return;
     const key = crypto.randomUUID();
     const dueAt = dueOf(due);
     setError(null);
@@ -127,6 +128,7 @@ function Body({
       );
       return;
     }
+    const { add, undo } = writes!;
     add({ sector, title: words, key, source: { kind: "manual", container: "quick-add", channel: "Typed", messageId: key, sentAt: Date.now() }, ...(dueAt !== undefined ? { dueAt } : {}) }).then(
       () => {
         setPending(false);
@@ -167,7 +169,7 @@ function Body({
         </Field>
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={!file && !writes} />
+      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={held} />
     </form>
   );
 }

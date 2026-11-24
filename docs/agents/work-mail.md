@@ -645,7 +645,10 @@ docs/DESIGN.md "The Mail view"):
   job's mail does not hold has no tick; a row still reading draws its bones,
   and the press waits with no count until every row has answered), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
-  `NewEventDialog.initial`). Nothing sends, schedules or archives but his
+  `NewEventDialog.initial`); the form and its Added are kept above the card's
+  session gate (`AddKeeper`, AddRow.tsx), so a drop swaps the card for its
+  line but keeps the open form with what he typed, its `DownLine` and Add
+  held, and it files through the new client once the session is back. Nothing sends, schedules or archives but his
   press. A card whose LifeOS session failed is one line with the press
   that mends it, as the mail canvas has (`SessionLine`): Sign in, Open
   Settings or Retry.

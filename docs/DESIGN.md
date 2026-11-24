@@ -4069,7 +4069,8 @@ late's place in a clash, the Start places dialog) draws
 offered (a view's New task, New event, Add people, a clash's Running late),
 and a press made while it was on its way is dropped, never opened later by
 itself. A form he has open over a view (New task, New event, Add people, a
-project's settings) is the frame's, not the body's (`WorkViewModule.Kept`):
+project's settings) is the frame's, not the body's (`WorkViewModule.Kept`;
+a mail chat card's Add… form is the card's keeper's, above its gate):
 a session that drops keeps it and what he typed, says `DownLine` in it and
 holds its submit until the session is back. A failed Retry
 is said once, by the line, with the newest cause: a Retry the host does not
