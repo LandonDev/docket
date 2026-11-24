@@ -23,7 +23,12 @@ with its six views, linking a workspace to a sector, and Settings → Work
 - One setting per host: `settings.work = {"enabled": false}`, read by
   `work.get` (any key) and set by `work.set` (admin). `WorkSettingsStore`
   (src/main/server/work/settings.ts) holds it. No sync engine carries it: a
-  client that turns Work on writes `work.set` to every host it is linked to.
+  client that turns Work on writes `work.set` to every host it is linked to
+  and may change: Settings → Work asks each link first (`linkMay`,
+  src/renderer/src/lib/linkMay.ts: the host's own `capabilityRefusal` on the
+  caps its hello named), writes only where it can, and names the hosts a
+  given computer's key cannot switch ("Work for the box is changed from a
+  computer that manages it") in place of a refusal.
   A change pushes `{ push: 'work', settings }` to every client socket.
 - **Code branches on a row, never on the switch**: `workspace.kind ===
   'work'`, `session.scope === 'work'`. The switch only decides whether Work

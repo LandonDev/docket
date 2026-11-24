@@ -3,6 +3,7 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../compone
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironments } from "../../lib/connection";
+import { linkMay } from "../../lib/linkMay";
 import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
 import { workShellChunk } from "../chunks";
 
@@ -17,9 +18,16 @@ export function switchLine(environments: readonly { id: string; name: string }[]
   return `On for ${names(environments.filter((e) => on.has(e.id)))}, off for ${names(off)}`;
 }
 
+/** The hosts this window's key cannot switch, named: a press here never asks them, so none ends in a refusal. */
+export function elsewhereLine(names: readonly string[]): string | undefined {
+  if (names.length === 0) return undefined;
+  return `Work for ${names.join(", ")} is changed from a computer that manages ${names.length > 1 ? "them" : "it"}`;
+}
+
 /**
  * Settings → Work (docs/agents/work.md "The switch"): the switch, written to
- * every host this window is linked to, since no sync engine carries it; then,
+ * every host this window is linked to and may change (`linkMay`: a given
+ * computer's key cannot switch the box), since no sync engine carries it; then,
  * while it is on somewhere, LifeOS, models and where Work runs (Work's own
  * chunk). With every host off the page is the switch alone.
  */
@@ -30,8 +38,10 @@ export function WorkPage() {
   const [joining, setJoining] = useState(false);
   // On somewhere and off on another host (a PC just paired): the switch already reads on, so the hosts left off get their own press,
   // which asks those hosts alone: a host already on is never written, and the switch is never turned off to turn one on.
-  const off = on.size > 0 ? environments.filter((e) => !on.has(e.id)) : [];
-  const flip = async (next: boolean, only: readonly { id: string; name: string }[] = environments): Promise<boolean> => {
+  const mine = environments.filter((e) => linkMay(e.id, "work.set", { enabled: true }));
+  const elsewhere = elsewhereLine(environments.filter((e) => !mine.includes(e)).map((e) => e.name));
+  const off = on.size > 0 ? mine.filter((e) => !on.has(e.id)) : [];
+  const flip = async (next: boolean, only: readonly { id: string; name: string }[] = mine): Promise<boolean> => {
     const failed: string[] = [];
     await Promise.all(
       only.map(async (env) => {
@@ -54,7 +64,15 @@ export function WorkPage() {
   return (
     <>
       <PageSection>
-        <PageRow title="Work" description={switchLine(environments, on)}>
+        <PageRow
+          title="Work"
+          description={
+            <>
+              {switchLine(environments, on)}
+              {elsewhere ? <span className="block">{elsewhere}</span> : null}
+            </>
+          }
+        >
           <div className="flex items-center gap-2">
             {off.length ? (
               <Button variant="secondary" size="sm" disabled={joining} onClick={() => void joinOff()}>
