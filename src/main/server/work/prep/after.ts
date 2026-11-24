@@ -1,4 +1,4 @@
-import { PREP_DISMISSED_MAX, PREP_TASKS_MAX, type PrepSuggestion } from '@shared/contract-work-prep'
+import { PREP_DISMISSED_MAX, PREP_TASKS_MAX, PREP_UNANSWERED_MAX, type PrepSuggestion } from '@shared/contract-work-prep'
 import { errorText } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { fileTask } from './filing'
@@ -33,7 +33,8 @@ const sameSuggestion = (a: Suggested, b: PrepSuggestion): boolean =>
 export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequence: number, dismissedBefore: readonly string[] = [], unansweredBefore: readonly PrepSuggestion[] = []): { tasks: PrepSuggestion[]; suggestionSeq: number; dismissed: string[]; unanswered: PrepSuggestion[] } {
   let suggestionSeq = Math.max(sequence, ...[...prior, ...unansweredBefore].map((task) => Number(/^s(\d+)$/.exec(task.id)?.[1] ?? 0)))
   const settled = prior.filter((task) => task.state !== 'proposed')
-  const waiting = [...prior.filter((task) => task.state === 'proposed'), ...unansweredBefore]
+  // Oldest first: the ones set aside before, then the page's own, so a cap drops the oldest key, never the newest.
+  const waiting = [...unansweredBefore, ...prior.filter((task) => task.state === 'proposed')]
   const dismissed = new Set(dismissedBefore)
   const kept = new Set<string>()
   const tasks: PrepSuggestion[] = []
@@ -59,7 +60,7 @@ export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequen
     if (task.state === 'filed') tasks.push(task)
     else dismissed.add(titleKey(task.title))
   }
-  const unanswered = waiting.filter((task) => task.tried && !kept.has(task.id)).slice(-PREP_TASKS_MAX)
+  const unanswered = waiting.filter((task) => task.tried && !kept.has(task.id)).slice(-PREP_UNANSWERED_MAX)
   if (tasks.length > PREP_TASKS_MAX) throw new Error(`The page keeps its filed tasks. Suggest fewer tasks so the page has at most ${PREP_TASKS_MAX}.`)
   // A title the page still lists as dismissed is said there; the newest of the rest are kept.
   const listed = new Set(tasks.filter((task) => task.state === 'rejected').map((task) => titleKey(task.title)))
@@ -83,18 +84,22 @@ export async function decideTasks(ctx: WorkCtx, workspaceId: string, eventId: st
     if (picked.length && decision === 'reject') {
       writePage(ctx, workspaceId, event, last, (doc) => (doc.after ? { ...doc, after: { ...doc.after, tasks: doc.after.tasks.map((task): PrepSuggestion => task.state === 'proposed' && selected.has(task.id) ? { ...task, state: 'rejected' } : task) } } : doc), Date.now())
     } else if (decision === 'accept') {
+      // Each filing is marked tried before LifeOS is asked: LifeOS may make the task and the answer be lost, or this
+      // host stop before it comes, and the key must then outlive any rewrite (`unanswered`). One write for them all.
+      const untried = new Set(picked.filter((task) => !task.tried).map((task) => task.id))
+      if (untried.size) writePage(ctx, workspaceId, event, last, (doc) => (doc.after ? { ...doc, after: { ...doc.after, tasks: doc.after.tasks.map((t) => (untried.has(t.id) ? { ...t, tried: true } : t)) } } : doc), Date.now())
       for (const task of picked) {
         let lifeosTaskId: string
         try {
           // The current calendar facts may differ from the page’s last write.
           lifeosTaskId = await fileTask(ctx, sector, { id: row.id, title: event.title, startsAt: event.startsAt }, task)
         } catch (err) {
+          // It stays tried: LifeOS may have made it and lost the answer, and its key outlives any rewrite.
           failed.push({ id: task.id, error: lifeosWords(err) })
-          // LifeOS may have made it and lost the answer: the suggestion keeps its key through any rewrite (`unanswered`).
-          setTask(task.id, (t) => ({ ...t, tried: true }))
           continue
         }
-        const kept = setTask(task.id, (t) => ({ ...t, state: 'filed', lifeosTaskId }))
+        // Filed: the key is settled, and the mark goes.
+        const kept = setTask(task.id, ({ tried: _settled, ...t }) => ({ ...t, state: 'filed', lifeosTaskId }))
         const sessionId = kept.followSessionId
         if (sessionId && ctx.scopeOf(sessionId)) {
           try {

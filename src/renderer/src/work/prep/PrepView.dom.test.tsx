@@ -591,6 +591,16 @@ const BRIEF = { matters: [{ text: "Maya needs the seat list by Wednesday.", ref:
 const briefed = (over: Partial<PrepPage> = {}) => facts({ doc: { ...emptyPrepDoc(), brief: BRIEF }, rev: 2, state: "briefed", briefSessionId: "t-brief", ...over });
 
 describe("Brief me", () => {
+  it("opens the brief being written from More, though a follow-up thread stands too", async () => {
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    host.page = facts({ rev: 2, state: "after", briefSessionId: "t-brief", briefUntil: NOW + 600_000, briefStartedAt: NOW - 60_000, followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
+    await mount();
+    await more("Open thread");
+    expect(opened).toEqual(["t-brief"]);
+    workOpenPort.set(null);
+  });
+
   it("shows the brief being written, and offers no second Brief me, while notes kept early hold the header", async () => {
     host.page = facts({ rev: 2, state: "after", briefSessionId: "t-brief", briefUntil: NOW + 600_000, briefStartedAt: NOW - 60_000, doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
     await mount();

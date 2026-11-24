@@ -193,7 +193,8 @@ export function Head(props: WorkViewProps) {
       ahead={page.aheadOffered ? page.aheadOn : null}
       onBrief={() => start("brief")}
       onFollowUp={() => start("followUp")}
-      onOpenThread={() => openThread(verb === "preparing" ? page.briefSessionId : pageThread(page))}
+      // The thread the page shows at work: a brief being written, under early notes too, else the follow-up's or the brief's.
+      onOpenThread={() => openThread(briefWorks(page, now, { brief: briefStatus }) ? page.briefSessionId : pageThread(page))}
       onNotes={() => openDialog("notes", eventId)}
       onAddPeople={() => openDialog("people", eventId)}
       onThread={() => props.startThread(eventChip(page.event))}

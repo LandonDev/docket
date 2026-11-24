@@ -28,6 +28,8 @@ export const PREP_TASKS_MAX = 20
 export const PREP_WRITERS_MAX = 6
 /** How many dismissed suggestions an outcome remembers past the ones it still lists. */
 export const PREP_DISMISSED_MAX = 100
+/** How many suggestions with a filing LifeOS never answered an outcome keeps aside, the newest; far past any real page. */
+export const PREP_UNANSWERED_MAX = 100
 /** The longest span `work.prep.upcoming` reads in one call. */
 export const PREP_UPCOMING_MAX_MS = 31 * 86_400_000
 
@@ -69,7 +71,7 @@ export const PrepSuggestionSchema = z.object({
   quote: z.string().trim().max(400).optional(),
   state: z.enum(['proposed', 'filed', 'rejected']),
   lifeosTaskId: z.string().optional(),
-  /** a filing was asked and LifeOS did not answer it: it may have made the task, under this suggestion's key */
+  /** a filing was asked of LifeOS (marked before the call): unless it is filed, LifeOS may have made the task under this suggestion's key */
   tried: z.boolean().optional()
 })
 export type PrepSuggestion = z.infer<typeof PrepSuggestionSchema>
@@ -114,7 +116,7 @@ export const PrepDocSchema = z.object({
        * Suggestions a filing was asked for with no answer (`tried`) that a rewrite left out: suggested again
        * unchanged, each comes back with its id, so its filing key, and a second filing finds the task LifeOS made.
        */
-      unanswered: z.array(PrepSuggestionSchema).max(PREP_TASKS_MAX).optional()
+      unanswered: z.array(PrepSuggestionSchema).max(PREP_UNANSWERED_MAX).optional()
     })
     .nullable()
 })

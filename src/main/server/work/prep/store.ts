@@ -234,7 +234,8 @@ export class PrepStore {
     const touched = this.db.prepare(`SELECT * FROM work_prep_pages WHERE brief_session_id IN (${marks}) OR follow_session_id IN (${marks})`).all(...sessionIds, ...sessionIds) as Raw[]
     if (!touched.length) return []
     this.db.prepare(`UPDATE work_prep_pages SET brief_session_id = NULL, brief_at = NULL, rev = rev + 1, updated_at = ? WHERE brief_session_id IN (${marks})`).run(now, ...sessionIds)
-    this.db.prepare(`UPDATE work_prep_pages SET follow_session_id = NULL, follow_at = NULL, rev = rev + 1, updated_at = ? WHERE follow_session_id IN (${marks})`).run(now, ...sessionIds)
+    // A version owed is the follow-up thread's: it goes with the thread.
+    this.db.prepare(`UPDATE work_prep_pages SET follow_session_id = NULL, follow_at = NULL, notes_owed = NULL, rev = rev + 1, updated_at = ? WHERE follow_session_id IN (${marks})`).run(now, ...sessionIds)
     return touched.map((r) => this.get(r.workspace_id, r.event_id)!)
   }
 

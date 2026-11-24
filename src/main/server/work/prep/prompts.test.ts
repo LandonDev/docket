@@ -109,10 +109,10 @@ describe('words for a prep thread', () => {
 
   it('asks a stopped follow-up thread again for the meeting beside it, and for a mail only if none waits', () => {
     const recorded: PrepPage = { ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a' } }
-    const text = followAgainMessage(recorded)
+    const text = followAgainMessage(recorded, 7)
     expect(text).toContain(pageWords(recorded))
     expect(text).toContain('open beside this thread as meeting it1. Read it with meeting_read.')
-    expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up')
+    expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up for this event, passing notes: 7,')
     expect(text).toContain('never call add_task')
     expect(text).toContain('Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)

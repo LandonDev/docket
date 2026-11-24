@@ -19,6 +19,7 @@ import { errorText, type SectorKey } from '@shared/work'
 import type { LifeosClient } from '../lifeos/ctx'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { aheadOf } from './ahead'
+import { editableNotes } from './docWords'
 import { foldTitle, lastOf, linksIn, personKey, seriesOf, subjectWords, type SeriesPage } from './series'
 import { PrepStore, type PageEvent, type PageRow } from './store'
 import { linkedWorkspaces, sectorWord, workspaceSector } from './workspace'
@@ -232,6 +233,9 @@ export async function meetingOf(ctx: WorkCtx, itemId: string): Promise<{ status:
 /** The name a file path shows by. */
 export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || path
 
+/** The name a notes document shows by: a `.tcdoc` by its name alone, as the document editor names it. */
+export const docTitle = (path: string): string => fileTitle(path).replace(/\.tcdoc$/i, '')
+
 /**
  * The file that holds the notes: the meeting beside the follow-up thread
  * while its item still exists, else the document made for the notes, with
@@ -250,10 +254,11 @@ export async function notesFileOf(ctx: WorkCtx, notes: PrepDoc['notes'], followS
       if (!error || notes.file?.at !== 'file') return { kind: 'meeting', itemId: item.id, title: item.title, ...(error ? { error } : {}) }
       unread = `${item.title} could not be read: ${error}`
     }
-    const file = notes.file
+    // The document he edits (`editableNotes`): the row opens and names that one, never a Word file the editor left behind.
+    const file = editableNotes(ctx, notes.file)
     if (file?.at !== 'file') return null
     const held = followSessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(followSessionId)).find((i) => i.kind === 'document' && i.source.at === 'file' && i.source.path === file.path) : undefined
-    return { kind: 'document', title: fileTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}), ...(unread ? { error: unread } : {}) }
+    return { kind: 'document', title: docTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}), ...(unread ? { error: unread } : {}) }
   } catch {
     // A host whose canvas is not running names no file; the notes' words still show.
     return null

@@ -1,4 +1,5 @@
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { strToU8, unzipSync, zipSync } from 'fflate'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import type { WorkspaceMeta } from '@shared/domain'
 import { handled, NOT_HANDLED, type WorkToolResult } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkModule } from '../modules'
 import { canvas as canvasModule } from '../canvas/index'
+import { formats as formatsModule } from '../formats/index'
 import { outbox as outboxModule } from '../outbox/index'
 import { adminKey, approveKey, makeRig, readKey, type Rig } from '../outbox/rig'
 import { AHEAD_ROUTINE } from './ahead'
@@ -447,7 +449,8 @@ describe('suggested tasks', () => {
     expect(add).toHaveBeenCalledExactlyOnceWith({
       sessionId, kind: 'prep.task.filed', summary: 'Filed the task “Send the roster”', ref: { at: 'lifeos', table: 'tasks', id: 'task_1' }
     })
-    expect(prepPushes()).toEqual([1, 2, 3, 4].map((rev) => ({ push: 'work.prep', ...params, rev })))
+    // the filing's mark is kept before LifeOS is asked, then the filing
+    expect(prepPushes()).toEqual([1, 2, 3, 4, 5].map((rev) => ({ push: 'work.prep', ...params, rev })))
     expect(lifeos.called('compose:send')).toEqual([])
   })
 
@@ -484,7 +487,8 @@ describe('suggested tasks', () => {
       { id: 's3', title: 'Keep Score', state: 'filed', lifeosTaskId: 'task_2' }
     ])
     expect(lifeos.called('tasks:create')).toHaveLength(2)
-    expect(prepPushes()).toHaveLength(5)
+    // each accept marks its filings tried before LifeOS is asked: one write more
+    expect(prepPushes()).toHaveLength(6)
   })
 
   it('never reuses suggestion ids even after the thread clears the list', async () => {
@@ -503,7 +507,8 @@ describe('suggested tasks', () => {
     expect(result.isError).toBe(true)
     expect(words(result)).toContain('Suggest fewer tasks')
     expect((await page()).doc.after?.tasks).toEqual([{ id: 's1', title: 'Send roster', state: 'filed', lifeosTaskId: 'task_1' }])
-    expect(prepPushes()).toHaveLength(2)
+    // the outcome, the filing's mark before LifeOS is asked, the filing; the refused rewrite writes nothing
+    expect(prepPushes()).toHaveLength(3)
   })
 
   it('keeps a failed task proposed and reports LifeOS’s words while filing the other tasks', async () => {
@@ -1206,7 +1211,7 @@ describe('the notes document and the page', () => {
     const moved = join(folder, 'Renamed notes.docx')
     renameSync(made.source.path, moved)
     const before = (await page()).rev
-    notesDocMoved(made.source, { ...made.source, path: moved }, { db: rig.work.ctx.db })
+    notesDocMoved(made.source, { ...made.source, path: moved }, { db: rig.work.ctx.db, dataDir: rig.work.ctx.dataDir, host: rig.work.ctx.host })
     const got = await page()
     expect(got.doc.notes?.file).toEqual({ ...made.source, path: moved })
     expect(got.rev).toBe(before + 1)
@@ -1398,5 +1403,163 @@ describe('round 2: the notes document', () => {
     } finally {
       off()
     }
+  })
+})
+
+describe('round 3: the document he edits, the version owed, the filing key', () => {
+  let base: string
+  let folder: string
+  const doc = () => rig.rpc<{ page: PrepPage; source: { at: 'file'; host: string; path: string }; title: string }>('work.prep.notesDoc', { ...params, today: '2026-11-23' })
+  const record = (name = 'Staff sync.m4a') => rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name } })
+  /** What the document editor does on a save: `preview.md` and the state rewritten in the `.tcdoc`, the rest kept. */
+  const saveInEditor = (path: string, markdown: string, at: number) => {
+    const entries = unzipSync(new Uint8Array(readFileSync(path)))
+    entries['preview.md'] = strToU8(markdown)
+    writeFileSync(path, zipSync(entries))
+    utimesSync(path, new Date(at), new Date(at))
+  }
+  let modules: WorkModule[]
+  beforeEach(() => {
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'tc-prep-doc4-')))
+    folder = join(base, 'Purdue')
+    mkdirSync(folder)
+    mkdirSync(join(base, 'starters', 'any'), { recursive: true })
+    copyFileSync(join(process.cwd(), 'resources', 'work-templates', 'any', 'Meeting notes.docx'), join(base, 'starters', 'any', 'Meeting notes.docx'))
+    setStartersRoot(join(base, 'starters'))
+    rig.work.ctx.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(folder, 'ws-purdue')
+    // the formats pillar, mounted as in the app, for the editor's own import
+    modules = [...WORK_MODULES]
+    WORK_MODULES.push(formatsModule)
+  })
+  afterEach(() => {
+    WORK_MODULES.splice(0, WORK_MODULES.length, ...modules)
+    setStartersRoot(null)
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('keeps the document the editor works on, and follows up from what he saved there', async () => {
+    const starts = fakeStarts()
+    const made = await doc()
+    expect(made.source.path).toBe(join(folder, 'Staff sync notes.tcdoc'))
+    expect((await page()).doc.notes?.file).toEqual(made.source)
+    saveInEditor(made.source.path, '# Staff sync\n\nTom owns the venue form.', START + 60_000)
+    await follow()
+    expect(starts.mock.calls[0]![0].text).toContain('It reads:\n# Staff sync\n\nTom owns the venue form.')
+  })
+
+  it('reads a page that still names the Word file through the document the editor made of it, and keeps that one from then on', async () => {
+    const starts = fakeStarts()
+    // a page kept before: the Word file is the notes, and the editor, opening it, made a document beside it
+    const word = join(folder, 'Staff sync notes.docx')
+    copyFileSync(join(process.cwd(), 'resources', 'work-templates', 'any', 'Meeting notes.docx'), word)
+    const source = { at: 'file' as const, host: rig.work.ctx.host, path: word }
+    new PrepStore(rig.work.ctx.db).write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: START, endsAt: null, peopleKeys: [] }, () => ({ people: [], brief: null, notes: null, after: null }), (d) => ({ ...d, notes: { text: '', at: 1, file: source } }), Date.now())
+    const answer = await formatsModule.handle!({ id: 'editor', method: 'work.formats.import', params: { from: { at: 'source', source } } } as never, rig.work.ctx, { kind: 'local', caps: ['read', 'operate'] })
+    const imported = (answer as { result: { source: { at: 'file'; path: string } } }).result
+    saveInEditor(imported.source.path, 'Dana books the bus.', Date.now() + 60_000)
+    const got = await page()
+    expect(got.notesFile).toMatchObject({ kind: 'document', source: { path: imported.source.path } })
+    await follow()
+    expect(starts.mock.calls[0]![0].text).toContain('It reads:\nDana books the bus.')
+    expect((await page()).doc.notes?.file).toMatchObject({ path: imported.source.path })
+    // the Word file moved away in Files: the page stays on the document he edits
+    renameSync(word, join(folder, 'Elsewhere.docx'))
+    notesDocMoved(source, { ...source, path: join(folder, 'Elsewhere.docx') }, { db: rig.work.ctx.db, dataDir: rig.work.ctx.dataDir, host: rig.work.ctx.host })
+    expect((await page()).doc.notes?.file).toMatchObject({ path: imported.source.path })
+  })
+
+  it('starts no file-only follow-up over a notes document the editor works on that is gone', async () => {
+    const starts = fakeStarts()
+    // the page names the editor's document, which he deleted in Files
+    const gone = { at: 'file' as const, host: rig.work.ctx.host, path: join(folder, 'Staff sync notes.tcdoc') }
+    new PrepStore(rig.work.ctx.db).write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: START, endsAt: null, peopleKeys: [] }, () => ({ people: [], brief: null, notes: null, after: null }), (d) => ({ ...d, notes: { text: '', at: 1, file: gone } }), Date.now())
+    await expect(follow()).rejects.toThrow('The notes document could not be read: it is not there any more.')
+    expect(starts).not.toHaveBeenCalled()
+  })
+
+  it('tells the follow-up thread at work when he saved in the editor', async () => {
+    const now = dateNow()
+    fakeStarts()
+    const resume = vi.spyOn(rig.work.ctx.threads, 'resume').mockResolvedValue(undefined)
+    const made = await doc()
+    utimesSync(made.source.path, new Date(START), new Date(START))
+    now.mockReturnValue(START + 1_000)
+    await follow()
+    saveInEditor(made.source.path, 'Tom owns the venue form.', START + 60_000)
+    now.mockReturnValue(START + 120_000)
+    await follow()
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(resume.mock.calls[0]![1]).toContain('Tom owns the venue form.')
+  })
+
+  const withMeeting = async (status: string, run: () => Promise<void>) => {
+    const before = [...WORK_MODULES]
+    WORK_MODULES.splice(0, WORK_MODULES.length, { id: 'meetings', ensure() {}, async handle(req) { return req.method === 'work.meetings.get' ? handled({ meeting: { status, error: null } }) : NOT_HANDLED } })
+    try {
+      await run()
+    } finally {
+      WORK_MODULES.splice(0, WORK_MODULES.length, ...before)
+    }
+  }
+
+  it('names the notes version in a stopped recording thread’s retry, and takes the outcome it writes from it', async () => {
+    const now = dateNow()
+    fakeStarts()
+    const resume = vi.spyOn(rig.work.ctx.threads, 'resume').mockResolvedValue(undefined)
+    await note('Dana drives.')
+    const first = await record()
+    await withMeeting('ready', async () => {
+      // a correction while it works: a version is owed
+      now.mockReturnValue(START + 60_000)
+      await note('Tom drives.')
+      await follow()
+      // the turn stops with nothing written: his press on the stopped thread asks it again
+      now.mockReturnValue(START + 120_000)
+      expect(await rig.rpc('work.prep.followUp', { ...params, restart: true })).toMatchObject({ sessionId: first.sessionId })
+    })
+    const again = String(resume.mock.calls[1]![1])
+    expect(again).toContain('He asked for this meeting’s follow-up again.')
+    const version = Number(/passing notes: (\d+)/.exec(again)![1])
+    expect((await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'Tom drives.' }], notes: version }, first.sessionId)).isError).toBeFalsy()
+  })
+
+  it('lets another thread write an outcome while a correction is owed, but not settle it for the bound thread’s older turn', async () => {
+    const now = dateNow()
+    fakeStarts()
+    vi.spyOn(rig.work.ctx.threads, 'resume').mockResolvedValue(undefined)
+    await note('Dana drives.')
+    const { sessionId } = await follow()
+    now.mockReturnValue(START + 60_000)
+    await note('Tom drives.')
+    await follow()
+    // a chat thread of the job linked to the meeting writes an outcome of its own
+    expect((await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'From a chat.' }] })).isError).toBeFalsy()
+    // the follow-up thread's older turn is still refused
+    expect(words(await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'Dana drives.' }] }, sessionId))).toContain('His notes changed after you read them')
+  })
+
+  it('marks a filing tried before LifeOS is asked, so a stop after LifeOS made the task keeps its key', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { sessionId } = await follow()
+    const write = (tasks: { title: string }[]) => call('prep_follow_up', { event: 'ev1', summary: [{ text: 'x' }], tasks }, sessionId)
+    await write([{ title: 'Book bus' }])
+    const id = (await page()).doc.after!.tasks[0]!.id
+    const create = lifeos.mutation.bind(lifeos)
+    let storedDuring: boolean | undefined
+    const lost = vi.spyOn(lifeos, 'mutation').mockImplementationOnce(async (fn, args) => {
+      // what a host that stops now would find on boot
+      storedDuring = new PrepStore(rig.work.ctx.db).get(params.workspaceId, params.eventId)!.doc.after!.tasks.find((t) => t.id === id)!.tried
+      await create(fn, args)
+      throw new Error('LifeOS is unreachable')
+    })
+    await decide('accept', id)
+    lost.mockRestore()
+    expect(storedDuring).toBe(true)
+    await write([{ title: 'Send roster' }])
+    await write([{ title: 'Send roster' }, { title: 'Book bus' }])
+    expect((await page()).doc.after!.tasks.find((t) => t.title === 'Book bus')!.id).toBe(id)
+    expect((await decide('accept', id)).failed).toEqual([])
+    expect([...lifeos.tasks.values()].filter((t) => t.title === 'Book bus')).toHaveLength(1)
   })
 })

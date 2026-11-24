@@ -1,11 +1,11 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { PREP_UPCOMING_MAX_MS, PREP_WORKING_MS, type PrepAddedPerson, type PrepDoc, type PrepPage } from '@shared/contract-work-prep'
 import { errorText, handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
-import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { aheadOf, setAhead } from './ahead'
 import { decideTasks } from './after'
-import { eventOf, fileTitle, gather, meetingOf, notesFileOf, ownAdditions, standing, startDoc, upcoming } from './gather'
-import { notesDocWords } from './docWords'
+import { docTitle, eventOf, gather, meetingOf, notesFileOf, ownAdditions, standing, startDoc, upcoming } from './gather'
+import { editableNotes, notesDocAt, notesDocWords } from './docWords'
 import { pagePushed, writePage } from './page'
 import { briefMessage, briefTitle, followAgainMessage, followMessage, followNotesMessage, followTitle } from './prompts'
 import { changeInOrder } from './serial'
@@ -100,16 +100,34 @@ const uploadRuns = (itemId: string, now: number): boolean => now - (uploading.ge
 async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, eventId: string, today?: string): Promise<{ page: PrepPage; source: CanvasSource; title: string }> {
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
-  const kept = row?.doc.notes?.file
+  // The document he edits (`editableNotes`): a Word file the editor already made a document of answers that document.
+  const kept = editableNotes(ctx, row?.doc.notes?.file)
   // A document he deleted is no file to answer: a new one is made in its place. (A rename is followed, `notesDocMoved`.)
-  if (kept?.at === 'file' && (kept.host !== ctx.host || existsSync(kept.path))) return { page: (await gather(ctx, workspaceId, eventId)).page, source: kept, title: fileTitle(kept.path) }
+  if (kept?.at === 'file' && (kept.host !== ctx.host || existsSync(kept.path))) return { page: (await gather(ctx, workspaceId, eventId)).page, source: kept, title: docTitle(kept.path) }
   // The templates pillar's own door for other pillars; loaded on the press, so prep loads without it.
   const { makeFromTemplate } = await import('../templates/api')
   const made = await makeFromTemplate(ctx, { workspaceId, template: NOTES_TEMPLATE, fields: { Meeting: event.title }, title: `${event.title} notes`, ...(today ? { today } : {}) }, by)
+  // The document the editor works on, made now through the formats pillar's own import: his edits are saved there,
+  // so the page keeps that one, and opens, reads and dates the notes by it. A host that cannot import keeps the file.
+  const source = await editableOf(ctx, by, made.source)
   const now = Date.now()
   // Beside what the notes already hold, as they stand after the make: a recording kept with them stays.
-  writePage(ctx, workspaceId, event, last, (current) => ({ ...current, notes: { ...current.notes, text: current.notes?.text ?? '', at: now, file: made.source } }), now)
-  return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
+  writePage(ctx, workspaceId, event, last, (current) => ({ ...current, notes: { ...current.notes, text: current.notes?.text ?? '', at: now, file: source } }), now)
+  return { page: (await gather(ctx, workspaceId, eventId, now)).page, source, title: source.at === 'file' ? docTitle(source.path) : made.title }
+}
+
+/** A made Word file as the document the editor works on (`work.formats.import`, his press's caller); the file itself when that cannot be. */
+async function editableOf(ctx: WorkCtx, by: Caller, source: CanvasSource): Promise<CanvasSource> {
+  if (source.at !== 'file' || !/\.(docx|odt|rtf|doc)$/i.test(source.path)) return source
+  try {
+    const formats = WORK_MODULES.find((m) => m.id === 'formats')
+    const answer = await formats?.handle?.({ id: 'prep', method: 'work.formats.import', params: { from: { at: 'source', source } } }, ctx, by)
+    const made = answer?.handled ? (answer.result as { source?: CanvasSource }).source : undefined
+    return made?.at === 'file' ? made : source
+  } catch (err) {
+    ctx.log(`prep: the notes document was not made a document of: ${errorText(err)}`)
+    return source
+  }
 }
 
 /**
@@ -135,23 +153,27 @@ function withoutMeeting(notes: PrepDoc['notes'], itemId: string | undefined): Pr
  * whichever is later. A follow-up thread started before this is told of them.
  */
 function notesVersion(ctx: WorkCtx, notes: PrepDoc['notes']): number {
-  if (!notes) return 0
-  const file = notes.file
-  if (file?.at !== 'file' || file.host !== ctx.host) return notes.at
-  try {
-    return Math.max(notes.at, Math.floor(statSync(file.path).mtimeMs))
-  } catch {
-    return notes.at
-  }
+  return notes ? Math.max(notes.at, notesDocAt(ctx, notes.file)) : 0
+}
+
+/**
+ * The page names the document he edits from here on (`editableNotes`): a Word file the editor made a document of is
+ * that document, so a rename of the document in Files is followed, and nothing goes back to the Word file.
+ */
+function keepEditable(ctx: WorkCtx, doc: PrepDoc): PrepDoc {
+  const file = doc.notes?.file
+  const editable = editableNotes(ctx, file)
+  return doc.notes && editable && editable !== file ? { ...doc, notes: { ...doc.notes, file: editable } } : doc
 }
 
 /** His notes document beside a follow-up thread that reads it, once; a host whose canvas cannot open it still has the thread. */
-function openBeside(ctx: WorkCtx, sessionId: string, file: CanvasSource | undefined): void {
+function openBeside(ctx: WorkCtx, sessionId: string, notesFile: CanvasSource | undefined): void {
+  const file = editableNotes(ctx, notesFile)
   if (file?.at !== 'file') return
   try {
     const pane = ctx.canvas.paneOf(sessionId)
     if (ctx.canvas.forSession(pane).some((i) => i.source.at === 'file' && i.source.path === file.path)) return
-    ctx.canvas.open(pane, 'document', file, fileTitle(file.path))
+    ctx.canvas.open(pane, 'document', file, docTitle(file.path))
   } catch (err) {
     ctx.log(`prep: the notes document did not open beside its thread: ${errorText(err)}`)
   }
@@ -205,19 +227,22 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
         throw new Error(`The follow-up thread could not be told of the new notes (${errorText(err)}). Open it from More.`)
       }
       openBeside(ctx, existing, page.doc.notes.file)
-      writePage(ctx, workspaceId, event, last, (current) => current, now, { follow: existing, notesOwed: version })
+      writePage(ctx, workspaceId, event, last, (current) => keepEditable(ctx, current), now, { follow: existing, notesOwed: version })
     }
     return { sessionId: existing, ...(give ? { itemId: held } : {}) }
   }
   if (follow && !recording && existing && held && heldIs === 'reads' && ctx.canvas.get(held)?.sessionId === ctx.canvas.paneOf(existing)) {
     // The notes are a recording beside the thread that stopped. A meeting is read only from its own pane, so the same
     // thread is asked again. A new one could not read it, so a thread that cannot be woken is said, and nothing changes.
+    // Every message into a running follow-up names the notes version it must write from, and that version is owed
+    // until it does: a turn of its own from before, which may still write, read older notes.
+    const version = notesVersion(ctx, page.doc.notes)
     try {
-      await ctx.threads.resume(existing, followAgainMessage(page))
+      await ctx.threads.resume(existing, followAgainMessage(page, version, await notesDocWords(ctx, page)))
     } catch (err) {
       throw new Error(`The follow-up thread could not be started again (${errorText(err)}). Open it from More.`)
     }
-    writePage(ctx, workspaceId, event, last, (current) => current, now, { follow: existing })
+    writePage(ctx, workspaceId, event, last, (current) => keepEditable(ctx, current), now, { follow: existing, notesOwed: version })
     return { sessionId: existing, itemId: held }
   }
   const title = page.event.title
@@ -235,7 +260,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   })
   if (!recording) {
     // On the row as it stands after the awaits above (a rename in Files meanwhile is kept), less the stale meeting.
-    writePage(ctx, workspaceId, event, last, (current) => (stale ? { ...current, notes: withoutMeeting(current.notes, held) } : current), now, { [kind]: sessionId })
+    writePage(ctx, workspaceId, event, last, (current) => keepEditable(ctx, stale ? { ...current, notes: withoutMeeting(current.notes, held) } : current), now, { [kind]: sessionId })
     if (follow) openBeside(ctx, sessionId, notesDoc)
     return { sessionId }
   }
@@ -249,7 +274,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
     // The thread is his either way: the page names it even when the meeting could not be opened. A notes document
     // stays beside the recording, so a file that never arrives takes nothing with it.
     const meetingItemId = itemId
-    writePage(ctx, workspaceId, event, last, (current) => (meetingItemId ? { ...current, notes: { text: current.notes?.text ?? '', at: now, ...(current.notes?.file ? { file: current.notes.file } : {}), meetingItemId } } : current), now, { follow: sessionId })
+    writePage(ctx, workspaceId, event, last, (current) => keepEditable(ctx, meetingItemId ? { ...current, notes: { text: current.notes?.text ?? '', at: now, ...(current.notes?.file ? { file: current.notes.file } : {}), meetingItemId } } : current), now, { follow: sessionId })
   }
   return { sessionId, itemId }
 }

@@ -191,8 +191,11 @@ const followUp = tool(
       const by = await writersOf(ctx, sector, doc.after?.by ?? [], ctx.sessionId)
       const at = Date.now()
       const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by, ...(dismissed.length ? { dismissed } : {}), ...(unanswered.length ? { unanswered } : {}) }
-      // Only the outcome changes, on the row as it stands after the reads above; the version owed is paid.
-      writePage(ctx, workspaceId, event, last, (current) => ({ ...current, after }), at, { suggestionSeq, ...(row?.notesOwed != null ? { notesOwed: null } : {}) })
+      // Only the outcome changes, on the row as it stands after the reads above.
+      // Only the bound follow-up thread's write settles a version owed (it passed `refuseOldNotes`, so it wrote from that
+      // version); another thread's outcome stands but settles nothing, so the bound thread's older turn stays refused.
+      const settles = row?.notesOwed != null && row.followSessionId === ctx.sessionId && args.notes === row.notesOwed
+      writePage(ctx, workspaceId, event, last, (current) => ({ ...current, after }), at, { suggestionSeq, ...(settles ? { notesOwed: null } : {}) })
       return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
     })
   }
