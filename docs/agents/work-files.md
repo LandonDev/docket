@@ -408,7 +408,7 @@ control, takes it away.
   `useDockWidth` in store.ts); a tab that goes, closed here or in another
   window, takes its dock with it (`dropDocks` on every tab list).
 - **Its shapes** (model.ts): 360px to start, 360 to 720, never leaving the
-  file under 560px (`clampDock`, `dockMost`); a tab body under 920px gets
+  file under 440px (`clampDock`, `dockMost`); a tab body under 800px gets
   the dock over the whole body instead, with its close control at its head
   (`dockShape`); the sidebar folds itself under 900px of view while the
   shown tab's dock is open, and comes back when it closes (`sidebarFolds`).

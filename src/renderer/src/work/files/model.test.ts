@@ -429,24 +429,26 @@ describe("the verbs for what is selected", () => {
 });
 
 describe("the chat docked beside a file", () => {
-  it("starts at 360px and holds a width between 360 and 720, never leaving the file under 560", () => {
+  it("starts at 360px and holds a width between 360 and 720, never leaving the file under 440", () => {
     expect(DOCK.width).toBe(360);
     expect(clampDock(200)).toBe(360);
     expect(clampDock(900)).toBe(720);
     expect(clampDock(Number.NaN)).toBe(360);
-    // A body of 1,000px leaves room for a 440px dock at most.
-    expect(clampDock(600, 1000)).toBe(440);
+    // A body of 1,000px leaves room for a 560px dock at most.
+    expect(clampDock(600, 1000)).toBe(560);
     expect(clampDock(400, 1000)).toBe(400);
-    expect(dockMost(1000)).toBe(440);
+    expect(dockMost(1000)).toBe(560);
     expect(dockMost(1400)).toBe(720);
     expect(dockMost(800)).toBe(360);
     expect(dockMost()).toBe(720);
   });
 
-  it("lies beside the file while the file keeps 560px, and over the whole body where it would not", () => {
+  it("lies beside the file while the file keeps 440px, and over the whole body where it would not", () => {
     expect(dockShape(1200, 360)).toEqual({ over: false, width: 360 });
-    expect(dockShape(920, 500)).toEqual({ over: false, width: 360 });
-    expect(dockShape(919, 360)).toEqual({ over: true });
+    expect(dockShape(800, 500)).toEqual({ over: false, width: 360 });
+    expect(dockShape(799, 360)).toEqual({ over: true });
+    // A 1280px window with the rail and the workspace's column open: the tab's body is 820px, and the file stays in view.
+    expect(dockShape(820, 360)).toEqual({ over: false, width: 360 });
     expect(dockShape(500, 360)).toEqual({ over: true });
     // Unmeasured, the kept width is drawn beside.
     expect(dockShape(0, 400)).toEqual({ over: false, width: 400 });

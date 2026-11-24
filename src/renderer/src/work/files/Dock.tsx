@@ -107,7 +107,7 @@ export function Dock({
   );
 }
 
-/** The hairline between the file and its dock (work/dock/DockSash.tsx), the file keeping its 560px. */
+/** The hairline between the file and its dock (work/dock/DockSash.tsx), the file keeping its 440px. */
 export function DockSash({ width, body, onWidth }: { width: number; body: number; onWidth(width: number, done: boolean): void }) {
   return <DockSashShell name="files" width={width} body={body} beside={DOCK.file} onWidth={onWidth} />;
 }

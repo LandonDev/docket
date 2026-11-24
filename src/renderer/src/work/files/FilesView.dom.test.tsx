@@ -928,7 +928,7 @@ describe("the chat docked beside a file", () => {
     expect(screen.queryByRole("navigation", { name: "Places" })).not.toBeNull();
   });
 
-  it("lies over the whole body, without a sash, where the file would get under 560px", async () => {
+  it("lies over the whole body, without a sash, where the file would get under 440px", async () => {
     widths.body = 700;
     await openBudget();
     fireEvent.click(askButton());

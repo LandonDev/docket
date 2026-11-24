@@ -676,10 +676,12 @@ export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [w
 
 /**
  * The chat docked at the right of a file tab (docs/DESIGN.md "The Files place"): the shared dock's sizes
- * (work/dock/shapes.ts), never leaving the file under 560px. Where the tab's body cannot hold both, the chat lies
- * over the whole body instead, its close control still at its head.
+ * (work/dock/shapes.ts), never leaving the file under 440px. Where the tab's body cannot hold both, the chat lies
+ * over the whole body instead, its close control still at its head. 440, not the 560 it began as: a 1280px window
+ * with the rail and the workspace's column open leaves a tab 820px, and at 560 Ask covered the very file he was
+ * asking about; at 440 the file stays in view beside a 360px chat there.
  */
-export const DOCK = { ...DOCK_SIZE, file: 560 } as const;
+export const DOCK = { ...DOCK_SIZE, file: 440 } as const;
 export { DOCK_FOLD_AT, sidebarFolds };
 
 /** The widest the dock may be in a body of `body` px (unmeasured, 0: the bound alone). */
@@ -688,7 +690,7 @@ export const dockMost = (body = 0): number => dockMostIn(body, DOCK.file);
 /** A dragged or kept width, held to the dock's bounds and to what the body leaves. */
 export const clampDock = (width: number, body = 0): number => clampDockIn(width, body, DOCK.file);
 
-/** How the dock sits in a tab's body of `body` px: beside the file at its width, or over it where the file would get under 560px. */
+/** How the dock sits in a tab's body of `body` px: beside the file at its width, or over it where the file would get under 440px. */
 export const dockShape = (body: number, width: number): { over: true } | { over: false; width: number } => dockShapeIn(body, width, DOCK.file);
 
 // ── Home and search pages ─────────────────────────────────────────────

@@ -1830,13 +1830,14 @@ Around the canvas:
   host until he sends ("New chat"), its composer holding the file's chip
   from the first Ask (once he takes it off it stays off, and the thread
   his send makes does not open the file) and no draft row. The dock is 360px to start (360 to 720, kept per
-  window), the file never under 560px beside it; the canvas split's
+  window), the file never under 440px beside it (so a 1280px window with
+  the rail and the workspace's column open keeps the file in view); the canvas split's
   hairline sash between them (an 8px grab, the arrows, a double-click
   back to 360). Its head is 32px, level with the kind's bar: the title at
   13px medium, then Open in its own tab (once it is a thread) and Close,
   24px ghost glyphs. Under it the transcript and the composer; the
   transcript's skeleton until the thread is known. Where the tab's body
-  cannot keep the file at 560px beside it, the dock lies over the whole
+  cannot keep the file at 440px beside it, the dock lies over the whole
   body instead, its head and Close where they were. Under 900px of view
   the sidebar folds itself while the dock is open and comes back when it
   closes. A selection's Ask opens the dock with the selection's chip.
