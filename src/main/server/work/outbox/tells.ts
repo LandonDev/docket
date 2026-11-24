@@ -2,7 +2,7 @@ import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, type HeldRef } from '@shared/work'
 import type { Tell, TellKind } from '@shared/work/tell'
 import type { ActKindDef, WorkCtx } from '../modules'
-import { heldNotice, summaryFor } from './words'
+import { heldNotice, PRIVATE_CHANGE_KINDS, summaryFor } from './words'
 
 /**
  * What the Outbox tells him, through `ctx.tell` and nothing else
@@ -91,7 +91,8 @@ export function tellFailed(deps: TellsDeps, item: OutboxItem): void {
     kind: 'outbox.failed',
     workspaceId: workspaceOf(deps, item),
     title: `Not sent: ${oneLine(summaryFor(item), 140)}`,
-    ...(item.error ? { detail: oneLine(item.error, 200) } : {}),
+    // A private change's reason can quote the words or name the file (Word's "Plan.docx is not open"): never in a notice.
+    ...(item.error && !PRIVATE_CHANGE_KINDS.has(item.kind) ? { detail: oneLine(item.error, 200) } : {}),
     key,
     open: openOf(item),
     ...(fresh ? { by: at } : {})

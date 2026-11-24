@@ -14,7 +14,7 @@ import { closeFilesState } from './handle'
 import { registerFileWaiting } from './hooks'
 import { files } from './index'
 import { fileMentions } from './mention'
-import { at, HOST, makeRig, peer, phone, window, WS, type Rig } from './testkit'
+import { approver, at, HOST, makeRig, peer, phone, window, WS, type Rig } from './testkit'
 import { COUNTED_MOST, withWaiting } from './waiting'
 
 /**
@@ -142,19 +142,21 @@ describe("Home's Waiting on you", () => {
     expect(home.waiting.map((e) => e.name)).toEqual(['Budget.xlsx'])
   })
 
-  it('tells a key of a held act only where it could name everything the act names, a make and a destination included', async () => {
+  it('tells a key of a held act only where it may approve and could name everything the act names, a make and a destination included', async () => {
     hold({ path: join(rig.team, 'General'), name: 'Roster', verb: 'make' })
     // A key bound to the workspace's folder alone hears of no make in the team's channel: not its name, folder or item.
-    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting).toEqual([])
+    expect((await call<FilesHome>('work.files.home', {}, approver)).waiting).toEqual([])
     // A key that may name General, but not Events where the move would put the file, hears of the make alone.
     rig.roots.push(join(rig.team, 'General'))
     const move = hold({ path: join(rig.team, 'General', 'Spring budget.xlsx'), name: 'Spring budget.xlsx' })
-    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting.map((e) => e.name)).toEqual(['Roster'])
+    expect((await call<FilesHome>('work.files.home', {}, approver)).waiting.map((e) => e.name)).toEqual(['Roster'])
     rig.roots.push(join(rig.team, 'Events'))
-    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting.map((e) => [e.name, e.held?.id])).toEqual([
+    expect((await call<FilesHome>('work.files.home', {}, approver)).waiting.map((e) => [e.name, e.held?.id])).toEqual([
       ['Spring budget.xlsx', move],
       ['Roster', expect.any(String)]
     ])
+    // A key that may not approve hears of no held act, the name a make would give included, whatever it reaches.
+    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting).toEqual([])
   })
 
   it('counts the files Starred and Recent show too', async () => {

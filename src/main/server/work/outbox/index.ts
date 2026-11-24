@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { AddonRow } from '@shared/contract-addons'
+import type { FileAct } from '@shared/contract-work-files'
 import type { OutboxItem, ToolRulesCard } from '@shared/contract-work-outbox'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
@@ -9,7 +10,7 @@ import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureEarnedTables } from './earned'
 import { ensureOutboxTables } from './store'
-import { PRIVATE_CHANGE_KINDS, summaryFor } from './words'
+import { PRIVATE_CHANGE, PRIVATE_CHANGE_KINDS, PRIVATE_ERROR, summaryFor } from './words'
 import { pressesFor } from '../files/policy'
 import { outboxMentions } from './mentions'
 
@@ -63,7 +64,14 @@ export function unreviewedCount(host: OutboxHost): number {
  */
 export function seenBy(by: Caller, item: OutboxItem): OutboxItem {
   if (pressesFor(by) || !PRIVATE_CHANGE_KINDS.has(item.kind)) return item
-  return { ...item, summary: summaryFor(item), payload: null, result: item.result ? { summary: item.result.summary } : null }
+  const error = item.error ? PRIVATE_ERROR : null
+  // A Files act keeps the things it names as they are (a reader draws its card from them), less the name it would give.
+  if (item.kind === 'file.act') {
+    const p = item.payload as FileAct
+    const { name: _proposed, ...request } = p.request
+    return { ...item, summary: summaryFor(item), error, payload: { ...p, request }, result: item.result ? { summary: item.state === 'sent' ? item.result.summary : PRIVATE_CHANGE } : null }
+  }
+  return { ...item, summary: summaryFor(item), error, payload: null, result: item.result ? { summary: item.result.summary } : null }
 }
 
 /** A computer act's picture, read for one item: the list never carries it. */

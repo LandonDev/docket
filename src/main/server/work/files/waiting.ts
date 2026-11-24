@@ -4,6 +4,7 @@ import { kindOfEntry, UNTITLED, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { HELD_TABLE, PRESSABLE } from '../outbox/store'
 import { fileWaitingHooks } from './hooks'
+import { pressesFor } from './policy'
 
 /**
  * What waits on him in a file (docs/agents/work-files.md "Home"): an agent's suggestions, counted by the pillars that
@@ -69,13 +70,14 @@ export function heldFileActs(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, most
  * ref as the caller's row, or null for one outside the workspace or the caller's reach; it stats, and reads no file.
  * `mayName` says whether the caller could name a ref of this host now (the door's `locate`). A held act is told of
  * only to a caller that could name everything it names: his window every act; a key only an act on this host whose
- * every ref and destination it could name, so a key never hears a proposed name, folder or act id of a place
- * beyond its reach.
+ * every ref and destination it could name, and only one that may approve, so a key never hears a proposed name, folder
+ * or act id of a place beyond its reach, nor one it may not decide.
  */
 export async function waitingFiles(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'reaches'>, by: Caller, workspaceId: string, most: number, entryAt: (ref: CanvasSource) => Promise<FileEntry | null>, mayName: (ref: FileRef) => boolean): Promise<FileEntry[]> {
   const out = new Map<string, FileEntry>()
   const put = (e: FileEntry): void => void (out.size < most && !out.has(e.key) && out.set(e.key, e))
-  const sees = (act: FileAct): boolean => by.kind === 'local' || (by.kind === 'remote' && !by.peer && act.host === ctx.host && [...act.request.refs, ...(act.request.to ? [act.request.to] : [])].every(mayName))
+  // His press alone hears what a held act would name (round 2): a read or operate key does not, whatever it reaches.
+  const sees = (act: FileAct): boolean => by.kind === 'local' || (pressesFor(by) && act.host === ctx.host && [...act.request.refs, ...(act.request.to ? [act.request.to] : [])].every(mayName))
   for (const { id, act } of heldFileActs(ctx, workspaceId, most)) {
     if (!sees(act)) continue
     const held = { id, verb: act.verb }

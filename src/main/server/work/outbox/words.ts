@@ -48,11 +48,14 @@ export const staleNote = (row: Pick<HeldRow, 'n' | 'summary' | 'error'>): string
 export const heldNotice = (summary: string): string => `Held: ${cut(summary, 140)}`
 
 /**
- * The held kinds whose words are an agent's proposed change to a file others can open (`office.edit`, `google.edit`):
- * what they would write is shown to his press alone (files/policy.ts `pressesFor`). A notice, a digest row, a webhook
- * and a caller that may not approve read this instead, with the item's link: no file name, no old words, no new ones.
+ * The held kinds whose words are an agent's proposed change to a file others can open (`office.edit`, `google.edit`,
+ * and `file.act`, whose summary names the name it would give): what they would write is shown to his press alone
+ * (files/policy.ts `pressesFor`). A notice, a digest row, a webhook and a caller that may not approve read this
+ * instead, with the item's link: no file name, no old words, no new ones, and no error that could quote them.
  */
-export const PRIVATE_CHANGE_KINDS: ReadonlySet<string> = new Set(['office.edit', 'google.edit'])
+export const PRIVATE_CHANGE_KINDS: ReadonlySet<string> = new Set(['office.edit', 'google.edit', 'file.act'])
 export const PRIVATE_CHANGE = 'a change to a file others can open'
+/** What such an item's error says outside his press: that it was not made, never why in the file's own words. */
+export const PRIVATE_ERROR = 'It was not made as it was shown. The reason is in the Outbox on his own screen.'
 /** The words a notice or a caller that may not approve gets for an item: its own, or the plain line for a private change. */
 export const summaryFor = (item: { kind: string; summary: string }): string => (PRIVATE_CHANGE_KINDS.has(item.kind) ? PRIVATE_CHANGE : item.summary)

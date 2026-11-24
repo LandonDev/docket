@@ -4,6 +4,7 @@ import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
 import type { Tell } from '@shared/work/tell'
 import type { ActKindDef, Caller, WorkCtx } from '../modules'
 import { seenBy } from './index'
+import { PRIVATE_ERROR } from './words'
 import { OfficeCalendarSchema } from '../office/held'
 import { calendarOpKind } from './lifeosHeld'
 import { failedKey, heldKey, offerKey, OUTBOX_TELLS, syncTells, tellFailed, tellHeld, tellOffer, WAITING_MAX, type TellsDeps, type TellsSource } from './tells'
@@ -74,8 +75,10 @@ describe('a held change to a file others can open', () => {
     for (const kind of ['office.edit', 'google.edit'] as const) {
       told = []
       tellHeld(deps, edit(kind))
-      tellFailed(deps, { ...edit(kind), state: 'failed', decidedAt: NOW - 1000, error: 'Word is not open.' })
+      tellFailed(deps, { ...edit(kind), state: 'failed', decidedAt: NOW - 1000, error: 'Brief.docx is not open in Word on this computer: "Q3 draft" stands in 2 places now.' })
       expect(told.map((t) => t.title)).toEqual(['Held: a change to a file others can open', 'Not sent: a change to a file others can open'])
+      // No detail: a carrier's reason can name the file or quote the words.
+      expect(told[1]).not.toHaveProperty('detail')
       expect(JSON.stringify(told)).not.toMatch(/Brief|Q3/)
       expect(told[0]!.open).toEqual({ held: { at: 'host', id: 'h1' }, thread: 't-work' })
     }
@@ -88,6 +91,18 @@ describe('a held change to a file others can open', () => {
       expect(JSON.stringify(seen)).not.toMatch(/Brief|Q3/)
     }
     for (const by of [{ kind: 'local', caps: [] }, { kind: 'remote', caps: ['read', 'operate', 'approve'] }] as Caller[]) expect(seenBy(by, shown)).toBe(shown)
+    // A stale or failed one's reason is not his to read there either: it can quote the words it would replace.
+    const stale = seenBy({ kind: 'remote', caps: ['read'] }, { ...shown, state: 'stale', error: 'Brief.docx changed since: "Q3 draft" stands in other paragraphs now.' })
+    expect(stale.error).toBe(PRIVATE_ERROR)
+    expect(JSON.stringify(stale)).not.toMatch(/Brief|Q3/)
+    // A Files act keeps the things it names for its card, less the name it would give; its notices name nothing.
+    const rename = item({ kind: 'file.act', summary: 'Rename Plan.docx to Layoffs plan.docx in Esports Staff, General. Everyone in Esports Staff can open it.', payload: { verb: 'rename', request: { refs: [], name: 'Layoffs plan.docx' }, things: [{ name: 'Plan.docx' }] } })
+    const read = seenBy({ kind: 'remote', caps: ['read', 'operate'] }, rename)
+    expect(JSON.stringify(read)).not.toMatch(/Layoffs/)
+    expect(read.payload).toMatchObject({ verb: 'rename', things: [{ name: 'Plan.docx' }] })
+    told = []
+    tellHeld(deps, rename)
+    expect(told[0]!.title).toBe('Held: a change to a file others can open')
     // Every other kind is listed as before.
     const mail = item()
     expect(seenBy({ kind: 'remote', caps: ['read'] }, mail)).toBe(mail)

@@ -153,9 +153,13 @@ open, every way an agent's change is seen or taken asks it:
   host's `asked` is what its own thread's words said there, judged there.
 - The Outbox: `work.outbox.list` and `get` give a caller that is not his
   press an `office.edit` or `google.edit` item as `a change to a file others
-  can open`, with no payload. Its notice (held or failed), and so its
-  digest row and a webhook's line, says the same, with the item's link: no
-  file name, no words (`PRIVATE_CHANGE_KINDS`, outbox/words.ts).
+  can open`, with no payload, and a `file.act` the same with its payload less
+  the name it would give; for all three the error is a plain line
+  (`PRIVATE_ERROR`), since a stale reason can quote the words. Its notice (held
+  or failed), and so its digest row and a webhook's line, says the same, with
+  the item's link and no detail: no file name, no words
+  (`PRIVATE_CHANGE_KINDS`, outbox/words.ts). Files Home's Waiting on you names
+  a held act's proposed name only to his press (files/waiting.ts).
 
 ## Add-on tools: the rule he sets
 
