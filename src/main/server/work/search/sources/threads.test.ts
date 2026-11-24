@@ -116,9 +116,12 @@ describe('the words said in a thread', () => {
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
     expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
   })
-  it("are still found in one job when another job's thread fills the first read of the index: one wider read is made", async () => {
-    // The index ranks rows and knows no job: seventy rows of one Cosmic thread outrank Purdue's one line each.
-    for (let i = 0; i < 70; i++) say('t-cosmic', `pizza pizza pizza ${i}`)
+  it("are still found in one job when another job's thread holds more matching rows than the store's whole cap: the index is asked for one row a thread", async () => {
+    // The index ranks rows and knows no job: 260 rows of one Cosmic thread outrank Purdue's one line each, and the store answers 200 at most.
+    for (let i = 0; i < 260; i++) say('t-cosmic', `pizza pizza pizza ${i}`)
+    expect((await store.searchEvents({ query: 'pizza', scope: 'work' })).hits.every((h) => h.sessionId === 't-cosmic')).toBe(true)
+    const perThread = await store.searchEvents({ query: 'pizza', scope: 'work', perThread: true })
+    expect(perThread.hits.map((h) => h.sessionId).sort()).toEqual(['t-chat', 't-child', 't-cosmic', 't-project', 't-purdue'])
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
     expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
   })

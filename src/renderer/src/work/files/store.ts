@@ -588,11 +588,11 @@ export async function openFileTab(
   workspaceId: string,
   file: { ref: CanvasSource; name: string; key?: string },
   opener?: string,
-  options?: { timeoutMs?: number; seated?(answer: FilesOpened): Promise<void> },
+  options?: { timeoutMs?: number; seated?(answer: FilesOpened): Promise<void>; /** asked when the host has answered: false keeps the new tab behind the one shown (he chose something else while a slow host made it) */ show?(): boolean },
 ): Promise<FilesOpened> {
   const answer = await ask<FilesOpened>(link, "work.files.open", { workspaceId, ref: file.ref, name: file.name, ...(file.key ? { key: file.key } : {}), ...(opener ? { opener } : {}) }, options?.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined);
   await options?.seated?.(answer);
-  putTabs(link, workspaceId, answer, answer.tabId);
+  putTabs(link, workspaceId, answer, options?.show?.() === false ? undefined : answer.tabId);
   return answer;
 }
 

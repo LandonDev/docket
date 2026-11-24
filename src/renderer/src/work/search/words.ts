@@ -1,5 +1,5 @@
 import type { SearchHit } from "@shared/work/search";
-import { matchRanges } from "../../chrome/MatchText";
+import { mentionRanges } from "@shared/work/mentions";
 
 /**
  * A row's muted words (docs/DESIGN.md "Work search"): its one fact, and its
@@ -30,12 +30,23 @@ const LEAD = 12;
 /**
  * A found line as a row shows it. The row cuts a long line at its end, so a line whose matched word lies
  * past its start would show none of why it was found: it begins a word before that word instead, marked as cut.
+ * The word is found as the hosts find it, case and accents aside.
  */
 export function lineAt(line: string, query: string): string {
-  const first = matchRanges(line, { query })[0];
+  const first = mentionRanges(line, query)[0];
   if (!first || first[0] <= LEAD) return line;
-  const from = line.slice(0, first[0]).trimEnd().lastIndexOf(" ") + 1;
+  // A word before it for its sense; a long one (an address, a path) would take the row's room, and the line then begins at the word itself.
+  const word = line.slice(0, first[0]).trimEnd().lastIndexOf(" ") + 1;
+  const from = first[0] - word > LEAD ? first[0] : word;
   return from <= 1 ? line : `…${line.slice(from)}`;
+}
+
+/**
+ * The characters of a title or a line to mark for his words, as the hosts match them: case and accents aside,
+ * so "cafe" marks "Café". For `MatchText`'s `positions`.
+ */
+export function marksOf(text: string, query: string): number[] {
+  return mentionRanges(text, query).flatMap(([start, end]) => Array.from({ length: end - start }, (_, i) => start + i));
 }
 
 /** The fact a row shows after its title: the line the words were found in, else its own fact; a task's due day. */

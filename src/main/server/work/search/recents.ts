@@ -42,7 +42,8 @@ export function recentGroup(db: DatabaseSync, reach: SearchReach, keep: (hit: Se
   for (const row of db.prepare(`SELECT key, hit, opened_at FROM work_search_recent ORDER BY opened_at DESC, key`).all() as unknown as Row[]) {
     if (hits.length >= limit) break
     try {
-      const hit = { ...(JSON.parse(row.hit) as SearchHit), openedAt: row.opened_at }
+      // Kept again as it is read: a row written before a rule of `kept` (a thread's `seq`) is held to it too.
+      const hit = { ...kept(JSON.parse(row.hit) as SearchHit), openedAt: row.opened_at }
       const look = `${hit.kind}\n${hit.title}\n${hit.workspaceId}`
       if (!inReach(reach, hit.workspaceId ?? null) || !keep(hit) || looks.has(look)) continue
       looks.add(look)

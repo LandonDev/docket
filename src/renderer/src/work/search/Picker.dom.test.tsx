@@ -376,8 +376,11 @@ describe("Work search", () => {
     await type("budget");
     // four kinds of four rows under their headings: twenty rows of list in a box that shows thirteen and a half
     await land(asks.length - 1, answer([group("mail", "Mail", Array.from({ length: 4 }, (_, i) => hit(`m${i}`, "mail"))), group("thread", "Threads", Array.from({ length: 4 }, (_, i) => hit(`thread:t${i}`, "thread"))), group("task", "Tasks", Array.from({ length: 4 }, (_, i) => hit(`t${i}`, "task"))), group("person", "People", Array.from({ length: 4 }, (_, i) => hit(`p${i}`, "person")))]));
-    Object.defineProperty(list(), "clientHeight", { configurable: true, value: CAP });
+    // Drawn as in the window: the list's box stands under the field and the rule, 96px down, and a row where the scroll puts it.
+    const onScreen = (top: number, height: number): DOMRect => ({ top, bottom: top + height, height }) as DOMRect;
+    list().getBoundingClientRect = () => onScreen(96, CAP);
     const first = list().querySelector<HTMLElement>('[data-row="hit:p0"]')!;
+    first.getBoundingClientRect = () => onScreen(96 + first.offsetTop - list().scrollTop, ROW);
     const shown = vi.fn(() => void (list().scrollTop = 0));
     first.scrollIntoView = shown;
     // he scrolls to the end by the trackpad: the highlight stays on the first row, now above the box
@@ -392,6 +395,19 @@ describe("Work search", () => {
     expect(onClose).not.toHaveBeenCalled();
     await press("Enter");
     expect(opened.hits).toEqual([{ key: "p0", host: "box" }]);
+  });
+
+  it("opens the one row of a short list on the first Return: the list standing under the field hides nothing", async () => {
+    await mount();
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")])]));
+    const onScreen = (top: number, height: number): DOMRect => ({ top, bottom: top + height, height }) as DOMRect;
+    // a heading and one row, 96px down the window
+    list().getBoundingClientRect = () => onScreen(96, 2 * ROW);
+    const only = list().querySelector<HTMLElement>('[data-row="hit:m1"]')!;
+    only.getBoundingClientRect = () => onScreen(96 + ROW, ROW);
+    await press("Enter");
+    expect(opened.hits).toEqual([{ key: "m1", host: "box" }]);
   });
 
   it("the row's menu holds the key it shows: ⌘↩ starts the thread while the menu is open on a row", async () => {

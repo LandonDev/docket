@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit } from "@shared/work/search";
-import { ageWords, eventWords, factOf, lineAt, timeOf } from "./words";
+import { ageWords, eventWords, factOf, lineAt, marksOf, timeOf } from "./words";
 
 /** A row's muted words: how long ago, when, and its one fact. */
 
@@ -44,5 +44,14 @@ describe("a row's words", () => {
     expect(lineAt("The invoice is late", "invoice")).toBe("The invoice is late");
     expect(lineAt(line, "zebra")).toBe(line);
     expect(factOf(hit({ snippet: line }), now)).toBe(line);
+  });
+  it("finds the word as the hosts do, case and accents aside, marks it, and gives a long word before it no room", () => {
+    const line = "…the menu for the long evening at the Café on State Street";
+    expect(lineAt(line, "cafe")).toBe("…the Café on State Street");
+    const text = "the Café on State";
+    expect(marksOf(text, "cafe state").map((i) => text[i]).join("")).toBe("CaféState");
+    expect(marksOf(text, "zebra")).toEqual([]);
+    // a path before the word would fill the row: the line begins at the word
+    expect(lineAt("…see https://example.edu/a/very/long/path/to/the/page budget lines", "budget")).toBe("…budget lines");
   });
 });

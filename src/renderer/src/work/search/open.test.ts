@@ -29,6 +29,7 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
     opened: (hostId, h) => void did.push(["opened", hostId, h.key]),
     clear: () => void did.push(["clear"]),
+    chose: () => {},
     ...over,
   };
   return { did, deps };

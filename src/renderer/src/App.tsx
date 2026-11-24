@@ -302,7 +302,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
+import { choose, openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
@@ -2160,7 +2160,9 @@ export default function App() {
   useEffect(() => {
     workOpenPort.set((sessionId) => {
       // Whatever lies over the board (Today, Review, the Inbox, Settings) leaves: a thread opened under it is not seen.
+      // And this is his latest choice: a file still on its way from a slow host no longer takes the window.
       shell.closeOverlays();
+      choose();
       openWorkView(null);
       onOpenSessionById(sessionId);
     });

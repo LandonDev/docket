@@ -5,7 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { refusalWords } from "../../lib/settingsHome";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { movedOnSince, openWorkView, workViewNow } from "../../lib/workSwitch";
+import { choose, openWorkView, stillChosen, workViewNow } from "../../lib/workSwitch";
 import { openFileTab, openPageTab } from "./store";
 
 /** What another screen opens in Files: a file, in a tab of its own, or a page to stand on (a place, a folder). */
@@ -22,11 +22,14 @@ export type FilesTarget = { ref: CanvasSource; name: string; key?: string } | { 
  * one toast.
  */
 export async function openInFiles(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, what: FilesTarget): Promise<void> {
+  const mine = choose();
   const before = workViewNow();
+  // A slow host: he may have opened a mail, another file or a thread by now. The tab is made, behind the one
+  // Files shows, and the window stays with him.
+  const latest = (): boolean => stillChosen(mine, before, workspace.id);
   if ("page" in what) await openPageTab(workspace.environmentId, workspace.id, what.page);
-  else await openFileTab(workspace.environmentId, workspace.id, what);
-  // A slow host: he may have opened a mail or gone back to a thread by now. The tab is made; the window stays with him.
-  if (movedOnSince(before, workspace.id)) return;
+  else await openFileTab(workspace.environmentId, workspace.id, what, undefined, { show: latest });
+  if (!latest()) return;
   openWorkView({ workspaceId: workspace.id, view: "files" });
 }
 

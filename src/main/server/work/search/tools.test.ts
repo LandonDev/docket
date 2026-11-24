@@ -144,6 +144,13 @@ describe('work_search', () => {
     const docs = await run(rig, 't-purdue', [files], { query: 'plan', kinds: ['doc'] })
     expect(docs.text).toContain('- Plan (docs:d1)')
     expect(docs.text).not.toContain('Budget.xlsx')
+    expect(docs.text).toMatch(/^Documents$/m)
+    // two documents and a limit of one: the thread is told another matched, and how to ask for it
+    const two = fakeSource('file', [hit('file:plan', PURDUE, { title: 'Plan', open: { to: 'file', ref: { at: 'lifeos', table: 'docs', id: 'd1' } as never, name: 'Plan' } }), hit('file:plan2', PURDUE, { title: 'Plan B', open: { to: 'file', ref: { at: 'lifeos', table: 'docs', id: 'd2' } as never, name: 'Plan B' } })], { label: 'Files' })
+    const one = await run(rig, 't-purdue', [two], { query: 'plan', kinds: ['doc'], limit: 1 })
+    expect(one.text).toContain('- Plan (docs:d1)')
+    expect(one.text).not.toContain('Plan B')
+    expect(one.text).toContain('more documents match: ask again with kinds ["doc"] and a higher limit')
     // with no kinds asked, both are listed and the document still carries its id
     const all = await run(rig, 't-purdue', [files], { query: 'plan' })
     expect(all.text).toContain('- Plan (docs:d1)')
@@ -203,6 +210,11 @@ describe('the answer as a thread reads it', () => {
   })
   it('says so when nothing was found', () => {
     expect(searchText('zebra', { groups: [], pending: [], quiet: [] }, reach)).toBe('Nothing found for "zebra".')
+  })
+  it('at its own most rows a kind, tells the thread to narrow its words: there is no higher limit to ask for', () => {
+    const mail = { source: 'search.mail', kind: 'mail', label: 'Mail', more: true, hits: [hit('lifeos:mailThreads:m1', PURDUE, { title: 'Budget' })] }
+    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 20)).toContain('more mail match: ask again with more exact words')
+    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 5)).toContain('and a higher limit')
   })
   it('says only why when no source could search, and both when one searched and found nothing', () => {
     const quiet = [{ cause: 'lifeos', line: 'Sign in to LifeOS.' }]

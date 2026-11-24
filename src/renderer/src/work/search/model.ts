@@ -128,8 +128,9 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     // The rows on screen stay as they stand until an answer lands; the same ask again carries their order on.
     orderGen: same && model.orderGen === model.gen ? model.gen + 1 : model.orderGen,
     searched: false,
-    // What a host can search further holds for the hosts asked, whatever the words: kept across a change of words, so the row does not blink.
-    deeper: model.deeper,
+    // What a host can search further holds for the hosts asked, whatever the words: kept across a change of words, so
+    // the row does not blink, and dropped when the hosts asked change (the host that offered it may be gone).
+    deeper: ask.hosts.length === model.hosts.length && ask.hosts.every((h) => model.hosts.some((was) => was.id === h.id)) ? model.deeper : [],
     moved: same ? model.moved : back !== null,
     active: same ? model.active : back,
   };

@@ -242,9 +242,13 @@ export interface OpenWorkView {
   message?: string;
 }
 let openView: OpenWorkView | null = null;
+/** How many times he has chosen somewhere to go: see `choose`. */
+let choice = 0;
 
 export function openWorkView(next: OpenWorkView | null): void {
   if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event && openView?.person === next?.person && openView?.doc === next?.doc && openView?.chat === next?.chat && openView?.message === next?.message) return;
+  // Another view is a choice of his. The same view shedding what it was opened on (Agenda taking its event) is not.
+  if (next && (openView?.workspaceId !== next.workspaceId || openView?.view !== next.view)) choice++;
   openView = next;
   for (const listener of listeners) listener();
 }
@@ -253,15 +257,21 @@ export function openWorkView(next: OpenWorkView | null): void {
 export const workViewNow = (): OpenWorkView | null => openView;
 
 /**
- * For a door that waits on a host before it shows its view (Files making a tab on a slow host): whether he has
- * gone somewhere else since `before`, the view open when the wait began. Another view opened, or this
- * workspace's view left for a thread, is his own move, and the door then shows nothing. A view of another
- * workspace that went away is the window entering this one (WorkViewSurface), not a move of his.
+ * He chose somewhere to go. A door that opens a thing for him takes a number here as it starts (a file from
+ * search, a thread opened from a Work view), and every Work view opened counts as one too. A door that then
+ * waits on a host (Files making a tab on a slow one) shows its view only while its number is still the latest
+ * (`stillChosen`): what he chose since keeps the window.
  */
-export function movedOnSince(before: OpenWorkView | null, workspaceId: string): boolean {
-  if (openView === before) return false;
-  if (openView === null) return before?.workspaceId === workspaceId;
-  return true;
+export const choose = (): number => ++choice;
+
+/**
+ * Whether a door that took `mine` and saw `before` open may still show its view in `workspaceId`: nothing was
+ * chosen since, and he has not left this workspace's own view for a thread. A view of another workspace that
+ * went away is the window entering this one (WorkViewSurface), not a move of his.
+ */
+export function stillChosen(mine: number, before: OpenWorkView | null, workspaceId: string): boolean {
+  if (mine !== choice) return false;
+  return !(openView === null && before?.workspaceId === workspaceId);
 }
 
 export function useWorkView(): OpenWorkView | null {

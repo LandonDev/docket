@@ -288,6 +288,9 @@ describe("nothing found, and what could not be searched", () => {
     const alone = landInstant(typed("quagga", [box], m, "file"), m.gen + 1, "box", answer([group("file", ["f9"])])).model;
     expect(shape(rowsOf(alone))).toEqual(["f9"]);
     expect(rowsOf(typed("q", [box], m))).toEqual([]);
+    // the host that offered it is no longer asked: the offer goes with it
+    expect(typed("quagga", [mac], m).deeper).toEqual([]);
+    expect(typed("quagga!", [box], m).deeper).toEqual(["file"]);
   });
   it("says where each row is when places mix: several jobs, or one job with a thread of the Work Chats among its rows", () => {
     let m = typed("budget");

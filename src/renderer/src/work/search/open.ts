@@ -3,7 +3,7 @@ import type { SearchHit } from "@shared/work/search";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { requestTranscriptJump } from "../../lib/transcriptJump";
-import { openWorkView, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
+import { choose, openWorkView, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
 import { linkedWorkspaceIds } from "../../lib/linkedRail";
 import { project, projectStore } from "../../stores/project";
 import { shell } from "../../stores/shell";
@@ -35,6 +35,8 @@ export interface OpenDeps {
   opened(hostId: string, hit: SearchHit): void;
   /** whatever lies over the board (a full-page view, Settings) leaves, so what opens is seen */
   clear(): void;
+  /** this open is his latest choice of where to go */
+  chose(): void;
 }
 
 const live: OpenDeps = {
@@ -55,6 +57,7 @@ const live: OpenDeps = {
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
   opened: tellOpened,
   clear: () => shell.closeOverlays(),
+  chose: () => void choose(),
 };
 
 export type Opened = "opened" | "gone" | "failed" | "nothing";
@@ -89,10 +92,12 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   // The job was removed while the list stood: nothing opens, and nothing is kept for Recent.
   if (hit.workspaceId && !workspace) return "gone";
   const open = hit.open;
+  // His latest choice: a file still on its way from a slow host no longer takes the window (lib/workSwitch.ts `choose`).
+  d.chose();
 
   if (open.to === "thread") {
-    // A thread carries its own place: the window follows it there. A page over the threads (Today, Review, the
-    // Inbox) leaves first, as for every other kind: the app's thread door closes none, and the thread would open under it.
+    // A thread carries its own place: the window follows it there. Whatever lies over the threads (Today, Review,
+    // the Inbox, Settings) leaves first, as for every other kind, or the thread would open under it.
     d.clear();
     d.thread(open.sessionId, open.seq);
     d.opened(hostId, hit);

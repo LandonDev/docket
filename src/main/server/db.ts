@@ -1630,6 +1630,8 @@ export class Store {
     archived?: boolean
     /** Only Work threads (`sessions.scope`): what Work search asks (work/search/host.ts). */
     scope?: 'work'
+    /** One row a thread, its best: the cap then counts threads, so one long thread cannot fill it (Work search's threads). */
+    perThread?: boolean
   }): Promise<SessionSearchResult> {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
@@ -1671,7 +1673,14 @@ export class Store {
     }
     // bm25 is negative, better first; a scanned row (rank 0) follows the
     // ranked ones, newest first within a rank.
-    const sql = `${parts.join('\n UNION ALL \n')}
+    const found = parts.join('\n UNION ALL \n')
+    const sql = options.perThread
+      ? `SELECT sessionId, seq, ts, type, snippet, rank FROM (
+           SELECT f.*, ROW_NUMBER() OVER (PARTITION BY f.sessionId ORDER BY f.rank, f.ts DESC, f.seq DESC) AS nth FROM (${found}) f
+         ) WHERE nth = 1
+         ORDER BY rank, ts DESC, seq DESC
+         LIMIT ?`
+      : `${found}
          ORDER BY rank, ts DESC, seq DESC
          LIMIT ?`
     params.push(limit + 1)

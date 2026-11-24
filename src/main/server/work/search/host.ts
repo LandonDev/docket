@@ -37,7 +37,7 @@ export interface SearchHostDeps {
   sessions(): SessionMeta[]
   session(id: string): SessionMeta | null
   workspaceOfProject(projectId: string): string | null
-  searchEvents(o: { query: string; limit: number; scope: 'work' }): Promise<{ hits: SessionSearchHit[] }>
+  searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true }): Promise<{ hits: SessionSearchHit[] }>
 }
 
 export function makeSearchHost(deps: SearchHostDeps): SearchHost {
@@ -60,7 +60,8 @@ export function makeSearchHost(deps: SearchHostDeps): SearchHost {
       const s = deps.session(id)
       return s && sessionScopeOf(s) === 'work' ? threadOf(s) : null
     },
-    words: async (query, limit) => (await deps.searchEvents({ query, limit, scope: 'work' })).hits
+    // One row a Work thread, its best: the index ranks rows and knows no job, and one long thread must not fill the read.
+    words: async (query, limit) => (await deps.searchEvents({ query, limit, scope: 'work', perThread: true })).hits
   }
 }
 

@@ -65,33 +65,41 @@ export function mentionExcerpt(text: string | null | undefined, max = MENTION_EX
 }
 
 /**
+ * Where the words typed stand in a text, case and accents aside (as `mentionMatches` reads them): the first place
+ * of each word, as `[start, end)` in the text's own characters, in order and never overlapping. The text is
+ * folded letter by letter, so a place in the folded text is the same place in the text shown.
+ */
+export function mentionRanges(text: string, typed: string): [number, number][] {
+  const fold = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  const starts: number[] = []
+  let hay = ''
+  for (let i = 0; i < text.length; i++) {
+    const folded = fold(text[i]!)
+    for (let j = 0; j < folded.length; j++) starts.push(i)
+    hay += folded
+  }
+  const out: [number, number][] = []
+  for (const word of fold(typed).split(/\s+/).filter(Boolean)) {
+    const at = hay.indexOf(word)
+    if (at >= 0) out.push([starts[at]!, starts[at + word.length - 1]! + 1])
+  }
+  out.sort((a, b) => a[0] - b[0])
+  return out.filter((range, i) => i === 0 || range[0] >= out[i - 1]![1])
+}
+
+/**
  * The excerpt of a text found by words typed: cut round the first of them it holds, so the line shows why the
  * thing was found. A match the plain excerpt already shows, or no match, gives the plain excerpt (the start).
  */
 export function mentionExcerptAt(text: string | null | undefined, typed: string, max = MENTION_EXCERPT): string | undefined {
   const flat = (text ?? '').replace(/\s+/g, ' ').trim()
   if (flat.length <= max) return flat || undefined
-  // Folded letter by letter, so a place in the folded text is the same place in the text shown.
-  const fold = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
-  const starts: number[] = []
-  let hay = ''
-  for (let i = 0; i < flat.length; i++) {
-    const folded = fold(flat[i]!)
-    for (let j = 0; j < folded.length; j++) starts.push(i)
-    hay += folded
-  }
-  const found = fold(typed)
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => ({ at: hay.indexOf(word), length: word.length }))
-    .filter((m) => m.at >= 0)
-    .sort((a, b) => a.at - b.at)[0]
-  const end = found ? (starts[found.at + found.length - 1] ?? flat.length) + 1 : 0
-  if (!found || end <= max - 1) return mentionExcerpt(flat, max)
+  const found = mentionRanges(flat, typed)[0]
+  if (!found || found[1] <= max - 1) return mentionExcerpt(flat, max)
   // A third of the line before the word, begun at a word's start where one is near; the rest after it.
-  let from = Math.max(0, starts[found.at]! - Math.floor(max / 3))
+  let from = Math.max(0, found[0] - Math.floor(max / 3))
   const space = flat.indexOf(' ', from)
-  if (space >= 0 && space < starts[found.at]!) from = space + 1
+  if (space >= 0 && space < found[0]) from = space + 1
   const body = flat.slice(from, from + max - 2)
   return `…${body.trimEnd()}${from + body.length < flat.length ? '…' : ''}`
 }

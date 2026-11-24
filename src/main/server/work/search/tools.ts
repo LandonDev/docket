@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { workText, type WorkScope, type WorkToolResult } from '@shared/work'
-import { SEARCH_ORDER, type SearchAnswer, type SearchHit, type SearchReach } from '@shared/work/search'
+import { SEARCH_ORDER, searchLabel, type SearchAnswer, type SearchHit, type SearchReach } from '@shared/work/search'
 import { WORK_MODULES, type WorkModule, type WorkTool } from '../modules'
 import { threadReach } from './reach'
 import { runSearch } from './run'
@@ -82,7 +82,8 @@ export function searchText(query: string, answer: SearchAnswer, reach: SearchRea
   for (const { kind, label, hits, more } of kinds) {
     if (!hits.length) continue
     out.push(...(out.length ? [''] : []), label, ...hits.slice(0, limit).map((hit) => line(hit, reach)))
-    if (more || hits.length > limit) out.push(`- more ${label.toLowerCase()} match: ask again with kinds ["${kind}"] and a higher limit`)
+    // At the tool's own most there is no higher limit to ask for: narrower words are the way to the rest.
+    if (more || hits.length > limit) out.push(limit >= LIMIT_MAX ? `- more ${label.toLowerCase()} match: ask again with more exact words` : `- more ${label.toLowerCase()} match: ask again with kinds ["${kind}"] and a higher limit`)
   }
   // "Nothing found" is true only of a search that ran: with no source answering, only why is said.
   if (!out.length && (answer.searched !== 0 || !answer.quiet.length)) out.push(`Nothing found for "${query}".`)
@@ -123,7 +124,14 @@ export function searchTools(own: () => readonly SearchSource[], modules: readonl
           limit,
           signal: ctx.signal
         })
-        const groups = docsOnly ? answer.groups.map((g) => (g.kind === 'file' ? { ...g, hits: g.hits.filter((hit) => docOf(hit) !== null), more: false } : g)) : answer.groups
+        // A file group's documents are listed as Documents; its "more" is of documents only when every row it sent was one.
+        const groups = docsOnly
+          ? answer.groups.map((g) => {
+              if (g.kind !== 'file') return g
+              const hits = g.hits.filter((hit) => docOf(hit) !== null)
+              return { ...g, kind: 'doc', label: searchLabel('doc'), hits, more: g.more && hits.length === g.hits.length }
+            })
+          : answer.groups
         return workText(searchText(a.query.trim(), { ...answer, groups }, reach, limit))
       }
     }

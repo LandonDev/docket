@@ -25,7 +25,7 @@ import { holdStill, outOfSight } from "./hold";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
 import { activeOf, busy, isOption, placesMix, rowsOf, type Option, type Row } from "./model";
 import { canStartAbout, openHit, startAbout } from "./open";
-import { factOf, timeOf } from "./words";
+import { factOf, marksOf, timeOf } from "./words";
 
 /**
  * Work search (docs/DESIGN.md "Work search"; docs/agents/work-search.md):
@@ -205,7 +205,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       // and the next one opens it. Return never opens a row he cannot see.
       const box = document.getElementById(LIST_ID);
       const el = box?.querySelector<HTMLElement>(`[data-row="${CSS.escape(row.id)}"]`);
-      if (box && el && outOfSight({ top: el.offsetTop, height: el.offsetHeight }, { scrollTop: box.scrollTop, height: box.clientHeight })) {
+      if (box && el && outOfSight(el.getBoundingClientRect(), box.getBoundingClientRect())) {
         el.scrollIntoView({ block: "nearest" });
         return;
       }
@@ -577,13 +577,13 @@ export function Results({
                 )}
                 {/* The `@` list's own row: the title as wide as its words, then the fact in what is left, cut first. */}
                 <span className="min-w-0 flex-[0_1_auto] truncate">
-                  <MatchText text={hit.title} query={text} active={Boolean(text)} />
+                  <MatchText text={hit.title} positions={marksOf(hit.title, text)} />
                   {hit.cloud ? <Cloud aria-label="Kept in the cloud" className="ml-1.5 inline size-3.5 align-[-2px] text-muted-foreground" /> : null}
                 </span>
                 {/* In a window too narrow for it the fact goes, rather than stand as a stub. */}
                 {/* A long fact keeps 72px and is cut first; a short one keeps only its own width, so it never holds room a long title needs. */}
                 <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? cn(fact.length > SHORT_FACT ? "min-w-[4.5rem]" : "min-w-max", "max-[480px]:hidden") : "min-w-0")}>
-                  {fact ? <MatchText text={fact} query={text} active={Boolean(text)} /> : null}
+                  {fact ? <MatchText text={fact} positions={marksOf(fact, text)} /> : null}
                 </span>
                 {/* The row's end: the job and the time, each a column of one width, at the right whatever stands before them. */}
                 {mixed || timed ? (

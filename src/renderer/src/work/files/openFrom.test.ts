@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], fail: null as Error | null, slow: null as (() => void) | null }));
+const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], shown: [] as boolean[], fail: null as Error | null, slow: null as (() => unknown) | null }));
 vi.mock("./store", () => ({
   openFileTab: async (...args: unknown[]) => {
-    opened.calls.push(args);
+    // the file, as the door hands it over; `show` is asked once the host has answered
+    opened.calls.push(args.slice(0, 3));
     // What he does while a slow host makes the tab.
-    opened.slow?.();
+    await opened.slow?.();
+    opened.shown.push((args[4] as { show?: () => boolean } | undefined)?.show?.() ?? true);
     if (opened.fail) throw opened.fail;
     return { rev: 1, tabs: [], tabId: "t1" };
   },
@@ -24,6 +26,7 @@ const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
 afterEach(() => {
   opened.calls.length = 0;
   opened.pages.length = 0;
+  opened.shown.length = 0;
   toasts.length = 0;
   opened.fail = null;
   opened.slow = null;
@@ -62,6 +65,37 @@ describe("opening a file from another screen", () => {
     opened.slow = null;
     await openInFiles(workspace, { ref, name: "Budget.xlsx" });
     expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+  });
+
+  it("keeps an earlier file behind a later one: the slow first answer neither takes Files' tab nor shows the view again", async () => {
+    let second: Promise<void> | null = null;
+    // While file A is on its way he opens file B, which answers at once.
+    opened.slow = () => {
+      opened.slow = null;
+      second = openInFiles(workspace, { ref, name: "B.xlsx" });
+      return second;
+    };
+    await openInFiles(workspace, { ref, name: "A.xlsx" });
+    await second;
+    // B was shown as it answered; A, answering after it, is kept behind
+    expect(opened.shown).toEqual([true, false]);
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+  });
+
+  it("still shows Files when the view he was on only shed what it was opened on (Agenda taking its event): that is no choice of his", async () => {
+    openWorkView({ workspaceId: "w1", view: "agenda", event: "e1" });
+    opened.slow = () => openWorkView({ workspaceId: "w1", view: "agenda" });
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
+    expect(opened.shown).toEqual([true]);
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+  });
+
+  it("stays behind a thread he opened from a Work view while the host was slow", async () => {
+    const { choose } = await import("../../lib/workSwitch");
+    opened.slow = () => void choose();
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
+    expect(opened.shown).toEqual([false]);
+    expect(workViewNow()).toBeNull();
   });
 
   it("leaves the screen he is on when the host refuses, and throws the host's own sentence", async () => {

@@ -16,18 +16,22 @@ describe("holding the highlighted row still", () => {
   });
 });
 
-/** Return never opens a row he cannot see. */
+/** Return never opens a row he cannot see. Both boxes are where they are drawn on screen. */
 describe("a highlighted row out of sight", () => {
-  const box = { scrollTop: 280, height: 380 };
+  // The list's box stands 96px down the window (under the field and the rule) and shows 380px.
+  const box = { top: 96, bottom: 476 };
+  const row = (top: number) => ({ top, bottom: top + 28 });
   it("is one scrolled past the box's top or not yet reached at its bottom, by more than half its height", () => {
-    expect(outOfSight({ top: 0, height: 28 }, box)).toBe(true);
-    expect(outOfSight({ top: 260, height: 28 }, box)).toBe(true);
-    expect(outOfSight({ top: 700, height: 28 }, box)).toBe(true);
+    expect(outOfSight(row(-184), box)).toBe(true);
+    expect(outOfSight(row(76), box)).toBe(true);
+    expect(outOfSight(row(470), box)).toBe(true);
   });
-  it("is not one he can see half of or more, nor any row of a list with nothing laid out", () => {
-    expect(outOfSight({ top: 280, height: 28 }, box)).toBe(false);
-    expect(outOfSight({ top: 270, height: 28 }, box)).toBe(false);
-    expect(outOfSight({ top: 640, height: 28 }, box)).toBe(false);
-    expect(outOfSight({ top: 0, height: 28 }, { scrollTop: 500, height: 0 })).toBe(false);
+  it("is not one he can see half of or more, nor the one row of a short list under the field, nor any row of a list with nothing laid out", () => {
+    expect(outOfSight(row(96), box)).toBe(false);
+    expect(outOfSight(row(86), box)).toBe(false);
+    expect(outOfSight(row(456), box)).toBe(false);
+    // one hit of one kind: the box is the row's own height, 96px down
+    expect(outOfSight(row(96), { top: 96, bottom: 124 })).toBe(false);
+    expect(outOfSight({ top: 0, bottom: 0 }, { top: 0, bottom: 0 })).toBe(false);
   });
 });

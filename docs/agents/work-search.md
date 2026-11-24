@@ -80,7 +80,9 @@ ask: what a host holds in memory is instant, the same read from LifeOS is
 not); on a hit, `snippet` (the matched words in their line, drawn in the
 fact's place; the frame cuts a long one round the first of his words it
 holds, `searchSnippet`, and the row begins a found line a word before that
-word when it lies past the row's start, `lineAt` in work/search/words.ts),
+word when it lies past the row's start, `lineAt` in work/search/words.ts;
+both find the word as the hosts match it, case and accents aside,
+`mentionRanges`, and the row marks it the same way, `marksOf`),
 `chip` (the thing as a thread's context, for ⌘↩) and `cloud: true` (a file
 kept in the cloud alone). A source that answered but could not search
 something (Files left a library asleep) says so through `ask.note`: one
@@ -277,17 +279,20 @@ method can be given a small source here on `ask.ts`, as Files is.
   the scroller moves by what landed above it, and its box is no taller than
   the rows from there down. `outOfSight` is the rule for Return on a row he
   has scrolled away from by the trackpad (the highlight does not follow a
-  scroll): less than half of the row in the box, and that Return only
-  brings the row back; the next one opens it.
+  scroll): less than half of the row in the list's box, both read where
+  they are drawn on screen, and that Return only brings the row back; the
+  next one opens it.
 - `open.ts`: Return. A page over the threads (Today, Review, the Inbox)
   closes first, for every kind, a thread too. The window enters the hit's
   job when it is in another (`project.enterWorkspace`), the thing opens by
   its `open`, and the hit's host is told (`work.search.opened`). A file
   goes through Files' own door (`openInFiles`), which makes the tab on the
-  job's host and then shows the Files view, unless he went elsewhere while
-  a slow host made the tab (`movedOnSince`, lib/workSwitch.ts: another view
-  opened, or this job's view left for a thread): then the tab waits in
-  Files and the window stays with him.
+  job's host and then shows the Files view, unless he chose something else
+  while a slow host made the tab (`choose` and `stillChosen`,
+  lib/workSwitch.ts: every Work view opened, every hit opened and every
+  thread opened from a Work view is a choice; so is leaving this job's view
+  for a thread): then the tab waits in Files, behind the one shown, and the
+  window stays with him.
 
 ## For agents
 
@@ -361,18 +366,16 @@ for it.
 
 - A file whose host is slow to make its tab still shows the Files place
   over a thread, when he was on a thread at Return and only changed to
-  another thread while he waited: the window's tabs are not read by
-  `movedOnSince`.
+  another thread by the tab strip or the rail while he waited: the shell
+  has no one door for a thread picked, so that move is not counted as a
+  choice (`choose`).
 - With one job, the search key does not narrow from "the job and the Work
   Chats" to the job alone (the picker has one scope while there is one
   job); a Work Chats thread among the job's rows says where it is.
 
-Transcript words are read 60 rows at a time, and the index ranks rows and
-knows no job: when the first read comes back full and the reach still
-wants rows, one read of 600 is made (`threadWords`).
-
-A project found by a word late in a long description shows the line cut
-round that word (`mentionExcerptAt`, src/shared/work/mentions.ts).
+Transcript words are asked of the index one row a Work thread, its best
+(`perThread` on `Store.searchEvents`), so one long thread or another job's
+threads cannot fill the read; the reach is applied to those rows.
 
 ## Proofs
 

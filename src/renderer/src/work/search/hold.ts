@@ -22,12 +22,14 @@ export function holdStill(o: { rowTop: number; was: number; scrollHeight: number
 }
 
 /**
- * Whether the highlighted row is out of sight: less than half of it inside the box, as after a scroll by the
- * trackpad, which moves the list and not the highlight. Return then brings the row back before anything opens.
- * `top` is the row's place in the list. A box with no height (nothing laid out) hides nothing.
+ * Whether the highlighted row is out of sight: less than half of it inside the list's box, as after a scroll by
+ * the trackpad, which moves the list and not the highlight. Return then brings the row back before anything
+ * opens. Both are read where they are drawn on screen (`getBoundingClientRect`), so nothing between the list
+ * and the dialog (the field, the rule) shifts one against the other. A box with no height (nothing laid out)
+ * hides nothing.
  */
-export function outOfSight(row: { top: number; height: number }, box: { scrollTop: number; height: number }): boolean {
-  if (box.height <= 0) return false;
-  const seen = Math.min(row.top + row.height, box.scrollTop + box.height) - Math.max(row.top, box.scrollTop);
-  return seen < row.height / 2;
+export function outOfSight(row: { top: number; bottom: number }, box: { top: number; bottom: number }): boolean {
+  if (box.bottom - box.top <= 0) return false;
+  const seen = Math.min(row.bottom, box.bottom) - Math.max(row.top, box.top);
+  return seen < (row.bottom - row.top) / 2;
 }

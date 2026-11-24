@@ -13,12 +13,11 @@ import type { SearchSource } from '../source'
  */
 
 /**
- * Transcript rows read for one search: enough that a few threads' best rows are among them. The index ranks
- * rows, not threads, and knows no job: one long thread, or another job's threads, can fill the first read. When
- * it comes back full and the reach still wants rows, one wider read is made.
+ * Threads read for one search, each by its best row (the host asks the index for one row a Work thread): the
+ * store's own cap. The index knows no job, so the reach is applied here; with one row a thread, another job's
+ * long thread cannot crowd a job's own threads out of the read.
  */
-const WORDS_ROWS = 60
-const WORDS_ROWS_WIDE = 600
+const WORDS_THREADS = 200
 
 const hitOf = (t: WorkThread, over: Partial<SearchHit> = {}): SearchHit => ({
   key: threadKey(t.id),
@@ -53,24 +52,19 @@ export const threadWords: SearchSource = {
   async search(ask) {
     const host = searchHost()
     if (!host) return []
-    const read = async (rows: number): Promise<{ out: SearchHit[]; full: boolean }> => {
-      const out: SearchHit[] = []
-      const seen = new Set<string>()
-      const found = await host.words(ask.text, rows)
-      for (const row of found) {
-        if (out.length > ask.limit) break
-        if (seen.has(row.sessionId)) continue
-        seen.add(row.sessionId)
-        const t = host.thread(row.sessionId)
-        // The host's query is held to Work threads; the row's own stamp is read again here all the same.
-        if (!t || t.archived || !inReach(ask.reach, t.workspaceId)) continue
-        out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
-      }
-      return { out, full: found.length >= rows }
+    const out: SearchHit[] = []
+    const seen = new Set<string>()
+    for (const row of await host.words(ask.text, WORDS_THREADS)) {
+      if (out.length > ask.limit) break
+      // A thread's notes and its best row both answer: the first of them is the thread's hit.
+      if (seen.has(row.sessionId)) continue
+      seen.add(row.sessionId)
+      const t = host.thread(row.sessionId)
+      // The host's query is held to Work threads; the row's own stamp is read again here all the same.
+      if (!t || t.archived || !inReach(ask.reach, t.workspaceId)) continue
+      out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
     }
-    const first = await read(WORDS_ROWS)
-    if (first.out.length > ask.limit || !first.full || ask.signal.aborted) return first.out
-    return (await read(WORDS_ROWS_WIDE)).out
+    return out
   }
 }
 
