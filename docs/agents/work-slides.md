@@ -1603,7 +1603,9 @@ key a clicker sends.
   slides in its own order and the file's render. An agent's suggestion that
   still waits is never presented. When the file changes under a show (an
   edit lands, a change is accepted) the deck's push names a new `rev`; the
-  show reads the deck again and keeps its place by the slide's id, and the
+  show reads the deck again and keeps its place by the slide's id (a slide
+  gone takes the one in its place, or the next the room would reach when
+  that one is hidden, else the one before), and the
   picture on screen stays until the new render has painted that slide
   (`SlidePicture`), so a save mid-talk never blanks the room's screen. A
   read that fails is asked again by itself (after 2 s, then twice as long

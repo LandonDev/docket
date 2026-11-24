@@ -113,7 +113,13 @@ export function showReducer(state: ShowState, act: ShowAct): ShowState {
     case "deck": {
       const id = state.slides[state.at]?.id;
       const kept = act.slides.findIndex((s) => s.id === id);
-      const at = kept >= 0 ? kept : clamp(state.at, 0, Math.max(0, act.slides.length - 1));
+      let at = kept >= 0 ? kept : clamp(state.at, 0, Math.max(0, act.slides.length - 1));
+      // The slide on screen is gone: the one the room would reach from its place, never a hidden one nobody asked for.
+      if (kept < 0 && act.slides[at]?.hidden) {
+        const on = shownFrom(act.slides, at - 1, 1);
+        const back = shownFrom(act.slides, at, -1);
+        at = on >= 0 ? on : back >= 0 ? back : at;
+      }
       return { ...state, slides: act.slides, at, step: kept >= 0 ? Math.min(state.step, buildsOf(act.slides[at])) : 0, ended: state.ended || act.slides.length === 0 };
     }
   }

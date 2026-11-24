@@ -108,6 +108,11 @@ describe("a show's state", () => {
     s = run(s, { t: "deck", slides: deck(2) });
     expect(at(s)).toBe(2);
     expect(placeText(s)).toBe("2 / 2");
+    // the slide in its place is hidden: the next the room would reach, else the one before
+    s = run(run(startShowState(deck(4), "start"), { t: "goto", number: 2 }), { t: "deck", slides: [slide(1), slide(3, { number: 2, hidden: true }), slide(4, { number: 3 })] });
+    expect(s.slides[s.at].id).toBe(259);
+    s = run(run(startShowState(deck(3), "start"), { t: "goto", number: 3 }), { t: "deck", slides: [slide(1), slide(2, { hidden: true })] });
+    expect(s.slides[s.at].id).toBe(256);
   });
 
   it("a deck whose every slide is hidden starts on its first slide, and a press ends it", () => {
