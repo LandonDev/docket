@@ -89,6 +89,7 @@ describe('menu tree', () => {
       '—',
       ['Save All', 'Cmd+S'],
       ['Save As…', 'Shift+Cmd+S'],
+      ['Share…'],
       '—',
       ['Export…', 'Shift+Cmd+E'],
       ['Print…'],

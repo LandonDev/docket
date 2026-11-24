@@ -58,7 +58,7 @@ const WORK = {
   threadMenu: ["save-play"],
   header: [],
   panel: ["results"],
-  nativeMenu: ["open_file", "save_word", "export", "print", "search_work", "open_today", "open_digest", "away_work"],
+  nativeMenu: ["open_file", "save_word", "share", "export", "print", "search_work", "open_today", "open_digest", "away_work"],
 } as const;
 
 /** Both kinds. */

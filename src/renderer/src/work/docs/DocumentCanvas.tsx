@@ -33,7 +33,7 @@ import { registerFlush } from "../canvas/flush";
 import { Preview } from "../formats/PreviewFrame";
 import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
 import { importsFirst, paperFor } from "../formats/model";
-import { Doc, Export } from "../icons";
+import { Doc, Export, Share } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { DOC_FONTS } from "./fonts";
@@ -43,6 +43,8 @@ import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
+import { shareTargetOf } from "../guests/api";
+import { openShare } from "../guests/sharePort";
 import { useWorkspaceOf } from "../files/workspaceOf";
 import { DocSaveControls } from "../files/DocLinks";
 import { openSaveAs, tellDrops, useSaveAsAsk } from "../files/saveAsPort";
@@ -310,7 +312,7 @@ export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   return (
     <>
       {workspace ? <DocSaveControls workspace={workspace} source={source} itemId={item.id} /> : null}
-      <ShareButton env={env} source={source} title={item.title} />
+      <ShareButton env={env} source={source} kind="document" title={item.title} itemId={item.id} purdue={workspace?.sector === "purdue"} />
       <PageFact itemId={item.id} />
     </>
   );
@@ -431,6 +433,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   rowSlot={rowSlot}
                   pages={pages}
                   {...(workspace ? { onSaveAs: saveAs } : {})}
+                  shareable={!!shareTargetOf(source, "document")}
                 />
               ) : null
             }
@@ -558,6 +561,7 @@ function Opened({
   rowSlot,
   pages,
   onSaveAs,
+  shareable = false,
 }: {
   host: DocHost;
   open: DocOpen;
@@ -571,6 +575,8 @@ function Opened({
   pages?: PagesWiring;
   /** Save as Word to…: opens the folder picker; absent outside a Work workspace */
   onSaveAs?(): void;
+  /** Share answers this document (its header's Share, More's Share… and File → Share… open one sheet) */
+  shareable?: boolean;
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
@@ -617,13 +623,24 @@ function Opened({
   // ⌘P open it on Print (work/formats/PreviewFrame.tsx).
   const showPreview = preview.set;
   useEffect(() => {
-    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }, ...(onSaveAs ? [{ id: "save-as", label: "Save As…", icon: Doc, run: onSaveAs }] : [])]);
+    shell.more?.([
+      ...more,
+      { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") },
+      ...(onSaveAs ? [{ id: "save-as", label: "Save As…", icon: Doc, run: onSaveAs }] : []),
+      ...(shareable ? [{ id: "share", label: "Share…", icon: Share, run: () => openShare(itemId) }] : []),
+    ]);
     return () => shell.more?.(null);
-  }, [shell, more, showPreview, onSaveAs]);
+  }, [shell, more, showPreview, onSaveAs, shareable, itemId]);
   // Edit → Find… and ⌘F with the caret in the text open the editor's own find; Replace is in its bar where he may edit.
   const finder = useRef<FindHandle | null>(null);
   const onFind = useCallback((handle: FindHandle | null) => void (finder.current = handle), []);
-  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open(), ...(onSaveAs ? { save_word: onSaveAs } : {}) });
+  useWorkCommands(root, {
+    export: () => showPreview("last"),
+    print: () => showPreview("print"),
+    find: () => finder.current?.open(),
+    ...(onSaveAs ? { save_word: onSaveAs } : {}),
+    ...(shareable ? { share: () => openShare(itemId) } : {}),
+  });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
   // Under Preview the editor draws the document and nothing else: find's tints go here, and the changes in review below.

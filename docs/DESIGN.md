@@ -1331,8 +1331,19 @@ thread; nothing answers inside the canvas.
   from 24px, 20px in the bar, 24px in lists, overlapping 6px with a 2px
   `background` ring. The canvas bar, media notes, History, Share and the
   projects kit draw the same part.
-- **Share** is a 320px popover from the bar (rows 28px or more, Revoke
-  shown on hover); **History** opens the item's history as a tab of its own
+- **Share** is a ghost extra-small verb in the bar of every document and
+  sheet, and Share… in More, in File and in a Files row's menu; each opens
+  one sheet, the medium modal: "Share" over the item's name, then For (a
+  field), Can (a toggle row, only where there is a choice) and Ends (a
+  select); Create link puts the address in the form's place, once, with Copy,
+  and the footer's start holds New link. Under a hairline, the item's live
+  links, 44px rows: the 24px face, the name, one 12px muted line ("Edit ·
+  made Nov 20 · opened Nov 22 3:10 PM · until Dec 20", no role where there
+  is no choice) and a ⋯ menu: Replace address…, the roles as radio rows,
+  Revoke. No links: nothing under the form. A document or sheet no link can
+  take shows one 13px muted line in the form's place, saying what to do
+  instead, and Done. A Purdue workspace's sheet holds one 12px muted line at
+  the footer's start, beside Create link. **History** opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare
   and History" below);
   Export is a dialog with one choice (the format, a `FieldRow` with its
@@ -2704,9 +2715,10 @@ Around the canvas:
   its own glyph and name after it; a document is drawn as text on the
   document page's measure, with no editor.
 - **Sharing a project.** Share is one of the project bar's quiet 28px
-  verbs and opens the same 320px popover as a document's. The dialog has
-  no Can row: a project's guest views, and a choice of one is not drawn.
-  The project's settings sheet lists the same links under Sharing.
+  verbs and opens the same Share sheet as a document's, with no Can row: a
+  project's guest views, and a choice of one is not drawn. The project's
+  settings sheet lists the same links under Sharing; New guest link… there
+  opens the Share sheet.
 
 #### Today
 

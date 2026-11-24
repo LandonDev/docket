@@ -34,7 +34,7 @@ import type { PreviewAnswer } from './contract-work-formats'
 import { BROWSER_DRIVERS, PortalSourceSchema, type BrowserState } from './contract-work-browser'
 import { ROUTINE_KINDS, RoutineEndsSchema, type RoutineRow } from './contract-work-routines'
 import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
-import { GUEST_ROLES, GuestSourceSchema, type GuestLinkRow } from './contract-work-guests'
+import { GUEST_ROLES, type GuestLinkRow } from './contract-work-guests'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS, type ComputerSessionsAnswer } from './contract-computer'
@@ -1270,7 +1270,8 @@ export const WorkRulesPushSchema = push('work.rules', { workspaceId: z.string() 
 export const GuestLinkRowSchema = z.object({
   id: z.string(),
   name: z.string(),
-  source: GuestSourceSchema,
+  // What the phone reads of a link's item: a LifeOS row's or a file's (whose host and path it leaves alone).
+  source: z.object({ at: z.string(), table: z.enum(['docs', 'sheets', 'projects']), id: z.string() }),
   title: z.string(),
   role: z.enum(GUEST_ROLES),
   createdAt: z.number().int(),
@@ -1876,7 +1877,7 @@ export type WireSchemaPins = [
   Expect<Reads<typeof DigestSettingsWireSchema, DigestSettings>>,
   Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
   Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
-  Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,
+  Expect<Reads<typeof GuestCreatedSchema, GuestCreated>>,
   Expect<Mirror<typeof FormResponsesSchema, FormResponses>>,
   Expect<Mirror<typeof BrowserStateSchema, BrowserState>>,
   Expect<Mirror<typeof MediaRangeSchema, MediaRange>>,
@@ -1904,7 +1905,7 @@ export type WireSchemaPins = [
   Expect<Reads<typeof WorkSheetsPushSchema, SheetsPush>>,
   // what rules/store.ts proposalsForDraft answers (a draft with no row: no workspace)
   Expect<Mirror<typeof RulesForDraftSchema, { workspaceId: string | null; proposals: RuleProposal[] }>>,
-  Expect<Mirror<typeof GuestLinkRowSchema, GuestLinkRow>>,
+  Expect<Reads<typeof GuestLinkRowSchema, GuestLinkRow>>,
   Expect<Mirror<typeof HouseRuleSchema, HouseRule>>,
   Expect<Mirror<typeof EditOpSchema, EditOp>>,
   Expect<Mirror<typeof DraftEditSchema, DraftEdit>>,

@@ -1,0 +1,294 @@
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { Field, FieldRow } from "../../chrome/DialogField";
+import { MoreHorizontal } from "../../chrome/icons";
+import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
+import { ChoiceSelect } from "../../components/choice-select";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { Dialog } from "../../components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
+import { clockTime } from "../../lib/duration";
+import { hostFailure } from "../../lib/hostFailure";
+import { registry } from "../../lib/connection";
+import { Face } from "../mail/face";
+import { MadeAddress } from "./Share";
+import { dayOf, ENDS, guestRolesOf, guestsCall, isLive, isShareRefusal, ROLE_WORDS, SHARE_REFUSALS, shortDay, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from "./api";
+
+/** What a Share sheet is for: a source a link can take, or the one line that says what to do instead. */
+export type ShareTarget = { source: GuestSource } | { why: string };
+
+/**
+ * Share (docs/DESIGN.md "Share"): one sheet for a document, a sheet or a project, from its header, File → Share…, a
+ * Files row's menu and More. On top, a new link: who it is for, what they can do, the day it ends; Create link shows the
+ * address once, with Copy. Under it, the item's live links, each with what they can do, when it was made, last opened
+ * and ends, and its menu: Replace address…, the role, Revoke. Where no link can be made, one line says what to do
+ * instead, in the form's place. A Purdue workspace's file is university data: one line says so over Create link.
+ * Making or widening a link is his press here; a thread only asks (`guest_link`, held in the Outbox).
+ */
+export default function ShareSheet({ env, target, title, purdue = false, onClose }: { env: string; target: ShareTarget; title: string; purdue?: boolean; onClose(): void }) {
+  const source = "source" in target ? target.source : null;
+  // The host's own refusal of this file, read with its links: said as the sheet's line, not as a failure.
+  const [refused, setRefused] = useState<string | null>("why" in target ? target.why : null);
+  const [made, setMade] = useState<{ url: string; link: GuestLinkRow } | null>(null);
+  const [pending, setPending] = useState(false);
+  const { root, closeThen } = useClosingDialog(onClose, pending);
+  const close = (): void => closeThen(onClose);
+  return (
+    <Dialog {...root}>
+      <ModalPanel data-share-sheet="" onClose={close} busy={pending} title="Share" description={title}>
+        {refused ? (
+          <>
+            <p data-share-why="" className="px-5 py-4 text-[13px] text-muted-foreground">
+              {refused}
+            </p>
+            <DialogFooter confirmLabel="Done" onConfirm={close} />
+          </>
+        ) : source ? (
+          <Sharing env={env} source={source} title={title} purdue={purdue} made={made} onMade={setMade} pending={pending} onPending={setPending} onRefused={setRefused} onClose={close} />
+        ) : null}
+      </ModalPanel>
+    </Dialog>
+  );
+}
+
+function Sharing({
+  env,
+  source,
+  title,
+  purdue,
+  made,
+  onMade,
+  pending,
+  onPending,
+  onRefused,
+  onClose,
+}: {
+  env: string;
+  source: GuestSource;
+  title: string;
+  purdue: boolean;
+  made: { url: string; link: GuestLinkRow } | null;
+  onMade(made: { url: string; link: GuestLinkRow } | null): void;
+  pending: boolean;
+  onPending(pending: boolean): void;
+  onRefused(why: string): void;
+  onClose(): void;
+}) {
+  const roles = guestRolesOf(source);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<GuestRole>("view");
+  const [days, setDays] = useState<string>("30");
+  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<GuestLinkRow[] | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [home, setHome] = useState(env);
+  const at = (d: number): number => Date.now() + d * 24 * 60 * 60_000;
+
+  const load = useCallback((): Promise<void> => {
+    return guestsCall<GuestLinkRow[]>(env, "work.guests.forItem", { source }).then(
+      (got) => {
+        setListError(null);
+        setHome(got.env);
+        setRows((got.value ?? []).filter((l) => isLive(l)));
+      },
+      (err: unknown) => {
+        const line = refusalIn(err instanceof Error ? err.message : String(err));
+        if (line) return onRefused(line);
+        setListError(hostFailure(env, err, "could not list the guest links"));
+      },
+    );
+  }, [env, source, onRefused]);
+  useEffect(() => void load(), [load]);
+  // A link made, changed or revoked anywhere (a held request he created in the Outbox): the host says so.
+  useEffect(() => registry.linkOf(home).onPush((push) => push.push === "work.guests" && void load()), [home, load]);
+
+  const submit = async (event?: FormEvent): Promise<void> => {
+    event?.preventDefault();
+    // The sheet may be mounted inside another form (a project's settings): a submit is this sheet's alone.
+    event?.stopPropagation();
+    if (!name.trim() || pending) return;
+    onPending(true);
+    setError(null);
+    try {
+      const got = await guestsCall<GuestCreated>(env, "work.guests.create", { source, title, name: name.trim(), role, expiresAt: at(Number(days)) });
+      onMade({ url: got.value.url, link: got.value.link });
+      setName("");
+      void load();
+    } catch (err) {
+      setError(hostFailure(env, err, "did not make the link", true));
+    } finally {
+      onPending(false);
+    }
+  };
+
+  return (
+    <>
+      {made ? (
+        <MadeAddress url={made.url} link={made.link} />
+      ) : (
+        <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4 px-5 py-4">
+          <Field label="For">
+            <Input autoFocus value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Name" autoComplete="off" />
+          </Field>
+          <div className="flex flex-col">
+            {roles.length > 1 ? (
+              <FieldRow label="Can">
+                <ToggleGroup
+                  size="xs"
+                  value={[role]}
+                  onValueChange={(value) => {
+                    if (value[0]) setRole(value[0] as GuestRole);
+                  }}
+                >
+                  {roles.map((r) => (
+                    <ToggleGroupItem key={r} value={r}>
+                      {ROLE_WORDS[r]}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </FieldRow>
+            ) : null}
+            <FieldRow label="Ends">
+              <ChoiceSelect size="sm" label="Ends" value={days} options={ENDS.map((d) => ({ value: String(d), label: dayOf(at(d)) }))} onChange={setDays} />
+            </FieldRow>
+          </div>
+          <ErrorLine error={error} />
+        </form>
+      )}
+      <LiveLinks env={home} rows={rows} error={listError} onRetry={() => load()} onChanged={() => void load()} onAddress={onMade} />
+      {made ? (
+        <DialogFooter start={<Button variant="ghost" size="sm" onClick={() => onMade(null)}>New link</Button>} confirmLabel="Done" onConfirm={onClose} />
+      ) : (
+        // A Purdue workspace's file is university data: said once, beside the press that shares it.
+        <DialogFooter note={purdue ? PURDUE_LINE : undefined} onCancel={onClose} confirmLabel="Create link" pending={pending} disabled={!name.trim()} onConfirm={() => void submit()} />
+      )}
+    </>
+  );
+}
+
+/** The item's live links under the form: a hairline, then one row each; nothing at all while there are none. */
+function LiveLinks({
+  env,
+  rows,
+  error,
+  onRetry,
+  onChanged,
+  onAddress,
+}: {
+  env: string;
+  rows: GuestLinkRow[] | null;
+  error: string | null;
+  onRetry(): Promise<void>;
+  onChanged(): void;
+  onAddress(made: { url: string; link: GuestLinkRow }): void;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  if (rows?.length === 0 && !error) return null;
+  return (
+    <div data-share-links="" className="flex flex-col border-t border-border px-3 py-2">
+      {rows === null && !error ? (
+        <div className="flex h-11 items-center gap-2 px-2">
+          <Skeleton className="size-6 rounded-full" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+      ) : null}
+      {rows?.map((l) => <LinkRow key={l.id} env={env} link={l} onChanged={onChanged} onAddress={onAddress} />)}
+      {error ? (
+        <div className="flex min-h-11 items-center gap-2 px-2">
+          <div className="min-w-0 flex-1">
+            <ErrorLine error={error} />
+          </div>
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={retrying}
+            onClick={() => {
+              setRetrying(true);
+              void onRetry().finally(() => setRetrying(false));
+            }}
+          >
+            <BusyLabel busy={retrying} label="Retry" />
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Edit · made Nov 20 · opened Nov 22 3:10 PM · until Dec 20": what the guest may do and the link's days, in one muted line. */
+export function linkFacts(l: GuestLinkRow, roles: number): string {
+  const seen = l.open > 0 ? "in it now" : l.lastOpenedAt ? `opened ${shortDay(l.lastOpenedAt)} ${clockTime(l.lastOpenedAt)}` : "not opened yet";
+  return [roles > 1 ? ROLE_WORDS[l.role] : null, `made ${shortDay(l.createdAt)}`, seen, `until ${shortDay(l.expiresAt)}`].filter(Boolean).join(" · ");
+}
+
+function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: GuestLinkRow; onChanged(): void; onAddress(made: { url: string; link: GuestLinkRow }): void }) {
+  const roles = guestRolesOf(link.source.at === "file" ? link.source : { at: "lifeos", table: link.source.table });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const act = async (run: () => Promise<void>, failed: string): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await run();
+      onChanged();
+    } catch (err) {
+      setError(hostFailure(env, err, failed, true));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // The address is kept only as a hash: a new one is made, and the one before stops opening, so he is asked first.
+  const replace = async (): Promise<void> => {
+    const ok = await confirmAction({ title: "Replace the address?", body: `${link.name}'s current address stops opening. The new one shows here for you to copy.`, action: "Replace", danger: true });
+    if (!ok) return;
+    await act(async () => {
+      const { url } = await registry.linkOf(env).request<{ url: string }>("work.guests.rekey", { linkId: link.id });
+      onAddress({ url, link });
+    }, "did not replace the address");
+  };
+  return (
+    <div data-share-link={link.id} className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5">
+      <Face name={link.name} size="row" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[13px] text-foreground">{link.name}</span>
+        {error ? <ErrorLine error={error} /> : <span className="truncate text-xs text-muted-foreground tabular-nums">{linkFacts(link, roles.length)}</span>}
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={busy} />}>{busy ? <BusyLabel busy label="" /> : <MoreHorizontal />}</DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem onClick={() => void replace()}>Replace address…</DropdownMenuItem>
+          {roles.length > 1 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={link.role}
+                onValueChange={(next) => {
+                  if (next !== link.role) void act(() => registry.linkOf(env).request("work.guests.setRole", { linkId: link.id, role: next }).then(() => undefined), "did not change what they can do");
+                }}
+              >
+                {roles.map((r) => (
+                  <DropdownMenuRadioItem key={r} value={r}>
+                    Can {ROLE_WORDS[r].toLowerCase()}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => void act(() => registry.linkOf(env).request("work.guests.revoke", { linkId: link.id }).then(() => undefined), "did not revoke the link")}>
+            Revoke
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** The line a Purdue workspace's Share sheet holds beside Create link (Purdue's rules on its data; the owner's call). */
+export const PURDUE_LINE = "Purdue's data: this shares it outside Purdue.";
+
+/** The refusal line a host's answer holds, whatever the window put before it. */
+const refusalIn = (text: string): string | null => (isShareRefusal(text) ? (Object.values(SHARE_REFUSALS) as string[]).find((line) => text.includes(line))! : null);

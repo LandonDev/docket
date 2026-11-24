@@ -10,6 +10,7 @@ import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
 import { pressesFor, sharedOf } from '../files/policy'
+import { guestLinkedFile } from '../guests/store'
 import { readOnlyOf } from '../files/readOnly'
 import { Toolchain } from '../formats/tools'
 import { ensureImported, importedHeld, importedOf, isSharedImport, type ImportedFrom } from './formatsIn'
@@ -305,7 +306,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const key = storeKey(held)
   // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
   const scope = s.ctx.scopeOf(item.sessionId)
-  const shared = sharedOf(s.ctx, item.source) || (scope?.shared(item.source) ?? false)
+  const shared = sharedOf(s.ctx, item.source) || (scope?.shared(item.source) ?? false) || guestLinkedFile(s.ctx.db, item.source)
   const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), ...(offersGoogle(s.ctx, held, item.source) ? { canUpload: true as const } : {}) }
   // Our old charts (`work_sheets_charts`, plain bars kept beside a sheet before it kept charts of its own) as the charts they
   // become: drawn on the grid, and kept with the sheet at the next change to that tab's charts (index.ts ends the row then).

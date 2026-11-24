@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { GUEST_DEFAULT_DAYS, GUEST_ROLES, GuestLinkActSchema, guestRefusal, GuestsRequestSchemas, type GuestLinkAct, type GuestSource } from '@shared/contract-work-guests'
+import { basename } from 'node:path'
+import { GUEST_DEFAULT_DAYS, GUEST_ROLES, GuestLinkActSchema, guestRefusal, GuestsRequestSchemas, type GuestLinkAct, type GuestSource, type LifeosGuestSource } from '@shared/contract-work-guests'
 import { handled, NOT_HANDLED, workText, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, WorkCtx, WorkModule, WorkTool } from '../modules'
@@ -63,29 +64,43 @@ export const guestsTools: WorkTool[] = [
   {
     name: 'guest_link',
     description:
-      'Asks for a guest link: one named person outside may open one LifeOS document or sheet on a web page with no sign-in, to view, comment or edit, or one LifeOS project to view (its tasks, and its documents and sheets read-only), until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents or to show someone a project.',
+      'Asks for a guest link: one named person outside may open one LifeOS document or sheet, or one TempCode document or sheet kept as a file (.tcdoc, .tcsheet), on a web page with no sign-in, to view, comment or edit, or one LifeOS project to view (its tasks, and its documents and sheets read-only), until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents or to show someone a project.',
     input: z.object({
-      docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give one of docId, sheetId and projectId.'),
+      docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give one of docId, sheetId, projectId and path.'),
       sheetId: z.string().optional().describe('A LifeOS sheet id.'),
       projectId: z.string().optional().describe('A LifeOS project id (from list_projects or get_project).'),
+      path: z.string().optional().describe("The absolute path of a .tcdoc or .tcsheet in your workspace (a file's link can view or edit)."),
       name: z.string().min(1).max(80).describe('The one person the link is for, as he would name them.'),
       role: z.enum(GUEST_ROLES).default('view').describe('view, comment or edit (a sheet: view or edit; a project: view).'),
       days: z.number().int().min(1).max(365).default(GUEST_DEFAULT_DAYS).describe('How many days until it ends.')
     }),
     readOnly: false,
     run: async (args, ctx) => {
-      const a = args as { docId?: string; sheetId?: string; projectId?: string; name: string; role: GuestLinkAct['role']; days: number }
-      const named = ([['docs', a.docId], ['sheets', a.sheetId], ['projects', a.projectId]] as const).filter(([, id]) => !!id)
-      if (named.length !== 1) return fail('Give a docId, a sheetId or a projectId, one of the three.')
-      const [table, id] = named[0] as [GuestSource['table'], string]
-      if (!/^[A-Za-z0-9]{1,64}$/.test(id)) return fail('LifeOS has no such item.')
-      const source: GuestSource = { at: 'lifeos', table, id }
+      const a = args as { docId?: string; sheetId?: string; projectId?: string; path?: string; name: string; role: GuestLinkAct['role']; days: number }
+      const named = ([['docs', a.docId], ['sheets', a.sheetId], ['projects', a.projectId], ['file', a.path]] as const).filter(([, id]) => !!id)
+      if (named.length !== 1) return fail('Give a docId, a sheetId, a projectId or a path, one of the four.')
       try {
         const rt = guestRuntime(ctx)
-        const row = await rt.itemRow(source)
-        // An item of another sector is not this thread's to share, whatever id it was handed.
-        if (ctx.scope.sector && row.sector !== ctx.scope.sector) return fail('LifeOS has no such item.')
-        const payload: GuestLinkAct = { source, title: row.title.slice(0, 200), name: a.name.trim(), role: a.role, expiresAt: Date.now() + a.days * 24 * 60 * 60_000 }
+        let source: GuestSource
+        let title: string
+        let fileId: string | undefined
+        if (a.path) {
+          source = { at: 'file', host: ctx.host, path: a.path }
+          // A file outside this thread's own workspace is not its to share; the rest is checked as for the owner's own,
+          // and his press makes the link only for this same file.
+          fileId = rt.threadFile(a.path, ctx.scope.workspaceId)
+          rt.resolve(source, { kind: 'model', caps: [], sessionId: ctx.sessionId }, 'guest_link', a.role)
+          title = basename(a.path).replace(/\.tc(doc|sheet)$/i, '') || 'Untitled'
+        } else {
+          const [table, id] = named[0] as [LifeosGuestSource['table'], string]
+          if (!/^[A-Za-z0-9]{1,64}$/.test(id)) return fail('LifeOS has no such item.')
+          source = { at: 'lifeos', table, id }
+          const row = await rt.itemRow(source)
+          // An item of another sector is not this thread's to share, whatever id it was handed.
+          if (ctx.scope.sector && row.sector !== ctx.scope.sector) return fail('LifeOS has no such item.')
+          title = row.title
+        }
+        const payload: GuestLinkAct = { source, ...(fileId ? { fileId } : {}), title: title.slice(0, 200), name: a.name.trim(), role: a.role, expiresAt: Date.now() + a.days * 24 * 60 * 60_000 }
         const refused = guestRefusal(payload)
         if (refused) return fail(refused)
         const held = ctx.held.create({ kind: 'share.guestLink', sessionId: ctx.sessionId, payload })
@@ -136,9 +151,13 @@ export const guests: WorkModule = {
         return handled(await rt.list())
       case 'work.guests.forItem':
         await rt.servedHere(req.params.source)
-        return handled(await rt.list(req.params.source))
+        // A file is checked as Create would check it: a sheet that cannot make a link says why at once.
+        return handled(await rt.list(rt.resolve(req.params.source, by, req.method)))
       case 'work.guests.create':
-        return handled(await rt.create({ ...req.params, bySession: null }))
+        return handled(await rt.create({ ...req.params, bySession: null, by }))
+      case 'work.guests.setRole':
+        if (!(await rt.setRole(req.params.linkId, req.params.role))) throw new Error('That link no longer opens anything.')
+        return handled({ ok: true })
       case 'work.guests.rekey': {
         const url = await rt.rekey(req.params.linkId)
         if (!url) throw new Error('That link no longer opens anything.')

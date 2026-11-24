@@ -1,6 +1,7 @@
 import type { GuestLinkAct } from "@shared/contract-work-guests";
 import type { ActViewProps } from "../acts/registry";
 import { Doc, Project, Table } from "../icons";
+import { guestTableOf } from "@shared/work/guestRoles";
 import { dayOf, ROLE_WORDS } from "./api";
 
 /**
@@ -12,7 +13,8 @@ import { dayOf, ROLE_WORDS } from "./api";
  */
 export function View({ item }: ActViewProps) {
   const p = item.payload as GuestLinkAct;
-  const Glyph = p.source.table === "projects" ? Project : p.source.table === "sheets" ? Table : Doc;
+  const table = guestTableOf(p.source);
+  const Glyph = table === "projects" ? Project : table === "sheets" ? Table : Doc;
   const rows: [string, React.ReactNode][] = [
     [
       "To",
@@ -21,6 +23,8 @@ export function View({ item }: ActViewProps) {
         <span className="truncate font-medium">{p.title}</span>
       </span>,
     ],
+    // A file is named by its folder too: his press shares that file and no other of the same name.
+    ...(p.source.at === "file" ? ([["In", p.source.path.replace(/[\\/][^\\/]*$/, "") || "/"]] as [string, React.ReactNode][]) : []),
     ["For", p.name],
     ["Can", ROLE_WORDS[p.role]],
     ["Ends", dayOf(p.expiresAt)],

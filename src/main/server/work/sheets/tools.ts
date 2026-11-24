@@ -5,6 +5,7 @@ import type { SheetCellJson, SheetMutationJson, SheetSuggestion } from '@shared/
 import { agentPrincipal, workText, type CanvasItem, type Principal, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
+import { guestLinkedFile } from '../guests/store'
 import { readOnlyOf } from '../files/readOnly'
 import type { ToolCtx, WorkTool } from '../modules'
 import { parseA1 } from './a1'
@@ -83,7 +84,7 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }, chang
   // An .xls, .ods or .tsv is read and written through its Excel copy (formatsIn.ts); the file changes by his press alone.
   await ensureImported(ctx, held)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
-  return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
+  return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) || guestLinkedFile(ctx.db, source) }
 }
 
 /**

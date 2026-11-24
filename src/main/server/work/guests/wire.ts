@@ -22,8 +22,12 @@ export interface GuestLinkFacts {
    */
   token: string
   tokenExp: number
-  /** a new address was made at this moment (ms, on a second's edge): a token of this link signed before it opens nothing */
+  /** a new address was made, or the role changed, at this moment (ms, on a second's edge): a token of this link signed before it opens nothing */
   keyedAt?: number
+  /** a sheet kept as a file (`.tcsheet`): its path on this host as the item spelled it, which the live socket opens for this link's token alone */
+  sheetFile?: string
+  /** false: the document keeps no comments a guest can reach (a `.tcdoc`'s are in the app's own database) */
+  comments?: false
 }
 
 /** The owner's hosted editor: a ticket that opens once, then a session renewed by a key the service makes. */

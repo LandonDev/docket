@@ -114,6 +114,8 @@ export const MENU_TREE: MenuSection[] = [
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
       // A document's Save As… (work/files/SaveAs.tsx): the id is the Save as Word row's it took over.
       cmd('save_word', 'Save As…', 'CmdOrCtrl+Shift+S', { workOnly: true }),
+      // A document's or a sheet's Share sheet (work/guests/ShareSheet.tsx), live while one on screen answers it.
+      cmd('share', 'Share…', undefined, { workOnly: true }),
       sep,
       cmd('export', 'Export…', 'CmdOrCtrl+Shift+E'),
       { ...cmd('print', 'Print…'), whileEditing: { accelerator: 'CmdOrCtrl+P', from: 'go_to_file' } },

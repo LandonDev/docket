@@ -112,6 +112,7 @@ export const APP_COMMANDS = [
   "print",
   "export",
   "save_word",
+  "share",
   "files_command",
 ] as const;
 
@@ -154,7 +155,7 @@ export type KeyContext = {
  * first paint holds only the count; the menu greys a row nobody answers, and
  * a key nobody answers stays the app's.
  */
-export type WorkCommandId = "print" | "export" | "find" | "save_word";
+export type WorkCommandId = "print" | "export" | "find" | "save_word" | "share";
 const offered = new Map<WorkCommandId, number>();
 const offerListeners = new Set<() => void>();
 export const workCommands = {

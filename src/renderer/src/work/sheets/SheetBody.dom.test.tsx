@@ -1238,11 +1238,12 @@ describe("the sheet kind", () => {
     expect(await screen.findByRole("dialog", { name: "Save to Google Sheets" })).toBeTruthy();
   });
 
-  it("offers Share only on a sheet a guest link can reach, a LifeOS sheet", async () => {
+  it("offers Share on every sheet: an Excel file's says how to share it instead, a LifeOS sheet's makes a link", async () => {
     open(sheetView());
     await gridUp();
     await screen.findByRole("button", { name: /Agent suggests/ });
-    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText(/Save As a TempCode sheet to share this one|Share it from Teams/)).toBeTruthy();
     cleanup();
     resetSheetSyncs();
     resetCanvasStore();
@@ -1253,7 +1254,7 @@ describe("the sheet kind", () => {
     expect(whole?.className).toContain("@max-[560px]/bar:hidden");
   });
 
-  it("offers Share in More only once the narrow bar hides it, and opens the same popover from there", async () => {
+  it("offers Share… in More only once the narrow bar hides it, and opens the same sheet from there", async () => {
     const seen: Array<(entries: unknown[]) => void> = [];
     const kept = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class {
@@ -1270,15 +1271,15 @@ describe("the sheet kind", () => {
       const share = await screen.findByRole("button", { name: "Share" });
       fireEvent.click(await screen.findByRole("button", { name: "More" }));
       await screen.findByRole("menuitem", { name: "Preview…" });
-      expect(screen.queryByRole("menuitem", { name: "Share" })).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Share…" })).toBeNull();
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       // The bar's narrow form hides Share whole; the bar says so as it resizes.
       (share.closest("[data-narrow-hide]") as HTMLElement).style.display = "none";
       act(() => seen.forEach((fn) => fn([{ contentRect: { width: 400 } }])));
       fireEvent.click(screen.getByRole("button", { name: "More" }));
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Share" }));
-      await waitFor(() => expect(document.querySelector("[data-share-anchor] button")?.getAttribute("aria-expanded")).toBe("true"));
-      expect(await screen.findByRole("button", { name: "New guest link…" })).toBeTruthy();
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Share…" }));
+      expect(await screen.findByRole("dialog", { name: "Share" })).toBeTruthy();
+      expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
     } finally {
       globalThis.ResizeObserver = kept;
     }

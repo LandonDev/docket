@@ -587,7 +587,7 @@ export function pickedAmong(now: Picked, order: readonly string[]): Picked {
 // ── a file's and a folder's menu ──────────────────────────────────────
 
 /** What a row's menu, the bulk bar and the keys can ask. */
-export type EntryAct = "open" | "open-form" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
+export type EntryAct = "open" | "open-form" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "share" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
 
 export interface ActRow {
   act: EntryAct;
@@ -608,7 +608,7 @@ export interface ActRow {
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string } } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string }; /** Share… may be offered for a document or a sheet (its sheet says what to do where no link can be made) */ share?: boolean } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
@@ -638,7 +638,10 @@ export function actsFor(
     if (!one.folder && o.side && one.ref?.at === "file") rows.push({ act: "open-side", label: "Open to the Side" });
     if (o.reveal && one.where) rows.push({ act: "reveal", label: "Show in Its Folder" });
     if (!one.folder && place && LIBRARY.includes(place.kind) && o.app !== false) rows.push({ act: "open-app", label: appVerb(one) });
-    rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: true });
+    // A document's or a sheet's Share sheet: a link where one can be made, else the line that says how to share it.
+    const shares = !!o.share && !one.folder && (one.kind === "document" || one.kind === "sheet");
+    if (shares) rows.push({ act: "share", label: "Share…", rule: true });
+    rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: !shares });
   }
   rows.push({ act: "move", label: "Move to…", refused: each("move"), rule: !one });
   rows.push({ act: "copy", label: "Copy to…", refused: each("copy") });

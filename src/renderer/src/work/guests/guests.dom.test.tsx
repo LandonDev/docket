@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The guests pillar in the renderer: Share's popover and its dialog against a
+ * The guests pillar in the renderer: the Share sheet against a
  * fake host (the box answering for another host), the held request's view,
  * the audit list, and what a guest may write into a document as the owner's
  * own editor shows it: a `javascript:` link and a hostile paste.
@@ -38,6 +38,7 @@ vi.mock("../../lib/connection", async (original) => {
         if (calls.revokeRefusal) throw new Error(calls.revokeRefusal);
         return { ok: true };
       }
+      if (method === "work.guests.setRole") return { ok: true };
       if (method === "work.guests.rekey") return { url: "https://tempcode.landonhale.com/g/new#k=secret" };
       throw new Error(`unexpected ${method}`);
     },
@@ -84,54 +85,116 @@ afterEach(() => {
 });
 
 describe("Share", () => {
-  it("lists the item's links from the host that serves it, revokes one, and makes a new one shown once", async () => {
+  it("opens one sheet: the item's links from the host that serves it, and a new link shown once", async () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];
-    render(<ShareButton env="mac" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    render(<ShareButton env="mac" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
-    // Until when, said as the section and the made link's dialog say it.
-    expect(screen.getByText(/^Edit, until \w{3} \d+$/)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Share" })).toBeTruthy();
+    // Who, what they can do, made, last opened and until when, in one muted line.
+    expect(screen.getByText(/^Edit · made \w{3} \d+ · in it now · until \w{3} \d+$/)).toBeTruthy();
     // A list's avatar: 24px, as Settings' list draws it.
     expect(document.querySelector("[data-face]")!.getAttribute("data-face")).toBe("row");
     // Asked of the Mac, answered by the box.
     expect(calls.list.map((c) => `${c.env}:${c.method}`)).toEqual(["mac:work.guests.forItem", "box:work.guests.forItem"]);
-    fireEvent.click(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }));
-    await waitFor(() => expect(calls.list.at(-1)).toMatchObject({ env: "box", method: "work.guests.revoke", params: { linkId: "abc" } }));
-    expect(screen.getByText("Only you can open this")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
-    const name = await screen.findByPlaceholderText("Name");
     expect(screen.getByRole("button", { name: "Create link" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.change(name, { target: { value: "Dana Lee" } });
+    fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Dana Lee" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     fireEvent.click(screen.getByRole("button", { name: "Create link" }));
     await screen.findByText("https://tempcode.landonhale.com/g/abc#k=secret");
     const made = calls.list.find((c) => c.method === "work.guests.create")!;
-    expect(made.params).toMatchObject({ source: { at: "lifeos", table: "docs", id: "kd1" }, title: "Run of show", name: "Dana Lee", role: "comment" });
+    expect(made).toMatchObject({ env: "mac", params: { source: { at: "lifeos", table: "docs", id: "kd1" }, title: "Run of show", name: "Dana Lee", role: "comment" } });
     // Thirty days unless he picks.
     expect(Math.round(((made.params.expiresAt as number) - NOW) / 86_400_000)).toBe(30);
-    expect(screen.getByText("Link for Dana Lee")).toBeTruthy();
     expect(screen.getByText(/shown only now/)).toBeTruthy();
+    // The list is read again with the new link; New link brings the form back.
+    await waitFor(() => expect(calls.list.filter((c) => c.method === "work.guests.forItem").length).toBeGreaterThan(2));
+    fireEvent.click(screen.getByRole("button", { name: "New link" }));
+    expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
   });
 
-  it("offers a sheet view or edit only, and draws no Share on what cannot be shared", async () => {
+  it("revokes a link and changes what it can do from the row's menu", async () => {
     const { ShareButton } = await import("./Share");
-    const { container, unmount } = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/a.tcdoc" }} title="a" />);
+    calls.links = [LINK];
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("Sam Ortiz");
+    fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Can view" }));
+    await waitFor(() => expect(calls.list.find((c) => c.method === "work.guests.setRole")?.params).toEqual({ linkId: "abc", role: "view" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sam Ortiz's link" }).hasAttribute("disabled")).toBe(false));
+    // A radio row leaves the menu open, as a menu of choices does.
+    if (!screen.queryByRole("menuitem", { name: "Revoke" })) fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
+    await waitFor(() => expect(calls.list.find((c) => c.method === "work.guests.revoke")?.params).toEqual({ linkId: "abc" }));
+  });
+
+  it("shares a TempCode document kept as a file, View or Edit: its comments stay on the computer that has it", async () => {
+    const { ShareButton } = await import("./Share");
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByPlaceholderText("Name");
+    expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "file", host: "box", path: "/w/Plan.tcdoc" } } });
+  });
+
+  it("offers a sheet view or edit only; a Word file and a mail's attachment say what to do instead or draw nothing", async () => {
+    const { ShareButton } = await import("./Share");
+    const { container, unmount } = render(<ShareButton env="box" source={{ at: "mail", threadId: "t", messageId: "m", partId: "p", name: "a.docx" }} kind="document" title="a" />);
     expect(container.innerHTML).toBe("");
     unmount();
-    render(<ShareButton env="box" source={{ at: "lifeos", table: "sheets", id: "ks1" }} title="Budget" />);
+    const word = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/Letter.docx" }} kind="document" title="Letter" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    fireEvent.click(await screen.findByRole("button", { name: "New guest link…" }));
+    expect(await screen.findByText("Guest links open TempCode documents. Save As a TempCode document to share this one.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(calls.list).toEqual([]);
+    word.unmount();
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "sheets", id: "ks1" }} kind="sheet" title="Budget" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByPlaceholderText("Name");
     expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
   });
+
+  it("says a host's refusal of a file as the sheet's one line, not as a failure", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.down.add("box");
+    calls.downWords = { box: "Guests reach files on the box only. Keep this file in a workspace on the box to share it." };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText("Guests reach files on the box only. Keep this file in a workspace on the box to share it.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+  });
+
+  it("says once, beside Create link, that a Purdue workspace's file is university data", async () => {
+    const { ShareButton } = await import("./Share");
+    const { PURDUE_LINE } = await import("./ShareSheet");
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" purdue />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByPlaceholderText("Name");
+    expect(screen.getByText(PURDUE_LINE).closest("[data-slot=dialog-footer]")).toBeTruthy();
+  });
+
+  it("opens from File → Share… or More through the item's own button", async () => {
+    const { ShareButton } = await import("./Share");
+    const { openShare } = await import("./sharePort");
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" itemId="item1" />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    openShare("other");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => openShare("item1"));
+    expect(await screen.findByRole("dialog", { name: "Share" })).toBeTruthy();
+  });
+
   it("says a list that did not load with Retry, which asks again", async () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];
     calls.failOnce = true;
-    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("LifeOS did not answer");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -139,11 +202,11 @@ describe("Share", () => {
     expect(screen.queryByText("LifeOS did not answer")).toBeNull();
   });
 
-  it("says a raw failure of the popover's read in his words, never the method", async () => {
+  it("says a raw failure of the sheet's read in his words, never the method", async () => {
     const { ShareButton } = await import("./Share");
     calls.down.add("box");
     calls.downWords = { box: "work.guests.forItem: no answer from the link" };
-    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(await screen.findByText("The box could not list the guest links.")).toBeTruthy();
     expect(document.body.textContent).not.toContain("work.guests");
@@ -153,7 +216,7 @@ describe("Share", () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];
     calls.failOnce = true;
-    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("LifeOS did not answer");
     let open: () => void = () => {};
@@ -180,7 +243,7 @@ describe("Share", () => {
 describe("a project's Share", () => {
   const PROJECT_LINK = { ...LINK, id: "plink", name: "Dana Lee", role: "view" as const, source: { at: "lifeos" as const, table: "projects" as const, id: "kp1" }, title: "Spring LAN", open: 0 };
 
-  it("on the project's bar lists its links and makes one that can only view: the dialog asks who and until when", async () => {
+  it("on the project's bar opens the sheet: its links, and a new one that can only view, asking who and until when", async () => {
     const { ProjectShare } = await import("./Share");
     calls.links = [PROJECT_LINK];
     render(<ProjectShare env="box" project={{ id: "kp1", name: "Spring LAN" }} />);
@@ -189,17 +252,15 @@ describe("a project's Share", () => {
     expect(share.className.split(/\s+/)).toContain("h-7");
     fireEvent.click(share);
     await screen.findByText("Dana Lee");
-    // Every guest of a project views: the row says until when, not what they can do.
-    expect(screen.getByText(/^until /)).toBeTruthy();
-    expect(screen.queryByText(/^View, /)).toBeNull();
+    // Every guest of a project views: the row says nothing of what they can do.
+    expect(screen.getByText(/^made .* · not opened yet · until /)).toBeTruthy();
     expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "lifeos", table: "projects", id: "kp1" } } });
-    fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
-    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
+    fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
     // A project's guest views: there is nothing to pick, so no Can row is drawn.
     expect(screen.queryByText("Can")).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Create link" }));
-    await screen.findByText("Link for Marcus Reed");
+    await screen.findByText(/shown only now/);
     expect(calls.list.find((c) => c.method === "work.guests.create")?.params).toMatchObject({ source: { at: "lifeos", table: "projects", id: "kp1" }, title: "Spring LAN", name: "Marcus Reed", role: "view" });
   });
 
@@ -217,9 +278,9 @@ describe("a project's Share", () => {
     fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
     fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
     fireEvent.click(screen.getByRole("button", { name: "Create link" }));
-    await screen.findByText("Link for Marcus Reed");
+    await screen.findByText(/shown only now/);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(reads()).toBe(before + 1));
+    await waitFor(() => expect(reads()).toBeGreaterThan(before + 1));
   });
 
   it("is named as a project in the held request and in the list of every link", async () => {
@@ -244,22 +305,22 @@ describe("the held request and the audit list", () => {
     expect(screen.getByText(/Dec 18/)).toBeTruthy();
   });
 
-  it("keeps a row with a busy Revoke until the host confirms, and a refusal visible with the row still there", async () => {
+  it("keeps a row with its menu busy until the host confirms a revoke, and a refusal visible with the row still there", async () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];
     let open: () => void = () => {};
     calls.revokeGate = new Promise((r) => (open = r));
-    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
-    fireEvent.click(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }));
-    // Pending: the row and its busy Revoke stay; "Only you can open this" waits for the host.
+    fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
+    // Pending: the row stays and its menu is busy.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sam Ortiz's link" }).hasAttribute("disabled")).toBe(true));
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
-    expect(screen.queryByText("Only you can open this")).toBeNull();
-    expect(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }).querySelector("[data-busy]")).toBeTruthy();
     calls.revokeRefusal = "The link was already opened elsewhere";
     await act(async () => open());
-    await waitFor(() => expect(screen.getByText("The link was already opened elsewhere")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/The link was already opened elsewhere/)).toBeTruthy());
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
   });
 

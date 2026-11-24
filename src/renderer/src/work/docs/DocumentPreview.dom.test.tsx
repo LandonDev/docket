@@ -153,7 +153,8 @@ describe("Preview, a state of the document", () => {
     // The document answers Print: the menu's row is live, and ⌘P is Print while the caret is in it.
     expect(workCommands.has("print")).toBe(true);
     const root = document.querySelector("[data-editor-answers]")!;
-    expect(root.getAttribute("data-editor-answers")).toBe("export find print");
+    // Share… too: File → Share… opens the header's sheet.
+    expect(root.getAttribute("data-editor-answers")).toBe("export find print share");
     expect(root.contains(document.querySelector("[data-editor-keys]"))).toBe(true);
     await act(async () => void workCommands.run("print"));
     expect(previews.at(-1)).toMatchObject({ kind: "document", initial: "print" });

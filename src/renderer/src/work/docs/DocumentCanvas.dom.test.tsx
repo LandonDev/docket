@@ -159,12 +159,12 @@ describe("the document's bar", () => {
   const LIFEOS = { at: "lifeos", table: "docs", id: "kd1" } as const;
   const bar = (source: CanvasItem["source"]) => <Bar item={{ ...ITEM, source }} source={source} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />;
 
-  it("holds the bar's place with a bone while it opens, then draws Share only on a LifeOS document, which a guest link can reach", () => {
+  it("holds the bar's place with a bone while it opens, then draws Share on a LifeOS document and on one kept as a file", () => {
     const { container, unmount } = render(bar(FILE));
     // Before the body has said, and while it opens: the bone.
     expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
     act(() => markOpen(ITEM.id, "open"));
-    expect(container.innerHTML).toBe("");
+    expect(screen.getByRole("button", { name: "Share" })).toBeTruthy();
     unmount();
     act(() => markOpen(ITEM.id, "opening"));
     const view = render(bar(LIFEOS));

@@ -402,6 +402,17 @@ describe("the verbs for what is selected", () => {
     expect(labels(actsFor([file("Budget.xlsx", { starred: true })], own))).toContain("Remove Star");
   });
 
+  it("offers one document or sheet Share… where the page can share, and nothing else of it", () => {
+    expect(labels(actsFor([file("Budget.tcsheet")], own, { tabs: true, share: true }))).toEqual(["Open", "Share…", "Rename", "Move to…", "Copy to…", "Star", "Delete"]);
+    expect(actsFor([file("Budget.tcsheet")], own, { tabs: true, share: true }).find((r) => r.act === "share")?.rule).toBe(true);
+    expect(labels(actsFor([file("Plan.docx", { kind: "document" })], own, { tabs: true, share: true }))).toContain("Share…");
+    // A deck, a folder, many files, or a page that cannot share: none.
+    expect(labels(actsFor([file("Talk.pptx", { kind: "deck" })], own, { tabs: true, share: true }))).not.toContain("Share…");
+    expect(labels(actsFor([dir], own, { tabs: true, share: true }))).not.toContain("Share…");
+    expect(labels(actsFor([file("a.tcsheet"), file("b.tcsheet")], own, { tabs: true, share: true }))).not.toContain("Share…");
+    expect(labels(actsFor([file("Budget.tcsheet")], own))).not.toContain("Share…");
+  });
+
   it("leaves out for many what only one thing takes", () => {
     expect(labels(actsFor([file("a.xlsx"), file("b.xlsx")], own))).toEqual(["Move to…", "Copy to…", "Star", "Delete"]);
     expect(actsFor([], own)).toEqual([]);

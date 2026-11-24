@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
-import type { GuestSource } from '@shared/contract-work-guests'
+import type { LifeosGuestSource } from '@shared/contract-work-guests'
 import type { WorkCtx } from '../modules'
 import { servicePaths } from '../service/config'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
@@ -105,7 +105,7 @@ afterAll(async () => {
   rmSync(box.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 })
 
-const source = (table: 'docs' | 'sheets', id: string): GuestSource => ({ at: 'lifeos', table, id })
+const source = (table: 'docs' | 'sheets', id: string): LifeosGuestSource => ({ at: 'lifeos', table, id })
 const link = (role: 'view' | 'comment' | 'edit', table: 'docs' | 'sheets' = 'docs', name = 'Dana Lee') =>
   box.rt.create({ source: source(table, table === 'docs' ? DOC : SHEET), title: table === 'docs' ? 'Spring LAN run of show' : 'Nationals travel budget', name, role, expiresAt: Date.now() + 29 * 24 * 3600_000, bySession: null })
 const owner = async (): Promise<CollaborationClient> => {

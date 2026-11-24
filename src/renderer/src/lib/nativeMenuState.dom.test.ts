@@ -26,6 +26,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   print: true,
   export: true,
   saveWord: true,
+  share: true,
   ...over,
 });
 
@@ -72,7 +73,7 @@ describe("menuStateOf", () => {
   });
 
   it("hides Work's own rows (Go → Search Work…, Today, Away for Work Threads) while no host has Work on, and names none hidden while one has", () => {
-    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["save_word", "search_work", "open_today", "away_work"]);
+    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["save_word", "share", "search_work", "open_today", "away_work"]);
     expect(menuStateOf(facts({ workOn: true })).hidden).toBeUndefined();
   });
 
@@ -109,10 +110,12 @@ describe("menuStateOf, with a Work editor", () => {
   it("greys Print… and Export… until an editor on screen answers them", () => {
     expect(menuStateOf(facts({ print: false, export: false })).disabled).toEqual(["print", "export"]);
     expect(menuStateOf(facts({ print: true, export: false })).disabled).toEqual(["export"]);
-    const { print: _p, export: _e, saveWord: _w, ...bare } = facts();
-    expect(menuStateOf(bare).disabled).toEqual(["print", "export", "save_word"]);
+    const { print: _p, export: _e, saveWord: _w, share: _s, ...bare } = facts();
+    expect(menuStateOf(bare).disabled).toEqual(["print", "export", "save_word", "share"]);
     // Save as Word to… is live only while a document of a Work workspace on screen answers it.
     expect(menuStateOf(facts({ saveWord: false })).disabled).toEqual(["save_word"]);
+    // Share… is live only while a document or sheet on screen answers it.
+    expect(menuStateOf(facts({ share: false })).disabled).toEqual(["share"]);
   });
 
   it("says live while a live Office file's guest has the focus, and nothing otherwise", () => {

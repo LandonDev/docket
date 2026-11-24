@@ -54,6 +54,8 @@ export interface Opened {
   projection?: GuestProjection;
   /** a document of a project's link: its text as it stands, in place of a token and a socket */
   markdown?: string;
+  /** false: a document kept as a file, whose comments the page cannot reach; it draws none */
+  comments?: false;
 }
 
 /** A document or sheet of a project's link. */

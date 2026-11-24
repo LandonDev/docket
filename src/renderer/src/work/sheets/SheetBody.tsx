@@ -26,7 +26,9 @@ import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
 import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
-import { guestSource } from "../guests/api";
+import { shareTargetOf } from "../guests/api";
+import { openShare } from "../guests/sharePort";
+import { useWorkspaceOf } from "../files/workspaceOf";
 import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { sheetPreviewSource } from "./preview";
@@ -150,7 +152,7 @@ export function Body(props: Props) {
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
-  useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print") } : {});
+  useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print"), ...(shareTargetOf(props.source, "sheet") ? { share: () => openShare(item.id) } : {}) } : {});
   // What Preview draws: one source for as long as the item shows the same workbook.
   const previewStore = view?.store;
   const previewName = view?.name;
@@ -571,7 +573,7 @@ function useSelectionFeed(
   const imported = sync.state.view?.imported;
   // Share in More only while the bar's Share has given way, so it is never offered twice.
   const way = shareWayOf(sync);
-  const shareGone = useSyncExternalStore(way.subscribe, way.gone, way.gone) && !!guestSource(source);
+  const shareGone = useSyncExternalStore(way.subscribe, way.gone, way.gone) && !!shareTargetOf(source, "sheet");
   const charts = !!sync.state.view?.row?.includes("chart");
   // The sheet in hand, by its tab name: the one a CSV takes.
   const activeName = useCallback((): string | undefined => {
@@ -605,7 +607,7 @@ function useSelectionFeed(
       ...(googleRow ? [googleRow] : []),
       // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
       ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act) : Promise.resolve())),
-      ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
+      ...(shareGone ? [{ id: "share", label: "Share…", icon: Share, run: () => openShare(item.id) }] : []),
     ]);
     return () => shell.more?.(null);
   }, [shell, sync, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow]);
@@ -687,27 +689,18 @@ export function SheetSkeleton() {
   );
 }
 
-/**
- * Per sheet: whether the bar's Share has given way (the narrow bar hides it whole), and More's ask to open it then.
- * The bar says the first; More reads it and offers Share only then, and its ask opens the same popover from the bar.
- */
+/** Per sheet: whether the bar's Share has given way (the narrow bar hides it whole); More offers Share… only then. */
 class ShareWay {
   private hidden = false;
-  private asks = 0;
   private listeners = new Set<() => void>();
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
   gone = (): boolean => this.hidden;
-  asked = (): number => this.asks;
   set(hidden: boolean): void {
     if (hidden === this.hidden) return;
     this.hidden = hidden;
-    this.listeners.forEach((listener) => listener());
-  }
-  ask(): void {
-    this.asks += 1;
     this.listeners.forEach((listener) => listener());
   }
 }
@@ -723,21 +716,27 @@ export function Bar(props: Props) {
   const sync = syncFor(props);
   const { view, book, failed } = useSheetSync(sync);
   if (failed) return null;
-  // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut. An opened
-  // Excel file says what waits in Excel, in words that give way before any control does.
-  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={view.reach} store={view.store} env={props.env} />;
+  // Share is whole or gone, hidden in the narrow bar before it could be cut. An opened Excel file says what waits in
+  // Excel, in words that give way before any control does; its Share says how to share it instead.
+  const target = shareTargetOf(props.source, "sheet");
+  if (view && book)
+    return (
+      <>
+        {target && "source" in target ? null : <ExcelWaits reach={view.reach} store={view.store} env={props.env} />}
+        <BarShare {...props} way={shareWayOf(sync)} />
+      </>
+    );
   return <Skeleton className="h-3 w-30" />;
 }
 
 /**
- * Share in the bar, and its way back once the narrow bar hides it: the bar tells More it has gone, and More's Share
- * opens the same popover from an unseen trigger at the bar's end, where the bar's Share stood.
+ * Share in the bar, and its way back once the narrow bar hides it: the bar tells More it has gone, and More's Share…
+ * asks the same button for its sheet (`openShare`), which stays mounted while the bar hides it.
  */
 function BarShare(props: Props & { way: ShareWay }) {
   const { way } = props;
   const whole = useRef<HTMLSpanElement>(null);
-  const unseen = useRef<HTMLSpanElement>(null);
-  const asked = useSyncExternalStore(way.subscribe, way.asked, way.asked);
+  const purdue = useWorkspaceOf(props.env, props.item.workspaceId)?.sector === "purdue";
   useLayoutEffect(() => {
     const el = whole.current;
     if (!el) return;
@@ -751,22 +750,10 @@ function BarShare(props: Props & { way: ShareWay }) {
       way.set(false);
     };
   }, [way]);
-  // Each ask mounts the unseen trigger afresh and presses it, so the popover opens anchored at the bar's end.
-  useEffect(() => {
-    if (asked > 0) unseen.current?.querySelector("button")?.click();
-  }, [asked]);
-  const share = <ShareButton env={props.env} source={props.source} title={props.item.title} />;
   return (
-    <>
-      <span ref={whole} data-narrow-hide className="flex shrink-0 @max-[560px]/bar:hidden">
-        {share}
-      </span>
-      {asked > 0 ? (
-        <span key={asked} ref={unseen} data-share-anchor className="invisible ms-auto flex w-0 shrink-0 overflow-hidden">
-          {share}
-        </span>
-      ) : null}
-    </>
+    <span ref={whole} data-narrow-hide className="ms-auto flex shrink-0 @max-[560px]/bar:hidden">
+      <ShareButton env={props.env} source={props.source} kind="sheet" title={props.item.title} itemId={props.item.id} purdue={purdue} />
+    </span>
   );
 }
 

@@ -1,9 +1,10 @@
 # Work: guest links
 
-One named person outside lets themselves into one LifeOS document or sheet
-on a web page, with no sign-in, to view, comment or edit, until the link
-ends or the owner revokes it; or into one LifeOS project, to view ("A
-project's link" below). Milestone 31 built it; the approved page is
+One named person outside lets themselves into one LifeOS document or sheet,
+or one TempCode document or sheet kept as a file (`.tcdoc`, `.tcsheet`), on
+a web page, with no sign-in, to view, comment or edit, until the link ends
+or the owner revokes it; or into one LifeOS project, to view ("A project's
+link" below; "A file's link"). Milestone 31 built it; the approved page is
 `.temp-code/prototypes/work-workspaces-2/guest.html`, and docs/DESIGN.md
 ("History and Share", "The guest's page") holds the look. This is the one
 place people outside reach the owner's data: every rule below is a check
@@ -24,8 +25,14 @@ with a test.
 - **Roles.** `view` reads. `comment` reads, comments on words it selects and
   replies; the service makes the comment and marks the words. `edit` writes
   the document or the sheet's cells live. A sheet's link is `view` or `edit`
-  (sheets keep no comments); a project's is `view`. Files are not shared:
-  a `.tcdoc` or an opened file draws no Share (`ShareButton`, guests/Share.tsx).
+  (sheets keep no comments); a file's document's is `view` or `edit` (a
+  `.tcdoc` keeps its comments in this host's database, which the service
+  cannot reach); a project's is `view` (`guestRolesOf`,
+  src/shared/work/guestRoles.ts). His role change on a live link
+  (`work.guests.setRole`, approve) keeps the address: the link's tokens from
+  before stop opening anything, as a new address's do (`retoken`), its open
+  sockets close, and the page asks again and opens as the new role
+  (`afterRevoked`, src/hosted/guest/ending.ts).
 - **Ends** thirty days out unless he picks (1, 7, 30 or 90 days in the
   dialog; an hour to a year on the wire). An ended or revoked link stays in
   the lists a week, muted.
@@ -38,6 +45,57 @@ with a test.
   marked since a start stays out of what the service is told until a tick
   marks it. Agents' writes to a shared item
   become suggestions, as for any shared item.
+
+## A file's link
+
+A `.tcdoc` or `.tcsheet` on the host that serves guests (the box) takes a link
+of its own (`{at: 'file', host, path}`; its row adds `table` and `id`, a
+digest of the resolved path, `fileLinkId`, so the phone reads it as any row).
+`GuestRuntime.resolve` holds it: the host that has the file (another answers
+`served elsewhere`), the caller's reach (`ctx.reaches`; a thread's at its
+ask), a host whose pages a guest can reach (`servesPublic`), the file there,
+not in a place others open (`sharedOf`) and not a copy of a Teams file
+(`madeFromShared`). Each refusal is one line of `SHARE_REFUSALS`
+(guestRoles.ts), which the Share sheet shows in the form's place.
+
+- **No LifeOS mark.** The live link is the file's mark: `fileLinked`
+  (guests/store.ts) makes the docs pillar's `othersOpen` and the sheets
+  pillar's `shared` true, so an agent's own write to it is a suggestion, as
+  on a LifeOS row marked shared.
+- **One document, one workbook.** The link's item is named as its pillar
+  names it, so the guest and his editor are on one: a `.tcdoc` by
+  `fileDocName` of its resolved path, its token carrying `file` (work-kit lets
+  a guest's token name one); a `.tcsheet` by `fileSheetId` of its spelling,
+  the link telling the service the file (`sheetFile`). The sheet route opens a
+  file for this host's own token while a pass of his names it, or a guest's
+  token of the link that names it (`opensFile`, service/routes/sheet.ts),
+  checked at hello and each second.
+- **Ended when it no longer fits.** At each pass over the list (every 30 s
+  and on every change) a file's link stands only while the file is there,
+  its spelling still reaches the same file, it is still his alone, and an
+  Edit link's document is not linked out by Save As (`fileServes`); a link
+  that fails ends for good (`endFileLinks`), so a file put in its place later
+  is never shown under it. Between two passes a link follows its path.
+- **Edit and Save As.** A document Save As keeps linked to another file
+  (`linkedOut`, docs/target.ts) takes View links only: an Edit guest's words
+  would reach that file after each pause. Create and `setRole` say so.
+- **A thread's file.** `guest_link {path}` takes a file in the thread's own
+  workspace folder alone (`threadFile`: no fence binds a thread on its own
+  host), and the held act keeps the file's id (`fileId`): his press makes the
+  link only if the path still reaches that file. The Outbox shows the file's
+  folder ("In").
+- **No comments.** The open answer says `comments: false`; the page draws
+  none, `/threads` answers none and `/comment` refuses.
+- **Tokens by role.** A link's token is kept by link and role, and a list
+  signed while the role changed drops that link until the next sync, so an
+  older role's token is never handed out; a sheet socket checks its link
+  again before each batch of ops, not only each second.
+- Tests: guests/fileLinks.test.ts (the real service, a guest's and his own
+  client on one `.tcdoc` both ways, a `.tcsheet` held to its link, revoke and
+  a role change inside a second, a link ended when its file goes, Edit refused
+  on a linked-out document, a thread's request held to its workspace and its
+  file). A read-only review by GPT-6.2 Sol of the whole change is in
+  `.temp-code/plans/landed/F-share-guest-link/sol-review.md`.
 
 ## The methods and the tools
 
@@ -53,11 +111,12 @@ link word the expiry day in `hisZone(ctx)`.
 | `work.guests.create {source, title, name, role, expiresAt}` | approve | his own link; answers `{link, url}`, the only time the address exists |
 | `work.guests.rekey {linkId}` | approve | a new address for a live link, shown once; the one before opens nothing from then on |
 | `work.guests.revoke {linkId}` | operate | at once |
+| `work.guests.setRole {linkId, role}` | approve | what a live link may do, at once; the address stays |
 | `work.guests.ticket {source, title}` | operate | the owner's hosted editor (below); `source` is a LifeOS row or `{at: 'item', itemId}` for a document or sheet kept as a file |
 
 A thread's call to any but the two reads is refused: an agent asks with
-`guest_link {docId | sheetId | projectId, name, role, days}`, which checks the item is in
-the thread's sector and holds a `share.guestLink` act (no matcher, so no
+`guest_link {docId | sheetId | projectId | path, name, role, days}`, which checks the item is in
+the thread's sector (a file: within the thread's reach, as `resolve` rules) and holds a `share.guestLink` act (no matcher, so no
 grant fits and Away releases none). His Create link in the Outbox makes the
 link and resumes the thread with the link's id, never its address: he sends
 the address himself, copied from Settings → Work → Guest links. The act's Result's way back is Revoke link:
@@ -256,8 +315,8 @@ open is a new pass. Make a Guest Link in the item's More calls
 
 `work.guests.ticket` also takes a canvas item, `{at: 'item', itemId}`
 (`TicketSourceSchema`): a document or sheet kept as a file, shown by a
-thread's item or a Files tab. A guest link still takes a LifeOS row alone;
-only the owner's ticket opens a file. Main decides what the item opens
+thread's item or a Files tab. (A guest's link to a file names the file
+itself: "A file's link" above.) Main decides what the item opens
 (`GuestRuntime.opensOf`), and refuses in words a screen shows
 (`TICKET_REFUSALS`):
 
@@ -300,13 +359,22 @@ His comments are made in TempCode: on the phone, Comment in the edit menu.
 
 ## The screens
 
-- **Share** on a document's and a sheet's bar (`guests/Share.tsx`, mounted
-  from each kind's `Bar`): a 320px popover of the item's live links (initials,
-  name, role and end; Revoke on hover), "Only you can open this" with none,
-  and New guest link…, one dialog: For, Can, Ends; Create link shows the
-  address once with Copy. A project has the same on its page's bar
-  (`ProjectShare`, the Projects view's `kit.share`) and under Sharing in
-  its settings sheet (`ProjectSharing`); its dialog has no Can row.
+- **Share** is one sheet (`guests/ShareSheet.tsx`, its own chunk, loaded on
+  the press) for every document and sheet: the header's Share
+  (`ShareButton`, guests/Share.tsx, mounted from each kind's `Bar`), More's
+  Share… and File → Share… (the `share` work command, through `openShare`,
+  guests/sharePort.ts), and a Files row's Share… (`actsFor`'s `share`,
+  FilesView). On top For, Can, Ends; Create link shows the address once with
+  Copy and New link. Under it the item's live links: who, then what they can
+  do, made, last opened and until when in one muted line, and a menu:
+  Replace address… (asked first), Can view / comment / edit, Revoke. A
+  document or sheet no link can take opens on one line saying what to do
+  instead (`shareTargetOf`, guests/api.ts, and the host's `SHARE_REFUSALS`);
+  a mail's attachment draws no Share. A Purdue workspace's sheet says beside
+  Create link that the link shares university data (`PURDUE_LINE`); it does
+  not stop him. A project has the same sheet from its page's bar
+  (`ProjectShare`) and from Sharing in its settings sheet (`ProjectSharing`,
+  its links listed in the settings sheet itself); its sheet has no Can row.
 - **The held request** in the Outbox (`ShareActView.tsx`): To, For, Can, Ends.
 - **Guest links** in Settings → Work (`GuestLinksSection.tsx`): every link on
   every Work host, live first: who, the role and item (a project's as

@@ -41,7 +41,7 @@ vi.mock("work-kit/editor", async (original) => ({
 }));
 
 const revoked = vi.hoisted(() => [] as (() => void)[]);
-vi.mock("./ending", () => ({ endingSocket: (on: () => void) => (revoked.push(on), class {}) }));
+vi.mock("./ending", async (real) => ({ ...(await real<typeof import("./ending")>()), endingSocket: (on: () => void) => (revoked.push(on), class {}) }));
 
 const { DocPage } = await import("./DocPage");
 const { OpenFailed } = await import("./session");

@@ -433,9 +433,8 @@ describe("Sharing", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create link" }));
     });
-    // The dialog's submit is the dialog's alone: it never reaches the sheet's form around it.
-    expect(await screen.findByText("Link for Dana Lee")).toBeTruthy();
-    expect(screen.getByText(/shown only now/)).toBeTruthy();
+    // The Share sheet's press is its own: it never reaches the settings sheet's form around it.
+    expect(await screen.findByText(/shown only now/)).toBeTruthy();
     expect(document.querySelector("[data-work-project-settings]")).toBeTruthy();
     expect(sent).toEqual([]);
     expect(hostCalls.find((c) => c.method === "work.guests.create")?.params).toMatchObject({ source: { at: "lifeos", table: "projects", id: MIRROR.lifeosProjectId }, name: "Dana Lee", role: "view" });

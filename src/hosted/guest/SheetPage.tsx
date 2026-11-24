@@ -4,6 +4,7 @@ import { GUEST_ROW, isObjectList, type RulesSetParams } from "@shared/work/sheet
 import { listChanges, listMedia, snapshotMedia } from "@renderer/work/sheets/objects";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
+import { afterRevoked } from "./ending";
 import { OpenFailed, type Opened, type Session } from "./session";
 
 /**
@@ -184,7 +185,8 @@ export function SheetPage({
         l.inflight = false;
         if (stopped) return;
         setOffline(true);
-        if (e.code === 4403) return onGone();
+        // Asked again: a link gone ends the page, a role he changed opens it again as that role, else back on a fresh token.
+        if (e.code === 4403) return void afterRevoked(() => session.refresh(), opened.role, { gone: onGone, reopen: () => window.location.reload(), again: () => again(0, true) });
         // 4401: the token ran out; anything else: the line dropped. Either way, again with a fresh token.
         again(e.code === 4401 ? 0 : undefined, e.code === 4401);
       };

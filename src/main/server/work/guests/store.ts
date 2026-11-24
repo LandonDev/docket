@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import { GUEST_KEEP_MS, type GuestLinkRow, type GuestRole, type GuestSource } from '@shared/contract-work-guests'
+import { canonicalPath } from '../service/ctx'
+import { GUEST_KEEP_MS, type GuestLinkRow, type GuestLinkSource, type GuestRole } from '@shared/contract-work-guests'
 
 /**
  * The guest link rows (`work_guest_links`, architecture §8.6). The secret is
@@ -54,7 +55,7 @@ const rowOf = (r: Raw): StoredLink => ({
   id: r.id,
   secretHash: r.secret_hash,
   name: r.name,
-  source: JSON.parse(r.source) as GuestSource,
+  source: JSON.parse(r.source) as GuestLinkSource,
   title: r.title,
   role: r.role as GuestRole,
   createdAt: r.created_at,
@@ -68,13 +69,17 @@ export const hashSecret = (secret: string): string => createHash('sha256').updat
 
 export const isLive = (l: Pick<StoredLink, 'revokedAt' | 'expiresAt'>, now = Date.now()): boolean => l.revokedAt === null && now < l.expiresAt
 
-export const sourceKey = (s: GuestSource): string => `${s.table}:${s.id}`
+/** A link's item as a key: a LifeOS row's `<table>:<id>` (as LifeOS's marks are named), a file's `file:<id>`. */
+export const sourceKey = (s: Pick<GuestLinkSource, 'at' | 'table' | 'id'>): string => (s.at === 'file' ? `file:${s.id}` : `${s.table}:${s.id}`)
+
+/** A file's id among the links: a digest of its resolved path, so two spellings of one file are one item. */
+export const fileLinkId = (resolved: string): string => createHash('sha256').update(resolved, 'utf8').digest('hex').slice(0, 40)
 
 export class GuestStore {
   constructor(private readonly db: DatabaseSync) {}
 
   /** A new link and its secret; the secret is returned here and nowhere else. */
-  create(o: { name: string; source: GuestSource; title: string; role: GuestRole; expiresAt: number; bySession: string | null }, now = Date.now()): { link: StoredLink; secret: string } {
+  create(o: { name: string; source: GuestLinkSource; title: string; role: GuestRole; expiresAt: number; bySession: string | null }, now = Date.now()): { link: StoredLink; secret: string } {
     const id = randomBytes(12).toString('base64url')
     const secret = randomBytes(32).toString('base64url')
     this.db
@@ -119,7 +124,12 @@ export class GuestStore {
     return (this.db.prepare(`SELECT * FROM ${GUEST_LINKS_TABLE} WHERE revoked_at IS NULL AND expires_at > ? ORDER BY created_at`).all(now) as Raw[]).map(rowOf)
   }
 
-  forSource(source: GuestSource, now = Date.now()): StoredLink[] {
+  /** A live link's role, changed; false for a link that is not live. */
+  setRole(id: string, role: GuestRole, now = Date.now()): boolean {
+    return Number(this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET role = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`).run(role, id, now).changes) > 0
+  }
+
+  forSource(source: Pick<GuestLinkSource, 'at' | 'table' | 'id'>, now = Date.now()): StoredLink[] {
     return this.listed(now).filter((l) => sourceKey(l.source) === sourceKey(source))
   }
 
@@ -136,6 +146,26 @@ export class GuestStore {
   name(id: string): string | null {
     return (this.db.prepare(`SELECT name FROM ${GUEST_LINKS_TABLE} WHERE id = ?`).get(id) as { name?: string } | undefined)?.name ?? null
   }
+}
+
+/**
+ * Whether a live guest link names this file (by `fileLinkId` of its resolved path): someone outside may open it, so
+ * an agent's own change to it waits as a suggestion, as on a LifeOS row marked shared. Read by name, as other pillars
+ * read this table; a database without it (a test's) has none.
+ */
+export function fileLinked(db: DatabaseSync | undefined, resolved: string, now = Date.now()): boolean {
+  if (!db) return false
+  try {
+    return !!db.prepare(`SELECT 1 FROM ${GUEST_LINKS_TABLE} WHERE revoked_at IS NULL AND expires_at > ? AND json_extract(source, '$.at') = 'file' AND json_extract(source, '$.id') = ? LIMIT 1`).get(now, fileLinkId(resolved))
+  } catch {
+    return false
+  }
+}
+
+/** `fileLinked` for a canvas source: a file on this disk, by its resolved path. */
+export function guestLinkedFile(db: DatabaseSync | undefined, source: { at: string; path?: string }): boolean {
+  if (source.at !== 'file' || typeof source.path !== 'string') return false
+  return fileLinked(db, canonicalPath(source.path))
 }
 
 /** A guest principal's name for a list of authors (`guest:<link>`), or null when no row names it. */

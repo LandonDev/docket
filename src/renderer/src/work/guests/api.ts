@@ -1,4 +1,6 @@
 import type { GuestCreated, GuestLinkRow, GuestRole, GuestSource } from "@shared/contract-work-guests";
+import { SHARE_REFUSALS } from "@shared/work/guestRoles";
+export { guestRolesOf, isShareRefusal, SHARE_REFUSALS } from "@shared/work/guestRoles";
 import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
 
@@ -22,9 +24,27 @@ export async function guestsCall<T>(env: string, method: string, params: Record<
   }
 }
 
-/** A canvas item's source as a link can be for: a LifeOS document or sheet, else null (a file is moved to LifeOS first). */
+/** A canvas item's source as a link can be for: a LifeOS document or sheet, or a `.tcdoc` or `.tcsheet` kept as a file; else null. */
 export function guestSource(source: CanvasSource): GuestSource | null {
-  return source.at === "lifeos" && (source.table === "docs" || source.table === "sheets") ? { at: "lifeos", table: source.table, id: source.id } : null;
+  if (source.at === "lifeos" && (source.table === "docs" || source.table === "sheets")) return { at: "lifeos", table: source.table, id: source.id };
+  if (source.at === "file" && /\.tc(doc|sheet)$/i.test(source.path)) return { at: "file", host: source.host, path: source.path };
+  return null;
+}
+
+
+/**
+ * What Share offers for a document's or a sheet's item: the link's source, or the one line that says what to do
+ * instead; null where Share is not drawn at all (a mail's attachment, which is not his yet).
+ */
+export function shareTargetOf(source: CanvasSource, kind: "document" | "sheet"): { source: GuestSource } | { why: string } | null {
+  const got = guestSource(source);
+  if (got) return { source: got };
+  if (source.at === "mail") return null;
+  if (source.at === "google") return { why: SHARE_REFUSALS.google };
+  // A Word file or a workbook whose truth is a Teams file (its address, or a library on a disk) is shared where it lives.
+  if (source.at === "microsoft") return { why: source.ref.kind === "url" ? SHARE_REFUSALS.teams : kind === "sheet" ? SHARE_REFUSALS.excel : SHARE_REFUSALS.word };
+  if (source.at === "file") return { why: /\.(docx?|odt|rtf)$/i.test(source.path) ? SHARE_REFUSALS.word : /\.(xlsx?|xlsm|ods|csv|tsv)$/i.test(source.path) ? SHARE_REFUSALS.excel : SHARE_REFUSALS.other };
+  return { why: SHARE_REFUSALS.other };
 }
 
 export const ROLE_WORDS: Record<GuestRole, string> = { view: "View", comment: "Comment", edit: "Edit" };

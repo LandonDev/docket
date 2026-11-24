@@ -3283,7 +3283,8 @@ export default function App() {
         // Print… and Export… are the Work editor's on screen (work/formats/command.ts hears the event).
         case "print":
         case "export":
-        case "save_word": return go(() => void workCommands.run(cmd.id as "print" | "export" | "save_word"));
+        case "save_word":
+        case "share": return go(() => void workCommands.run(cmd.id as "print" | "export" | "save_word" | "share"));
         case "open_model_picker":
           return go(() => window.dispatchEvent(new Event("open_model_picker")));
         // Main already sends menu commands to the focused window only (or

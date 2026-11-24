@@ -26,9 +26,11 @@ import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
  * missed, or refused so the client reloads.
  *
  * A sheet kept as a file (`.tcsheet`) is live here too, for the owner's hosted
- * editor alone (the phone): main names the file in the pass it made for his
- * ticket (`sheetFile`, guests/links.ts), under a name with no path in it, and
- * only the owner's own token for that name opens it, while the pass stands.
+ * editor (the phone) and for a guest link to that file: main names the file in
+ * the pass it made for his ticket, or in the link (`sheetFile`, guests/links.ts),
+ * under a name with no path in it. Only the owner's own token for that name opens
+ * it while a pass of his stands, and only a guest's token of the link that names
+ * the file while that link stands.
  */
 
 const SHEET = /^\/w\/sheet\/([A-Za-z0-9]{1,64})$/
@@ -57,15 +59,31 @@ function listen(ctx: RouteCtx): void {
   })
 }
 
-/** The file a pass of the owner's names for this sheet name, while the pass stands; null for a LifeOS sheet. */
+/** The file a pass or a guest link names for a sheet name, while it stands. */
+const fileOf = (l: GuestServiceLink | undefined, sheetId: string, now: number): string | null =>
+  l && 'sheet' in l.item && l.item.sheet === sheetId && l.expiresAt > now && l.revokedAt === null ? (l.pass?.sheetFile ?? l.guest?.sheetFile ?? null) : null
+
+/** The file a pass of the owner's or a guest link names for this sheet name, while it stands; null for a LifeOS sheet. */
 function filedSheet(ctx: RouteCtx, sheetId: string): string | null {
   const now = Date.now()
-  for (const [id, l] of ctx.links()) {
-    if (!id.startsWith(PASS_PREFIX)) continue
-    const p = l as GuestServiceLink
-    if (p.pass?.sheetFile && 'sheet' in p.item && p.item.sheet === sheetId && p.expiresAt > now) return p.pass.sheetFile
+  for (const l of ctx.links().values()) {
+    const file = fileOf(l as GuestServiceLink, sheetId, now)
+    if (file) return file
   }
   return null
+}
+
+/**
+ * Whether a token opens this file now: this host's own token for the owner while a pass of his names the file, or
+ * a guest's token while the link it names names the file. A LifeOS token, and a link of another file, open nothing.
+ */
+export function opensFile(ctx: RouteCtx, sheetId: string, file: string, claims: Pick<VerifiedClaims, 'principal' | 'link' | 'by'>): boolean {
+  if (claims.by !== 'host') return false
+  const now = Date.now()
+  if (claims.principal === 'owner' && !claims.link) return [...ctx.links()].some(([id, l]) => id.startsWith(PASS_PREFIX) && fileOf(l as GuestServiceLink, sheetId, now) === file)
+  if (!claims.link || claims.principal !== `guest:${claims.link}`) return false
+  const l = ctx.links().get(claims.link) as GuestServiceLink | undefined
+  return !!l?.guest && fileOf(l, sheetId, now) === file
 }
 
 function live(claims: VerifiedClaims, ctx: RouteCtx): { code: number; reason: string } | null {
@@ -106,8 +124,8 @@ export const sheetRoute: PublicRoute = {
       const sweep = setInterval(() => {
         const gone = claims && live(claims, ctx)
         if (gone) close(gone.code, gone.reason)
-        // A file's socket lasts as long as the pass that named the file.
-        else if (file && filedSheet(ctx, sheetId) !== file) close(4403, 'this page ran out')
+        // A file's socket lasts as long as the pass or the link that named the file to this token.
+        else if (file && (claims ? !opensFile(ctx, sheetId, file, claims) : filedSheet(ctx, sheetId) !== file)) close(4403, 'this page ran out')
       }, 1000)
       const leave = (): void => {
         clearTimeout(hello)
@@ -131,8 +149,8 @@ export const sheetRoute: PublicRoute = {
             try {
               const got = await verifier.verify(msg.token)
               if (got.sheet !== sheetId) return close(4403, 'the token names another sheet')
-              // A file is its owner's alone: this host's own token for him, never a link's or LifeOS's.
-              if (file && (got.principal !== 'owner' || got.link || got.by !== 'host')) return close(4403, 'only the owner opens a file')
+              // A file is his, and a guest's only through the link he made for it: never LifeOS's token, never another link's.
+              if (file && !opensFile(ctx, sheetId, file, got)) return close(4403, 'only the owner or its link opens a file')
               // Reached through a guest link's address: only that link's token opens it.
               const bound = (req as { guestLink?: string }).guestLink
               if (bound && got.link !== bound) return close(4403, 'the token is another link\'s')
@@ -151,6 +169,9 @@ export const sheetRoute: PublicRoute = {
             return
           }
           if (msg.t !== 'ops') return
+          // The link as it stands now, not at hello: ops queued before a revoke, a new address or a role change land nowhere.
+          const gone = live(claims, ctx) ?? (file && !opensFile(ctx, sheetId, file, claims) ? { code: 4403, reason: 'this page ran out' } : null)
+          if (gone) return close(gone.code, gone.reason)
           const id = typeof msg.id === 'string' || typeof msg.id === 'number' ? msg.id : null
           const mutations = msg.mutations as SheetMutationJson[]
           const why = refusal(mutations, claims.role, claims.principal.startsWith('guest:'))

@@ -1,84 +1,90 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasSource } from "@shared/work";
 import { Check, Copy } from "../../chrome/icons";
 import { SwapIcon } from "../../motion/IconSwap";
 import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { Field, FieldRow } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { hostFailure } from "../../lib/hostFailure";
-import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
-import { Input } from "../../components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Face } from "../mail/face";
-import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { copyText } from "../../lib/clipboard";
 import { cn } from "../../lib/cn";
 import { reveal, yields } from "../../components/ui/reveal";
-import { dayOf, ENDS, guestsCall, guestSource, isLive, ROLE_WORDS, shortDay, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from "./api";
+import { dayOf, guestsCall, isLive, ROLE_WORDS, shareTargetOf, shortDay, type GuestLinkRow, type GuestSource } from "./api";
+import { useShareAsked } from "./sharePort";
+import type { ShareTarget } from "./ShareSheet";
+
+const ShareSheet = lazy(() => import("./ShareSheet"));
 
 /**
- * Share on a document's or a sheet's bar (prototype guest.html; docs/DESIGN.md
- * "History and Share"): a 320px popover of the item's guest links, Revoke on
- * hover, and New guest link…, which opens one small dialog: who it is for,
- * what they can do, the day it ends. The link is then shown once, to copy.
- * Only a LifeOS document or sheet can be shared from a canvas; any other
- * source draws no Share. A project is shared from its page's bar and its
- * settings (`ProjectShare`, `ProjectSharing`): view only.
+ * Share in a document's or a sheet's header (docs/DESIGN.md "Share"): a ghost extra-small verb that opens the one
+ * Share sheet (ShareSheet.tsx, its own chunk, loaded on the press). File → Share… and More reach the same sheet
+ * through `openShare(itemId)`. A LifeOS document or sheet and a TempCode one kept as a file make links; any other
+ * document or sheet opens the sheet on the one line that says what to do instead; a mail's attachment draws none.
  */
-export function ShareButton({ env, source, title }: { env: string; source: CanvasSource; title: string }) {
-  const target = guestSource(source);
-  return target ? <Share env={env} target={target} title={title} /> : null;
+export function ShareButton({ env, source, kind, title, itemId, purdue = false }: { env: string; source: CanvasSource; kind: "document" | "sheet"; title: string; itemId?: string; purdue?: boolean }) {
+  const key = JSON.stringify(source);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value: a new object each render is the same source.
+  const target = useMemo(() => shareTargetOf(source, kind), [key, kind]);
+  return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} /> : null;
 }
 
-/** Share on a project's bar (the Projects view): the same popover and dialog, for a link that can only view. One of the bar's quiet 28px verbs. */
+/** Share on a project's bar (the Projects view): the same sheet, for a link that can only view. One of the bar's quiet 28px verbs. */
 export function ProjectShare({ env, project }: { env: string; project: { id: string; name: string } }) {
-  const target = useMemo<GuestSource>(() => ({ at: "lifeos", table: "projects", id: project.id }), [project.id]);
-  return <Share env={env} target={target} title={project.name} size="sm" />;
+  const target = useMemo<ShareTarget>(() => ({ source: { at: "lifeos", table: "projects", id: project.id } }), [project.id]);
+  return <ShareOpener env={env} target={target} title={project.name} size="sm" />;
 }
 
-/** Sharing in a Work project's settings: its guest links in the sheet itself, Revoke on hover, and New guest link…. */
+function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs" }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm" }) {
+  const [open, setOpen] = useState(false);
+  const asked = useShareAsked(itemId);
+  const seen = useRef(asked);
+  useEffect(() => {
+    if (asked === seen.current) return;
+    seen.current = asked;
+    setOpen(true);
+  }, [asked]);
+  return (
+    <>
+      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} onClick={() => setOpen(true)}>
+        <ShareGlyph />
+        Share
+      </Button>
+      {open ? (
+        <Suspense fallback={null}>
+          <ShareSheet env={env} target={target} title={title} purdue={purdue} onClose={() => setOpen(false)} />
+        </Suspense>
+      ) : null}
+    </>
+  );
+}
+
+/** Sharing in a Work project's settings: its guest links in the sheet itself, Revoke on hover, and New guest link…, which opens the Share sheet. */
 export function ProjectSharing({ env, projectId, title }: { env: string; projectId: string; title: string }) {
   const target = useMemo<GuestSource>(() => ({ at: "lifeos", table: "projects", id: projectId }), [projectId]);
   const [making, setMaking] = useState(false);
-  // The list is read again once a link was made, and not for a dialog he cancelled.
+  // The list is read again once the sheet closes, a link made or not.
   const [made, setMade] = useState(0);
   return (
     <div data-project-sharing className="-mx-2">
       <ItemLinks key={made} env={env} source={target} layout="section" onNew={() => setMaking(true)} />
       {making ? (
-        <NewLinkDialog env={env} source={target} title={title} onMade={() => setMade((n) => n + 1)} onClose={() => setMaking(false)} />
-      ) : null}
-    </div>
-  );
-}
-
-function Share({ env, target, title, size = "xs" }: { env: string; target: GuestSource; title: string; size?: "xs" | "sm" }) {
-  const [open, setOpen] = useState(false);
-  const [making, setMaking] = useState(false);
-  return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger render={<Button variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} />}>
-          <ShareGlyph />
-          Share
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 gap-0 p-1">
-          <ItemLinks
+        <Suspense fallback={null}>
+          <ShareSheet
             env={env}
-            source={target}
-            onNew={() => {
-              setOpen(false);
-              setMaking(true);
+            target={{ source: target }}
+            title={title}
+            onClose={() => {
+              setMaking(false);
+              setMade((n) => n + 1);
             }}
           />
-        </PopoverContent>
-      </Popover>
-      {making ? <NewLinkDialog env={env} source={target} title={title} onClose={() => setMaking(false)} /> : null}
-    </>
+        </Suspense>
+      ) : null}
+    </div>
   );
 }
 
@@ -122,7 +128,7 @@ function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestS
       setRevoking(null);
     }
   };
-  return <LinkRows rows={rows} error={error} refused={refused} revoking={revoking} project={source.table === "projects"} layout={layout} onRevoke={(id) => void revoke(id)} onRetry={() => load(true)} retrying={retrying} onNew={onNew} />;
+  return <LinkRows rows={rows} error={error} refused={refused} revoking={revoking} project={source.at === "lifeos" && source.table === "projects"} layout={layout} onRevoke={(id) => void revoke(id)} onRetry={() => load(true)} retrying={retrying} onNew={onNew} />;
 }
 
 /**
@@ -256,82 +262,6 @@ export function MadeLinkDialog({ url, link, title, onClose }: { url: string; lin
       <ModalPanel onClose={() => closeThen(onClose)} title={`Link for ${link.name}`} description={title} size="sm">
         <MadeAddress url={url} link={link} />
         <DialogFooter confirmLabel="Done" onConfirm={() => closeThen(onClose)} />
-      </ModalPanel>
-    </Dialog>
-  );
-}
-
-function NewLinkDialog({ env, source, title, onMade, onClose }: { env: string; source: GuestSource; title: string; onMade?(): void; onClose(): void }) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState<GuestRole>("view");
-  const [days, setDays] = useState<string>("30");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [made, setMade] = useState<GuestCreated | null>(null);
-  const { root, closeThen } = useClosingDialog(onClose, pending);
-  // A sheet's guest can view or edit: sheets keep no comments. A project's guest views, so there is nothing to pick.
-  const roles: GuestRole[] = source.table === "projects" ? ["view"] : source.table === "sheets" ? ["view", "edit"] : ["view", "comment", "edit"];
-  const at = (d: number): number => Date.now() + d * 24 * 60 * 60_000;
-
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    // The dialog may be mounted inside another form (a project's settings sheet): React sends a submit up through a portal, and this one is the dialog's alone.
-    event.stopPropagation();
-    if (!name.trim() || pending) return;
-    setPending(true);
-    setError(null);
-    try {
-      const got = await guestsCall<GuestCreated>(env, "work.guests.create", { source, title, name: name.trim(), role, expiresAt: at(Number(days)) });
-      setMade(got.value);
-      onMade?.();
-    } catch (err) {
-      setError(hostFailure(env, err, "did not make the link", true));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <Dialog {...root}>
-      <ModalPanel onClose={() => closeThen(onClose)} busy={pending} title={made ? `Link for ${made.link.name}` : "New guest link"} description={title} size="sm">
-        {made ? (
-          <>
-            <MadeAddress url={made.url} link={made.link} />
-            <DialogFooter confirmLabel="Done" onConfirm={() => closeThen(onClose)} />
-          </>
-        ) : (
-          <form onSubmit={(event) => void submit(event)}>
-            <div className="flex flex-col gap-4 px-5 py-4">
-              <Field label="For">
-                <Input autoFocus value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Name" autoComplete="off" />
-              </Field>
-              <div className="flex flex-col">
-                {roles.length > 1 ? (
-                  <FieldRow label="Can">
-                    <ToggleGroup
-                      size="xs"
-                      value={[role]}
-                      onValueChange={(value) => {
-                        if (value[0]) setRole(value[0] as GuestRole);
-                      }}
-                    >
-                      {roles.map((r) => (
-                        <ToggleGroupItem key={r} value={r}>
-                          {ROLE_WORDS[r]}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  </FieldRow>
-                ) : null}
-                <FieldRow label="Ends">
-                  <ChoiceSelect size="sm" label="Ends" value={days} options={ENDS.map((d) => ({ value: String(d), label: dayOf(at(d)) }))} onChange={setDays} />
-                </FieldRow>
-              </div>
-              <ErrorLine error={error} />
-            </div>
-            <DialogFooter onCancel={() => closeThen(onClose)} confirmLabel="Create link" pending={pending} disabled={!name.trim()} />
-          </form>
-        )}
       </ModalPanel>
     </Dialog>
   );

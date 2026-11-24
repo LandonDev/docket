@@ -1,9 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource, type TicketSource } from '@shared/contract-work-guests'
+import { existsSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
+import { SHARE_REFUSALS } from '@shared/work/guestRoles'
+import { guestRefusal, guestTableOf, type GuestCreated, type GuestLinkRow, type GuestLinkSource, type GuestRole, type GuestSource, type LifeosGuestSource, type TicketSource } from '@shared/contract-work-guests'
 import { guestProjectionOf, projectionItems, type GuestProjection } from '@shared/work/guestProjection'
 import { fileDocName, type CollabClaims as KitClaims } from 'work-kit/collab-server'
 import { FenceError } from '../../remote/fence'
-import { pressesFor, sharedOf } from '../files/policy'
+import { linkedOut, madeFromShared } from '../docs/target'
+import { pressesFor, sharedOf, within, workspaceHere } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
@@ -11,7 +15,7 @@ import { isIsolatedInstance, servesPublic } from '../service/config'
 import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import type { ServiceProject } from '../service/wire'
-import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
+import { fileLinkId, GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
 import { PASS_PREFIX, type GuestServiceLink } from './wire'
 
 /**
@@ -73,7 +77,7 @@ export const guestUrl = (origin: string, id: string, secret: string): string => 
  * by its resolved path, as the docs pillar names its room; a `.tcsheet` by its item's own spelling of the path,
  * as the sheets pillar names its workbook (sheets/held.ts), so the phone and the desktop are on one workbook.
  */
-type Opens = { at: 'lifeos'; source: GuestSource } | { at: 'tcdoc'; path: string } | { at: 'tcsheet'; path: string; real: string }
+type Opens = { at: 'lifeos'; source: LifeosGuestSource } | { at: 'tcdoc'; path: string } | { at: 'tcsheet'; path: string; real: string }
 
 /** A file sheet's name on the live socket: no path is ever in an address, and main alone says which file a name is (the pass's `sheetFile`). */
 export const fileSheetId = (path: string): string => `tc${createHash('sha256').update(path).digest('hex').slice(0, 40)}`
@@ -92,6 +96,8 @@ export const TICKET_REFUSALS = {
   elsewhere: 'This file opens on the computer that has it.',
   noPage: 'This computer serves no page a phone can open. Edit it on your computer.'
 } as const
+
+export { SHARE_REFUSALS }
 
 type Seen = Record<string, { at: number; open: number }>
 
@@ -149,6 +155,7 @@ export class GuestRuntime {
 
   /** Throws `served elsewhere: <env>` on a host that does not serve LifeOS's documents, as every docs method does. */
   async servedHere(source: GuestSource): Promise<void> {
+    if (source.at === 'file') return
     try {
       // Asked as for a document: a project and its documents are served where LifeOS's documents are.
       await this.ctx.service.token({ item: source.table === 'sheets' ? { sheet: source.id } : { doc: source.id }, role: 'view', principal: 'owner' })
@@ -159,7 +166,7 @@ export class GuestRuntime {
   }
 
   /** The item exists in LifeOS, and its sector and title. */
-  async itemRow(source: GuestSource): Promise<{ sector: string; title: string }> {
+  async itemRow(source: LifeosGuestSource): Promise<{ sector: string; title: string }> {
     if (source.table === 'projects') {
       const got = await this.ctx.lifeos
         .owner()
@@ -176,21 +183,95 @@ export class GuestRuntime {
     return { sector: row.sector, title: typeof row.title === 'string' && row.title.trim() ? row.title.trim() : 'Untitled' }
   }
 
-  async create(o: { source: GuestSource; title: string; name: string; role: GuestRole; expiresAt: number; bySession: string | null }): Promise<GuestCreated> {
+  /**
+   * A source as its links are kept: a LifeOS row as it is; a file checked and given its id. A file must be a `.tcdoc`
+   * or a `.tcsheet` on this host, within the caller's reach (`by`: a thread's request was checked when it asked), there,
+   * in a place of his own (a file others can open is shared where it lives), on a host whose pages a guest can reach.
+   */
+  resolve(source: GuestSource, by?: Caller, method = 'work.guests.create', role?: GuestRole): GuestLinkSource {
+    if (source.at === 'lifeos') return source
+    const table = guestTableOf(source)
+    if (table !== 'docs' && table !== 'sheets') throw new Error(SHARE_REFUSALS.other)
+    // A file is shared by the host that has it (§19), named by its whole path there.
+    if (source.host !== this.ctx.host) throw new Error(`served elsewhere: ${source.host}`)
+    if (!isAbsolute(source.path)) throw new Error(SHARE_REFUSALS.gone)
+    if (by && !this.ctx.reaches(by, source.path)) throw new FenceError(method)
+    if (!servesPublic()) throw new Error(SHARE_REFUSALS.noPage)
+    if (!existsSync(source.path)) throw new Error(SHARE_REFUSALS.gone)
+    // Every rule is read of the file the spelling reaches now, as the service will open it.
+    const real = canonicalPath(source.path)
+    if (sharedOf(this.ctx, { at: 'file', host: source.host, path: source.path }) || sharedOf(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.shared)
+    // A document kept for a Word file in a library, or read from one, is a copy: the truth is the Teams file.
+    if (table === 'docs' && madeFromShared(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.teamsCopy)
+    // Save As writes a linked document's edits to another file after each pause: a guest's edits would reach it.
+    if (role === 'edit' && table === 'docs' && linkedOut(this.ctx, real)) throw new Error(SHARE_REFUSALS.linkedOut)
+    return { at: 'file', table, id: fileLinkId(real), host: this.ctx.host, path: source.path }
+  }
+
+  /** A thread's file, held to its own workspace's folder: the press that grants it names that file and no other. */
+  threadFile(path: string, workspaceId: string | null | undefined): string {
+    const home = workspaceId ? workspaceHere(this.ctx.db, workspaceId) : null
+    const real = canonicalPath(path)
+    if (!home || !isAbsolute(path) || !within(real, canonicalPath(home.path))) throw new Error('That file is not in this workspace.')
+    return fileLinkId(real)
+  }
+
+  /**
+   * Whether a file's link may still be served: the file is there under the spelling it was shared by, still the same
+   * file, and still his alone. A link that fails this is not told to the service (its guest is shut out) until it passes.
+   */
+  private fileServes(l: StoredLink & { source: Extract<GuestLinkSource, { at: 'file' }> }): boolean {
+    const s = l.source
+    try {
+      if (s.host !== this.ctx.host || !existsSync(s.path)) return false
+      const real = canonicalPath(s.path)
+      if (fileLinkId(real) !== s.id) return false
+      if (l.role === 'edit' && s.table === 'docs' && linkedOut(this.ctx, real)) return false
+      return !(s.table === 'docs' ? madeFromShared : sharedOf)(this.ctx, { at: 'file', host: s.host, path: real })
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * A file's link whose file went, moved, now reaches another file or a place others open ends for good: a file put
+   * in its place later is never shown under the old link. He makes a new one for it.
+   */
+  private endFileLinks(now = Date.now()): void {
+    let ended = false
+    for (const l of this.store.live(now)) {
+      if (l.source.at !== 'file' || this.fileServes(l as StoredLink & { source: Extract<GuestLinkSource, { at: 'file' }> })) continue
+      if (this.store.revoke(l.id, now)) ended = true
+      this.ctx.log(`guests: ${l.id}'s file is not the file it shared any more; the link has ended`)
+    }
+    if (ended) this.ctx.push({ push: 'work.guests' })
+  }
+
+  async create(o: { source: GuestSource; title: string; name: string; role: GuestRole; expiresAt: number; bySession: string | null; by?: Caller; fileId?: string }): Promise<GuestCreated> {
     const refused = guestRefusal(o)
     if (refused) throw new Error(refused)
-    await this.servedHere(o.source)
-    const row = await this.itemRow(o.source)
+    const source = this.resolve(o.source, o.by, 'work.guests.create', o.role)
+    // His press on a thread's request makes the link only for the file the thread named then.
+    if (source.at === 'file' && o.fileId !== undefined && o.fileId !== source.id) throw new ActNotSent(SHARE_REFUSALS.moved)
+    if (source.at === 'file') {
+      // A file is marked by the link itself (store.ts `fileLinked`): there is no LifeOS row to tell.
+      const { link, secret } = this.store.create({ ...o, source })
+      await this.settle()
+      this.ctx.push({ push: 'work.guests' })
+      return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
+    }
+    await this.servedHere(source)
+    const row = await this.itemRow(source)
     // A project's link is named as LifeOS names the project now, never as a client said.
-    const { link, secret } = this.store.create(o.source.table === 'projects' ? { ...o, title: row.title.slice(0, 200) } : o)
+    const { link, secret } = this.store.create(source.table === 'projects' ? { ...o, source, title: row.title.slice(0, 200) } : { ...o, source })
     // The item reads shared to every write guard before a guest can reach it: if LifeOS does not take it, no link is made.
     // In the passes' own turn, so this mark and a pass's unmark of the same row never reach LifeOS out of order.
-    if (!(await this.inTurn(() => this.tell(sourceKey(o.source), true)))) {
+    if (!(await this.inTurn(() => this.tell(sourceKey(source), true)))) {
       this.store.forget(link.id)
       throw new ActNotSent(`LifeOS did not mark ${o.title} as shared, so no guest link was made. Nothing was made.`)
     }
     // A project's link shows what LifeOS answers for it: with no answer there is nothing to show, and no link.
-    if (o.source.table === 'projects' && !(await this.firstView(o.source.id))) {
+    if (source.table === 'projects' && !(await this.firstView(source.id))) {
       this.store.forget(link.id)
       await this.settle()
       throw new ActNotSent(`LifeOS did not answer what ${o.title} shows a guest, so no guest link was made. Nothing was made.`)
@@ -204,8 +285,30 @@ export class GuestRuntime {
   async rekey(id: string): Promise<string | null> {
     const secret = this.store.rekey(id)
     if (!secret) return null
-    // Every token handed out before now stops opening anything: the service refuses a token of this link
-    // issued before the next second's edge (tokens carry whole seconds), and main signs new ones from then.
+    await this.retoken(id)
+    return guestUrl(publicOrigin(this.ctx), id, secret)
+  }
+
+  /**
+   * What a live link's guest may do, changed (the address stays): its old tokens stop opening anything as a new
+   * address's do, so every socket on it closes and the page opens again as the new role. False for a link not live.
+   */
+  async setRole(id: string, role: GuestRole): Promise<boolean> {
+    const link = this.store.get(id)
+    if (!link || !isLive(link)) return false
+    const refused = guestRefusal({ source: link.source, role, expiresAt: link.expiresAt })
+    if (refused) throw new Error(refused)
+    if (link.role === role) return true
+    if (role === 'edit' && link.source.at === 'file') this.resolve(link.source, undefined, 'work.guests.setRole', role)
+    if (!this.store.setRole(id, role)) return false
+    await this.retoken(id)
+    return true
+  }
+
+  /** Every token of a link handed out before now stops opening anything, and the service is told. */
+  private async retoken(id: string): Promise<void> {
+    // The service refuses a token of this link issued before the next second's edge (tokens carry whole
+    // seconds), and main signs new ones from then.
     const at = (Math.floor(Date.now() / 1000) + 1) * 1000
     this.keyedAt.set(id, at)
     for (const key of [...this.tokens.keys()]) if (key === id || key.startsWith(`${id}|`)) this.tokens.delete(key)
@@ -213,7 +316,6 @@ export class GuestRuntime {
     while (Date.now() < at) await new Promise((r) => setTimeout(r, at - Date.now() + 5))
     await this.sync()
     this.ctx.push({ push: 'work.guests' })
-    return guestUrl(publicOrigin(this.ctx), id, secret)
   }
 
   async revoke(id: string): Promise<void> {
@@ -226,7 +328,7 @@ export class GuestRuntime {
     this.ctx.push({ push: 'work.guests' })
   }
 
-  async list(source?: GuestSource): Promise<GuestLinkRow[]> {
+  async list(source?: GuestLinkSource): Promise<GuestLinkRow[]> {
     const rows = source ? this.store.forSource(source) : this.store.listed()
     const seen = await this.seen()
     const now = Date.now()
@@ -312,7 +414,7 @@ export class GuestRuntime {
   }
 
   /** Whether others can read a LifeOS row (LifeOS's `shared`); a row LifeOS does not answer for is taken as read by others. */
-  private async othersRead(source: GuestSource): Promise<boolean> {
+  private async othersRead(source: LifeosGuestSource): Promise<boolean> {
     const row = await this.ctx.lifeos
       .owner()
       .query<{ shared?: unknown } | null>(source.table === 'sheets' ? 'sheets:get' : 'docs:get', { id: source.id })
@@ -333,7 +435,7 @@ export class GuestRuntime {
 
   /** LifeOS told one row's `shared`. Answers whether LifeOS took it. */
   private async tell(key: string, shared: boolean): Promise<boolean> {
-    const [table, id] = key.split(':') as [GuestSource['table'], string]
+    const [table, id] = key.split(':') as [LifeosGuestSource['table'], string]
     try {
       await this.ctx.lifeos.owner().mutation(`${table}:setShared`, { id, shared })
       this.told.set(key, shared)
@@ -349,6 +451,8 @@ export class GuestRuntime {
   private wanted(now = Date.now()): Set<string> {
     const out = new Set<string>()
     for (const l of this.store.live(now)) {
+      // A file has no LifeOS row to mark: its link is its mark (store.ts `fileLinked`).
+      if (l.source.at === 'file') continue
       out.add(sourceKey(l.source))
       const shown = l.source.table === 'projects' ? this.watched.get(l.source.id)?.projection : null
       if (shown) for (const key of projectionItems(shown)) out.add(key)
@@ -370,7 +474,7 @@ export class GuestRuntime {
     })
     // What the service was last sent: a document or sheet it still shows keeps its mark until the service has been told it left.
     const shown = new Set([...this.sent.values()].flatMap((s) => [...s.items]))
-    const all = [...new Set([...wanted, ...this.told.keys(), ...this.store.listed(now).map((l) => sourceKey(l.source)), ...this.store.marks()])]
+    const all = [...new Set([...wanted, ...this.told.keys(), ...this.store.listed(now).flatMap((l) => (l.source.at === 'file' ? [] : [sourceKey(l.source)])), ...this.store.marks()])]
     let told = 0
     let changed = false
     const pass = async (keys: string[]): Promise<void> => {
@@ -507,6 +611,7 @@ export class GuestRuntime {
   private async syncOnce(): Promise<void> {
     const supervisor = this.service()
     if (!supervisor) return
+    this.endFileLinks()
     const now = Date.now()
     const owner = this.ownerName()
     const up = this.ctx.lifeos.connected?.() !== false
@@ -517,9 +622,10 @@ export class GuestRuntime {
     const keep = new Set<string>()
     for (const l of this.store.live(now)) {
       // Not before LifeOS reads its item shared: until then every write guard takes the item for private.
-      if (this.told.get(sourceKey(l.source)) !== true) continue
+      // A file is read as shared by its live link itself, and is served while it is still the file he shared.
+      if (l.source.at === 'file' ? !this.fileServes(l as StoredLink & { source: Extract<GuestLinkSource, { at: 'file' }> }) : this.told.get(sourceKey(l.source)) !== true) continue
       const principal = `guest:${l.id}` as const
-      if (l.source.table === 'projects') {
+      if (l.source.at === 'lifeos' && l.source.table === 'projects') {
         // A project's link goes only with what it shows; until LifeOS has answered, the service does not know it.
         const shown = this.watched.get(l.source.id)?.projection
         if (!shown) continue
@@ -529,16 +635,28 @@ export class GuestRuntime {
         continue
       }
       // A link that cannot be signed is left out, never left as it was: the service then refuses it.
-      const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id }).catch((err: Error) => (this.ctx.log(`guests: ${l.id} was not signed: ${err.message}`), null))
+      // Keyed by the role too: a token signed for the role before a change is never handed out for the new one.
+      const t = await this.sign(`${l.id}|${l.role}`, { ...linkClaims(l.source), role: l.role, principal, link: l.id }).catch((err: Error) => (this.ctx.log(`guests: ${l.id} was not signed: ${err.message}`), null))
       if (!t) continue
-      keep.add(l.id)
+      keep.add(`${l.id}|${l.role}`)
       out.push({
         linkId: l.id,
         item: itemOf(l.source),
         role: l.role,
         expiresAt: l.expiresAt,
         revokedAt: null,
-        guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: t.token, tokenExp: t.exp, keyedAt: this.keyedAt.get(l.id) ?? 0 }
+        guest: {
+          secretHash: l.secretHash,
+          name: l.name,
+          title: l.title,
+          owner,
+          token: t.token,
+          tokenExp: t.exp,
+          keyedAt: this.keyedAt.get(l.id) ?? 0,
+          // A sheet kept as a file: the live socket opens that file for this link's token alone.
+          ...(l.source.at === 'file' && l.source.table === 'sheets' ? { sheetFile: l.source.path } : {}),
+          ...(l.source.at === 'file' && l.source.table === 'docs' ? { comments: false } : {})
+        }
       })
     }
     for (const p of this.passes.values()) {
@@ -575,7 +693,8 @@ export class GuestRuntime {
       out.flatMap((x): GuestServiceLink[] => {
         if (x.pass) return [x]
         const l = fresh.get(x.linkId)
-        return l && x.guest ? [{ ...x, guest: { ...x.guest, secretHash: l.secretHash } }] : []
+        // A link whose role changed while this list was signed goes at the next sync, on a token of its new role.
+        return l && x.guest && l.role === x.role ? [{ ...x, guest: { ...x.guest, secretHash: l.secretHash } }] : []
       })
     )
     for (const linkId of [...this.sent.keys()]) {
@@ -616,6 +735,16 @@ export class GuestRuntime {
   }
 }
 
-/** A document's or a sheet's link as the service names its item; a project's link is built where its projection is. */
-export const itemOf = (s: GuestSource): { doc: string } | { sheet: string } => (s.table === 'sheets' ? { sheet: s.id } : { doc: s.id })
-const kitItem = itemOf
+/**
+ * A document's or a sheet's link as the service names its item; a project's link is built where its projection is.
+ * A file is named as its own pillar names it, so the guest and the desktop are on one document or workbook: a
+ * `.tcdoc` by its resolved path, a `.tcsheet` by its spelling (`fileSheetId`).
+ */
+export const itemOf = (s: GuestLinkSource): { doc: string } | { sheet: string } =>
+  s.at === 'file' ? (s.table === 'sheets' ? { sheet: fileSheetId(s.path) } : { doc: fileDocName(canonicalPath(s.path)) }) : s.table === 'sheets' ? { sheet: s.id } : { doc: s.id }
+
+/** The claims main signs for a link's item: a `.tcdoc`'s name its resolved path, which the collab server opens. */
+const linkClaims = (s: GuestLinkSource): Pick<KitClaims, 'doc' | 'sheet' | 'file'> => {
+  const item = itemOf(s)
+  return s.at === 'file' && 'doc' in item ? { ...item, file: { path: canonicalPath(s.path) } } : item
+}

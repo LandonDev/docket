@@ -69,6 +69,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/guests/Share.tsx`]: [
     ["Copied", "local"],
     ["Done", "local"],
+  ],
+  [`${R}/guests/ShareSheet.tsx`]: [
+    ["Done", "local"],
     ["Done", "local"],
   ],
   [`${R}/history/HistoryCanvas.tsx`]: [

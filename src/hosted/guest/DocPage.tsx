@@ -6,7 +6,7 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { openingView, openingZoom, PAGES_FROM } from "./opening";
-import { endingSocket } from "./ending";
+import { afterRevoked, endingSocket } from "./ending";
 import { commentLeft } from "./place";
 import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
@@ -40,7 +40,7 @@ const IN_PAGES = {
 
 export function DocPage({ session, opened, scheme, onGone }: { session: Session; opened: Opened; scheme: "light" | "dark"; onGone(): void }) {
   const doc = opened.doc!;
-  const threads = useMemo(() => (opened.role === "view" ? null : guestThreads(session, doc)), [session, doc, opened.role]);
+  const threads = useMemo(() => (opened.role === "view" || opened.comments === false ? null : guestThreads(session, doc)), [session, doc, opened.role, opened.comments]);
   const goneRef = useRef(onGone);
   goneRef.current = onGone;
   const fresh = useMemo(
@@ -57,7 +57,11 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   );
   // The host closes the socket of a link it revoked: asked once, a link that is gone ends the page at once and takes
   // the document off the screen, for a reader too, whose editor shows no trouble once the text is in.
-  const socket = useMemo(() => endingSocket(() => void session.refresh().catch((err: unknown) => err instanceof OpenFailed && err.why === "gone" && goneRef.current())), [session]);
+  // A role he changed opens the page again as that role; the editor brings its own socket back otherwise.
+  const socket = useMemo(
+    () => endingSocket(() => void afterRevoked(() => session.refresh(), opened.role, { gone: () => goneRef.current(), reopen: () => window.location.reload(), again: () => {} })),
+    [session, opened.role],
+  );
   const adapters = useMemo<Partial<EditorAdapters>>(
     () => ({
       // Every token the editor asks for (on connect, and every minute) asks the service again:
@@ -128,7 +132,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
             <DocumentEditor
               documentName={doc}
               editable={opened.role === "edit"}
-              canComment={commentsOnPage(session.mode.kind, opened.role)}
+              canComment={commentsOnPage(session.mode.kind, opened.role) && opened.comments !== false}
               threadMargin={threads && !sheets ? (side ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}

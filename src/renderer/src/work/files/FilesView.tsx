@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
 import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FolderRef } from "@shared/work/files";
@@ -46,6 +46,9 @@ import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
+import { shareTargetOf } from "../guests/api";
+
+const ShareSheet = lazy(() => import("../guests/ShareSheet"));
 
 /**
  * The Files place of a Work workspace (docs/agents/work-files.md, docs/DESIGN.md "The Files place"): the finder
@@ -842,6 +845,9 @@ function FolderPage({
   const { of } = verbs;
   const trashIds = (entries: readonly FileEntry[]): string[] => entries.map((e) => e.key.replace(/^trash:/, ""));
   const into = (entry?: FileEntry): FolderRef => entry?.folder ?? page.at;
+  // A document's or a sheet's Share sheet, from its row's menu: its links on the host that lists it.
+  const [sharing, setSharing] = useState<FileEntry | null>(null);
+  const shareTarget = sharing?.ref ? shareTargetOf(sharing.ref, sharing.kind === "sheet" ? "sheet" : "document") : null;
   const acts: PageActs | null =
     !team && copy && copy.wire === "files"
       ? {
@@ -875,6 +881,7 @@ function FolderPage({
               }
             : {}),
           ...(opensInApp(copy) ? { openApp: (entry: FileEntry) => verbs.openApp(entry, copy) } : {}),
+          share: (entry: FileEntry) => entry.ref && setSharing(entry),
           ask: (entries) => verbs.ask(entries, copy),
           pickUpload: () => verbs.pickUpload(copy, page.at),
           // A Drive lists only what TempCode made or he picked: Add from Drive is the way more of it comes in.
@@ -890,29 +897,36 @@ function FolderPage({
         }
       : null;
   return (
-    <PageView
-      acts={noTeams || lost ? null : acts}
-      find={find}
-      page={page}
-      panelId={filesPanelId(tab.id)}
-      listing={noTeams || lost ? null : listing}
-      copy={team ? null : copy}
-      from={team ? null : from}
-      trail={trail}
-      canBack={canBack}
-      canForward={canForward}
-      busy={busy}
-      note={noTeams ? (reach.note ?? { title: "No Teams files" }) : lost ? { title: `${page.name} is not here any more`, line: "Its place is not listed now.", fix: { kind: "retry" } } : null}
-      fixes={fixes}
-      onBack={onBack}
-      onForward={onForward}
-      onGo={onGo}
-      onOpen={(entry) => copy && onOpen(entry, copy)}
-      onReveal={onReveal}
-      // The Beside seat is the workspace's own host's: a file that lies there opens in it as itself.
-      seat={!team && copy && copy.wire === "files" && reach.tabs && copy.link === workspace.environmentId && !copy.place.vm ? { workspace, can: (entry) => !!entry.ref } : null}
-      {...(!team && copy ? { onFetch: (entry: FileEntry) => fetchHere(entry, copy, workspace.id).then(() => listing.retry()) } : {})}
-    />
+    <>
+      <PageView
+        acts={noTeams || lost ? null : acts}
+        find={find}
+        page={page}
+        panelId={filesPanelId(tab.id)}
+        listing={noTeams || lost ? null : listing}
+        copy={team ? null : copy}
+        from={team ? null : from}
+        trail={trail}
+        canBack={canBack}
+        canForward={canForward}
+        busy={busy}
+        note={noTeams ? (reach.note ?? { title: "No Teams files" }) : lost ? { title: `${page.name} is not here any more`, line: "Its place is not listed now.", fix: { kind: "retry" } } : null}
+        fixes={fixes}
+        onBack={onBack}
+        onForward={onForward}
+        onGo={onGo}
+        onOpen={(entry) => copy && onOpen(entry, copy)}
+        onReveal={onReveal}
+        // The Beside seat is the workspace's own host's: a file that lies there opens in it as itself.
+        seat={!team && copy && copy.wire === "files" && reach.tabs && copy.link === workspace.environmentId && !copy.place.vm ? { workspace, can: (entry) => !!entry.ref } : null}
+        {...(!team && copy ? { onFetch: (entry: FileEntry) => fetchHere(entry, copy, workspace.id).then(() => listing.retry()) } : {})}
+      />
+      {sharing && shareTarget && copy ? (
+        <Suspense fallback={null}>
+          <ShareSheet env={copy.link} target={shareTarget} title={sharing.name.replace(/\.tc(doc|sheet)$/i, "")} purdue={workspace.sector === "purdue"} onClose={() => setSharing(null)} />
+        </Suspense>
+      ) : null}
+    </>
   );
 }
 

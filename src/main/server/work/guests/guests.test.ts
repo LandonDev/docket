@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket as WsSocket } from 'ws'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
-import { GUEST_KEEP_MS, guestRefusal, type GuestSource } from '@shared/contract-work-guests'
+import { GUEST_KEEP_MS, guestRefusal, type LifeosGuestSource } from '@shared/contract-work-guests'
 import type { Caller, WorkCtx } from '../modules'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { PUBLIC_ROUTES } from '../service/routes'
@@ -118,7 +118,7 @@ async function rig(): Promise<Rig> {
   return { rt, service, convex, db, signer, shared, logs, base }
 }
 
-const doc = (id = DOC): GuestSource => ({ at: 'lifeos', table: 'docs', id })
+const doc = (id = DOC): LifeosGuestSource => ({ at: 'lifeos', table: 'docs', id })
 const inDays = (d: number) => Date.now() + d * 24 * 60 * 60_000
 
 async function make(r: Rig, role: 'view' | 'comment' | 'edit', source = doc()) {

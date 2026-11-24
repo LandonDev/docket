@@ -294,7 +294,9 @@ async function open(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
     token: link.guest.token,
     tokenExp: link.guest.tokenExp,
     me: `guest:${id}`,
-    ...('doc' in link.item ? { doc: link.item.doc } : {})
+    ...('doc' in link.item ? { doc: link.item.doc } : {}),
+    // A document kept as a file keeps its comments where the page cannot reach them: the page draws none.
+    ...(link.guest.comments === false ? { comments: false } : {})
   })
 }
 
@@ -332,6 +334,7 @@ async function item(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
 async function threads(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id: string): Promise<void> {
   const got = await bearer(req, ctx, id)
   if (!got || !('doc' in got.link.item)) return json(res, 403, { error: 'gone' })
+  if (got.link.guest.comments === false) return json(res, 200, { rows: [], names: {} })
   const docId = got.link.item.doc
   const rows = (await ctx.convex('query', 'docs:threads', { docId })) as LifeosThread[]
   json(res, 200, guestThreads(rows, `guest:${id}`, got.link.guest.owner))
@@ -342,6 +345,7 @@ async function comment(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx,
   if (!got || !('doc' in got.link.item)) return json(res, 403, { error: 'gone' })
   // A view link writes nothing at all, comments included.
   if (got.link.role === 'view') return json(res, 403, { error: 'This link can view, not comment.' })
+  if (got.link.guest.comments === false) return json(res, 403, { error: 'This document takes no comments by link.' })
   if (!LIMITS.comments.take(id)) return json(res, 429, { error: 'Too many comments at once. Try again in a minute.' })
   const body = await readJson(req)
   const text = typeof body?.text === 'string' ? body.text.trim() : ''

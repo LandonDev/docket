@@ -510,6 +510,8 @@ export interface PageActs {
   openSide?(entry: FileEntry): void;
   /** Open in its app: absent where the place's computer cannot open it for this window (`appOpens`) */
   openApp?(entry: FileEntry): void;
+  /** Share…: a document's or a sheet's Share sheet; absent where nothing of this place can be shared from this window */
+  share?(entry: FileEntry): void;
   /** Add from Drive…: Google's Picker, for a Drive place; what he picks is what the place may list */
   addFromDrive?(): void;
   /** From a Template…: the templates pillar's own dialog, the file kept in this folder; absent where that pillar is not there */
@@ -844,7 +846,7 @@ export function PageView({
   // The verbs for what is selected: one table for a row's menu, the bar and the keys.
   // A page that only shows (a search's results) still opens a row and shows the folder it lives in.
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
-  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen);
+  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
@@ -857,6 +859,7 @@ export function PageView({
     if (act === "keep") return acts.keep?.(on);
     if (act === "project-out") return one.project ? acts.project?.(one, one.project, false) : undefined;
     if (act === "open-app") return acts.openApp?.(one);
+    if (act === "share") return acts.share?.(one);
     if (act === "rename") return setRenaming(one.key);
     if (act === "move" || act === "copy") return acts.carry(act, on);
     if (act === "star" || act === "unstar") return acts.star(on, act === "star");
@@ -866,7 +869,7 @@ export function PageView({
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, ...(acts.far ? { far: acts.far } : {}) }) : plain(on);
+    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
