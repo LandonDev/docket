@@ -8,7 +8,7 @@ import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { VirtualRows } from "../../chrome/railVirtualRows";
 import { Tip, TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../../components/ui/empty";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Spinner } from "../../components/ui/spinner";
@@ -38,6 +38,7 @@ import {
   pickedAmong,
   folderGone,
   placeNote,
+  vmSleepNote,
   searchGap,
   SHAPE_WORDS,
   TILE_SIZES,
@@ -88,12 +89,17 @@ export interface NoteFixes {
 }
 const FIX_LABEL = { allow: "Allow", retry: "Retry", "sign-in": "Sign in to OneDrive", "open-vm": "Open the Windows VM", settings: "Open Settings", wake: "Wake it" } as const;
 
-/** A note with nothing listed under it: the one cause and its press, centred where the list would be. */
+/** A note with nothing listed under it: the one cause and its press, centred where the list would be. A stage under way leads with its spinner. */
 export function NoteEmpty({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   const elsewhere = note.fix ? (fixes.elsewhere?.(note.fix) ?? null) : null;
   const line = elsewhere ?? note.line;
   return (
-    <Empty>
+    <Empty {...(note.busy ? { role: "status", "aria-busy": true } : {})}>
+      {note.busy ? (
+        <EmptyMedia>
+          <Spinner className="size-4" />
+        </EmptyMedia>
+      ) : null}
       <EmptyHeader>
         <EmptyTitle>{note.title}</EmptyTitle>
         {line ? <EmptyDescription>{line}</EmptyDescription> : null}
@@ -115,7 +121,8 @@ function NoteLine({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   // A note with nothing to do and nothing more to say is a fact about the list, muted, never a heading over it.
   const quiet = !line && !(note.fix && !elsewhere);
   return (
-    <div data-files-note role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
+    <div data-files-note role="status" aria-busy={note.busy || undefined} className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
+      {note.busy ? <Spinner className="size-3 shrink-0" /> : null}
       <span className={`min-w-0 truncate ${quiet ? "text-muted-foreground" : "font-medium text-foreground"}`}>{note.title}</span>
       {line ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{line}</span> : <span className="flex-1" />}
       {note.fix && !elsewhere ? (
@@ -916,7 +923,14 @@ export function PageView({
     },
     ...(drag ? { drag } : {}),
   };
-  const down = copy ? placeNote(copy, clockTime) : null;
+  // A folder in the VM says what its own answer said of the machine; rows it read live (no kept time: a host a release
+  // behind says one for a kept list) put the place's older "asleep" away.
+  const slept = copy && listing ? vmSleepNote(copy, listing, clockTime) : null;
+  const placeSaid = copy ? placeNote(copy, clockTime) : null;
+  const vmLive = !!copy?.place.vm && !!listing?.loaded && !listing.loading && !listing.sleeping && !listing.asOf && !listing.error;
+  const down = slept ?? (vmLive && placeSaid?.fix?.kind === "wake" ? null : placeSaid);
+  // Wake it over a VM folder is his press for that folder: it is listed again, and the wake goes on behind the answer.
+  const noteFixes: NoteFixes = copy?.place.vm && listing ? { ...fixes, busy: fixes.busy || listing.loading, run: (fix) => (fix.kind === "wake" ? listing.retry() : fixes.run(fix)) } : fixes;
   const parent = trail.length > 1 ? trail[trail.length - 2]! : null;
   const toParent = parent ? () => onGo({ at: parent.at, name: parent.name }) : undefined;
   // A search that left a place out says so, with Retry, whether or not anything came back.
@@ -945,8 +959,8 @@ export function PageView({
   else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap?.fix ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
   else if (!entries.length)
     body =
-      down && down.fix?.kind !== "wake" ? (
-        <NoteEmpty note={down} fixes={fixes} />
+      down && (down.fix?.kind !== "wake" || !!slept) ? (
+        <NoteEmpty note={down} fixes={noteFixes} />
       ) : inTrash ? (
         <EmptyState title="Trash is empty" line="What you delete waits here for 30 days." />
       ) : (
@@ -1010,7 +1024,7 @@ export function PageView({
   ) : gap && entries.length ? (
     <NoteLine note={gap} fixes={{ busy: listing!.loading, run: () => listing!.retry() }} />
   ) : down && !note && entries.length ? (
-    <NoteLine note={down.fix?.kind === "wake" && listing?.asOf ? { ...down, line: `This is the list from ${clockTime(listing.asOf)}.` } : down} fixes={fixes} />
+    <NoteLine note={down.fix?.kind === "wake" && listing?.asOf ? { ...down, line: `This is the list from ${clockTime(listing.asOf)}.` } : down} fixes={noteFixes} />
   ) : null;
   // Files dropped from the desktop on the page land in its folder; on a folder row, in that folder (the row takes the drop first).
   const takesFiles = !!acts && !inTrash && canDo(acts.place, "upload");

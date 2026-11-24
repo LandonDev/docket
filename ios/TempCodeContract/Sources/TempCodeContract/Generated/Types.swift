@@ -8637,6 +8637,28 @@ public struct FilesListing: Codable, Hashable, Sendable {
             self.at = at
         }
     }
+    public enum Sleeping: RawRepresentable, Codable, Hashable, Sendable {
+        case asleep
+        case waking
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "asleep": self = .asleep
+            case "waking": self = .waking
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .asleep: "asleep"
+            case .waking: "waking"
+            case .unknown(let value): value
+            }
+        }
+    }
 
     public let entries: [FileEntry]
     public let next: String?
@@ -8646,8 +8668,9 @@ public struct FilesListing: Codable, Hashable, Sendable {
     public let asOf: Double?
     public let more: Bool?
     public let asleep: [String]?
+    public let sleeping: Sleeping?
 
-    public init(entries: [FileEntry], next: String? = nil, stale: Bool? = nil, place: String? = nil, trail: [Trail]? = nil, asOf: Double? = nil, more: Bool? = nil, asleep: [String]? = nil) {
+    public init(entries: [FileEntry], next: String? = nil, stale: Bool? = nil, place: String? = nil, trail: [Trail]? = nil, asOf: Double? = nil, more: Bool? = nil, asleep: [String]? = nil, sleeping: Sleeping? = nil) {
         self.entries = entries
         self.next = next
         self.stale = stale
@@ -8656,6 +8679,7 @@ public struct FilesListing: Codable, Hashable, Sendable {
         self.asOf = asOf
         self.more = more
         self.asleep = asleep
+        self.sleeping = sleeping
     }
 }
 

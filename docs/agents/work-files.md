@@ -1475,7 +1475,7 @@ while its screen is unlocked.
 | Method | Needs | Relay | Today |
 |---|---|---|---|
 | `places {workspaceId}` | read | yes | this host's places and their state, `rev` (the tabs' revision) and `sources` (what stands between each source of Teams files and him). Never waits on a VM |
-| `list {workspaceId, at, cursor?, sort?, foldersOnly?}` | read | yes | one folder or lens, 500 entries and 512 KB a page at most; a folder that changed between pages answers `stale`. The first page carries `place` and `trail` |
+| `list {workspaceId, at, cursor?, sort?, foldersOnly?, wake?}` | read | yes | one folder or lens, 500 entries and 512 KB a page at most; a folder that changed between pages answers `stale`. The first page carries `place` and `trail`. A VM folder: `wake` is his press; a sleeping VM answers at once with the rows kept (`asOf`) or none, and `sleeping` (work-teams-files.md "A folder in the VM") |
 | `stat {workspaceId, refs}` | read | yes | the rows again with who last saved an Office file, 100 at most; null for one gone or out of reach |
 | `across {workspaceId, host, method, params}` | read | yes | `places`, `list` or `stat` of a desktop the window has no link to, and on his press `trash`, `restore`, `rename` or `move` there, asked of the workspace's host, which asks that desktop over `ctx.peer` ("A desktop the window cannot reach") |
 | `threads {workspaceId, ref}` | read | yes | the workspace's threads whose open items show the file |
@@ -1673,11 +1673,10 @@ never one over the cap (`search.test.ts` watches every read). A `.tcdoc`'s
 text is not searched here: it is read through the Work service, which only
 `doc_find` asks (`docs/find.ts`).
 
-**The Windows VM** is searched while it is awake, or for a caller with no
-window to keep painting (a thread its workspace lets use the VM, another
-host of his). A search from his window or a remote key never wakes it: the
-answer says `more` and names the VM's places in `asleep`, for the window's
-line and its Wake press.
+**The Windows VM** is searched while it is awake. A search never wakes it,
+whoever asks (his window, a remote key, a thread its workspace lets use the
+VM, another host of his): the answer says `more` and names the VM's places
+in `asleep`, for the window's line and its Wake press.
 
 **His desktops' folders** are theirs to walk: a host cannot walk another
 computer's folders. So on a search of every place (his Return, or a saved
@@ -2373,8 +2372,9 @@ system.
   into pages here ("Google Drive").
 - **The Windows VM**: `places` answers from what was kept and reads behind
   the answer; its state is `asleep` with the time it was read. A folder
-  there is listed whole by the guest's helper (it wakes the VM, as it always
-  has) and cut into pages here (`vmPage`).
+  there is listed whole by the guest's helper and cut into pages here
+  (`vmPage`); a sleeping VM answers at once and wakes only for his press
+  (work-teams-files.md "A folder in the VM").
 
 ## The fence, by caller
 

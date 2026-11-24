@@ -478,7 +478,11 @@ export function useTabs(link: string, workspaceId: string, hosted: boolean, firs
 
 export function selectTab(link: string, workspaceId: string, tabId: string): void {
   const entry = tabsOf(link, workspaceId);
-  if (entry.tabs.some((t) => t.id === tabId)) writeTabs(entry, { selected: tabId });
+  const tab = entry.tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  // A tab he picked is his press for its folder; a tab shown again by a restore is not.
+  if (tab.page) pressFor(tab.page.at);
+  writeTabs(entry, { selected: tabId });
 }
 
 /** A change to the tabs: shown at once, sent to the host, and put right by the host's answer (or its list again, when it refused). */
@@ -500,6 +504,7 @@ async function change(link: string, workspaceId: string, guess: FileTab[] | null
 
 /** A new page tab after `after` (last when absent), shown. */
 export async function openPageTab(link: string, workspaceId: string, page: FilePage, after?: string): Promise<void> {
+  pressFor(page.at);
   const entry = tabsOf(link, workspaceId);
   if (entry.local) {
     const id = `local-${++localIds}`;
@@ -597,6 +602,7 @@ export async function goTo(link: string, workspaceId: string, tabId: string, pag
     to = moved.to;
   }
   const guess = entry.tabs.map((t) => (t.id === tabId ? { ...t, name: to.name, page: to } : t));
+  pressFor(to.at);
   if (entry.local) return writeTabs(entry, { tabs: guess });
   await change(link, workspaceId, guess, "work.files.tabSet", { tabId, page: to });
 }
@@ -646,6 +652,7 @@ export function resetFilesStore(): void {
   savedSearches.clear();
   pageFilters.clear();
   closedTabs.clear();
+  pressed.clear();
   look = null;
   windowId = null;
 }
@@ -676,6 +683,10 @@ export interface Listing {
   unsearched?: string[];
   /** a search's rows are in, and his desktops are still searching their folders */
   searching?: boolean;
+  /** the folder's machine sleeps (the Windows VM): `waking` while a wake goes on, its rows pushed once they land */
+  sleeping?: "asleep" | "waking";
+  /** a wake this window saw under way ended with the machine still asleep */
+  unwoken?: boolean;
 }
 
 /** What his desktops' own search found for a search page: their rows, the ones not searched, and whether a walk stopped short. */
@@ -725,8 +736,25 @@ const DESK_MS = 20_000;
 
 const readMs = (copy: PlaceCopy): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: 120_000 } : {});
 
+/**
+ * Folders he just pressed for (a row, the trail, Back, a tab he picked, a new tab), by key: the first page of each
+ * that loads next may wake its machine (the Windows VM), and no other list does: a restored tab, a refetch on a push
+ * or a reconnect, a later page. A press not followed by its list within `PRESS_MS` lapses.
+ */
+const pressed = new Map<string, number>();
+const PRESS_MS = 10_000;
+export function pressFor(at: FolderRef, now = Date.now()): void {
+  pressed.set(refKey(at), now);
+}
+function takePress(at: FolderRef, now = Date.now()): boolean {
+  const key = refKey(at);
+  const when = pressed.get(key);
+  pressed.delete(key);
+  return when !== undefined && now - when <= PRESS_MS;
+}
+
 /** A seam for a preview page and tests, which have no host: set, it answers a folder's page in the host's place. */
-export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string) => Promise<FilesListing>; desk?: (link: string, query: string) => Promise<{ entries: TeamsEntry[]; more?: boolean }> } = {};
+export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake?: boolean) => Promise<FilesListing>; desk?: (link: string, query: string) => Promise<{ entries: TeamsEntry[]; more?: boolean }> } = {};
 
 /**
  * The folders on his desktops for a search of every place (docs/agents/work-files.md "Search and Go to"): the
@@ -755,10 +783,11 @@ async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchF
 /** A desktop's part of a search, as the listing says it. */
 const deskSays = (desk: DeskFound | undefined): Partial<Listing> => (desk ? { ...(desk.more ? { incomplete: true } : {}), ...(desk.unsearched.length ? { unsearched: desk.unsearched } : {}) } : {});
 
-async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string): Promise<FilesListing> {
-  if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor);
+async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake = false): Promise<FilesListing> {
+  if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor, wake);
   if (from.search) return ask<FilesListing>(from.copy.link, "work.files.search", { workspaceId: from.workspaceId, query: from.search.query, ...(from.search.filter ? { filter: from.search.filter } : {}), ...(cursor ? { cursor } : {}) }, { timeoutMs: 30_000 });
-  if (from.copy.wire === "files") return ask<FilesListing>(from.copy.link, "work.files.list", { workspaceId: from.workspaceId, at, sort, ...(cursor ? { cursor } : {}), ...(from.foldersOnly ? { foldersOnly: true } : {}) }, readMs(from.copy));
+  // A folder in the VM says whether he pressed for it: only then may its host wake the machine.
+  if (from.copy.wire === "files") return ask<FilesListing>(from.copy.link, "work.files.list", { workspaceId: from.workspaceId, at, sort, ...(cursor ? { cursor } : {}), ...(from.foldersOnly ? { foldersOnly: true } : {}), ...(from.copy.place.vm ? { wake } : {}) }, readMs(from.copy));
   // A host a release behind lists a folder whole, unsorted by the asker: the window orders it.
   const folder = at.at === "place" ? from.copy.place.root : at;
   const { entries } = await ask<{ entries: TeamsEntry[] }>(from.copy.link, "work.office.filesList", { source: folder }, readMs(from.copy));
@@ -767,10 +796,10 @@ async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?:
   return { entries: from.foldersOnly ? all.filter((e) => e.folder) : all, place: from.copy.place.id, trail: trailFromOld(from.copy.place, folder) };
 }
 
-/** Who last saved each Office file of a page, asked once for its first hundred: a list never reads a file, so this comes after. */
+/** Who last saved each Office file of a page, asked once for its first hundred: a list never reads a file, so this comes after. Never for the Windows VM, whose guest names no one. */
 async function fillWho(key: string, from: ListFrom, round: number): Promise<void> {
   const entry = listings.get(key);
-  if (!entry || from.copy.wire !== "files") return;
+  if (!entry || from.copy.wire !== "files" || from.copy.place.vm) return;
   const want = entry.entries.filter((e) => e.ref && e.local !== false && e.by === undefined && /\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i.test(e.name)).slice(0, 100);
   if (!want.length) return;
   const got = await ask<{ entries: (FileEntry | null)[] }>(from.copy.link, "work.files.stat", { workspaceId: from.workspaceId, refs: want.map((e) => e.ref) }, readMs(from.copy)).catch(() => null);
@@ -780,8 +809,8 @@ async function fillWho(key: string, from: ListFrom, round: number): Promise<void
   if (who.size) putListing(key, { ...now, entries: now.entries.map((e) => (who.has(e.key) ? { ...e, by: who.get(e.key)! } : e)) });
 }
 
-/** `again`: a host's push lists the page again; a search keeps what his desktops found rather than walking their folders again. */
-async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean, again = false): Promise<void> {
+/** `again`: a host's push lists the page again; a search keeps what his desktops found rather than walking their folders again. `wake`: his press, which may wake the folder's machine. */
+async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean, again = false, wake = false): Promise<void> {
   const was = listings.get(key);
   if (more && (!was?.next || was.loading)) return;
   const round = more ? was!.round : (was?.round ?? 0) + 1;
@@ -792,10 +821,10 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   try {
     if (from.team) return putListing(key, { ...EMPTY_LISTING, entries: sortEntries(from.team, sort), trail: [], loaded: true, loading: false, round });
     let first = !more;
-    let page = await fetchPage(from, at, sort, more ? was!.next : undefined);
+    let page = await fetchPage(from, at, sort, more ? was!.next : undefined, wake && !more);
     // The folder changed between pages: it is listed again from the top.
     if (page.stale) {
-      page = await fetchPage(from, at, sort);
+      page = await fetchPage(from, at, sort, undefined, wake);
       first = true;
     }
     const now = listings.get(key);
@@ -811,6 +840,9 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       error: null,
       away: false,
       asOf: first ? page.asOf : now.asOf,
+      // A sleeping machine's state is the first page's; a wake he saw under way that ended asleep is said as such.
+      ...(first ? (page.sleeping ? { sleeping: page.sleeping } : {}) : now.sleeping ? { sleeping: now.sleeping } : {}),
+      ...(first && page.sleeping === "asleep" && now.sleeping === "waking" ? { unwoken: true } : {}),
       // What a search left out is said by every page of it alike.
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
@@ -864,7 +896,8 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
   const team = from?.team?.map((e) => e.key).join("\n");
   useEffect(() => {
     if (!from) return;
-    void load(key, from, at, sort, false);
+    // Shown because he pressed for it, or shown again (a restored tab): only the first may wake its machine.
+    void load(key, from, at, sort, false, false, takePress(at));
     // A team's page asks no host, and a page fed by the seam has none to hear from.
     if (from.team || listingSeams.fetch) return;
     const watched = pushKey(from.copy, at);
@@ -881,7 +914,8 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
   return {
     ...value,
     loadMore: () => void (from && load(key, from, at, sort, true)),
-    retry: () => void (from && load(key, from, at, sort, false)),
+    // Retry, and Wake it over a sleeping folder, are his press.
+    retry: () => void (from && load(key, from, at, sort, false, false, true)),
   };
 }
 

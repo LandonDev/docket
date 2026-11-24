@@ -10,7 +10,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { KindGlyph } from "./KindGlyph";
 import { carryRefusal, placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./model";
-import { useListing, type ListFrom } from "./store";
+import { pressFor, useListing, type ListFrom } from "./store";
 
 /**
  * Move to…, Copy to… and Save as Word to… (docs/DESIGN.md "The Files place"): one dialog that walks to a folder. It
@@ -61,6 +61,11 @@ export function MoveDialog({
 }) {
   // Where the dialog stands: a place's copy and a folder in it; null is the list of places.
   const [at, setAt] = useState<MoveTarget | null>(start && from ? { copy: from, at: start.at, name: start.name } : null);
+  // A folder he goes into here is his press for it: a sleeping VM wakes for it, as in the place itself.
+  const into = (to: MoveTarget): void => {
+    pressFor(to.at);
+    setAt(to);
+  };
   const [pending, setPending] = useState(false);
   // Why the last press carried nothing, for the folder it was pressed in.
   const [failed, setFailed] = useState<{ at: MoveTarget; why: string } | null>(null);
@@ -81,7 +86,7 @@ export function MoveDialog({
   return (
     <Modal onClose={onClose} title={verb === "word" ? `Save ${what} as Word` : `${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-3">
-        {at ? <Folders key={`${at.copy.link}:${JSON.stringify(at.at)}`} workspaceId={workspace.id} target={at} entries={entries} onInto={setAt} onPlaces={() => setAt(null)} /> : <Places places={places} waiting={waiting} onInto={setAt} />}
+        {at ? <Folders key={`${at.copy.link}:${JSON.stringify(at.at)}`} workspaceId={workspace.id} target={at} entries={entries} onInto={into} onPlaces={() => setAt(null)} /> : <Places places={places} waiting={waiting} onInto={into} />}
       </div>
       <DialogFooter
         onCancel={onClose}

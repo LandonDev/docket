@@ -128,8 +128,10 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
 - **Waking.** What OneDrive syncs is read while the machine is awake and
   kept (`vm:status` in `work_office_files`, with each library's top
   folders), so `filesLibraries` answers a sleeping VM from that and never
-  wakes it, save once when it has never been read. A folder, a search, a
-  read, a copy or an open wakes it (about 20 s). While it is awake the
+  wakes it, save once when it has never been read. A folder he pressed for,
+  a read, a copy or an open wakes it (about 13 s from hibernate, 20 to 26 s
+  cold); a search, a status look or a list he did not press for never does
+  ("A folder in the VM" below). While it is awake the
   pillar reads it again each minute until nothing is missing (signed in,
   the wanted libraries there, Office licensed), then every ten: his
   approval shows with no screen open (`watchVm`, office/index.ts).
@@ -179,6 +181,56 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   a CloudStorage folder, `vm` where it keeps the VM, each with its state
   (`TeamsPlace`): what the Files view and Connections say when nothing is
   listed.
+
+### A folder in the VM
+
+A list of a VM folder never waits on a wake (`vmPage`, files/places/teams.ts;
+the kept rows in places/vmKept.ts).
+
+- **Kept rows.** The rows the guest last answered for each folder are kept
+  on the box: names, folder or file, sizes, change times and OneDrive's
+  on-this-device mark, never a byte of a file, in memory alone, for
+  `VM_LIST_KEEP_MS` (2 minutes) and `VM_LIST_KEEP_MOST` (64 folders, the one
+  used longest ago goes first). Under 5 s old they are the answer and the
+  guest is not asked (`VM_LIST_FRESH_MS`: the pages of one scroll, a push's
+  refetch). They go with a change through Files (`forgetVmList`), with a
+  library OneDrive no longer syncs (each `refreshVm`, `keepOnlyWhere`), and
+  with Work off (the files module's stop). The fence runs first on every
+  call: `locate` names the library for the caller before a kept row is served,
+  so a key or a thread that may not name it gets the refusal, kept rows or not.
+- **Joined.** Lists of one folder in flight share one `files.list` in the
+  guest (`readList`); one that may wake the machine never settles for a read
+  that may not.
+- **Awake**, the guest is asked (wake: false at the door) and the rows are its
+  own: no `asOf`. One that fell asleep since is answered as a sleeping one.
+- **Asleep**, the answer is at once: the rows kept (`asOf`, when they were
+  read) or none, and `sleeping: 'asleep'`. `work.files.list {wake: true}`,
+  his press, wakes it behind that answer (`sleeping: 'waking'`, also said to
+  any list of the folder while that wake or the keeper's goes on); when the
+  woken read lands, or fails, each workspace that asked hears one
+  `work.files` push naming the folder, and a woken one also
+  `work.office.files`, so the places say awake. A window a release behind
+  sends no `wake` and wakes it as before, answered at once all the same.
+- **His press.** The window sends `wake: true` only for the first page of a
+  folder he just pressed for (a row, the trail, Back or Forward, a tab he
+  picked, a new tab, a folder in Move to…: `pressFor`, store.ts, lapsing
+  after 10 s), for Retry, and for Wake it over a sleeping folder, which lists
+  the folder again. A restored tab, a refetch on a push or a reconnect and a
+  later page send `wake: false`. A thread's list never wakes it, whatever it
+  sends. The upload poll looks with `wake: false` at the door (`vmSynced`).
+- **Who saved** is not asked for VM rows: the window does not ask, and a
+  `work.files.stat` of several VM rows answers null for each with no guest
+  call (the guest names no one); one row's own look (its tab) still asks.
+- **What he sees** (Page.tsx, `vmSleepNote` in model.ts): asleep, the state
+  line over the rows kept ("The Windows VM is asleep", "This is the list from
+  1:40 PM.", Wake it), or that line as the empty state when nothing is kept;
+  waking, the same line led by the spinner, "Waking the Windows VM", nothing
+  to press, `aria-busy` until the rows land, which take its place with no
+  fade; a wake it saw under way that ended asleep, "The Windows VM did not
+  wake" with Wake it. Rows read live put the place's older asleep line away.
+- **Not done:** reads with their own way through the guest's door, so a list
+  never queues behind a long call there (a 45 s Word save); the far-files
+  lane holds it with M8's guest change.
 
 ### Changing files there
 

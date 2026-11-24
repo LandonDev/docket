@@ -2032,7 +2032,11 @@ Around the canvas:
   asleep is one
   line over the list it kept ("The Windows VM is asleep", "This is the
   list from 1:40 PM.", Wake it) in the state line's shape with no failed
-  glyph; a machine that did not answer is the state line with Retry, its
+  glyph, or with nothing kept that line as the folder's `Empty`; while his
+  Wake it (or his press on the folder) wakes it, the same line or `Empty`
+  is led by the 12px spinner, "Waking the Windows VM", with nothing to press,
+  and the rows take its place with no fade when they land ("The Windows VM
+  did not wake", Wake it, if they do not); a machine that did not answer is the state line with Retry, its
   detail what is still shown ("This is the list from 1:40 PM.") and never
   its word again; a
   host a release behind is one 12px muted line under the tab row ("Update

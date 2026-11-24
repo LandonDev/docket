@@ -284,6 +284,8 @@ export interface FilesNote {
   line?: string;
   /** a machine did not answer: said on the state line */
   away?: true;
+  /** a stage under way (the Windows VM waking): a spinner leads the words, and there is nothing to press */
+  busy?: true;
   fix?: { kind: "allow"; vm: boolean } | { kind: "retry" } | { kind: "sign-in"; link: string } | { kind: "open-vm"; link: string } | { kind: "settings" } | { kind: "wake"; link: string };
 }
 
@@ -375,6 +377,18 @@ export function placeNote(copy: PlaceCopy, clock: (at: number) => string): Files
     case "error":
       return { title: `${where} did not answer`, line: detail, fix: { kind: "retry" }, away: true };
   }
+}
+
+/**
+ * What a folder in the Windows VM says while the VM sleeps, from the listing's own answer (truer than the place's,
+ * which was read before): waking, with the list kept if there is one; asleep, with Wake it; or a wake he saw under way
+ * that ended asleep. null: the folder is not asleep.
+ */
+export function vmSleepNote(copy: PlaceCopy, listing: { sleeping?: "asleep" | "waking"; unwoken?: boolean; asOf?: number }, clock: (at: number) => string): FilesNote | null {
+  if (!copy.place.vm || !listing.sleeping) return null;
+  const line = listing.asOf ? `This is the list from ${clock(listing.asOf)}.` : undefined;
+  if (listing.sleeping === "waking") return { title: "Waking the Windows VM", ...(line ? { line } : {}), busy: true };
+  return { title: listing.unwoken ? "The Windows VM did not wake" : "The Windows VM is asleep", ...(line ? { line } : {}), fix: { kind: "wake", link: copy.link } };
 }
 
 /** Whether a place's sidebar glyph is greyed: it is down, and says why only when opened. */

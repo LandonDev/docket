@@ -5125,13 +5125,15 @@ public enum Methods {
             public let cursor: String?
             public let sort: Sort?
             public let foldersOnly: Bool?
+            public let wake: Bool?
 
-            public init(workspaceId: String, at: FolderRef, cursor: String? = nil, sort: Sort? = nil, foldersOnly: Bool? = nil) {
+            public init(workspaceId: String, at: FolderRef, cursor: String? = nil, sort: Sort? = nil, foldersOnly: Bool? = nil, wake: Bool? = nil) {
                 self.workspaceId = workspaceId
                 self.at = at
                 self.cursor = cursor
                 self.sort = sort
                 self.foldersOnly = foldersOnly
+                self.wake = wake
             }
         }
 
