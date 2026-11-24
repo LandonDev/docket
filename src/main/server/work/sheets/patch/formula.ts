@@ -2,6 +2,7 @@
 // qualifier), to translate relative references (shared-formula re-mastering), and to add or strip
 // the storage prefixes Excel writes for newer functions (_xlfn., _xlws., _xlpm.).
 // It is not a parser: it does not build an expression tree and does not know operator precedence.
+import { SPILLING } from '@shared/work/sheets'
 import { colName, colNum } from './xml'
 
 const MAX_ROW = 1048576,
@@ -284,45 +285,8 @@ TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TOCOL TOROW TRIMRANGE UNICHAR UNICODE UN
 WEIBULL.DIST WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR Z.TEST`.split(/\s+/)
 const XLWS = new Set(['FILTER', 'SORT', 'PY'])
 const XLFN_SET = new Set(XLFN)
-// Functions whose result can spill: a new formula using one needs dynamic-array cell metadata (cm=) in Excel.
-export const SPILLING = new Set([
-  'FILTER',
-  'SORT',
-  'SORTBY',
-  'UNIQUE',
-  'SEQUENCE',
-  'RANDARRAY',
-  'VSTACK',
-  'HSTACK',
-  'TOCOL',
-  'TOROW',
-  'WRAPROWS',
-  'WRAPCOLS',
-  'TAKE',
-  'DROP',
-  'CHOOSEROWS',
-  'CHOOSECOLS',
-  'EXPAND',
-  'TEXTSPLIT',
-  'MAKEARRAY',
-  'MAP',
-  'SCAN',
-  'BYROW',
-  'BYCOL',
-  'GROUPBY',
-  'PIVOTBY',
-  'TRANSPOSE',
-  'MUNIT',
-  'FREQUENCY',
-  'MODE.MULT',
-  'LINEST',
-  'LOGEST',
-  'TREND',
-  'GROWTH',
-  'MINVERSE',
-  'MMULT',
-  'REGEXEXTRACT'
-])
+// Functions whose result can spill: a new formula using one needs dynamic-array cell metadata (cm=) in Excel (one list, @shared/work/sheets).
+export { SPILLING }
 
 /** LET/LAMBDA parameter names: odd LET arguments before the body, every LAMBDA argument before the body. */
 export function lambdaParams(toks: Token[]): Set<string> {

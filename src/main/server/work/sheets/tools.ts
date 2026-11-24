@@ -36,7 +36,7 @@ const target = {
 }
 const CellSchema = z.object({
   at: z.string().min(2).max(300).describe("One cell: B4, or 'Q1 Budget'!B4 for another tab."),
-  v: z.union([z.string().max(32_000), z.number(), z.boolean(), z.null()]).optional().describe('A value; null empties the cell.'),
+  v: z.union([z.string().max(32_000), z.number(), z.boolean(), z.null()]).optional().describe('A value: a number as a number; a string is written as text as it stands ("007" stays 007); null empties the cell.'),
   f: z.string().max(8_000).optional().describe('A formula, with or without the leading =.')
 })
 
@@ -315,7 +315,8 @@ async function suggestOnPackage(s: Sheets, path: string, cells: readonly A1Cell[
     if (!r || r.startRow !== r.endRow || r.startColumn !== r.endColumn) throw new Error(`${c.at} is not one cell.`)
     const sheet = r.sheet === undefined ? st.inspected.sheets[0] : st.inspected.sheets.find((x) => x.name === r.sheet)
     if (!sheet) throw new Error(`There is no sheet named ${r.sheet}.`)
-    const proposed: SheetCellJson | null = c.f !== undefined ? { f: c.f.startsWith('=') ? c.f : `=${c.f}` } : c.v === undefined || c.v === null || c.v === '' ? null : { v: c.v }
+    // (a string is text: shown in the cell as the words it writes)
+    const proposed: SheetCellJson | null = c.f !== undefined ? { f: c.f.startsWith('=') ? c.f : `=${c.f}` } : c.v === undefined || c.v === null || c.v === '' ? null : { v: c.v, ...(typeof c.v === 'string' ? { t: 1 } : {}) }
     return { sheet: sheet.id, row: r.startRow, col: r.startColumn, proposed }
   })
   const base = await s.packages.cellsAt(path, at)

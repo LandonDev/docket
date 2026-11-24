@@ -35,6 +35,8 @@ export interface EditSpec {
   cell: string
   value?: string | number | boolean | null
   formula?: string
+  /** `value` is text as it stands, never read as a number or a formula: a cell the grid holds as text ("007", "=x"), an agent's string */
+  literal?: boolean
 }
 
 /** The engine that recalculates dependents: IronCalc in the sheet worker (recalc.ts), or none. */
@@ -177,6 +179,7 @@ export function toWrite(e: EditSpec): CellWrite {
   if (typeof v === 'boolean') return { kind: 'bool', value: v }
   if (v === null) return { kind: 'clear' }
   if (v === undefined) throw new Error(`${e.sheet}!${e.cell}: no value`)
+  if (e.literal) return { kind: 'text', value: v }
   if (v.startsWith('=') && v.length > 1) return { kind: 'formula', file: toFileFormula(v) }
   if (numeric(v)) return { kind: 'number', value: Number(v) }
   return { kind: 'text', value: v }

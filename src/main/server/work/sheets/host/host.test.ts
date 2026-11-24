@@ -216,6 +216,23 @@ describe('the sheet host', () => {
     expect((await host.range(REF, 'B2')).cells[0][0].v).toBe(1000)
   })
 
+  it("restores a cell's text runs: the same words with another word bold, and plain words over runs", async () => {
+    // Council r1 (Sol 11): a restore compared values and formulas alone, and left the newer runs in place.
+    const host = hostOf(new MemoryBackend(budget()))
+    const doc = (st: number, ed: number) => ({ id: 'd', documentStyle: {}, body: { dataStream: 'Rent due\r\n', textRuns: [{ st, ed, ts: { bl: 1 } }], paragraphs: [{ startIndex: 8 }] } })
+    let rev = ((await host.apply(REF, 0, [setCell(1, 0, { v: null, p: doc(0, 4) })], 'owner')) as { rev: number }).rev
+    rev = ((await host.apply(REF, rev, [setCell(1, 0, { v: null, p: doc(5, 8) })], 'owner')) as { rev: number }).rev
+    const cell = async () => (JSON.parse((await host.snapshotJson(REF)).json) as IWorkbookData).sheets.sheet1!.cellData![1]![0]!
+    const bold = (c: { p?: unknown }) => ((c.p as { body?: { textRuns?: { st: number; ed: number }[] } } | null | undefined)?.body?.textRuns ?? []).map((r) => [r.st, r.ed])
+    expect(bold(await cell())).toEqual([[5, 8]])
+    await host.restore(REF, 1, 'owner')
+    expect(bold(await cell())).toEqual([[0, 4]])
+    // back to the plain word it held first: the runs go with the restore
+    await host.restore(REF, 0, 'owner')
+    const plain = await cell()
+    expect([plain.v, plain.p ?? null]).toEqual(['Rent', null])
+  })
+
   it('cuts a snapshot every 500 ops, and a fresh host opens from it', async () => {
     const store = new MemoryBackend(budget())
     const host = hostOf(store)

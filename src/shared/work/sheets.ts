@@ -14,6 +14,28 @@ export function sheetStopWords(kind: 'moved' | 'rich' | 'fill' | 'other', google
   return `That change is not saved in ${file} yet. Make it in ${there}`
 }
 
+/**
+ * Functions whose result can spill over more cells. A formula using one needs Excel's dynamic-array metadata (`cm=`),
+ * which the package writer does not make: written as a plain formula, Excel would read it another way (one value of
+ * it, or `@` before a range it reads). So an opened Excel file takes none: refused at his press and at the host.
+ */
+export const SPILLING: ReadonlySet<string> = new Set(
+  `FILTER SORT SORTBY UNIQUE SEQUENCE RANDARRAY VSTACK HSTACK TOCOL TOROW WRAPROWS WRAPCOLS TAKE DROP CHOOSEROWS CHOOSECOLS EXPAND TEXTSPLIT MAKEARRAY MAP SCAN BYROW BYCOL GROUPBY PIVOTBY TRANSPOSE MUNIT FREQUENCY MODE.MULT LINEST LOGEST TREND GROWTH MINVERSE MMULT REGEXEXTRACT`.split(" "),
+);
+
+/** A formula with a function whose result can spill, said as it is stopped: the host says the same if one reaches it. */
+export const spillStopWords = (fn: string, google = false): string => `A formula with ${fn} is not saved in ${google ? 'a Google sheet' : 'an Excel file'} yet. Make it in ${google ? 'Google Sheets' : 'Excel'}`
+
+/** The first function of a formula whose result can spill (`SPILLING`), or null. Words in quotes and sheet names are not read. */
+export function spillingIn(formula: string): string | null {
+  const bare = formula.replace(/"(?:[^"]|"")*"/g, '""').replace(/'(?:[^']|'')*'/g, "''").replace(/_xl(?:fn|ws)\./gi, "");
+  for (const m of bare.matchAll(/([A-Za-z_][A-Za-z0-9._]*)\s*\(/g)) {
+    const name = m[1]!.toUpperCase();
+    if (SPILLING.has(name)) return name;
+  }
+  return null;
+}
+
 /** A note an opened Excel file cannot take a change to, in his words: its writer rewords a note it has, and makes or removes none. */
 export const NOTE_STOP = { add: "Add a new note in Excel", remove: "Delete this note in Excel" } as const;
 /** The grid's note mutations (work-kit's `NOTE_MUTATIONS`). */
@@ -245,6 +267,10 @@ export function forPackage(
           if (!f) return { stop: sheetStopWords("fill", opts.google) };
           next = { ...cell, f };
         }
+        // A formula that can spill needs Excel's dynamic-array metadata, which our writer does not make. A workbook desktop
+        // Excel or Google holds (its host keeps no formatting of ours: `formats` off) takes a spill as its own.
+        const spills = opts.formats && typeof next.f === "string" && next.f.startsWith("=") ? spillingIn(next.f) : null;
+        if (spills) return { stop: spillStopWords(spills, opts.google) };
         if ("s" in next && !opts.formats) {
           const { s: _style, ...rest } = next;
           // A cell that carried only a style has nothing for a store that keeps none.

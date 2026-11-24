@@ -2,7 +2,7 @@ import type { ICellData } from '@univerjs/core'
 import { runsOf, type Run } from 'work-kit/sheet/xlsx'
 import type { SheetCellJson, SheetMutationJson } from '@shared/contract-work-sheets'
 // (by its path: the Work service reaches this file, and its bundle resolves no alias for a value)
-import { NOTE_STOP, RULES_SET, sheetStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
+import { NOTE_STOP, RULES_SET, sheetStopWords, spillingIn, spillStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
 import { cellName } from './a1'
 import type { EditSpec } from './patch/patch'
 
@@ -88,10 +88,16 @@ interface RangeValuesParams {
 /** What could not be saved into the package, said once to the person. */
 export class NotSaved extends Error {}
 
+/** Univer's cell types for text: what the cell holds is words, whatever they look like. */
+const TEXT = 1
+const FORCE_TEXT = 4
+
 /**
  * The cell writes a list of mutations makes, for the patch writer. `sheetName` turns Univer's
  * sheet id into the tab's name. A cell's style and the formatting mutations are not its
  * business (`formatsOf` carries them); it refuses (NotSaved) only what a package cannot keep.
+ * `rich`: our writer writes the file (an opened Excel file), so a rich cell's words are taken
+ * and a formula that can spill is refused; desktop Excel's and Google's grids pass none.
  */
 export function editsOf(mutations: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined, opts: { rich?: boolean } = {}): EditSpec[] {
   const out = new Map<string, EditSpec>()
@@ -112,6 +118,10 @@ export function editsOf(mutations: readonly SheetMutationJson[], sheetName: (id:
           continue
         }
         if (typeof cell.f === 'string' && cell.f.startsWith('=')) {
+          // Our writer (`rich`: an opened Excel file) refuses it, never writing a plain formula Excel would read another
+          // way (shared `SPILLING`); desktop Excel and Google take a spill as their own.
+          const spills = opts.rich ? spillingIn(cell.f) : null
+          if (spills) throw new NotSaved(spillStopWords(spills))
           out.set(key, { sheet, cell: at, formula: cell.f })
           continue
         }
@@ -122,13 +132,16 @@ export function editsOf(mutations: readonly SheetMutationJson[], sheetName: (id:
           // A document with no words to read is no edit he made: refused, never written as an empty cell.
           if (!runsOfCell(cell)) throw new NotSaved(UNSAVED.other)
           const text = flatText(cell)
-          out.set(key, { sheet, cell: at, value: text === '' ? null : text })
+          out.set(key, text === '' ? { sheet, cell: at, value: null } : { sheet, cell: at, value: text, literal: true })
           continue
         }
         if (cell.si && !cell.f) throw new NotSaved(UNSAVED.fill)
         if ('v' in cell) {
           const v = cell.v
-          out.set(key, { sheet, cell: at, value: v === undefined || v === null || v === '' ? null : v })
+          // A cell held as text (Univer's STRING or FORCE_STRING) keeps its words as they are: "007" is not 7, "=x" no
+          // formula. One with no type is what he typed, which the writer reads as Excel reads typing.
+          const text = typeof v === 'string' && (cell.t === TEXT || cell.t === FORCE_TEXT)
+          out.set(key, { sheet, cell: at, value: v === undefined || v === null || v === '' ? null : v, ...(text ? { literal: true } : {}) })
           continue
         }
         // Only a style: the format edits carry it. A cell with neither contents nor a style (a type alone, custom data) has no saved form.
@@ -209,14 +222,19 @@ export interface CellWrite {
   cell: SheetCellJson | null
 }
 
-/** One set-range-values mutation per sheet: what a grid applies to show writes made elsewhere. */
+/**
+ * One set-range-values mutation per sheet: what a grid applies to show writes made elsewhere. A string written
+ * here (an agent's, a suggestion taken, a cell put back) is text, typed so: written into a file as it stands.
+ */
 export function mutationsOf(unitId: string, writes: readonly CellWrite[]): SheetMutationJson[] {
   const bySheet = new Map<string, CellMatrix>()
   for (const w of writes) {
     const m = bySheet.get(w.sheet) ?? {}
     const row = (m[w.row] ??= {})
     // A key set to null clears it: a value written over a formula takes the formula away.
-    row[w.col] = w.cell === null ? null : ({ v: w.cell.v ?? null, f: w.cell.f ?? null } as unknown as SheetCellJson)
+    // A cell given its text runs (a restore's) takes them, or loses the ones it has (`p: null`).
+    const p = w.cell && 'p' in w.cell ? { p: (w.cell as { p?: unknown }).p ?? null } : {}
+    row[w.col] = w.cell === null ? null : ({ v: w.cell.v ?? null, f: w.cell.f ?? null, ...(typeof w.cell.v === 'string' && !w.cell.f ? { t: TEXT } : {}), ...p } as unknown as SheetCellJson)
     bySheet.set(w.sheet, m)
   }
   return [...bySheet].map(([subUnitId, cellValue]) => ({ id: SET_RANGE_VALUES, params: { unitId, subUnitId, cellValue } }))

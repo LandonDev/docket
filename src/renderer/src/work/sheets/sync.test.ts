@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SheetMutationJson } from "@shared/contract-work-sheets";
 import { RULE_MUTATIONS, RULE_NOISE, RULES_SET } from "@shared/work/sheets";
-import { forPackage, latestRules, ofUnit, ruleKinds } from "./sync";
+import { forPackage, latestRules, notSavedWords, ofUnit, ruleKinds } from "./sync";
 
 /**
  * A rule changed in an opened Excel file's grid (a conditional format, a validation, a name, the
@@ -101,5 +101,31 @@ describe("which mutations are the workbook's", () => {
     expect(ofUnit({ id: "doc.mutation.rich-text-editing", params: { unitId: "__INTERNAL_EDITOR__DOCS_NORMAL", actions: [] } }, "book")).toBe(false);
     // a grid that cannot say its workbook's id keeps every mutation, as before
     expect(ofUnit({ id: "doc.mutation.rich-text-editing", params: { unitId: "__INTERNAL_EDITOR__DOCS_NORMAL" } }, "")).toBe(true);
+  });
+});
+
+describe("a formula that can spill, in an opened Excel file", () => {
+  const cellsAt = (cellValue: unknown): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { subUnitId: "s1", cellValue } });
+  it("is stopped where our writer writes the file, a fill's formula too; a workbook Excel or Google holds takes it", () => {
+    const spill = cellsAt({ 0: { 0: { f: "=SEQUENCE(3)" } } });
+    expect(forPackage(spill, noFormula, { formats: true })).toEqual({ stop: "A formula with SEQUENCE is not saved in an Excel file yet. Make it in Excel" });
+    expect(forPackage(cellsAt({ 1: { 0: { si: "f1" } } }), () => "=SORT(A1:A9)", { formats: true })).toEqual({ stop: "A formula with SORT is not saved in an Excel file yet. Make it in Excel" });
+    expect(forPackage(spill, noFormula, { google: true })).toEqual({ keep: [spill] });
+    expect(forPackage(cellsAt({ 0: { 0: { f: "=SUM(A2:A9)" } } }), noFormula, { formats: true })).toEqual({ keep: [cellsAt({ 0: { 0: { f: "=SUM(A2:A9)" } } })] });
+  });
+});
+
+describe("what a dropped edit held, in his words", () => {
+  const cellsAt = (sheet: string, cellValue: unknown): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { subUnitId: sheet, cellValue } });
+  const names = (id: string) => ({ s1: "Budget", s2: "Quotes" })[id];
+  it("names each cell and what he put there, a few then a count, and a sheet only when there are two", () => {
+    expect(notSavedWords([cellsAt("s1", { 3: { 1: { v: 1200 } } })], names)).toBe("The file changed before this was saved: B4 1200. Make it again.");
+    expect(notSavedWords([cellsAt("s1", { 0: { 0: { f: "=SUM(B2:B9)" }, 1: null, 2: { v: null, p: { body: { dataStream: "Hotel\r\n" } } } }, 4: { 0: { v: 1 } } })], names)).toBe(
+      "The file changed before this was saved: A1 =SUM(B2:B9), B1 cleared, C1 Hotel and 1 more. Make it again.",
+    );
+    expect(notSavedWords([cellsAt("s1", { 0: { 0: { v: 1 } } }), cellsAt("s2", { 0: { 0: { v: 2 } } })], names)).toBe("The file changed before this was saved: Budget!A1 1, Quotes!A1 2. Make it again.");
+  });
+  it("says a change with no cell's contents (a style, a rule) as one", () => {
+    expect(notSavedWords([cellsAt("s1", { 0: { 0: { s: { bl: 1 } } } }), { id: "tempcode.sheet.rules", params: {} }], names)).toBe("The file changed before your last change was saved, so it was not made. Make it again.");
   });
 });

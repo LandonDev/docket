@@ -351,7 +351,10 @@ async function tsvBack(s: Sheets, copy: string, from: ImportedFrom, stamp: Stamp
   const original = tsvText(from.path)
   const version = await versionOf(from.path)
   if (version.sha256 === undefined || version.sha256 !== sha(stamp.version)) throw new Error(changedWords(basename(from.path)))
-  const next = await s.jobs.csv(copy)
+  // (a formula of his with no value worked out is refused there, and the file keeps its bytes)
+  const next = await s.jobs.csv(copy).catch((err: unknown) => {
+    throw new Error(`${err instanceof Error ? err.message : String(err)} Save as Excel to keep your edits.`)
+  })
   return new TextEncoder().encode(patchCsv(original, next, writeCsv(tsvBook(from.path)), '\t'))
 }
 

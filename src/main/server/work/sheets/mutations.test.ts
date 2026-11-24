@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { NOTE_STOP, sheetStopWords } from '@shared/work/sheets'
-import { editsOf, formatsOf, NOTE_MOVE, NOTE_REMOVE, NOTE_UPDATE, notesOf, NotSaved, SHEET_NOTE, SHEET_TEXT, UNSAVED } from './mutations'
+import { NOTE_STOP, sheetStopWords, spillingIn, spillStopWords } from '@shared/work/sheets'
+import { editsOf, formatsOf, mutationsOf, NOTE_MOVE, NOTE_REMOVE, NOTE_UPDATE, notesOf, NotSaved, SHEET_NOTE, SHEET_TEXT, UNSAVED } from './mutations'
 
 /**
  * What an opened Excel file cannot keep is stopped by the canvas as he makes it and refused by the
@@ -42,13 +42,52 @@ describe('what an Excel file cannot keep', () => {
   })
 })
 
+describe('what our writer is told a cell holds', () => {
+  const name = (id: string): string | undefined => (id === 's1' ? 'Data' : undefined)
+  const cells = (cellValue: unknown) => [{ id: 'sheet.mutation.set-range-values', params: { subUnitId: 's1', cellValue } }]
+
+  it('a cell held as text keeps its words as they are; one he typed with no type is read as Excel reads typing', () => {
+    // Council r1 (Sol 6): "007" came back as 7, and text starting with "=" went in as a formula.
+    expect(editsOf(cells({ 0: { 0: { v: '007', t: 1 }, 1: { v: '=not a formula', t: 4 }, 2: { v: '1200' }, 3: { v: '1200', t: 2 } } }), name, { rich: true })).toEqual([
+      { sheet: 'Data', cell: 'A1', value: '007', literal: true },
+      { sheet: 'Data', cell: 'B1', value: '=not a formula', literal: true },
+      { sheet: 'Data', cell: 'C1', value: '1200' },
+      { sheet: 'Data', cell: 'D1', value: '1200' }
+    ])
+  })
+
+  it('a string written by the app (an agent\'s, a suggestion taken, a cell put back) is typed as text', () => {
+    expect(mutationsOf('book', [{ sheet: 's1', row: 0, col: 0, cell: { v: '007' } }, { sheet: 's1', row: 0, col: 1, cell: { v: 7 } }, { sheet: 's1', row: 0, col: 2, cell: { f: '=A1' } }, { sheet: 's1', row: 0, col: 3, cell: null }])).toEqual([
+      { id: 'sheet.mutation.set-range-values', params: { unitId: 'book', subUnitId: 's1', cellValue: { 0: { 0: { v: '007', f: null, t: 1 }, 1: { v: 7, f: null }, 2: { v: null, f: '=A1' }, 3: null } } } }
+    ])
+  })
+
+  it('refuses a formula that can spill where our writer writes the file, in the words the canvas stops it with; Excel and Google take it', () => {
+    // Council r1 (Sol 7): =SEQUENCE(3) was written as a plain formula and reported saved.
+    const spill = cells({ 0: { 0: { f: '=SEQUENCE(3)' } } })
+    expect(() => editsOf(spill, name, { rich: true })).toThrow(new NotSaved(spillStopWords('SEQUENCE')))
+    expect(spillStopWords('SEQUENCE')).toBe('A formula with SEQUENCE is not saved in an Excel file yet. Make it in Excel')
+    expect(editsOf(spill, name)).toEqual([{ sheet: 'Data', cell: 'A1', formula: '=SEQUENCE(3)' }])
+    expect(editsOf(cells({ 0: { 0: { f: '=SUM(A2:A9)' } } }), name, { rich: true })).toEqual([{ sheet: 'Data', cell: 'A1', formula: '=SUM(A2:A9)' }])
+  })
+
+  it('finds a spilling function by name, past its storage prefix, and not in words in quotes or a sheet name', () => {
+    expect(spillingIn('=SUM(_xlfn._xlws.FILTER(A1:A9,B1:B9>1))')).toBe('FILTER')
+    expect(spillingIn('=sequence(3)')).toBe('SEQUENCE')
+    expect(spillingIn('=IF(A1="SORT(",1,2)')).toBeNull()
+    expect(spillingIn("='UNIQUE(x'!A1+1")).toBeNull()
+    expect(spillingIn('=VLOOKUP(A1,B:C,2,0)')).toBeNull()
+  })
+})
+
 describe('text in more than one style and notes, for an opened Excel file', () => {
   const name = (id: string): string | undefined => (id === 's1' ? 'Data' : undefined)
   const doc = { body: { dataStream: 'Net total\r\n', textRuns: [{ st: 4, ed: 9, ts: { bl: 1 } }] } }
   const cells = (cellValue: unknown) => [{ id: 'sheet.mutation.set-range-values', params: { subUnitId: 's1', cellValue } }]
 
   it('reads a rich cell before its `v`: a cell the editor made rich (`v: null`) is written with its words, never empty', () => {
-    expect(editsOf(cells({ 0: { 0: { v: null, f: null, si: null, p: doc } } }), name, { rich: true })).toEqual([{ sheet: 'Data', cell: 'A1', value: 'Net total' }])
+    // (words, kept as they stand: a rich cell's text is never read as a number or a formula)
+    expect(editsOf(cells({ 0: { 0: { v: null, f: null, si: null, p: doc } } }), name, { rich: true })).toEqual([{ sheet: 'Data', cell: 'A1', value: 'Net total', literal: true }])
     // Where the store keeps no runs (a workbook Excel or Google holds), it is refused, not written empty.
     expect(() => editsOf(cells({ 0: { 0: { v: null, p: doc } } }), name)).toThrow(UNSAVED.rich)
     expect(() => editsOf(cells({ 0: { 0: { v: null, p: { body: {} } } } }), name, { rich: true })).toThrow(UNSAVED.other)

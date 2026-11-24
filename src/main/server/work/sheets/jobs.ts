@@ -464,9 +464,24 @@ export function packageRules(path: string): PackageRules {
 }
 
 /** One sheet of a package as CSV (writer.ts). */
+/**
+ * One sheet's shown values as CSV. A formula whose value is not worked out has no true value to write: none is in the
+ * file (typed where no engine ran), or the file asks Excel to calculate everything again on load (a value in it may
+ * be from before an edit). Refused, never written as an empty or an old field.
+ */
 export function packageCsv(path: string, sheet?: string): string {
-  return writeCsv(importPackage(path).workbook, sheet)
+  const { workbook } = importPackage(path)
+  const id = sheet === undefined ? workbook.sheetOrder[0] : workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === sheet)
+  let later: boolean | undefined
+  for (const [r, cols] of Object.entries((id && workbook.sheets[id]?.cellData) || {}))
+    for (const [c, cell] of Object.entries(cols ?? {})) {
+      if (!cell?.f && !cell?.si) continue
+      later ??= CALC_ON_LOAD.test(workbookMap(readZip(new Uint8Array(readFileSync(path)))).wbXml)
+      if (later || cell.v === undefined || cell.v === null) throw new Error(`The formula in ${cellName(Number(r), Number(c))} has no value worked out yet, so the sheet cannot be written as text.`)
+    }
+  return writeCsv(workbook, sheet)
 }
+const CALC_ON_LOAD = /<(?:[\w.-]+:)?calcPr(?=[\s>/])[^>]*\bfullCalcOnLoad\s*=\s*["'](?:1|true)["']/
 
 export function comparePackages(from: string, to: string, max: number): { cells: SheetCellDiff[]; truncated: boolean } {
   return diffWorkbooks(importXlsx(new Uint8Array(readFileSync(from))).workbook, importXlsx(new Uint8Array(readFileSync(to))).workbook, max)

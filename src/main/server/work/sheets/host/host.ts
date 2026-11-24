@@ -7,7 +7,7 @@ import type { SheetCellJson, SheetMutationJson, SheetRevision, SheetSuggestion }
 import type { Principal } from '@shared/work/ids'
 import { colName, parseA1, rangeCells, READ_MAX_CELLS } from '../a1'
 import { diffWorkbooks } from '../diff'
-import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
+import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL, type CellWrite } from '../mutations'
 import { moveThrough } from './live'
 import { NOTES_RESOURCE, noteMutations, ruleMutations, sheetNotes } from './rules'
 import { heldOf, layOn, listMisfit, objectMutations, withHeld, type HeldObjects } from './objects'
@@ -458,9 +458,16 @@ export class SheetHost {
       const now = await this.workbookAt(o, o.rev)
       const then = await this.workbookAt(o, rev)
       const diff = diffWorkbooks(now, then, Number.MAX_SAFE_INTEGER)
-      const writes = diff.cells
-        .filter((c) => (c.before?.f || c.after?.f ? c.before?.f !== c.after?.f : true))
-        .map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, cell: c.after?.f ? { f: c.after.f } : c.after }))
+      // A cell of text runs is written whole, its runs with it: the same words in other runs are no difference the
+      // compare sees, and a cell of runs holds no value it would write back.
+      const rich = richWrites(now, then)
+      const runs = new Set(rich.map((w) => `${w.sheet}:${w.row}:${w.col}`))
+      const writes = [
+        ...diff.cells
+          .filter((c) => !runs.has(`${c.sheet}:${c.row}:${c.col}`) && (c.before?.f || c.after?.f ? c.before?.f !== c.after?.f : true))
+          .map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, cell: c.after?.f ? { f: c.after.f } : c.after })),
+        ...rich
+      ]
       const rules = [...ruleMutations(o.unitId, now, then), ...noteMutations(o.unitId, now, then), ...objectMutations(o.unitId, now, then)]
       if (!writes.length && !rules.length) return { rev: o.rev }
       const got = await this.commit(o, o.rev, [{ by, mutations: [...(writes.length ? mutationsOf(o.unitId, writes) : []), ...rules] }])
@@ -492,4 +499,25 @@ function labelOf(mutations: readonly SheetMutationJson[]): string {
   let n = 0
   for (const m of mutations) if (m.id === SET_RANGE_VALUES) for (const cols of Object.values((m.params as { cellValue?: Record<string, Record<string, unknown>> }).cellValue ?? {})) n += Object.keys(cols ?? {}).length
   return n === 1 ? '1 cell' : n ? `${n} cells` : 'Changed the sheet'
+}
+
+/**
+ * Each cell whose text runs differ between the workbook now and the one restored (a rich cell's document; a plain cell
+ * has none), as the restored one holds it: its words and runs, or none over a cell that has them now.
+ */
+export function richWrites(now: IWorkbookData, then: IWorkbookData): CellWrite[] {
+  const out: CellWrite[] = []
+  for (const id of new Set([...now.sheetOrder, ...then.sheetOrder])) {
+    const a = now.sheets[id]?.cellData ?? {}
+    const b = then.sheets[id]?.cellData ?? {}
+    for (const r of new Set([...Object.keys(a), ...Object.keys(b)]))
+      for (const c of new Set([...Object.keys(a[Number(r)] ?? {}), ...Object.keys(b[Number(r)] ?? {})])) {
+        const was = a[Number(r)]?.[Number(c)]?.p ?? null
+        const cell = b[Number(r)]?.[Number(c)]
+        const doc = cell?.p ?? null
+        if (JSON.stringify(was) === JSON.stringify(doc)) continue
+        out.push({ sheet: id, row: Number(r), col: Number(c), cell: cell ? ({ v: cell.v ?? null, f: cell.f ?? null, p: doc } as unknown as SheetCellJson) : null })
+      }
+  }
+  return out
 }

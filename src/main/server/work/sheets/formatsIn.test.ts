@@ -435,6 +435,18 @@ describe('a .tsv, read and written here with no converter', () => {
     expect(readFileSync(path, 'utf8')).toBe('Item\tQty\nTheirs\t1\n')
   })
 
+  it('a formula of his whose value no engine worked out is not written back as an empty field: refused, the file as it was', async () => {
+    // Council r1 (Sol 9): on a host without IronCalc, =2+2 went back to the .tsv as an empty field, and the toast said Saved.
+    const path = dummy(join(rig.folder, 'Scores.tsv'), TEXT)
+    const item = openIn('t1', path)
+    const held = heldOf(item)
+    await ensureImported(rig.ctx, held)
+    const st = await s.packages.open(held.path)
+    expect(await s.packages.edit(held.path, st.rev, [set(st.inspected.sheets[0]!.id, 1, 1, { f: '=2+2' })], 'owner')).toEqual({ rev: st.rev + 1 })
+    await expect(importAct(s, window, item, held, 'back')).rejects.toThrow('The formula in B2 has no value worked out yet, so the sheet cannot be written as text. Save as Excel to keep your edits.')
+    expect(readFileSync(path, 'utf8')).toBe(TEXT)
+  })
+
   it('a file that is not UTF-8 text is not opened as if it were', async () => {
     const path = join(rig.folder, 'Latin.tsv')
     writeFileSync(path, Buffer.from([0x6e, 0x61, 0xef, 0x76, 0x65, 0x09, 0x31, 0x0a]))

@@ -242,6 +242,18 @@ describe('an opened package', () => {
     await expect(store.undo(path, 'w1')).rejects.toThrow(/no longer/)
   })
 
+  it('writes a string as the text it is, a formula only from `f`, and refuses a formula that can spill', async () => {
+    // Council r1 (Sol 6, Sol 7): "007" read back as 7, "=1+1" went in as a formula, and =SEQUENCE(3) was written plain.
+    await store.writeCells(path, [{ at: 'Data!A2', v: '007' }, { at: 'Data!A3', v: '=1+1' }, { at: 'Data!A4', f: '=1+1' }, { at: 'Data!A5', v: 12 }], 'agent:h:t1', 'Wrote')
+    expect([valueAt(path, 'Data', 1, 0), valueAt(path, 'Data', 2, 0), valueAt(path, 'Data', 4, 0)]).toEqual(['007', '=1+1', 12])
+    const { workbook } = importXlsx(new Uint8Array(readFileSync(path)))
+    const data = workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === 'Data')!
+    expect(workbook.sheets[data]?.cellData?.[3]?.[0]?.f).toBe('=1+1')
+    const before = readFileSync(path)
+    await expect(store.writeCells(path, [{ at: 'Data!B2', f: '=SEQUENCE(3)' }], 'agent:h:t1', 'Wrote')).rejects.toThrow('A formula with SEQUENCE is not saved in an Excel file yet. Make it in Excel')
+    expect(readFileSync(path).equals(before)).toBe(true)
+  })
+
   it('compares two revisions cell by cell and restores an older one as a new revision', async () => {
     const data = (await store.open(path)).inspected.sheets[0].id
     await store.edit(path, 0, [set(data, 1, 0, { v: 5 }), set(data, 2, 0, { v: 6 })], 'owner')
