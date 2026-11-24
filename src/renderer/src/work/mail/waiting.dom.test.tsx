@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailWaiting } from "@shared/contract-work-mail";
 
 const calls: { method: string; params: Record<string, unknown> }[] = [];
-const state: { waiting: MailWaiting; fail: Set<string> } = { waiting: { days: 3, routine: false }, fail: new Set() };
+const state: { waiting: MailWaiting; fail: Set<string>; hold: Map<string, Promise<void>> } = { waiting: { days: 3, routine: false }, fail: new Set(), hold: new Map() };
 
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
@@ -19,7 +19,12 @@ vi.mock("../../lib/connection", async (original) => ({
       onPush: () => () => {},
       request: async (method: string, params: Record<string, unknown> = {}) => {
         calls.push({ method, params });
+        // As the host does (src/main/server/work/mail/waiting.ts): a read takes the routine before it waits on the days.
+        const routine = state.waiting.routine;
+        const hold = state.hold.get(method);
+        if (hold) await hold;
         if (state.fail.has(method)) throw new Error("The box did not answer");
+        if (method === "work.mail.waiting") return { ...state.waiting, routine };
         if (method === "work.mail.nudge") return { sessionId: "nudge-thread" };
         if (method === "work.mail.setWaiting") {
           state.waiting = { ...state.waiting, ...(params.days !== undefined ? { days: Number(params.days) } : {}), ...(params.routine !== undefined ? { routine: Boolean(params.routine) } : {}) };
@@ -120,6 +125,46 @@ describe("the workspace's Waiting on", () => {
     expect(calls.filter((c) => c.method === "work.mail.waiting")).toHaveLength(2);
     expect(screen.getByLabelText("Count as waiting after").textContent).toContain("5 working days");
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  /** Council round 4 (Sol Settings 1): a Retry's late answer never puts the switch back from a newer save. */
+  it.each(["the save first", "the read first"] as const)("keeps the switch he flipped while the days' Retry was out, %s", async (order) => {
+    state.waiting = { days: null, routine: false, error: "LifeOS did not answer: LifeOS is unreachable" };
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    const gate = (method: string): (() => void) => {
+      let open!: () => void;
+      state.hold.set(method, new Promise<void>((r) => (open = r)));
+      return open;
+    };
+    const read = gate("work.mail.waiting");
+    const save = order === "the read first" ? gate("work.mail.setWaiting") : () => {};
+    state.waiting = { ...state.waiting, days: 5, error: undefined } as MailWaiting;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    fireEvent.click(screen.getByRole("switch", { name: "Draft nudges by themselves" }));
+    await settle();
+    if (order === "the read first") {
+      read();
+      await settle();
+      save();
+    } else read();
+    await settle();
+    state.hold.clear();
+    expect(screen.getByRole("switch", { name: "Draft nudges by themselves" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("Count as waiting after").textContent).toContain("5 working days");
+    expect(state.waiting.routine).toBe(true);
+  });
+
+  it("lays an answer over what is shown half by half, by when its ask started", async () => {
+    const { laidOver } = await import("./WaitingSection");
+    const first = laidOver(null, 1, { days: null, routine: false, error: "x" }, { days: true, routine: true });
+    const saved = laidOver(first, 3, { days: null, routine: true, error: "x" }, { days: false, routine: true });
+    // The Retry's read, started 2nd, answers last: its days are taken, the saved routine stays.
+    expect(laidOver(saved, 2, { days: 5, routine: false }, { days: true, routine: true }).value).toEqual({ days: 5, routine: true });
+    // In the other order the save's answer, newer, takes the routine; the read's days stand.
+    const readFirst = laidOver(first, 2, { days: 5, routine: false }, { days: true, routine: true });
+    expect(laidOver(readFirst, 3, { days: 5, routine: true }, { days: false, routine: true }).value).toEqual({ days: 5, routine: true });
   });
 
   it("words every reason the host gives for a LifeOS it could not ask in the shared LifeOS line's words", async () => {

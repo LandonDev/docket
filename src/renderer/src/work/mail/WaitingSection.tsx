@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MailWaiting } from "@shared/contract-work-mail";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
@@ -39,6 +39,33 @@ export function daysFailure(error: string): string {
 
 const ask = (env: string, method: string, params: Record<string, unknown>): Promise<MailWaiting> => registry.linkOf(env).request<MailWaiting>(method, params);
 
+/** What the section shows, and the start of the newest ask that set each half: the days with their error, and the routine. */
+export type Shown = { value: MailWaiting; days: number; routine: number };
+
+/** Which halves an ask sets: a read both, a save only what it changes. */
+export type Owns = { days: boolean; routine: boolean };
+
+/**
+ * An answer to the ask started `n`th, laid over what is shown. A half is taken from it unless a newer ask set that
+ * half, and the ask marks only the halves it sets. The host reads the routine before it waits on the days, so a read
+ * (a Retry) that was out across his flip of the switch answers the routine as it was before: its days and their error
+ * are taken, the routine the flip saved stays.
+ */
+export function laidOver(shown: Shown | null, n: number, value: MailWaiting, owns: Owns): Shown {
+  const days = !shown || n >= shown.days;
+  const routine = !shown || n >= shown.routine;
+  const from = (take: boolean): MailWaiting => (take || !shown ? value : shown.value);
+  const d = from(days);
+  const r = from(routine);
+  return {
+    value: { days: d.days, ...(d.error !== undefined ? { error: d.error } : {}), routine: r.routine, ...(r.routineId !== undefined ? { routineId: r.routineId } : {}) },
+    days: days && owns.days ? n : (shown?.days ?? n),
+    routine: routine && owns.routine ? n : (shown?.routine ?? n),
+  };
+}
+
+const BOTH: Owns = { days: true, routine: true };
+
 export function WaitingSection({ workspace }: { workspace: WorkspaceMeta }) {
   if (!useLinkMay(workspace.environmentId, "work.mail.setWaiting")) return null;
   return <Waiting workspace={workspace} />;
@@ -49,11 +76,28 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [retrying, setRetrying] = useState(false);
+  // Every ask (the read, its Retry, a save) is numbered as it starts, and its answer replaces only what no newer ask set.
+  const asked = useRef(0);
+  const shown = useRef<Shown | null>(null);
+  const shownFor = useRef(`${env}|${workspace.id}`);
   useEffect(() => {
     let live = true;
+    // Another workspace's section starts from nothing.
+    if (shownFor.current !== `${env}|${workspace.id}`) {
+      shownFor.current = `${env}|${workspace.id}`;
+      shown.current = null;
+    }
+    const n = ++asked.current;
     ask(env, "work.mail.waiting", { workspaceId: workspace.id }).then(
-      (value) => live && setLoad({ status: "ready", value }),
-      (err: unknown) => live && setLoad({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
+      (value) => {
+        if (!live) return;
+        shown.current = laidOver(shown.current, n, value, BOTH);
+        setLoad({ status: "ready", value: shown.current.value });
+      },
+      (err: unknown) => {
+        // A read that failed after a newer save answered leaves the section as that save left it.
+        if (live && !(shown.current && shown.current.routine > n)) setLoad({ status: "error", error: workErrorWords(err) || "The host did not answer" });
+      },
     ).finally(() => live && setRetrying(false));
     return () => {
       live = false;
@@ -61,8 +105,11 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   }, [env, workspace.id, attempt]);
 
   const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
+    const n = ++asked.current;
     try {
-      setLoad({ status: "ready", value: await ask(env, "work.mail.setWaiting", { workspaceId: workspace.id, ...patch }) });
+      const value = await ask(env, "work.mail.setWaiting", { workspaceId: workspace.id, ...patch });
+      shown.current = laidOver(shown.current, n, value, { days: patch.days !== undefined, routine: patch.routine !== undefined });
+      setLoad({ status: "ready", value: shown.current.value });
       return true;
     } catch (err) {
       void loadToast().then((toast) => toast.error(failed, { description: workErrorWords(err) || undefined }));

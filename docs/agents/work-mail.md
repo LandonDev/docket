@@ -468,7 +468,11 @@ When LifeOS cannot read the days the host still answers, with the switch and
 words the row from the reason (`daysFailure`, through `lifeosStateOf` and
 `sessionFailure`): "Not signed in to LifeOS" for a sign-out, "LifeOS did not
 answer" only for a wait, else "LifeOS could not read the waiting time", with
-Retry at the row's end.
+Retry at the row's end. The host reads the routine before it waits on the
+days, so every ask is numbered as it starts and an answer replaces only the
+half (the days with their error, or the routine) no newer ask set
+(`laidOver`): a Retry that answers after he flipped the switch brings the
+days and leaves the switch as he saved it.
 
 **A reply drops an unsent nudge.** When someone else's message ends a wait,
 LifeOS deletes, in the same write, every draft an agent made in that mail
