@@ -243,14 +243,19 @@ export interface SoakRule {
  * a quiet Mac than on a busy one (the board 29% against 20-22%). The board:
  * one compositor animation per streamed phrase asks for about 57 more
  * main-thread frames a second, and Blink samples every turning spinner on
- * each of them. The chat reads 15% on a busy Mac, about 21% quiet by the
- * board's ratio (docs/box.md "The soak's two scenes"). Never raised to make
- * a run pass.
+ * each of them. The chat read 15% on a busy Mac on Nov 6; its bound was 22%
+ * from an estimate of the quiet figure (about 21%) until the Mac read
+ * 23.5-24.4 on the head and 23.0-23.5 on the Nov 6 tree (release-321) side
+ * by side on Nov 24 (.temp-code/plans/landed/F-soak-scroll.md): the same
+ * cost, a bound set below it. Never raised to make a run pass: only on a
+ * measurement that the older tree reads the same (`MAC_CPU_SEEN`).
  */
+/** Each scene's highest renderer CPU on the Mac, the figure its bound covers with a margin. */
+export const MAC_CPU_SEEN = { board: 29.6, chat: 24.4 } as const
 /** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, `send` SEND_RULE, `scroll` SCROLL_RULE, and `scenarios` is a recording, judged by eye. */
 export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll' | 'reconnect'>
 
-export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
+export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 27 }
 
 export const GATE_RULE: SoakRule = {
   name: 'gate',

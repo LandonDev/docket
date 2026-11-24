@@ -196,11 +196,13 @@ covers the quiet figure:
 | scene | before (a3bf7355) | after | bound |
 |---|---|---|---|
 | board: the master's board beside a streaming child | 33.7, 32.9 on a quiet Mac; 27.1 on a busy one | 29.2, 29.3, 29.6 quiet; 20.1, 20.3, 21.6 busy | 33% |
-| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy | 22% |
+| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy; 23.5, 23.6, 24.4 quiet (Nov 24) | 27% |
 
-The chat scene reads 15% on a busy Mac, so it cannot meet 12% either; its
-quiet figure was not caught, and by the board's ratio it is about 21%,
-which its 22% covers. The board scene cannot come down to the 12% the soak
+The chat scene reads 15% on a busy Mac, so it cannot meet 12% either. Its
+bound was 22% from an estimate of the quiet figure until the Mac read
+23.5-24.4 on the head and 23.0-23.5 on the Nov 6 tree side by side
+(2026-11-24): the same cost, so the bound is 27%, the highest figure plus
+the board's margin (`MAC_CPU_SEEN` in scripts/lib/soakJudge.ts). The board scene cannot come down to the 12% the soak
 first asked for
 without changing the design UI-13 landed, which the user chose knowing the
 cost. The trace (`--trace 5`, scripts/lib/soakTrace.ts) names where it goes:

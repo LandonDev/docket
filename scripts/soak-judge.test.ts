@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeTyping, parseSoakArgs, SCROLL_RULE, SEND_RULE, TYPING_RULE, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, MAC_CPU_SEEN, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeTyping, parseSoakArgs, SCROLL_RULE, SEND_RULE, TYPING_RULE, type SoakSample } from './lib/soakJudge'
 import type { PhaseSummary } from './lib/soakTyping'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
@@ -280,5 +280,14 @@ describe('the scroll scene', () => {
     expect(judgeScroll([run('board', { ...slow, longTasks: { count: 1 } })], 1000 / 60, { allSurfaces: true, framesReportOnly: true }).ok).toBe(false)
     expect(judgeScroll([run('board', { ...slow, scrolledPx: 0 })], 1000 / 60, { allSurfaces: true, framesReportOnly: true }).ok).toBe(false)
     expect(SCROLL_RULE).toMatchObject({ fpsShare: 0.9, longestFrameMs: 32, longTasks: 0 })
+  })
+})
+
+describe('the CPU bounds', () => {
+  it("cover each scene's highest Mac figure with a margin of 10% or more, and no more than a fifth", () => {
+    for (const scene of ['board', 'chat'] as const) {
+      expect(GATE_CPU_PCT[scene] / MAC_CPU_SEEN[scene], scene).toBeGreaterThanOrEqual(1.1)
+      expect(GATE_CPU_PCT[scene] / MAC_CPU_SEEN[scene], scene).toBeLessThanOrEqual(1.2)
+    }
   })
 })

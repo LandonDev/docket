@@ -3483,13 +3483,18 @@ Mac early in the day and 20-22% later, at the same 104 main-thread frames a
 second; the later rounds ran while other apps held the load at 8-9 (one at
 160% of a core), on AC power with Low Power Mode off. A quiet Mac reads
 higher, so each bound covers the quiet figure. The chat scene was only
-measured busy (15%); by the board's ratio its quiet figure is about 21%,
-under its 22%, and it cannot meet 12% either.
+measured busy (15%); by the board's ratio its quiet figure was put at about
+21%, under a bound of 22%, and it cannot meet 12% either. On 2026-11-24 the
+Mac (M4 Max, a 144 Hz display) read it at 23.5, 23.6 and 24.4 on the head
+and at 23.0, 23.5 and 23.5 on release-321 (Nov 6), alternated, and the box
+read the two alike as well: the bound sat below the scene's own cost. The bound is
+now 27%, the highest figure plus the board's margin (soakJudge.ts
+`MAC_CPU_SEEN`; .temp-code/plans/landed/F-soak-scroll.md).
 
 | Scene | Before (a3bf7355) | After | Bound |
 |---|---|---|---|
 | board: the master's board beside a streaming child | 33.7, 32.9 on a quiet Mac; 27.1 on a busy one | 29.2, 29.3, 29.6 quiet; 20.1, 20.3, 21.6 busy | 33% |
-| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy | 22% |
+| chat: one plain chat streaming | 17.7 busy | 14.6, 14.7, 15.0 busy; 23.5, 23.6, 24.4 quiet (Nov 24) | 27% |
 
 On the box under xvfb the board scene went from 26.5% to 21.0%. To
 reproduce on the Mac, in a clone of its own, one run at a time:
