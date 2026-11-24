@@ -220,11 +220,11 @@ describe("the page of facts", () => {
 
   it("draws each section that has something, in the page's order, and none that has nothing", async () => {
     await mount();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Last time, Nov 16", "People", "Tasks", "Files"]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Last time, Nov 16", "People", "Tasks", "Files and links"]);
     expect(rowsOf("People")).toEqual(["MCMaya ChenBracket for Friday7:30 AM", "TBTom BeckDeclined", "OPOutside Person"]);
     expect(section("People").getByText("and 2 more")).toBeTruthy();
     expect(rowsOf("Tasks")).toEqual(["Send the seat listAsked by Maya ChenWed", "Staff handbook update"]);
-    expect(rowsOf("Files")).toEqual(["Joinschool.zoom.us"]);
+    expect(rowsOf("Files and links")).toEqual(["Joinschool.zoom.us"]);
     expect(rowsOf("Last time, Nov 16")).toEqual(["Scrims move to Thursdays", "Who drives the vanLeft open", "Fix the run of showLeft open", "Order jerseysStill to do"]);
 
     cleanup();
@@ -249,7 +249,7 @@ describe("the page of facts", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "people", person: "p2" });
     await press("Tasks", /Send the seat list/);
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks", task: "t1" });
-    await press("Files", /Join/);
+    await press("Files and links", /Join/);
     expect(opened).toHaveBeenCalledWith("https://school.zoom.us/j/1", "_blank", "noopener,noreferrer");
     // last time: a line with a reference opens it, a line without one is plain words, and the label opens that page
     await press("Last time, Nov 16", /Who drives the van/);
@@ -839,7 +839,7 @@ describe("after the meeting", () => {
   it("leads with the outcome: the summary, his notes, what was decided, the tasks, the open questions and the mail, then the rest as it was", async () => {
     host.page = outcome();
     await mount();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Notes", "Decided", "To do", "Open questions", "Mail", "Brief", "Last time, Nov 16", "People", "Tasks", "Files"]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Notes", "Decided", "To do", "Open questions", "Mail", "Brief", "Last time, Nov 16", "People", "Tasks", "Files and links"]);
     expect(screen.getByText("The van is settled.")).toBeTruthy();
     // a rejected suggestion is gone; who and when are one muted line
     // who a task falls to is its muted line; when it is due trails the row, as under Tasks

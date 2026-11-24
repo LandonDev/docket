@@ -261,6 +261,18 @@ describe("the Tasks view", () => {
     expect(startThread).toHaveBeenCalledWith({ kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } }, { cwd: "/r/site", projectId: null });
   });
 
+  it("starts each group's heading on its rows' title edge, past the tick", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    for (const h of screen.getAllByRole("heading", { level: 2 })) expect(h.className).toContain("ps-9");
+  });
+
+  it("loads in the list's own shape: the lead's presses, a heading on the title edge, then rows", () => {
+    const { container } = render(<Tasks client={{ ...fakeTasksClient(rows), useOpenTasks: () => undefined }} startThread={() => {}} />);
+    const bones = container.querySelector("[data-tasks-bones]")!;
+    expect(bones.querySelector("[data-bones-presses]")).not.toBeNull();
+    expect(bones.querySelector("[data-bones-heading]")!.className).toContain("ps-9");
+  });
+
   it("says when nothing is open", () => {
     render(<Tasks client={fakeTasksClient([])} startThread={() => {}} />);
     expect(screen.getByText("Nothing open")).toBeTruthy();

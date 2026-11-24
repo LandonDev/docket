@@ -125,7 +125,7 @@ function Body({
     >
       <ModalBody>
         <Field label="Event">
-          <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} placeholder="Walk the ballroom" autoComplete="off" />
+          <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
         <div className="grid grid-cols-[minmax(0,1fr)_120px_120px] gap-2">
           <Field label="Day">

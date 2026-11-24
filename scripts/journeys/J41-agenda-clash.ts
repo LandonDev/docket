@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FIRST_CLASH, MOVED_EVENT, NEXT_CLASH, SECTOR, seedDay } from './lib/lifeosSeed'
 import { journey, step, type Context } from './lib/record'
+import { labelled } from './lib/tierThree'
 
 const TITLE = 'Sort the spare adapters'
 const AGENDA = '[role="region"][aria-label="Agenda"]'
@@ -30,7 +31,7 @@ export default journey({
       const { page } = pair
       await pair.showWork(workspace, 'Agenda')
       await page.clickOn(`${AGENDA} button`, 'New event')
-      await page.clickOn('[role="dialog"] input[placeholder="Walk the ballroom"]')
+      await page.clickOn(await labelled(page, 'Event'))
       await page.typeKeys(TITLE)
       await page.watchToasts()
       await page.clickOn('[role="dialog"] button', 'Add')

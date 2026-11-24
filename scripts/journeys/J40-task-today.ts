@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SECTOR } from './lib/lifeosSeed'
 import { journey, step, type Context } from './lib/record'
+import { labelled } from './lib/tierThree'
 
 const title = ({ workspace }: Context) => `Check the Spring LAN doors ${workspace.name}`
 const dateInput = '[role="dialog"] input[type="date"]'
@@ -49,12 +50,13 @@ export default journey({
       const { page } = pair
       await pair.showWork(workspace, 'Tasks')
       await page.press('button', 'New task')
-      await page.clickOn('[role="dialog"] input[placeholder="Book the ballroom"]')
+      const task = await labelled(page, 'Task')
+      await page.clickOn(task)
       await page.typeKeys(title(context))
       const [year, month, day] = await page.eval<string[]>(`new Intl.DateTimeFormat('en-CA', {
         year: 'numeric', month: '2-digit', day: '2-digit'
       }).format(new Date()).split('-')`)
-      await page.clickOn('[role="dialog"] input[placeholder="Book the ballroom"]')
+      await page.clickOn(task)
       await page.key('Tab')
       for (const digits of [month!, day!, year!]) await page.typeKeys(digits)
       await page.until('the date field holding today', 2000, () =>

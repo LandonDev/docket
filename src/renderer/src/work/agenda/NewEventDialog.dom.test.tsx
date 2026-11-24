@@ -33,11 +33,13 @@ describe("New event", () => {
     expect(add().hasAttribute("disabled")).toBe(true);
   });
 
-  it("says nothing of calendars while LifeOS reads them, and draws no example address in Invite", () => {
+  it("says nothing of calendars while LifeOS reads them, and draws no example words in Event or Invite", () => {
     render(<NewEventDialog sector="purdue" startsAt={null} onClose={() => {}} />);
     expect(document.querySelector("[data-no-calendar]")).toBeNull();
     expect(add().hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("textbox", { name: "Invite" }).getAttribute("placeholder")).toBeNull();
+    // Nor an example title: grey words in an empty field read as typed.
+    expect(screen.getByRole("textbox", { name: "Event" }).getAttribute("placeholder")).toBeNull();
   });
 
   it("with a calendar, Add is on; a refusal with no words of its own says LifeOS did not add the event", async () => {

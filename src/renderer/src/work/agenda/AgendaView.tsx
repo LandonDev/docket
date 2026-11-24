@@ -5,6 +5,7 @@ import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-k
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
+import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { Button } from "../../components/ui/button";
@@ -16,7 +17,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
 import { useShared } from "../tasks/store";
-import { agendaPlace, keepAgendaPlace, resetAgendaPlace, restoreAgendaPlace } from "./place";
+import { agendaPlace, keepAgendaPlace, resetAgendaPlace, restoreAgendaPlace, type AgendaShow } from "./place";
 import { rowOfView } from "../views/registry";
 import { prepEndOf } from "@shared/contract-work-prep";
 import { NewEventDialog } from "./NewEventDialog";
@@ -82,7 +83,8 @@ export function Head({ workspace }: WorkViewProps) {
           <span data-agenda-short-period className="truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
             {view === "month" ? shortMonth(day) : shortWeek(day)}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => go({ day: startOfDay(Date.now()) })}>
+          {/* Under 26rem of header, Today gives way so the short period keeps its room: Previous and Next stay. */}
+          <Button variant="ghost" size="sm" className="@max-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
@@ -93,7 +95,13 @@ export function Head({ workspace }: WorkViewProps) {
           </Button>
         </>
       ) : null}
-      <ChoiceToggle label="Show as" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
+      {/* The three views side by side where they fit; under 40rem, the same choice as one select. */}
+      <span data-agenda-views="toggle" className="hidden @min-[40rem]/viewhead:flex">
+        <ChoiceToggle label="Show as" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
+      </span>
+      <span data-agenda-views="select" className="flex @min-[40rem]/viewhead:hidden">
+        <ChoiceSelect label="Show as" size="sm" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
+      </span>
       <Button variant="ghost" size="sm" aria-label="New event" className="@max-[40rem]/viewhead:px-1.5" onClick={() => go({ adding: "now" })}>
         <Plus />
         <span className="@max-[40rem]/viewhead:hidden">New event</span>
@@ -118,7 +126,7 @@ function OpenEvent({ workspaceId, id, lifeos }: { workspaceId: string; id: strin
 
 export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  const { adding } = useShared(state);
+  const { adding, view } = useShared(state);
   // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
   const wanted = useWorkView();
   const event = wanted?.workspaceId === workspace.id && wanted.view === "agenda" ? wanted.event : undefined;
@@ -145,12 +153,12 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
     [workspace.id],
   );
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
-  if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton /> : null;
+  if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton view={view} /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       {/* While the event is read, its bones: today's list never paints before the event's week. */}
-      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} environmentId={env} />}
+      {event ? <AgendaSkeleton view="week" /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} environmentId={env} />}
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
@@ -186,7 +194,7 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   // The meeting's page (work/prep): before the event it prepares, after it follows up. Opening it starts nothing.
   const prepare = useMemo(() => (event: AgendaEvent) => void (workspaceId && openWorkView({ workspaceId, view: "prep", event: event._id })), [workspaceId]);
   const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
-  if (!events) return <AgendaSkeleton />;
+  if (!events) return <AgendaSkeleton view={view} />;
   // An event or a day picked in the week or month opens that day's list, where Prepare is.
   const toDay = (ms: number) => go({ view: "list", day: startOfDay(ms) });
   if (view !== "list")
@@ -252,11 +260,12 @@ export const EventRow = memo(function EventRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger
-        render={<div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
+        render={<div role="listitem" className="group/row relative grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
       >
         <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
-          {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {clockTime(leave)}</span> : null}
+          {/* A time keeps its AM or PM on its own line: the column is as wide as "Leave 12:45 PM". */}
+          {leave !== undefined && !past ? <span className="font-medium whitespace-nowrap text-foreground">Leave {clockTime(leave)}</span> : null}
         </span>
         <span className="flex min-w-0 flex-col">
           {/* The verb's place is kept on the title's line alone: where it is and who is there read the column's whole width. The
@@ -320,20 +329,45 @@ function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; wor
   );
 }
 
-function AgendaSkeleton() {
+/** The view's shape while its events are on their way: the list's rows, or the Week's or the Month's grid, by the view he kept. */
+function AgendaSkeleton({ view = "list" }: { view?: AgendaShow }) {
+  if (view !== "list") return <CalendarBones view={view} />;
   return (
     <div aria-hidden className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-9 py-6">
       {[3, 2].map((n, i) => (
         <div key={i} className="flex flex-col gap-3">
           <Skeleton className="h-3 w-20" />
           {Array.from({ length: n }, (_, j) => (
-            <div key={j} className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2">
+            <div key={j} className="grid grid-cols-[88px_minmax(0,1fr)] gap-x-2">
               <Skeleton className="h-3 w-12" />
               <Skeleton className={cn("h-3.5", j % 2 ? "w-1/3" : "w-1/2")} />
             </div>
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** The Week's or the Month's bones: the weekdays over the grid's cells, on the grid's own inset. */
+function CalendarBones({ view }: { view: "week" | "month" }) {
+  const cells = view === "month" ? 42 : 7;
+  return (
+    <div aria-hidden data-agenda-bones={view} className="flex h-full min-h-[480px] flex-col px-6 pt-2 pb-6">
+      <div className={cn("grid grid-cols-7 pb-3", view === "week" && "ps-14")}>
+        {Array.from({ length: 7 }, (_, i) => (
+          <div key={i} className="px-2">
+            <Skeleton className="h-3 w-8" />
+          </div>
+        ))}
+      </div>
+      <div className={cn("grid min-h-0 flex-1 grid-cols-7 border-s border-t border-border", view === "month" ? "grid-rows-6" : "ms-14")}>
+        {Array.from({ length: cells }, (_, i) => (
+          <div key={i} className="border-e border-b border-border p-2">
+            {view === "month" ? <Skeleton className="h-3 w-4" /> : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

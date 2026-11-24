@@ -13,9 +13,14 @@ export function shown(page: Window, selector: string, text: string): Promise<boo
     el.getClientRects().length && el.innerText?.includes(${JSON.stringify(text)}))`)
 }
 
-export async function field(page: Window, label: string, value: string): Promise<void> {
+/** The selector of the dialog's field whose label reads `label`, found once it is drawn. */
+export async function labelled(page: Window, label: string): Promise<string> {
   let id: string | null = null
   await page.until('the dialog field ' + label, 12_000, async () => (id = await page.eval<string | null>(
     `[...document.querySelectorAll('[role="dialog"] label')].find(el => el.textContent.trim() === ${JSON.stringify(label)})?.htmlFor ?? null`)))
-  await enterField(page, '[id=' + JSON.stringify(id) + ']', value)
+  return '[id=' + JSON.stringify(id) + ']'
+}
+
+export async function field(page: Window, label: string, value: string): Promise<void> {
+  await enterField(page, await labelled(page, label), value)
 }

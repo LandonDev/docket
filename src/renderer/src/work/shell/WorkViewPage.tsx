@@ -146,9 +146,10 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     >
       {headless ? null : (
         <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
-          <Icon className="size-3.5 text-muted-foreground" />
+          <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+          {/* The name gives way to the view's own controls only once they have given all they can: it is cut, never drawn under them. */}
           <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
-            {Title && !blocked ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
+            {Title && !blocked ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
           </span>
           <span className="flex-1" />
           {Head && !blocked ? <Head {...props} /> : null}

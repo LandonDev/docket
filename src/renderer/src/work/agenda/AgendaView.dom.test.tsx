@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 /** The Agenda's header: in a narrow Week or Month view, the period stays in TempCode's own header, short. */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const NOW = new Date(2026, 10, 23, 12);
 
 const { resetAgendaPlace } = await import("./place");
-const { Head, shortMonth, shortWeek } = await import("./AgendaView");
+const { Head, View, shortMonth, shortWeek } = await import("./AgendaView");
+const { keepPlace } = await import("../shell/place");
 
 beforeEach(() => {
   vi.setSystemTime(NOW);
@@ -36,6 +37,17 @@ describe("the Agenda's header", () => {
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
   });
 
+  it("gives way at narrow widths: Today under 26rem of header, the three views as one select under 40rem", () => {
+    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    expect(screen.getByRole("button", { name: "Today" }).className).toContain("@max-[26rem]/viewhead:hidden");
+    expect(container.querySelector('[data-agenda-views="toggle"]')!.className).toContain("hidden @min-[40rem]/viewhead:flex");
+    const select = container.querySelector('[data-agenda-views="select"]')!;
+    expect(select.className).toContain("@min-[40rem]/viewhead:hidden");
+    // The select names the same choice and shows the view he is on.
+    expect(within(select as HTMLElement).getByRole("combobox", { name: "Show as" }).textContent).toBe("Week");
+  });
+
   it("names a narrow week short: its first and last day, the month once within a month", () => {
     const monday = 1;
     const md = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -47,5 +59,23 @@ describe("the Agenda's header", () => {
 
   it("names a month short, with its year", () => {
     expect(shortMonth(new Date(2026, 10, 19).getTime())).toBe(new Date(2026, 10, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" }));
+  });
+});
+
+describe("the Agenda's bones", () => {
+  const view = (show: "list" | "week" | "month") => {
+    // The visit opens on the view the workspace kept.
+    keepPlace("ws", "agenda", { view: show, day: NOW.getTime(), on: NOW.getTime() });
+    const props = { env: "box", workspace: { id: "ws" }, sector: "purdue", lifeos: { environmentId: "box", sector: "purdue", client: null, state: "connecting" } };
+    return render(<View {...(props as never)} />).container;
+  };
+
+  it("take the shape of the view he kept: the Week's and the Month's grids, the list's rows", () => {
+    expect(view("week").querySelector('[data-agenda-bones="week"]')).not.toBeNull();
+    cleanup();
+    const month = view("month").querySelector('[data-agenda-bones="month"]')!;
+    expect(month.querySelectorAll(".grid-rows-6 > div")).toHaveLength(42);
+    cleanup();
+    expect(view("list").querySelector("[data-agenda-bones]")).toBeNull();
   });
 });

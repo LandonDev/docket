@@ -89,7 +89,7 @@ function Body({
         },
         (err: unknown) => {
           setPending(false);
-          setError(workErrorWords(err) || "LifeOS refused it");
+          setError(workErrorWords(err) || "LifeOS did not add the task");
         },
       );
       return;
@@ -103,7 +103,7 @@ function Body({
       },
       (err: unknown) => {
         setPending(false);
-        setError(workErrorWords(err) || "LifeOS refused it");
+        setError(workErrorWords(err) || "LifeOS did not add the task");
       },
     );
   };
@@ -116,7 +116,7 @@ function Body({
     >
       <ModalBody>
         <Field label="Task">
-          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Book the ballroom" autoComplete="off" />
+          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>
         <Field label="Due">
           <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />

@@ -638,7 +638,8 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
           ))}
         </Section>
 
-        <Section label="Files" show={page.files.length > 0}>
+        {/* The event's links (Join the call) sit beside its files, so the heading names both. */}
+        <Section label="Files and links" show={page.files.length > 0}>
           {page.files.map((file, i) => (
             <LineRow key={file.url ?? `${file.title}:${i}`} text={file.title} line={fileWhere(file)} onOpen={fileOpener(file)} />
           ))}

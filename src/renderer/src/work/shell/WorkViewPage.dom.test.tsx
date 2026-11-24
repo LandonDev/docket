@@ -188,6 +188,8 @@ describe("a view over the thread's pane", () => {
     await flush();
     expect(document.activeElement).toBe(document.querySelector("[data-view-heading]"));
     expect(document.querySelector("[data-view-heading]")!.textContent).toBe("Routines");
+    // A narrow header cuts the view's name, never draws the view's controls over it.
+    expect(document.querySelector("[data-view-heading] > span")!.className).toContain("truncate");
   });
 
   it("leaves the focus where it was outside the pane: the thread strip stays his", async () => {

@@ -156,7 +156,8 @@ export function Tasks({
       {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
-          <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
+          {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
+          <h2 className="mb-1 ps-9 pe-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
           {rows.map((task) => (
             <TaskRow
               key={task._id}
@@ -371,16 +372,37 @@ const TaskRow = memo(function TaskRow({
   );
 });
 
+/** The list's shape while it loads, on the insets of what replaces it: the lead (title, due line, presses), then a group's heading and its rows. */
 function TasksSkeleton() {
   return (
-    <div aria-hidden className="mx-auto flex w-full max-w-[720px] flex-col gap-2 px-9 py-6">
-      <Skeleton className="h-5 w-1/2" />
-      <Skeleton className="h-3 w-1/4" />
-      <div className="mt-8 flex flex-col gap-4">
+    <div aria-hidden data-tasks-bones className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
+      <div className="flex flex-col gap-1 px-3">
+        <div className="flex h-6 items-center">
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-3 w-1/4" />
+        </div>
+        <div data-bones-presses className="mt-3 flex h-8 items-center gap-2">
+          <Skeleton className="h-8 w-24 rounded-lg" />
+          <Skeleton className="h-8 w-14 rounded-lg" />
+        </div>
+      </div>
+      <div className="mt-6 flex flex-col">
+        <div data-bones-heading className="mb-1 flex h-4 items-center ps-9 pe-3">
+          <Skeleton className="h-3 w-12" />
+        </div>
         {["w-2/3", "w-1/2", "w-3/5", "w-2/5"].map((w) => (
-          <div key={w} className="flex flex-col gap-1.5">
-            <Skeleton className={cn("h-3.5", w)} />
-            <Skeleton className="h-3 w-1/5" />
+          <div key={w} className="flex min-h-8 items-start gap-2 px-3 py-1.5">
+            <Skeleton className="mt-0.5 size-4 rounded-full" />
+            <div className="flex flex-1 flex-col">
+              <div className="flex h-5 items-center">
+                <Skeleton className={cn("h-3.5", w)} />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-3 w-1/5" />
+              </div>
+            </div>
           </div>
         ))}
       </div>
