@@ -244,7 +244,8 @@ async function screenshots(chrome: string, html: string, stem: string): Promise<
   const flags = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars']
   const shots: string[] = []
   for (const width of SHOT_WIDTHS) {
-    const dump = spawnSync(chrome, [...flags, '--dump-dom', '--virtual-time-budget=2000', `--window-size=${width},800`, pathToFileURL(measurePath).href], { encoding: 'utf8', timeout: 60_000 })
+    const dump = spawnSync(chrome, [...flags, '--dump-dom', '--virtual-time-budget=2000', `--window-size=${width},800`, pathToFileURL(measurePath).href], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 })
+    // A page's markup can pass spawnSync's 1 MiB default: the height was then never read and every tall page was cut at 800.
     const height = Math.min(MAX_SHOT_HEIGHT, Number(dump.stdout.match(/data-height="(\d+)"/)?.[1] ?? 800))
     const png = `${stem}.${width}.png`
     const shot = spawnSync(chrome, [...flags, `--screenshot=${png}`, `--window-size=${width},${height}`, pathToFileURL(pagePath).href], { encoding: 'utf8', timeout: 60_000 })
