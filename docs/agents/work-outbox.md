@@ -76,10 +76,13 @@ let any agent changes let anyone else on the team see them (synced edits)
 until they are approved and the file is actually edited." An agent's own
 idea on a file others can open is kept on his host and shown only to him.
 
-- **Which files.** Office's tools ask `fileShared` (office/shared.ts):
-  Files' `sharedOf` first, then a URL, a network share, a folder named
-  OneDrive on any host, a Teams folder he added, and a name no open file
-  answers to. A Google file is always shared.
+- **Which files.** Every tool asks Files' `sharedOf` (files/policy.ts): a
+  library, a cloud folder, another host, and by its spelling (`sharedKey`) a
+  URL, a network share, a mounted disk, a folder named OneDrive on any host,
+  each by its real path (a new file by its nearest folder). Office's
+  `fileShared` adds a Teams folder he added and a name no open file answers
+  to. A Google file is always shared. Files' own verbs hold a thread's change
+  in a workspace kept in such a place, as in a library.
 - **Where it waits.** A Word document's or a PowerPoint deck's words: a held
   `office.edit` (the file's key, the change, how many places held the words
   and a hash of the file's text then). A Google Doc's or deck's words: a held

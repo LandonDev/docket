@@ -25,7 +25,7 @@ import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
-import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, NO_WORKSPACE, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
+import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NO_WORKSPACE, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
@@ -501,7 +501,8 @@ function markedOf(ctx: WorkCtx, by: Caller, workspaceId: string, ref: FileRef, m
  */
 export function admitChange(ctx: WorkCtx, by: Caller, verb: FileVerb, p: { workspaceId: string; refs: FileRef[]; to?: FolderRef; name?: string; asked?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): 'run' | 'hold' {
   admitCaller(ctx, by, p.workspaceId)
-  const to = p.to ? doorPlace(ctx, by, locate(ctx, by, p.workspaceId, p.to.at === 'place' ? placeRoot(ctx, by, p.workspaceId, p.to.id) : p.to, method)).place : null
+  const into = p.to ? locate(ctx, by, p.workspaceId, p.to.at === 'place' ? placeRoot(ctx, by, p.workspaceId, p.to.id) : p.to, method) : null
+  const to = into ? doorPlace(ctx, by, into).place : null
   let verdict: 'run' | 'hold' = 'run'
   for (const ref of p.refs) {
     const at = locate(ctx, by, p.workspaceId, ref.at === 'place' ? placeRoot(ctx, by, p.workspaceId, ref.id) : ref, method)
@@ -512,7 +513,9 @@ export function admitChange(ctx: WorkCtx, by: Caller, verb: FileVerb, p: { works
       throw new Error(no?.text ?? DRIVE_APART)
     }
     const name = at.in === 'place' ? '' : basename(at.path)
-    const got = admitWrite(by, { verb, from, to, entry: { name, kind: kindOfEntry(name).kind }, asked: p.asked, origin: p.origin, digest: changeDigest({ verb, refs: p.refs, to: p.to, name: p.name }) })
+    // Both ends by their real paths: a workspace kept in OneDrive, or a library reached inside it, is others' to open.
+    const othersOpen = locatedShared(ctx, at) || (!!into && locatedShared(ctx, into))
+    const got = admitWrite(by, { verb, from, to, entry: { name, kind: kindOfEntry(name).kind }, asked: p.asked, origin: p.origin, digest: changeDigest({ verb, refs: p.refs, to: p.to, name: p.name }), othersOpen })
     if (got === 'hold') verdict = 'hold'
   }
   return verdict

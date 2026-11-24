@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -11,7 +11,9 @@ import { ActKinds } from '../outbox/kinds'
 import { NOT_EDITABLE, Outbox } from '../outbox/outbox'
 import { ensureOutboxTables, HeldStore } from '../outbox/store'
 import { filesHandle } from './handle'
-import { PEER_WRONG_ACT, setThreadsMayWrite } from './policy'
+import { NEEDS_APPROVE, PEER_WRONG_ACT, setThreadsMayWrite } from './policy'
+import { forgetLibraries } from './places/libraries'
+import { setRoots } from '../office/files/library'
 import { makeRig, peer, WS, type Rig } from './testkit'
 import { setSystemBin } from './trash'
 import { fileActKind, fileActWords, filesPreamble, filesTools, NO_PLACE_IN_CHAT } from './tools'
@@ -248,6 +250,48 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
     const out = await call('files_move', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: 'folder', path: '' } }, ctx)
     expect(out).toMatchObject({ isError: true, text: 'Teams files stay in Teams.' })
+  })
+
+  it('holds every change in a workspace kept in OneDrive, and in a library reached inside its folder, and runs it on his press', async () => {
+    // His workspace's own folder lies in his OneDrive: whoever he shared it with sees what changes there.
+    const synced = join(rig.mine, 'Esports Ops')
+    mkdirSync(join(synced, 'Archive'), { recursive: true })
+    writeFileSync(join(synced, 'Plan.docx'), 'word')
+    rig.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(synced, WS)
+    const ctx = toolCtx(workCtx())
+    const held = [
+      await call('files_make', { place: 'folder', kind: 'text', name: 'Agenda' }, ctx),
+      await call('files_move', { place: 'folder', paths: ['Plan.docx'], to: { place: 'folder', path: 'Archive' } }, ctx),
+      await call('files_copy', { place: 'folder', paths: ['Plan.docx'], to: { place: 'folder', path: 'Archive' } }, ctx),
+      await call('files_move', { place: 'folder', paths: ['Plan.docx'], name: 'Plan v2.docx' }, ctx)
+    ]
+    for (const got of held) expect(got.text).toMatch(/^Held as item \d+\. It waits for the owner's press: /)
+    expect(readdirSync(synced).sort()).toEqual(['Archive', 'Plan.docx'])
+    expect(existsSync(join(synced, 'Archive', 'Plan.docx'))).toBe(false)
+    expect(existsSync(join(synced, 'Plan v2.docx'))).toBe(false)
+    expect(results).toEqual([])
+    // His press runs the move as his window's change: no question, no second hold.
+    const move = outbox.store.list({})[1]!
+    expect(await press({ ref: { at: 'host', id: move.id } })).toMatchObject({ state: 'sent', result: { summary: 'Moved: Plan.docx.' } })
+    expect(existsSync(join(synced, 'Archive', 'Plan.docx'))).toBe(true)
+    // His own window changes it at once, and a key changes it only with approve, as in a library.
+    const verb = (by: Caller, name: string) => filesHandle({ id: 'x', method: 'work.files.make', params: { workspaceId: WS, op: `op-${name}`, at: { at: 'place', id: 'folder' }, kind: 'text', name } } as never, rig.ctx, by, undefined)
+    rig.roots.splice(0, rig.roots.length, synced)
+    await expect(verb({ kind: 'remote', caps: ['read', 'operate'] }, 'Phone note')).rejects.toThrow(NEEDS_APPROVE)
+    await verb({ kind: 'remote', caps: ['read', 'operate', 'approve'] }, 'Approved note')
+    await verb({ kind: 'local', caps: ['read', 'operate', 'approve', 'admin'] }, 'Window note')
+    expect(readdirSync(synced).filter((n) => n.endsWith(' note.md')).sort()).toEqual(['Approved note.md', 'Window note.md'])
+
+    // A library he added that lies inside a private workspace's folder is the library's, reached either way.
+    rig.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(rig.folder, WS)
+    mkdirSync(join(rig.folder, 'Team share'))
+    setRoots(rig.db, [{ folder: join(rig.folder, 'Team share') }])
+    forgetLibraries(rig.db)
+    const inside = await call('files_make', { place: 'folder', path: 'Team share', kind: 'text', name: 'Inside' }, ctx)
+    expect(inside.text).toMatch(/^Held as item \d+\./)
+    expect(readdirSync(join(rig.folder, 'Team share'))).toEqual([])
+    // The rest of his own folder still runs at once.
+    expect((await call('files_make', { place: 'folder', kind: 'text', name: 'Mine' }, ctx)).text).toMatch(/^Made Mine\.md in Dummy Esports\./)
   })
 
   it('runs the held act on his press as his window\'s change, once', async () => {

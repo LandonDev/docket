@@ -175,14 +175,31 @@ export function locateLifeos(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, w
 }
 
 /**
+ * Others can open it by its spelling alone: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from
+ * there, on a Mac or under Windows, or on a disk that is not this computer's own: a network share, a mounted volume
+ * (`/Volumes/…`, `/mnt/…`, `/media/…`, `/net/…`) or a Windows drive other than C:, which is how a mapped share reads. A
+ * file of his on such a disk waits for him too: what cannot be told apart is treated as shared. Office's own test
+ * (office/shared.ts `fileShared`) and `sharedOf` both ask it.
+ */
+export const sharedKey = (key: string): boolean => {
+  const k = key.replace(/\\/g, '/')
+  // A network share (\\server\share\…) is others' to open as surely as OneDrive (milestone 50's hold review).
+  if (/^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)) return true
+  return /^\/(Volumes|mnt|media|net)\//i.test(k) || /^[a-bd-z]:\//i.test(k)
+}
+
+/**
  * Whether other people can open what a source names: a file in a Teams or OneDrive library (on this host or in
  * its Windows VM), a Microsoft file by its address, a Google file (by its source alone the host cannot tell its
  * sharing, which only Drive says: the Files place asks Drive, `itemShared`), a file on another host (this one cannot
- * tell), and a file in any cloud folder of this computer that is not a listed library (it cannot tell either).
- * A file anywhere else on this disk is his own: the workspace's folder, a copy he allowed, an import, an item's
- * own folder. A LifeOS row is shared while LifeOS says so, which its own pillar reads from the row; by its
- * source alone it is his own. A Files tab's copy that saves back to a file others can open (copies.ts), and what
- * lies beside it in its folder, is as shared as that file: an editor's own hold for a shared file holds there too.
+ * tell), a file on a disk others reach or in a folder named for OneDrive (`sharedKey`), and a file in any cloud folder
+ * of this computer that is not a listed library (it cannot tell either). Each is judged by the path's real spelling,
+ * and a path not made yet by its nearest folder that is, so a link to a library, or a new file in one, is the
+ * library's. A file anywhere else on this disk is his own: the workspace's folder, a copy he allowed, an import, an
+ * item's own folder, what the app keeps for him (looked at last, so a data folder kept in a synced place is still
+ * that place's). A LifeOS row is shared while LifeOS says so, which its own pillar reads from the row; by its source
+ * alone it is his own. A Files tab's copy that saves back to a file others can open (copies.ts), and what lies beside
+ * it in its folder, is as shared as that file: an editor's own hold for a shared file holds there too.
  */
 export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: CanvasSource): boolean {
   if (source.at === 'google') return true
@@ -191,13 +208,31 @@ export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: 
   if (path === null) return false
   if ((source as { host: string }).host !== ctx.host) return true
   if (isGuestPath(path) && process.platform !== 'win32') return true
-  const at = real(path) ?? path
-  // What the app keeps for him is his own, wherever the data folder lies.
-  const data = real(ctx.dataDir) ?? ctx.dataDir
-  if (within(at, data)) return isSavingCopy(ctx.db, at)
-  if (libraryOf(librariesHere(ctx), at)) return true
-  const cloud = real(cloudDirOf(ctx.host))
-  return !!cloud && within(at, cloud)
+  const at = realish(path)
+  if (sharedKey(path) || sharedKey(at)) return true
+  if (librariesHere(ctx).some((library) => inside(at, library.path))) return true
+  if (inside(at, cloudDirOf(ctx.host))) return true
+  // What the app keeps for him is his own: a Files tab's copy that saves back is the file it saves to.
+  if (inside(at, ctx.dataDir)) return isSavingCopy(ctx.db, at)
+  return false
+}
+
+/** Whether a real path lies in a folder, by the folder's own real path; a folder that is not there holds nothing. */
+const inside = (at: string, dir: string): boolean => {
+  const root = real(dir)
+  return !!root && within(at, root)
+}
+
+/**
+ * Whether others can open where a located thing lies, by its real path: a library always; the workspace's own
+ * folder, or a folder in it, where `sharedOf` says so (a workspace kept in OneDrive, on a network share, a library
+ * reached inside it). The place a thing lies in says only what kind of place it is, which the window's questions
+ * read; this is what the hold and a key's `approve` read. Null for a lens or a Drive's thing: Drive says its own.
+ */
+export function locatedShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, at: Located): boolean {
+  if (at.in === 'library') return true
+  if (at.in === 'folder') return sharedOf(ctx, { at: 'file', host: ctx.host, path: at.path })
+  return false
 }
 
 /** What the door needs to know of one end of a change. */
@@ -231,6 +266,11 @@ export interface Change {
   origin?: FileOrigin
   /** the change itself, for a held act's digest */
   digest?: string
+  /**
+   * others can open one end of it by its real path (`locatedShared`), whatever its place says it is: a workspace
+   * kept in OneDrive. The hold and a key's `approve` read it; his window's question reads the places alone.
+   */
+  othersOpen?: boolean
 }
 
 /**
@@ -242,7 +282,7 @@ export function admitWrite(by: Caller, change: Change): 'run' | 'hold' {
   const { verb, from, to, entry } = change
   const no = refusal(from, verb, entry, to)
   if (no) throw new Error(no.text)
-  const shared = from.shared || !!entry?.shared || (!!to && to.shared)
+  const shared = from.shared || !!entry?.shared || (!!to && to.shared) || !!change.othersOpen
   if (by.kind === 'model') {
     if (!threadsMayWrite) throw new Error(THREADS_NOT_YET)
     return shared ? 'hold' : 'run'

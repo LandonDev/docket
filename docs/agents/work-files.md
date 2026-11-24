@@ -455,10 +455,29 @@ caller to its row. The grammar's own refusal comes first for every caller.
 `sharedOf(ctx, source)` answers whether others can open what a source names,
 for this pillar and for every other Work tool that writes a file by path: a
 file in a Teams or OneDrive library (this host's or its VM's), a Microsoft
-file by its address, a Google file, a file on another host, and a file in any
-cloud folder of this computer that is no listed library (the host cannot
-tell). A file anywhere else on this disk is his own. The sheets view, the
+file by its address, a Google file, a file on another host, a file whose
+spelling says others reach it (`sharedKey`, policy.ts, the rule Office's
+`fileShared` also asks: a network share, a mounted volume, `/Volumes/…`,
+`/mnt/…`, `/media/…`, `/net/…`, a Windows drive other than C:, a folder named
+OneDrive anywhere), and a file in any cloud folder of this computer that is no
+listed library (the host cannot tell). Each is judged by the path's real
+spelling, and a path not made yet by its nearest folder that is, so a new
+file through a link into a library is the library's. The app's own data
+folder is looked at last: a copy there is his own unless it saves back to a
+shared file (`isSavingCopy`), and a data folder kept in a synced place is that
+place's. A file anywhere else on this disk is his own. The sheets view, the
 importer and the Teams copies ask it; a pane owner has no scope row to ask.
+
+**A workspace kept in a shared place.** The workspace's own folder is the
+place `folder` whatever disk it lies on, and its descriptor says
+`shared: false`, which is what his window's questions read. The door reads one
+more fact: `admitChange` (handle.ts) asks `locatedShared` (policy.ts) of both
+ends of the change by their real paths, and passes it as `othersOpen`. A
+workspace kept in OneDrive or on a network share, or a library he added that
+lies inside the workspace's folder, is then held for a thread (`file.act`) and
+refused to a key without `approve`, at an upload's begin and again at its
+commit (Save to TempCode included), exactly as a library is. His own window
+runs at once, asked nothing new, and so does his press on the held act.
 
 **What the door does not catch.** The shell and general computer use are
 outside it, as they are outside the hold. The Work preamble's line on files

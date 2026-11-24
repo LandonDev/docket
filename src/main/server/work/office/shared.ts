@@ -1,15 +1,15 @@
 import { basename } from 'node:path'
 import type { WorkCtx } from '../modules'
-import { sharedOf } from '../files/policy'
+import { sharedKey, sharedOf } from '../files/policy'
 import type { OfficeCarrier } from './carrier'
 import { librariesOf, libraryOf } from './files/library'
 
 /**
  * Whether others can open a file an Office tool names by its key, the one test every Office write takes
- * (docs/agents/work-office.md "The rule for a file others can open"). Files' `sharedOf` decides first; the
- * office rules it does not hold yet are kept beside it until it does (SEAMS.md "private-suggestions"): a URL,
- * a network share, and a folder named OneDrive on any host, a Windows path in the VM included. A key no open
- * file answers to is shared: what cannot be found cannot be shown to be his own.
+ * (docs/agents/work-office.md "The rule for a file others can open"): Files' `sharedOf`, which holds the
+ * spelling rules (`sharedKey`: a URL, a network share, a mounted disk, a folder named OneDrive on any host, a
+ * Windows path in the VM included), asked first of the key as it is. A key no open file answers to is shared:
+ * what cannot be found cannot be shown to be his own.
  */
 export function fileShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, key: string | null, app: 'excel' | 'word' | 'powerpoint'): boolean {
   if (key === null || sharedKey(key)) return true
@@ -19,18 +19,7 @@ export function fileShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, key: s
   return libraryOf(librariesOf(ctx.db, ctx.host), key) !== null
 }
 
-/**
- * Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or
- * under Windows, or on a disk that is not this computer's own: a network share, a mounted volume (`/Volumes/…`, `/mnt/…`,
- * `/media/…`, `/net/…`) or a Windows drive other than C:, which is how a mapped share reads. A file of his on such a
- * disk waits for him too: what cannot be told apart is treated as shared.
- */
-export const sharedKey = (key: string): boolean => {
-  const k = key.replace(/\\/g, '/')
-  // A network share (\\server\share\…) is others' to open as surely as OneDrive (milestone 50's hold review).
-  if (/^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)) return true
-  return /^\/(Volumes|mnt|media|net)\//i.test(k) || /^[a-bd-z]:\//i.test(k)
-}
+export { sharedKey }
 
 /**
  * The open file a write names, as the carrier keys it: its key (either separator), else the one open file of that

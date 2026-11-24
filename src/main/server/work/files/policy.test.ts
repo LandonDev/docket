@@ -1,3 +1,4 @@
+import { mkdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FILE_VERBS, type FileVerb } from '@shared/work/files'
@@ -138,6 +139,28 @@ describe('what is shared', () => {
     expect(sharedOf(rig.ctx, { at: 'google', account: 'a@b.c', fileId: 'F', mime: 'x' })).toBe(true)
     expect(sharedOf(rig.ctx, { at: 'microsoft', host: HOST, app: 'word', name: 'a', ref: { kind: 'url', url: 'https://x/y' } })).toBe(true)
     if (process.platform !== 'win32') expect(file('C:\\Users\\tcuser\\OneDrive\\a.docx')).toBe(true)
+  })
+
+  it('is a file on a disk others reach or in a folder named for OneDrive, as Office says, by its spelling alone', () => {
+    for (const path of ['/Volumes/Team/Plan.tcdoc', '/Volumes/Team/Budget.xlsx', '//server/share/Plan.tcdoc', '/mnt/team/Deck.pptx', '/media/share/Budget.xlsx', '/net/files/Plan.tcdoc', join(rig.outside, 'OneDrive - Dummy U', 'Plan.tcdoc'), join(rig.outside, 'OneDrive', 'Budget.xlsx')]) {
+      expect(file(path), path).toBe(true)
+    }
+  })
+
+  it('judges a path not made yet by its nearest real folder: a new file through a link to a library is the library\'s', () => {
+    symlinkSync(rig.team, join(rig.folder, 'Team link'))
+    expect(file(join(rig.folder, 'Team link', 'General', 'New deck.pptx'))).toBe(true)
+    expect(file(join(rig.folder, 'Team link', 'New folder', 'New.tcdoc'))).toBe(true)
+    expect(file(join(rig.mine, 'Not yet', 'New.tcdoc'))).toBe(true)
+    expect(file(join(rig.folder, 'Not yet', 'New.tcdoc'))).toBe(false)
+  })
+
+  it("looks at the app's own data last: a data folder kept in a synced place is that place's", () => {
+    const dataDir = join(rig.mine, 'TempCode data')
+    mkdirSync(join(dataDir, 'work-files', 'imports', 'abc'), { recursive: true })
+    const ctx = { ...rig.ctx, dataDir }
+    expect(sharedOf(ctx, at(join(dataDir, 'work-files', 'imports', 'abc', 'Plan.tcdoc')))).toBe(true)
+    expect(sharedOf(ctx, at(join(rig.folder, 'Budget.xlsx')))).toBe(false)
   })
 
   it("is not a file of his own: the workspace's folder, what the app keeps, an item made in a thread", () => {

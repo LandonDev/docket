@@ -595,12 +595,14 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_calendar_answer` | accept, decline, tentative; the invitation's subject, start, end, place and organizer are read from the event when the act is made, and the press refuses an event changed in any of them, or a hold made before its end and place were kept | **yes**: `office.calendar.op` |
 
 **The rule for a file others can open.** One function decides it,
-`fileShared` (office/shared.ts): Files' `sharedOf` first, then the office
-rules it does not hold yet: a file named by a URL, a network share, a
-mounted volume (`/Volumes/…`, `/mnt/…`, `/media/…`, `/net/…`) or a Windows
-drive other than C: (a mapped share), one in a folder synced from OneDrive
-or SharePoint (`~/Library/CloudStorage/`, a `OneDrive` folder, with either
-slash, so a Windows path in the VM counts), and a Teams folder he added. The name a write gives is first found among the
+`fileShared` (office/shared.ts): the spelling rules first (`sharedKey`, kept
+in files/policy.ts beside `sharedOf`, which asks them too, so the document,
+sheet and deck tools judge the same paths: a file named by a URL, a network
+share, a mounted volume (`/Volumes/…`, `/mnt/…`, `/media/…`, `/net/…`) or a
+Windows drive other than C: (a mapped share), one in a folder synced from
+OneDrive or SharePoint (`~/Library/CloudStorage/`, a `OneDrive` folder, with
+either slash, so a Windows path in the VM counts)), then Files' `sharedOf`,
+and a Teams folder he added. The name a write gives is first found among the
 open files as the carrier keys them (by key, else the one open file of that
 name, since a carrier takes a bare name too), and the write goes to that
 key; a name no open file answers to, or two do, counts as shared (`fileKey`,
