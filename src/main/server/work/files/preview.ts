@@ -93,6 +93,8 @@ export interface Rendered {
   height: number
   /** which source drew it (not on the wire) */
   via: string
+  /** the file's version it is of (`previewOne`'s answer only; not kept with the picture) */
+  version?: string
 }
 type None = { none: string }
 const isNone = (r: unknown): r is None => typeof r === 'object' && r !== null && 'none' in r
@@ -673,13 +675,14 @@ export async function previewOne(ctx: WorkCtx, by: Caller, workspaceId: string, 
     if (t.shared) remember(s, key, got, t.library)
     else await toDisk(ctx.dataDir, s, key, got).catch((err) => ctx.log(`files: a preview could not be kept: ${err instanceof Error ? err.message : String(err)}`))
   }
-  return got
+  return { ...got, version: t.version }
 }
 
 /** `work.files.preview`: one page of a file at a width. */
 export async function previewOf(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; page?: number; width: number }, method: string, signal?: AbortSignal): Promise<FilePreview> {
   const got = await previewOne(ctx, by, p.workspaceId, p.ref, { page: p.page ?? 1, width: p.width }, method, signal)
-  return isNone(got) ? got : { png: got.png.toString('base64'), pages: got.pages, width: got.width, height: got.height }
+  // The version, as a digest: a pager pins it, and a page of another version (saved between two reads) starts it over.
+  return isNone(got) ? got : { png: got.png.toString('base64'), pages: got.pages, width: got.width, height: got.height, ...(got.version ? { version: hash(got.version).slice(0, 16) } : {}) }
 }
 
 /** `work.files.thumbs`: a small picture of each file, null where there is none to show. */

@@ -300,6 +300,16 @@ describe('his own places: kept on disk', () => {
     expect(jobs).toHaveLength(3)
   })
 
+  it('names the version each page is of, and a saved file another', async () => {
+    const first = await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })
+    const again = await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })
+    expect('version' in first && first.version).toMatch(/^[0-9a-f]{16}$/)
+    expect('version' in again && again.version).toBe('version' in first && first.version)
+    writeFileSync(join(rig.folder, 'Bracket.pdf'), '%PDF dummy, saved since')
+    const saved = await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })
+    expect('version' in saved && saved.version).not.toBe('version' in first && first.version)
+  })
+
   it("keeps an Office file's PDF, so its next page is one draw", async () => {
     await one(mine('Bare.docx'), { page: 1, width: 600 })
     await one(mine('Bare.docx'), { page: 2, width: 600 })

@@ -323,8 +323,9 @@ this build's (PF5).
   that may operate), so a `.tcdoc` or `.tcsheet` edits on the phone. Where
   its host will not open it there (a Word or Excel file, a computer with no
   public page) Files' Quick Look stands in the file's place, read only, with
-  the reader's bar still over it: its comments, its changes and Page Preview
-  stay in More. The screen hands Quick Look in through the environment
+  the reader's bar still over it, with what More has for the file: an Excel
+  file keeps Review Changes; a Word file has no comments, changes or Page
+  Preview on the phone. The screen hands Quick Look in through the environment
   (`hostedFallback`); a file open from a thread has none and shows the
   host's words.
 - **Ask with no thread** (`FileAsk`, client Work/Reader/). The reader page
@@ -342,6 +343,12 @@ this build's (PF5).
   (`FileAsk.NotSeated`). And a lookup that fails is said, never read as "no
   thread holds it": only a host from before `work.files.threads` starts a
   thread unasked.
+- **Quick Look's pages are of one version.** Each page the host draws names
+  the file's version it is of (`FilePreview.version`, a digest); the first
+  pins it, and a page of another version (the file saved on the computer
+  between two reads) starts the pager over at that version
+  (`FilesRules.startsOver`), so no two pages of different versions show
+  together.
 - **Share…** has no row. The one way to share a file from the phone today is
   the guest link, which is its own row (Make a Guest Link, a LifeOS document
   or sheet, a key that may approve). No wire lets a remote key draft a mail

@@ -267,6 +267,14 @@ public enum FilesRules {
         }
     }
 
+    /// Quick Look's pages are of one version of the file (`FilePreview.version`, pinned by the first page): a page of
+    /// another version means the file was saved between two reads, and the pager starts over at that version, so no
+    /// two pages of different versions show together. A host that names no version starts nothing over.
+    public static func startsOver(pinned: String?, answered: String?) -> Bool {
+        guard let pinned, let answered else { return false }
+        return pinned != answered
+    }
+
     public static func original(_ entry: FileEntry, place: FilePlace) -> Original {
         if place.kind != .folder || place.shared || entry.shared == true { return .facts(host: place.host) }
         if let size = entry.size, Int(size) > originalMax { return .tooBig }

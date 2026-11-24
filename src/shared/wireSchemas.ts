@@ -1579,7 +1579,7 @@ export const FilesThreadsSchema = z.object({ threads: z.array(z.object({ session
 /** `work.files.read`: a frame of a file's own bytes (base64), by version. Named apart from the PDF's and the deck's `FileBytes`. */
 export const FileReadSchema = z.object({ data: z.string(), size: z.number(), version: z.string(), changed: z.number(), end: z.boolean(), locked: z.string().optional() })
 /** `work.files.preview`: a page as a PNG, or the one sentence why there is none. One object, so either answer decodes. */
-export const FilePreviewPhoneSchema = z.object({ png: z.string().optional(), pages: z.number().optional(), width: z.number().optional(), height: z.number().optional(), none: z.string().optional() })
+export const FilePreviewPhoneSchema = z.object({ png: z.string().optional(), pages: z.number().optional(), width: z.number().optional(), height: z.number().optional(), version: z.string().optional(), none: z.string().optional() })
 export const FilesThumbsSchema = z.object({ thumbs: z.array(z.string().nullable()) })
 /** `work.files.open`, as the phone reads it: the item the Files pane now holds, or the thread that already shows the file. The tabs stay the desktop's. */
 export const FilesOpenedPhoneSchema = z.object({ rev: z.number(), tabId: z.string().optional(), item: CanvasItemSchema.optional(), held: z.object({ sessionId: z.string(), itemId: z.string() }).optional() })

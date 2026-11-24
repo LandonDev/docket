@@ -88,6 +88,10 @@ struct FileQuickLookScreen: View {
     @State private var pageFailures: [Int: String] = [:]
     @State private var tries: [Int: Int] = [:]
     @State private var pageCount = 0
+    /// The file's version the pages are of (`FilesRules.startsOver`), and the pager's round: a page of another
+    /// version starts the pager over.
+    @State private var version: String?
+    @State private var round = 0
     @State private var reading = false
     @State private var failure: String?
     @State private var shown: URL?
@@ -151,6 +155,7 @@ struct FileQuickLookScreen: View {
                 .task(id: tries[page, default: 0]) { await load(page) }
             }
         }
+        .id(round)
         .tabViewStyle(.page(indexDisplayMode: pageCount > 1 ? .automatic : .never))
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .accessibilityIdentifier("files-pager")
@@ -161,6 +166,7 @@ struct FileQuickLookScreen: View {
         guard let ref = entry.ref, original == .allowed || original == .readOnly else { return }
         guard let answer = try? await files.preview(workspaceId, ref, page: 1, width: previewWidth), let png = answer.png, let image = Self.image(png) else { return }
         pages[1] = image
+        version = answer.version
         pageCount = max(1, Int(answer.pages ?? 1))
     }
 
@@ -169,6 +175,14 @@ struct FileQuickLookScreen: View {
         guard pages[page] == nil, pageFailures[page] == nil, let ref = entry.ref else { return }
         do {
             let answer = try await files.preview(workspaceId, ref, page: page, width: previewWidth)
+            if FilesRules.startsOver(pinned: version, answered: answer.version) {
+                // Saved between two reads: every page read before is of the old file.
+                pages = [:]
+                pageFailures = [:]
+                version = answer.version
+                pageCount = max(1, Int(answer.pages ?? 1))
+                round += 1
+            }
             if let png = answer.png, let image = Self.image(png) { pages[page] = image } else { pageFailures[page] = answer.none ?? "There is no preview of this page." }
         } catch {
             if !Task.isCancelled { pageFailures[page] = ActionError.wrap(error).message }

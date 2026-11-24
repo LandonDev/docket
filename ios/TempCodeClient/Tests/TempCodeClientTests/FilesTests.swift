@@ -120,6 +120,17 @@ struct FilesRulesTests {
         #expect(FilesRules.opening(lifeos, place: folder, caps: full) == .item)
     }
 
+    @Test func `Quick Look's pager starts over when a page is of another version of the file`() throws {
+        #expect(!FilesRules.startsOver(pinned: "a1", answered: "a1"))
+        // Saved on the computer between page 1 and page 2: the pager starts over at the new version.
+        #expect(FilesRules.startsOver(pinned: "a1", answered: "b2"))
+        // A host that names no version, or nothing pinned yet, starts nothing over.
+        #expect(!FilesRules.startsOver(pinned: nil, answered: "b2"))
+        #expect(!FilesRules.startsOver(pinned: "a1", answered: nil))
+        let page: FilePreview = try decode(#"{"png":"AA==","pages":3,"width":10,"height":10,"version":"b2"}"#)
+        #expect(page.version == "b2")
+    }
+
     @Test func `the search field filters by every word, case and accents ignored`() throws {
         let rows: [FileEntry] = try decode("[\(entry("Spring Café budget.xlsx", kind: "sheet")),\(entry("Bracket.pdf")),\(entry("Budget 2.pdf"))]")
         #expect(FilesRules.filter(rows, query: "cafe BUDGET").map(\.name) == ["Spring Café budget.xlsx"])

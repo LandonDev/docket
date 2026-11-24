@@ -8473,13 +8473,15 @@ public struct FilePreview: Codable, Hashable, Sendable {
     public let pages: Double?
     public let width: Double?
     public let height: Double?
+    public let version: String?
     public let none: String?
 
-    public init(png: String? = nil, pages: Double? = nil, width: Double? = nil, height: Double? = nil, none: String? = nil) {
+    public init(png: String? = nil, pages: Double? = nil, width: Double? = nil, height: Double? = nil, version: String? = nil, none: String? = nil) {
         self.png = png
         self.pages = pages
         self.width = width
         self.height = height
+        self.version = version
         self.none = none
     }
 }

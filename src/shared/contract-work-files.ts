@@ -415,7 +415,8 @@ export interface FileArchive {
 }
 
 /** A preview page, or why there is none (`none`: one sentence for the tile's place). */
-export type FilePreview = { png: string; pages: number; width: number; height: number } | { none: string }
+/** `version`: the file's version the page is of, as a digest; pages of one file read across a save differ in it. */
+export type FilePreview = { png: string; pages: number; width: number; height: number; version?: string } | { none: string }
 
 /** What a change did, and how to take it back. */
 export interface FileDone {
