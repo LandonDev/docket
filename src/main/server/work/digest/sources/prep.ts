@@ -52,13 +52,14 @@ export const prepStarting: Source = {
       .filter((m) => m.startsAt > now && m.startsAt - now <= STARTS_WITHIN_MS)
       .map((m) => {
         const detail = names(m)
+        const key = `prep:${m.eventId}:${m.startsAt}`
         return {
           kind: 'prep.starting',
           workspaceId: m.workspaceId,
-          // The clock time, not "in 10 min": the row is read later, in the list.
-          title: `${m.title} starts at ${timeIn(env.zone, m.startsAt)}`,
+          // The clock time, not "in 10 min": the row is read later, in the list. In the zone it was first told in.
+          title: `${m.title} starts at ${timeIn(env.zoneOf?.(key) ?? env.zone, m.startsAt)}`,
           ...(detail ? { detail } : {}),
-          key: `prep:${m.eventId}:${m.startsAt}`,
+          key,
           open: { view: 'prep', workspaceId: m.workspaceId, at: m.eventId },
           by: m.startsAt
         }
@@ -76,12 +77,15 @@ export const prepReady: Source = {
       .filter((m) => m.state === 'briefed')
       .map((m) => {
         const who = names(m)
+        // Keyed by the meeting, not the day: a meeting inside the next day at two digest times is one row.
+        const key = `prep-ready:${m.eventId}:${m.startsAt}`
+        const at = timeIn(env.zoneOf?.(key) ?? env.zone, m.startsAt)
         return {
           kind: 'prep.ready',
           workspaceId: m.workspaceId,
           title: `Prep is ready for ${m.title}`,
-          detail: who ? `${timeIn(env.zone, m.startsAt)}, ${who.charAt(0).toLowerCase()}${who.slice(1)}` : timeIn(env.zone, m.startsAt),
-          key: `prep-ready:${m.eventId}:${env.day}`,
+          detail: who ? `${at}, ${who.charAt(0).toLowerCase()}${who.slice(1)}` : at,
+          key,
           open: { view: 'prep', workspaceId: m.workspaceId, at: m.eventId }
         }
       })

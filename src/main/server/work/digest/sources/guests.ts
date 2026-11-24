@@ -13,8 +13,10 @@ import type { Source } from './index'
  * the list carries one.
  *
  * Each job is read from the time of its own last whole read (`kept`), moved
- * only once that read's tells are kept: a job whose list failed or came back
- * in part is read from the same time again at the next digest.
+ * only once that read's tells are kept: a job whose list failed, came back
+ * in part, or came back with LifeOS's error beside it is read from the same
+ * time again at the next digest. A row is keyed by the document and its
+ * edit (`editedAt`), so an edit read twice is one row.
  */
 
 const DAY = 86_400_000
@@ -33,7 +35,8 @@ export const guests: Source = {
     for (const ws of env.workspaces()) {
       // Each job from its own last whole read: a job whose read failed today looks back to then tomorrow, so an edit
       // made while its list could not be read is told late rather than never.
-      const since = env.kept?.get(keptKey(ws.id)) ?? fallback
+      const kept = Number(env.kept?.get(keptKey(ws.id)) ?? NaN)
+      const since = Number.isFinite(kept) ? kept : fallback
       next.set(ws.id, since)
       let found: FindAnswer
       try {
@@ -42,13 +45,16 @@ export const guests: Source = {
         // The docs pillar could not list this job: nothing is told for it today.
         continue
       }
-      if (found.complete) next.set(ws.id, now)
+      // Whole only when every place was read and LifeOS's part carried no error (Docs answers that beside the list).
+      if (found.complete && !found.lifeos) next.set(ws.id, now)
       for (const entry of found.entries) {
         if (entry.lastBy !== 'guest' || entry.editedAt <= since) continue
-        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key: `guest-edit:${entry.key}:${env.day}`, open: { view: 'docs', workspaceId: ws.id, at: entry.key } })
+        // Keyed by the document and its edit: the same edit read again, by a partial read today and a whole one
+        // tomorrow, or in the seconds between the digest's time and LifeOS's answer, is the same row, never news twice.
+        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key: `guest-edit:${entry.key}:${entry.editedAt}`, open: { view: 'docs', workspaceId: ws.id, at: entry.key } })
       }
     }
-    return { tells, done: () => next.forEach((at, id) => env.kept?.set(keptKey(id), at)) }
+    return { tells, done: () => next.forEach((at, id) => env.kept?.set(keptKey(id), String(at))) }
   }
 }
 

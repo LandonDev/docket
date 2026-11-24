@@ -61,4 +61,9 @@ describe('the missed scheduled mail source', () => {
     await expect(Promise.resolve(scheduled.read(envOf('throws'), NOW))).rejects.toThrow('LifeOS is down')
     await expect(Promise.resolve(scheduled.read(envOf([], false), NOW))).rejects.toThrow('not connected')
   })
+  it('writes the time in the zone the failure was first told in, so a desktop in another zone does not make it news again', async () => {
+    const env = { ...envOf([row({ sendAt: Date.parse('2026-11-23T12:00:00Z') })]), zone: 'America/Los_Angeles', zoneOf: () => 'America/New_York' }
+    const [tell] = (await scheduled.read(env, NOW)) as { title: string }[]
+    expect(tell?.title).toBe('"Budget" did not go at 7:00 AM on Nov 23')
+  })
 })

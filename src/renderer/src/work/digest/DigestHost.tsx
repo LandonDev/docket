@@ -53,6 +53,9 @@ function writeDismissed(names: ReadonlySet<string>): void {
 }
 
 
+/** How the guest's-edit door loads Files, on its first press; a test holds it to stand for a slow chunk load. */
+export const filesDoor = { load: () => import("../files/openFrom") };
+
 /** Today's id among the pages above the workspaces (work/today/open.ts). */
 const TODAY = "today";
 
@@ -115,11 +118,13 @@ export function DigestHost() {
         if (!workspace) return false;
         const mine = choose();
         const before = workViewNow();
-        void import("../files/openFrom").then(({ openInFiles }) => {
-          const current = stillChosen(mine, before, workspaceId);
+        void filesDoor.load().then(({ openInFiles }) => {
+          // A door that waits checks the choice just before it opens: he opened something while Files loaded, so
+          // nothing opens over it (openInFiles would take a fresh number and show Files).
+          if (!stillChosen(mine, before, workspaceId)) return;
           // openInFiles takes the next number as it starts: still the latest at its end means nothing was chosen since.
           return openInFiles(workspace, { ref, name: "Untitled" }).catch((err: unknown) => {
-            if (!current || !stillChosen(mine + 1, before, workspaceId)) return;
+            if (!stillChosen(mine + 1, before, workspaceId)) return;
             openWorkView({ workspaceId, view: "files" });
             void loadToast().then((toast) => toast.error("It did not open", { description: refusalWords(err) || undefined }));
           });

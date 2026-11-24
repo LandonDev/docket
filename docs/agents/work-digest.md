@@ -243,10 +243,14 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   close read what it stands for at the press (`live` in DigestHost.tsx):
   the same words may have come to mean another telling of a thing, or
   another host's row of the same day.
-- An interrupt he closed or opened is kept in localStorage by the thing
-  and when it was told (`tellingOf`; `work.digest.dismissed`, the newest
-  200), so the same thing told again later shows again, and shared across windows by
-  the storage event, so a reload does not bring it back.
+- An interrupt he closed or opened, and one he heard, is kept by the thing
+  told: its key and its clock (`tellingOf`, `key@by`), never when a host
+  told it (`work.digest.dismissed` in localStorage, the newest 200, shared
+  across windows by the storage event, so a reload does not bring it back).
+  Two hosts' copies of one meeting are one telling: closed on one, the
+  other stays closed, and it sounds once. A deadline brought forward is a
+  new telling, and a send that fails again is a new key (its attempt), so
+  each shows again.
 - A view: every overlay closes (`shell.closeOverlays`, Settings among
   them: a press from Settings → Work → Digest, or a toast over Settings,
   must not open behind it), the window enters the job's workspace as its
@@ -256,8 +260,10 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   behind, with no document named, stands on the LifeOS place. A refusal
   shows Files with "It did not open" and the host's reason, but only while
   the press is still his latest choice (`choose`, `stillChosen` in
-  lib/workSwitch.ts): a thread he opened while the host made the tab keeps
-  the window. A job this
+  lib/workSwitch.ts), and the choice is asked again just before the file
+  opener is called (`filesDoor` loads Files on the first press): a thread
+  he opened while Files loaded, or while the host made the tab, keeps the
+  window. A job this
   window does not list opens nothing, and the press opens the list.
 - A held item opens the Outbox on that item: `wantOutboxItem(key)` in
   work/outbox/store.ts, which the Outbox page takes once its list holds it.
@@ -304,7 +310,16 @@ it that way and has no method for the fact. The frame (`sources/index.ts`
 with a beat at the first look and then each `every`, logs one that throws
 and reads the rest, and with `prefix` ends every row under it a read no
 longer names (`ctx.tell.only`). A re-read with nothing changed says the
-same words, so it is not news again.
+same words, so it is not news again. Two rules hold every source. A row's
+key is the thing told (the document and its edit, the meeting and its
+start, the mail), never the day it was read. A time in its words is
+written in the zone the key was first told in (`zoneOf`: the frame keeps
+each source's keys' zones as `source:zones:<source>`, the newest 500), so
+a desktop in another zone does not rewrite a told thing into news. A
+source that keeps a cutoff (`kept`) moves it only on a read that was whole
+and carried no error, once its tells are kept (`SourceRead.done`).
+`capture` and `waiting` key by the day on purpose: what they tell is the
+day's count.
 
 - `lapses`: a sign-in or licence about to end, from `lapsesOf`, each 6 h;
   `lapse:<pillar>:<id>:<until>:<stage>`; 14 days before it waits, on the
@@ -318,9 +333,11 @@ same words, so it is not news again.
   day, before the first) was a guest's, from `work.docs.find`'s `lastBy`, at
   digest time, each job from its own last whole read (`kept`, in the
   digest's settings as `source:guests.since:<workspaceId>`, moved only once
-  that read's tells are kept): a job whose list failed or came back in part
-  is read from the same time at the next digest, so its edit is told late,
-  not lost; `guest-edit:<entry key>:<day>`, "A guest edited Pricing
+  that read's tells are kept): a job whose list failed, came back in part,
+  or came back with LifeOS's error beside it (`FindAnswer.lifeos`) is read
+  from the same time at the next digest, so its edit is told late, not
+  lost; `guest-edit:<entry key>:<editedAt>`, the document and its edit, so
+  the same edit read twice is one row; "A guest edited Pricing
   notes" (the list names no guest), opens the document or sheet itself in
   Files (`open.at` is the entry key, `lifeos:docs:<id>`).
 - `capture`: captures waiting in Life's "Unsorted", one row a day,
@@ -339,7 +356,8 @@ same words, so it is not news again.
   leaves the read, and its row and toast go (`prefix: 'prep:'`).
 - `prep.ready` (prep): at digest time, a brief that is ready for a meeting
   in the next day, "Prep is ready for Budget review";
-  `prep-ready:<eventId>:<day>`. It waits.
+  `prep-ready:<eventId>:<startsAt>`, so a meeting inside the next day at
+  two digest times is one row. It waits.
 - `scheduled` (mail): a mail he scheduled that did not go, from LifeOS's
   Scheduled list on the owner session, each 5 minutes;
   `mail-missed:<id>`, '"Budget" did not go at 7:00 AM on Nov 23' (the date

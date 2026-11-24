@@ -5,7 +5,7 @@
  * Today registers.
  */
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const world = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock("../../lib/connection", async (original) => {
@@ -47,7 +47,7 @@ import { choose, digestOpensPort, openWorkView, setWorkOn, workOpenPort, workSwi
 import { shell, shellStore } from "../../stores/shell";
 import { WORK_PLACE_ROWS } from "../../lib/workPlaces";
 import { useWorkPlaceAt } from "../../lib/workPlaceAt";
-import { DigestHost, digestOpens, resetDismissed } from "./DigestHost";
+import { DigestHost, digestOpens, filesDoor, resetDismissed } from "./DigestHost";
 import { loadDigest, resetDigestStore } from "./store";
 import { push, reopen, resetWorld, tell, type World } from "./world.testkit";
 
@@ -293,6 +293,27 @@ describe("a guest's edit that does not open", () => {
     await settle();
     expect(workViewNow()).toMatchObject({ workspaceId: "ws-purdue", view: "files" });
     expect(toasts.errors).toEqual(["It did not open"]);
+  });
+  it("opens nothing over a thread he opened while Files was still loading", async () => {
+    const opened = vi.fn(async () => {});
+    files.open = opened;
+    let loaded: () => void = () => {};
+    const load = filesDoor.load;
+    // the Files chunk is slow to load
+    filesDoor.load = () => new Promise<void>((r) => (loaded = r)).then(load);
+    onTestFinished(() => void (filesDoor.load = load));
+    w().rows.set("box", [guest()]);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    // he opens a thread before the Files module has loaded
+    act(() => {
+      choose();
+      openWorkView(null);
+    });
+    await act(async () => loaded());
+    await settle();
+    expect(opened).not.toHaveBeenCalled();
+    expect(workViewNow()).toBeNull();
   });
   it("keeps a thread he opened while it waited: no Files over it, no word", async () => {
     w().rows.set("box", [guest()]);

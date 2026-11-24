@@ -71,9 +71,16 @@ describe('a brief that is ready', () => {
     const tells = (await prepReady.read(e, at('08:00'))) as Tell[]
     expect(asked[0]!.params).toEqual({ from: at('08:00'), to: at('08:00', 25) })
     expect(tells).toEqual([
-      { kind: 'prep.ready', workspaceId: 'ws-purdue', title: 'Prep is ready for Budget review', detail: '2:00 PM, with Dana Reyes', key: 'prep-ready:ev1:2026-11-24', open: { view: 'prep', workspaceId: 'ws-purdue', at: 'ev1' } }
+      { kind: 'prep.ready', workspaceId: 'ws-purdue', title: 'Prep is ready for Budget review', detail: '2:00 PM, with Dana Reyes', key: `prep-ready:ev1:${at('14:00')}`, open: { view: 'prep', workspaceId: 'ws-purdue', at: 'ev1' } }
     ])
     expect(prepReady).toMatchObject({ pillar: 'prep', every: 0 })
     expect(prepReady.prefix).toBeUndefined()
+  })
+  it('is keyed by the meeting, not the day: one inside the next day at two digest times is one row', async () => {
+    const early = meeting({ state: 'briefed', startsAt: at('07:30', 25) })
+    const first = (await prepReady.read({ ...env([early]).env, day: '2026-11-24' }, at('08:00'))) as Tell[]
+    const second = (await prepReady.read({ ...env([early]).env, day: '2026-11-25' }, at('07:00', 25))) as Tell[]
+    expect(second.map((t) => t.key)).toEqual(first.map((t) => t.key))
+    expect(first).toHaveLength(1)
   })
 })

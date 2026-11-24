@@ -26,7 +26,7 @@ const entry = (id: string, title: string, editedAt: number, lastBy?: FindEntry['
   held: 0
 })
 
-function envOf(found: Record<string, FindEntry[] | Error>, since = 0): SourceEnv & { calls: unknown[] } {
+function envOf(found: Record<string, FindEntry[] | Error | { entries: FindEntry[]; complete: boolean; lifeos?: string }>, since = 0): SourceEnv & { calls: unknown[] } {
   const calls: unknown[] = []
   return {
     calls,
@@ -36,7 +36,7 @@ function envOf(found: Record<string, FindEntry[] | Error>, since = 0): SourceEnv
       calls.push({ method, params })
       const got = found[(params as { workspaceId: string }).workspaceId]
       if (!got || got instanceof Error) throw got ?? new Error('no such Work workspace')
-      return { entries: got, projects: [], hits: [], complete: true } as T
+      return (Array.isArray(got) ? { entries: got, projects: [], hits: [], complete: true } : { projects: [], hits: [], ...got }) as T
     },
     workspaces: () => WORKSPACES,
     day: '2026-11-23',
@@ -57,8 +57,8 @@ describe('the guests source', () => {
       NOW - 20 * HOUR
     )
     expect(await tellsOf(env, NOW)).toEqual([
-      { kind: 'docs.guest', workspaceId: 'ws-unify', title: 'A guest edited Pricing notes', key: 'guest-edit:lifeos:docs:d1:2026-11-23', open: { view: 'docs', workspaceId: 'ws-unify', at: 'lifeos:docs:d1' } },
-      { kind: 'docs.guest', workspaceId: 'ws-ref', title: 'A guest edited Game schedule', key: 'guest-edit:lifeos:docs:d4:2026-11-23', open: { view: 'docs', workspaceId: 'ws-ref', at: 'lifeos:docs:d4' } }
+      { kind: 'docs.guest', workspaceId: 'ws-unify', title: 'A guest edited Pricing notes', key: `guest-edit:lifeos:docs:d1:${NOW - 2 * HOUR}`, open: { view: 'docs', workspaceId: 'ws-unify', at: 'lifeos:docs:d1' } },
+      { kind: 'docs.guest', workspaceId: 'ws-ref', title: 'A guest edited Game schedule', key: `guest-edit:lifeos:docs:d4:${NOW - 3 * HOUR}`, open: { view: 'docs', workspaceId: 'ws-ref', at: 'lifeos:docs:d4' } }
     ])
     expect(env.calls[0]).toEqual({ method: 'work.docs.find', params: { workspaceId: 'ws-unify', refresh: true } })
   })
@@ -82,21 +82,43 @@ describe('the guests source', () => {
     expect(await tellsOf(env, NOW)).toEqual(await tellsOf(env, NOW + 60_000))
   })
   it('reads each job from its own last whole read: a job whose list failed is read from the same time again, so its guest edit is told late, not lost', async () => {
-    const kept = new Map<string, number>()
-    const store = { get: (k: string) => kept.get(k) ?? null, set: (k: string, v: number) => void kept.set(k, v) }
+    const kept = new Map<string, string>()
+    const store = { get: (k: string) => kept.get(k) ?? null, set: (k: string, v: string) => void kept.set(k, v) }
     // Monday 8:00: Unify's list fails; Ref's is read whole
     const monday = { ...envOf({ 'ws-unify': new Error('LifeOS timed out'), 'ws-ref': [] }, NOW - 24 * HOUR), kept: store }
     const first = (await guests.read(monday, NOW)) as SourceRead
     expect(first.tells).toEqual([])
     first.done!()
     // Ref moves to its read; Unify stays where it read from
-    expect(Object.fromEntries(kept)).toEqual({ 'guests.since:ws-unify': NOW - 24 * HOUR, 'guests.since:ws-ref': NOW })
+    expect(Object.fromEntries(kept)).toEqual({ 'guests.since:ws-unify': String(NOW - 24 * HOUR), 'guests.since:ws-ref': String(NOW) })
     // Tuesday 8:00: the day was made Monday, after the guest's edit; Unify's list answers now
     const tuesday = { ...envOf({ 'ws-unify': [entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')], 'ws-ref': [entry('d4', 'Game schedule', NOW - 2 * HOUR, 'guest')] }, NOW), kept: store }
     const second = (await guests.read(tuesday, NOW + 24 * HOUR)) as SourceRead
     // Unify looks back to Monday's day before; Ref only to its own read on Monday
     expect(second.tells.map((t) => t.title)).toEqual(['A guest edited Pricing notes'])
     second.done!()
-    expect(kept.get('guests.since:ws-unify')).toBe(NOW + 24 * HOUR)
+    expect(kept.get('guests.since:ws-unify')).toBe(String(NOW + 24 * HOUR))
+  })
+  it("reads LifeOS's error beside a list as a read that was not whole: the cutoff stays, so the edit is told when LifeOS answers", async () => {
+    const kept = new Map<string, string>()
+    const store = { get: (k: string) => kept.get(k) ?? null, set: (k: string, v: string) => void kept.set(k, v) }
+    // Docs catches the LifeOS failure and answers it beside an empty, "complete" list
+    const monday = { ...envOf({ 'ws-unify': { entries: [], complete: true, lifeos: 'LifeOS timed out' }, 'ws-ref': [] }, NOW - 24 * HOUR), kept: store }
+    ;((await guests.read(monday, NOW)) as SourceRead).done!()
+    expect(kept.get('guests.since:ws-unify')).toBe(String(NOW - 24 * HOUR))
+    const tuesday = { ...envOf({ 'ws-unify': [entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')], 'ws-ref': [] }, NOW), kept: store }
+    expect((await tellsOf(tuesday, NOW + 24 * HOUR)).map((t) => t.title)).toEqual(['A guest edited Pricing notes'])
+  })
+  it('keys a row by the document and its edit: the same edit in a partial read and again in a whole one the next day is one row', async () => {
+    const kept = new Map<string, string>()
+    const store = { get: (k: string) => kept.get(k) ?? null, set: (k: string, v: string) => void kept.set(k, v) }
+    const edit = entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')
+    const partial = { ...envOf({ 'ws-unify': { entries: [edit], complete: false }, 'ws-ref': [] }, NOW - 24 * HOUR), day: '2026-11-23', kept: store }
+    const first = (await guests.read(partial, NOW)) as SourceRead
+    first.done!()
+    const whole = { ...envOf({ 'ws-unify': [edit], 'ws-ref': [] }, NOW), day: '2026-11-24', kept: store }
+    const second = (await guests.read(whole, NOW + 24 * HOUR)) as SourceRead
+    expect(second.tells.map((t) => t.key)).toEqual(first.tells.map((t) => t.key))
+    expect(first.tells).toHaveLength(1)
   })
 })

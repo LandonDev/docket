@@ -512,11 +512,8 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       zone: () => made.zone(),
       since: () => made.store.days()[0]?.madeAt ?? 0,
       kept: {
-        get: (key) => {
-          const value = Number(made.store.setting(`source:${key}`) ?? NaN)
-          return Number.isFinite(value) ? value : null
-        },
-        set: (key, value) => made.store.setSetting(`source:${key}`, String(value))
+        get: (key) => made.store.setting(`source:${key}`),
+        set: (key, value) => made.store.setSetting(`source:${key}`, value)
       }
     })
     made.beats.push((now) => sources.beat(now))

@@ -29,13 +29,16 @@ export const lapses: Source = {
         // One that has already ended is Connections' to show (a broken row), not news to ring.
         if (stage === null || lapse.until <= now) return []
         const last = stage === lastStage
+        const key = keyOf(lapse.pillar, lapse.id, lapse.until, stage)
+        const zone = env.zoneOf?.(key) ?? env.zone
         return [
           {
             kind: 'connections.ending',
             workspaceId: null,
-            // The same words every time it is read, so a re-read is not news; in his zone, not the host's.
-            title: last ? `${lapse.title} ends ${dateIn(env.zone, lapse.until, now)} at ${timeIn(env.zone, lapse.until)}` : `${lapse.title} ends ${dateIn(env.zone, lapse.until, now)}`,
-            key: keyOf(lapse.pillar, lapse.id, lapse.until, stage),
+            // The same words every time it is read, so a re-read is not news; in his zone, not the host's, and in the
+            // one it was first told in (`zoneOf`).
+            title: last ? `${lapse.title} ends ${dateIn(zone, lapse.until, now)} at ${timeIn(zone, lapse.until)}` : `${lapse.title} ends ${dateIn(zone, lapse.until, now)}`,
+            key,
             open: { settings: 'connections' },
             // Only on its last day can it not wait: until then the digest says it.
             ...(last ? { by: lapse.until } : {})

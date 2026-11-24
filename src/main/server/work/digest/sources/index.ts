@@ -28,8 +28,21 @@ export interface SourceEnv {
   /** when this host last made a digest; 0: never */
   since: number
   /** what a source keeps between reads on this host (a cutoff per job), in the digest's own settings */
-  kept?: { get(key: string): number | null; set(key: string, value: number): void }
+  kept?: Kept
+  /**
+   * The zone to write `key`'s times in: the one it was first told in. A row's identity is the thing told, never the
+   * words' clock, so a desktop in another zone does not rewrite a told thing into news. Absent: `zone`.
+   */
+  zoneOf?(key: string): string
 }
+
+export interface Kept {
+  get(key: string): string | null
+  set(key: string, value: string): void
+}
+
+/** The zones remembered for a source's keys: the newest this many. */
+const ZONES_MAX = 500
 
 export interface SourceRead {
   tells: Tell[]
@@ -62,7 +75,7 @@ export interface SourcesDeps {
   day(now: number): string
   zone(): string
   since(): number
-  kept?: SourceEnv['kept']
+  kept?: Kept
 }
 
 export class Sources {
@@ -72,6 +85,16 @@ export class Sources {
   private readonly failing = new Set<string>()
 
   constructor(private readonly deps: SourcesDeps) {}
+
+  /** The zone each key of a source was first told in (`zoneOf`), kept as `zones:<source>`. */
+  private zones(source: Source): Record<string, string> {
+    try {
+      const raw = JSON.parse(this.deps.kept?.get(`zones:${source.id}`) ?? '{}') as unknown
+      return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {}
+    } catch {
+      return {}
+    }
+  }
 
   private env(now: number): SourceEnv {
     const { ctx } = this.deps
@@ -102,10 +125,19 @@ export class Sources {
     if (source.pillar && !this.deps.modules().some((m) => m.id === source.pillar)) return
     this.running.add(source.id)
     try {
-      const read = await source.read(this.env(now), now)
+      const env = this.env(now)
+      const pinned = this.zones(source)
+      const read = await source.read({ ...env, zoneOf: (key) => pinned[key] ?? env.zone }, now)
       const { tells, keep, done } = Array.isArray(read) ? { tells: read, keep: undefined, done: undefined } : read
       for (const tell of tells) ctx.tell(tell)
       if (source.prefix) ctx.tell.only(source.prefix, keep ?? tells.flatMap((t) => (t.key ? [t.key] : [])))
+      if (this.deps.kept && ctx.enabled()) {
+        // Each key told keeps the zone it was first told in; the newest ZONES_MAX are remembered.
+        const next = { ...pinned }
+        for (const t of tells) if (t.key && !(t.key in next)) next[t.key] = env.zone
+        const entries = Object.entries(next)
+        this.deps.kept.set(`zones:${source.id}`, JSON.stringify(Object.fromEntries(entries.slice(-ZONES_MAX))))
+      }
       if (done && ctx.enabled()) done()
       this.failing.delete(source.id)
     } catch (err) {

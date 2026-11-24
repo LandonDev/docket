@@ -58,8 +58,12 @@ export function onlyToday(days: readonly Pick<MergedDay, "day">[], now: number):
   return days.length > 0 && days.every((d) => d.day === localDay(now));
 }
 
-/** What a closed or opened interrupt is kept under: the thing and when it was told, so the same thing told again later (a send that fails a second time) shows again. */
-export const tellingOf = (row: Pick<TellRow, "key" | "host" | "id" | "toldAt">): string => `${nameOf(row)}@${row.toldAt ?? 0}`;
+/**
+ * What a closed, opened or heard interrupt is kept under: the thing told, its key and its clock, never when a host
+ * told it. Two hosts' copies of one meeting are one telling, so closing it on one closes it on the other and it
+ * sounds once; a deadline brought forward is a new telling, and a send that fails again is a new key (its attempt).
+ */
+export const tellingOf = (row: Pick<TellRow, "key" | "host" | "id" | "by">): string => `${nameOf(row)}@${row.by ?? ""}`;
 
 /** Two 32-bit FNV-1a passes with different seeds: a fingerprint, not a secret. */
 function fingerprint(text: string): string {
@@ -78,7 +82,7 @@ function fingerprint(text: string): string {
  * 1,000 characters at most): the list itself while it is short, else a fingerprint of the whole ordered list, so a
  * long fold whose one deadline moved is still a new notice.
  */
-export function tellingsOf(rows: readonly Pick<TellRow, "key" | "host" | "id" | "toldAt">[]): string {
+export function tellingsOf(rows: readonly Pick<TellRow, "key" | "host" | "id" | "by">[]): string {
   const joined = rows.map(tellingOf).join(" ");
   return joined.length <= 200 ? joined : `${rows.length}#${fingerprint(joined)}`;
 }

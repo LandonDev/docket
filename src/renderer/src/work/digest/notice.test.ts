@@ -75,12 +75,23 @@ describe("an interrupt", () => {
     expect(openInterrupts(view, new Set(), now).map((r) => r.id)).toEqual([b.id, a.id]);
     expect(openInterrupts(view, new Set([tellingOf(a)]), now).map((r) => r.id)).toEqual([b.id]);
   });
-  it("closed once, the same thing told again later shows again: a send that fails a second time", () => {
-    const first = row({ key: "unsent:host:h1", how: "now", toldAt: at(23, 10) });
+  it("closed once, a new telling shows again: a send that fails a second time, a deadline brought forward", () => {
+    const first = row({ key: `unsent:host:h1@${at(23, 10)}`, how: "now", toldAt: at(23, 10), by: at(23, 10) });
     const closed = new Set([tellingOf(first)]);
     expect(openInterrupts({ rows: [first] }, closed, now)).toEqual([]);
-    const again = { ...first, toldAt: at(23, 11, 30) };
+    const again = { ...first, key: `unsent:host:h1@${at(23, 11)}`, toldAt: at(23, 11, 30), by: at(23, 11) };
     expect(openInterrupts({ rows: [again] }, closed, now).map((r) => r.id)).toEqual([first.id]);
+    const invite = row({ key: "held:lifeos:calendarOps:op1", how: "now", toldAt: at(23, 9), by: at(23, 15) });
+    const sooner = { ...invite, toldAt: at(23, 11), by: at(23, 14) };
+    expect(openInterrupts({ rows: [sooner] }, new Set([tellingOf(invite)]), now)).toHaveLength(1);
+  });
+  it("closed on one host's copy, the same meeting told by another host stays closed, and is heard once", () => {
+    const box = row({ key: "prep:ev1:1", host: "box", how: "now", toldAt: at(23, 10), by: at(23, 14) });
+    const mac = { ...box, id: "m1", host: "mac", toldAt: at(23, 10, 2) };
+    expect(tellingOf(mac)).toBe(tellingOf(box));
+    expect(openInterrupts({ rows: [mac] }, new Set([tellingOf(box)]), now)).toEqual([]);
+    const heard = new Set([tellingOf(box)]);
+    expect(systemNotices(null, nowToasts([mac]), (r) => heard.has(tellingOf(r)))[0]!.silent).toBe(true);
   });
   it("is one toast a row, its detail the second line", () => {
     const a = row({ key: "prep:1", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", how: "now", toldAt: 1 });
@@ -100,7 +111,7 @@ describe("an interrupt", () => {
 describe("the system notifications", () => {
   it("say a long fold's tellings as a short fingerprint of the whole list, so one deadline moved is still a new notice", () => {
     const many = Array.from({ length: 40 }, (_, i) => row({ key: `held:lifeos:outbox:${"x".repeat(30)}${i}`, how: "now", toldAt: 1_000 + i }));
-    const moved = many.map((r, i) => (i === 17 ? { ...r, toldAt: 9_999 } : r));
+    const moved = many.map((r, i) => (i === 17 ? { ...r, by: 9_999 } : r));
     const a = systemNotices(null, nowToasts(many))[0]!;
     const b = systemNotices(null, nowToasts(moved))[0]!;
     expect(a.body).toBe(b.body);
@@ -115,11 +126,11 @@ describe("the system notifications", () => {
       { key: "digest:2026-11-24", title: "Work", body: "Digest: 1 thing in Cosmic", silent: true },
       // the detail on a line of its own: a title that holds a colon is never joined to it by another
       // its telling: the same thing told again in the same words is a new notice (src/main/notice.ts)
-      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes", telling: "k:prep:1@1" },
+      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes", telling: "k:prep:1@" },
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
     // folded: every open one by name, newest first, as the phone's banner says it
-    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary", telling: "k:k0@1 k:k1@2 k:k2@3 k:k3@4" }]);
+    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary", telling: "k:k0@ k:k1@ k:k2@ k:k3@" }]);
   });
   it("sound only for a telling not heard before: a thing that joins sounds, a fold that loses one or breaks up does not", () => {
     const many = Array.from({ length: 5 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));

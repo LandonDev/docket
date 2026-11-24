@@ -44,12 +44,14 @@ export const scheduled: Source = {
     for (const ws of env.workspaces()) {
       for (const row of rows) {
         if (row.status !== 'failed' || row.scheduled !== true || row.sector !== ws.sector || row.message?.kind !== 'mail') continue
+        const key = `mail-missed:${row._id}`
         tells.push({
           kind: 'mail.missed',
           workspaceId: ws.id,
-          title: missedTitle(row.message.subject, typeof row.sendAt === 'number' ? when(row.sendAt, env.zone) : 'its time'),
+          // In the zone it was first told in (`zoneOf`): a desktop in another zone does not make it news again.
+          title: missedTitle(row.message.subject, typeof row.sendAt === 'number' ? when(row.sendAt, env.zoneOf?.(key) ?? env.zone) : 'its time'),
           ...(row.error ? { detail: row.error } : {}),
-          key: `mail-missed:${row._id}`,
+          key,
           open: { view: 'mail', workspaceId: ws.id }
         })
       }

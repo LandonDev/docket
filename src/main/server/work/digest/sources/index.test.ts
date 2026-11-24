@@ -102,4 +102,24 @@ describe('the sources frame', () => {
     expect(handle).toHaveBeenCalledWith({ id: 'digest', method: 'work.mail.waiting', params: { workspaceId: 'ws-cosmic' } }, expect.anything(), { kind: 'local', caps: ['read'] })
     expect(refused).toBe('docs is not running on this host')
   })
+  it("writes a key's times in the zone it was first told in: a desktop in another zone does not make it news again", async () => {
+    const told: Tell[] = []
+    const kept = new Map<string, string>()
+    let zone = 'America/New_York'
+    const ctx = { tell: Object.assign((t: Tell) => void told.push(t), { only: () => {} }), log: () => {}, enabled: () => true }
+    const s = new Sources({
+      ctx: ctx as never,
+      modules: () => [],
+      sources: [source({ id: 'clocked', read: (env) => [{ kind: 'test.thing', workspaceId: null, title: `At ${env.zoneOf!('k1')}`, key: 'k1' }, { kind: 'test.thing', workspaceId: null, title: `At ${env.zoneOf!('k2')}`, key: 'k2' }].filter((t) => t.key === 'k1' || zone !== 'America/New_York') })],
+      day: () => '2026-11-23',
+      zone: () => zone,
+      since: () => 0,
+      kept: { get: (k) => kept.get(k) ?? null, set: (k, v) => void kept.set(k, v) }
+    })
+    await s.beforeDay(0)
+    zone = 'America/Los_Angeles'
+    await s.beforeDay(1)
+    // k1 keeps the zone it was first told in; k2, first told now, takes his zone now
+    expect(told.map((t) => t.title)).toEqual(['At America/New_York', 'At America/New_York', 'At America/Los_Angeles'])
+  })
 })
