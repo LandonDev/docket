@@ -7,8 +7,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, type TeamsPlace, type TeamsRoot } from '@shared/contract-work-office'
 import { readMacOneDrive } from './macOneDrive'
 import { readWindowsOneDrive, type WindowsOneDriveMount } from './oneDrive'
-import { keepDrive } from '../../../remote/fence'
-import { driveUp } from './reach'
+import { hostReal } from '../../../remote/fence'
+import { DRIVE_FRESH_MS, driveUp } from './reach'
 import { zipEntries } from './zip'
 
 /**
@@ -184,14 +184,14 @@ function found(host: string): TeamsLibrary[] {
  */
 export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
   // A folder on a drive not known to be there is never touched: it is listed as not reachable (reach.ts).
-  const roots = rootsOf(db).map((r) => (driveUp(r.folder) ? { ...r, folder: real(r.folder) ?? r.folder } : { ...r, away: true as const }))
+  const roots = rootsOf(db).map((r) => (driveUp(r.folder) ? { ...r, folder: rootReal(r.folder) ?? r.folder } : { ...r, away: true as const }))
   const macMounts = readMacOneDrive()
   const pathKey = process.platform === 'win32' ? (path: string) => path.toLowerCase() : (path: string) => path
   const edit = new Map(roots.map((r) => [pathKey(r.folder), r]))
   const libs: TeamsLibrary[] = []
   const known = new Set<string>()
   for (const l of found(host)) {
-    const path = real(l.path)
+    const path = rootReal(l.path)
     if (!path) continue
     const key = pathKey(path)
     if (known.has(key) || edit.get(key)?.off) continue
@@ -201,7 +201,7 @@ export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
   for (const r of roots) {
     const key = pathKey(r.folder)
     const away = 'away' in r
-    if (r.off || known.has(key) || (!away && !real(r.folder))) continue
+    if (r.off || known.has(key) || (!away && !rootReal(r.folder))) continue
     known.add(key)
     const { team, library } = splitLibraryName(basename(r.folder) || r.folder)
     libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false, ...(away ? { away } : {}) })
@@ -232,15 +232,29 @@ export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
 /** A folder found here that he turned off: listed in Settings so he can turn it on again. */
 export const offFolders = (db: DatabaseSync): string[] => rootsOf(db).filter((r) => r.off).map((r) => r.folder)
 
-/** A path's real spelling, its drive letter kept (`keepDrive`); null when it is not there, or lies on a drive not known to be there. */
+/** A path's real spelling, its drive letter kept (`hostReal`); null when it is not there, or lies on a drive not known to be there. */
 const real = (path: string): string | null => {
   if (!driveUp(path)) return null
   try {
-    return keepDrive(path)
+    return hostReal(path)
   } catch {
     return null
   }
 }
+
+/** A library's own folder as last resolved: asked on every call that names a file in it, and a mapped drive answers each over the link. */
+const rootsKept = new Map<string, { real: string | null; at: number }>()
+const rootReal = (path: string, now = Date.now()): string | null => {
+  const was = rootsKept.get(path)
+  if (was && now - was.at < DRIVE_FRESH_MS) return was.real
+  const got = real(path)
+  // Only a folder that is there is kept: one that comes back is found on the next call.
+  if (got) rootsKept.set(path, { real: got, at: now })
+  else rootsKept.delete(path)
+  return got
+}
+/** What was resolved of the libraries' own folders is dropped (their list changed, or a test). */
+export const forgetLibraryRoots = (): void => rootsKept.clear()
 const within = (path: string, dir: string): boolean => {
   const r = relative(dir, path)
   return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !r.startsWith(sep) && !/^[a-zA-Z]:/.test(r))
@@ -250,11 +264,12 @@ const within = (path: string, dir: string): boolean => {
  * The library a path lies in, by its real path, or null: the one fence every Teams file read and
  * open passes. A link out of a library, or `..`, leaves it.
  */
-export function libraryOf(libs: readonly TeamsLibrary[], path: string): { library: TeamsLibrary; path: string } | null {
-  const at = real(path)
+export function libraryOf(libs: readonly TeamsLibrary[], path: string, o: { real?: boolean } = {}): { library: TeamsLibrary; path: string } | null {
+  // `real`: the caller resolved the path already, by the same rule.
+  const at = o.real ? path : real(path)
   if (!at) return null
   for (const library of libs) {
-    const root = real(library.path)
+    const root = rootReal(library.path)
     if (root && within(at, root)) return { library, path: at }
   }
   return null

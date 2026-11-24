@@ -90,3 +90,20 @@ describe('a file kept in the cloud', () => {
     expect(cloudReads()).toEqual([])
   })
 })
+
+describe('a page of rows on a mapped drive', () => {
+  it('is never looked at row by row: each row answers nothing, and the drive is not touched', async () => {
+    const { setDriveLook } = await import('../office/files/reach')
+    let looks = 0
+    setDriveLook(async () => void looks++)
+    try {
+      const refs = ['Budget.xlsx', 'Deck.pptx', 'Minutes.docx'].map((name) => at(`J:\\Esports\\${name}`))
+      const got = await call<{ entries: (FileEntry | null)[] }>('work.files.stat', { refs })
+      expect(got.entries).toEqual([null, null, null])
+      expect(looks).toBe(0)
+      expect(opened.filter((p) => p.startsWith('J:'))).toEqual([])
+    } finally {
+      setDriveLook()
+    }
+  })
+})

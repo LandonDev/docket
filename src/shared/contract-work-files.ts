@@ -148,7 +148,7 @@ export const FilesRequestSchemas = [
   request('work.files.places', z.object({ workspaceId: Workspace })),
   /** → FilesListing: one folder or lens, a page at a time (`LIST_PAGE_MAX` entries, `LIST_PAGE_BYTES`). `cursor` is the last answer's `next`; a folder that changed between pages answers `stale`, and the window lists again. */
   request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional() })),
-  /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach. */
+  /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive when several are asked at once (each look is round trips over the link). */
   request('work.files.stat', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100) })),
   /**
    * → what `host` answers to `method` (places, a folder's page, the rows on screen): a desktop of his the window has

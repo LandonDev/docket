@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import type { WorkCtx } from '../../modules'
-import { librariesOf } from '../../office/files/library'
+import { forgetLibraryRoots, librariesOf } from '../../office/files/library'
 import { vmLibraries } from '../../office/vm/files'
 
 /**
@@ -29,4 +29,4 @@ export function librariesHere(ctx: Pick<WorkCtx, 'db' | 'host'>, now = Date.now(
 export const vmLibrariesHere = (ctx: Pick<WorkCtx, 'db' | 'host'>): TeamsLibrary[] => vmLibraries(ctx.db, ctx.host)
 
 /** His edit to the list landed, or a test moved the cloud folder: the next ask finds again. */
-export const forgetLibraries = (db: DatabaseSync): void => void kept.delete(db)
+export const forgetLibraries = (db: DatabaseSync): void => void (kept.delete(db), forgetLibraryRoots())

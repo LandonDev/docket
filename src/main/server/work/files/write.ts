@@ -4,6 +4,7 @@ import { link, lstat, mkdir, open, readdir, realpath, rename, rm, rmdir, stat, u
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { nameProblem } from '@shared/work/files'
+import { driveOf } from '../office/files/reach'
 
 /**
  * The one way the Files place changes a disk on this host (docs/agents/work-files.md). Every verb that makes,
@@ -422,12 +423,32 @@ export async function copyNoReplace(fence: WriteFence, from: string, toDir: stri
 
 /** A file's version, for "is it still the one shown": its size, its change time and, for a file of 64 MB or less, its sha256. */
 export async function versionOf(path: string): Promise<{ size: number; mtimeMs: number; sha256?: string }> {
-  const { size, mtimeMs } = await stat(path)
-  if (size > HASH_MAX) return { size, mtimeMs }
+  const { size, mtimeMs, ctimeMs, ino } = await stat(path)
+  // A mapped or network drive: each hash is the whole file over the link again, so its version is its size and time.
+  if (size > HASH_MAX || driveOf(path)) return { size, mtimeMs }
+  // A file read in pieces asks once a piece: unchanged since its last hash, that hash is its version.
+  const stamp = `${size}:${mtimeMs}:${ctimeMs}:${ino}`
+  const was = hashed.get(path)
+  if (was?.stamp === stamp) {
+    hashed.delete(path)
+    hashed.set(path, was)
+    return { size, mtimeMs, sha256: was.sha256 }
+  }
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
-  return { size, mtimeMs, sha256: hash.digest('hex') }
+  const sha256 = hash.digest('hex')
+  hashed.delete(path)
+  hashed.set(path, { stamp, sha256 })
+  for (const key of hashed.keys()) {
+    if (hashed.size <= HASHED_MOST) break
+    hashed.delete(key)
+  }
+  return { size, mtimeMs, sha256 }
 }
+
+/** The last hash of each file lately versioned, by its size, times and file id: a hash is the whole file read again. */
+const hashed = new Map<string, { stamp: string; sha256: string }>()
+const HASHED_MOST = 256
 
 type Version = Awaited<ReturnType<typeof versionOf>>
 /** Whether two versions are one: by sha256 when both have it, else by size and time. */

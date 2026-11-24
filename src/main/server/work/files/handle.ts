@@ -14,7 +14,7 @@ import { fencedItem, itemPath } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, rootsOf, whoOf } from '../office/files/library'
-import { probeDrives } from '../office/files/reach'
+import { driveOf as linkedDrive, probeDrives } from '../office/files/reach'
 import { copyWaits } from './copyKept'
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
@@ -28,6 +28,7 @@ import { MarkStore, type Mark, type Marked } from './marks'
 import { feedListing, forgetGonePlaces, listedLibraries, namesAnswer, placeOf, whereOf } from './names'
 import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
+import { winDirHost } from './places/winDir'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetLibraries } from './places/libraries'
 import { filesAcross } from './across'
@@ -291,6 +292,9 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
 
 const listing = (page: DiskPage, entries: FileEntry[], head: { place?: string; trail?: FileCrumb[]; asOf?: number }): FilesListing =>
   page.stale ? { entries: [], stale: true } : { entries, ...(page.next ? { next: page.next } : {}), ...head }
+
+/** A file on a drive that may hang (a mapped letter, a share): what a page of rows never looks at one by one. */
+const onLinkedDrive = (ref: FileRef): boolean => ref.at === 'file' && linkedDrive(ref.path) !== null
 
 /** One row again, looked at now, with who last saved it where its file says: what a list leaves for the rows on screen. */
 async function statOne(ctx: WorkCtx, by: Caller, workspaceId: string, ref: FileRef, method: string, signal?: AbortSignal, o: { who?: boolean } = {}): Promise<FileEntry | null> {
@@ -823,7 +827,10 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
   switch (m) {
     case 'work.files.places': {
       // Each drive a folder he added lies on is looked at first, within a short deadline: one that is gone shows as not reachable, never holds the answer.
-      if (await probeDrives(rootsOf(ctx.db).map((r) => r.folder))) forgetLibraries(ctx.db)
+      const folders = rootsOf(ctx.db).map((r) => r.folder)
+      // A folder on a mapped drive is read by the folder helper (places/winDir.ts): started now, not at the first folder.
+      if (process.platform === 'win32' && folders.some((f) => linkedDrive(f))) winDirHost().warm()
+      if (await probeDrives(folders)) forgetLibraries(ctx.db)
       const got = placesAnswer(ctx, by, p.workspaceId)
       const ws = workspace()
       if (ws) got.places.push(...(await lifeosPlaces(ctx, by, ws)))
@@ -1011,8 +1018,15 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       admitCaller(ctx, by, p.workspaceId)
       const state = filesState(ctx)
       const entries: (FileEntry | null)[] = []
-      for (const ref of p.refs as FileRef[]) {
+      const refs = p.refs as FileRef[]
+      for (const ref of refs) {
         if (signal?.aborted) throw new Error('cancelled')
+        // A page of rows on a mapped or network drive is never looked at row by row: each look is round trips over
+        // the link, and a zip read per Office file held the host for seconds. One file (its own tab) still is.
+        if (refs.length > 1 && onLinkedDrive(ref)) {
+          entries.push(null)
+          continue
+        }
         entries.push(await statOne(ctx, by, p.workspaceId, ref, m, signal))
         // A zip is read per Office file: the host's other work gets a turn between rows.
         await new Promise((next) => setImmediate(next))

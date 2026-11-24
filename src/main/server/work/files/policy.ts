@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -7,7 +6,7 @@ import type { FileOrigin, FileRef } from '@shared/contract-work-files'
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
 import { PLACE, questionFor, refusal, type FileEntry, type FilePlace, type FileVerb } from '@shared/work/files'
-import { FenceError } from '../../remote/fence'
+import { FenceError, hostReal } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { cloudDirOf, libraryOf } from '../office/files/library'
 import { driveOf, driveUp } from '../office/files/reach'
@@ -47,7 +46,7 @@ export function workspaceHere(db: DatabaseSync, id: string): WorkspaceRow | null
 
 const real = (path: string): string | null => {
   try {
-    return realpathSync(path)
+    return hostReal(path)
   } catch {
     return null
   }
@@ -144,7 +143,7 @@ export function locate(ctx: Pick<WorkCtx, 'db' | 'host' | 'reaches' | 'scopeOf' 
     if (by.kind === 'remote' && !ctx.reaches(by, at)) throw new FenceError(method)
     return { in: 'folder', workspace, path: at, root }
   }
-  const found = libraryOf(librariesHere(ctx), at)
+  const found = libraryOf(librariesHere(ctx), at, { real: true })
   if (!found) throw new Error(NOT_REACHED)
   if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, found.path)) throw new FenceError(method)
   return { in: 'library', ...found }

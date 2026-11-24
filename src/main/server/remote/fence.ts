@@ -50,19 +50,46 @@ const plainUnc = (p: string): string => p.replace(UNC, '\\\\').replace(/\//g, '\
  * roots, the place keys and every saved path name the drive. A share answered for a drive path is spelled
  * back onto the drive; one this drive does not map stays as he wrote it.
  */
-export function keepDrive(path: string, realpath: Realpath = realpathOf): string {
+export function keepDrive(path: string, realpath: Realpath = realpathOf, shareOf: (drive: string) => string = (drive) => realpath(`${drive}\\`)): string {
   const real = realpath(path)
   const drive = /^([a-zA-Z]:)[\\/]/.exec(path)
   if (!drive || !UNC.test(real)) return real
   let share: string
   try {
-    share = plainUnc(realpath(`${drive[1]}\\`)).toLowerCase()
+    share = plainUnc(shareOf(drive[1]!)).toLowerCase()
   } catch {
     return path
   }
   const at = plainUnc(real)
   if (!UNC.test(share) || (at.toLowerCase() !== share && !at.toLowerCase().startsWith(`${share}\\`))) return path
   return `${drive[1]}\\${at.slice(share.length + 1)}`
+}
+
+let nativeOf: Realpath = realpathSync.native
+/** A test stands in for Windows' own realpath under `hostReal`; none: Node's native one again. */
+export const setNativeRealpath = (fn?: Realpath): void => void ((nativeOf = fn ?? realpathSync.native), shares.clear())
+
+/** How long the share a drive letter maps answers before it is asked again: `net use` changes it, nothing else does. */
+export const SHARE_FRESH_MS = 30_000
+const shares = new Map<string, { share: string; at: number }>()
+
+/**
+ * A path's real spelling for a host's own reads of its files (Files' fence, a library's door), as strict as
+ * `keepDrive`. On Windows the JavaScript realpath looks at every folder of the path, each a round trip on a mapped
+ * network drive and all of it holding the host; Windows' own answers in one call however deep the path, and the
+ * share a drive maps is kept a while. Elsewhere it is `keepDrive` as it was.
+ */
+export function hostReal(path: string, o: { platform?: NodeJS.Platform; now?: number } = {}): string {
+  if ((o.platform ?? process.platform) !== 'win32') return keepDrive(path)
+  const now = o.now ?? Date.now()
+  return keepDrive(path, nativeOf, (drive) => {
+    const key = drive.toUpperCase()
+    const was = shares.get(key)
+    if (was && now - was.at < SHARE_FRESH_MS) return was.share
+    const share = nativeOf(`${drive}\\`)
+    shares.set(key, { share, at: now })
+    return share
+  })
 }
 
 /** The real spelling of a path whose tail may not exist yet: the deepest

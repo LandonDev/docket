@@ -204,3 +204,39 @@ describe('a folder a tab shows', () => {
     expect(said.sort()).toEqual(['three', 'two'])
   })
 })
+
+describe('a folder read whole (a mapped drive on Windows)', () => {
+  it('takes every row with its size and time from the one read, and looks at none of them again', async () => {
+    // The names are not on the disk: a look per row would find them gone and leave their sizes out.
+    let reads = 0
+    const whole = async () => {
+      reads++
+      return [
+        ['Budget.xlsx', 0, 4096, 1_700_000_000_000, 0x20],
+        ['Events', 1, 0, 1_700_000_001_000, 0x10],
+        ['Cloud.docx', 0, 9000, 1_700_000_002_000, 0x400000],
+        ['Link', 1, 0, 1_700_000_003_000, 0x10 | 0x400],
+        ['~$Budget.xlsx', 0, 162, 1_700_000_004_000, 0x22]
+      ] as const
+    }
+    const l = new DiskLister({ now: () => clock, whole: whole as never })
+    const { rows } = await l.page(dir, { sort: { by: 'changed', dir: 'desc' } })
+    expect(rows.map((r) => [r.name, r.size, r.changed, r.local])).toEqual([
+      ['Events', undefined, 1_700_000_001_000, undefined],
+      ['Cloud.docx', 9000, 1_700_000_002_000, false],
+      ['Budget.xlsx', 4096, 1_700_000_000_000, true]
+    ])
+    expect(reads).toBe(1)
+    l.close()
+  })
+
+  it('reads the folder itself when the helper cannot', async () => {
+    file('Here.txt', 3)
+    const l = new DiskLister({ now: () => clock, whole: async () => null })
+    expect((await l.page(dir)).rows.map((r) => [r.name, r.size])).toEqual([['Here.txt', 3]])
+    const failing = new DiskLister({ now: () => clock, whole: async () => Promise.reject(new Error('PathTooLongException')) })
+    expect((await failing.page(dir)).rows.map((r) => r.name)).toEqual(['Here.txt'])
+    l.close()
+    failing.close()
+  })
+})

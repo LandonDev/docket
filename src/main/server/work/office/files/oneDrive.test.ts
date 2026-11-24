@@ -352,3 +352,35 @@ describe('OneDrive on a Windows PC', () => {
     expect(oneDrive.readWindowsOneDrive()).toEqual([])
   })
 })
+
+describe("OneDrive's folders from the registry, read behind the answer", () => {
+  afterEach(() => {
+    delete oneDrive.oneDriveSeams.sync
+    delete oneDrive.oneDriveSeams.later
+    delete oneDrive.oneDriveSeams.now
+    oneDrive.forgetOneDrive()
+  })
+
+  it('waits for reg.exe only the first time; a minute on, answers what it had and reads again once, behind', async () => {
+    const reg = (path: string): Buffer => Buffer.from(`HKEY_CURRENT_USER\\Software\\SyncEngines\\Providers\\OneDrive\\one\n    MountPoint    REG_SZ    ${path}\n    LibraryType    REG_SZ    teamsite\n`)
+    let clock = 0
+    let syncs = 0
+    let laters = 0
+    let release: (b: Buffer) => void = () => {}
+    oneDrive.oneDriveSeams.now = () => clock
+    oneDrive.oneDriveSeams.sync = () => (syncs++, reg('C:\\Users\\tc\\Club - Docs'))
+    oneDrive.oneDriveSeams.later = () => (laters++, new Promise<Buffer>((done) => (release = done)))
+    const paths = () => oneDrive.readWindowsOneDrive().map((m) => m.path)
+    expect(paths()).toEqual(['C:\\Users\\tc\\Club - Docs'])
+    clock = oneDrive.ONEDRIVE_FRESH_MS - 1
+    expect(paths()).toEqual(['C:\\Users\\tc\\Club - Docs'])
+    clock = oneDrive.ONEDRIVE_FRESH_MS
+    expect(paths()).toEqual(['C:\\Users\\tc\\Club - Docs'])
+    expect(paths()).toEqual(['C:\\Users\\tc\\Club - Docs'])
+    expect([syncs, laters]).toEqual([1, 1])
+    release(reg('C:\\Users\\tc\\Club - Minutes'))
+    await new Promise((next) => setImmediate(next))
+    expect(paths()).toEqual(['C:\\Users\\tc\\Club - Minutes'])
+    expect([syncs, laters]).toEqual([1, 1])
+  })
+})

@@ -2429,6 +2429,34 @@ folder is expected to be slower), a Mac's library listed from a window
 through the box's link (budget 1 s), a search over a real OneDrive folder,
 and a scroll through 5,000 rows in the window (F1a).
 
+### A mapped drive
+
+A folder on a mapped or network drive (his `R:` over the campus VPN) is a round trip over the link for every
+look, and each sync look holds the whole host. On 1.0.375, in the rig with a 40 ms, 8 Mbit/s link to the
+share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB Word file was not usable in
+10 minutes. What a Files call on such a drive does now:
+
+- **One look at a path.** Files' fence and a library's door resolve a path with `hostReal`
+  (remote/fence.ts): on Windows one call of Windows' own realpath, however deep the path, and the share a
+  drive letter maps kept 30 s (`SHARE_FRESH_MS`); a library's own folder is resolved once in 30 s
+  (`rootReal`, office/files/library.ts). The JavaScript realpath looked at every folder of the path, three
+  times a call.
+- **A folder read once.** On Windows a folder on such a drive is read by a small C# helper
+  (places/winDir.ts, compiled once with the csc.exe Windows carries, as procTree's job helper is) that
+  answers every row's size, time and attributes from the one directory read; Node's own read keeps the
+  names and drops the rest, so each row was one more look. No helper (csc missing, the exe refused):
+  the rows are looked at as before.
+- **No rows looked at one by one.** `work.files.stat` of several rows on such a drive answers null for each
+  without touching it: who last saved an Office file was a zip read per file, synchronous, for 100 files
+  after each page. One file (its own tab) is still looked at.
+- **No process per call.** OneDrive's folders are read from the registry once, then behind the answer
+  each minute (`readWindowsOneDrive`); `reg.exe` ran synchronously every two seconds of Files calls.
+- **A file hashed once.** A file's version is its sha256 only off such a drive, and the hash is kept while
+  its size and times stand (`versionOf`, write.ts): a file read in 4 MB pieces was hashed whole for each.
+
+What is kept, and where: listings in the host's memory a few seconds (`DiskLister`) and in the window's
+memory while it runs; resolved paths 30 s; nothing of a file's content past the open copy.
+
 ## Tests
 
 - `src/shared/work/files.test.ts`: the kind table, keys, names, order and

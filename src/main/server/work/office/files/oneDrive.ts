@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { win32 } from 'node:path'
 
 export interface WindowsOneDriveMount {
@@ -56,21 +56,48 @@ export function parseOneDriveRegistry(output: string): WindowsOneDriveMount[] {
   return mounts
 }
 
-let cached: { until: number; mounts: WindowsOneDriveMount[] } | undefined
+/** How long OneDrive's folders as last read answer before they are read again, behind the answer. */
+export const ONEDRIVE_FRESH_MS = 60_000
+let cached: { at: number; mounts: WindowsOneDriveMount[] } | undefined
+let reading = false
 
+const REG_ARGS = ['query', `HKCU\\${PROVIDERS}`, '/s']
+const regExe = (): string => win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'reg.exe')
+const parsed = (out: Buffer): WindowsOneDriveMount[] => parseOneDriveRegistry(out.toString(out.includes(0) ? 'utf16le' : 'utf8'))
+
+/** A test runs the registry read in its place: `sync` as the first read, `later` as each one behind the answer. */
+export const oneDriveSeams: { sync?: () => Buffer; later?: () => Promise<Buffer>; now?: () => number } = {}
+
+/**
+ * The folders OneDrive syncs here, from the registry. A process start costs a few hundred milliseconds and every
+ * Files call asks, so only the first read waits for `reg.exe`; after that the answer kept is given at once and,
+ * once a minute old, read again behind it.
+ */
 export function readWindowsOneDrive(): readonly WindowsOneDriveMount[] {
-  if (process.platform !== 'win32') return []
-  if (cached && Date.now() < cached.until) return cached.mounts
+  if (process.platform !== 'win32' && !oneDriveSeams.sync) return []
+  const now = (oneDriveSeams.now ?? Date.now)()
+  if (cached) {
+    if (now - cached.at >= ONEDRIVE_FRESH_MS && !reading) {
+      reading = true
+      const later = oneDriveSeams.later ?? (() => new Promise<Buffer>((done, fail) => execFile(regExe(), REG_ARGS, { windowsHide: true, timeout: 5_000, maxBuffer: 1024 * 1024, encoding: 'buffer' }, (err, out) => (err ? fail(err) : done(out)))))
+      void later()
+        .then((out) => (cached = { at: (oneDriveSeams.now ?? Date.now)(), mounts: parsed(out) }))
+        // The key may be missing, or OneDrive may not be available: what was read stands a minute more.
+        .catch(() => cached && (cached = { ...cached, at: (oneDriveSeams.now ?? Date.now)() }))
+        .finally(() => (reading = false))
+    }
+    return cached.mounts
+  }
   let mounts: WindowsOneDriveMount[] = []
   try {
-    const reg = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'reg.exe')
-    const out = execFileSync(reg, ['query', `HKCU\\${PROVIDERS}`, '/s'], {
-      windowsHide: true, timeout: 1_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore']
-    })
-    mounts = parseOneDriveRegistry(out.toString(out.includes(0) ? 'utf16le' : 'utf8'))
+    const out = oneDriveSeams.sync ? oneDriveSeams.sync() : execFileSync(regExe(), REG_ARGS, { windowsHide: true, timeout: 1_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
+    mounts = parsed(out)
   } catch {
     // The key may be missing, or OneDrive may not be available.
   }
-  cached = { mounts, until: Date.now() + 2_000 }
+  cached = { at: now, mounts }
   return mounts
 }
+
+/** OneDrive's folders are read again at the next ask (a test, or his press on Refresh). */
+export const forgetOneDrive = (): void => void (cached = undefined)

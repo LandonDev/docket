@@ -4,6 +4,8 @@ import { lstat, opendir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { compareEntries, DEFAULT_SORT, kindOfEntry, LIST_PAGE_BYTES, LIST_PAGE_MAX, type EntryKind, type FileEntry, type FileSort } from '@shared/work/files'
 import { noteWatchFailure } from '../../../watchGuard'
+import { driveOf } from '../../office/files/reach'
+import { NOT_HERE_BITS, REPARSE_POINT, winDirHost, type WinDirRow } from './winDir'
 
 /**
  * One folder of a disk as a sorted list, a page at a time (docs/agents/work-files.md "Performance"): what the
@@ -149,9 +151,27 @@ export function cutPage(rows: readonly DiskRow[], o: { tag: string; version: str
   return { rows: out, ...(more && end ? { next: encode({ t: tag, v: o.version, s: sortTag(sort), n: end.name, d: end.dir, c: end.changed, z: end.size }) } : {}) }
 }
 
+/** A folder read whole, each row's size and time with it, or null where that is not to be had: the rows are then looked at one by one. */
+export type WholeRead = (dir: string, signal?: AbortSignal) => Promise<WinDirRow[] | null>
+
+/** Windows, a folder on a mapped or network drive: read by the folder helper, where a look per row costs round trips over the link. */
+const winWhole: WholeRead = (dir, signal) => (driveOf(dir) ? winDirHost().read(dir, signal) : Promise.resolve(null))
+
+/** The helper's rows as the lister keeps them, every one looked at already; links and hidden names left out. */
+export function rowsOfWhole(got: readonly WinDirRow[]): DiskRow[] {
+  const rows: DiskRow[] = []
+  for (const [name, dir, size, changed, attributes] of got) {
+    if (hiddenName(name) || attributes & REPARSE_POINT) continue
+    rows.push(dir ? { name, dir: true, kind: 'folder', changed, stated: true } : { name, dir: false, kind: kindOfEntry(name).kind, size, changed, local: size === 0 || !(attributes & NOT_HERE_BITS), stated: true })
+  }
+  return rows
+}
+
 export interface DiskListerOptions {
   /** how long a folder's names answer without being read again */
   freshMs?: number
+  /** a folder read whole with its rows' facts (Windows' mapped drives); none: names, then a look per row on the page */
+  whole?: WholeRead
   /** how many folders are kept */
   most?: number
   now?: () => number
@@ -166,7 +186,10 @@ export class DiskLister {
   /** how many folders were read from the disk: what a test counts */
   reads = 0
 
+  private readonly whole: WholeRead | null
+
   constructor(opts: DiskListerOptions = {}) {
+    this.whole = opts.whole ?? (process.platform === 'win32' ? winWhole : null)
     this.freshMs = opts.freshMs ?? 5_000
     this.most = opts.most ?? 64
     this.now = opts.now ?? Date.now
@@ -176,6 +199,15 @@ export class DiskLister {
     this.reads++
     const before = await stat(dir)
     if (!before.isDirectory()) throw new Error('That is a file, not a folder.')
+    const got = this.whole ? await this.whole(dir, signal).catch((err: unknown) => {
+      if (signal?.aborted) throw err
+      // The helper could not read it: the folder is read the slow way, which says why if it fails too.
+      return null
+    }) : null
+    if (got) {
+      const rows = rowsOfWhole(got)
+      return { at: this.now(), version: `${Math.round(before.mtimeMs)}:${rows.length}`, rows, sorted: '' }
+    }
     const rows: DiskRow[] = []
     const handle = await opendir(dir, { bufferSize: 256 })
     try {
