@@ -1019,6 +1019,14 @@ describe('the module, on a fake deck tool', () => {
       expect(quoteNames(FAKE_DECK, 'move slide 2 after slide 4', [{ op: 'move', slide: 257, after: 259 }])).toBe(true)
       expect(quoteNames(FAKE_DECK, 'move slide 2 after slide 4', [{ op: 'move', slide: 257, after: 259 }, { op: 'notes', slide: 259, text: 'x' }])).toBe(false)
       expect(quoteNames(FAKE_DECK, 'put the second slide before the last slide', [{ op: 'notes', slide: 259, text: 'x' }])).toBe(false)
+      // The side a place is on: "before the last slide" clears a move just before it, never one after it.
+      expect(quoteNames(FAKE_DECK, 'move slide 2 before the last slide', [{ op: 'move', slide: 257, after: 258 }])).toBe(true)
+      expect(quoteNames(FAKE_DECK, 'move slide 2 before the last slide', [{ op: 'move', slide: 257, after: 259 }])).toBe(false)
+      expect(quoteNames(FAKE_DECK, 'move the last slide before the first slide', [{ op: 'move', slide: 259, after: 0 }])).toBe(true)
+      // A place on no certain side puts nothing, and words that leave something out clear no start either.
+      expect(quoteNames(FAKE_DECK, 'move slide 2 to slide 4', [{ op: 'move', slide: 257, after: 259 }])).toBe(false)
+      expect(quoteNames(FAKE_DECK, "add a slide, but not at the start", [{ op: 'add', after: 0, layout: 'L', id: 300 }])).toBe(false)
+      expect(quoteNames(FAKE_DECK, 'add a slide at the start', [{ op: 'add', after: 0, layout: 'L', id: 300 }])).toBe(true)
     })
 
     it('a key that may not approve is a viewer: shown and told the file alone, it changes nothing', async () => {

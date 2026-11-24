@@ -112,13 +112,23 @@ const PLACE = /\b(after|before|behind|following|below|above|between|past|into|on
  * no other slide's title holds. Words that leave something out name nothing at all: which slide they spare is not
  * certain. A slide named both ways is a target.
  */
-function slidesIn(info: Pick<DeckInfo, 'slides'>, quote: string): { targets: Set<number>; places: Set<number> } {
+type Side = 'after' | 'before' | 'unclear'
+/** Which side of a slide named as a place its word puts things: "to", "into", "between" say no side. */
+const sideOf = (word: string): Side => (/^(after|behind|following|below|past)$/.test(word) ? 'after' : /^(before|above|ahead of)$/.test(word) ? 'before' : 'unclear')
+
+function slidesIn(info: Pick<DeckInfo, 'slides'>, quote: string): { targets: Set<number>; places: Map<number, Side> } {
   const q = quote.toLowerCase().replace(/[‘’]/g, "'")
-  const none = { targets: new Set<number>(), places: new Set<number>() }
+  const none = { targets: new Set<number>(), places: new Map<number, Side>() }
   if (EXCLUDES.test(q)) return none
   const count = info.slides.length
-  const at = { targets: new Set<number>(), places: new Set<number>() }
-  const put = (n: number, before: string): void => void (PLACE.test(before) ? at.places : at.targets).add(n)
+  const at = { targets: new Set<number>(), places: new Map<number, Side>() }
+  /** A slide named as a place on two sides is on no side for certain. */
+  const place = (map: Map<number, Side>, key: number, side: Side): void => void map.set(key, map.has(key) && map.get(key) !== side ? 'unclear' : side)
+  const put = (n: number, before: string): void => {
+    const word = PLACE.exec(before)
+    if (word) place(at.places, n, sideOf(word[1]))
+    else at.targets.add(n)
+  }
   for (const m of q.matchAll(/\bslides\s+(?:no\.?\s*|numbers?\s+)?(\d+(?:\s*(?:,|and|&|-|–|to|through)\s*\d+)*)/g)) {
     const parts = m[1].split(/\s*(,|and|&|-|–|to|through)\s*/)
     for (let i = 0; i < parts.length; i += 2) {
@@ -133,13 +143,17 @@ function slidesIn(info: Pick<DeckInfo, 'slides'>, quote: string): { targets: Set
   const titles = info.slides.map((s) => wordsOf(s.title))
   // A title names its slide only when no other slide's title is it or holds it ("Plan" beside "Travel Plan").
   const alone = (i: number): boolean => titles[i].trim().length >= 3 && titles.every((t, j) => j === i || !t.includes(titles[i]))
-  const out = { targets: new Set<number>(), places: new Set<number>() }
+  const out = { targets: new Set<number>(), places: new Map<number, Side>() }
   info.slides.forEach((s, i) => {
     const n = i + 1
     if (at.targets.has(n)) out.targets.add(s.id)
-    else if (at.places.has(n)) out.places.add(s.id)
+    else if (at.places.has(n)) place(out.places, s.id, at.places.get(n)!)
     if (!alone(i)) return
-    for (let k = said.indexOf(titles[i]); k !== -1; k = said.indexOf(titles[i], k + 1)) (PLACE.test(said.slice(0, k + 1)) ? out.places : out.targets).add(s.id)
+    for (let k = said.indexOf(titles[i]); k !== -1; k = said.indexOf(titles[i], k + 1)) {
+      const word = PLACE.exec(said.slice(0, k + 1))
+      if (word) place(out.places, s.id, sideOf(word[1]))
+      else out.targets.add(s.id)
+    }
   })
   for (const id of out.targets) out.places.delete(id)
   return out
@@ -150,19 +164,33 @@ export const slidesNamed = (info: Pick<DeckInfo, 'slides'>, quote: string): Set<
 
 /**
  * Whether the person's words name every slide a batch changes, as one to change (`slidesIn`): a slide an edit changes,
- * a move's slide and a copy's source must be targets; where a move or an add goes may be named as a place too (an add
- * at the very start, or a move there, by "start", "beginning", "front" or "top"); an edit of a slide the batch adds is
- * named by that add. An edit of the deck as a whole (its theme, a section taken away or renamed) is named by no slide.
+ * a move's slide and a copy's source must be targets; where a move or an add goes must be where his words put it, on
+ * the side they say: after a slide named after "after" (or "behind", "following", "below", "past"), just before one
+ * named after "before" (or "above", "ahead of"), or at the very start by "start", "beginning", "front" or "top". A
+ * place on no certain side ("to", "into", "between") puts nothing. An edit of a slide the batch adds is named by that
+ * add. An edit of the deck as a whole (its theme, a section taken away or renamed) is named by no slide. Words that
+ * leave something out clear nothing, the start included.
  */
 export function quoteNames(info: Pick<DeckInfo, 'slides'>, quote: string, ops: readonly SlideOp[]): boolean {
+  if (EXCLUDES.test(quote.toLowerCase().replace(/[‘’]/g, "'"))) return false
   const { targets, places } = slidesIn(info, quote)
   const start = /\b(start|beginning|front|top)\b/i.test(quote)
-  const where = (after: number): boolean => (after === 0 ? start : targets.has(after) || places.has(after))
+  const order = info.slides.map((s) => s.id)
+  /** Whether a move or an add going after `after` (0: first) lands where his words put it; `self`, the slide moved. */
+  const where = (after: number, self?: number): boolean => {
+    const rest = order.filter((id) => id !== self)
+    for (const [id, side] of places) {
+      if (side === 'after' && after === id) return true
+      const at = rest.indexOf(id)
+      if (side === 'before' && at >= 0 && after === (at === 0 ? 0 : rest[at - 1])) return true
+    }
+    return after === 0 && start
+  }
   for (const op of ops) {
     if (op.op === 'add') {
       if (!where(op.after)) return false
     } else if (op.op === 'move') {
-      if (!targets.has(op.slide) || !where(op.after)) return false
+      if (!targets.has(op.slide) || !where(op.after, op.slide)) return false
     } else {
       const on = op.op === 'theme' ? null : op.op === 'section' ? (op.act === 'add' ? op.at : null) : op.slide
       if (on === null || !targets.has(on)) return false
