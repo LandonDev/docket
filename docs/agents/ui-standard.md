@@ -81,8 +81,10 @@
   ring, index.css's inset outline, which an element outside its selector
   list joins with `focus-ring`; `lib/focusGuard.test.ts` refuses any
   `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
-  (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
-  nav or a virtual list (the lazy provider remounts what it wraps). A
+  (delays in `TOOLTIP`, lib/ease.ts). The provider is Base UI's own from
+  the first paint, never a lazy swap: when it was one, the tooltips waking
+  remounted all it wrapped, and a pane's More lost the menu its first press
+  opened (J43, components/ui/tooltip.tsx, menus.dom.test.tsx). A
   hover reveal is `reveal(group)` on a wrapper (components/ui/reveal.ts;
   what it covers `yields(group)`; lib/revealGuard.test.ts refuses a reveal
   without `--delay-hover` or on focus-within), a

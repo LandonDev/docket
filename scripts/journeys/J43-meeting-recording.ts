@@ -77,14 +77,10 @@ export default journey({
       })()`)
       const opened = () => page.eval<boolean>('!!document.querySelector("[role=menuitem]")')
       await page.until('the meeting pane’s More', 12_000, markMore)
+      // One press, as he gives it: the first press on the pane's cold More opens its menu (W49: the header's tooltip
+      // provider no longer swaps under it, components/ui/tooltip.tsx).
       await page.clickOn('[data-journey-more]')
-      if (!await page.until('the pane’s menu', 5000, opened).then(() => true, () => false)) {
-        // Evidence for the owner: the first press on the pane's cold More (chrome/menuRows.tsx RowsMenu) opened nothing.
-        json(context, 'more-first-press', { opened: false })
-        await page.until('the meeting pane’s More again', 12_000, markMore)
-        await page.clickOn('[data-journey-more]')
-        await page.until('the pane’s menu on a second press', 5000, opened)
-      }
+      await page.until('the pane’s menu on the first press', 5000, opened)
       json(context, 'more-menu', await page.eval(`[...document.querySelectorAll('[role="menuitem"]')].map((item) => item.innerText.trim())`))
       await page.press('menuitem', 'Export transcript')
       const text = (await page.downloaded(TRANSCRIPT)).toString('utf8')

@@ -5,11 +5,8 @@ import { TOOLTIP } from "@renderer/lib/ease";
 const { delay: TOOLTIP_DELAY, closeDelay: TOOLTIP_CLOSE_DELAY } = TOOLTIP;
 
 /** The Base UI tooltip, loaded by components/ui/tooltip.tsx on the first
- *  hover: import from tooltip.tsx, never from here. */
-function TooltipProvider({ delay = TOOLTIP_DELAY, closeDelay = TOOLTIP_CLOSE_DELAY, ...props }: TooltipPrimitive.Provider.Props) {
-  return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} closeDelay={closeDelay} {...props} />;
-}
-
+ *  hover: import from tooltip.tsx, never from here. Its provider is not
+ *  here: tooltip.tsx draws it from the first paint. */
 function Tooltip<Payload>({ ...props }: TooltipPrimitive.Root.Props<Payload>) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
@@ -71,4 +68,4 @@ function TooltipArrow({ className, ...props }: TooltipPrimitive.Arrow.Props) {
   );
 }
 
-export { createTooltipHandle, Tooltip, TooltipArrow, TooltipTrigger, TooltipContent, TooltipProvider };
+export { createTooltipHandle, Tooltip, TooltipArrow, TooltipTrigger, TooltipContent };

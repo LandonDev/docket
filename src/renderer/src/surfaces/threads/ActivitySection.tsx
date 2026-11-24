@@ -87,9 +87,7 @@ export const ActivityRows = memo(function ActivityRows({
     else if (row.open === "dev") devPane.open(row.devKey);
   };
 
-  // No TooltipProvider round the scroller: the lazy provider is a fragment
-  // until tooltips warm, and the change of element would remount the
-  // scroller and an open log. Each row's one Stop keeps its own delay.
+  // No TooltipProvider round the scroller: each row's one Stop keeps its own delay.
   return (
     <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="activity-scroller">
       <div className="flex flex-col px-1 py-3" data-slot="activity-section">

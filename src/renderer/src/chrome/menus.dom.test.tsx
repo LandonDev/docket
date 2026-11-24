@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { Tip, TruncateTip } from "../components/tip";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, MENU_ROW } from "../components/ui/dropdown-menu";
-import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
+import { resetTooltips, tooltipChunk, TooltipProvider, warmTooltips } from "../components/ui/tooltip";
 import { Archive, Pause, Trash2 } from "./icons";
 import { MenuRows } from "./menuBody";
 import { resetMenus, RowsContextMenu, RowsMenu, tidy, warmMenus, type MenuRow } from "./menuRows";
@@ -270,6 +270,43 @@ describe("the lazy menus", () => {
     expect(onOpenChange).toHaveBeenCalledWith(true);
     const list = await screen.findByRole("menu", { name: "Thread menu" });
     expect(within(list).getByRole("menuitem", { name: /Archive/ })).toBeTruthy();
+  });
+
+  // J43: a pane's More sits in its header's TooltipProvider. In the built app the tooltips, waiting on a focused
+  // control, woke when the opened menu took the focus, and the provider's swap remounted the More and closed its menu.
+  it("the first press on a cold More in a header opens its menu, and it stays open while the tooltips wake", async () => {
+    await act(async () => {
+      await tooltipChunk.load();
+      await menuChunk.load();
+    });
+    resetTooltips();
+    render(
+      <>
+        <button type="button">Notes</button>
+        <TooltipProvider>
+          <RowsMenu label="More" rows={ROWS} onPick={() => {}} tip={{ label: "More" }} trigger={<button type="button" aria-label="More" />} />
+        </TooltipProvider>
+      </>,
+    );
+    screen.getByRole("button", { name: "Notes" }).focus();
+    const more = screen.getByRole("button", { name: "More" });
+    await act(async () => {
+      warmTooltips();
+      fireEvent.pointerDown(more);
+      more.focus();
+      await Promise.resolve();
+      fireEvent.pointerUp(more);
+      fireEvent.click(more);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const menu = await screen.findByRole("menu", { name: "More" });
+    // The menu takes the focus: the tooltips wake, and the menu stays open.
+    await act(async () => {
+      menu.focus();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(document.querySelector('[data-slot="tooltip-trigger"]')).not.toBeNull();
+    expect(screen.queryByRole("menu", { name: "More" })).not.toBeNull();
   });
 
   it("a RowsContextMenu over a list opens the clicked row's rows", async () => {

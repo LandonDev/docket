@@ -475,6 +475,31 @@ describe("Tooltip", () => {
   });
 });
 
+describe("TooltipProvider", () => {
+  it("keeps what it holds when the tooltips wake: a control inside is not remounted (J43)", async () => {
+    await tooltipChunk.load();
+    resetTooltips();
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" />}>Copy</TooltipTrigger>
+          <TooltipContent>Copy the turn</TooltipContent>
+        </Tooltip>
+        <input aria-label="Held" defaultValue="" />
+      </TooltipProvider>,
+    );
+    const held = screen.getByLabelText("Held") as HTMLInputElement;
+    fireEvent.change(held, { target: { value: "typed" } });
+    await act(async () => {
+      warmTooltips();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Copy" }).getAttribute("data-slot")).toBe("tooltip-trigger");
+    expect(screen.getByLabelText("Held")).toBe(held);
+    expect(held.value).toBe("typed");
+  });
+});
+
 describe("Tooltip popup", () => {
   it("is 13px regular on 20px lines, 24px tall, and enters from 0.98 on the drawer curve", async () => {
     await act(async () => {

@@ -81,7 +81,7 @@
   `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives
-  stay out of the entry: the tooltip defers its primitive, the menus and
+  stay out of the entry: the tooltip defers its primitive (its provider, a context and a delay group, is drawn from the first paint), the menus and
   popovers ride menuChunk (a first-paint surface that draws a menu or a
   popover by its parts imports them from components/ui/lazy-menus.tsx: a cold
   trigger of the same element until the chunk lands, no content), the branch

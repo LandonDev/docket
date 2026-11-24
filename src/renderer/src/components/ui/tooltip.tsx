@@ -1,4 +1,4 @@
-import type { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cloneElement, createContext, isValidElement, useContext, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { defineChunk } from "@renderer/lib/lazyChunk";
 import { TOOLTIP } from "@renderer/lib/ease";
@@ -23,6 +23,11 @@ export const TOOLTIP_CLOSE_DELAY = TOOLTIP.closeDelay;
  * (or the idle slot after the first thread opens) loads the primitive, after
  * which every tooltip is the real one. Focus never loads it, so a focused
  * trigger is not remounted under the keyboard.
+ *
+ * The provider is never cold: it is Base UI's own from the first paint (a
+ * context and a delay group, no floating stack), because a swap there would
+ * remount everything it holds. A pane's More opened by its first press went
+ * with its header's provider when the tooltips woke (J43).
  */
 export const tooltipChunk = defineChunk("tooltip", () => import("./tooltip-primitive"));
 
@@ -116,9 +121,8 @@ function usePrimitive(): typeof Primitive | null {
   return useSyncExternalStore(subscribe, read, read);
 }
 
-function TooltipProvider(props: TooltipPrimitive.Provider.Props) {
-  const P = usePrimitive();
-  return P ? <P.TooltipProvider {...props} /> : <>{props.children}</>;
+function TooltipProvider({ delay = TOOLTIP_DELAY, closeDelay = TOOLTIP_CLOSE_DELAY, ...props }: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider delay={delay} closeDelay={closeDelay} {...props} />;
 }
 
 function Tooltip<Payload>(props: TooltipPrimitive.Root.Props<Payload>) {
