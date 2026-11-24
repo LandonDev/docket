@@ -122,6 +122,16 @@ function freeIn(dir: string, name: string): string {
   return freeName(name, (n) => names.has(n.normalize('NFC').toLowerCase()))
 }
 
+/** A held act's press (`origin.from: 'act'`) makes the name its card showed, or nothing: another free name is no change he saw. */
+const pressedAct = (p: { origin?: { from?: string } }): boolean => p.origin?.from === 'act'
+export const NAME_TAKEN = (name: string): string => `Something named ${name} is there now, so nothing was made: the press makes only the name it showed.`
+export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
+/** `name` in `dir`, read case-blind as `freeIn` reads it, or the refusal that it is taken. */
+function exactIn(dir: string, name: string): string {
+  if (freeIn(dir, name) !== name) throw new Error(NAME_TAKEN(name))
+  return name
+}
+
 /** A located thing in the VM, as vmVerbs.ts takes it. */
 const vmOf = (w: Where): VmWhere => ({ path: w.path, place: w.place, library: w.library!, key: w.key })
 /** The grammar's own sentence for a verb a place does not carry out. */
@@ -138,6 +148,8 @@ const asFolder = (w: Where): void => {
 interface Change {
   workspaceId: string
   op: string
+  /** where the change began: a held act's press is held to the names it showed */
+  origin?: { from?: string }
 }
 type MakeAsk = Change & { at: FolderRef; kind: FileMakeKind; name?: string; from?: CanvasSource; asked?: boolean }
 type RenameAsk = Change & { ref: FileRef; name: string }
@@ -214,7 +226,7 @@ export async function makeVerb(ctx: WorkCtx, by: Caller, p: MakeAsk, method: str
   if (named) checkName(named)
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'make', refs: journalled('make', p) }, async () => {
     const wanted = named ? (ext && !named.toLowerCase().endsWith(ext) ? `${named}${ext}` : named) : `${UNTITLED[p.kind]}${ext}`
-    const name = freeIn(folder.path, wanted)
+    const name = named && pressedAct(p) ? exactIn(folder.path, wanted) : freeIn(folder.path, wanted)
     const fence = fenceOf(folder.root)
     const made = await withFileLocks([keyIn(ctx, folder, join(folder.path, name))], async () => {
       if (p.kind === 'folder') return makeFolder(fence, folder.path, name)
@@ -350,7 +362,7 @@ export async function copyVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
       const name = basename(w.path)
       try {
         if (w.path === w.root) throw new Error('A place itself cannot be copied.')
-        const free = freeIn(to.path, name)
+        const free = pressedAct(p) ? exactIn(to.path, name) : freeIn(to.path, name)
         done.push(await withFileLocks([w.key, keyIn(ctx, to, join(to.path, free))], () => copyNoReplace(fenceOf(w.root, to.root), w.path, to.path, free)))
       } catch (err) {
         refused.push({ name, text: message(err) })

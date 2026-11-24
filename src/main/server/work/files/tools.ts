@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
 import { FILE_MAKE_KINDS, FileActSchema, type FileAct, type FileActVerb, type FileDone, type FileRef, type FileMakeKind, type FilesListing, type FilesPlaces } from '@shared/contract-work-files'
 import { canvasSourcePath, workText, type CanvasSource, type WorkScope, type WorkToolResult } from '@shared/work'
-import { audienceOf, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileVerb, type FolderRef } from '@shared/work/files'
+import { audienceOf, MAKE_WORDS, refKey, refusal, type FileEntry, type FilePlace, type FileVerb, type FolderRef } from '@shared/work/files'
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
@@ -12,7 +12,7 @@ import { admitChange, filesHandle, filesState, openAs } from './handle'
 import { formIn } from './make'
 import { changeDigest, locate, workspaceHere } from './policy'
 import { restoreRows, trashFiles } from './trash'
-import { copyVerb, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
+import { copyVerb, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
 import { admitDrive, driveMake, driveMove, driveRename, driveTrash, type DriveDone } from './driveVerbs'
 import { googleSeated, googleSeatOf } from '../google/drive'
 import { driveFacts } from './places/drive'
@@ -220,6 +220,13 @@ const STALE = {
   renamed: (name: string) => `The folder ${name} was renamed since this was held, so nothing was done.`
 }
 
+/** The keys of the folders above a Drive folder, top first, as its listing's trail gives them; null for any other folder. */
+async function parentsOf(ctx: ToolCtx, host: string, workspaceId: string, to: FolderRef | undefined): Promise<string[] | null> {
+  if (!to || to.at !== 'drive') return null
+  const listed = await ask<FilesListing>(ctx, host, 'list', { workspaceId, at: to, foldersOnly: true })
+  return (listed.trail ?? []).slice(0, -1).map((c) => refKey(c.at))
+}
+
 /** A thing's ref inside a folder on a disk, by its name; null for a place with no path (a Drive). */
 function childRef(folder: FileRef | undefined, name: string): FileRef | null {
   if (!folder || folder.at !== 'file') return null
@@ -288,14 +295,27 @@ export const fileActKind: ActKindDef<FileAct, never> = {
         const taken = await takenIn(toolCtx, p.host, p.workspaceId, p.request.to, p.things.map((t) => t.name))
         if (taken) throw new ActStale(STALE.taken(name, taken))
       }
+      // A Drive folder moved under other folders keeps its id, its name and its sharing: the folders above it say so.
+      if (p.into.parents && JSON.stringify(await parentsOf(toolCtx, p.host, p.workspaceId, p.request.to)) !== JSON.stringify(p.into.parents)) throw new ActStale(STALE.folder(name))
+    }
+    // A named New lands under that name or not at all (the verb holds it to it at the write, `exactIn`).
+    if (p.verb === 'make' && p.request.name) {
+      const taken = await takenIn(toolCtx, p.host, p.workspaceId, p.request.refs[0] as FileRef, [p.request.name])
+      if (taken) throw new ActStale(STALE.taken(p.from.trail.at(-1) ?? p.from.name, taken))
     }
     let done: FileDone
-    if (p.host === act.host) {
-      const answer = await filesHandle({ id: 'act', method: `work.files.${p.verb}`, params } as unknown as ClientRequest, act, WINDOW, signal)
-      if (!answer.handled) throw new ActNotSent(`work.files.${p.verb} is not answered on this host`)
-      done = answer.result as FileDone
-    } else {
-      done = (await act.peer.call(toolCtx, p.host).call('files', p.verb, params)) as FileDone
+    try {
+      if (p.host === act.host) {
+        const answer = await filesHandle({ id: 'act', method: `work.files.${p.verb}`, params } as unknown as ClientRequest, act, WINDOW, signal)
+        if (!answer.handled) throw new ActNotSent(`work.files.${p.verb} is not answered on this host`)
+        done = answer.result as FileDone
+      } else {
+        done = (await act.peer.call(toolCtx, p.host).call('files', p.verb, params)) as FileDone
+      }
+    } catch (err) {
+      // The name it showed was taken between the check and the write: nothing was made.
+      if (err instanceof Error && isNameTaken(err.message)) throw new ActStale(err.message)
+      throw err
     }
     return pressed(act, p, item.sessionId, done)
   }
@@ -408,6 +428,11 @@ async function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEnt
     const taken = await takenIn(ctx, host, workspaceId, a.request.to, things.map((t) => t.name))
     if (taken) return fail(`${a.into?.words || 'That folder'} already holds something named ${taken}: rename one first.`)
   }
+  if (verb === 'make' && a.request.name) {
+    const taken = await takenIn(ctx, host, workspaceId, a.request.refs[0] as FileRef, [a.request.name])
+    if (taken) return fail(`${a.paths[0] || place.name} already holds something named ${taken}: give it another name.`)
+  }
+  const parents = await parentsOf(ctx, host, workspaceId, a.request.to)
   const at = a.into?.named.place ?? place
   const payload: FileAct = {
     workspaceId,
@@ -418,7 +443,7 @@ async function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEnt
     digest: changeDigest({ workspaceId, verb, refs: a.request.refs, to: a.request.to, name: a.request.name, kind: a.request.kind }),
     things: things.map((e) => ({ key: e.key, name: e.name, version: versionOfEntry(e), shared: !!e.shared })),
     from: whereOf(place, verb === 'make' ? (a.paths[0] ?? '') : dirOfWords(a.paths[0] ?? '')),
-    ...(a.into ? { into: { ...whereOf(a.into.named.place, a.into.words), key: a.into.entry.key, shared: !!a.into.entry.shared } } : {}),
+    ...(a.into ? { into: { ...whereOf(a.into.named.place, a.into.words), key: a.into.entry.key, shared: !!a.into.entry.shared, ...(parents ? { parents } : {}) } } : {}),
     audience: audienceOf(at, true)
   }
   // A channel is said with its team: "Esports Staff, Events".

@@ -358,6 +358,28 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual(['Plan.docx'])
   })
 
+  it('makes exactly the name the card showed or nothing: a named New, and a Copy whose name is taken in another case', async () => {
+    const ctx = toolCtx(workCtx())
+    // A named New refused when held where the name is taken, and stale when it comes to be taken after.
+    writeFileSync(join(rig.team, 'General', 'Agenda.txt'), 'theirs')
+    expect(await call('files_make', { place: TEAM_GENERAL, kind: 'text', name: 'Agenda' }, ctx)).toMatchObject({ isError: true, text: expect.stringContaining('already holds something named Agenda.txt') })
+    rmSync(join(rig.team, 'General', 'Agenda.txt'))
+    await call('files_make', { place: TEAM_GENERAL, kind: 'text', name: 'Agenda' }, ctx)
+    const make = outbox.store.list({}).at(-1)!
+    // Taken in another case, which the exact-path check on this disk does not see: the write's own case-blind check does.
+    writeFileSync(join(rig.team, 'General', 'agenda.txt'), 'theirs')
+    expect(await press({ ref: { at: 'host', id: make.id } })).toMatchObject({ state: 'stale', error: expect.stringContaining('Something named Agenda.txt is there now') })
+    expect(readdirSync(join(rig.team, 'General')).filter((n) => /agenda/i.test(n))).toEqual(['agenda.txt'])
+    // A Copy into a folder that holds the name in another case: never "Plan 2.docx", nothing copied.
+    mkdirSync(join(rig.team, 'General', 'Archive'))
+    await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: TEAM_GENERAL, path: 'Archive' } }, ctx)
+    const copy = outbox.store.list({}).at(-1)!
+    writeFileSync(join(rig.team, 'General', 'Archive', 'plan.docx'), 'theirs')
+    expect(await press({ ref: { at: 'host', id: copy.id } })).toMatchObject({ state: 'failed', error: expect.stringContaining('Something named Plan.docx is there now') })
+    expect(outbox.store.get(copy.id)).toMatchObject({ outcomeUnknown: false })
+    expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual(['plan.docx'])
+  })
+
   it('answers a press whose answer was lost from its own receipt, though the old path is gone', async () => {
     const ctx = toolCtx(workCtx())
     await call('files_move', { place: TEAM_GENERAL, paths: ['Plan.docx'], name: 'Plan v2.docx' }, ctx)

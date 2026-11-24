@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { FileAct } from '@shared/contract-work-files'
 import type { ClientRequest } from '@shared/contract'
 import type { FileDone, FilesListing, FilesOpened, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
 import { filesPaneOf, type WorkToolResult } from '@shared/work'
@@ -366,6 +367,18 @@ describe("a thread's change", () => {
     expect(fake.files.get('dPlan')).toMatchObject({ trashed: true, parents: ['fStaff'] })
     expect([...fake.files.values()].filter((f) => f.trashed).map((f) => f.id).sort()).toEqual([...before, 'dPlan'].sort())
     expect(await outbox.send({ at: 'host', id: rows[3]!.id })).toMatchObject({ state: 'sent' })
+  })
+
+  it('goes stale when the folder it goes to was moved under another folder, its id, name and sharing alike', async () => {
+    fake.addFolder(ME, 'fOther', 'Other team', { shared: true })
+    const into = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Staff' } })
+    expect(into.text).toMatch(/^Held as item 1\./)
+    const [row] = outbox.store.list({})
+    expect((row!.payload as FileAct).into?.parents).toEqual(expect.any(Array))
+    // Someone moves Staff into another team's folder: Drive keeps its id, its name and its sharing.
+    fake.files.get('fStaff')!.parents = ['fOther']
+    expect(await outbox.send({ at: 'host', id: row!.id })).toMatchObject({ state: 'stale', error: expect.stringContaining('is gone or moved') })
+    expect(fake.files.get('sBudget')!.parents).toEqual([FAKE_ROOT])
   })
 
   it('to a file in a folder this client cannot see is held: unknown sharing counts as shared, My Drive\'s top as his', async () => {

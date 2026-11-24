@@ -111,7 +111,12 @@ export const FileActSchema = z.object({
   /** where they are now */
   from: FileActWhere,
   /** where a move or copy puts them, that folder's key and whether others could open it: the press finds the same folder, shared the same, or does nothing */
-  into: FileActWhere.extend({ key: z.string().max(5000), shared: z.boolean().optional() }).optional(),
+  into: FileActWhere.extend({
+    key: z.string().max(5000),
+    shared: z.boolean().optional(),
+    /** a Drive folder's: the keys of the folders above it, top first; a folder Drive moved keeps its id, not these */
+    parents: z.array(z.string().max(5000)).max(20).optional()
+  }).optional(),
   /** who else can open the result: `audienceOf`'s sentence */
   audience: z.string().max(300)
 })
