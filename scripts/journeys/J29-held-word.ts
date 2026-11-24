@@ -16,7 +16,7 @@ const held = new WeakMap<Context, { item: OutboxItem; calls: string[] }>()
 
 export default journey({
   id: 'J29',
-  title: 'Hold a Word edit for Send, then refuse a second press',
+  title: 'Hold a Word edit for Send; a second press runs nothing',
   tier: 1,
   shapes: ['B1', 'B2'],
   steps: [
@@ -61,7 +61,7 @@ export default journey({
       await page.clickOn('[data-outbox-verbs] button', 'Make the change')
       await page.until('the approved words on the library holder', 25_000, () => holds(fileAt(context, NAME), AFTER))
     }),
-    step('end: a stale second Send says it did nothing and leaves the approved bytes alone', async (context) => {
+    step('end: a second Send from an old card runs nothing and answers the item as it stands', async (context) => {
       const { pair, folder } = context
       const before = readFileSync(fileAt(context, NAME))
       const calls = held.get(context)!.calls
@@ -69,12 +69,15 @@ export default journey({
       if (edits() !== 1) throw new Error('The stand-in saw ' + edits() + ' writes for the approved edit')
       // Replay the exact request a second window would have sent from the old card.
       const { ref, updatedAt: rev } = held.get(context)!.item
+      const first = await pair.rpc<OutboxItem>(pair.box, 'work.outbox.get', { ref })
       const answer = await pair.fromWindow<OutboxItem>('work.outbox.send', { ref, rev })
       writeFileSync(join(folder, 'second-press.json'), JSON.stringify(answer, null, 2))
       writeFileSync(join(folder, 'addin-calls.json'), JSON.stringify(calls, null, 2))
       if (edits() !== 1 || !before.equals(readFileSync(fileAt(context, NAME)))) throw new Error('The second Send changed the file')
-      const line = answer.ok ? answer.value.error : answer.error
-      if (!line || !/stale|already|nothing|no longer/i.test(line)) throw new Error('The second Send did not say why it did nothing')
+      // The hold's rule (outbox.ts `send`): a press that finds the row taken answers the row as it stands and runs
+      // nothing. The old card's window then draws it as gone, which is true; a refusal is right too.
+      if (answer.ok && answer.value.state !== 'sent') throw new Error('The second Send answered the item as ' + answer.value.state)
+      if (answer.ok && answer.value.decidedAt !== first.decidedAt) throw new Error('The second Send was recorded as a press of its own')
     })
   ]
 })

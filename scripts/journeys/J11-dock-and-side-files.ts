@@ -22,7 +22,9 @@ export default journey({
   id: 'J11',
   title: 'Keep the draft beside the first file while opening and closing side files',
   tier: 1,
-  shapes: ['A', 'B1'],
+  // A only: a file on another computer is not put at a tab's side (docs/agents/work-files.md "Two files in one tab"),
+  // so the B1 walk asked for what the product does not promise.
+  shapes: ['A'],
   steps: [
     step('Open the first file and type a draft in Ask', async (context) => {
       for (const name of [FIRST, SECOND, THIRD]) writeFileSync(fileAt(context, name), name)

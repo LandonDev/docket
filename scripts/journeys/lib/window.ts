@@ -133,7 +133,15 @@ export class Window {
 
   async clickOn(selector: string, text?: string): Promise<void> {
     let at: Point | null = null
-    await this.until(text ?? selector, 20_000, async () => (at = await this.centre(selector, text)))
+    // Pressed where it rests, as a person presses: a control still on its way (a sent bubble flying to its place, a
+    // sheet sliding in) is read again until two reads a moment apart agree.
+    await this.until(text ?? selector, 20_000, async () => {
+      const first = await this.centre(selector, text)
+      if (!first) return false
+      await sleep(60)
+      const then = await this.centre(selector, text)
+      return then && then.x === first.x && then.y === first.y ? (at = then) : false
+    })
     await this.click(at!)
   }
 

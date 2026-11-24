@@ -50,7 +50,18 @@ export default journey({
     }),
     step('end: the thread’s chip opens the same file in a selected file tab', async (context) => {
       const { page } = context.pair
-      await page.until('the chip’s selected file tab', 15_000, () => page.centre('[data-files-tab][aria-selected="true"]', NAME))
+      // A press that is refused says so in a toast: keep its words for the record.
+      const said = new Set<string>()
+      await page.until('the chip’s selected file tab', 15_000, async () => {
+        for (const toast of await page.toasts()) said.add(toast)
+        return page.centre('[data-files-tab][aria-selected="true"]', NAME)
+      }).catch(async (err: unknown) => {
+        // What the host and the window hold at the failure: was the tab made, and which screen shows.
+        const tabs = await context.pair.rpc(context.pair.box, 'work.files.tabs', { workspaceId: context.workspace.id }).catch((e: unknown) => String(e))
+        const screen = await page.eval(`({ files: !!document.querySelector('[data-files-sidebar]'), tabs: [...document.querySelectorAll('[data-files-tab]')].map(e => e.textContent + ':' + e.getAttribute('aria-selected')), chips: [...document.querySelectorAll('[data-sent-chips] [data-chip]')].map(e => e.outerHTML.slice(0, 200)) })`)
+        writeFileSync(join(context.folder, 'chip-press.json'), JSON.stringify({ tabs, screen }, null, 2))
+        throw new Error((err instanceof Error ? err.message : String(err)) + (said.size ? ' Toasts while waiting: ' + [...said].join(' / ') : ' No toast while waiting.'))
+      })
       if (!existsSync(fileAt(context, NAME))) throw new Error('The made file is gone from the workspace folder')
     })
   ]

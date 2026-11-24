@@ -55,12 +55,23 @@ export default journey({
       await context.pair.page.reload()
       await returned(context, 'reload')
     }),
-    step('end: a stopped and relaunched win restores the same view, file and draft', async (context) => {
+    step('end: win, quit and opened again, restores the same view, file and draft', async (context) => {
       const { pair } = context
+      // What the window had kept when it was stopped, and what the next launch read: the record of the failure's cause.
+      const kept = (label: string) => pair.page.eval<Record<string, string | null>>(`({
+        window: sessionStorage.getItem('work.return.v1'), returns: localStorage.getItem('work.return.v1'), files: localStorage.getItem('work.files.view.v1') })`)
+        .then((value) => writeFileSync(join(context.folder, 'kept-' + label + '.json'), JSON.stringify(value, null, 2)), () => undefined)
+      await kept('before-stop')
       pair.later(async () => { if (!pair.abort.signal.aborted) await pair.restart(pair.win) })
-      await pair.halt(pair.win)
+      // He quits; he does not pull the plug. A stop by force is a crash, and Chromium keeps no promise about the last minute then.
+      const left = await pair.quit(pair.win)
       await pair.restart(pair.win)
-      await returned(context, 'relaunch')
+      if (!left) throw new Error('win did not quit when its window was closed; it was stopped by force')
+      await kept('at-launch')
+      await returned(context, 'relaunch').catch(async (err: unknown) => {
+        await kept('after-wait')
+        throw err
+      })
     })
   ]
 })

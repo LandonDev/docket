@@ -51,7 +51,7 @@ export default journey({
       await selectFolderTab(context)
       await openRow(page, made)
       await page.clickOn('[data-files-header] button[aria-label^="More for "]')
-      await page.press('menuitem', 'Save as template')
+      await page.press('menuitem', 'Save as Template…')
       await page.clickOn(DIALOG + ' input')
       await page.key('Control+a')
       await page.typeKeys(SAVED)

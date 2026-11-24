@@ -388,6 +388,21 @@ export class Pair {
     await until(inst.name + ' to stop', 5000, () => !instancePids(inst.data).length)
   }
 
+  /**
+   * Quits win as he does: its window is closed, and the app leaves by itself, writing what it keeps on the way out.
+   * False when it did not leave in time and was stopped by force (`halt`), which is a crash, not a quit: Chromium
+   * may then lose the last minute of what the window kept.
+   */
+  async quit(inst: Instance): Promise<boolean> {
+    // Halted first: its leaving is asked for, not an early exit of the run.
+    inst.halted = true
+    await this.page.closePage().catch(() => undefined)
+    const left = await until(inst.name + ' to quit by itself', 20_000, () => !instancePids(inst.data).length, this.abort.signal).then(() => true, () => false)
+    if (!left) await this.halt(inst)
+    inst.port = 0
+    return left
+  }
+
   async restart(inst: Instance): Promise<void> {
     if (!inst.halted) return
     inst.halted = false
