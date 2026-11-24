@@ -14,7 +14,7 @@
  * lose their keys, and Print… takes ⌘P from Go to File… .
  */
 
-import type { MenuState } from './menuState'
+import { LIVE_KEY_IDS, LIVE_OFF_IDS, type MenuState } from './menuState'
 
 export const APP_NAME = 'TempCode'
 
@@ -236,7 +236,7 @@ export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)
 )
 
-export { EDITOR_KEY_IDS, EMPTY_MENU_STATE, sameMenuState, WORK_ONLY_IDS, type MenuState } from './menuState'
+export { EDITOR_KEY_IDS, EMPTY_MENU_STATE, LIVE_KEY_IDS, LIVE_OFF_IDS, sameMenuState, WORK_ONLY_IDS, type MenuState } from './menuState'
 
 function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
   const held = state.editing ?? []
@@ -245,7 +245,11 @@ function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
     if (node.kind === 'submenu') return { ...node, items: resolveNodes(node.items, state) }
     if (node.kind !== 'command') return node
     let item = node
-    if (held.includes(item.id)) {
+    if (state.live && (LIVE_KEY_IDS as readonly string[]).includes(item.id)) {
+      // Word for the web has the focus and owns the key: no accelerator, so the key reaches its page.
+      const { accelerator: _key, whileEditing: _while, ...rest } = item
+      item = rest
+    } else if (held.includes(item.id)) {
       // The editor owns the key: the row shows none, so no accelerator fires on any platform.
       const { accelerator: _key, ...rest } = item
       item = rest
@@ -256,7 +260,7 @@ function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
     return {
       ...item,
       label,
-      enabled: !state.disabled.includes(item.id),
+      enabled: !state.disabled.includes(item.id) && !(state.live && (LIVE_OFF_IDS as readonly string[]).includes(item.id)),
       ...(item.checkbox ? { checked: state.checked[item.id] === true } : {})
     }
   })

@@ -4,7 +4,7 @@ import { shellStore } from "../stores/shell";
 import { messageListFold } from "./messageListFold";
 import { awayStore, resetAwayForTest } from "./away";
 import { registry } from "./connection/registry";
-import { MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
+import { liveFocused, MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
 import { rightPanel } from "./rightPanel";
 import { sessionStore } from "./tcserver/store";
 import type { SessionMeta } from "./tcserver/types";
@@ -104,6 +104,17 @@ describe("menuStateOf, with a Work editor", () => {
     expect(menuStateOf(facts({ print: true, export: false })).disabled).toEqual(["export"]);
     const { print: _p, export: _e, ...bare } = facts();
     expect(menuStateOf(bare).disabled).toEqual(["print", "export"]);
+  });
+
+  it("says live while a live Office file's guest has the focus, and nothing otherwise", () => {
+    expect(menuStateOf(facts({ live: true })).live).toBe(true);
+    expect("live" in menuStateOf(facts())).toBe(false);
+    const guest = document.createElement("webview");
+    guest.setAttribute("data-office-live", "");
+    expect(liveFocused(guest)).toBe(true);
+    expect(liveFocused(document.createElement("webview"))).toBe(false);
+    expect(liveFocused(document.body)).toBe(false);
+    expect(liveFocused(null)).toBe(false);
   });
 
   it("names the rows the editor holds, and says nothing of editing when it holds none", () => {

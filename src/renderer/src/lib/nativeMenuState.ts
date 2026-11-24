@@ -50,6 +50,8 @@ export type MenuFacts = {
   export?: boolean;
   /** The rows whose keys the editor holding the caret owns (`editorHeld`). */
   editing?: string[];
+  /** A live Office file's guest has the focus: Word owns its keys (src/shared/menuState.ts `LIVE_KEY_IDS`). */
+  live?: boolean;
 };
 
 const FLEET_IDS: Record<BatchAction, string> = {
@@ -79,10 +81,15 @@ export function menuStateOf(f: MenuFacts): MenuState {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
   // Work's own rows (Go → Today) are drawn only while some host has Work on.
-  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.workOn ? {} : { hidden: [...WORK_ONLY_IDS] }) };
+  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.live ? { live: true } : {}), ...(f.workOn ? {} : { hidden: [...WORK_ONLY_IDS] }) };
 }
 
 const EVERYWHERE = { kind: "all" } as const;
+
+/** The caret is in a live Office file: its `<webview>` (work/office/live/LiveLayer.tsx marks it) holds the focus. */
+export function liveFocused(target: EventTarget | null | undefined): boolean {
+  return !!target && typeof (target as Element).matches === "function" && (target as Element).matches("webview[data-office-live]");
+}
 
 /** The store-backed facts, read now; `caret` is where the caret is going, when a focus event knows better than the document does. */
 function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: EventTarget | null): MenuFacts {
@@ -112,6 +119,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     print: workCommands.has("print"),
     export: workCommands.has("export"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),
+    live: liveFocused(caret !== undefined ? caret : typeof document === "undefined" ? null : document.activeElement),
   };
 }
 

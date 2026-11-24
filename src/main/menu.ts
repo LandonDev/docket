@@ -132,7 +132,8 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
     disabled: strings(value.disabled),
     checked: ticks(value.checked),
     ...(editing.length ? { editing } : {}),
-    ...(hidden.length ? { hidden } : {})
+    ...(hidden.length ? { hidden } : {}),
+    ...(value.live === true ? { live: true } : {})
   })
   if (BrowserWindow.getFocusedWindow()?.webContents === contents) applyFocusedMenu()
 }

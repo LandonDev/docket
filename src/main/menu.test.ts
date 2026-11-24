@@ -195,6 +195,16 @@ describe('menu state', () => {
     expect(row('Threads', 'toggle_away').checked).toBe(false)
   })
 
+  it('keeps a live Office file\'s focus, and only a true one', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], live: true })
+    expect(row('Edit', 'find')).toMatchObject({ enabled: false })
+    expect(row('Edit', 'find').accelerator).toBeUndefined()
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], live: 'yes' })
+    expect(row('Edit', 'find').accelerator).toBe('CmdOrCtrl+F')
+  })
+
   it('does not rebuild for a state it already shows', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))

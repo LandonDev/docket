@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, WORK_ONLY_IDS } from './menuTree'
+import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, LIVE_KEY_IDS, LIVE_OFF_IDS, WORK_ONLY_IDS } from './menuTree'
 
 /** What Electron gives a role when the tree names none (macOS). */
 const ROLE_DEFAULTS: Record<string, [string, string?]> = {
@@ -267,6 +267,28 @@ describe('resolveMenu', () => {
     expect(sameMenuState(state(['a'], []), state(['a'], ['b']))).toBe(false)
     expect(sameMenuState(state([], [], { toggle_away: false }), state([], []))).toBe(true)
     expect(sameMenuState(state([], [], { toggle_away: true }), state([], []))).toBe(false)
+  })
+
+  describe('while a live Office file has the focus', () => {
+    const live = resolveMenu(MENU_TREE, { open: [], disabled: [], checked: {}, live: true, editing: ['find'] })
+    const row = (id: string) => find(live, id) as { accelerator?: string; enabled?: boolean }
+
+    it('gives Word the keys of ⌘F, ⌘P, ⌘S, ⇧⌘E, ⌘K and ⌘B, and turns off Find, Print, Export and Save', () => {
+      for (const id of LIVE_KEY_IDS) expect(row(id).accelerator, id).toBeUndefined()
+      for (const id of LIVE_OFF_IDS) expect(row(id).enabled, id).toBe(false)
+      expect(row('go_to_file').enabled).toBe(true)
+    })
+
+    it('keeps TempCode\'s own keys: Close Tab, Settings, New Thread', () => {
+      expect(row('close_tab').accelerator).toBe('CmdOrCtrl+W')
+      expect(row('open_settings').accelerator).toBe('CmdOrCtrl+,')
+      expect(row('new_tab').accelerator).toBe('CmdOrCtrl+N')
+    })
+
+    it('counts as a change of state', () => {
+      expect(sameMenuState(EMPTY_MENU_STATE, { ...EMPTY_MENU_STATE, live: true })).toBe(false)
+      expect(sameMenuState({ ...EMPTY_MENU_STATE, live: false }, EMPTY_MENU_STATE)).toBe(true)
+    })
   })
 
   describe('while a Work editor holds the caret', () => {
