@@ -33,7 +33,7 @@ import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
-import { FILES_KEYS } from "./chords";
+import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
@@ -400,12 +400,19 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     if (!gone?.copyOf || !gone.back) return done(false);
     await closeCopyTab(gone, copyHostOf(gone, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
   };
-  const close = (tabId: string): void => void closeOne(tabId).catch((err: unknown) => say("The tab did not close", err));
+  // After a close the focus lands on what is left (chords.ts `landFocus`) once the window draws it.
+  const landing = useRef(false);
+  const close = (tabId: string): void => {
+    landing.current = true;
+    void closeOne(tabId).catch((err: unknown) => say("The tab did not close", err));
+  };
   // The file at a tab's side leaves by the same door: what it holds is sent before it goes.
   const closeSideOf = async (tab: FileTab): Promise<void> => {
     if (tab.side && !(await readyToClose(tab.side.itemId, tab.side.name))) return;
+    landing.current = true;
     await closeSide(link, workspace.id, tab.id);
   };
+  const closeAtSide = (tab: FileTab): void => void closeSideOf(tab).catch((err: unknown) => say("The file did not close", err));
   const closeMany = async (tabIds: readonly string[]): Promise<void> => {
     for (const id of tabIds) await closeOne(id).catch((err: unknown) => say("The tab did not close", err));
   };
@@ -433,7 +440,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
       return newTab();
     }
     if (!tab) return;
-    if (command === "close-tab") return close(tab.id);
+    if (command === "close-tab") return tab.side && closeOf(document.activeElement) === "side" ? closeAtSide(tab) : close(tab.id);
     if (command === "next-tab" || command === "prev-tab") return ids.length > 1 ? selectTab(link, workspace.id, ids[(at + (command === "next-tab" ? 1 : ids.length - 1)) % ids.length]!) : undefined;
     if (tab.kind !== "page" || !tab.page) return;
     void goTo(link, workspace.id, tab.id, tab.page, command === "back" ? "back" : "forward").catch(() => undefined);
@@ -442,6 +449,13 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     filesPort.set((command) => act.current(command), FILES_KEYS);
     return () => filesPort.set(null);
   }, []);
+  useEffect(() => {
+    if (!landing.current || !root.current) return;
+    const at = document.activeElement;
+    if (at && at !== document.body && root.current.contains(at)) return;
+    landing.current = false;
+    landFocus(root.current);
+  }, [tab?.id, tab?.side?.key]);
 
   // Go to and Search stand in the trail's place of one tab at a time, where the workspace's host keeps the names.
   const canFind = reach.tabs && !view.local;
@@ -621,7 +635,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
         items={canvas.items}
         verbs={verbs}
         onClose={() => close(tab.id)}
-        onCloseSide={() => void closeSideOf(tab).catch((err: unknown) => say("The file did not close", err))}
+        onCloseSide={() => closeAtSide(tab)}
         onShowFolder={newTab}
       />
     );

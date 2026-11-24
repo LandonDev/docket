@@ -7,7 +7,7 @@ vi.mock("./platform", () => ({
     return mac;
   },
 }));
-import { FILES_KEYS, FILES_VIEW, filesChord } from "../work/files/chords";
+import { closeOf, FILES_KEYS, FILES_VIEW, filesChord } from "../work/files/chords";
 import { filesPort, type FilesCommand } from "./filesKeys";
 import { tabCommand } from "./tabKeys";
 
@@ -115,6 +115,12 @@ describe("whose focus it is", () => {
     expect(filesPort.owns(inside(FILES_VIEW))).toBe(true);
     expect(filesPort.owns(inside())).toBe(false);
     expect(filesPort.owns(null)).toBe(false);
+  });
+
+  it("closes the file at a tab's side while the focus is in it, and the tab anywhere else", () => {
+    expect(closeOf(inside(FILES_VIEW, "[data-files-side]"))).toBe("side");
+    expect(closeOf(inside(FILES_VIEW))).toBe("tab");
+    expect(closeOf(null)).toBe("tab");
   });
 
   it("leaves a dialog or a menu inside the view its own keys", () => {

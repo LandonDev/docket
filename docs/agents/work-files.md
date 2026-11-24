@@ -434,7 +434,10 @@ control, takes it away.
 in `chords.ts`: the reader of its chords and the menu rows they answer).
 While focus is inside it, the app's resolver (`createKeyResolver`, guard 7)
 sends the mod key with T (a new tab), with W (close the tab; the last
-becomes the workspace's folder), with Shift and T (the tab last closed),
+becomes the workspace's folder; with the focus in the file at a tab's side
+it closes that file alone, as its × does: chords.ts `closeOf`; after any
+close the focus lands on what is left, the tab's own file, else the chat
+over it, else the tab shown, `landFocus`), with Shift and T (the tab last closed),
 with [ and ] (Back and Forward in the tab), with P (Go to) and F (Search),
 and Ctrl+Tab and Ctrl+Shift+Tab (the next and previous tab) to Files, as
 one app command, `files_command`, that carries the Files command

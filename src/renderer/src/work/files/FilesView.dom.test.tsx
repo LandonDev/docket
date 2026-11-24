@@ -624,6 +624,25 @@ describe("tabs", () => {
     off();
   });
 
+  it("closes the file at the side with the close key while the focus is in it, and lands the focus on the tab's own file", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tabId = host.tabs().find((t) => t.kind === "file")!.id;
+    await act(async () => host.change(tabId, { side: { itemId: "side-3", key: "file:env_box:/w/notes.txt", name: "notes.txt" } }));
+    (await screen.findByRole("button", { name: "Close notes.txt" })).focus();
+    await act(async () => void filesPort.run("close-tab"));
+    await waitFor(() => expect(calls(host, "work.files.tabClose")).toMatchObject([{ params: { tabId, side: true } }]));
+    await waitFor(() => expect(document.querySelector("[data-files-side]")).toBeNull());
+    expect(tabNames()).toHaveLength(2);
+    expect(document.activeElement).toBe(document.querySelector("[data-files-main]"));
+    // In the tab's own file the key closes the tab.
+    await act(async () => void filesPort.run("close-tab"));
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
+    expect(document.activeElement).toBe(document.querySelector('[role="tab"][aria-selected="true"]'));
+  });
+
   it("sends what the file at its side holds too before a tab closes, since the side goes with it", async () => {
     const { host } = await mount();
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));

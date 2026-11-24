@@ -49,6 +49,25 @@ const within = (target: EventTarget | null, selector: string): boolean => {
  */
 export const filesOwnsFocus = (target: EventTarget | null): boolean => within(target, FILES_VIEW) && !within(target, NOT_FILES);
 
+/**
+ * What the close key closes: the file at a tab's side (SideFile.tsx) while the focus is in it, as its own × does;
+ * anywhere else in the view, the tab, and the side with it.
+ */
+export const closeOf = (target: EventTarget | null): "side" | "tab" => (within(target, "[data-files-side]") ? "side" : "tab");
+
+/**
+ * After a close the focus lands on what is left, never on nothing: the tab's own file (its text where it has
+ * some), else the chat that lies over it, else the tab shown.
+ */
+export function landFocus(root: ParentNode): void {
+  const file = root.querySelector<HTMLElement>("[data-files-main]:not([inert])");
+  const to =
+    (file && (file.querySelector<HTMLElement>('[contenteditable="true"], textarea') ?? file)) ??
+    root.querySelector<HTMLElement>("[data-files-dock] [data-composer-input]") ??
+    root.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+  to?.focus({ preventScroll: true });
+}
+
 /** The menu rows whose keys are the Files place's chords, each with the Files command it runs there (⌘T is Type Hierarchy's row). */
 export const FILES_MENU: Partial<Record<AppCommandId, FilesCommand>> = {
   close_tab: "close-tab",

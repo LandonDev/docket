@@ -501,7 +501,7 @@ export function FileTabView({
       />
       <div ref={body} data-files-body className="relative flex min-h-0 min-w-0 flex-1">
         {/* Under the chat that lies over it, the file takes no focus. */}
-        <div inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div data-files-main tabIndex={-1} inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           {item && live ? (
             <LiveBody itemId={item.id} url={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
           ) : item ? (
