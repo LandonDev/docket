@@ -62,6 +62,8 @@ export interface OutboxItem extends HeldItem {
   via?: string
   /** an item that went out of date and that he put away: it no longer waits */
   dismissedAt?: number
+  /** its kind may be sent later (Send's menu offers Send later) */
+  later?: true
   updatedAt: number
 }
 export interface OutboxChanged {
@@ -94,6 +96,7 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   reason: z.string().optional(),
   via: z.string().optional(),
   dismissedAt: z.number().int().optional(),
+  later: z.literal(true).optional(),
   updatedAt: z.number().int()
 })
 
@@ -212,7 +215,9 @@ export const DecisionSchema = z.object({
   at: z.number().int().optional(),
   zone: z.string().max(80).optional(),
   again: z.boolean().optional(),
-  reason: z.string().max(500).optional()
+  reason: z.string().max(500).optional(),
+  /** a LifeOS mail sent later: LifeOS drops the send when someone writes back first */
+  cancelIfReply: z.boolean().optional()
 })
 export type Decision = z.infer<typeof DecisionSchema>
 /** What became of one item of a press: `item` as it stands after, or why it did not go. */
@@ -245,6 +250,12 @@ export const OutboxRequestSchemas = [
   request('work.outbox.discard', z.object({ ref: HeldRefSchema, reason: z.string().max(500).optional(), via: PressViaSchema.optional() })),
   /** → { results: DecisionResult[] }: one press on one or many items of this host, each run as its own press would be, four at a time, each answering its own result in the order asked. More than one item earns no offered grant. A desktop press across hosts sends one of these to each host. */
   request('work.outbox.decide', z.object({ items: z.array(DecisionSchema).min(1).max(100), via: PressViaSchema.optional() })),
+  /** → OutboxItem: a scheduled item waits on him again as held (a LifeOS mail only once LifeOS took it back) */
+  request('work.outbox.cancelSend', z.object({ ref: HeldRefSchema })),
+  /** → OutboxItem: a scheduled item goes now, on its own claim */
+  request('work.outbox.sendNow', z.object({ ref: HeldRefSchema })),
+  /** → { back: boolean, item? }: Undo on a press's toast. A LifeOS mail LifeOS still holds in its undo time goes back to held; false once it went. */
+  request('work.outbox.undoSend', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: an item that went out of date, put away with "out of date", and its thread asked to draft it again from what is true now */
   request('work.outbox.askAgain', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */
@@ -290,6 +301,9 @@ export const OUTBOX_CAPS = {
   'work.outbox.discard': 'approve',
   'work.outbox.askAgain': 'approve',
   'work.outbox.decide': 'approve',
+  'work.outbox.cancelSend': 'approve',
+  'work.outbox.sendNow': 'approve',
+  'work.outbox.undoSend': 'approve',
   'work.outbox.edit': 'approve',
   'work.outbox.grant': 'admin',
   'work.outbox.grants': 'read',

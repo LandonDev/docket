@@ -81,7 +81,11 @@ time. A press from the Outbox page, a grant's send and the phone's run in
 calls of their own, find no mark whoever wins the claim, and keep LifeOS's
 queue and its Undo; LifeOS takes `immediate` only with `cause: 'press'`
 named, and makes a grant's send wait the undo time whatever time it names.
-A held draft's Send later goes as his own scheduled mail ("Send later").
+A held draft's Send later goes through the hold too: `work.mail.send` with a
+time calls the Outbox's `decide` with `do: 'later'` (docs/agents/work-outbox.md
+"Send later"), which keeps the time on the hold's row and then hands LifeOS
+the time, its only timer; its thread hears and its linked task completes
+once LifeOS sent it.
 
 **One wait a draft.** A second Send on the same draft, or the draft opened
 again in the composer, ends the wait it had (work-kit `held-send.ts`), so
@@ -152,9 +156,11 @@ LifeOS says so.
 A scheduled mail shows in Scheduled (one account's or all, as the other
 boxes), in its thread's foot with Send now, Edit (back to a draft, opened)
 and Cancel send, and in the Outbox when a thread drafted it: state
-`sending` with `scheduledFor` and `scheduledZone`, "Scheduled for …", one
-verb, Cancel send; the Outbox's Send and Discard refuse it
-(`SCHEDULED_BY_HIM`). The phones read it too (LifeKit `ScheduleTime`):
+`scheduled` (a draft scheduled before the hold took the time: `sending`)
+with `scheduledFor` and `scheduledZone`, "Scheduled for …", one verb,
+Cancel send; the Outbox's Send and Discard refuse it (`SCHEDULED_BY_HIM`).
+Mail's cancel and move of a thread's draft go through the same row: it is
+held again only once LifeOS took it back. The phones read it too (LifeKit `ScheduleTime`):
 Scheduled and the thread's foot show the two-zone line with Cancel, a tap
 offers Edit or Cancel Send, and the phone's own Send later carries the
 device's zone; the phone has no zone picker, Send now or Move.

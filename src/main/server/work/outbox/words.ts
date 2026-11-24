@@ -85,6 +85,9 @@ export const discardedNote = (row: Told & Partial<Pick<HeldRow, 'decidedBy' | 'r
   return `The owner discarded held item ${row.n} (${toldAs(row)})${where}${why}. It will not go. Do not send it another way.`
 }
 
+/** A LifeOS mail he took back in its undo time: the thread heard it was queued, so it hears it waits again. */
+export const takenBackNote = (row: Told): string => `The owner took back held item ${row.n} (${toldAs(row)}) before it went. It waits in his Outbox again. Do not send it another way.`
+
 /** The reason an item put away by Ask the thread again carries. */
 export const OUT_OF_DATE = 'out of date'
 

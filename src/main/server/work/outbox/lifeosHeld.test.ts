@@ -205,7 +205,7 @@ describe("the owner's press on a LifeOS-held mail", () => {
     const store = rig.host.store
     for (const row of store.list({ show: 'all' })) rig.work.ctx.db.prepare(`UPDATE work_held_acts SET state = 'sending' WHERE id = ?`).run(row.id)
     Object.assign(rig.lifeos.rows.get(stayed)!, { status: 'draft' })
-    expect(store.recover()).toEqual({ interrupted: 2, lost: 0 })
+    expect(store.recover()).toEqual({ interrupted: 2, lost: 0, missed: 0 })
     expect(store.list().map((r) => r.error)).toEqual([INTERRUPTED, INTERRUPTED])
     const before = sends().length
     rig.lifeos.fire()

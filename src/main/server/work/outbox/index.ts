@@ -143,6 +143,17 @@ export const outbox: WorkModule = {
       case 'work.outbox.decide':
         mustBePerson(by, 'approve')
         return handled({ results: (await box.decide(req.params.items, { by: person(by), ...(req.params.via ? { via: req.params.via } : {}) })).map((r) => (r.item ? { ...r, item: seenBy(by, r.item) } : r)) })
+      case 'work.outbox.cancelSend':
+        mustBePerson(by, 'approve')
+        return handled(await box.cancelSend(req.params.ref))
+      case 'work.outbox.sendNow':
+        mustBePerson(by, 'approve')
+        return handled(await box.sendScheduledNow(req.params.ref))
+      case 'work.outbox.undoSend': {
+        mustBePerson(by, 'approve')
+        const back = await box.undoSend(req.params.ref)
+        return handled(back.item ? { ...back, item: seenBy(by, back.item) } : back)
+      }
       case 'work.outbox.askAgain':
         mustBePerson(by, 'approve')
         return handled(await box.askAgain(req.params.ref, person(by)))

@@ -118,10 +118,10 @@ describe('after a stop', () => {
     store.claim(a.id, 'owner')
     // a new process on the same database
     const again = new HeldStore(db, () => clock++)
-    expect(again.recover()).toEqual({ interrupted: 1, lost: 0 })
+    expect(again.recover()).toEqual({ interrupted: 1, lost: 0, missed: 0 })
     expect(again.get(a.id)).toMatchObject({ state: 'failed', error: INTERRUPTED, decidedBy: 'owner', attempts: 1, outcomeUnknown: true })
     // recovery itself claims nothing and runs nothing; a second recovery changes nothing
-    expect(again.recover()).toEqual({ interrupted: 0, lost: 0 })
+    expect(again.recover()).toEqual({ interrupted: 0, lost: 0, missed: 0 })
   })
 
   it('a send cut off by the stop may have gone: only a claim made with again takes it, and a LifeOS row, which LifeOS settles, is not marked', () => {
@@ -158,7 +158,7 @@ describe('after a stop', () => {
   it('a live act goes stale: its screen went with the process', () => {
     const live = store.insert(act({ kind: 'computer.act', state: 'live' }))
     const held = store.insert(act())
-    expect(new HeldStore(db).recover()).toEqual({ interrupted: 0, lost: 1 })
+    expect(new HeldStore(db).recover()).toEqual({ interrupted: 0, lost: 1, missed: 0 })
     expect(store.get(live.id)).toMatchObject({ state: 'stale', error: LIVE_LOST })
     expect(store.get(held.id)?.state).toBe('held')
   })

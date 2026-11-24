@@ -31,10 +31,17 @@ export const EDITS_TABLE = 'work_held_edits'
 
 /** States a press may take a row from. `failed` is in: a send that failed waits on him as much as a held one does. */
 export const PRESSABLE: readonly HeldState[] = ['held', 'live', 'failed']
+/** What removing a thread or a workspace settles: what waits, and a time he set on the host's own timer. */
+const CLOSABLE: readonly HeldState[] = ['held', 'live', 'failed', 'scheduled']
 /** States that wait on the owner, as the Waiting list shows them; an item that went out of date waits too, until he discards it (`WAITING_SQL`). */
 export const WAITING: readonly HeldState[] = ['held', 'live', 'failed', 'sending']
 /** What the Waiting list holds, as SQL: the states above, and a stale row he has not discarded. */
-const WAITING_SQL = `(state IN ('held', 'live', 'failed', 'sending') OR (state = 'stale' AND dismissed_at IS NULL))`
+const WAITING_SQL = `(state IN ('held', 'live', 'failed', 'sending', 'scheduled') OR (state = 'stale' AND dismissed_at IS NULL))`
+/** States a time may be set from: a held or failed item, never a live screen's act. */
+const SCHEDULABLE = ['held', 'failed'] as const
+/** A schedule this far past its time when the host comes up went by while it was off: back to held, never sent late. */
+export const MISSED_MS = 15 * 60_000
+export const MISSED = 'Missed its time while the host was off. Send it now or pick another time.'
 /** What the count holds (shared/work/outboxCount.ts `needsHim`): the same less a row being sent. */
 const COUNTED_SQL = `(state IN ('held', 'live', 'failed') OR (state = 'stale' AND dismissed_at IS NULL))`
 /** Where a press was made, as Done says it. `request:<id>` is the host's own, for a thread's request he answered. */
@@ -56,6 +63,13 @@ export function ensureOutboxTables(db: DatabaseSync): void {
   }
   // Outbox 2: a discard's reason, where the press was made, and when a stale row was put away. A database made before
   // it has every stale row put away already: only what goes out of date from now on waits for him.
+  // Send later: when it goes, the zone he picked the time in, who set it, and a generation each change moves on.
+  if (!columns.includes('schedule_at') && columns.includes('id')) {
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_at INTEGER`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_zone TEXT`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_by TEXT`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_gen INTEGER NOT NULL DEFAULT 0`)
+  }
   if (!columns.includes('dismissed_at')) {
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN reason TEXT`)
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN via TEXT`)
@@ -94,6 +108,10 @@ function ensureTables(db: DatabaseSync): void {
       via            TEXT,
       dismissed_by   TEXT,
       dismissed_at   INTEGER,
+      schedule_at    INTEGER,
+      schedule_zone  TEXT,
+      schedule_by    TEXT,
+      schedule_gen   INTEGER NOT NULL DEFAULT 0,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
     );
@@ -160,6 +178,10 @@ type Row = {
   via: string | null
   dismissed_by: string | null
   dismissed_at: number | null
+  schedule_at: number | null
+  schedule_zone: string | null
+  schedule_by: string | null
+  schedule_gen: number
   created_at: number
   updated_at: number
 }
@@ -197,6 +219,11 @@ export interface HeldRow {
   /** a stale row he put away: by whom and when; until then it waits */
   dismissedBy: string | null
   dismissedAt: number | null
+  /** Send later: when it goes, the zone he picked it in, who set it, and the generation its own claim names */
+  scheduleAt: number | null
+  scheduleZone: string | null
+  scheduleBy: string | null
+  scheduleGen: number
   createdAt: number
   updatedAt: number
 }
@@ -267,6 +294,10 @@ const decode = (r: Row): HeldRow => ({
   via: r.via ?? null,
   dismissedBy: r.dismissed_by ?? null,
   dismissedAt: r.dismissed_at == null ? null : Number(r.dismissed_at),
+  scheduleAt: r.schedule_at == null ? null : Number(r.schedule_at),
+  scheduleZone: r.schedule_zone ?? null,
+  scheduleBy: r.schedule_by ?? null,
+  scheduleGen: Number(r.schedule_gen ?? 0),
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at)
 })
@@ -303,6 +334,7 @@ export const itemOfRow = (row: HeldRow): OutboxItem => ({
   ...(row.reason ? { reason: row.reason } : {}),
   ...(row.via ? { via: row.via } : {}),
   ...(row.dismissedAt != null ? { dismissedAt: row.dismissedAt } : {}),
+  ...(row.state === 'scheduled' && row.scheduleAt != null ? { scheduledFor: row.scheduleAt, ...(row.scheduleZone ? { scheduledZone: row.scheduleZone } : {}) } : {}),
   updatedAt: row.updatedAt
 })
 
@@ -468,6 +500,79 @@ export class HeldStore {
     return Number(put.changes) === 1 ? this.told(id) : null
   }
 
+  // ── Send later ────────────────────────────────────────────────────────
+
+  /** His Send later: the row waits for its time on its own claim. Only from held or failed, at the revision he saw. */
+  schedule(id: string, by: string, at: number, opts: { zone?: string | null; rev?: number; via?: Via | null } = {}): HeldRow | null {
+    const now = this.now()
+    const rev = opts.rev ?? null
+    const done = this.db
+      .prepare(
+        `UPDATE ${HELD_TABLE} SET state = 'scheduled', schedule_at = ?, schedule_zone = ?, schedule_by = ?, schedule_gen = schedule_gen + 1, decided_by = ?, decided_at = ?, via = ?, error = NULL, updated_at = MAX(updated_at + 1, ?)
+         WHERE id = ? AND state IN (${marks(SCHEDULABLE)}) AND outcome_unknown = 0 AND (? IS NULL OR updated_at = ?)`
+      )
+      .run(at, opts.zone ?? null, by, by, now, opts.via ?? null, now, id, ...SCHEDULABLE, rev, rev)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** A schedule taken back (Cancel send, a missed time, a check that failed at its time): held again, under a new generation. */
+  unschedule(id: string, error: string | null = null, gen?: number): HeldRow | null {
+    const g = gen ?? null
+    const done = this.db
+      .prepare(
+        `UPDATE ${HELD_TABLE} SET state = 'held', schedule_at = NULL, schedule_zone = NULL, schedule_gen = schedule_gen + 1, decided_by = NULL, decided_at = NULL, error = ?, updated_at = MAX(updated_at + 1, ?)
+         WHERE id = ? AND state = 'scheduled' AND (? IS NULL OR schedule_gen = ?)`
+      )
+      .run(error, this.now(), id, g, g)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** Another time for a schedule that stands. */
+  reschedule(id: string, at: number, zone: string | null): HeldRow | null {
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET schedule_at = ?, schedule_zone = COALESCE(?, schedule_zone), schedule_gen = schedule_gen + 1, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled'`).run(at, zone, this.now(), id)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** The timer's own claim: only the generation it was armed for, so a Cancel send or a new time in between wins. */
+  claimScheduled(id: string, gen: number): HeldRow | null {
+    const at = this.now()
+    const done = this.db
+      .prepare(
+        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = COALESCE(schedule_by, decided_by), decided_at = ?, via = 'scheduled', attempts = attempts + 1, updated_at = MAX(updated_at + 1, ?)
+         WHERE id = ? AND state = 'scheduled' AND schedule_gen = ?`
+      )
+      .run(at, at, id, gen)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** What LifeOS's own timer did with a scheduled mail: it went, or LifeOS no longer has it. */
+  settleScheduled(id: string, state: 'sent' | 'stale', error: string | null = null): HeldRow | null {
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = ?, error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled'`).run(state, error, this.now(), id)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** Scheduled rows whose time came, on the host's own timer (a LifeOS mail is LifeOS's to send). */
+  dueScheduled(): HeldRow[] {
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND run_key NOT LIKE 'lifeos:%' AND schedule_at <= ? ORDER BY schedule_at ASC LIMIT 50`).all(this.now()) as unknown as Row[]).map(decode)
+  }
+
+  /** The next time the host's timer has to wake, or null. */
+  nextScheduledAt(): number | null {
+    const row = this.db.prepare(`SELECT MIN(schedule_at) AS at FROM ${HELD_TABLE} WHERE state = 'scheduled' AND run_key NOT LIKE 'lifeos:%'`).get() as { at: number | null }
+    return row.at == null ? null : Number(row.at)
+  }
+
+  /** Every scheduled row LifeOS's timer holds, to read what became of it. */
+  scheduledInLifeos(): HeldRow[] {
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' LIMIT 200`).all() as unknown as Row[]).map(decode)
+  }
+
+  /** A LifeOS mail he took back in its undo time: it waits on him again as held. */
+  unsend(id: string): HeldRow | null {
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'held', decided_by = NULL, decided_at = NULL, via = NULL, result = NULL, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'sent'`).run(this.now(), id)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
   /** His own edit left this revision: until it moves, a change from the first words is his. */
   markEdited(runKey: string, rev: number): void {
     this.db.prepare(`INSERT INTO ${EDITS_TABLE} (run_key, rev) VALUES (?, ?) ON CONFLICT(run_key) DO UPDATE SET rev = excluded.rev`).run(runKey, rev)
@@ -503,9 +608,9 @@ export class HeldStore {
   closeSessions(sessionIds: readonly string[], why: string): number {
     let n = 0
     for (const id of sessionIds)
-      for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(PRESSABLE)})`).all(id, ...PRESSABLE) as unknown as Row[]).map(decode)) {
+      for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(CLOSABLE)})`).all(id, ...CLOSABLE) as unknown as Row[]).map(decode)) {
         // He removed the thread himself: what it made is put away with it, not left waiting for him to discard.
-        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`).run(why, this.now(), this.now(), row.id, ...PRESSABLE)
+        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(CLOSABLE)})`).run(why, this.now(), this.now(), row.id, ...CLOSABLE)
         if (Number(done.changes) === 1) {
           n++
           this.told(row.id)
@@ -527,7 +632,7 @@ export class HeldStore {
    * is never sent again by the host: nobody knows whether it went. A live
    * act's screen is gone with the process.
    */
-  recover(): { interrupted: number; lost: number } {
+  recover(): { interrupted: number; lost: number; missed: number } {
     const at = this.now()
     // A LifeOS row is the exception: LifeOS holds what became of it, and the watcher and the next press both ask it first.
     const interrupted = Number(
@@ -536,7 +641,13 @@ export class HeldStore {
         .run(INTERRUPTED, at).changes
     )
     const lost = Number(this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE state = 'live'`).run(LIVE_LOST, at).changes)
-    return { interrupted, lost }
+    // A time that went by while the host was off goes back to him; it is never sent late. LifeOS keeps its own.
+    const missed = Number(
+      this.db
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'held', schedule_at = NULL, schedule_zone = NULL, schedule_gen = schedule_gen + 1, decided_by = NULL, decided_at = NULL, error = ?, updated_at = MAX(updated_at + 1, ?) WHERE state = 'scheduled' AND run_key NOT LIKE 'lifeos:%' AND schedule_at < ?`)
+        .run(MISSED, at, at - MISSED_MS).changes
+    )
+    return { interrupted, lost, missed }
   }
 
   /** A deleted workspace's waiting rows can no longer go: its add-ons and its key went with it. The rows stay, as the log. */
@@ -544,8 +655,8 @@ export class HeldStore {
     const at = this.now()
     return Number(
       this.db
-        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(PRESSABLE)})`)
-        .run(why, at, at, workspaceId, ...PRESSABLE).changes
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(CLOSABLE)})`)
+        .run(why, at, at, workspaceId, ...CLOSABLE).changes
     )
   }
 

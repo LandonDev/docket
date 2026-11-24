@@ -65,7 +65,7 @@ Three tables, made by the module's `ensure` (`work/outbox/store.ts`):
 
 - `work_held_acts`: one row per act that waits or was decided. States:
   `held`, `live` (a computer act, tied to a live screen), `sending`, `sent`,
-  `failed`, `discarded`, `stale`. `rowid` is the number the thread is told.
+  `failed`, `discarded`, `stale`, `scheduled` (Send later). `rowid` is the number the thread is told.
   No row is ever deleted: the table is the log.
   A discard keeps his `reason` (500 characters at most) and every press
   where it was made (`via`: `outbox`, `today`, `phone`, `mail`,
@@ -361,7 +361,7 @@ The act's own result, which a thread's Results list keeps, says the same: "Queue
 | Method | Needs | |
 |---|---|---|
 | `work.outbox.list`, `get`, `grants`, `rules` | read | `get` adds a computer act's picture |
-| `work.outbox.send`, `discard`, `edit`, `askAgain`, `decide` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
+| `work.outbox.send`, `discard`, `edit`, `askAgain`, `decide`, `cancelSend`, `sendNow`, `undoSend` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
 | `work.outbox.grant`, `ungrant`, `setRules`, `setForWork` | admin | |
 
 A window whose key may not make grants on that host (`linkMay`, docs/agents/work.md
@@ -388,6 +388,44 @@ thread again."); a live screen's act, a computer act and a LifeOS reply
 that quotes the mail it answers go only from their own page, alone ("Open
 to send"). One item named twice in a press is refused the second time. A
 desktop press across hosts sends one `decide` to each host.
+
+**Send later.** Send's menu offers a time on an item whose kind may wait
+(`OutboxItem.later`; the kinds in `LATER`, outbox.ts: a LifeOS mail,
+`office.mail.send`, `teams.post`, `chat.reply`; only a kind that checks
+itself again when it runs is there). `decide` with `do: 'later'` (a minute
+to a year ahead) moves the row to `scheduled` (`schedule_at`,
+`schedule_zone`, `schedule_by`, a `schedule_gen` each change moves on) at
+the revision he saw; it lists in Waiting's Scheduled section and is not
+counted. A scheduled send earns no offered grant.
+- **The host's timer** (one `setTimeout` for the next time due, while Work
+  is on) runs each due row on its own claim, `claimScheduled(id, gen)`, so a
+  Cancel send or another time in between wins. At its time it checks again:
+  the kind's deadline (`by`), the thread's workspace still there, then the
+  kind's own fresh checks in `execute`. `via` reads `scheduled`.
+- **Never late.** A time more than 15 minutes past when the host comes up
+  (`recover`) or when the timer wakes goes back to held with "Missed its
+  time while the host was off" (`MISSED`).
+- **A LifeOS mail** has one timer, LifeOS's: the host stores the time on
+  the row first, then calls `compose:send` with `sendAt`, `sendZone` and
+  `cancelIfReply` as his press; a refusal puts the row back to held with
+  why. The watcher reads what LifeOS's timer did (`settleScheduled`,
+  lifeosHeld.ts): listed with its time, it waits; listed as a draft or a
+  failed send, it is held again; gone from the list and queued, sending or
+  sent in LifeOS, it went, and the thread hears and the linked task
+  completes once.
+- **Cancel send** (`work.outbox.cancelSend`) returns it to held; a LifeOS
+  mail only after LifeOS's `compose:cancel` says it took it back
+  ("It is already on its way" otherwise). **Send now**
+  (`work.outbox.sendNow`) runs it at once on its own claim (a LifeOS mail:
+  `compose:sendNow`). Mail's own cancel and move of a thread's draft go
+  through the same row. Removing a thread or workspace settles its
+  schedules.
+- **Undo** (`work.outbox.undoSend`, the press's toast): a LifeOS mail
+  LifeOS still holds in its undo time goes back to a draft through
+  `compose:cancel`, the row is held again, and the thread hears "The owner
+  took back held item N … before it went." Once it went, Undo answers
+  `{back: false}`. A kind with a way back keeps Results' undo; every other
+  press has none.
 
 **What he saw is what goes.** Every name is made canonical first: a host
 ref to a row that records a LifeOS item is that item's LifeOS ref, so no

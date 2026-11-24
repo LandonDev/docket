@@ -207,6 +207,9 @@ export const LIFEOS_HELD_FNS = {
   mailRetry: 'compose:retry',
   mailSave: 'compose:save',
   mailDiscard: 'compose:discard',
+  mailCancel: 'compose:cancel',
+  mailSendNow: 'compose:sendNow',
+  mailReschedule: 'compose:reschedule',
   calendarHeld: 'calendarOps:held',
   calendarGet: 'calendarOps:get',
   calendarSave: 'calendarOps:save',
@@ -341,6 +344,39 @@ export class LifeosHeldItems implements LifeosHeld {
     return this.mailItem(row, got?.quote)
   }
 
+  // ── Send later: LifeOS is a held mail's only timer ──────────────────────
+
+  async scheduleMail(payload: unknown, time: { at: number; zone?: string; cancelIfReply?: boolean }): Promise<void> {
+    const p = MailSendPayloadSchema.parse(payload)
+    const shown = p.editedAt !== undefined ? { editedAt: p.editedAt } : {}
+    await this.deps.ctx.lifeos.owner().mutation(LIFEOS_HELD_FNS.mailSend, {
+      id: p.id,
+      message: { ...p.message, html: outgoingHtml(p.message.html) },
+      cause: 'press',
+      sendAt: time.at,
+      ...(time.zone ? { sendZone: time.zone } : {}),
+      ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {}),
+      ...shown
+    })
+  }
+
+  async cancelMail(id: string): Promise<boolean> {
+    return (await this.deps.ctx.lifeos.owner().mutation<boolean>(LIFEOS_HELD_FNS.mailCancel, { id })) === true
+  }
+
+  async sendMailNow(id: string): Promise<void> {
+    await this.deps.ctx.lifeos.owner().mutation(LIFEOS_HELD_FNS.mailSendNow, { id })
+  }
+
+  async rescheduleMail(id: string, time: { at: number; zone?: string; cancelIfReply?: boolean }): Promise<void> {
+    await this.deps.ctx.lifeos.owner().mutation(LIFEOS_HELD_FNS.mailReschedule, { id, sendAt: time.at, ...(time.zone ? { sendZone: time.zone } : {}), ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {}) })
+  }
+
+  async mailStatus(id: string): Promise<string | null> {
+    const got = await this.deps.ctx.lifeos.owner().query<{ row: OutboxDoc } | null>(LIFEOS_HELD_FNS.mailGet, { id })
+    return got?.row ? String(got.row.status) : null
+  }
+
   async discard(ref: LifeosRef): Promise<void> {
     const owner = this.deps.ctx.lifeos.owner()
     if (ref.table === 'outbox') await owner.mutation(LIFEOS_HELD_FNS.mailDiscard, { id: ref.id })
@@ -447,7 +483,10 @@ export class LifeosHeldItems implements LifeosHeld {
         if (item.scheduledFor !== undefined) continue
         await outbox.offer(item, { quiet: first })
       }
-      if (what === 'mail') await this.settleInterrupted(listed)
+      if (what === 'mail') {
+        await this.settleInterrupted(listed)
+        await this.settleScheduled(items)
+      }
       if (ask) void this.said.pass()
       outbox.changed(null)
     } catch (err) {
@@ -461,6 +500,35 @@ export class LifeosHeldItems implements LifeosHeld {
    * (`sent`); one LifeOS still holds as a draft did not, and is left failed
    * for him to send again; one LifeOS no longer has is gone.
    */
+  /**
+   * A mail he scheduled through the hold, as LifeOS's own timer left it (docs/agents/work-outbox.md "Send later"):
+   * still listed with its time, it waits; listed as a draft or a failed send, he or LifeOS took it back, and it waits
+   * on him again; gone from the list, LifeOS is asked: queued, sending or sent means it went, and the thread hears it
+   * and the linked task completes, once; a draft means it came back; none means LifeOS no longer has it.
+   */
+  private async settleScheduled(items: readonly OutboxItem[]): Promise<void> {
+    const { outbox, ctx } = this.deps
+    for (const row of outbox.store.scheduledInLifeos()) {
+      const m = /^lifeos:outbox:(.+)$/.exec(row.runKey)
+      if (!m) continue
+      const listed = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === m[1])
+      try {
+        if (listed) {
+          if (listed.scheduledFor === undefined) outbox.store.unschedule(row.id, listed.state === 'failed' ? (listed.error ?? 'LifeOS could not send it') : null)
+          continue
+        }
+        const status = await this.mailStatus(m[1]!)
+        if (status === null) outbox.store.settleScheduled(row.id, 'stale', 'LifeOS no longer has this mail')
+        else if (['queued', 'sending', 'sent'].includes(status)) {
+          const went = outbox.store.settleScheduled(row.id, 'sent')
+          if (went) outbox.scheduledWent(went)
+        } else if (status === 'draft' || status === 'failed') outbox.store.unschedule(row.id, status === 'failed' ? 'LifeOS could not send it' : null)
+      } catch (err) {
+        ctx.log(`outbox: could not ask LifeOS about scheduled item ${row.n}: ${errorText(err)}`)
+      }
+    }
+  }
+
   private async settleInterrupted(listed: ReadonlySet<string>): Promise<void> {
     const { outbox, ctx } = this.deps
     for (const row of outbox.store.list({ show: 'waiting', limit: 500 })) {

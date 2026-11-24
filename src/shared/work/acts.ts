@@ -59,7 +59,8 @@ export const HeldRefSchema = z.discriminatedUnion('at', [
   z.object({ at: z.literal('lifeos'), table: z.enum(['outbox', 'calendarOps']), id: z.string() })
 ])
 
-export const HELD_STATES = ['held', 'live', 'sending', 'sent', 'failed', 'discarded', 'stale'] as const
+/** `scheduled`: he pressed Send later; it goes at its time on its own claim (docs/agents/work-outbox.md "Send later"). */
+export const HELD_STATES = ['held', 'live', 'sending', 'sent', 'failed', 'discarded', 'stale', 'scheduled'] as const
 export type HeldState = (typeof HELD_STATES)[number]
 
 /** One held act as `work.outbox.list` answers it: host rows and LifeOS-held items alike. */

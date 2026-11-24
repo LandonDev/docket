@@ -9,6 +9,7 @@ import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
 import { mustBePerson } from '../outbox/person'
+import { outboxHostOf } from '../outbox/ctx'
 import { ensureWaitingTables, reportDrops, setWaiting, startNudge, waitingOf, waitingTool, type DropRow } from './waiting'
 
 /**
@@ -108,6 +109,19 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
   // His press with a time on a thread's draft is his own send for that instant: it goes as his mail, scheduled,
   // and LifeOS takes the draft as his. A grant never names a time, and LifeOS refuses one from it besides.
   if (row.origin?.app === 'tempcode' && row.origin.host !== ctx.host) throw new Error(ELSEWHERE)
+  // A thread's draft sent later goes through the hold too (docs/agents/work-outbox.md "Send later"): the host keeps the
+  // time, LifeOS is its only timer, and the thread hears and the linked task completes once it went.
+  if (row.origin?.app === 'tempcode' && time) {
+    const outbox = WORK_MODULES.find((m) => m.id === 'outbox')
+    if (!outbox?.handle) throw new Error('the Outbox is not running on this host')
+    const rev = Math.round(row.editedAt ?? row._creationTime)
+    const item = { ref: { at: 'lifeos', table: 'outbox', id }, do: 'later', at: time.sendAt, rev, ...(time.sendZone !== undefined ? { zone: time.sendZone } : {}), ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {}) }
+    const answer = await outbox.handle({ id: 'mail', method: 'work.outbox.decide', params: { items: [item], via: 'mail' } } as never, ctx, by)
+    const result = answer.handled ? (answer.result as { results: { ok: boolean; error?: string; item?: OutboxItem }[] }).results[0] : undefined
+    const why = result?.error ?? result?.item?.error
+    if (!result?.ok) throw new Error(why && /changed since (it was shown|you opened it)/.test(why) ? CHANGED : (why ?? 'This mail was not scheduled.'))
+    return { id, via: 'hold' }
+  }
   if (row.origin?.app === 'tempcode' && !time) {
     const outbox = WORK_MODULES.find((m) => m.id === 'outbox')
     if (!outbox?.handle) throw new Error('the Outbox is not running on this host')
@@ -145,12 +159,28 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
 export async function rescheduleMail(ctx: WorkCtx, by: Caller, id: string, time: MailTime): Promise<null> {
   mustApprove(by)
   await ctx.lifeos.owner().mutation('compose:reschedule', { id, ...timeArgs(time) })
+  // The hold's row keeps the same time as LifeOS, so the Outbox says when it goes.
+  const held = heldRowOf(ctx, id)
+  if (held?.state === 'scheduled') outboxHostOf(ctx)?.store.reschedule(held.id, time.sendAt, time.sendZone ?? null)
   return null
 }
+
+/** The hold's row for a thread's held draft, when it has one. */
+const heldRowOf = (ctx: WorkCtx, id: string) => outboxHostOf(ctx)?.store.byRef({ at: 'lifeos', table: 'outbox', id }) ?? null
 
 /** His press takes a scheduled mail back to a draft, as the Outbox's Cancel send does. */
 export async function cancelMail(ctx: WorkCtx, by: Caller, id: string): Promise<{ back: boolean }> {
   mustApprove(by)
+  // One state machine with the Outbox's Cancel send: the hold's row goes back to held only once LifeOS took it back.
+  const host = outboxHostOf(ctx)
+  if (host && heldRowOf(ctx, id)?.state === 'scheduled') {
+    try {
+      await host.outbox.cancelSend({ at: 'lifeos', table: 'outbox', id })
+      return { back: true }
+    } catch {
+      return { back: false }
+    }
+  }
   return { back: await ctx.lifeos.owner().mutation<boolean>('compose:cancel', { id }) }
 }
 

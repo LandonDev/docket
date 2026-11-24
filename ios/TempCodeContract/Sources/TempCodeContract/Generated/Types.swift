@@ -4915,6 +4915,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         case failed
         case discarded
         case stale
+        case scheduled
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -4927,6 +4928,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case "failed": self = .failed
             case "discarded": self = .discarded
             case "stale": self = .stale
+            case "scheduled": self = .scheduled
             default: self = .unknown(rawValue)
             }
         }
@@ -4940,6 +4942,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case .failed: "failed"
             case .discarded: "discarded"
             case .stale: "stale"
+            case .scheduled: "scheduled"
             case .unknown(let value): value
             }
         }
@@ -5091,9 +5094,10 @@ public struct OutboxItem: Codable, Hashable, Sendable {
     public let reason: String?
     public let via: String?
     public let dismissedAt: Int?
+    public let later: Bool?
     public let updatedAt: Int
 
-    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, effect: String? = nil, changed: Changed? = nil, replied: Replied? = nil, reason: String? = nil, via: String? = nil, dismissedAt: Int? = nil, updatedAt: Int) {
+    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, effect: String? = nil, changed: Changed? = nil, replied: Replied? = nil, reason: String? = nil, via: String? = nil, dismissedAt: Int? = nil, later: Bool? = nil, updatedAt: Int) {
         self.ref = ref
         self.kind = kind
         self.workspaceId = workspaceId
@@ -5124,11 +5128,12 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         self.reason = reason
         self.via = via
         self.dismissedAt = dismissedAt
+        self.later = later
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, effect, changed, replied, reason, via, dismissedAt, updatedAt
+        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, effect, changed, replied, reason, via, dismissedAt, later, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -5163,6 +5168,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         try container.encodeIfPresent(reason, forKey: .reason)
         try container.encodeIfPresent(via, forKey: .via)
         try container.encodeIfPresent(dismissedAt, forKey: .dismissedAt)
+        try container.encodeIfPresent(later, forKey: .later)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

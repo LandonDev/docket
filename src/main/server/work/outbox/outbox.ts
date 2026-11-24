@@ -7,8 +7,8 @@ import { EARN_DAYS, earn, sameWords, wireOffer, wordsOf, type EarnedStore, type 
 import { effectOf } from './effects'
 import type { SentFact } from './confirmed'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
-import { itemOfRow, lifeosRunKey, PRESSABLE, refOfRow, type HeldRow, type HeldStore, type Via } from './store'
-import { askAgainNote, discardedNote, failedNote, OUT_OF_DATE, queuedNote, sentNote, staleNote } from './words'
+import { itemOfRow, lifeosRunKey, MISSED, MISSED_MS, PRESSABLE, refOfRow, type HeldRow, type HeldStore, type Via } from './store'
+import { askAgainNote, discardedNote, failedNote, OUT_OF_DATE, queuedNote, sentNote, staleNote, takenBackNote } from './words'
 
 /**
  * The hold as one service (docs/agents/work-outbox.md): an act is held
@@ -62,6 +62,16 @@ export interface LifeosHeld {
   relist?(item: OutboxItem): void
   /** What LifeOS last said of a row stored sent (confirmed.ts): read only, it changes no state. */
   sentFact?(row: HeldRow): SentFact | undefined
+  /** Send later for a held mail: LifeOS's own `compose.send` with a time, as his press; LifeOS is its only timer. */
+  scheduleMail?(p: unknown, time: { at: number; zone?: string; cancelIfReply?: boolean }): Promise<void>
+  /** Take a mail LifeOS holds (scheduled, or in its undo time) back to a draft; false when it is already on its way. */
+  cancelMail?(id: string): Promise<boolean>
+  /** A scheduled mail goes now, after LifeOS's undo time. */
+  sendMailNow?(id: string): Promise<void>
+  /** Another time for a scheduled mail. */
+  rescheduleMail?(id: string, time: { at: number; zone?: string; cancelIfReply?: boolean }): Promise<void>
+  /** LifeOS's own status of a mail row, or null when it has none. */
+  mailStatus?(id: string): Promise<string | null>
 }
 
 export interface OutboxDeps {
@@ -124,7 +134,7 @@ export const NOT_EDITABLE = 'This act cannot be changed here; change it where it
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
 /** A mail he scheduled was his press already: the Outbox neither sends nor discards it, only Cancel send takes it back. */
-export const SCHEDULED_BY_HIM = 'You scheduled this mail: it goes at its time. Cancel send takes it back to a draft.'
+export const SCHEDULED_BY_HIM = 'You scheduled this: it goes at its time. Cancel send takes it back.'
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
 export const NO_SUCH_OFFER = 'There is no such offer on this host, or it was already decided.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
@@ -132,6 +142,21 @@ export const NOT_OUT_OF_DATE = 'Only an item that went out of date can be asked 
 export const OUT_OF_DATE_SEND = 'This went out of date: discard it, or ask the thread again.'
 export const OPEN_TO_SEND = 'Open to send: this one is sent from its own page, alone.'
 export const NOT_LATER = 'This cannot be sent later.'
+export const NOT_SCHEDULED = 'This is not scheduled.'
+export const ON_ITS_WAY = 'It is already on its way and cannot be taken back.'
+export const BAD_TIME = 'Pick a time at least a minute from now and within a year.'
+export const TIME_PASSED = 'Its time passed before it could go. Send it now or pick another time.'
+export const SCOPE_GONE = 'The thread or workspace it belonged to is gone, so it did not go.'
+
+/**
+ * The kinds that may be sent later, and whose timer runs it (docs/agents/work-outbox.md "Send later"): LifeOS keeps
+ * its own for a mail it holds; the host's runs the rest. Only a kind that checks itself again when it runs is here.
+ */
+export const LATER: Partial<Record<ActKind, 'host' | 'lifeos'>> = { 'mail.send': 'lifeos', 'office.mail.send': 'host', 'teams.post': 'host', 'chat.reply': 'host' }
+const LATER_MIN_MS = 60_000
+const LATER_MAX_MS = 366 * 86_400_000
+/** The longest a timer may be set for in one go (setTimeout's own limit). */
+const TIMER_MAX_MS = 2 ** 31 - 1
 export const TWICE = 'This item is named twice in one press.'
 /** How many items of one press run at once. */
 export const DECIDE_AT_ONCE = 4
@@ -183,6 +208,9 @@ export class Outbox {
   private readonly changeListeners = new Set<(item: OutboxItem | null) => void>()
   /** the press under way on each item, by run key (`serial`) */
   private readonly locks = new Map<string, Promise<unknown>>()
+  /** the host's one Send later timer, while Work is on (`startSchedules`) */
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private timing = false
 
   constructor(private readonly deps: OutboxDeps) {
     deps.store.onChange((row) => this.changed(this.wire(row)))
@@ -270,6 +298,7 @@ export class Outbox {
 
   private async sendNow(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; many?: boolean; via?: Via }): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
+    if (row?.state === 'scheduled') throw new Error(SCHEDULED_BY_HIM)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
@@ -315,6 +344,7 @@ export class Outbox {
 
   private async discardNow(ref: HeldRef, by: string, opts: { reason?: string; via?: Via; rev?: number }): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
+    if (row?.state === 'scheduled') throw new Error(SCHEDULED_BY_HIM)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
       if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
@@ -372,7 +402,11 @@ export class Outbox {
         if (seen.has(key)) throw new Error(TWICE)
         seen.add(key)
         if (d.do === 'discard') return { ref, ok: true, item: await this.discard(ref, opts.by, { ...(d.reason ? { reason: d.reason } : {}), ...(opts.via ? { via: opts.via } : {}), ...(d.rev !== undefined ? { rev: d.rev } : {}) }) }
-        if (d.do === 'later') throw new Error(NOT_LATER)
+        if (d.do === 'later') {
+          if (d.at === undefined) throw new Error(BAD_TIME)
+          const item = await this.later(ref, { at: d.at, by: opts.by, ...(d.zone ? { zone: d.zone } : {}), ...(d.rev !== undefined ? { rev: d.rev } : {}), ...(d.cancelIfReply !== undefined ? { cancelIfReply: d.cancelIfReply } : {}), ...(opts.via ? { via: opts.via } : {}) })
+          return { ref, ok: item.state === 'scheduled', item }
+        }
         const refusal = this.sendRefusal(ref, many)
         if (refusal) throw new Error(refusal)
         const item = await this.send(ref, { ...(d.rev !== undefined ? { rev: d.rev } : {}), ...(d.again ? { again: true } : {}), ...(many ? { many: true } : {}), ...(opts.via ? { via: opts.via } : {}), by: opts.by })
@@ -382,6 +416,169 @@ export class Outbox {
       }
     }
     return mapLimit(items, DECIDE_AT_ONCE, run)
+  }
+
+  // ── Send later ────────────────────────────────────────────────────────
+
+  /**
+   * His Send later. The host keeps the time on the row first; a LifeOS mail then goes to LifeOS with that time, its
+   * only timer, and a failure there puts the row back. A host kind waits for the host's timer and its own claim. A
+   * time set is his press already: it earns no offered grant.
+   */
+  async later(ref: HeldRef, opts: { at: number; by: string; zone?: string; rev?: number; cancelIfReply?: boolean; via?: Via }): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => {
+      const now = Date.now()
+      if (opts.at < now + LATER_MIN_MS || opts.at > now + LATER_MAX_MS) throw new Error(BAD_TIME)
+      let row = this.store.byRef(ref)
+      const kind = row?.kind ?? (ref.at === 'lifeos' ? (ref.table === 'outbox' ? 'mail.send' : 'calendar.op') : null)
+      const timer = kind ? LATER[kind] : undefined
+      if (!timer) throw new Error(NOT_LATER)
+      if (ref.at === 'lifeos') {
+        if (opts.rev === undefined) throw new Error(REV_NEEDED)
+        if (!row || PRESSABLE.includes(row.state)) {
+          const live = await this.readLifeos(ref)
+          if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
+          if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
+          row = row ? (this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? this.store.get(row.id)) : this.adopt(live)
+        }
+      }
+      if (!row) throw new Error(NO_SUCH_ITEM)
+      if (row.state === 'failed' && row.outcomeUnknown) throw new Error(MAY_HAVE_GONE)
+      const rev = ref.at === 'host' ? opts.rev : row.updatedAt
+      const set = this.store.schedule(row.id, opts.by, opts.at, { zone: opts.zone ?? null, via: opts.via ?? null, ...(rev !== undefined ? { rev } : {}) })
+      if (!set) {
+        const now2 = this.store.get(row.id)!
+        if (rev !== undefined && now2.updatedAt !== rev && PRESSABLE.includes(now2.state)) throw new Error(CHANGED_SINCE)
+        return this.wire(now2)
+      }
+      this.markBatch(set.runKey)
+      if (timer === 'lifeos') {
+        try {
+          if (!this.lifeos?.scheduleMail) throw new Error('LifeOS is not reachable from this host')
+          await this.lifeos.scheduleMail(set.payload, { at: opts.at, ...(opts.zone ? { zone: opts.zone } : {}), ...(opts.cancelIfReply !== undefined ? { cancelIfReply: opts.cancelIfReply } : {}) })
+        } catch (err) {
+          this.store.unschedule(set.id, `LifeOS did not take the time: ${errorText(err)}`)
+          throw err
+        }
+      } else this.arm()
+      return this.wire(this.store.get(set.id)!)
+    })
+  }
+
+  /** Cancel send: a scheduled item waits on him again as held. A LifeOS mail only once LifeOS says it took it back. */
+  async cancelSend(ref: HeldRef): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => {
+      const row = this.store.byRef(ref)
+      if (!row || row.state !== 'scheduled') throw new Error(NOT_SCHEDULED)
+      if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
+        if (!(await this.lifeos?.cancelMail?.(ref.id))) throw new Error(ON_ITS_WAY)
+      }
+      const back = this.store.unschedule(row.id)
+      this.arm()
+      return this.wire(back ?? this.store.get(row.id)!)
+    })
+  }
+
+  /** Send now: a scheduled item goes at once, on its own claim (a LifeOS mail after LifeOS's undo time). */
+  async sendScheduledNow(ref: HeldRef): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => {
+      const row = this.store.byRef(ref)
+      if (!row || row.state !== 'scheduled') throw new Error(NOT_SCHEDULED)
+      if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
+        if (!this.lifeos?.sendMailNow) throw new Error('LifeOS is not reachable from this host')
+        await this.lifeos.sendMailNow(ref.id)
+        return this.wire(this.store.reschedule(row.id, Date.now(), null) ?? row)
+      }
+      return this.wire(await this.fire(row, { now: true }))
+    })
+  }
+
+  /**
+   * Undo on the press's toast: a LifeOS mail LifeOS still holds in its undo time goes back to a draft, and the row
+   * waits on him again as held. False when it already went.
+   */
+  async undoSend(ref: HeldRef): Promise<{ back: boolean; item?: OutboxItem }> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => {
+      const row = this.store.byRef(ref)
+      if (!row || row.state !== 'sent' || row.kind !== 'mail.send' || ref.at !== 'lifeos') return { back: false }
+      if (!(await this.lifeos?.cancelMail?.(ref.id))) return { back: false }
+      const back = this.store.unsend(row.id)
+      if (back?.sessionId) this.deps.whisper(back.sessionId, takenBackNote(back))
+      return { back: !!back, ...(back ? { item: this.wire(back) } : {}) }
+    })
+  }
+
+  /** The host's Send later timer runs while Work is on. */
+  startSchedules(): () => void {
+    this.timing = true
+    this.arm()
+    return () => {
+      this.timing = false
+      if (this.timer) clearTimeout(this.timer)
+      this.timer = null
+    }
+  }
+
+  /** Set the one timer for the next time due. */
+  private arm(): void {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    if (!this.timing) return
+    let next: number | null
+    try {
+      next = this.store.nextScheduledAt()
+    } catch {
+      return
+    }
+    if (next === null) return
+    this.timer = setTimeout(() => void this.due(), Math.min(Math.max(0, next - Date.now()), TIMER_MAX_MS))
+    this.timer.unref?.()
+  }
+
+  /** Every item whose time came, each on its own claim, then the next time. */
+  private async due(): Promise<void> {
+    this.timer = null
+    try {
+      for (const row of this.store.dueScheduled()) await this.serial(refOfRow(row), () => this.fire(row))
+    } catch (err) {
+      this.deps.ctx.log(`outbox: a scheduled send did not run: ${errorText(err)}`)
+    }
+    this.arm()
+  }
+
+  /**
+   * One scheduled item at its time: the generation the timer saw, its kind's deadline, its thread or workspace still
+   * there, then its own claim and the kind's own fresh checks in `execute`. A time missed by more than a quarter hour
+   * goes back to him, never out late.
+   */
+  private async fire(seen: HeldRow, opts: { now?: boolean } = {}): Promise<HeldRow> {
+    const row = this.store.get(seen.id)
+    if (!row || row.state !== 'scheduled' || row.scheduleGen !== seen.scheduleGen) return row ?? seen
+    const def = this.deps.kinds.get(row.kind)
+    const now = Date.now()
+    if (!opts.now && row.scheduleAt !== null && now - row.scheduleAt > MISSED_MS) return this.store.unschedule(row.id, MISSED, row.scheduleGen) ?? row
+    if (!def) return this.store.unschedule(row.id, NOT_LATER, row.scheduleGen) ?? row
+    const by = (() => {
+      try {
+        return def.by?.(def.payload.parse(row.payload)) ?? null
+      } catch {
+        return null
+      }
+    })()
+    if (by !== null && now >= by) return this.store.unschedule(row.id, TIME_PASSED, row.scheduleGen) ?? row
+    if (row.sessionId && row.workspaceId && !this.deps.scopeKeyOf(row.sessionId)) return this.store.unschedule(row.id, SCOPE_GONE, row.scheduleGen) ?? row
+    const claimed = this.store.claimScheduled(row.id, row.scheduleGen)
+    if (!claimed) return this.store.get(row.id)!
+    return this.run(claimed, def)
+  }
+
+  /** LifeOS's own timer sent a mail he scheduled: the linked task and the thread's note, once, now that it went. */
+  scheduledWent(row: HeldRow): void {
+    this.settled(row)
   }
 
   /** Why an item may not be sent on this press, or null. */
@@ -639,7 +836,7 @@ export class Outbox {
       const there = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(item.ref))
       return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload) }) : item
     })
-    const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
+    const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload), ...(LATER[i.kind] && i.state === 'held' ? { later: true as const } : {}) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
     const items = [...rows, ...held]
     if (show === 'waiting') items.sort((a, b) => a.createdAt - b.createdAt)
     return { items: items.slice(0, q.limit ?? 200), waiting: this.waiting() }
@@ -731,7 +928,7 @@ export class Outbox {
   /** A row as a screen gets it: a kind's payload is its own to trim (a picture's file path never leaves the host). */
   wire(row: HeldRow): OutboxItem {
     const fact = row.state === 'sent' ? this.lifeos?.sentFact?.(row) : undefined
-    const item = this.withChanged({ ...itemOfRow(row), ...fact, effect: this.effect(row.kind, row.payload) })
+    const item = this.withChanged({ ...itemOfRow(row), ...fact, effect: this.effect(row.kind, row.payload), ...(LATER[row.kind] && (row.state === 'held' || row.state === 'failed') && !row.outcomeUnknown ? { later: true as const } : {}) })
     const payload = item.payload as { picture?: { path?: string } | null } | null
     if (row.kind === 'computer.act' && payload?.picture && typeof payload.picture === 'object') {
       const { path: _path, ...picture } = payload.picture

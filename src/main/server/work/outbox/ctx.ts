@@ -99,8 +99,8 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   // What a stop left behind: a row that was being sent is never sent again by the host, and a live act's screen went with the process.
   try {
     if (deps.db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(HELD_TABLE)) {
-      const { interrupted, lost } = store.recover()
-      if (interrupted || lost) ctx.log(`outbox: ${interrupted} send(s) were cut off by a stop and wait on the owner; ${lost} live act(s) went stale`)
+      const { interrupted, lost, missed } = store.recover()
+      if (interrupted || lost || missed) ctx.log(`outbox: ${interrupted} send(s) were cut off by a stop and wait on the owner; ${lost} live act(s) went stale; ${missed} scheduled send(s) missed their time`)
     }
   } catch (err) {
     ctx.log(`outbox: could not put right what a stop left: ${errorText(err)}`)
@@ -231,10 +231,12 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   deps.whileOn(() => {
     outbox.lifeos = lifeos
     const stop = lifeos.start()
+    const stopSchedules = outbox.startSchedules()
     // Tasks a send owed while LifeOS was out of reach.
     void outbox.completeTasks()
     return () => {
       stop()
+      stopSchedules()
       outbox.lifeos = null
     }
   })

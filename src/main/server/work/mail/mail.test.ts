@@ -218,13 +218,13 @@ describe('Send from TempCode', () => {
     expect((sends()[0]!.args.message as { html: string }).html).toBe('<p>See you</p>')
   })
 
-  it("schedules a thread's draft on his press as his own mail, with its zone and the reply tick, never through the hold", async () => {
+  it("schedules a thread's draft on his press through the hold, with its zone and the reply tick: LifeOS is its only timer", async () => {
     const held = rig.lifeos.draft()
     rig.lifeos.fire()
     await settled()
     const at = Date.now() + 3_600_000
     const answer = await rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: at, sendZone: 'America/New_York', cancelIfReply: true })
-    expect(answer).toEqual({ id: held, via: 'owner' })
+    expect(answer).toEqual({ id: held, via: 'hold' })
     expect(sends()).toHaveLength(1)
     expect(sends()[0]!.args).toMatchObject({ id: held, cause: 'press', sendAt: at, sendZone: 'America/New_York', cancelIfReply: true })
     expect(sends()[0]!.args).not.toHaveProperty('immediate')
@@ -252,7 +252,7 @@ describe('Send from TempCode', () => {
     await settled()
     const listed = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})
     const item = listed.items.find((i) => i.ref.at === 'lifeos' && i.ref.id === held)
-    expect(item).toMatchObject({ state: 'sending', scheduledFor: at, scheduledZone: 'America/New_York' })
+    expect(item).toMatchObject({ state: 'scheduled', scheduledFor: at, scheduledZone: 'America/New_York' })
     // Nothing a grant or the Outbox's Send could press: it is not waiting on him.
     await expect(rig.rpc('work.outbox.send', { ref: item!.ref, rev: item!.updatedAt })).rejects.toThrow(SCHEDULED_BY_HIM)
     await expect(rig.rpc('work.outbox.discard', { ref: item!.ref })).rejects.toThrow(SCHEDULED_BY_HIM)
