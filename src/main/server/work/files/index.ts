@@ -14,6 +14,11 @@ import { ensureFilesTables } from './tables'
 import { fileActKind, filesPreamble, filesTools } from './tools'
 import { purgeOld, removeTrashOf, settleTrash } from './trash'
 import { pruneOps, settleOps } from './write'
+import { setStandsFor } from '../canvas/fileKey'
+import { copyOriginal } from './tabs'
+
+// A tab's copy of another computer's file keeps its marks by the original, so the next copy of it finds them.
+setStandsFor(copyOriginal)
 
 /**
  * The files pillar's server module (docs/agents/work-files.md): the Files place of a Work workspace. Its

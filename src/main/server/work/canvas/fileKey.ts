@@ -26,16 +26,32 @@ export interface FileKeyed {
 type Row = Record<string, string | number | null>
 const tablesOf = (spec: FileKeyed): string[] => [spec.items, ...spec.rows]
 
-/** The key an item's rows are found by: its workspace and its file's `refKey`; null for an item with no file or no workspace. */
-export function fileKeyOf(item: Pick<CanvasItem, 'workspaceId' | 'source'>): string | null {
+/**
+ * The file an item stands for where that is not its own source: a Files tab's copy of another computer's file is a
+ * new file at each open, and stands for the original (the tab's `copyOf`), so the next copy of it finds his marks.
+ * The Files pillar sets this as it loads (files/tabs.ts `copyOriginal`); no import here, so the canvas never pulls
+ * Files in (winvm/owed.ts's way). Unset, every item stands for its own file.
+ */
+type StandsFor = (db: DatabaseSync, itemId: string) => CanvasSource | null
+let standsFor: StandsFor = () => null
+export function setStandsFor(fn: StandsFor): void {
+  standsFor = fn
+}
+
+/**
+ * The key an item's rows are found by: its workspace and its file's `refKey`, the original's for a copy (asked of
+ * `db` by the item's id); null for an item with no file or no workspace.
+ */
+export function fileKeyOf(item: Pick<CanvasItem, 'workspaceId' | 'source'> & { id?: string }, db?: DatabaseSync): string | null {
   if (!item.workspaceId || canvasSourcePath(item.source) === null) return null
-  return JSON.stringify([item.workspaceId, refKey(item.source)])
+  const source = (db && item.id && standsFor(db, item.id)) || item.source
+  return JSON.stringify([item.workspaceId, refKey(source)])
 }
 
 /** The same for a `work_canvas_items` row. */
-function keyOfRow(row: { workspace_id: string | null; source: string }): string | null {
+function keyOfRow(db: DatabaseSync, row: { id: string; workspace_id: string | null; source: string }): string | null {
   try {
-    return fileKeyOf({ workspaceId: row.workspace_id, source: JSON.parse(row.source) as CanvasSource })
+    return fileKeyOf({ id: row.id, workspaceId: row.workspace_id, source: JSON.parse(row.source) as CanvasSource }, db)
   } catch {
     return null
   }
@@ -62,7 +78,7 @@ export function ensureFileKeys(db: DatabaseSync, spec: FileKeyed): void {
     const set = db.prepare(`UPDATE ${table} SET file_key = ? WHERE item_id = ? AND file_key IS NULL`)
     for (const { item_id } of db.prepare(`SELECT DISTINCT item_id FROM ${table} WHERE file_key IS NULL`).all() as { item_id: string }[]) {
       const row = canvas.get(item_id) as { workspace_id: string | null; source: string } | undefined
-      const key = row ? keyOfRow(row) : null
+      const key = row ? keyOfRow(db, { id: item_id, ...row }) : null
       set.run(key ?? '', item_id)
       if (key) filled.add(key)
     }
@@ -87,7 +103,7 @@ export interface Kept {
 export function keptOf(db: DatabaseSync, spec: FileKeyed, item: Pick<CanvasItem, 'id' | 'sessionId' | 'workspaceId' | 'source'>): Kept {
   const own = db.prepare(`SELECT session_id, file_key FROM ${spec.items} WHERE item_id = ?`).get(item.id) as { session_id: string; file_key: string | null } | undefined
   if (own) return { id: item.id, sessionId: own.session_id, fileKey: own.file_key ?? '' }
-  const key = fileKeyOf(item)
+  const key = fileKeyOf(item, db)
   if (!key) return { id: item.id, sessionId: item.sessionId, fileKey: '' }
   const keeper = db.prepare(`SELECT item_id, session_id FROM ${spec.items} WHERE file_key = ? ORDER BY rowid DESC LIMIT 1`).get(key) as { item_id: string; session_id: string } | undefined
   if (!keeper) return { id: item.id, sessionId: item.sessionId, fileKey: key }
@@ -106,7 +122,7 @@ function heirOf(db: DatabaseSync, spec: FileKeyed, key: string, gone: { items: S
   const rows = db.prepare(`SELECT id, session_id, workspace_id, source FROM work_canvas_items WHERE workspace_id = ? AND kind = ? ORDER BY state = 'open' DESC, updated_at DESC`).all(workspaceId, spec.kind) as { id: string; session_id: string; workspace_id: string | null; source: string }[]
   const owns = db.prepare(`SELECT 1 FROM ${spec.items} WHERE item_id = ?`)
   for (const row of rows) {
-    if (gone.items.has(row.id) || gone.sessions.has(row.session_id) || keyOfRow(row) !== key || owns.get(row.id)) continue
+    if (gone.items.has(row.id) || gone.sessions.has(row.session_id) || keyOfRow(db, row) !== key || owns.get(row.id)) continue
     return { id: row.id, sessionId: row.session_id }
   }
   return null

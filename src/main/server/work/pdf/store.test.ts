@@ -412,6 +412,47 @@ describe('kept by the file: a Files tab and a thread on one PDF share its rows',
     for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) expect(new Set(keysOf(table).map(([, k]) => k))).toEqual(new Set([key]))
   })
 
+  it("keeps a copy's rows by the original it is a copy of: the next copy finds them, a copy of another original none; the canvas alone keys a copy by itself", async () => {
+    const { copyOriginal } = await import('../files/tabs')
+    const { ensureFilesTables } = await import('../files/tables')
+    const { setStandsFor } = await import('../canvas/fileKey')
+    const { refKey } = await import('@shared/work/files')
+    ensureFilesTables(db)
+    const ORIGINAL = { host: 'env_mac', path: '/Users/l/Teams/Bracket.pdf' }
+    const tabOn = (itemId: string, copyOf: { host: string; path: string } | null): void =>
+      void db.prepare(`INSERT INTO work_files_tabs (workspace_id, id, position, kind, page, item_id, updated_at) VALUES ('w1', ?, 0, 'file', ?, ?, 1)`).run(`t-${itemId}`, JSON.stringify({ name: 'Bracket.pdf', key: 'k', ...(copyOf ? { copyOf } : {}) }), itemId)
+    // Each open of a file of another computer is a new copy, at a path of its own.
+    const copy = (id: string, original = ORIGINAL) => {
+      const item = canvasItem(id, 'files:w1', 'w1', fileOf(`/data/copies/${id}/${original.path.split('/').pop()}`))
+      tabOn(id, original)
+      return item
+    }
+    const close = (id: string): void => {
+      gone(id)
+      db.prepare(`DELETE FROM work_files_tabs WHERE item_id = ?`).run(id)
+      store.removeItems([id])
+    }
+    setStandsFor(copyOriginal)
+    try {
+      mark(copy('c1'), 'x')
+      close('c1')
+      const second = copy('c2')
+      expect(marksOf(second)).toEqual(['x'])
+      expect(store.keep(second)).toEqual({ id: 'c2', sessionId: 'files:w1', fileKey: JSON.stringify(['w1', refKey({ at: 'file', ...ORIGINAL })]) })
+      expect(marksOf(copy('c3', { host: 'env_mac', path: '/Users/l/Teams/Plan.pdf' }))).toEqual([])
+      // An item that is no copy is keyed by its own file, as before.
+      const own = canvasItem('i1', 't1', 'w1', fileOf())
+      tabOn('i1', null)
+      expect(store.keep(own).fileKey).toBe(fileKeyOf(own))
+      expect(marksOf(own)).toEqual([])
+    } finally {
+      setStandsFor(() => null)
+    }
+    const alone = copy('c4')
+    expect(store.keep(alone).fileKey).toBe(fileKeyOf(alone))
+    expect(marksOf(alone)).toEqual([])
+  })
+
   it('keeps an item with no file, or of another workspace, to its own rows', () => {
     const thread = canvasItem('i1', 't1', 'w1', fileOf())
     mark(thread, 'his')

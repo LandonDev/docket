@@ -208,7 +208,7 @@ app to open it in. A computer whose platform the window does not know yet keeps
 the verb, and its host's refusal stands.
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
 | a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
-| a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the copy is a file of its own, with marks of its own |
+| a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the thread's copy is a file of its own, with marks of its own; the tab's marks are the original's ("Marks kept by the file") |
 | a Google deck a thread already holds | in that thread, folded (`held`): a Google deck is no file of this disk, so its state is kept by item. The only open the host answers with `held` |
 | a Drive file that is no Google file (a picked PDF or workbook) | in a tab, as the `file` kind's facts (`googleSeatOf {facts: true}`), with Open in Drive alone: its bytes are not read here, and the google pillar keeps no row of it |
 | anything, where the workspace's host keeps no tabs | a library's file in its own app where it lies (`work.office.filesOpen`; the old wire lists no other place, and the line over the list says to update the host): no thread is made for it |
@@ -1824,7 +1824,7 @@ folder or a lens) and file tabs.
   and a picture's or video's notes are kept by the file (below), so those
   open in a tab while a thread holds them, and the two share one set. A copy
   of another computer's file (`openCopy`) is a file of its own: it opens in a
-  tab of its own, with marks of its own.
+  tab of its own, and its marks are the original's (below).
 - **Marks kept by the file** (canvas/fileKey.ts). The pdf and media
   pillars add `file_key` to each of their tables: the item's workspace and
   its file's `refKey`. Two items of one workspace on one file read and write
@@ -1839,8 +1839,17 @@ folder or a lens) and file tabs.
   `sessionsRemoved`; `keptOf` hands them over): a highlight, a note or a
   filled field is the file's, and closing a PDF's only tab once took them
   away. Rows kept by item alone (no file, no workspace) go with their item.
-  A copy of another computer's file is a file of its own, made anew at each
-  open, so marks on it still end with its tab (listed in POLISH-work.md). A thread that moves to another host takes a copy of
+  A Files tab's copy of another computer's file (his Mac's Teams library,
+  a PC's, the Windows VM's) is made anew at each open, so its marks are kept
+  by the ORIGINAL it is a copy of: the tab's `copyOf`, which Files hands the
+  canvas through one seam (`setStandsFor` in fileKey.ts, filled by
+  files/tabs.ts `copyOriginal`, so the canvas never imports Files). The next
+  copy of the same original finds them; a copy of another original finds
+  none. Rows an open copy wrote before this keep their key (`keptOf` answers
+  an item's own rows first). A rename of the original on its own computer is
+  not followed. A thread's own copy (`work.office.filesCopy`) has no tab and
+  no record of its original here, so it is still a file of its own, and its
+  marks end with it. A thread that moves to another host takes a copy of
   what it shares, with new ids, and the rows stay here for the tab
   (`fileKeyedMoveModule`). Each start fills the key for rows an older build
   wrote; where two items already kept rows for one file, the newest keeps

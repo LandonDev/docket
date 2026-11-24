@@ -56,7 +56,7 @@ the thing the walk changed.
 | J02 | B1, B2 | The reopened grid and the holder’s workbook agree on A1. Each timed header reading agrees with the holder’s bytes. |
 | J06 | A, B2 | The holder’s new slide contains the text typed before closing mid-word. |
 | J07 | B1, B2 | The holder’s text file contains the edit after closing the tab. |
-| J08 | A, B2 | The reopened PDF shows the highlight and its note. |
+| J08 | A, B1, B2 | The reopened PDF shows the highlight (a highlight has no note by design). |
 | J13 | A, B2 | The renamed file alone holds the last edit. |
 | J15 | A, B2 | Trash puts a file back. Deleting a file with unsent edits preserves the words or warns before discarding them. |
 | J17 | A, B1, B2 | Each available tab or row action reaches its named result. |

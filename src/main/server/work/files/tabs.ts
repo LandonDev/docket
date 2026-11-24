@@ -49,6 +49,21 @@ const pageOf = (json: string): FilePageJson | undefined => {
   }
 }
 
+/**
+ * The original a Files tab's copy stands for (its `copyOf`), by the copy's item: the canvas keys the copy's marks by
+ * it (canvas/fileKey.ts `setStandsFor`). Null for an item no tab holds as a copy, or where Files keeps no tabs.
+ */
+export function copyOriginal(db: DatabaseSync, itemId: string): CanvasSource | null {
+  let row: { page: string } | undefined
+  try {
+    row = db.prepare(`SELECT page FROM work_files_tabs WHERE item_id = ? AND kind = 'file'`).get(itemId) as { page: string } | undefined
+  } catch {
+    return null
+  }
+  const copyOf = row ? pageOf(row.page)?.copyOf : undefined
+  return copyOf && typeof copyOf.host === 'string' && typeof copyOf.path === 'string' ? { at: 'file', host: copyOf.host, path: copyOf.path } : null
+}
+
 const SAVEPOINT = 'work_files_tab'
 /** The most Beside seats a workspace keeps: a window that never said it closed leaves one, and the oldest goes first. */
 export const SEATS_MOST = 8

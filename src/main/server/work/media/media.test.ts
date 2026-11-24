@@ -505,6 +505,27 @@ describe('kept by the file: a Files tab and a thread on one clip', () => {
     expect(bodies(canvasItem('tab2', 'files:w1', 'w1', fileOf()))).toEqual(['x'])
   })
 
+  it("keeps a copy's notes by the original, for the next copy of it", async () => {
+    const { copyOriginal } = await import('../files/tabs')
+    const { ensureFilesTables } = await import('../files/tables')
+    const { setStandsFor } = await import('./../canvas/fileKey')
+    ensureFilesTables(db)
+    const copy = (id: string) => {
+      const item = canvasItem(id, 'files:w1', 'w1', fileOf(`/data/copies/${id}/Cut.mp4`))
+      db.prepare(`INSERT INTO work_files_tabs (workspace_id, id, position, kind, page, item_id, updated_at) VALUES ('w1', ?, 0, 'file', ?, ?, 1)`).run(`t-${id}`, JSON.stringify({ name: 'Cut.mp4', key: 'k', copyOf: { host: 'env_mac', path: '/Users/l/Teams/Cut.mp4' } }), id)
+      return item
+    }
+    setStandsFor(copyOriginal)
+    try {
+      note(copy('c1'), 'x')
+      db.prepare(`DELETE FROM work_canvas_items WHERE id = 'c1'`).run()
+      store.removeItems(['c1'])
+      expect(bodies(copy('c2'))).toEqual(['x'])
+    } finally {
+      setStandsFor(() => null)
+    }
+  })
+
   it('fills the key at start for rows made before it', () => {
     const thread = canvasItem('i1', 't1', 'w1', fileOf())
     note(thread, 'x')
