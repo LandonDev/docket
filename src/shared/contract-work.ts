@@ -38,6 +38,7 @@ import { REVIEW_CAPS, REVIEW_RELAY, ReviewRequestSchemas, type ReviewPush } from
 import { CLASHES_CAPS, CLASHES_RELAY, ClashesRequestSchemas, type ClashesPush } from './contract-work-clashes'
 import { TEMPLATES_CAPS, TEMPLATES_RELAY, TemplatesRequestSchemas, type TemplatesPush } from './contract-work-templates'
 import { DIGEST_CAPS, DIGEST_RELAY, DigestRequestSchemas, type DigestPush } from './contract-work-digest'
+import { MSFORMS_CAPS, MSFORMS_RELAY, MsformsRequestSchemas, type MsformsPush } from './contract-work-msforms'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -136,7 +137,8 @@ export const WorkRequestSchemas = [
   ...ReviewRequestSchemas,
   ...ClashesRequestSchemas,
   ...TemplatesRequestSchemas,
-  ...DigestRequestSchemas
+  ...DigestRequestSchemas,
+  ...MsformsRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -178,6 +180,7 @@ export type WorkPush =
   | ClashesPush
   | TemplatesPush
   | DigestPush
+  | MsformsPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -215,7 +218,8 @@ export const WORK_CAPS = {
   ...REVIEW_CAPS,
   ...CLASHES_CAPS,
   ...TEMPLATES_CAPS,
-  ...DIGEST_CAPS
+  ...DIGEST_CAPS,
+  ...MSFORMS_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -254,7 +258,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   review: { requests: ReviewRequestSchemas, caps: REVIEW_CAPS, relay: REVIEW_RELAY },
   clashes: { requests: ClashesRequestSchemas, caps: CLASHES_CAPS, relay: CLASHES_RELAY },
   templates: { requests: TemplatesRequestSchemas, caps: TEMPLATES_CAPS, relay: TEMPLATES_RELAY },
-  digest: { requests: DigestRequestSchemas, caps: DIGEST_CAPS, relay: DIGEST_RELAY }
+  digest: { requests: DigestRequestSchemas, caps: DIGEST_CAPS, relay: DIGEST_RELAY },
+  msforms: { requests: MsformsRequestSchemas, caps: MSFORMS_CAPS, relay: MSFORMS_RELAY }
 }
 
 /**

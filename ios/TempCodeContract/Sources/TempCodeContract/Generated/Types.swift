@@ -654,6 +654,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case clashes
             case templates
             case digest
+            case msforms
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -694,6 +695,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case "clashes": self = .clashes
                 case "templates": self = .templates
                 case "digest": self = .digest
+                case "msforms": self = .msforms
                 default: self = .unknown(rawValue)
                 }
             }
@@ -735,6 +737,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case .clashes: "clashes"
                 case .templates: "templates"
                 case .digest: "digest"
+                case .msforms: "msforms"
                 case .unknown(let value): value
                 }
             }
@@ -762,7 +765,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             let container = try decoder.singleValueContainer()
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people", "chats"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }
-            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "messages", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes", "templates", "digest"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "messages", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes", "templates", "digest", "msforms"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
             self = .unknown(try container.decode(JSONValue.self))
         }
@@ -4840,6 +4843,8 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         case addonCall
         case chatReply
         case fileAct
+        case msformMake
+        case msformPublish
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -4861,6 +4866,8 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case "addon.call": self = .addonCall
             case "chat.reply": self = .chatReply
             case "file.act": self = .fileAct
+            case "msform.make": self = .msformMake
+            case "msform.publish": self = .msformPublish
             default: self = .unknown(rawValue)
             }
         }
@@ -4883,6 +4890,8 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case .addonCall: "addon.call"
             case .chatReply: "chat.reply"
             case .fileAct: "file.act"
+            case .msformMake: "msform.make"
+            case .msformPublish: "msform.publish"
             case .unknown(let value): value
             }
         }
@@ -5122,6 +5131,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
             case clashes
             case templates
             case digest
+            case msforms
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -5162,6 +5172,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case "clashes": self = .clashes
                 case "templates": self = .templates
                 case "digest": self = .digest
+                case "msforms": self = .msforms
                 default: self = .unknown(rawValue)
                 }
             }
@@ -5203,6 +5214,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case .clashes: "clashes"
                 case .templates: "templates"
                 case .digest: "digest"
+                case .msforms: "msforms"
                 case .unknown(let value): value
                 }
             }
@@ -5285,6 +5297,8 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
         case addonCall
         case chatReply
         case fileAct
+        case msformMake
+        case msformPublish
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -5306,6 +5320,8 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case "addon.call": self = .addonCall
             case "chat.reply": self = .chatReply
             case "file.act": self = .fileAct
+            case "msform.make": self = .msformMake
+            case "msform.publish": self = .msformPublish
             default: self = .unknown(rawValue)
             }
         }
@@ -5328,6 +5344,8 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case .addonCall: "addon.call"
             case .chatReply: "chat.reply"
             case .fileAct: "file.act"
+            case .msformMake: "msform.make"
+            case .msformPublish: "msform.publish"
             case .unknown(let value): value
             }
         }

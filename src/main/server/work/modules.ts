@@ -394,7 +394,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   review: () => import('./review').then((m) => m.review),
   clashes: () => import('./clashes').then((m) => m.clashes),
   templates: () => import('./templates').then((m) => m.templates),
-  digest: () => import('./digest').then((m) => m.digest)
+  digest: () => import('./digest').then((m) => m.digest),
+  msforms: () => import('./msforms').then((m) => m.msforms)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null

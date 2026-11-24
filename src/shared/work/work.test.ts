@@ -57,11 +57,11 @@ import {
 /** Every shared type of the Work architecture's section 7.3 exists, is exported from one place, and has the shape the pillars build to. */
 
 describe('the names', () => {
-  it('lists the 35 pillars once, in mount order, each with the milestone that builds it', () => {
+  it('lists the 36 pillars once, in mount order, each with the milestone that builds it', () => {
     expect([...PILLAR_IDS]).toEqual([
       'outbox', 'canvas', 'lifeos', 'routines', 'rules', 'mail', 'messages', 'tasks', 'agenda', 'docs', 'history', 'formats', 'sheets',
       'office', 'google', 'guests', 'pdf', 'slides', 'media', 'frameio', 'meetings', 'forms', 'dashboards', 'browser', 'projects', 'winvm', 'capture', 'files', 'prep', 'money', 'search',
-      'review', 'clashes', 'templates', 'digest'
+      'review', 'clashes', 'templates', 'digest', 'msforms'
     ])
     expect(new Set(PILLAR_IDS).size).toBe(PILLAR_IDS.length)
     expect(Object.keys(PILLAR_MILESTONE).sort()).toEqual([...PILLAR_IDS].sort())
@@ -74,13 +74,16 @@ describe('the names', () => {
       browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards', file: 'files'
     })
   })
-  it('lists the sixteen act kinds, each with the pillar that shows it', () => {
+  it('lists the eighteen act kinds, each with the pillar that shows it', () => {
     expect([...ACT_KINDS]).toEqual([
       'mail.send', 'calendar.op', 'teams.post', 'office.mail.send', 'office.calendar.op', 'office.edit', 'share.guestLink',
       'share.google', 'google.edit', 'form.publish', 'frameio.post', 'portal.submit', 'computer.act', 'addon.call', 'chat.reply',
-      'file.act'
+      'file.act',
+      'msform.make',
+      'msform.publish'
     ])
     expect(ACT_PILLAR['file.act']).toBe('files')
+    expect(ACT_PILLAR['msform.publish']).toBe('msforms')
     expect(Object.keys(ACT_PILLAR).sort()).toEqual([...ACT_KINDS].sort())
     for (const pillar of Object.values(ACT_PILLAR)) expect(PILLAR_IDS).toContain(pillar)
     expect(ActKindSchema.safeParse('mail.send').success).toBe(true)

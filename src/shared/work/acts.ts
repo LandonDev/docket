@@ -23,7 +23,9 @@ export const ACT_KINDS = [
   'computer.act',
   'addon.call',
   'chat.reply',
-  'file.act'
+  'file.act',
+  'msform.make',
+  'msform.publish'
 ] as const
 export type ActKind = (typeof ACT_KINDS)[number]
 export const ActKindSchema = z.enum(ACT_KINDS)
@@ -45,7 +47,9 @@ export const ACT_PILLAR: Record<ActKind, PillarId> = {
   'computer.act': 'outbox',
   'addon.call': 'outbox',
   'chat.reply': 'messages',
-  'file.act': 'files'
+  'file.act': 'files',
+  'msform.make': 'msforms',
+  'msform.publish': 'msforms'
 }
 
 /** Where a held item's row lives: this host's `work_held_acts`, or LifeOS's own tables. */

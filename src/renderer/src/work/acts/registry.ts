@@ -12,6 +12,7 @@ import { formsActs } from "../forms/act";
 import { frameioActs } from "../frameio/act";
 import { messagesActs } from "../messages/act";
 import { filesActs } from "../files/act";
+import { msformsActs } from "../msforms/act";
 
 /**
  * How each kind of held act is shown (docs/agents/work-outbox.md): one view
@@ -51,4 +52,5 @@ export const ACT_VIEWS: Record<ActKind, ActKindView> = {
   ...frameioActs,
   ...messagesActs,
   ...filesActs,
+  ...msformsActs,
 };
