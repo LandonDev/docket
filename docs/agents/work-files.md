@@ -922,7 +922,11 @@ follows; the title shows the old name until the tab opens again).
   open a key needs `approve`), checks the name (`checkName`), and begins an
   upload with a target of its own (`AttachmentUploads.beginInto`), held to
   the host's attachment limit. It answers `{ uploadId }`; the same `op`
-  again answers the same id.
+  again answers the same id, and `landed: true` once a commit on it made the
+  file (`amendOp` keeps that on the op's row, across a restart), so a commit
+  whose answer was lost is never saved twice. A commit sent again to a host
+  that has not restarted answers its first answer (`AttachmentUploads`
+  keeps them a day).
 - The caller sends the bytes as `attachment.chunk` and `attachment.commit`
   (or `attachment.abort`) on that id, from the same socket: an upload
   belongs to its owner, this host's window or the key that began it
