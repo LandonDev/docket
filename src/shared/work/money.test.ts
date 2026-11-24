@@ -43,6 +43,7 @@ import {
   statusOf,
   sumsOf,
   taxSummaryHtml,
+  undatedWords,
   yearPeriod,
   type Cell,
   type LedgerRow
@@ -156,6 +157,21 @@ describe('the ledger', () => {
       [2, 'A', null],
       [4, 'By hand', null]
     ])
+  })
+
+  it('names the rows with money and no date it can read, which no month or year counts', () => {
+    const got = rowsOf(HEADER, [line('2026-11-01', 'A', 1, ''), line('', 'Blank day', 80, ''), line('TBD', 'Later', '', 5), line('', 'A note', '', '')])
+    expect(got.undated).toEqual([3, 4])
+    expect(sumsOf(got.rows, yearPeriod(2026)).in).toBe(100)
+    expect(undatedWords(got.undated)).toBe('2 rows (3, 4) have money and no date Money can read, so no month or year counts them.')
+    expect(undatedWords([7])).toBe('Row 7 has money and no date Money can read, so no month or year counts it.')
+  })
+
+  it('reads no row while a money header stands twice: which of the two holds his figures cannot be said', () => {
+    const got = rowsOf([...HEADER, 'Out'], [[...line('2026-11-01', 'A', '', 5), 40]])
+    expect(got.rows).toEqual([])
+    expect(got.twice).toEqual(['Out'])
+    expect(got.missing).toEqual(['Out'])
   })
 
   it('finds a row to act on by Ref, else by its number while it reads the same', () => {

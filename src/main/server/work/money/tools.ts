@@ -4,7 +4,7 @@ import { errorText } from '@shared/work/ids'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
-import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, type LedgerRow } from '@shared/work/money'
+import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, undatedWords, type LedgerRow } from '@shared/work/money'
 import type { ToolCtx, WorkTool } from '../modules'
 import { leave } from './inbox'
 import { booksHere, LEDGER_OUTSIDE, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
@@ -49,6 +49,7 @@ const moneyRead: WorkTool = {
       const now = today()
       const period = { from: a.from ?? `${now.slice(0, 4)}-01-01`, to: a.to ?? new Date(Date.parse(`${now}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10) }
       const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
+      if (ledger.twice?.length) return fail(`The ledger's columns changed: ${ledger.twice.join(', ')} stands twice. The owner puts it right in the ledger.`)
       if (ledger.missing.length) return fail(`The ledger's columns changed: it has no ${ledger.missing.join(', ')} column. The owner restores them in the Money view.`)
       const trips = log.trips
       const wanted = a.category?.trim().toLowerCase()
@@ -60,7 +61,8 @@ const moneyRead: WorkTool = {
         `${ws.name}, ${period.from} up to ${period.to}${wanted ? `, ${a.category}` : ''}`,
         `In ${formatMoney(sums.in)}, out ${formatMoney(sums.out)}, net ${formatMoney(sums.net)}`,
         `Owed to the owner ${formatMoney(sums.owedToHim)}, the owner owes ${formatMoney(sums.heOwes)} (all time)`,
-        ...(log.problem ? [`Mileage: not read. ${mileageWords(log.problem)}`] : miles.miles && !wanted ? [`Mileage: ${milesLine(miles)}`] : [])
+        ...(log.problem ? [`Mileage: not read. ${mileageWords(log.problem)}`] : miles.miles && !wanted ? [`Mileage: ${milesLine(miles)}`] : []),
+        ...(ledger.undated.length ? [undatedWords(ledger.undated)] : [])
       ]
       const shown = rows.slice(-READ_ROWS_MAX)
       const cut = rows.length > shown.length ? [`Showing the latest ${shown.length} of ${rows.length} entries: narrow the days to see the rest.`] : []

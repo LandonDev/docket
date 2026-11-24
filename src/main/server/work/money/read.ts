@@ -342,7 +342,9 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
     rate: rateOf(books, year),
     problems: [
       // Headers that wait in the sheet as a suggestion (a restore on a ledger others can open) are said, so the view asks for his accept, not for another restore.
-      ...(ledger.missing.length ? [{ kind: 'columns' as const, missing: ledger.missing, renamed: ledger.renamed, ...(headersWait(ledger.grid, ledger.missing) ? { waits: true as const } : {}) }] : []),
+      ...(ledger.missing.length ? [{ kind: 'columns' as const, missing: ledger.missing, renamed: ledger.renamed, ...(ledger.twice?.length ? { twice: ledger.twice } : headersWait(ledger.grid, ledger.missing) ? { waits: true as const } : {}) }] : []),
+      // Money in no month and no year: the sums of every span leave it out, and he is told, never short without a word.
+      ...(ledger.undated.length ? [{ kind: 'undated' as const, rows: ledger.undated }] : []),
       ...(log.problem ? [log.problem] : [])
     ]
   }

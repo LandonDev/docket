@@ -222,6 +222,10 @@ export interface LedgerRead {
    * figures as nothing: the fix is his, in the sheet.
    */
   renamed: string[]
+  /** With a header that stands twice (a copied Out column): which. Money cannot say which of the two holds his figures, so no row is read, and each such header is in `missing` too. */
+  twice?: LedgerColumn[]
+  /** The rows with money and no date Money can read (blank, "TBD", "Nov 21" with no year): they are in no month and no year, so every sum and export of a span leaves them out and says so. */
+  undated: number[]
 }
 
 const textOf = (cell: Cell): string => (cell === null || cell === undefined ? '' : String(cell).trim())
@@ -244,6 +248,9 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
     }
     return names
   }
+  // A header that stands twice: the first would be read and the second's figures left out without a word.
+  const twice = (['Date', 'In', 'Out', 'Status'] as const).filter((c) => header.filter((h) => textOf(h).toLowerCase() === c.toLowerCase()).length > 1)
+  if (twice.length) return { rows: [], columns, missing: [...twice], renamed: [], twice: [...twice], undated: [] }
   const needed = LEDGER_NEEDED.filter((c) => columns[c] === undefined)
   // With no Status column every row reads as Paid. That is so for a ledger that never had one; one whose Status
   // column stands under another name still holds "Unpaid" and "Requested", and would be read as money in hand.
@@ -251,7 +258,7 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
   if (needed.length || statuses.length) {
     // A column with cells under a header Money does not know, or under none: his figures may be there.
     const renamed = needed.length ? unknownWith((c) => c !== undefined && c !== null && c !== '') : statuses
-    return { rows: [], columns, missing: [...needed, ...(statuses.length ? (['Status'] as const) : [])], renamed }
+    return { rows: [], columns, missing: [...needed, ...(statuses.length ? (['Status'] as const) : [])], renamed, undated: [] }
   }
   const at = (line: readonly Cell[], c: LedgerColumn): Cell => (columns[c] === undefined ? undefined : line[columns[c]!])
   const rows: LedgerRow[] = []
@@ -275,7 +282,13 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
       receipt: textOf(at(line, 'Receipt'))
     })
   })
-  return { rows, columns, missing: [], renamed: [] }
+  return { rows, columns, missing: [], renamed: [], undated: rows.filter((r) => !r.date && (r.in || r.out)).map((r) => r.row) }
+}
+
+/** "Row 7 has money and no date Money can read, so no month or year counts it.": one sentence for the view, the export and the tool. */
+export function undatedWords(rows: readonly number[]): string {
+  const which = rows.length === 1 ? `Row ${rows[0]} has` : `${rows.length} rows (${rows.slice(0, 5).join(', ')}${rows.length > 5 ? ', …' : ''}) have`
+  return `${which} money and no date Money can read, so no month or year counts ${rows.length === 1 ? 'it' : 'them'}.`
 }
 
 /** A short print of a text (cyrb128, 32 hex letters): the same on the host and in the window, and not for secrets. */

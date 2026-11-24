@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
-import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
+import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, undatedWords, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
@@ -238,7 +238,10 @@ export function View({ env, workspace }: WorkViewProps) {
     <div ref={root} data-money-view className="flex h-full min-h-0 flex-col">
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
       {columns ? (
-        columns.renamed.length ? (
+        columns.twice?.length ? (
+          // Two columns of one name: which holds his figures cannot be said, so nothing is read until he renames or removes one.
+          <ProblemLine word="The ledger's columns changed" detail={`Two ${columns.twice.join(" and two ")} columns: rename or remove one in the ledger`} action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
+        ) : columns.renamed.length ? (
           // His figures may sit under a header Money does not know: the fix is his, naming it back; Restore would add an empty column beside them.
           <ProblemLine word="The ledger's columns changed" detail={renamedWords(columns.missing, columns.renamed)} action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
         ) : columns.waits ? (
@@ -326,6 +329,7 @@ export function View({ env, workspace }: WorkViewProps) {
 
 type ColumnsProblem = Extract<MoneyProblem, { kind: "columns" }>;
 type MileageProblem = Extract<MoneyProblem, { kind: "mileage" }>;
+type UndatedProblem = Extract<MoneyProblem, { kind: "undated" }>;
 
 /** The mileage log's fault in its place: "The mileage log has no Miles column, so its trips are not counted." */
 export function mileageWords(p: MileageProblem): string {
@@ -391,6 +395,7 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
   // A category of another period does not narrow this one.
   const narrowed = category && read.byCategory.some((c) => c.category.toLowerCase() === category.toLowerCase()) ? category : null;
   const mileage = read.problems.find((p): p is MileageProblem => p.kind === "mileage") ?? null;
+  const undated = read.problems.find((p): p is UndatedProblem => p.kind === "undated") ?? null;
   const rows = narrowed ? read.rows.filter((r) => (r.category || "Other").toLowerCase() === narrowed.toLowerCase()) : read.rows;
   return (
     <Column>
@@ -414,6 +419,15 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
         }
       >
         {rows.length ? <Entries env={env} workspaceId={workspaceId} read={read} rows={rows} /> : <p className="text-[13px] text-muted-foreground">Nothing in {label}</p>}
+        {undated ? (
+          // Money in no month and no year: no sum above counts it, so it is said, with the one press that mends it.
+          <p data-money-undated className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
+            <span>{undatedWords(undated.rows)}</span>
+            <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))}>
+              Open ledger
+            </Button>
+          </p>
+        ) : null}
       </Section>
       {mileage ? (
         // The log cannot be read, so its miles are not the truth: one quiet line in the miles line's place, never a zero.
@@ -618,20 +632,19 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
 
 /**
  * Entries' table and its columns, which the loading bones share so nothing slides when the read lands: a fixed layout, so the
- * columns stand where the header puts them whatever the rows hold. Amount widens only for a row with money both ways shown, so a
- * rare row never narrows Who on every row; the bones keep the usual width.
+ * columns stand where the header puts them whatever the rows hold. Amount is 112px always: a rare row with money both ways
+ * breaks its two figures onto two lines in its own cell, so it grows taller and no row's Who is cut to a letter.
  */
 const ENTRIES_TABLE = "-mx-2 w-[calc(100%+1rem)] table-fixed";
 
-/** `wide`: a shown row has money both in and out ("+$30.00 and $20.00"), and Amount takes the room it needs; else Who keeps it. */
-function EntriesHead({ wide = false }: { wide?: boolean }) {
+function EntriesHead() {
   return (
     <TableHeader>
       <TableRow>
         <TableHead className="w-24 first:pl-2">Date</TableHead>
         <TableHead>Who</TableHead>
         <TableHead className="w-[26%]">Category</TableHead>
-        <TableHead className={cn(wide ? "w-44" : "w-28", "text-end")}>Amount</TableHead>
+        <TableHead className="w-28 text-end">Amount</TableHead>
         <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
           <span className="sr-only">Receipt</span>
         </TableHead>
@@ -644,7 +657,7 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
   const open = (row: LedgerRow) => set({ dialog: { kind: "row", row } });
   return (
     <Table className={ENTRIES_TABLE}>
-      <EntriesHead wide={rows.some((r) => r.in && r.out)} />
+      <EntriesHead />
       <TableBody>
         {rows.map((row) => (
           <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
@@ -660,8 +673,8 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
             </TableCell>
             <TableCell className="max-w-0 truncate">{row.who}</TableCell>
             <TableCell className="max-w-0 truncate text-muted-foreground">{row.category}</TableCell>
-            <TableCell className="text-end">
-              {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00". */}
+            <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>
+              {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00", on two lines where it must. */}
               {rowMoney(row)}
             </TableCell>
             <TableCell className="last:pr-2 text-end">

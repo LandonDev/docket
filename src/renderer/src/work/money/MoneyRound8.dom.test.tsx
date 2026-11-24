@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * After the council's fifth round: Amount widens only for a row both ways;
+ * After the council's fifth round: Amount stays 112px and a row both ways wraps;
  * Entry…, Trip… and Mileage rate… wait for a read; a skipped event's answer
  * says nothing; an event picked in Add → Trip… reopens a skipped one, an
  * offer's dialog does not; a hand-typed trip filed with other values says
@@ -78,7 +78,7 @@ const amountHead = (root: ParentNode) => Array.from(root.querySelectorAll("th"))
 const off = (item: HTMLElement) => item.getAttribute("aria-disabled") === "true" || item.hasAttribute("data-disabled");
 
 describe("Entries' Amount column", () => {
-  it("widens only while a shown row has money both ways, and the bones keep the usual width", async () => {
+  it("stays 112px with a row of money both ways shown: that row breaks its two figures onto two lines, so no row's Who is cut", async () => {
     let land: (r: MoneyRead) => void = () => {};
     host.read = () => new Promise<MoneyRead>((r) => (land = r));
     mount();
@@ -86,12 +86,43 @@ describe("Entries' Amount column", () => {
     expect(amountHead(screen.getByLabelText("Loading money"))).toContain("w-28");
     await act(async () => land(readOf({ from: "2026-11-01", to: "2026-12-01" })));
     await settle();
-    expect(amountHead(screen.getByRole("region", { name: "Entries" }))).toContain("w-44");
-    cleanup();
-    host.read = (p) => readOf(p, ALL_ROWS.filter((r) => r !== BOTH_WAYS));
+    const entries = screen.getByRole("region", { name: "Entries" });
+    expect(amountHead(entries)).toContain("w-28");
+    const both = entries.querySelector(`[data-money-row="${BOTH_WAYS.row}"]`)!;
+    const cells = Array.from(both.querySelectorAll("td"));
+    expect(cells[3].className).toContain("whitespace-normal");
+    // Every other row keeps its amount on one line.
+    const other = entries.querySelector(`[data-money-row]:not([data-money-row="${BOTH_WAYS.row}"])`)!;
+    expect(other.querySelectorAll("td")[3].className).not.toContain("whitespace-normal");
+  });
+});
+
+describe("rows with money and no date", () => {
+  it("are said under Entries with Open ledger, since no sum counts them", async () => {
+    host.read = (p) => readOf(p, undefined, { problems: [{ kind: "undated", rows: [7] }] });
     mount();
     await settle();
-    expect(amountHead(screen.getByRole("region", { name: "Entries" }))).toContain("w-28");
+    const line = document.querySelector("[data-money-undated]") as HTMLElement;
+    expect(line.textContent).toContain("Row 7 has money and no date Money can read, so no month or year counts it.");
+    expect(within(line).getByRole("button", { name: "Open ledger" })).toBeTruthy();
+  });
+
+  it("are not said when every row has a date", async () => {
+    mount();
+    await settle();
+    expect(document.querySelector("[data-money-undated]")).toBeNull();
+  });
+});
+
+describe("a header that stands twice", () => {
+  it("is the state line, naming it, with Open ledger and never Restore", async () => {
+    host.read = (p) => readOf(p, [], { made: true, problems: [{ kind: "columns", missing: ["Out"], renamed: [], twice: ["Out"] }] });
+    mount();
+    await settle();
+    const line = document.querySelector('[data-view-state="problem"]') as HTMLElement;
+    expect(line.textContent).toContain("Two Out columns: rename or remove one in the ledger");
+    expect(within(line).getByRole("button", { name: "Open ledger" })).toBeTruthy();
+    expect(within(line).queryByRole("button", { name: "Restore columns" })).toBeNull();
   });
 });
 

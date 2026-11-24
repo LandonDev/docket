@@ -37,7 +37,8 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
       const since = at(row.since);
       const waited = sinceWords(row.since, now);
       return {
-        key: `money:${workspace.environmentId}:${workspace.workspaceId}:${row.row}`,
+        // A row he typed with money both ways is owed both ways, one entry a side: the way keeps the two keys apart, so Today keeps both.
+        key: `money:${workspace.environmentId}:${workspace.workspaceId}:${row.row}:${row.way}`,
         section: "money",
         sector: workspace.sector,
         job: workspace.name,

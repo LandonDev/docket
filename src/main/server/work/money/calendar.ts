@@ -65,8 +65,9 @@ export const dayOfEvent = (startsAt: number): string => {
 const usd = (e: CalendarEvent): number | null => (e.amount && e.amount.currency.toUpperCase() === 'USD' && e.amount.cents > 0 ? e.amount.cents : null)
 
 /**
- * An event as an offer. The fee is the event's own amount, else the last
- * fee he gave an event with the same role, else not known. The miles are
+ * An event as an offer. The fee is the event's own amount in dollars; an
+ * event with no amount takes the last fee he gave an event with the same
+ * role; else (an amount in another currency, or zero) it is not known. The miles are
  * the ones he gave that place before; else Clashes' measure of the drive
  * (`withDrives`); else not known: he types them once, and they are kept by
  * place.
@@ -79,7 +80,8 @@ export function offerOf(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, e: CalendarEven
     date: dayOfEvent(e.startsAt),
     title: e.title,
     place,
-    fee: usd(e) ?? (e.role ? lastFee(ctx, ws.id, e.role) : null),
+    // An event that names an amount of its own (in another currency, or nothing) is never given an older fee in its place.
+    fee: e.amount ? usd(e) : e.role ? lastFee(ctx, ws.id, e.role) : null,
     miles,
     // Miles he typed or accepted for this place are his own word.
     measured: miles !== null

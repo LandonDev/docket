@@ -188,6 +188,7 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{
     const missing = LEDGER_COLUMNS.filter((c) => have[c] === undefined)
     // A column he renamed still holds his figures: an empty column of the old name beside it would read them as nothing.
     const read = rowsOf(grid.header, grid.body)
+    if (read.twice?.length) throw new MoneyError(`The ledger has two ${read.twice.join(' and two ')} columns. Rename or remove one in the ledger.`)
     if (read.renamed.length) throw new MoneyError(`The ledger has no ${read.missing.join(' or ')} column, and ${read.renamed.join(', ')} may be it. Name it back in the ledger.`)
     // A sheet too large to be read whole may hold a header past what was read: nothing is written into its first row unseen.
     if (grid.partial) throw new MoneyError('The ledger is too wide to check whole. Add the missing column in the ledger yourself.')

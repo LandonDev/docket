@@ -351,6 +351,20 @@ describe('adding a trip', () => {
     expect((await offered()).find((o) => o.eventId === 'third')?.miles).toBe(24)
   })
 
+  it('never gives an event that names its own amount an older fee: one in another currency, or zero, is not known', async () => {
+    b.lifeos.events = [game('Harrison', 9)]
+    const [first] = await offered()
+    await trip(first, { fee: 7500, miles: 24 })
+    b.lifeos.events = [game('Harrison', 2, { _id: 'cad', amount: { cents: 9000, currency: 'CAD' } }), game('Harrison', 1, { _id: 'zero', amount: { cents: 0, currency: 'USD' } }), game('Harrison', 1, { _id: 'none' })]
+    forgetCalendar()
+    const got = await offered()
+    expect(got.map((o) => [o.eventId, o.fee])).toEqual([
+      ['cad', null],
+      ['zero', null],
+      ['none', 7500]
+    ])
+  })
+
 
   it('keeps the miles to a place by job: another job, with another start, is not given them', async () => {
     b.lifeos.events = [game('Harrison', 2)]

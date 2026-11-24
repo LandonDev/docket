@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
-import { csvOf, daysBetween, fileWord, formatMoney, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml } from '@shared/work/money'
+import { csvOf, daysBetween, fileWord, formatMoney, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml, undatedWords } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, insideJob, locked, MONEY_FOLDER, moneyFolder, newRef, openBooks, writtenRow } from './book'
 import { keepFile, keyed } from './inbox'
@@ -124,7 +124,8 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
   // What this export will write over: only the files it was asked for and that are there already.
   let replaced = false
   const files: string[] = []
-  const warnings: string[] = []
+  // Rows with no date Money can read are in no year: the export says so, so the tax folder is never short without a word.
+  const warnings: string[] = ledger.undated.length ? [`${undatedWords(ledger.undated)} Give ${ledger.undated.length === 1 ? 'it a date' : 'them dates'} in the ledger, then export again.`] : []
   const text = csvOf(ledger.rows, trips, o.year)
   const csvName = `Ledger ${o.year}.csv`
   // Everything asked for is made first, in this host's own data folder, and only then put in the year's folder, one

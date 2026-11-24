@@ -30,10 +30,17 @@ describe("Money on Today", () => {
       "2026-11-23",
     );
     expect(rows.map(({ open: _open, ...row }) => row)).toEqual([
-      { key: "money:box:ws-ref:4", section: "money", sector: "ref", job: "Ref", title: "West Side HS", detail: "Owes you $80.00", at: Date.parse("2026-11-07T12:00:00"), when: "16 days" },
-      { key: "money:mac:ws-purdue:2", section: "money", sector: "purdue", job: "Purdue", title: "Entry", detail: "You owe $45.00" },
+      { key: "money:box:ws-ref:4:toHim", section: "money", sector: "ref", job: "Ref", title: "West Side HS", detail: "Owes you $80.00", at: Date.parse("2026-11-07T12:00:00"), when: "16 days" },
+      { key: "money:mac:ws-purdue:2:byHim", section: "money", sector: "purdue", job: "Purdue", title: "Entry", detail: "You owe $45.00" },
     ]);
     expect(JSON.stringify(rows)).not.toContain("confirm");
+  });
+
+  it("keeps both sides of a row with money both ways: owed to him and owed by him, each a row of its own", () => {
+    const side = { workspaceId: "ws-ref", sector: "ref" as const, row: 9, who: "Swap meet", what: "", since: "2026-11-20", reimburse: false, both: true };
+    const rows = owedRows([{ workspace: ref, value: owed([{ ...side, amount: 3000, way: "toHim" }, { ...side, amount: 2000, way: "byHim" }]) }], "2026-11-23");
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    expect(rows.map((r) => r.detail)).toEqual(["Owes you $30.00", "You owe $20.00"]);
   });
 
   it("leads a cost to be paid back with what it was for, never as if the shop owed him", () => {

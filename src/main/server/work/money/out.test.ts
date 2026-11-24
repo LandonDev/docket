@@ -75,6 +75,15 @@ describe('export for tax time', () => {
     expect(readdirSync(tax()).filter((f) => f.endsWith('.tmp'))).toEqual([])
   })
 
+  it('says the rows with money and no date it can read, which are in no year’s export', async () => {
+    await add({ date: '2026-03-01', who: 'Dated', amount: 1000 })
+    b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'B3', 'No day')
+    b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'E3', 80)
+    const got = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })
+    expect(got.warnings).toContain('Row 3 has money and no date Money can read, so no month or year counts it. Give it a date in the ledger, then export again.')
+    expect((await view()).problems).toEqual([{ kind: 'undated', rows: [3] }])
+  })
+
   it('never writes an export through a link someone left at its staging name or its place', async () => {
     await add({})
     await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, xlsx: false, pdf: false })
