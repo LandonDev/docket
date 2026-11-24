@@ -249,6 +249,45 @@ describe('Word edits', () => {
     runScript('editDocument', { doc: 'a.docx', edit: { insert: 'start ', at: 'start' }, tracked: false }, { 'Microsoft Word': w })
     expect(log).toEqual([['track', true], ['put', 11, 11, ' end'], ['track', false], ['track', false], ['put', 0, 0, 'start '], ['track', false]])
   })
+
+  /** Word's Find as its dictionary takes it: the stand-in replaces as Word would with every flag off and ^^ read as one ^. */
+  const word = (text: string, o: { does?: (t: string) => string } = {}) => {
+    let t = text
+    const finds: Record<string, unknown>[] = []
+    const cleared: unknown[] = []
+    const findObject = {}
+    const d: Record<string, unknown> = { fullName: () => '/tmp/a.docx', name: () => 'a.docx', textObject: { content: () => t, findObject } }
+    Object.defineProperty(d, 'trackRevisions', { get: () => () => false, set: () => {} })
+    const w = {
+      running: () => true,
+      documents: elements([d]),
+      clearFormatting: (f: unknown) => void cleared.push(f),
+      executeFind: (f: unknown, opts: Record<string, unknown>) => {
+        finds.push(opts)
+        const un = (x: unknown) => String(x).split('^^').join('^')
+        t = o.does ? o.does(t) : t.split(un(opts.findText)).join(un(opts.replaceWith))
+        return true
+      }
+    }
+    return { apps: { 'Microsoft Word': w }, finds, cleared, findObject, text: () => t }
+  }
+
+  it("find and replace set every one of his last Find's flags, take ^ as itself, and answer what Word did", () => {
+    const wd = word('Q3 (draft) and Q3 (draft).')
+    expect(runScript('editDocument', { doc: '/tmp/a.docx', edit: { find: 'Q3 (draft)', replace: 'Q3 ^c' }, tracked: false }, wd.apps)).toBe(2)
+    expect(wd.finds).toEqual([{ findText: 'Q3 (draft)', replaceWith: 'Q3 ^^c', replace: 'replace all', matchCase: true, matchWholeWord: false, matchWildcards: false, matchSoundsLike: false, matchAllWordForms: false, findFormat: false, matchForward: true, wrapFind: 'find stop' }])
+    expect(wd.cleared).toEqual([wd.findObject])
+    expect(wd.text()).toBe('Q3 ^c and Q3 ^c.')
+    const caret = word('a^b, a^b')
+    runScript('editDocument', { doc: 'a.docx', edit: { find: 'a^b', replace: 'c' }, tracked: false }, caret.apps)
+    expect(caret.finds[0]).toMatchObject({ findText: 'a^^b', replaceWith: 'c' })
+    // Word changed one of the two: the press says so, never "changed" whatever Word did.
+    const short = word('one, one', { does: (t) => t.replace('one', 'two') })
+    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false }, short.apps)).toBe(1)
+    // When the new words hold the old, a different result cannot be counted: -1.
+    const odd = word('ab ab', { does: (t) => t.replace('ab', 'abab') })
+    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'ab', replace: 'abc' }, tracked: false }, odd.apps)).toBe(-1)
+  })
 })
 
 describe('PowerPoint decks', () => {
@@ -271,12 +310,26 @@ describe('PowerPoint decks', () => {
     ])
   })
 
-  it('replace text in each box that holds it, and count the boxes', () => {
-    const a = shape('Q1 plan')
+  it("replace text in each box that holds it through PowerPoint's own replace, which keeps each run's formatting, and count the boxes", () => {
+    const a = shape('Q1 plan, Q1 done')
     const b = shape('See Q1')
     const d = deck([[a, shape('none')], [b]])
-    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2' }, ppt(d))).toBe(2)
-    expect([a.read(), b.read()]).toEqual(['Q2 plan', 'See Q2'])
+    const asked: { after: number; findWhat: string; replaceWhat: string; matchCase: boolean; wholeWords: boolean }[] = []
+    // A text range as PowerPoint's dictionary answers `replace`: the hit's range (offset from 1, its length), or nothing.
+    const app = ppt(d)['Microsoft PowerPoint'] as Record<string, unknown>
+    app.replace = (range: { content: () => string }, o: (typeof asked)[number]) => {
+      asked.push(o)
+      const s = range.content()
+      const at = s.indexOf(o.findWhat, o.after)
+      if (at < 0) return null
+      const box = [a, b].find((x) => x.textFrame.textRange === range)!
+      ;(box.textFrame.textRange as unknown as { content: string }).content = s.slice(0, at) + o.replaceWhat + s.slice(at + o.findWhat.length)
+      return { offset: () => at + 1, length: () => o.replaceWhat.length }
+    }
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2' }, { 'Microsoft PowerPoint': app })).toBe(2)
+    expect([a.read(), b.read()]).toEqual(['Q2 plan, Q2 done', 'See Q2'])
+    // Each call past the words it put in; never the box's content set whole (that flattens its runs).
+    expect(asked.map((o) => [o.after, o.matchCase, o.wholeWords])).toEqual([[0, true, false], [2, true, false], [11, true, false], [0, true, false], [6, true, false]])
   })
 })
 

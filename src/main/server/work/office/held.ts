@@ -266,7 +266,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace)
       else throw new ActStale('PowerPoint takes only a find and replace')
       // What the app says it changed, when that is not what he was shown.
-      const short = 'find' in p.edit && p.app === 'word' && n !== p.places ? `. ${app} changed ${n} of the ${counted(p.places, 'place')}` : ''
+      const short = 'find' in p.edit && p.app === 'word' && n !== p.places ? (n < 0 ? `. ${app} changed it otherwise than shown: look at the file` : `. ${app} changed ${n} of the ${counted(p.places, 'place')}`) : ''
       return { summary: `Changed ${p.name}${short}` }
     },
     wayBack: () => null

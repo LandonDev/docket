@@ -799,6 +799,17 @@ waiting on it holds every write back. Node gives the helper two pipes.
 
 ## Not proven
 
+**A held change pressed on a Mac** (office/mac.ts): Word's find and replace now sets every flag of his last Find
+(case on; whole word, wildcards, sounds like, all word forms and format off), clears its formatting, doubles each
+`^` in what it finds and what it writes so `^c`, `^&` and `^p` are words, not codes, and reads back the text to
+answer how many places took the change (-1 when the new words hold the old and a different result cannot be
+counted: the press then says Word changed it otherwise than shown). PowerPoint's replaces through its own `replace`
+on each box's text range, as the Windows helper's `TextRange.Replace` does, so a box's runs keep their formatting.
+Both are written as the Windows helper does them and tested only as script text against stand-ins
+(`mac.test.ts`): **neither has run in a real Word or PowerPoint**, and the dictionary names they use
+(`clearFormatting`, the find flags, `replace` with `findWhat`, `replaceWhat`, `after`, a hit's `offset` and
+`length`) are from the dictionaries, not from a live run.
+
 **Presenting in PowerPoint**: offered on his Mac alone. **His Mac** (PowerPoint 16.115.1, the Mac App Store
 build; `.temp-code/plans/landed/slides-mac-powerpoint-report.md`): from shut, `present` starts PowerPoint and shows
 slide 1 full screen in front in 8 to 10 s, a key moves it on, a second press reuses the open deck, a missing file is

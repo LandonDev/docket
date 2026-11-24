@@ -354,6 +354,22 @@ describe('the google tools', () => {
     expect([...fake.files.values()].map((f) => f.name)).not.toContain('Pitch (revised)')
   })
 
+  it("changes the words on the slides the card named and nowhere else: a slide's speaker notes, never counted, are left as they were", async () => {
+    fake.addDeck(ME, 'deck9', 'Targets', [
+      { objectId: 's1', texts: [{ objectId: 't1', text: 'Plan' }], notes: { objectId: 'n1', text: 'Q3 target, say it slowly' } },
+      { objectId: 's3', texts: [{ objectId: 't3', text: 'Q3 target' }], notes: { objectId: 'n3', text: 'Q3 target is firm' } }
+    ])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck9' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q3 target', replace: 'Q4 target' }] })
+    expect(held[0]).toMatchObject({ payload: { edits: [{ find: 'Q3 target', boxes: 1, on: [2], count: 1 }] } })
+    await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
+    const slides = fake.files.get('deck9')!.deck!.slides
+    expect(slides.map((s) => [s.texts[0]!.text, s.notes!.text])).toEqual([
+      ['Plan', 'Q3 target, say it slowly'],
+      ['Q4 target', 'Q3 target is firm']
+    ])
+  })
+
   it('leaves a deck stale, writing nothing, when the words it replaces everywhere now stand in more boxes than he was shown', async () => {
     fake.addDeck(ME, 'deck2', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }, { objectId: 't2', text: 'Budget' }] }])
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck2' })

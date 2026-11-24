@@ -98,7 +98,20 @@ export const SCRIPTS = {
   editDocument: js(`var w = app('Microsoft Word'); var d = byKey(w.documents, a.doc); var was = d.trackRevisions(); d.trackRevisions = a.tracked; var n = 0;
     try {
       if (a.edit.insert !== undefined) { var e = a.edit.at === 'start' ? 0 : Math.max(0, d.textObject.endOfContent() - 1); w.createRange(d, { start: e, end: e }).content = a.edit.insert; n = 1 }
-      else { n = String(d.textObject.content()).split(a.edit.find).length - 1; if (n) w.executeFind(d.textObject.findObject, { findText: a.edit.find, replaceWith: a.edit.replace, replace: 'replace all', matchCase: true }) }
+      else {
+        var before = String(d.textObject.content()), f = d.textObject.findObject;
+        n = before.split(a.edit.find).length - 1;
+        if (n) {
+          // His last Find's settings stay on Word's Find: every one is set here, and a ^ is found and put as itself
+          // (Word reads ^c as his clipboard, ^& as what it found, ^p as a paragraph), as the Windows helper does.
+          try { w.clearFormatting(f) } catch (e) {}
+          var esc = function(s){ return String(s).split('^').join('^^') };
+          w.executeFind(f, { findText: esc(a.edit.find), replaceWith: esc(a.edit.replace), replace: 'replace all', matchCase: true, matchWholeWord: false, matchWildcards: false, matchSoundsLike: false, matchAllWordForms: false, findFormat: false, matchForward: true, wrapFind: 'find stop' });
+          // Word gives back no count: what it did is read from the text. Not what was shown: how many places lost the words, or -1 when that cannot be told.
+          var after = String(d.textObject.content());
+          if (after !== before.split(a.edit.find).join(a.edit.replace)) n = a.edit.replace.indexOf(a.edit.find) < 0 ? n - (after.split(a.edit.find).length - 1) : -1;
+        }
+      }
     } finally { d.trackRevisions = was }
     return JSON.stringify(n)`),
   presentations: js(`return JSON.stringify(files(app('Microsoft PowerPoint').presentations()))`),
@@ -107,8 +120,17 @@ export const SCRIPTS = {
     eachText(p, function(i, t){ (out[i] = out[i] || { index: i + 1, texts: [] }).texts.push(String(t.content())) });
     for (var i = 0; i < p.slides.length; i++) out[i] = out[i] || { index: i + 1, texts: [] };
     return JSON.stringify(out)`),
-  replaceSlideText: js(`var p = byKey(app('Microsoft PowerPoint').presentations, a.pres), n = 0;
-    eachText(p, function(i, t){ var c = String(t.content()); if (c.indexOf(a.find) >= 0) { t.content = c.split(a.find).join(a.replace); n++ } });
+  // PowerPoint's own replace keeps each run's formatting (a box's content set whole takes the first run's for all of it),
+  // as the Windows helper's TextRange.Replace does; `after` moves past the words it put in.
+  replaceSlideText: js(`var pp = app('Microsoft PowerPoint'), p = byKey(pp.presentations, a.pres), n = 0;
+    eachText(p, function(i, t){
+      if (String(t.content()).indexOf(a.find) < 0) return;
+      for (var k = 0, after = 0; k < 10000; k++) {
+        var hit = pp.replace(t, { findWhat: a.find, replaceWhat: a.replace, after: after, matchCase: true, wholeWords: false });
+        if (!hit) break;
+        after = Number(hit.offset()) + Number(hit.length()) - 1;
+      }
+      n++ });
     return JSON.stringify(n)`),
   accounts: js(`var o = app('Microsoft Outlook'); var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts()));
     return JSON.stringify(accs.map(function(x){ return String(x.emailAddress()) }).filter(Boolean))`),

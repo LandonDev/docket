@@ -152,7 +152,10 @@ them would see it. His press makes the edits in the deck itself, in one
 `batchUpdate` bound to the revision just read (`writeDeckEdits`); words gone,
 words replaced everywhere now standing in more or fewer boxes than he was
 shown (`boxes`), or a shape holding other words than it did, leave the act
-stale.
+stale. A replace-all names the slides the card counted (`pageObjectIds`, the
+ids of the deck just read for the act's `on`): without them Google matches
+every page, a slide's speaker notes, layouts and masters included, which the
+card never read (google/slides.ts `requestsOf`).
 
 The slides canvas reads Drive's PPTX export from a mirror under
 `<dataDir>/google/<hash>/deck.pptx` (`deckMirror.ts`). Opening checks the

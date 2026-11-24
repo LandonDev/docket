@@ -37,7 +37,8 @@ interface FakeSheet {
 
 interface FakeDeck {
   rev: number
-  slides: { objectId: string; texts: { objectId: string; text: string }[] }[]
+  /** each slide's boxes, and its speaker notes: a page of its own, as Google keeps them */
+  slides: { objectId: string; texts: { objectId: string; text: string }[]; notes?: { objectId: string; text: string } }[]
 }
 
 interface FakeFile {
@@ -303,10 +304,16 @@ export class FakeGoogle {
       const deck = f.deck
       if (!m[2]) return reply(200, renderDeck(f))
       if (body.writeControl?.requiredRevisionId !== `srev${deck.rev}`) return reply(400, { error: { message: 'The required revision ID does not match the latest revision.' } })
-      for (const r of body.requests as Record<string, { containsText?: { text: string; matchCase?: boolean }; replaceText?: string; objectId?: string; text?: string; insertionIndex?: number; textRange?: { type: string } }>[]) {
+      for (const r of body.requests as Record<string, { containsText?: { text: string; matchCase?: boolean }; replaceText?: string; pageObjectIds?: string[]; objectId?: string; text?: string; insertionIndex?: number; textRange?: { type: string } }>[]) {
         if (r.replaceAllText) {
-          const { containsText, replaceText } = r.replaceAllText
-          for (const s of deck.slides) for (const t of s.texts) t.text = t.text.split(containsText!.text).join(replaceText ?? '')
+          const { containsText, replaceText, pageObjectIds } = r.replaceAllText
+          // As Google does: every page, notes pages too, unless `pageObjectIds` names the pages it may change.
+          const on = (id: string) => !pageObjectIds?.length || pageObjectIds.includes(id)
+          const swap = (t: { text: string }) => void (t.text = t.text.split(containsText!.text).join(replaceText ?? ''))
+          for (const s of deck.slides) {
+            if (on(s.objectId)) s.texts.forEach(swap)
+            if (s.notes && on(s.notes.objectId)) swap(s.notes)
+          }
         } else if (r.deleteText) {
           const t = deck.slides.flatMap((s) => s.texts).find((x) => x.objectId === r.deleteText.objectId)
           if (!t) return reply(400, { error: { message: 'object not found' } })
@@ -488,7 +495,8 @@ function renderDeck(f: FakeFile): unknown {
     revisionId: `srev${f.deck!.rev}`,
     slides: f.deck!.slides.map((s) => ({
       objectId: s.objectId,
-      pageElements: s.texts.map((t) => ({ objectId: t.objectId, shape: { text: { textElements: [{ textRun: { content: `${t.text}\n` } }] } } }))
+      pageElements: s.texts.map((t) => ({ objectId: t.objectId, shape: { text: { textElements: [{ textRun: { content: `${t.text}\n` } }] } } })),
+      ...(s.notes ? { slideProperties: { notesPage: { objectId: s.notes.objectId, pageElements: [{ objectId: `${s.notes.objectId}_body`, shape: { text: { textElements: [{ textRun: { content: `${s.notes.text}\n` } }] } } }] } } } : {})
     }))
   }
 }

@@ -89,10 +89,15 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
   return { held }
 }
 
-const requestsOf = (edits: readonly HeldDeckEdit[]): Record<string, unknown>[] =>
+/**
+ * The batch his press sends. A replace-all names the slides it may change (`pageObjectIds`): with none, Google matches
+ * every page, a slide's speaker notes, its layout and its master included, which the card never counted. The slides are
+ * the ones the card named (`on`), by the ids of the deck just read; a hold from before `on` was kept names every slide.
+ */
+const requestsOf = (edits: readonly HeldDeckEdit[], pages: readonly string[]): Record<string, unknown>[] =>
   edits.flatMap((e): Record<string, unknown>[] =>
     'find' in e
-      ? [{ replaceAllText: { containsText: { text: e.find, matchCase: true }, replaceText: e.replace } }]
+      ? [{ replaceAllText: { containsText: { text: e.find, matchCase: true }, replaceText: e.replace, pageObjectIds: e.on ? e.on.map((n) => pages[n - 1]!).filter(Boolean) : [...pages] } }]
       : [{ deleteText: { objectId: e.shape, textRange: { type: 'ALL' } } }, ...(e.text ? [{ insertText: { objectId: e.shape, text: e.text, insertionIndex: 0 } }] : [])]
   )
 
@@ -113,7 +118,10 @@ export async function checkDeckEdits(g: Google, account: string, fileId: string,
  */
 export async function writeDeckEdits(g: Google, account: string, fileId: string, edits: readonly HeldDeckEdit[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
   const api = g.api(account)
-  const d = slidesOf(await api.deck(fileId))
+  const deck = await api.deck(fileId)
+  const d = slidesOf(deck)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pages = (deck.slides ?? []).map((s: any) => String(s.objectId))
   // the account may no longer change it: nothing was written, and the file did not change
   if (!d.revisionId) throw new GoogleError('Google no longer lets this account change the deck.', 'refused')
   const now = judge(d, edits)
@@ -138,6 +146,6 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
     if (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) return { stale: elsewhereWords(e.find, 'slides') }
     return { stale: elsewhereWords(e.find, 'boxes') }
   }
-  await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
+  await api.deckUpdate(fileId, requestsOf(edits, pages), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }
 }
