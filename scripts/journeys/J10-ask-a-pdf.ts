@@ -17,6 +17,8 @@ export default journey({
       const page = pair.page
       const place = shape === 'A' ? workspace.path : join(pair.l1, workspace.name)
       fixtures(pair.repo, place, workspace.name + ' Practice plan')
+      // A chat left docked by the walk before folds Files' sidebar (under 900px of view), and the library's row with it.
+      await page.eval(`document.querySelector('[data-files-dock] button[aria-label="Close chat"]')?.click()`)
       await page.clickOn('button, a, [role="link"], [role="treeitem"], div', workspace.name)
       await page.clickOn('button, a, [role="link"], div', 'Files')
       if (shape === 'B1') {
