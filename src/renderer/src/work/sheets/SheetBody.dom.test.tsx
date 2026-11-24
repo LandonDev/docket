@@ -1284,7 +1284,7 @@ describe("the sheet kind", () => {
     }
   });
 
-  it("says a read-only file (an .xlsb) in the needs tone, not as a failure", async () => {
+  it("says a read-only file (an .xlsb) as the quiet line a deck says it in, neither a failure nor amber", async () => {
     open(sheetView({ readOnly: "Saved as .xlsb, which opens read only" }));
     await gridUp();
     const line = await waitFor(() => {
@@ -1292,7 +1292,8 @@ describe("the sheet kind", () => {
       if (!found) throw new Error("no state line");
       return found;
     });
-    expect(line.getAttribute("data-canvas-state")).toBe("needs");
+    expect(line.getAttribute("data-canvas-state")).toBe("quiet");
+    expect(line.hasAttribute("data-quiet-line")).toBe(true);
     expect(line.textContent).toContain("Read only");
   });
 
@@ -1308,8 +1309,9 @@ describe("the sheet kind", () => {
         <div />
       </CanvasSeat>,
     );
-    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
-    expect(document.querySelector("[data-canvas-state]")).toBeNull();
+    // The host's open fails after its own wait, about a second: the default 1 s of findByText raced it under load.
+    expect(await screen.findByText("Couldn't open this sheet", undefined, { timeout: 3000 })).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("[data-canvas-state]")).toBeNull());
     expect(screen.queryByText("Read only")).toBeNull();
   });
 

@@ -5,6 +5,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { ItemSkeleton } from "../canvas/ItemBones";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./model";
 
@@ -56,10 +57,10 @@ const sayWarnings = (a: ImportAnswer): void => {
   if (line) void loadToast().then((toast) => toast(line));
 };
 
-/** The body of a Word file's item while it becomes a document: the editor's bones, or, when it cannot, the one state line over nothing. */
+/** The body of a Word file's item while it becomes a document: the editor's bones, or, when it cannot, the centred failure with Retry. */
 export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown>) {
   const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const said = useRef(false);
   // The item is replaced by the document it becomes; until then it has no versions to show.
   useLayoutEffect(() => shell.ready?.(false), [shell]);
@@ -70,8 +71,7 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   latest.current = source;
   useEffect(() => {
     let live = true;
-    setFailed(false);
-    shell.statusLine(null);
+    setFailed(null);
     // Keyed as the effect is, by host and source too: a file renamed while it imports is a new import, not the old one's answer.
     importOnce(env, `${env}#${item.id}#${sourceKey}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: latest.current } }).then(
       (a) => {
@@ -81,20 +81,14 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       },
       (err: unknown) => {
       if (!live) return;
-      setFailed(true);
-      shell.statusLine({
-        tone: "failed",
-        word: "Couldn't open this document",
-        detail: err instanceof Error && err.message ? err.message : "It could not be read",
-        action: { label: "Retry", run: () => setAttempt((n) => n + 1) },
-      });
+      setFailed(err instanceof Error && err.message ? err.message : "It could not be read");
       },
     );
     return () => {
       live = false;
     };
   }, [env, item.id, item.sessionId, sourceKey, shell, attempt]);
-  return failed ? null : <ItemSkeleton />;
+  return failed !== null ? <OpenFailed kind="document" why={failed} onRetry={() => setAttempt((n) => n + 1)} /> : <ItemSkeleton />;
 }
 
 /** A dropped file as the import's `from`: HTML read into blocks here, anything else its bytes. */

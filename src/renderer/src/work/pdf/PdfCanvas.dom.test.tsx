@@ -263,11 +263,12 @@ describe("the PDF kind", () => {
 
   it("says once when the file moved, and shows the copy kept from before", async () => {
     await open(pdfView({ missing: { asOf: Date.UTC(2026, 10, 16, 14) } }));
-    const line = await found('[data-canvas-state="needs"]');
+    // Read only asks nothing of him: the quiet line, not amber.
+    const line = await found('[data-canvas-state="quiet"]');
     // The tab already names the file: the line says only that it moved.
-    expect(line.textContent).toContain("Moved");
+    expect(line.textContent).toContain("Read only");
     expect(line.textContent).not.toContain("Ballroom contract.pdf");
-    expect(line.textContent).toContain("Read only, as of");
+    expect(line.textContent).toContain("Moved, as of");
     expect(screen.queryByRole("button", { name: /Agent suggests/ })).toBeNull();
     await waitFor(() => expect(pages()[0]).toBe(1));
   });

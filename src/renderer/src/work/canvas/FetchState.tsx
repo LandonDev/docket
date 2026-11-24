@@ -1,6 +1,8 @@
 import type { CanvasKind } from "@shared/work";
+import { Button } from "../../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Progress } from "../../components/ui/progress";
-import { EmptyState } from "../../surfaces/SurfaceSkeleton";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { Fetch } from "./fetched";
 import { ItemBones } from "./ItemBones";
 
@@ -17,12 +19,33 @@ const mb = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
 export const progressWords = (received: number, total: number): string => `${mb(Math.min(received, total))} of ${mb(total)} MB`;
 
 /**
+ * A viewer with nothing to show (docs/DESIGN.md "The canvas pane"): the centred `Empty` with the kind in its title,
+ * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
+ * dropped while the content stays.
+ */
+export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; onRetry(): void }) {
+  // A host's reason in his words (`workErrorWords`): a raw line says nothing, and the title stands alone.
+  const said = why ? workErrorWords(why) : "";
+  return (
+    <Empty data-canvas-failed>
+      <EmptyHeader>
+        <EmptyTitle>{`Couldn't open this ${kindNoun(kind)}`}</EmptyTitle>
+        {said ? <EmptyDescription>{said}</EmptyDescription> : null}
+      </EmptyHeader>
+      <Button size="sm" variant="secondary" onClick={onRetry}>
+        Retry
+      </Button>
+    </Empty>
+  );
+}
+
+/**
  * A fetched item before its kind opens it: the document's bones while the
  * bytes come, the first line a bar with how much has come for a big file;
  * a fetch that failed says so with Retry, never bones.
  */
 export function FetchState({ fetch, kind, name, onRetry }: { fetch: Exclude<Fetch, { phase: "ready" }>; kind: CanvasKind; name: string; onRetry(): void }) {
-  if (fetch.phase === "failed") return <EmptyState title={`Couldn't open this ${kindNoun(kind)}`} line={fetch.message} action={{ label: "Retry", onClick: onRetry }} />;
+  if (fetch.phase === "failed") return <OpenFailed kind={kind} why={fetch.message} onRetry={onRetry} />;
   const total = fetch.total;
   const big = total !== null && total >= SHOW_PROGRESS_FROM;
   return (

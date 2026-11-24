@@ -93,7 +93,7 @@ export interface CanvasShell {
  *  - `saved`: everything is in the file; `at` is when, `where` the folder it is kept in.
  *  - `saving`: a change is on its way.
  *  - `offline`: the file cannot be reached; `pending` changes wait here.
- *  - `conflict`: the file changed under the item; `detail` says who and when, `actions` are Reload and Keep mine as a copy.
+ *  - `conflict`: the file changed under the item; `detail` says who and when, `actions` are Reload and Keep Both (Work's one conflict press).
  *  - `readonly`: it cannot be changed here; `detail` says why.
  *  - `copy`: this is a copy and its changes stay here; `detail` names the computer the file is on.
  *  - `downloading`: its bytes are coming; `detail` says how far.
@@ -176,8 +176,11 @@ export interface CanvasMode {
 }
 
 export interface StatusLine {
-  /** failed: the source did not answer. needs: the person must act there (a sign-in), the one amber state. */
-  tone: "failed" | "needs";
+  /**
+   * failed: the source did not answer. needs: the person must act there (a sign-in), the one amber state. quiet: how
+   * the item is, with nothing asked of him ("Read only"): one muted line, its press a link (`QuietLine`).
+   */
+  tone: "failed" | "needs" | "quiet";
   /** "LifeOS did not answer" */
   word: string;
   /** "Read only, as of 2:04 PM" */

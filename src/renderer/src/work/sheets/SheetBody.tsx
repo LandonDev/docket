@@ -473,8 +473,9 @@ function useFeeds(
   const saveError = view ? (sendError ?? view.saveError) : undefined;
   const store = view?.store;
   useEffect(() => {
-    if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
-    else if (readOnly !== undefined) shell.statusLine({ tone: "needs", word: "Read only", detail: readOnly });
+    // Read only asks nothing of him: one muted line, as on a deck; amber is for a line that needs him.
+    if (missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `${name} moved` });
+    else if (readOnly !== undefined) shell.statusLine({ tone: "quiet", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
     else shell.statusLine(null);
     return () => shell.statusLine(null);

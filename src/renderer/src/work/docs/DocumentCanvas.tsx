@@ -25,6 +25,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
@@ -117,7 +118,7 @@ function statusLineOf(status: DocumentStatus | null): Parameters<CanvasShell["st
   if (!status) return null;
   const word = { offline: "Offline", waiting: "Waiting", refused: "Read only", unreadable: "Did not open", seed: "Not set up" }[status.kind];
   return {
-    tone: status.kind === "unreadable" || status.kind === "seed" ? "failed" : "needs",
+    tone: status.kind === "unreadable" || status.kind === "seed" ? "failed" : status.kind === "refused" ? "quiet" : "needs",
     word,
     detail: status.message,
     ...(status.retry ? { action: { label: "Retry", run: status.retry } } : {}),
@@ -342,16 +343,13 @@ function AttachmentBody(props: CanvasBodyProps<DocState>) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [env, item.id, attempt]);
-  useEffect(() => {
-    shell.statusLine(read && "error" in read ? { tone: "failed", word: "Couldn't open this document", detail: read.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
-  }, [shell, read]);
   useLayoutEffect(() => {
     if (!read || "error" in read) shell.ready?.(false);
   }, [shell, read]);
   const { id, sessionId } = item;
   const keep = useMemo((): MoreEntry[] => [{ id: "keep", label: "Keep as document", icon: Doc, run: () => keepAsDocument(env, { id, sessionId }) }], [env, id, sessionId]);
   if (!read) return <ItemSkeleton />;
-  if ("error" in read) return null;
+  if ("error" in read) return <OpenFailed kind="document" why={read.error} onRetry={() => setAttempt((n) => n + 1)} />;
   return <DocBody {...props} source={read.source} more={keep} />;
 }
 
@@ -366,9 +364,6 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const workspace = useWorkspaceOf(env, item.workspaceId);
   const savingAs = useSaveAsAsk(item.id);
   const saveAs = useCallback(() => openSaveAs(item.id), [item.id]);
-  useEffect(() => {
-    shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
-  }, [shell, opened]);
   // Before paint, so History and the bone never show for a frame they should not.
   useLayoutEffect(() => {
     const now: OpenState = opened === null ? "opening" : "open" in opened ? "open" : "failed";
@@ -409,7 +404,8 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
     setPreviewing(on);
     if (on) setAsked((n) => n + 1);
   }, []);
-  // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
+  // A failed open is said once, centred with Retry, in the body's place (`OpenFailed`).
+  if (opened && "error" in opened) return <OpenFailed kind="document" why={opened.error} onRetry={reopen} />;
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
       <div ref={root} className="relative flex h-full flex-col">

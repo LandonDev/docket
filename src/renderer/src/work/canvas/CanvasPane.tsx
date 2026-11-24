@@ -13,7 +13,8 @@ import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 import { SelectionBar } from "./SelectionBar";
-import { FetchState, kindNoun } from "./FetchState";
+import { FetchState, OpenFailed } from "./FetchState";
+import { QuietLine } from "./QuietLine";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
@@ -73,6 +74,11 @@ function Detail({ text }: { text: string }) {
 
 /** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover. */
 function StateLine({ line }: { line: StatusLine }) {
+  if (line.tone === "quiet") return <QuietLine data-canvas-state="quiet" word={line.word} detail={line.detail} press={line.action} />;
+  return <LoudLine line={line} />;
+}
+
+function LoudLine({ line }: { line: StatusLine }) {
   const [running, setRunning] = useState(false);
   const action = line.action;
   const detail = typeof line.detail === "string" && line.detail ? detailWords(line.detail) : null;
@@ -105,20 +111,20 @@ function StateLine({ line }: { line: StatusLine }) {
 
 /**
  * Why a kind's code or body failed, in his words: a viewer whose code did not arrive is said so, not as a module URL,
- * and a fault in the code (a TypeError and its kin) as "It could not be shown"; a thrown sentence is said as it is.
+ * and a fault in the code (a TypeError and its kin) as nothing, since the title says it; a thrown sentence is said as it is.
  * React has already logged the error itself.
  */
 export function bodyFailureWords(error: unknown): string {
   const message = error instanceof Error ? error.message.trim() : typeof error === "string" ? error.trim() : "";
   if (/dynamically imported module|importing a module script failed|loading chunk|failed to fetch/i.test(message)) return "Its viewer did not load";
   const fault = error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError || error instanceof SyntaxError;
-  return !fault && message ? message : "It could not be shown";
+  return !fault && message ? message : "";
 }
 
 /** The pane's shell, for a failed body drawn by its chunk's boundary, which a kind's own `failed` cannot be handed. */
 const PaneShell = createContext<CanvasShell | null>(null);
 
-/** A body that threw, or whose code did not load: what it fed the frame goes, and the state line says why, with Retry. */
+/** A body that threw, or whose code did not load: what it fed the frame goes, and the centred failure says why, with Retry. */
 function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; retry: () => void }) {
   const shell = useContext(PaneShell);
   useLayoutEffect(() => {
@@ -132,7 +138,7 @@ function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; 
     shell.saved?.(null);
     shell.ready?.(false);
   }, [shell]);
-  return <StateLine line={{ tone: "failed", word: `Couldn't open this ${kindNoun(kind)}`, detail: bodyFailureWords(error), action: { label: "Retry", run: retry } }} />;
+  return <OpenFailed kind={kind} why={bodyFailureWords(error)} onRetry={retry} />;
 }
 
 const bodyFailed =

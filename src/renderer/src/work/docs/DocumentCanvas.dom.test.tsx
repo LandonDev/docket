@@ -5,7 +5,7 @@
  * open said once on the state line with nothing pulsing under it; Share only
  * on what can be shared; Ask's chip as the frame takes it.
  */
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
@@ -33,7 +33,7 @@ const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
 const ITEM = { id: "d1", sessionId: "t1", kind: "document", title: "Run of show", source: FILE } as CanvasItem;
 
 describe("the document's body", () => {
-  it("draws its bones with the item's name while it opens, and nothing under the state line once it cannot; it tells the frame it has not opened, so History waits", async () => {
+  it("draws its bones with the item's name while it opens, and the centred failure with Retry once it cannot; it tells the frame it has not opened, so History waits", async () => {
     const lines: (StatusLine | null)[] = [];
     const ready: boolean[] = [];
     const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: (r: boolean) => void ready.push(r), more: () => {} } as unknown as CanvasShell;
@@ -42,7 +42,16 @@ describe("the document's body", () => {
     expect(container.querySelectorAll("[data-slot=skeleton]").length).toBe(3);
     expect(ready).toEqual([false]);
     await act(async () => opening.fail(new Error("That file is not there any more")));
-    await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "That file is not there any more", action: { label: "Retry" } }));
+    const failed = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(failed.textContent).toContain("Couldn't open this document");
+    expect(failed.textContent).toContain("That file is not there any more");
+    expect(within(failed).getByRole("button", { name: "Retry" })).toBeTruthy();
+    // One shape a failure: never a red state line over a blank pane.
+    expect(lines.filter((l) => l?.tone === "failed")).toEqual([]);
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(ready.at(-1)).toBe(false);
@@ -186,7 +195,8 @@ describe("the document's bar", () => {
       </>,
     );
     await act(async () => opening.fail(new Error("not connected")));
-    await waitFor(() => expect(lines.at(-1)).toMatchObject({ word: "Couldn't open this document" }));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this document"));
+    expect(lines.filter((l) => l?.tone === "failed")).toEqual([]);
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
     // Nor a bone: the bar has nothing, so it goes, and the failure is the tab row and the state line.
     expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
@@ -213,12 +223,20 @@ describe("a mail's attachment as a document", () => {
     const lines: (StatusLine | null)[] = [];
     const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: () => {}, more: () => {} } as unknown as CanvasShell;
     render(<Body item={ATT} source={MAIL} env="box" state={undefined} setState={() => {}} shell={shell} />);
-    await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "LibreOffice is not installed here", action: { label: "Retry" } }));
+    const failed = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(failed.textContent).toContain("Couldn't open this document");
+    // The program's name never reaches him: what he can do instead (workErrorWords).
+    expect(failed.textContent).toContain("Install them under Settings, Connections, Conversion tools.");
+    expect(failed.textContent).not.toContain("LibreOffice");
     // The item stays the attachment: nothing opens in its place, and no thread is named.
     expect(conn.asked).toEqual([{ method: "work.formats.import", params: { itemId: "a1", from: { at: "source", source: MAIL } } }]);
     fail = false;
-    await act(async () => lines.at(-1)!.action!.run());
-    await waitFor(() => expect(lines.at(-1)).toBeNull());
+    await act(async () => fireEvent.click(within(failed).getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).toBeNull());
     expect(conn.asked.filter((a) => a.method === "work.formats.import")).toHaveLength(2);
     // The document it became opens (here the host's open waits): its bones, under the attachment's name.
     expect(screen.getByRole("heading", { name: "Brief.docx" })).toBeTruthy();

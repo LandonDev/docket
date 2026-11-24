@@ -98,25 +98,26 @@ describe("a body that fails", () => {
     return { state, kinds: { ...CANVAS, document: { ...CANVAS.document, history: false, chunk } } };
   }
 
-  it("says why on the item's state line with Retry, and Retry shows the body once it can", async () => {
+  it("says why centred in the body's place with Retry, never a red line over a blank pane, and Retry shows the body once it can", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const { state, kinds } = await failing("throws");
     await seat([DOC], kinds as never);
     const line = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      const found = document.querySelector<HTMLElement>("[data-canvas-failed]");
       expect(found).toBeTruthy();
       return found!;
     });
     expect(line.textContent).toContain("Couldn't open this document");
-    expect(line.textContent).toContain("the sheet's workbook is damaged");
+    expect(line.textContent).toContain("The sheet's workbook is damaged");
+    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
     state.fail = false;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     expect(await screen.findByTestId("body")).toBeTruthy();
-    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+    expect(document.querySelector("[data-canvas-failed]")).toBeNull();
     quiet.mockRestore();
   });
 
-  it("drops what the body fed the frame before it threw, and says a fault in its code plainly", async () => {
+  it("drops what the body fed the frame before it threw, and says a fault in its code by the title alone", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const { state, kinds } = await failing("throws");
     state.fail = false;
@@ -127,11 +128,13 @@ describe("a body that fails", () => {
     state.error = new TypeError("Cannot read properties of undefined (reading 'rows')");
     await act(async () => applyCanvasPush({ sessionId: "t1", items: [{ ...DOC, title: "Run of show 2" }] }));
     const line = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      const found = document.querySelector<HTMLElement>("[data-canvas-failed]");
       expect(found).toBeTruthy();
       return found!;
     });
-    expect(line.textContent).toContain("It could not be shown");
+    // The title says it; no detail restates it.
+    expect(line.querySelector("[data-slot=empty-description]")).toBeNull();
+    expect(line.textContent).toContain("Couldn't open this document");
     expect(line.textContent).not.toContain("Cannot read");
     expect(document.querySelector('[data-canvas-state="waiting"]')).toBeNull();
     quiet.mockRestore();
@@ -142,7 +145,7 @@ describe("a body that fails", () => {
     const { kinds } = await failing("no code");
     await seat([DOC], kinds as never);
     const line = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      const found = document.querySelector<HTMLElement>("[data-canvas-failed]");
       expect(found).toBeTruthy();
       return found!;
     });

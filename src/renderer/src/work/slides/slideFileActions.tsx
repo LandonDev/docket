@@ -3,11 +3,11 @@ import type { GoogleFileState, GooglePush } from "@shared/contract-work-google";
 import type { DeckView } from "@shared/contract-work-slides";
 import type { CanvasItem } from "@shared/work";
 import { Copy, ExternalLink, RefreshCw } from "../../chrome/icons";
-import { BusyLabel, Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
 import { sayError } from "../canvas/frame";
+import { QuietLine } from "../canvas/QuietLine";
 import { Export } from "../icons";
 import { feedMore } from "./more";
 import { UploadGoogleDialog } from "../google/UploadGoogleDialog";
@@ -95,24 +95,12 @@ export function useSlideFileActions({ env, item, shell, refresh, view }: { env: 
 
 /** The line under the format row: quiet words, then its press, which says it is busy while it runs. */
 export function NoticeLine({ notice }: { notice: SlideNotice }) {
-  const [busy, setBusy] = useState(false);
   const press = notice.press;
-  const run = () => {
-    if (!press || busy) return;
-    setBusy(true);
-    void press.run().then(
-      () => setBusy(false),
-      (e: unknown) => (setBusy(false), sayError(e, `Couldn't ${press.label.toLowerCase()}`)),
-    );
-  };
   return (
-    <div data-slide-notice className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
-      {notice.words ? <span className="min-w-0 truncate">{notice.words}</span> : null}
-      {press ? (
-        <Button variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" disabled={busy} onClick={run}>
-          <BusyLabel busy={busy} label={press.label} />
-        </Button>
-      ) : null}
-    </div>
+    <QuietLine
+      data-slide-notice
+      word={notice.words}
+      press={press ? { label: press.label, run: () => press.run().catch((e: unknown) => sayError(e, `Couldn't ${press.label.toLowerCase()}`)) } : null}
+    />
   );
 }

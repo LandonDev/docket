@@ -3,6 +3,7 @@ import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, Input, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
@@ -165,7 +166,7 @@ function useFeeds(
 
   useEffect(() => {
     if (!view) return shell.statusLine(null);
-    if (view.missing) shell.statusLine({ tone: "needs", word: "Moved", detail: `Read only, as of ${dayTime(view.missing.asOf)}` });
+    if (view.missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `Moved, as of ${dayTime(view.missing.asOf)}` });
     else if (view.xfaOnly) shell.statusLine({ tone: "failed", word: "This form can't be filled here", detail: "Its fields are XFA, which only Adobe's apps fill" });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
@@ -219,11 +220,11 @@ export function PageSkeleton() {
 function Locked({ wrong, onOpen }: { wrong: boolean; onOpen(password: string): void }) {
   const [password, setPassword] = useState("");
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-      <div className="text-center">
-        <div className="text-sm font-medium">This file needs a password</div>
-        {wrong ? <div className="mt-0.5 text-xs text-destructive">That password didn't open it</div> : null}
-      </div>
+    <Empty>
+      <EmptyHeader>
+        <EmptyTitle>This file needs a password</EmptyTitle>
+        {wrong ? <EmptyDescription className="text-destructive">That password didn't open it</EmptyDescription> : null}
+      </EmptyHeader>
       <form
         className="flex w-[280px] max-w-full gap-2"
         onSubmit={(event) => {
@@ -236,7 +237,7 @@ function Locked({ wrong, onOpen }: { wrong: boolean; onOpen(password: string): v
           Open
         </Button>
       </form>
-    </div>
+    </Empty>
   );
 }
 

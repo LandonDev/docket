@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell } from "../canvas/kind";
@@ -84,7 +84,7 @@ describe("Import", () => {
     expect(requests[0]).toEqual({ env: "env_box", method: "work.formats.import", params: { sessionId: "t1", itemId: "i1", from: { at: "source", source: word } } });
   });
 
-  it("when it cannot, the state line says why with Retry, and the bones stop: a failure is not drawn as loading", async () => {
+  it("when it cannot, the centred failure says why with Retry, and the bones stop: a failure is not drawn as loading", async () => {
     let fail: (error: Error) => void = () => {};
     answer = () => new Promise((_, reject) => (fail = reject));
     const s = shell();
@@ -93,7 +93,16 @@ describe("Import", () => {
     // It becomes another item: no History for it meanwhile.
     expect(s.ready).toEqual([false]);
     await act(async () => fail(new Error("that file is not there any more")));
-    await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "that file is not there any more", action: { label: "Retry" } }));
+    const failed = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(failed.textContent).toContain("Couldn't open this document");
+    expect(failed.textContent).toContain("That file is not there any more");
+    expect(within(failed).getByRole("button", { name: "Retry" })).toBeTruthy();
+    // Never a red line over a blank pane.
+    expect(s.lines.filter((l) => l?.tone === "failed")).toEqual([]);
     expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });
@@ -111,7 +120,7 @@ describe("Import", () => {
     await waitFor(() => expect(requests.at(-1)?.params).toMatchObject({ from: { source: { path: "/w/New name.docx" } } }));
     await act(async () => fail(new Error("that file is not there any more")));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(s.lines.at(-1)).not.toMatchObject({ tone: "failed" });
+    expect(document.querySelector("[data-canvas-failed]")).toBeNull();
   });
 
   it("a failed import is not run again when a canvas push hands the same file afresh", async () => {
@@ -120,13 +129,13 @@ describe("Import", () => {
     const item = { id: "i8", sessionId: "t1" } as CanvasItem;
     const at = (source: { at: "file"; host: string; path: string }) => <ImportBody item={item} source={source} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />;
     const { rerender } = render(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
-    await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed" }));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).not.toBeNull());
     const asked = requests.length;
     rerender(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
     rerender(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(requests.length).toBe(asked);
-    expect(s.lines.at(-1)).toMatchObject({ tone: "failed" });
+    expect(document.querySelector("[data-canvas-failed]")).not.toBeNull();
   });
 
   it("a file dropped on a document opens as a document; a picture is left to the editor", async () => {
