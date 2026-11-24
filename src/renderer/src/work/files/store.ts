@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { CopyBack, FileCrumb, FilePage, FileSearchFilter, FilesHome, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab, SavedFileSearch } from "@shared/contract-work-files";
+import type { CopyBack, FileCrumb, FilePage, FileSearchFilter, FilesHome, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab, SavedFileSearch, WordSaved } from "@shared/contract-work-files";
 import type { TeamsEntry, TeamsLibrariesAnswer } from "@shared/contract-work-office";
 import type { CanvasSource } from "@shared/work";
 import { DEFAULT_SORT, PLACE, refKey, sortEntries, type FileEntry, type FileSort, type FolderRef } from "@shared/work/files";
@@ -517,6 +517,10 @@ export async function closeTab(link: string, workspaceId: string, tabId: string,
 
 /** A copy's kind saved: the workspace's host sends the copy to the file it is a copy of, when the two differ (files/copies.ts). Its tab says how that stands. */
 export const sendCopyBack = (link: string, workspaceId: string, tabId: string): Promise<CopyBack> => ask<CopyBack>(link, "work.files.copyBack", { workspaceId, tabId });
+
+/** Save as Word: the document a Word file of another computer became, written over that file by its version, or beside it with `keep` (files/word.ts). */
+export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean): Promise<WordSaved> =>
+  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}) }, { timeoutMs: 180_000 });
 
 /** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
 export async function reloadCopy(link: string, workspaceId: string, tabId: string): Promise<void> {

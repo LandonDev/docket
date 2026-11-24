@@ -11,6 +11,7 @@ import { canonicalPath } from '../service/ctx'
 import { ensureFetched, fetchedPath } from '../canvas/fetch'
 import { attachmentDocPathOf } from '../docs/target'
 import { importFolderOf } from '../files/imports'
+import { importPlaceFor } from '../files/hooks'
 import { sharedOf, workspaceHere } from '../files/policy'
 
 /**
@@ -132,8 +133,11 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
     if (!ctx.reaches(by, path)) throw new FenceError(METHOD)
     if (!existsSync(path)) throw new Error('that file is not there any more')
     original = canonicalPath(path)
+    // A Word file of a Teams library opened in a Files tab: Files keeps the document in the workspace's own folder.
+    const placed = importPlaceFor(original, params.itemId)
+    if (placed) folder = placed
     // Never beside a file others can open: the document would sync to them. It goes under this host's data instead.
-    if (sharedOf(ctx, { at: 'file', host: ctx.host, path: original })) {
+    else if (sharedOf(ctx, { at: 'file', host: ctx.host, path: original })) {
       folder = importFolderOf(ctx.dataDir, { host: ctx.host, path: original })
       mkdirSync(folder, { recursive: true, mode: 0o700 })
     } else folder = dirname(original)

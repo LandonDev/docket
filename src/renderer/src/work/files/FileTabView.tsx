@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { confirmAction } from "../../chrome/ConfirmDialog";
+import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import type { FileTab } from "@shared/contract-work-files";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
@@ -7,6 +7,7 @@ import { Maximize2, Minimize2, MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip, TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { loadToast } from "../../components/ui/toaster";
 import { shortcutFor } from "../../lib/settings";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { CanvasPane } from "../canvas/CanvasPane";
@@ -19,7 +20,8 @@ import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, type ActRow, type EntryAct } from "./model";
-import { sendCopyBack, useDock, useDockWidth } from "./store";
+import { saveWordFile, sendCopyBack, useDock, useDockWidth } from "./store";
+import { saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
 import { copyBackDue, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
@@ -270,8 +272,18 @@ export function FileTabView({
       setSendAsk({ failed: err instanceof Error ? err.message : String(err) });
     }
   }, [workspace.environmentId, workspace.id, tab.id]);
+  // A Word file opened as its document: whether the Word file holds his changes, and Save as Word (wordSave.ts).
+  const saveWord = (): Promise<void> =>
+    saveAsWord(tab, {
+      choose: confirmChoice,
+      confirm: confirmAction,
+      save: (keep) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep),
+      said: (text) => void loadToast().then((toast) => toast.message(text)),
+    }).then(() => undefined);
   const line: HeaderLine | null =
-    copy && tab.back
+    copy && tab.word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
+      ? { ...wordLine(tab.word, serviceOf(tab)), ...(tab.word.since ? { actions: [{ id: "word", label: `Save to ${serviceOf(tab)} as Word`, run: saveWord }] } : {}) }
+      : copy && tab.back
       ? savingCopyLine(kindLine, tab, copy, sendAsk, () => setFresh((n) => n + 1), sendBack)
       : copy
         ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"

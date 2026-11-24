@@ -1772,7 +1772,13 @@ Around the canvas:
   and its sentence, with Retry, and "Not saved to MacBook." and the reason
   with Retry where his window's own ask for a send failed. It never says
   saved while his ask is unanswered: "Saving to MacBook…" until the host
-  answers. Closing such a tab sends what the kind still holds (a deck's
+  answers. A Word file of another computer opened as its document says
+  whether the Word file holds his edits ("The Word file in Teams has not
+  changed", "Changes since 9:12 PM are not in the Word file", "Saved to
+  Teams as Word 9:12 PM", all muted), with one press while it does not,
+  Save to Teams as Word, asked in the house confirm ("Replace Plan.docx in
+  Teams?", what Word formatting may change, Replace and Keep Both; over a
+  file that changed there, Keep Both alone). Closing such a tab sends what the kind still holds (a deck's
   open box) first; closing it while changes have not
   reached the file asks once in the house confirm: "Changes to Roster.xlsx
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in

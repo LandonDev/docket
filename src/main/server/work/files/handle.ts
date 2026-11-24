@@ -15,6 +15,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
 import { copyWaits } from './copyKept'
+import { isWordFile, keptDoc, recordWord, wordBacksOf, wordSave } from './word'
 import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
 import { fileMakerFor } from './hooks'
@@ -336,13 +337,22 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
   const kind = p.as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
   const back = copySavesBack(kind, name)
+  // A Word file opened as a document before: the document his edits are kept in opens again, and nothing is read
+  // over it (word.ts). Its tab still names the Word file, which Save as Word writes.
+  const word = kind === 'document' && isWordFile(name)
+  const kept = word ? keptDoc(ctx, workspace.id, file.host, file.path) : null
+  if (kept && copyAllowed(ctx.db, workspace.id)) {
+    const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source: { at: 'file', host: ctx.host, path: kept.doc! }, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
+    state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
+    return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
+  }
   // A copy whose changes have not reached its file (its tab closed, its computer did not answer, or its bytes are not
   // what the file holds) is opened again as it is: it is never read over from the file while they wait.
-  const kept = back ? copyRecord(ctx, workspace.id, file.host, file.path) : null
+  const waiting = back ? copyRecord(ctx, workspace.id, file.host, file.path) : null
   let source: CanvasSource
-  if (kept && copyWaits(kept) && existsSync(kept.copy) && copyAllowed(ctx.db, workspace.id)) {
-    source = { at: 'file', host: ctx.host, path: kept.copy }
-    reopened(ctx, kept)
+  if (waiting && copyWaits(waiting) && existsSync(waiting.copy) && copyAllowed(ctx.db, workspace.id)) {
+    source = { at: 'file', host: ctx.host, path: waiting.copy }
+    reopened(ctx, waiting)
   } else {
     // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
     const copy = await copyIn(ctx, filesPaneOf(workspace.id), { at: 'file', ...file }, signal)
@@ -350,7 +360,9 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
     // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
     const path = (copy.source as { path: string }).path
     if (back && copy.version) recordCopy(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
-    else if (kept) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(kept.id)
+    else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
+    // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
+    if (word && copy.version) recordWord(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, name, version: copy.version })
   }
   const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
   state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
@@ -427,7 +439,18 @@ function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
   const listed = state.tabs.list(workspaceId)
   // A copy that saves back says how that stands on its tab.
   const backs = backsOf(ctx, workspaceId)
-  const all = backs.size ? { rev: listed.rev, tabs: listed.tabs.map((t) => (t.copyOf && backs.has(`${t.copyOf.host}\0${t.copyOf.path}`) ? { ...t, back: backs.get(`${t.copyOf.host}\0${t.copyOf.path}`)! } : t)) } : listed
+  // A Word file opened as its document says how the Word file stands (word.ts).
+  const words = wordBacksOf(ctx, workspaceId)
+  const all =
+    backs.size || words.size
+      ? {
+          rev: listed.rev,
+          tabs: listed.tabs.map((t) => {
+            const at = t.copyOf ? `${t.copyOf.host}\0${t.copyOf.path}` : ''
+            return backs.has(at) ? { ...t, back: backs.get(at)! } : words.has(at) ? { ...t, word: words.get(at)! } : t
+          })
+        }
+      : listed
   if (by.kind !== 'remote' || by.peer) return all
   const tabs = all.tabs.filter((tab: FileTab) => {
     if (tab.kind === 'page') {
@@ -620,7 +643,7 @@ const held = (verdict: 'run' | 'hold'): void => {
 const MAY_NOT = (what: string): string => `This key may not ${what}.`
 /** A thread changes files only through the `files_*` tools (files/tools.ts), which give a run its Result and Undo and hold a shared change: never by the wire. */
 export const THREADS_BY_TOOLS = 'A thread changes files with the files_* tools.'
-const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'writeBack'].map((v) => `work.files.${v}`))
+const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'wordSave', 'writeBack'].map((v) => `work.files.${v}`))
 /** Whether an operation id is in the journal already (`runOp` then answers it, and checks it is the same change). */
 const journalled = (db: DatabaseSync, op: string, workspaceId: string, verb: FileVerb): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = ?`).get(op, workspaceId, verb)
 /** How many rows each of Home's lists shows. */
@@ -896,6 +919,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       ownRows(ctx, by, p.workspaceId)
       await copyReload(ctx, by, p as never, signal)
       return handled(tabsFor(ctx, by, p.workspaceId))
+    case 'work.files.wordSave':
+      return handled(await wordSave(ctx, by, p as never))
     case 'work.files.copyKeep':
       ownRows(ctx, by, p.workspaceId)
       await copyKeep(ctx, by, p as never)

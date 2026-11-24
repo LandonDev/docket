@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf } from '@shared/work'
@@ -15,6 +15,10 @@ import { setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
+import { wordFollowed, wordImportPlace, wordRow, wordsLeft } from './word'
+
+// Save as Word writes the Work service's Word export; here a stand-in's bytes.
+vi.mock('../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Plan.docx', data: Buffer.from('word export').toString('base64'), warnings: [] }) }))
 
 /**
  * A copy saves back (copies.ts): two hosts, the workspace's (`env_box`) and his Mac (`env_mac`) with a dummy Teams
@@ -500,5 +504,88 @@ describe("his window on another computer of his (a key that may approve)", () =>
     expect(readFileSync(path, 'utf8')).toBe('notes, typed on his Mac')
     expect((await backOf(tabId))?.is).toBe('ok')
     expect(readFileSync(copy, 'utf8')).toBe('notes, typed on his Mac')
+  })
+})
+
+/**
+ * A Word file of another computer (word.ts, the owner's ruling of 2026-11-23): opened in a Files tab it becomes a
+ * document kept in the workspace's own folder; the Word file changes only by Save as Word, over it by version, or
+ * beside it with Keep Both.
+ */
+describe('a Word file of another computer', () => {
+  /** The document kind's import of the copy, as the importer does it: where Files says, then the item's replace. */
+  async function imported(name: string, bytes: string) {
+    const opened = await openFar(name, bytes)
+    const folder = wordImportPlace(box.ctx, opened.copy, opened.item.id)
+    const doc = join(folder ?? dirname(opened.copy), name.replace(/\.docx$/, '.tcdoc'))
+    writeFileSync(doc, '{"doc":1}')
+    const next = box.ctx.canvas.replace(filesPaneOf(WS), opened.item.id, 'document', { at: 'file', host: HOST, path: doc }, name.replace(/\.docx$/, ''))
+    return { ...opened, folder, doc, next }
+  }
+  let offFollow: () => void = () => {}
+  beforeEach(() => {
+    offFollow = box.ctx.canvas.onReplaced((old, next) => wordFollowed(box.ctx, old, next))
+  })
+  afterEach(() => offFollow())
+  const tabOf = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)
+  const closeAndHear = async (tabId: string) => {
+    await call('work.files.tabClose', { tabId })
+    for (const items of box.removed.splice(0)) wordsLeft(box.ctx, items)
+  }
+
+  it("becomes a document in the workspace's own folder, and the tab says the Word file has not changed", async () => {
+    const { folder, doc, tabId, path } = await imported('Plan.docx', 'word bytes')
+    expect(folder).toBe(box.folder)
+    expect(wordRow(box.ctx, WS, MAC, path)).toMatchObject({ doc })
+    expect((await tabOf(tabId))?.word).toEqual({ since: true })
+  })
+
+  it('Save as Word writes the export over the file by its version; later edits say they are not in it yet', async () => {
+    const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
+    const saved = await call<{ at: number }>('work.files.wordSave', { tabId })
+    expect(saved.at).toBeGreaterThan(0)
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
+    writeFileSync(doc, '{"doc":2}')
+    utimesSync(doc, new Date(), new Date(Date.now() + 5000))
+    expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: true })
+  })
+
+  it('keeps his edited document when the tab closes, and opens it again for the Word file, reading nothing over it', async () => {
+    const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
+    writeFileSync(doc, '{"doc":"his edit"}')
+    utimesSync(doc, new Date(), new Date(Date.now() + 5000))
+    await closeAndHear(tabId)
+    expect(readFileSync(doc, 'utf8')).toBe('{"doc":"his edit"}')
+    const reads = far.filter((c) => c.verb === 'filesRead').length
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name: 'Plan.docx' })
+    expect(again.item).toMatchObject({ kind: 'document', source: { path: doc } })
+    expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(reads)
+  })
+
+  it('drops a document he only looked at when its tab closes', async () => {
+    const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
+    await closeAndHear(tabId)
+    expect(existsSync(doc)).toBe(false)
+    expect(wordRow(box.ctx, WS, MAC, path)).toBeNull()
+  })
+
+  it('never writes over a Word file that changed there: the conflict, then Keep Both beside it', async () => {
+    const { tabId, path } = await imported('Plan.docx', 'word bytes')
+    writeFileSync(path, 'a colleague saved')
+    const clash = await call<{ conflict: unknown }>('work.files.wordSave', { tabId })
+    expect(clash.conflict).toBeTruthy()
+    expect(readFileSync(path, 'utf8')).toBe('a colleague saved')
+    const kept = await call<{ copy: { name: string } }>('work.files.wordSave', { tabId, keep: true })
+    expect(kept.copy.name).toBe('Plan (mine).docx')
+    expect(readFileSync(join(dirname(path), 'Plan (mine).docx'), 'utf8')).toBe('word export')
+  })
+
+  it('refuses a thread, a read key and a key that may not approve', async () => {
+    const { tabId, path } = await imported('Plan.docx', 'word bytes')
+    await expect(call('work.files.wordSave', { tabId }, thread('t1'))).rejects.toThrow('files_* tools')
+    await expect(call('work.files.wordSave', { tabId }, reader)).rejects.toThrow('this key may not change it')
+    await expect(call('work.files.wordSave', { tabId }, phone)).rejects.toThrow('this key may not change it')
+    expect(readFileSync(path, 'utf8')).toBe('word bytes')
   })
 })

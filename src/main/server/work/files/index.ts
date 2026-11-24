@@ -1,9 +1,10 @@
 import { filesPaneWorkspace } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
 import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
+import { wordFollowed, wordImportPlace, wordsLeft } from './word'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
-import { registerFileMoved } from './hooks'
+import { registerFileMoved, registerImportPlace } from './hooks'
 import { repointLinks } from './places/lifeos'
 import { setThreadsMayWrite } from './policy'
 import { clearPreviewScratch, PREVIEW_CONVERTERS, prunePreviews } from './preview'
@@ -95,6 +96,9 @@ export const files: WorkModule = {
       ctx.log(`files: the copies could not be settled: ${err instanceof Error ? err.message : String(err)}`)
     }
     const offSaved = onFileSaved((path) => copySaved(ctx, path))
+    // A Word file of another computer becomes a document in the workspace's own folder, kept for its next open (word.ts).
+    const offPlace = registerImportPlace((original, itemId) => wordImportPlace(ctx, original, itemId))
+    const offFollowed = ctx.canvas.onReplaced((old, next) => wordFollowed(ctx, old, next))
     const waiting = setInterval(() => {
       try {
         retryWaiting(ctx)
@@ -106,6 +110,8 @@ export const files: WorkModule = {
     return () => {
       offMoved()
       offSaved()
+      offPlace()
+      offFollowed()
       clearInterval(daily)
       clearInterval(waiting)
       closeFilesState(ctx.db)
@@ -118,6 +124,8 @@ export const files: WorkModule = {
     itemsGone(ctx, mine.map((item) => item.id))
     // A copy's item went however it went: what waits in the copy is kept and sent, never dropped with it.
     copiesLeft(ctx, mine)
+    // A Word file's document he never changed goes; one he changed is kept for the file's next open (word.ts).
+    wordsLeft(ctx, mine)
   },
   workspaceRemoved(workspaceId, ctx) {
     removeWorkspace(ctx, workspaceId)

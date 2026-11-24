@@ -204,6 +204,12 @@ export const FilesRequestSchemas = [
   /** → FilesTabs: his copy saved beside the file that changed, under the keep-both name, and the tab shows that file now. */
   request('work.files.copyKeep', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
   /**
+   * → WordSaved: Save as Word. The document a Word file of another computer became is written as Word over that
+   * file by the version it was read at, never over a file that changed there; `keep` puts it beside the file under
+   * the keep-both name instead. His own edit of that file: his window, or a key that may approve.
+   */
+  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional() })),
+  /**
    * → WrittenBack: a copy's bytes, sent by the workspace's host to the file's own host (its peer verb, never a
    * window's or a key's): written over the file by `version` alone, through the same door as his own save there,
    * or with `copy` beside it under the keep-both name. `origin` is his window's press on the workspace's host.
@@ -304,6 +310,8 @@ export interface FileTab {
   copyOf?: { host: string; path: string; vm?: boolean }
   /** a copy whose kind saves: its changes go back to the file (`copyOf`), and this is how that stands */
   back?: CopyBack
+  /** a Word file of another computer opened as the document made of it, kept in the workspace's folder: how that file stands */
+  word?: WordBack
   /** a file tab with a second file at its side (Open to the Side): that file's item, key and name. It is in no tab of its own. */
   side?: { itemId: string; key: string; name: string }
 }
@@ -321,6 +329,17 @@ export interface CopyBack {
   at?: number
   detail?: string
 }
+/**
+ * A Word file opened as a document (docs/agents/work-files.md "A Word file from another computer"): his edits are
+ * kept in the document; the Word file changes only by his Save as Word. `at`: when that last went; `since`: the
+ * document holds edits the Word file has not (always, before the first save).
+ */
+export interface WordBack {
+  at?: number
+  since: boolean
+}
+/** What Save as Word answers: written over the file, the file changed there or went (nothing written), or kept beside it. */
+export type WordSaved = { at: number } | { conflict: { changed: number } | { gone: true } } | { copy: { name: string } }
 /** What a copy's own host answers a send back: the file's version after it, the conflict, or the keep-both file it made. */
 export type WrittenBack = { version: string; changed: number } | { conflict: { version: string; changed: number } | { gone: true } } | { copy: { path: string; name: string; version: string; changed: number } }
 
@@ -429,6 +448,7 @@ export const FILES_CAPS = {
   'work.files.copyBack': 'operate',
   'work.files.copyReload': 'operate',
   'work.files.copyKeep': 'operate',
+  'work.files.wordSave': 'operate',
   // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
   'work.files.writeBack': 'operate',
   'work.files.tabMove': 'operate',
@@ -468,6 +488,7 @@ export const FILES_RELAY = {
   'work.files.copyBack': 'screen',
   'work.files.copyReload': 'screen',
   'work.files.copyKeep': 'screen',
+  'work.files.wordSave': 'screen',
   'work.files.writeBack': 'screen',
   'work.files.project': 'screen',
   'work.files.purge': 'never'

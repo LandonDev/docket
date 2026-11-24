@@ -1606,8 +1606,9 @@ over a file that changed there.
 
 - **Which copies.** Those whose kind edits the copy's own bytes and says when it saved (`copySavesBack` in
   src/shared/work/files.ts): the sheet on an .xlsx or .xlsm, the deck on a .pptx, the `file` kind's text. A
-  document edits a `.tcdoc` made of the file, not the file, and a .csv opens as a sheet of our own: those copies,
-  and a PDF's, a picture's or a recording's, keep "A copy from MacBook. Changes stay here".
+  document edits a `.tcdoc` made of the file, not the file (a Word file's is kept in the workspace's folder and saved
+  back by his press alone: "A Word file from another computer" below), and a .csv opens as a sheet of our own: those
+  copies, and a PDF's, a picture's or a recording's, keep "A copy from MacBook. Changes stay here".
 - **The record** (`work_files_copies`, tables.ts): made by `openCopy` from what `copyIn` read in one look: the
   file's host and path (a guest path in the VM), its version, the sha256 of its bytes (`sent`), the copy's path
   here and its folder, how sending stands, and `closed`. Another host answers `office.filesRead {as: 'bytes'}`
@@ -1675,6 +1676,31 @@ over a file that changed there.
 - **The header never reads as saved before the file holds it.** While his window's own ask is unanswered the line
   says "Saving to MacBook…"; an ask the host refused says "Not saved to MacBook." and the reason, with Retry
   (`copyLine`'s `CopyAsk`). What the host says of the file (not answering, changed there, refused) wins over it.
+
+## A Word file from another computer
+
+`files/word.ts`, the owner's ruling of 2026-11-23: his edits to a Word file are never thrown away, and nothing writes
+over a colleague's Word file but his own press.
+
+- **Opened**, a .docx of a library on another host of his, or in this host's Windows VM, is a copy as any other
+  (`openCopy`), recorded with the version it was read at (`work_files_word`, `recordWord`). The document kind makes a
+  `.tcdoc` of it; Files names the workspace's own folder as where that goes (`registerImportPlace` in hooks.ts, which
+  the importer asks first: `wordImportPlace`), and the record names the document once the item takes its place
+  (`wordFollowed`, on `onReplaced`). The tab keeps the Word file's key.
+- **Opened again**, the Word file shows the same document (`keptDoc`): nothing is read over it from the file.
+- **His edits stay in the document.** The tab's `word` (`WordBack`) says how the Word file stands, and the header
+  says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
+  the Word file", "Saved to Teams as Word 9:12 PM".
+- **Save to Teams as Word** (`work.files.wordSave`, the header's one press while the Word file lacks his edits): one
+  confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version and what Word formatting the
+  editor does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. Replace
+  writes our Word export (`exportDoc`) over the file by its version, through the same door and the same send as a
+  copy's (`deliver`); a file that changed there, or went, is never written over: the window offers Keep Both alone,
+  which puts his version beside it under the keep-both name. His own edit: his window, or a key that may approve; a
+  thread and a read key are refused, as for a copy.
+- **A document he only looked at** goes with its tab: one whose change time is still the one it was made with is
+  deleted with its record (`wordsLeft`); one he changed is kept, in the workspace's folder, for the Word file's next
+  open.
 
 ## What a pane owner changes for every kind
 

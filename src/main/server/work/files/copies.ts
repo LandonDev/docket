@@ -139,7 +139,7 @@ export const unreachable = (err: unknown): boolean =>
   err instanceof VmUnreachable || err instanceof OpLost || (err as { name?: string })?.name === 'PeerOfflineError' || /offline|no live link|timed out|timeout|unreachable|not answer|ECONNRE|socket hang up/i.test(message(err))
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
-async function deliver(ctx: WorkCtx, r: CopyRow, data: Buffer, keep: boolean): Promise<WrittenBack> {
+export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean): Promise<WrittenBack> {
   const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
   if (r.vm) {
     // The Windows VM's file: through this host's own door for his edit of that library, then the guest's versioned write.
@@ -306,7 +306,7 @@ export function copiesLeft(ctx: WorkCtx, items: readonly CanvasItem[]): void {
  * His own edit of the file a copy is of: his window, or a key that may approve, since others can open that file
  * (the door's own rule, `admitWrite`). A thread never: it changes files through the `files_*` tools alone.
  */
-export function admitOwner(by: Caller, r: CopyRow): void {
+export function admitOwner(by: Caller, r: Pick<CopyRow, 'name' | 'host'>): void {
   const place: DoorPlace = { id: 'copy', kind: 'teams', name: r.name, host: r.host, env: r.host, shared: true, can: ['edit'], state: { state: 'ok' } }
   if (admitWrite(by, { verb: 'edit', from: place }) === 'hold') throw new Error('A thread changes files with the files_* tools.')
 }

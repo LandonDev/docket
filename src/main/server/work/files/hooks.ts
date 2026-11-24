@@ -51,7 +51,15 @@ export interface FileWaiting {
   files(db: DatabaseSync, host: string, most: number): { source: CanvasSource; count: number }[]
 }
 
+/**
+ * Where a document made of a file goes, when Files has a word for it (files/word.ts: a Word file of a Teams library
+ * opened as a copy in a Files tab goes to the workspace's own folder, where his edits are kept); null: the importer's
+ * own rule. `itemId` is the item the document will take the place of.
+ */
+export type ImportPlace = (original: string, itemId: string | undefined) => string | null
+
 const makers = new Map<CanvasKind, FileMaker>()
+let importPlace: ImportPlace | null = null
 const previewers = new Map<CanvasKind, FilePreviewer>()
 const moved = new Set<FileMoved>()
 const waiting = new Set<FileWaiting>()
@@ -79,6 +87,13 @@ export function registerFileWaiting(w: FileWaiting): () => void {
   waiting.add(w)
   return () => void waiting.delete(w)
 }
+
+/** Files' word on where an import goes (one at a time: a later one replaces the earlier). Returns its off. */
+export function registerImportPlace(fn: ImportPlace): () => void {
+  importPlace = fn
+  return () => void (importPlace === fn && (importPlace = null))
+}
+export const importPlaceFor = (original: string, itemId: string | undefined): string | null => importPlace?.(original, itemId) ?? null
 
 /** The registered maker of a kind that writes this form, or null: Files then falls back to its own blank file, if it ships one. */
 export const fileMakerFor = (kind: CanvasKind, form: FileForm): FileMaker | null => {

@@ -21,6 +21,9 @@ import type { DatabaseSync } from 'node:sqlite'
  *    saves, and where the file itself lies: its host and path there, its version and the sha256 of the bytes it
  *    holds as last read or written (`sent`), the copy's path here and its folder, and how sending it back stands (copies.ts).
  *    `closed`: its tab closed with changes not yet sent; the copy is kept until they are.
+ *  - `work_files_word`: a Word file of another computer (or the Windows VM) opened in a Files tab, and the document
+ *    made of it in the workspace's own folder (`doc`), where his edits are kept (word.ts): the file's version as
+ *    read or last written, the document's change time when made (`doc_at`) and when last saved as Word.
  */
 export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_tabs (
@@ -59,6 +62,10 @@ export function ensureFilesTables(db: DatabaseSync): void {
     state TEXT NOT NULL DEFAULT 'ok', detail TEXT, saved_at INTEGER, changed_at INTEGER, closed INTEGER NOT NULL DEFAULT 0,
     at INTEGER NOT NULL, UNIQUE (workspace_id, host, path))`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_copies_by_dir ON work_files_copies (dir)`)
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_word (
+    workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL,
+    version TEXT NOT NULL, doc TEXT, doc_at INTEGER, saved_at INTEGER, saved_doc_at INTEGER, at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, host, path))`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_word'] as const
