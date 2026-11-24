@@ -16,7 +16,7 @@ import { admitCaller, ASK_FIRST, locate, NO_WORKSPACE, workspaceHere, type DoorP
 import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmWhere } from './vmVerbs'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
-import { checkName, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
+import { checkName, HELD_MOVED, isHeldMoved, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
 
 /**
  * New, rename, move and copy (docs/agents/work-files.md "New, rename, move and copy"), for the workspace's folder
@@ -124,11 +124,34 @@ function freeIn(dir: string, name: string): string {
 
 /** A held act's press (`origin.from: 'act'`) makes the name its card showed, or nothing: another free name is no change he saw. */
 const pressedAct = (p: { origin?: FileOrigin }): boolean => p.origin?.from === 'act'
-export { isNameTaken, NAME_TAKEN }
+export { isHeldMoved, isNameTaken, NAME_TAKEN }
 /** `name` in `dir`, read case-blind as `freeIn` reads it, or the refusal that it is taken. */
 function exactIn(dir: string, name: string): string {
   if (freeIn(dir, name) !== name) throw new Error(NAME_TAKEN(name))
   return name
+}
+
+/**
+ * A held act's thing is the one its card named, as this host finds it at the write (round 3): its key, and for a file
+ * or folder that is changed, its version (`size:changed:`, as the listing says it). The press checked them before;
+ * this, under the thing's own lock, is what holds through any gap between that check and the write.
+ */
+function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { version: boolean }): void {
+  if (p.origin?.from !== 'act' || !p.origin.things) return
+  const t = p.origin.things[i]
+  if (!t) return
+  let now: string | null = null
+  try {
+    const st = statSync(w.path)
+    now = `${st.isDirectory() ? 0 : st.size}:${Math.round(st.mtimeMs)}:`
+  } catch {
+    now = null
+  }
+  if (t.key !== w.key || now === null || (o.version && now !== t.version)) throw new Error(HELD_MOVED(basename(w.path)))
+}
+/** The folder a held act's move or copy was held to go to, by its key, as this host finds it at the write. */
+function boundInto(p: { origin?: FileOrigin }, to: Where): void {
+  if (p.origin?.from === 'act' && p.origin.into !== undefined && p.origin.into !== to.key) throw new Error(HELD_MOVED(basename(to.path)))
 }
 
 /** A located thing in the VM, as vmVerbs.ts takes it. */
@@ -190,6 +213,8 @@ function templateScratch(ctx: Pick<WorkCtx, 'dataDir' | 'host'>, from: CanvasSou
 /** New: a document, sheet, deck, text file or folder in the folder, in the form its place keeps, named for its kind unless he named it. */
 export async function makeVerb(ctx: WorkCtx, by: Caller, p: MakeAsk, method: string): Promise<FileDone> {
   const folder = where(ctx, by, p.workspaceId, makeFolderRef(ctx, by, p.at), method)
+  // The folder a held New was held to be made in (its version changes with every file made there: not asked).
+  boundThing(p, 0, folder, { version: false })
   if (folder.vm) {
     // In the Windows VM: what New offers there, made blank by the guest's helper (a folder there is the guest's to check).
     if (!offersIn(folder.place, (kind, form) => fileMakerFor(kind, form) !== null).includes(p.kind)) throw new Error(notOffered(folder.place, p.kind))
@@ -291,7 +316,7 @@ export async function renameVerb(ctx: WorkCtx, by: Caller, p: RenameAsk, method:
     const dir = dirname(w.path)
     const to = join(dir, p.name)
     const key = keyIn(ctx, w, to)
-    const moved = await withFileLocks([w.key, key], () => moveInside(ctx, w, fenceOf(w.root), dir, p.name, key))
+    const moved = await withFileLocks([w.key, key], () => (boundThing(p, 0, w, { version: true }), moveInside(ctx, w, fenceOf(w.root), dir, p.name, key)))
     said(ctx, by, p.workspaceId, [dir], method)
     const entry = await entryOf(ctx, by, p.workspaceId, moved, method)
     return { entries: entry ? [entry] : [], refused: [], op: p.op } satisfies FileDone
@@ -312,6 +337,7 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
     return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, () => vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op))
   }
   asFolder(to)
+  boundInto(p, to)
   const workspace = workspaceHere(ctx.db, p.workspaceId)
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, async () => {
     const done: string[] = []
@@ -323,11 +349,12 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
         if (w.path === w.top || w.path === w.root) throw new Error(PLACE_ITSELF)
         if (fileLocked(w.key)) throw new Error(WRITING)
         const key = keyIn(ctx, to, join(to.path, name))
+        const i = all.indexOf(w)
         if (w.place.id === to.place.id) {
-          done.push(await withFileLocks([w.key, key], () => moveInside(ctx, w, fenceOf(w.root, to.root), to.path, name, key)))
+          done.push(await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveInside(ctx, w, fenceOf(w.root, to.root), to.path, name, key))))
         } else {
           if (!workspace) throw new Error(NO_WORKSPACE)
-          done.push(await withFileLocks([w.key, key], () => moveAcross(ctx, workspace, w, to, name, key, p.op)))
+          done.push(await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveAcross(ctx, workspace, w, to, name, key, p.op))))
         }
         changed.add(dirname(w.path))
       } catch (err) {
@@ -370,6 +397,7 @@ export async function copyVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
   const to = where(ctx, by, p.workspaceId, p.to, method)
   if (to.vm) throw new Error(cannotIn(to.place, 'copy'))
   asFolder(to)
+  boundInto(p, to)
   const all = p.refs.map((ref) => where(ctx, by, p.workspaceId, ref, method))
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'copy', refs: journalled('copy', p) }, async () => {
     const done: string[] = []
@@ -379,7 +407,8 @@ export async function copyVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
       try {
         if (w.path === w.root) throw new Error('A place itself cannot be copied.')
         const free = pressedAct(p) ? exactIn(to.path, name) : freeIn(to.path, name)
-        done.push(await withFileLocks([w.key, keyIn(ctx, to, join(to.path, free))], () => copyNoReplace(fenceOf(w.root, to.root), w.path, to.path, free)))
+        const i = all.indexOf(w)
+        done.push(await withFileLocks([w.key, keyIn(ctx, to, join(to.path, free))], () => (boundThing(p, i, w, { version: true }), copyNoReplace(fenceOf(w.root, to.root), w.path, to.path, free))))
       } catch (err) {
         refused.push({ name, text: message(err) })
       }

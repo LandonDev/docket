@@ -375,9 +375,33 @@ describe('in a place others can open a change is held as a file.act', () => {
     await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: TEAM_GENERAL, path: 'Archive' } }, ctx)
     const copy = outbox.store.list({}).at(-1)!
     writeFileSync(join(rig.team, 'General', 'Archive', 'plan.docx'), 'theirs')
-    expect(await press({ ref: { at: 'host', id: copy.id } })).toMatchObject({ state: 'failed', error: expect.stringContaining('Something named Plan.docx is there now') })
-    expect(outbox.store.get(copy.id)).toMatchObject({ outcomeUnknown: false })
+    // Stale, as the New's is: nothing was copied, and nothing may have gone.
+    expect(await press({ ref: { at: 'host', id: copy.id } })).toMatchObject({ state: 'stale', error: expect.stringContaining('Something named Plan.docx is there now') })
     expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual(['plan.docx'])
+  })
+
+  it('copies or moves only the things the card named, as the host that writes finds them at the write', async () => {
+    mkdirSync(join(rig.team, 'General', 'Archive'))
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const stat = async (path: string) => (await filesHandle({ id: 'x', method: 'work.files.stat', params: { workspaceId: WS, refs: [{ at: 'file', host: rig.ctx.host, path }] } } as never, rig.ctx, peer, undefined)) as { result: { entries: { key: string; size?: number; changed?: number }[] } }
+    const held = (await stat(plan)).result.entries[0]!
+    const archive = (await stat(join(rig.team, 'General', 'Archive'))).result.entries[0]!
+    const origin = (version: string, into = archive.key) => ({ from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: held.key, version }], into })
+    const window: Caller = { kind: 'local', caps: ['read', 'operate', 'approve', 'admin'] }
+    const verb = (method: string, o: unknown) => filesHandle({ id: 'x', method, params: { workspaceId: WS, refs: [{ at: 'file', host: rig.ctx.host, path: plan }], to: { at: 'file', host: rig.ctx.host, path: join(rig.team, 'General', 'Archive') }, op: `op-${Math.random()}`, origin: o, asked: true } } as never, rig.ctx, window, undefined).then((a) => (a as { result: { entries: unknown[]; refused: { text: string }[] } }).result)
+    const asHeld = `${held.size ?? 0}:${held.changed ?? 0}:`
+    // The file was replaced after the press checked it: the write refuses it, nothing copied or moved.
+    for (const method of ['work.files.copy', 'work.files.move']) {
+      const got = await verb(method, origin('1:1:'))
+      expect(got.entries).toEqual([])
+      expect(got.refused[0]!.text).toBe('Plan.docx is not as it was when this was held, so nothing was done.')
+    }
+    // Another folder than the one it was held to go to: refused before anything is read.
+    await expect(verb('work.files.copy', origin(asHeld, 'file:elsewhere'))).rejects.toThrow('Archive is not as it was when this was held')
+    expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual([])
+    // As held, it is copied.
+    expect((await verb('work.files.copy', origin(asHeld))).entries).toHaveLength(1)
+    expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual(['Plan.docx'])
   })
 
   it('answers a press whose answer was lost from its own receipt, though the old path is gone', async () => {

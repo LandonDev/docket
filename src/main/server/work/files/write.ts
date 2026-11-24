@@ -74,6 +74,9 @@ async function realRoots(fence: WriteFence): Promise<string[]> {
 /** A held act's press makes the name its card showed, or nothing: another free name is no change he saw (verbs, driveVerbs, vmVerbs). */
 export const NAME_TAKEN = (name: string): string => `Something named ${name} is there now, so nothing was made: the press makes only the name it showed.`
 export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
+/** A held act's thing, or the folder it goes to, is not as the act was held for, found so by the host that writes (round 3). */
+export const HELD_MOVED = (name: string): string => `${name} is not as it was when this was held, so nothing was done.`
+export const isHeldMoved = (text: string): boolean => / is not as it was when this was held, so nothing was done\.$/.test(text)
 
 /** Throws FileRefused('name') with nameProblem's sentence when `name` is not one path component a place takes. */
 export function checkName(name: string): void {

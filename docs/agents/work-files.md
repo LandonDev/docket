@@ -1078,7 +1078,14 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   taken the next free one, so a named New and a Copy land under their names
   or are stale or not sent; a Drive destination is bound to the folders above
   it (`into.parents`), so one Drive moved under another folder, its id, name
-  and sharing alike, is stale. Stale does
+  and sharing alike, is stale. The press's origin carries the things the card
+  named (their keys and versions) and the folder it goes to (round 3), and the
+  disk verbs check them under each thing's own lock as they act (`boundThing`,
+  `boundInto` in verbs.ts), so a file replaced, or a link that comes to name
+  another file, between the press's check and the write is not copied, moved or
+  renamed; such a press, and a Copy whose name is taken, is stale, as a New's
+  is. A Drive's and the VM's verbs do not check the things yet (a Drive file
+  replaced has a new id, which the press's own check sees). Stale does
   nothing. First of all, on this host, the act's own operation id is looked
   up (`replayed`): a press whose answer was lost, pressed again, answers what
   it did from that receipt rather than calling the old path gone. On

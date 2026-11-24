@@ -5522,12 +5522,26 @@ public enum Methods {
                     public init() {}
                 }
                 public struct Case1: Codable, Hashable, Sendable {
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+
+                        public init(key: String, version: String) {
+                            self.key = key
+                            self.version = version
+                        }
+                    }
+
                     public let id: String
                     public let digest: String
+                    public let things: [Thing]?
+                    public let into: String?
 
-                    public init(id: String, digest: String) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
                         self.id = id
                         self.digest = digest
+                        self.things = things
+                        self.into = into
                     }
                 }
 
@@ -5619,12 +5633,26 @@ public enum Methods {
                     public init() {}
                 }
                 public struct Case1: Codable, Hashable, Sendable {
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+
+                        public init(key: String, version: String) {
+                            self.key = key
+                            self.version = version
+                        }
+                    }
+
                     public let id: String
                     public let digest: String
+                    public let things: [Thing]?
+                    public let into: String?
 
-                    public init(id: String, digest: String) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
                         self.id = id
                         self.digest = digest
+                        self.things = things
+                        self.into = into
                     }
                 }
 
@@ -5710,12 +5738,26 @@ public enum Methods {
                     public init() {}
                 }
                 public struct Case1: Codable, Hashable, Sendable {
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+
+                        public init(key: String, version: String) {
+                            self.key = key
+                            self.version = version
+                        }
+                    }
+
                     public let id: String
                     public let digest: String
+                    public let things: [Thing]?
+                    public let into: String?
 
-                    public init(id: String, digest: String) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
                         self.id = id
                         self.digest = digest
+                        self.things = things
+                        self.into = into
                     }
                 }
 
@@ -5803,12 +5845,26 @@ public enum Methods {
                     public init() {}
                 }
                 public struct Case1: Codable, Hashable, Sendable {
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+
+                        public init(key: String, version: String) {
+                            self.key = key
+                            self.version = version
+                        }
+                    }
+
                     public let id: String
                     public let digest: String
+                    public let things: [Thing]?
+                    public let into: String?
 
-                    public init(id: String, digest: String) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
                         self.id = id
                         self.digest = digest
+                        self.things = things
+                        self.into = into
                     }
                 }
 

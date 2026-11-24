@@ -12,7 +12,7 @@ import { admitChange, filesHandle, filesState, openAs } from './handle'
 import { formIn } from './make'
 import { changeDigest, locate, workspaceHere } from './policy'
 import { restoreRows, trashFiles } from './trash'
-import { copyVerb, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
+import { copyVerb, isHeldMoved, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
 import { admitDrive, driveMake, driveMove, driveRename, driveTrash, type DriveDone } from './driveVerbs'
 import { googleSeated, googleSeatOf } from '../google/drive'
 import { driveFacts } from './places/drive'
@@ -266,7 +266,8 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     if (changeDigest({ workspaceId: p.workspaceId, verb: p.verb, refs: p.request.refs, to: p.request.to, name: p.request.name, kind: p.request.kind }) !== p.digest) throw new ActStale(STALE.digest)
     const signal = AbortSignal.timeout(5 * 60_000)
     const toolCtx = { ...act, scope, sessionId: item.sessionId, signal } as ToolCtx
-    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest }
+    // The things the card named, as held, go with the press: the host that writes checks them as it acts (verbs.ts `boundThing`).
+    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest, things: p.things.map((t) => ({ key: t.key, version: t.version })), ...(p.into ? { into: p.into.key } : {}) }
     const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
     // A press whose answer was lost, pressed again: the change ran under its own operation id, and its receipt here
     // answers what it did, before the facts it moved (an old path gone) can call it stale. (Another host's receipt is
@@ -313,8 +314,8 @@ export const fileActKind: ActKindDef<FileAct, never> = {
         done = (await act.peer.call(toolCtx, p.host).call('files', p.verb, params)) as FileDone
       }
     } catch (err) {
-      // The name it showed was taken between the check and the write: nothing was made.
-      if (err instanceof Error && isNameTaken(err.message)) throw new ActStale(err.message)
+      // The name it showed was taken, or a thing it names changed, between the check and the write: nothing was done.
+      if (err instanceof Error && (isNameTaken(err.message) || isHeldMoved(err.message))) throw new ActStale(err.message)
       throw err
     }
     return pressed(act, p, item.sessionId, done)
@@ -325,7 +326,9 @@ export const fileActKind: ActKindDef<FileAct, never> = {
 function pressed(act: WorkCtx, p: FileAct, sessionId: string, done: FileDone): { summary: string; ref: unknown } {
   // A delete answers what it sent to the bin, not entries: what was not refused went.
   const went = p.verb === 'trash' ? p.things.filter((t) => !done.refused.some((r) => r.name === t.name)).map((t) => ({ key: t.key, name: t.name })) : done.entries
-  if (!went.length && done.refused.length) throw new ActNotSent(done.refused.map((r) => `${r.name}: ${r.text}`).join(' '))
+  const why = done.refused.map((r) => `${r.name}: ${r.text}`).join(' ')
+  // Nothing done because what it names is not as shown (a taken name, a changed file): stale, as a New's is. Else not sent.
+  if (!went.length && done.refused.length) throw done.refused.every((r) => isNameTaken(r.text) || isHeldMoved(r.text)) ? new ActStale(why) : new ActNotSent(why)
   if (p.verb === 'make') markMade(act, p.workspaceId, sessionId, done.entries)
   const words = fileActWords(p)
   const past = { make: 'Made', rename: 'Renamed', move: 'Moved', copy: 'Copied', trash: 'Deleted' }[p.verb]
