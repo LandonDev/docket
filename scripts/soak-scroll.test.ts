@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult } from './lib/soakScroll'
+import { displayInterval, SCROLLERS, SCROLL_SURFACES, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult } from './lib/soakScroll'
+import { judgeScroll } from './lib/soakJudge'
 
 const run = (intervals: number[], over: Partial<FrameRun> = {}): FrameRun => ({ intervals, ms: intervals.reduce((a, b) => a + b, 0), scrolledPx: 2400, longTasks: [], frames: [], ...over })
 
@@ -45,5 +48,21 @@ describe('the frames', () => {
     expect(md).toContain('| transcript | wheel | 59.9 | 0 | 16.7 | 0 |')
     expect(md).toContain('64 ms: onScroll 40 ms')
     expect(md).toContain('| rail | wheel | – | – | – | – | – | – | – | does not overflow |')
+  })
+})
+
+describe('the scrollers', () => {
+  it('finds each surface by a mark its component still carries', () => {
+    for (const surface of SCROLL_SURFACES) {
+      const { source, marker } = SCROLLERS[surface]
+      expect(readFileSync(join(__dirname, '..', source), 'utf8'), `${surface}: ${marker} in ${source}`).toContain(marker)
+    }
+  })
+
+  it('fails a surface something covers on any host, and says what covers it', () => {
+    const covered: ScrollResult = { surface: 'transcript', mode: 'wheel', summary: null, skipped: 'covered by div[role=presentation]', covered: true, frames: [] }
+    const verdict = judgeScroll([covered], 1000 / 60, { allSurfaces: false })
+    expect(verdict.ok).toBe(false)
+    expect(verdict.verdicts[0]!.what).toBe('transcript wheel: scrolled (covered by div[role=presentation])')
   })
 })

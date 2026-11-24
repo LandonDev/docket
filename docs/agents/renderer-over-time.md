@@ -46,7 +46,10 @@
   mode pairs read-only and revokes at exit. The window opens through
   `window.__monocode.open(sessionId, { split })` (every build; lib/monocodeOpen.ts)
   and runs inactive and unthrottled (`TEMP_CODE_SOAK_WINDOW=1`, honoured
-  only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts). The gate rows
+  only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts), with the fresh
+  install's first screen marked as offered before the page loads
+  (`skipFirstRun`: its backdrop took every wheel of the scroll scene in
+  372 and 373). The gate rows
   `renderer-soak` (`--gate`: the board scene, split) and
   `renderer-soak-chat` (`--gate --scene chat`) each run a 50 s window
   inside 90 s (heap after GC ≤ +6 MB, RSS after GC ≤ +30 MB, no long task

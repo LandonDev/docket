@@ -13,6 +13,18 @@ export type ScrollSurface = 'transcript' | 'board' | 'rail' | 'column'
 export const SCROLL_SURFACES: readonly ScrollSurface[] = ['transcript', 'board', 'rail', 'column']
 export type ScrollMode = 'wheel' | 'fling'
 
+/**
+ * Where the page finds each surface: a CSS selector, and the component that
+ * carries it (scripts/soak-scroll.test.ts holds each to its source). The
+ * column is the scroller around its first project row.
+ */
+export const SCROLLERS: Record<ScrollSurface, { selector: string; source: string; marker: string }> = {
+  transcript: { selector: '.agent-transcript', source: 'src/renderer/src/surfaces/AgentTranscript.tsx', marker: '"agent-transcript ' },
+  board: { selector: '[data-board-scroller]', source: 'src/renderer/src/surfaces/threads/MasterView.tsx', marker: 'data-board-scroller' },
+  rail: { selector: 'nav[aria-label="Workspaces"] .overflow-y-auto', source: 'src/renderer/src/chrome/ProjectRail.tsx', marker: 'aria-label="Workspaces"' },
+  column: { selector: '[data-project-row]', source: 'src/renderer/src/chrome/WorkspaceSessions.tsx', marker: 'data-project-row' }
+}
+
 /** One wheel tick: when it is sent, from the start, and how far it turns. */
 export interface WheelTick {
   at: number
@@ -88,6 +100,8 @@ export interface ScrollResult {
   mode: ScrollMode
   summary: FrameSummary | null
   skipped: string | null
+  /** something else was on top at the wheel's point (`skipped` names it) */
+  covered?: boolean
   frames: { duration: number; scripts: string[] }[]
 }
 

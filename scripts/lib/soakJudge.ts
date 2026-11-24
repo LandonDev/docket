@@ -378,12 +378,13 @@ export function judgeReconnect(windows: readonly [ReconnectWindow, ReconnectWind
  * the surfaces it found. `framesReportOnly` (the gate's form, until a run on
  * the Mac sizes the frame bounds there) shows the rate and the longest frame
  * against their limits without failing on them; what moved and the long
- * tasks still decide.
+ * tasks still decide. A surface something else covers at the wheel's point
+ * (a dialog's backdrop) fails on any host, its verdict naming what covers it.
  */
 export const SCROLL_RULE = { name: 'scroll', fpsShare: 0.9, longestFrameMs: 32, longTasks: 0 }
 
 export function judgeScroll(
-  results: readonly { surface: string; mode: string; summary: { fps: number; longestMs: number; longTasks: { count: number }; scrolledPx: number } | null; skipped: string | null }[],
+  results: readonly { surface: string; mode: string; summary: { fps: number; longestMs: number; longTasks: { count: number }; scrolledPx: number } | null; skipped: string | null; covered?: boolean }[],
   displayMs: number,
   opts: { allSurfaces: boolean; framesReportOnly?: boolean },
   rule = SCROLL_RULE
@@ -394,7 +395,8 @@ export function judgeScroll(
   for (const r of results) {
     const s = r.summary
     if (!s) {
-      if (opts.allSurfaces) verdicts.push({ what: `${r.surface} ${r.mode}: scrolled`, got: 0, limit: 1, ok: false })
+      // Something over the scroller (a dialog's backdrop) takes the wheel on any host.
+      if (opts.allSurfaces || r.covered) verdicts.push({ what: `${r.surface} ${r.mode}: scrolled (${r.skipped})`, got: 0, limit: 1, ok: false })
       continue
     }
     verdicts.push(

@@ -3812,6 +3812,20 @@ fails a surface that did not move or a long task while scrolling, and reports
 the frame rate and the longest frame against the target until a run on the
 Mac sizes them there.
 
+Each surface is found by the selector in soakScroll.ts `SCROLLERS`, and
+scripts/soak-scroll.test.ts fails when its component no longer carries the
+mark. Before turning one, the scene asks the page what is on top at the
+wheel's point; a surface something else covers fails on any host as
+"scrolled (covered by …)", naming the element and an open dialog. From
+release 372 to 373 every surface read 0 px: the fresh userData of the soak
+showed the first screen of a fresh install ("Use a setup link",
+surfaces/setup/SetupFirstRun.tsx, 962464cf2), and its backdrop took every
+wheel. Every scene now marks that screen as offered (`SETUP_OFFERED_KEY`)
+in a script that runs before the page, then loads the page again
+(`skipFirstRun`), since the owner's window never shows it.
+[.temp-code/plans/landed/F-soak-scroll.md](../.temp-code/plans/landed/F-soak-scroll.md)
+has the account.
+
 ```bash
 bun scripts/measure-renderer-soak.ts --scene scroll --label <name>                         # 10 s of wheel a surface, then a fling
 bun scripts/measure-renderer-soak.ts --scene scroll --surfaces board --wheel 4 --trace 4 --no-profile --label <name>

@@ -92,7 +92,8 @@ import { FAMILY, GATE_TIMING, gateRule, handRule, judgeScroll, judgeSend, judgeS
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
 import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
-import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
+import { displayInterval, SCROLLERS, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
+import { SETUP_OFFERED_KEY } from '../src/renderer/src/surfaces/setup/setupFlow'
 import { readBuildStamp, waitForGateBuild } from './lib/gateBuild'
 import { slowLink } from './lib/slowLink'
 import { recordReconnect, type ReconnectSeed } from './lib/soakReconnectRun'
@@ -634,6 +635,21 @@ async function traceFrames(c: Cdp, seconds: number): Promise<TraceSummary> {
   return summary
 }
 
+/**
+ * The soak measures the window he works in, and his never shows a fresh
+ * install's first screen (surfaces/setup/SetupFirstRun.tsx: "Use a setup
+ * link", a modal whose backdrop took every wheel of the scroll scene from
+ * release 372 on). The fresh userData is marked as offered before the page
+ * renders, and the page loads again under the mark.
+ */
+async function skipFirstRun(c: Cdp): Promise<void> {
+  const mark = `localStorage.setItem(${JSON.stringify(SETUP_OFFERED_KEY)}, '1'); window.__soakFirstRunOffered = true`
+  await c.send('Page.enable')
+  await c.send('Page.addScriptToEvaluateOnNewDocument', { source: mark })
+  await c.send('Page.reload')
+  await waitFor(c, 'window.__soakFirstRunOffered === true', 30_000, 'the window loaded again with the first run marked as offered')
+}
+
 async function main(): Promise<void> {
   mkdirSync(ROOT, { recursive: true })
   if (args.gate) await freshBuild()
@@ -649,6 +665,7 @@ async function main(): Promise<void> {
   const page = await pageOf()
   cdp = await Cdp.connect(page.webSocketDebuggerUrl!)
   const c = cdp
+  await skipFirstRun(c)
   await waitFor(c, `window.__monocode?.registry?.primary?.()?.connected && typeof window.__monocode.open === 'function'`, 90_000, 'the app (is the tree from this branch on?)')
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
   if (args.scene === 'reconnect') {
@@ -1418,18 +1435,32 @@ const SCROLL_OBSERVERS = `(() => {
     }
     return null
   }
+  const sel = ${JSON.stringify(Object.fromEntries(Object.entries(SCROLLERS).map(([k, v]) => [k, v.selector])))}
+  const first = (surface) => [...document.querySelectorAll(sel[surface])].find(shown)
   const pick = {
-    transcript: () => [...document.querySelectorAll('.agent-transcript')].find(shown),
-    board: () => [...document.querySelectorAll('[data-board-scroller]')].find(shown),
-    rail: () => [...document.querySelectorAll('nav[aria-label="Workspaces"] .overflow-y-auto')].find(shown),
-    column: () => { const row = [...document.querySelectorAll('[data-project-row]')].find(shown); return row ? scrollerOf(row) : null }
+    transcript: () => first('transcript'),
+    board: () => first('board'),
+    rail: () => first('rail'),
+    column: () => { const row = first('column'); return row ? scrollerOf(row) : null }
+  }
+  // What is on top at a point, when it is not the scroller's own: the element and two of its holders.
+  const coverAt = (el, x, y) => {
+    const hit = document.elementFromPoint(x, y)
+    if (!hit || el.contains(hit)) return null
+    const name = (n) => n.tagName.toLowerCase() + (n.getAttribute('role') ? '[role=' + n.getAttribute('role') + ']' : '') + (n.getAttribute('aria-label') ? '[aria-label="' + n.getAttribute('aria-label') + '"]' : '')
+    const out = []
+    for (let n = hit; n && n !== document.body && out.length < 3; n = n.parentElement) out.push(name(n))
+    const dialog = hit.closest('[role=dialog],[role=alertdialog]') || document.querySelector('[role=dialog],[role=alertdialog]')
+    return out.join(' < ') + (dialog ? ' (a dialog is open: "' + (dialog.textContent || '').trim().slice(0, 60) + '")' : '')
   }
   s.find = (surface) => {
     const el = pick[surface]() ?? null
     s.el = el
     if (!el) return null
     const r = el.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), range: el.scrollHeight - el.clientHeight, top: el.scrollTop }
+    const x = Math.round(r.x + r.width / 2)
+    const y = Math.round(r.y + r.height / 2)
+    return { x, y, range: el.scrollHeight - el.clientHeight, top: el.scrollTop, covered: coverAt(el, x, y) }
   }
   s.idle = (ms) => new Promise((done) => {
     const out = []
@@ -1479,12 +1510,13 @@ async function recordScroll(c: Cdp): Promise<void> {
     await c.send('Profiler.start')
   }
   const results: ScrollResult[] = []
-  const where = (surface: ScrollSurface) => c.eval<{ x: number; y: number; range: number; top: number } | null>(`window.__scroll.find(${JSON.stringify(surface)})`)
+  const where = (surface: ScrollSurface) => c.eval<{ x: number; y: number; range: number; top: number; covered: string | null } | null>(`window.__scroll.find(${JSON.stringify(surface)})`)
   for (const surface of args.surfaces) {
     const at = await where(surface)
-    const skipped = !at ? 'not on screen' : at.range < 200 ? `does not overflow (${Math.max(0, at.range)} px)` : null
+    const covered = !!at?.covered
+    const skipped = !at ? 'not on screen' : at.covered ? `covered by ${at.covered}` : at.range < 200 ? `does not overflow (${Math.max(0, at.range)} px)` : null
     if (skipped || !at) {
-      for (const mode of ['wheel', 'fling'] as const) results.push({ surface, mode, summary: null, skipped, frames: [] })
+      for (const mode of ['wheel', 'fling'] as const) results.push({ surface, mode, summary: null, skipped, covered, frames: [] })
       log(`${surface}: ${skipped}`)
       continue
     }
