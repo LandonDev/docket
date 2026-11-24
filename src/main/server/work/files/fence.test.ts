@@ -175,7 +175,7 @@ describe('the door stands before every verb', () => {
     const done = await call<FileDone>('work.files.rename', { ref: notes(), name: 'kickoff.txt', op: OP })
     expect(done.entries.map((e) => e.name)).toEqual(['kickoff.txt'])
     // A place that does not carry out a verb says so in its own sentence, before anything is read.
-    await expect(call('work.files.trash', { refs: [plan()], op: OP })).rejects.toThrow('Delete it in Teams.')
+    await expect(call('work.files.trash', { refs: [plan()], op: OP })).rejects.toThrow('Others can open that place: the window asks before this change.')
     await expect(call('work.files.copy', { refs: [plan()], to: { at: 'place', id: 'folder' }, op: OP })).rejects.toThrow('Teams files stay in Teams.')
   })
 

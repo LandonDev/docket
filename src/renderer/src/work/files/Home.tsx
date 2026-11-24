@@ -23,7 +23,7 @@ import { RowState } from "./rowParts";
  */
 
 /** A held file act's verb, as its row says it. */
-const HELD_WORDS: Record<string, string> = { make: "New", rename: "Rename", move: "Move", copy: "Copy" };
+const HELD_WORDS: Record<string, string> = { make: "New", rename: "Rename", move: "Move", copy: "Copy", trash: "Delete" };
 
 function HomeList({ title, entries, busy, onOpen }: { title: string; entries: readonly FileEntry[]; busy: Busy; onOpen(entry: FileEntry): void }) {
   if (!entries.length) return null;

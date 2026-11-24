@@ -8233,6 +8233,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
             case rename
             case move
             case copy
+            case trash
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -8242,6 +8243,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
                 case "rename": self = .rename
                 case "move": self = .move
                 case "copy": self = .copy
+                case "trash": self = .trash
                 default: self = .unknown(rawValue)
                 }
             }
@@ -8252,6 +8254,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
                 case .rename: "rename"
                 case .move: "move"
                 case .copy: "copy"
+                case .trash: "trash"
                 case .unknown(let value): value
                 }
             }

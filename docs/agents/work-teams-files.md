@@ -212,6 +212,14 @@ none.
   too big for it), so nothing is lost, and the answer says where it lies in
   the bin (`bin`). OneDrive then takes the delete to the library's own
   recycle bin.
+- `files.restore {bin, to, op}` puts a thing `files.recycle` sent to the bin
+  back: the `$R` item at `bin` moves to `to`, or beside a thing of that name
+  as "Name (restored)" (then "(restored) 2"), never over anything and never
+  across drives (`MoveFileEx` without replace or copy), and only when the
+  bin's own `$I` record beside it names `to` ("The Recycle Bin holds
+  something else there, so nothing was put back."); then the record goes,
+  as Explorer's Restore does. A path outside the bin, or a thing no longer
+  in it, is refused; the folder it was in must still be there, in a mount.
 - **Both ends held.** Every path passes `Admit` (in a mount by name, no link
   on the way down, the thing itself no link); a name passes `NameProblem`
   (NTFS: no `<>:"/\|?*` or control character, no trailing dot or space, no

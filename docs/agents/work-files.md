@@ -22,7 +22,9 @@ exists, each under its heading below:
 - New, rename, move, copy, Trash and uploads in the workspace's folder and
   in a library on this host's own disk, carrying what hangs on a file;
 - the same verbs in a library of the Windows VM, through its helper ("The
-  Windows VM's verbs"); a delete there is built and off;
+  Windows VM's verbs");
+- a delete in a Teams or OneDrive library, to the computer's own bin, asked
+  first, with Undo ("A delete in a library");
 - LifeOS as a place with its projects as folders, From mail, each project's
   lens, Add to a project ("LifeOS, From mail and Projects");
 - a Google Drive per Google account of the workspace, the narrow form
@@ -100,7 +102,9 @@ once.
 
 `refusal(place, verb, entry, to)` is the table below as code, with each
 refusal's one sentence and its one press; `canDo` is a refusal that is null;
-`questionFor` is what his window asks before a change others will see. Both
+`questionFor` is whether his window asks before a change others will see, and
+`deleteAsk` the words of a delete's question (the thing by name, or "3
+items", then who can open it by the team's own name). Both
 sides read them, so a menu never offers what the host will refuse.
 `files.test.ts` holds every row and every sentence.
 
@@ -109,7 +113,7 @@ sides read them, so a menu never offers what the host will refuse.
 | Rename, move within the place | at once | at once (his own hand) | "A mail's file is read only. Keep it first." Keep |
 | Copy in from elsewhere | at once | asked once: "Copy to Esports Staff? Everyone in that team can open it." | — |
 | Copy out, or move out | at once (a move is a copy, a check, then the source to Trash) | "Teams files stay in Teams." Open it here | Keep copies it to the workspace's folder |
-| Delete | to Trash | "Delete it in Teams." Open on the web, until the provider's bin is proven; then "Delete for everyone?" first | — |
+| Delete | to Trash | asked once ("Delete Testing.pptx for everyone? Everyone in Sport Programs can open it."), then to the computer's own bin, with Undo; "Delete it in Teams." Open on the web only where the place has no bin to reach | — |
 
 More refusals: a LifeOS document moved out ("A LifeOS document lives in
 LifeOS. Export a copy instead."), a LifeOS delete ("LifeOS cannot put a
@@ -126,13 +130,12 @@ Close one to open another.").
 A place's `can` lists the verbs its adapter carries out. The workspace's
 folder (`FOLDER_CAN`) carries out `make`, `upload`, `rename`, `move`, `copy`,
 `edit`, `trash`, `restore` and `purge`. A library on this host's disk
-(`LIBRARY_CAN`) carries out `make`, `rename`, `move`, `copy` and `edit`: a
-delete there is refused "Delete it in Teams." and an upload "Nothing can be
-uploaded in General from here." A library in the Windows VM carries out
-what its helper says it has (`vmCanOf`, "The Windows VM's verbs" below):
-`make`, `rename`, `move` and `edit`; `trash` waits behind `VM_TRASH`, off until
-a real OneDrive's own bin is proven to hold what is deleted, so a delete there
-is refused "Delete it in Teams."; a helper
+(`LIBRARY_CAN`) carries out `make`, `rename`, `move`, `copy`, `edit` and
+`trash` (the computer's own bin, "A delete in a library"); an upload is
+refused "Nothing can be uploaded in General from here." A library in the
+Windows VM carries out what its helper says it has (`vmCanOf`, "The Windows
+VM's verbs" below): `make`, `rename`, `move`, `edit`, and `trash` where the
+helper has `files.recycle`; a helper
 built before F8 lists nothing, so its places' `can` is empty and every change
 there is refused "Files in the Windows VM cannot be changed from here yet.
 Open it there." A Google Drive (`DRIVE_CAN`) carries out `make`, `rename`,
@@ -610,8 +613,9 @@ change began; a thread changes files through the `files_*` tools alone
 ("Agents"): the wire refuses its change outright (`THREADS_BY_TOOLS`).
 ## Trash
 
-`files/trash.ts`. Trash is for the workspace's own folder; a library's
-delete is the provider's (below).
+`files/trash.ts`. Trash keeps the bytes of the workspace's own folder; a
+library's delete goes to the computer's own bin and Trash keeps only its row
+("A delete in a library", below).
 
 - **A delete** (`trash`) is journalled in `work_files_trash`. For each file
   or folder, under its lock: the row is written first, `moving`, holding the
@@ -660,15 +664,72 @@ delete is the provider's (below).
   across places: the checked copy's source, a file of the workspace's
   folder, goes to Trash under an id of its own within `op`, and its row id
   is answered.
-- **A library's delete waits.** A library's `can` has no `trash`, so the
-  grammar refuses first. `trashInLibrary` is written and tested but not
-  reachable: it would send the file to the system's own bin (`systemBin`:
-  the Finder on a Mac, the Recycle Bin on Windows, `gio trash` on Linux),
-  where OneDrive takes the delete to the library's recycle bin, and keep a
-  row with `provider: 'onedrive'` and no bytes; Put back of such a row says
-  "Put it back from the recycle bin." It is turned on only after a live
-  proof, on an account that is not his university's, shows the provider's
-  bin holds a file, a folder and a cloud-only file.
+
+## A delete in a library
+
+A file or folder in a Teams or OneDrive library goes to the bin of the
+computer that holds it, never deleted for good; OneDrive then takes the delete
+to the library's own recycle bin. Pressed in the row's menu, with the Delete
+key, or from the bar for many.
+
+- **Asked once.** Others can open the place, so his window asks first, in the
+  house confirm with Cancel focused: "Delete Testing.pptx for everyone?" (or
+  "Delete 3 items for everyone?") over the place's audience sentence by the
+  team's own name ("Everyone in Sport Programs can open it.", `deleteAsk`).
+  Where a copy of it open in a tab holds changes that have not reached it
+  (its tab's `back` is `sending`, `changed`, `away` or `refused`), the line
+  adds "Changes in its open copy that have not reached it are lost." The
+  host refuses the change without `asked` ("Others can open that place: the
+  window asks before this change."), a remote key without `approve` ("…this
+  key may not change it."), and a thread's from the wire
+  (`THREADS_BY_TOOLS`).
+- **The bins** (`SystemBin`; files/bin.ts and trash.ts `systemBin`):
+  - **A Mac:** the Trash through `NSFileManager.trashItemAtURL`, the call the
+    Finder's own Move to Trash makes, from AppleScriptObjC by `osascript`
+    (`MAC_TRASH`; JXA's out-parameters crash osascript after the move on
+    macOS 27.2). It fails, and leaves the thing, where the volume has no
+    Trash, rather than delete it ("Plan.docx could not go to the Trash, so
+    it was left where it is: …"), and answers where the thing now lies (the
+    Trash may rename it, "Plan.docx 19-03-51-628.docx"). A bin whose answer
+    fails after the thing has left still keeps its row, with no way back by
+    path.
+  - **The Windows VM:** the helper's `files.recycle`
+    ([work-teams-files.md](work-teams-files.md)), whose sink cancels a
+    delete Windows would make for good (too big for the bin, a drive with
+    none, the bin turned off) and says where the thing lies in the bin.
+  - **A PC host:** the same helper verbs, through its own tc-office
+    (`desktopHelper`, office/index.ts).
+  - Linux has no library; `gio trash` stands for it, with no way back by
+    path.
+- **The row.** `trashInLibrary` (disk) and `vmRecycle` (VM), under the
+  file's lock: a file a thread is writing in is refused; the place's own top
+  is refused ("A place itself cannot be deleted."); a Files tab on it, or on
+  anything in the folder, closes first (by its library key and by the plain
+  key a copy's tab holds; a copy's tab through the copies' own
+  `copyClosing`, its unsent changes let go: he was asked); a
+  `work_files_trash` row is written `moving` with `provider: 'onedrive'`,
+  the bin is asked, and the row is held with where the bin said it lies
+  (`bin` in its ref JSON). A bin that refuses leaves no row, and its refusal
+  is that file's line in `refused`. No bytes are kept here.
+- **Undo and Put back** (`restore`): a row with `bin` goes back from there
+  to the path it had, never over anything ("Plan (restored).docx" beside one
+  of its name). A Mac renames it back from the Trash (`macBin().back`); the
+  VM and a PC ask the helper's `files.restore`, which moves the bin's `$R`
+  item only when the bin's own `$I` record names that same path, then drops
+  the record, as Explorer's Restore does. Gone from the bin: "That is not in
+  the Trash any more." or "…Recycle Bin any more."; its folder gone: "The
+  folder it was in is gone. Put it back from the Trash."; a helper built
+  before `files.restore`: "Put it back from the Recycle Bin in the Windows
+  VM."; a row with no `bin`: "Put it back from the recycle bin."
+- **Another host's workspace.** His window asks the file's own host, even
+  for a workspace another host keeps (a Mac's OneDrive from a box
+  workspace): that host keeps the row (`binRows` in handle.ts gives such a
+  workspace a stand-in that holds library rows alone), Undo asks it again,
+  and the window closes the workspace's own tabs on the file afterwards
+  (`work.files.tabClose` with `discard`, acts.ts `tabsOn`). Such a row is in
+  that host's Trash, not the workspace's.
+- **A thread** deletes there only through `files_trash`, held as a
+  `file.act` (verb `trash`) that runs on his press alone ("Agents").
 
 ## The Windows VM's verbs
 
@@ -686,8 +747,9 @@ verbs and their journal) and holds both ends to OneDrive's mounts again.
   (`verbs`), kept with the rest of what the VM was last read as (`vm:status`,
   `vmVerbs`); `placesIn(library, state, verbs)` gives a VM place
   `vmCanOf(verbs)`: `make` with `files.mkdir` and `files.write`, `rename`,
-  `move`, `edit` with `files.write`, `trash` with `files.recycle` while
-  `VM_TRASH` is on, and nothing at all without `files.outcome`. An older
+  `move`, `edit` with `files.write`, `trash` with `files.recycle`, and
+  nothing at all without `files.outcome`; Put back asks for `files.restore`
+  when it runs. An older
   helper answers no `verbs`: nothing is offered, nothing is asked of it.
 - **New**: a folder (`files.mkdir`), a text file (`files.write {dir, name}`
   with no bytes), an Office file only where `offersIn` offers it (a maker's
@@ -706,17 +768,11 @@ verbs and their journal) and holds both ends to OneDrive's mounts again.
   first"). `work.files.write` sends `files.write {path, data, expect}`: a
   stale version is the save's conflict, a gone file `{ gone: true }`, his
   copy beside it "Name (mine).ext" through `files.write {dir, name}`.
-- **Delete** (`trash`): asked first ("Delete for everyone?"), then
+- **Delete** (`trash`): asked first ("A delete in a library"), then
   `files.recycle`, the Windows Recycle Bin, never a delete for good; a
-  `work_files_trash` row with `provider: 'onedrive'` and no bytes here,
-  listed in Trash under its place's name and folders, whose Put back says
-  "Put it back from the recycle bin." It is built and off (`VM_TRASH` is
-  false): the rig proved, on a dummy mount, that the bin holds a deleted file
-  and a deleted folder whole, and that with the bin turned off a delete is
-  refused and the file left. Not proven, and the plan's condition for
-  offering it: that OneDrive then puts a deleted file, folder and cloud-only
-  file in the library's own recycle bin (no real OneDrive is signed in on the
-  rig, and no build thread may try it on Purdue's). One line turns it on. A row a dead process left
+  `work_files_trash` row with `provider: 'onedrive'`, no bytes here and the
+  bin's path, listed in Trash under its place's name and folders; Put back
+  and Undo are `files.restore` (`vmRestore`). A row a dead process left
   `moving` is dropped at boot (this disk cannot tell where the file is; it is
   in its folder or the bin).
 - **A lost answer.** Each thing is asked under the guest operation id
@@ -886,12 +942,12 @@ files place."), and a thread of another workspace reaches only its own.
 | `files_make {place, path?, kind, name?}` | New, in the place's form |
 | `files_move {place, paths, to?, name?}` | a move into a folder, or a rename of one thing (`name`, no `to`) |
 | `files_copy {place, paths, to}` | a copy, the next free name where one is taken |
-| `files_trash {place, paths}` | to Trash, in the workspace's folder |
+| `files_trash {place, paths}` | to Trash in the workspace's folder; in a place others can open, held for his press, which sends them to that computer's own bin |
 | `files_undo {op}` | the inverse of a change this thread's own tool ran in his own place (`work_files_ops.session_id`); another thread's op is refused as unknown |
 
 Each change asks the one door first (`admitChange`, over `admitWrite`), so
-the grammar's own refusal ("Delete it in Teams.", "Teams files stay in
-Teams.") comes before anything else. Then:
+the grammar's own refusal ("Teams files stay in Teams.") comes before
+anything else. Then:
 
 - **In his own place** it runs at once, as the thread, through the same
   verbs as his window (`makeVerb`, `renameVerb`, `moveVerb`, `copyVerb`,
@@ -906,8 +962,10 @@ Teams.") comes before anything else. Then:
   operation ids are undone.
 - **In a place others can open** nothing is written: it is held as a
   `file.act` (below), and the answer is "Held as item N. It waits for the
-  owner's press: <the sentence>". A delete there is refused, not held: the
-  grammar has no delete in a library yet.
+  owner's press: <the sentence>". A delete there is held too ("Delete
+  Plan.docx from Esports Staff, General. Everyone in Esports Staff can open
+  it."); his press sends it to the computer's own bin and answers "Deleted:
+  Plan.docx."
 - **On another computer of his** every change is held: a peer reaches only
   that computer's libraries, all of which others can open. The grammar's
   refusals are asked here from its `places` answer.
@@ -1825,8 +1883,11 @@ and a scroll through 5,000 rows in the window (F1a).
   Put back (where it was, a "(restored)" name, the folder's top), one op
   twice, a remote key, another workspace's rows, a restore racing a purge
   fifty times, each half-done row the boot check meets, the 30-day purge, an
-  open tab closed first, a deleted workspace, `trashAfterMove`, and
-  `trashInLibrary` through a stand-in bin.
+  open tab closed first, a deleted workspace, `trashAfterMove`; and a
+  library's delete through a stand-in bin (`setSystemBin`): asked first, a
+  file and a folder to the bin with Trash's rows, Undo where it was and
+  beside a new one as "(restored)", a bin that refuses, a bin that cannot
+  put back, the place's top, a tab closed, a workspace another host keeps.
 - `files/drive.test.ts`: a Google Drive against the fake Google: one place
   per account of the workspace and none without one, who may list it, the
   top and a folder with each entry's sharing, Drive's pages and ours, `stat`,
@@ -1962,10 +2023,10 @@ no build thread may or can do.
 - **His real OneDrive and Teams libraries.** Everything ran against dummy
   folders on the box. What OneDrive does with a rename, a move or a new file
   made through its synced folder on his account is proven only on dummy
-  folders. A delete in a shared library stays off (`Delete it in Teams.`;
-  in the Windows VM `VM_TRASH` is false) until a live proof on an account
-  that is not Purdue's shows the provider's bin holds a file, a folder and a
-  cloud-only file.
+  folders. A delete there is proven to reach the computer's own bin and
+  come back from it (.temp-code/plans/landed/F-delete-in-libraries.md); the
+  library's online recycle bin is unseen (no agent signs in to SharePoint on
+  the web).
 - **A copy saving back on two real computers.** Unit tests join two hosts
   with a stand-in link and stand in for the VM's helper; the e2e and the rig
   proof are written for him to run. No real Mac and no real OneDrive has run

@@ -13,6 +13,7 @@ import { ensureOutboxTables, HeldStore } from '../outbox/store'
 import { filesHandle } from './handle'
 import { PEER_WRONG_ACT, setThreadsMayWrite } from './policy'
 import { makeRig, peer, WS, type Rig } from './testkit'
+import { setSystemBin } from './trash'
 import { fileActKind, fileActWords, filesPreamble, filesTools, NO_PLACE_IN_CHAT } from './tools'
 
 /**
@@ -240,8 +241,11 @@ describe('in a place others can open a change is held as a file.act', () => {
     ])
     expect(existsSync(join(rig.team, 'General', 'Agenda.txt'))).toBe(false)
     expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
+    // A delete there is held too: nothing goes until his press.
     const deleted = await call('files_trash', { place: TEAM_GENERAL, paths: ['Plan.docx'] }, ctx)
-    expect(deleted).toMatchObject({ isError: true, text: 'Delete it in Teams.' })
+    expect(deleted.text).toMatch(/^Held as item \d+\. It waits for the owner's press: /)
+    expect(outbox.store.list({}).at(-1)!.summary).toBe('Delete Plan.docx from Esports Staff, General. Everyone in Esports Staff can open it.')
+    expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
     const out = await call('files_move', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: 'folder', path: '' } }, ctx)
     expect(out).toMatchObject({ isError: true, text: 'Teams files stay in Teams.' })
   })
@@ -257,6 +261,28 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect(whispers).toEqual(['The owner sent held item 1 (Move Budget.xlsx to Esports Staff, Events. Everyone in Esports Staff can open it.).'])
     // A second press runs nothing.
     expect(await press({ ref: { at: 'host', id: row!.id } })).toMatchObject({ state: 'sent' })
+  })
+
+  it("sends a thread's held delete to the computer's own bin on his press, once", async () => {
+    const binned: string[] = []
+    setSystemBin({
+      async put(path) {
+        binned.push(path)
+        rmSync(path, { recursive: true })
+        return null
+      }
+    })
+    try {
+      await call('files_trash', { place: TEAM_GENERAL, paths: ['Plan.docx'] }, toolCtx(workCtx()))
+      const [row] = outbox.store.list({})
+      expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
+      expect(await press({ ref: { at: 'host', id: row!.id } })).toMatchObject({ state: 'sent', result: { summary: 'Deleted: Plan.docx.' } })
+      expect(binned).toEqual([join(rig.team, 'General', 'Plan.docx')])
+      expect(await press({ ref: { at: 'host', id: row!.id } })).toMatchObject({ state: 'sent' })
+      expect(binned).toHaveLength(1)
+    } finally {
+      setSystemBin(null)
+    }
   })
 
   it('marks a file a held make made, once he pressed', async () => {

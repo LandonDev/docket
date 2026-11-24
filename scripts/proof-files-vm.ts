@@ -15,7 +15,8 @@
  * the proof runs under scripts/proof-bun.ts.
  *
  * Make a folder and a text file, rename, move, a write with a stale version (a conflict) and with the right one,
- * a file and a folder sent to the Recycle Bin and found there, a path outside the mount refused by the helper
+ * a file and a folder sent to the Recycle Bin and found there, each put back where it was (`files.restore`: only to the
+ * path the bin's record names, beside a new one as "(restored)", never twice, never from outside the bin), a path outside the mount refused by the helper
  * itself (by name, through `..`, through a junction, a stream, a device name), a lost answer asked again by its
  * operation id (answered as the first did, done once), and a delete refused, the file left, where the bin is off. Exits 1 on the first step that does not hold.
  */
@@ -124,7 +125,7 @@ async function main(): Promise<void> {
   let h = new Helper()
   await h.ready
   const status = await h.call('guest.status')
-  ok(status.ok && Array.isArray(status.value.verbs) && ['files.mkdir', 'files.rename', 'files.move', 'files.write', 'files.recycle', 'files.outcome'].every((v) => status.value.verbs.includes(v)), 'guest.status lists the change verbs', status)
+  ok(status.ok && Array.isArray(status.value.verbs) && ['files.mkdir', 'files.rename', 'files.move', 'files.write', 'files.recycle', 'files.restore', 'files.outcome'].every((v) => status.value.verbs.includes(v)), 'guest.status lists the change verbs', status)
   ok(status.value.mounts.some((m: { path: string }) => m.path.toLowerCase() === MOUNT.toLowerCase()), 'the dummy folder is one of the mounts', status.value.mounts)
 
   // New: a folder and a text file
@@ -132,6 +133,8 @@ async function main(): Promise<void> {
   ok(mk.ok && mk.value.entry.dir === true && mk.value.entry.path === `${MOUNT}\\Budgets`, 'files.mkdir makes a folder', mk)
   const made = await h.call('files.write', { dir: `${MOUNT}\\Budgets`, name: 'notes.txt', data: b64('first'), op: op('new') })
   ok(made.ok && made.value.entry.size === 5, 'files.write {dir, name} makes a text file', made)
+  const shown = ps(`(Get-Item -LiteralPath '${MOUNT}\\Budgets\\notes.txt' -Force).Attributes.ToString()`)
+  ok(!/Hidden/.test(shown), `a new file is not left hidden (${shown})`, shown)
   const taken = await h.call('files.write', { dir: `${MOUNT}\\Budgets`, name: 'NOTES.txt', data: b64('x'), op: op('new-taken') })
   ok(!taken.ok && /already there/.test(taken.error!.message), 'a new file never lands on a taken name (case-blind)', taken)
 
@@ -227,6 +230,21 @@ async function main(): Promise<void> {
   const reRecycle = await h.call('files.recycle', { path: PLAN, op: op('recycle-file') })
   ok(reRecycle.ok && reRecycle.value.bin === rf.value.bin, 'a recycle retried by its id answers the first', reRecycle)
 
+  // Put back: out of the bin by where it lies there, only to the path the bin's own record names, never over anything.
+  const wrong = await h.call('files.restore', { bin: rf.value.bin, to: `${MOUNT}\\Elsewhere.txt`, op: op('restore-wrong') })
+  ok(!wrong.ok && /something else/.test(wrong.error!.message), `a Put back to a path the bin's record does not name is refused (${wrong.error?.message})`, wrong)
+  const putBack = await h.call('files.restore', { bin: rf.value.bin, to: PLAN, op: op('restore-file') })
+  const planNow = ps(`Get-Content -LiteralPath '${PLAN}' -Raw; Test-Path -LiteralPath '${rf.value.bin}'; Test-Path -LiteralPath ('${rf.value.bin}' -replace '\\\$R([^\\\\]*)$', '$I$1')`)
+  ok(putBack.ok && putBack.value.entry.path === PLAN && planNow.split(/\r?\n/).slice(-2).every((l) => l === 'False'), `files.restore puts the file back where it was, and the bin's item and record go (${putBack.error?.message ?? planNow})`, { putBack, planNow })
+  await h.call('files.mkdir', { dir: MOUNT, name: 'Budgets', op: op('mkdir-again') })
+  const backDir = await h.call('files.restore', { bin: rd.value.bin, to: `${MOUNT}\\Budgets`, op: op('restore-folder') })
+  const inside = ps(`Get-Content -LiteralPath '${MOUNT}\\Budgets (restored)\\inside.txt'`)
+  ok(backDir.ok && backDir.value.entry.path === `${MOUNT}\\Budgets (restored)` && inside === 'in a folder', 'a folder put back beside a new one of its name takes "Budgets (restored)", whole', { backDir, inside })
+  const twice = await h.call('files.restore', { bin: rd.value.bin, to: `${MOUNT}\\Budgets`, op: op('restore-folder-2') })
+  ok(!twice.ok && /not in the Recycle Bin/.test(twice.error!.message), 'a second Put back of the same thing is refused', twice)
+  const notBin = await h.call('files.restore', { bin: `${MOUNT}\\keep-out.txt`, to: PLAN, op: op('restore-not-bin') })
+  ok(!notBin.ok && /not a thing in the Recycle Bin/.test(notBin.error!.message), 'a Put back from outside the bin is refused', notBin)
+
   // Where Windows would delete for good (the bin turned off for this user's volumes), nothing is deleted.
   await h.call('files.write', { dir: MOUNT, name: 'keep.txt', data: b64('keep'), op: op('keep') })
   const BIN = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\Volume'
@@ -240,6 +258,7 @@ async function main(): Promise<void> {
   }
 
   await saveBack(h)
+  await deleteThroughFiles(h)
 
   await h.stop()
   ps(`Remove-Item -Path 'HKCU:\\Software\\SyncEngines\\Providers\\OneDrive\\TcProofDummy' -Recurse -Force`)
@@ -303,6 +322,58 @@ async function saveBack(h: Helper): Promise<void> {
   } finally {
     setVmCall(null)
     setThreadsMayWrite(false)
+    closeFilesState(rig.db)
+    rig.close()
+    ps(`Remove-Item -LiteralPath '${FOLDER}' -Recurse -Force`)
+  }
+}
+
+/**
+ * A delete and its Put back through TempCode's own code, as his window asks it: the box's Files module on a scratch
+ * database, the rig's helper as its VM. A dummy file and folder go to the Recycle Bin, Trash lists them, and Undo
+ * puts each back where it was.
+ */
+async function deleteThroughFiles(h: Helper): Promise<void> {
+  const FOLDER = `${MOUNT}\\TempCode proof ${RUN}`
+  const FILE = `${FOLDER}\\TempCode proof.txt`
+  const SUB = `${FOLDER}\\TempCode proof folder`
+  ps([`New-Item -ItemType Directory -Force -Path '${SUB}' | Out-Null`, `Set-Content -LiteralPath '${FILE}' -Value 'a dummy' -NoNewline`, `Set-Content -LiteralPath '${SUB}\\in.txt' -Value 'in it' -NoNewline`].join('\n'))
+  const kit = await import('../src/main/server/work/files/testkit')
+  const { filesHandle, closeFilesState } = await import('../src/main/server/work/files/handle')
+  const { setVmCall } = await import('../src/main/server/work/office/vm/link')
+  const { setVmState } = await import('../src/main/server/work/office/vm/office')
+  const rig = kit.makeRig()
+  try {
+    const status = (await h.call('guest.status')).value
+    rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(JSON.stringify({ at: Date.now(), status: { ...status, mounts: [{ path: MOUNT, type: 'team', web: null }] }, tops: { [MOUNT]: [`TempCode proof ${RUN}`] } }))
+    setVmState(() => ({ state: 'awake', cannot: null }))
+    setVmCall(async (verb, args) => {
+      const a = await h.call(verb, (args ?? {}) as Record<string, unknown>)
+      if (!a.ok) throw Object.assign(new Error(a.error?.message ?? verb), { code: a.error?.code })
+      return a.value
+    })
+    const call = async <T>(method: string, params: Record<string, unknown>): Promise<T> => ((await filesHandle({ id: 'p', method, params: { workspaceId: kit.WS, ...params } } as never, rig.ctx, kit.window)) as { result: T }).result
+    const ref = (path: string) => ({ at: 'file', host: kit.HOST, path })
+    let asked = ''
+    try {
+      await call('work.files.trash', { refs: [ref(FILE)], op: `proof-${RUN}-ask` })
+    } catch (err) {
+      asked = (err as Error).message
+    }
+    ok(/the window asks before this change/.test(asked), `delete through Files: not without his window's question (${asked})`, asked)
+    const done = await call<{ trashed: string[]; refused: unknown[] }>('work.files.trash', { refs: [ref(FILE), ref(SUB)], op: `proof-${RUN}-trash`, asked: true })
+    const left = ps(`Test-Path -LiteralPath '${FILE}'; Test-Path -LiteralPath '${SUB}'`)
+    ok(done.trashed.length === 2 && !done.refused.length && left.split(/\r?\n/).every((l) => l === 'False'), 'delete through Files: a file and a folder left the library', { done, left })
+    const inBin = ps(`$bin = (New-Object -ComObject Shell.Application).NameSpace(10); $bin.Items() | ForEach-Object { $_.Name + '|' + $bin.GetDetailsOf($_, 1) }`)
+    log(`the Recycle Bin holds:\n${inBin}`)
+    ok(inBin.split(/\r?\n/).filter((l) => l.includes(`TempCode proof ${RUN}`) && /^TempCode proof/.test(l)).length === 2, 'delete through Files: both sit in the Recycle Bin, from where they were', inBin)
+    const listed = await call<{ entries: { name: string }[] }>('work.files.list', { at: { at: 'place', id: 'trash' } })
+    ok(listed.entries.map((e) => e.name).sort().join('|') === 'TempCode proof folder|TempCode proof.txt', "delete through Files: Trash lists them", listed.entries)
+    const back = await call<{ entries: { name: string }[]; refused: unknown[] }>('work.files.restore', { ids: done.trashed, op: `proof-${RUN}-undo` })
+    const whole = ps(`Get-Content -LiteralPath '${FILE}' -Raw; Get-Content -LiteralPath '${SUB}\\in.txt' -Raw`)
+    ok(back.entries.length === 2 && !back.refused.length && whole.replace(/\r/g, '') === 'a dummy\nin it', 'delete through Files: Undo puts both back where they were, whole', { back, whole })
+  } finally {
+    setVmCall(null)
     closeFilesState(rig.db)
     rig.close()
     ps(`Remove-Item -LiteralPath '${FOLDER}' -Recurse -Force`)

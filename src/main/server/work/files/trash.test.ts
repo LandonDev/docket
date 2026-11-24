@@ -1,5 +1,5 @@
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesListing, FilesOpened, FilesTabs } from '@shared/contract-work-files'
@@ -8,7 +8,7 @@ import { closeFilesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
 import { workspaceHere } from './policy'
 import { approver, at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
-import { NOT_IN_TRASH, purgeOld, purgeRows, restoreRows, settleTrash, trashAfterMove, trashInLibrary, trashRoot, TRASH_DAYS } from './trash'
+import { NOT_IN_TRASH, purgeOld, purgeRows, restoreRows, setSystemBin, settleTrash, trashAfterMove, trashRoot, TRASH_DAYS, type SystemBin } from './trash'
 import { withFileLocks } from './write'
 
 /** Trash for the workspace's own folder (trash.ts), through the module as a socket's requests reach it. */
@@ -107,11 +107,11 @@ describe('a delete', () => {
     expect(rows()).toEqual([])
   })
 
-  it("keeps a library's refusal: a delete there is the provider's, and stays off", async () => {
-    await expect(trash([join(rig.team, 'General', 'Plan.docx')])).rejects.toThrow('Delete it in Teams.')
-    // One refused ref refuses the whole change: nothing else went.
-    await expect(trash([join(rig.folder, 'notes.txt'), join(rig.team, 'General', 'Plan.docx')])).rejects.toThrow('Delete it in Teams.')
-    expect(existsSync(join(rig.folder, 'notes.txt'))).toBe(true)
+  it('asks first in a library others can open, and a remote key without approve may not', async () => {
+    await expect(trash([join(rig.team, 'General', 'Plan.docx')])).rejects.toThrow('Others can open that place: the window asks before this change.')
+    // A key with operate alone may not (outside its roots it is not even named; policy.test.ts holds the approve rule).
+    await expect(call('work.files.trash', { refs: [at(join(rig.team, 'General', 'Plan.docx'))], op: op(), asked: true }, phone)).rejects.toThrow()
+    expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
   })
 
   it('refuses a thread and another host of his, and a key outside its roots', async () => {
@@ -341,17 +341,117 @@ describe('for the other verbs', () => {
     await expect(trashAfterMove(rig.ctx, workspace, join(rig.team, 'General', 'Plan.docx'), 'move-2')).rejects.toThrow("Only a file of the workspace's folder goes to Trash here.")
   })
 
-  it("holds a library's delete as a provider's row with no bytes here, through the bin it is given (not wired)", async () => {
-    const binned: string[] = []
-    const path = join(rig.team, 'General', 'Plan.docx')
-    const id = await trashInLibrary(rig.ctx, { workspaceId: WS, placeId: 'lib', path }, async (p) => void binned.push(p))
-    expect(binned).toEqual([path])
-    expect(rig.db.prepare(`SELECT state, provider, place FROM work_files_trash WHERE id = ?`).get(id)).toEqual({ state: 'held', provider: 'onedrive', place: 'lib' })
-    expect(existsSync(binOf(id))).toBe(false)
-    // A bin that fails leaves no row.
-    await expect(trashInLibrary(rig.ctx, { workspaceId: WS, placeId: 'lib', path }, async () => Promise.reject(new Error('no bin')))).rejects.toThrow('no bin')
-    expect(rows()).toHaveLength(1)
-    // And Put back sends him to the bin.
-    expect((await restore([id])).refused).toEqual([{ name: 'Plan.docx', text: 'Put it back from the recycle bin.' }])
+})
+
+describe("a delete in a library on this host's disk", () => {
+  /** A stand-in for the computer's own bin: a folder of the data dir, by where each thing went. */
+  let binDir: string
+  let n = 0
+  const bin = (o: { refuse?: string; back?: boolean } = {}): SystemBin => ({
+    async put(path) {
+      if (o.refuse) throw new Error(o.refuse)
+      const to = join(binDir, String(++n))
+      mkdirSync(to, { recursive: true })
+      renameSync(path, join(to, basename(path)))
+      return join(to, basename(path))
+    },
+    ...(o.back === false
+      ? {}
+      : {
+          async back(from, to) {
+            if (!existsSync(from)) throw new Error('That is not in the Trash any more.')
+            let at = to
+            for (let i = 1; existsSync(at); i++) at = join(dirname(to), basename(to).replace(/(\.[^.]*)?$/, (ext) => ` (restored)${i > 1 ? ` ${i}` : ''}${ext}`))
+            renameSync(from, at)
+            return at
+          }
+        })
+  })
+  const asked = (paths: string[], by: Caller = window): Promise<FileDone> => call<FileDone>('work.files.trash', { refs: paths.map((p) => at(p)), op: op(), asked: true }, by)
+  beforeEach(() => {
+    binDir = join(rig.dataDir, 'the-bin')
+    setSystemBin(bin())
+  })
+  afterEach(() => setSystemBin(null))
+
+  it('sends a file and a folder to the bin, never deleting them, and Trash lists them under their place', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const done = await asked([plan, join(rig.team, 'General', 'Budgets')])
+    expect(done).toMatchObject({ refused: [], trashed: [expect.any(String), expect.any(String)] })
+    expect(existsSync(plan)).toBe(false)
+    expect(readFileSync(join(binDir, '1', 'Plan.docx'), 'utf8')).toBe('word')
+    expect(existsSync(join(binDir, '2', 'Budgets', '2026.xlsx'))).toBe(true)
+    const row = rig.db.prepare(`SELECT state, provider, ref FROM work_files_trash WHERE id = ?`).get(done.trashed![0]!) as { state: string; provider: string; ref: string }
+    expect([row.state, row.provider, JSON.parse(row.ref).bin]).toEqual(['held', 'onedrive', join(binDir, '1', 'Plan.docx')])
+    // No bytes are kept here: the bin holds them.
+    expect(existsSync(join(trashRoot(rig.dataDir), WS, done.trashed![0]!))).toBe(false)
+    const listed = (await listTrash()).entries.map((e) => [e.name, e.where?.name, e.where?.trail])
+    expect(listed).toEqual(expect.arrayContaining([['Plan.docx', 'General', []], ['Budgets', 'General', []]]))
+  })
+
+  it('puts it back where it was on Undo, beside a new file of its name as "(restored)"', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const first = await asked([plan])
+    const back = await restore(first.trashed!)
+    expect(back.refused).toEqual([])
+    expect(back.entries.map((e) => [e.name, e.shared])).toEqual([['Plan.docx', true]])
+    expect(readFileSync(plan, 'utf8')).toBe('word')
+    expect(rows()).toEqual([])
+    const again = await asked([plan])
+    writeFileSync(plan, 'a new plan')
+    expect((await restore(again.trashed!)).entries.map((e) => e.name)).toEqual(['Plan (restored).docx'])
+    expect(readFileSync(plan, 'utf8')).toBe('a new plan')
+  })
+
+  it('refuses in a plain sentence what the bin will not take, and leaves it', async () => {
+    setSystemBin(bin({ refuse: 'Plan.docx could not go to the Trash, so it was left where it is: The volume has no Trash.' }))
+    const done = await asked([join(rig.team, 'General', 'Plan.docx')])
+    expect(done).toMatchObject({ trashed: [], refused: [{ name: 'Plan.docx', text: 'Plan.docx could not go to the Trash, so it was left where it is: The volume has no Trash.' }] })
+    expect(existsSync(join(rig.team, 'General', 'Plan.docx'))).toBe(true)
+    expect(rows()).toEqual([])
+  })
+
+  it('keeps the row of a thing that left for the bin even when the bin\'s answer failed', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    setSystemBin({
+      async put(path) {
+        rmSync(path)
+        throw new Error('osascript crashed')
+      }
+    })
+    const done = await asked([plan])
+    expect(done).toMatchObject({ refused: [], trashed: [expect.any(String)] })
+    expect((await restore(done.trashed!)).refused).toEqual([{ name: 'Plan.docx', text: 'Put it back from the recycle bin.' }])
+  })
+
+  it('says to put it back from the recycle bin where the bin cannot be asked so', async () => {
+    setSystemBin(bin({ back: false }))
+    const done = await asked([join(rig.team, 'General', 'Plan.docx')])
+    expect((await restore(done.trashed!)).refused).toEqual([{ name: 'Plan.docx', text: 'Put it back from the recycle bin.' }])
+  })
+
+  it('never deletes a place itself', async () => {
+    const done = await asked([join(rig.team, 'General')])
+    expect(done.refused).toEqual([{ name: 'General', text: 'A place itself cannot be deleted.' }])
+    expect(existsSync(join(rig.team, 'General'))).toBe(true)
+  })
+
+  it('closes a Files tab on the file first', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    await call<FilesOpened>('work.files.open', { ref: at(plan), op: op() })
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(true)
+    await asked([plan])
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(false)
+  })
+
+  it('runs for a workspace another host keeps, his window asking the file\'s own host, and puts it back there', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const req = (method: string, params: Record<string, unknown>) => files.handle!(ClientRequestSchema.parse({ id: '1', method, params: { workspaceId: 'box-ws', ...params } }), rig.ctx, window)
+    const done = (await req('work.files.trash', { refs: [at(plan)], op: op(), asked: true })) as { handled: true; result: FileDone }
+    expect(done.result.trashed).toHaveLength(1)
+    expect(existsSync(plan)).toBe(false)
+    const back = (await req('work.files.restore', { ids: done.result.trashed, op: op() })) as { handled: true; result: FileDone }
+    expect(back.result.entries.map((e) => e.name)).toEqual(['Plan.docx'])
+    expect(existsSync(plan)).toBe(true)
   })
 })

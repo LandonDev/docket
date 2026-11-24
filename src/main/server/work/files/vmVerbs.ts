@@ -2,16 +2,19 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FileDone, FileMakeKind } from '@shared/contract-work-files'
-import { freeName, UNTITLED, type FileEntry } from '@shared/work/files'
+import { freeName, refKey, UNTITLED, type FileEntry } from '@shared/work/files'
 import type { WorkCtx } from '../modules'
-import { entryOfGuest, vmList, type GuestEntry } from '../office/vm/files'
+import { entryOfGuest, vmList, vmVerbs, type GuestEntry } from '../office/vm/files'
 import { vmCall, VmUnreachable } from '../office/vm/link'
 import { filesState, withMarks } from './handle'
 import { fileMakerFor } from './hooks'
 import { formIn, MAKER_KIND } from './make'
 import { fileMoved } from './moved'
-import { forgetVmList, libraryEntry, libraryKey, rowOfGuest, type LibraryPlace } from './places/teams'
-import type { DoorPlace } from './policy'
+import { forgetVmList, libraryEntry, libraryKey, rowOfGuest, teamsPlaces, type LibraryPlace } from './places/teams'
+import { closeTabsOn } from './trash'
+import { dropName } from './names'
+import { workspaceHere, type DoorPlace } from './policy'
+import type { Caller } from '../modules'
 import { fileLocked, FileRefused, OpLost, withFileLocks } from './write'
 
 /**
@@ -33,6 +36,8 @@ export interface VmWhere {
 }
 
 const WRITING = 'A thread is writing in this file. Try when it is done.'
+/** His own window, as the host itself asks for its places. */
+const OWN: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
 const PLACE_ITSELF = 'A place itself cannot be renamed or moved.'
 export const VM_NO_TEMPLATE = 'A file in the Windows VM is made blank. Make it from a template in your workspace\'s folder.'
 
@@ -202,26 +207,48 @@ export async function vmReadVersioned(path: string, offset: number, length: numb
 /**
  * A delete in the VM: to the Windows Recycle Bin, from where OneDrive takes it to the library's own bin; never
  * deleted for good (the helper refuses where Windows would). A row with `provider: 'onedrive'` and no bytes here is
- * kept for each, so Trash lists it; Put back says to put it back from the recycle bin.
+ * kept for each, with where the helper says it lies in the bin (`bin` in its ref), so Trash lists it and Put back
+ * takes it out again (`vmRestore`). A Files tab on it, or its copy's tab, closes first.
  */
 export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, op: string, i: number): Promise<string> {
   if (isTop(w)) throw new FileRefused('busy', 'A place itself cannot be deleted.')
   if (fileLocked(w.key)) throw new FileRefused('busy', WRITING)
   return withFileLocks([w.key], async () => {
+    const workspace = workspaceHere(ctx.db, workspaceId)
+    if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey({ at: 'file', host: ctx.host, path: w.path })], '\\')
+    dropName(ctx.db, workspaceId, w.key)
     const id = randomUUID()
     const file = { at: 'file', host: ctx.host, path: w.path }
     ctx.db
       .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by, provider) VALUES (?, ?, ?, ?, ?, ?, 'moving', ?, 'owner', 'onedrive')`)
       .run(id, workspaceId, JSON.stringify(file), baseOf(w.path), w.place.id, JSON.stringify({ ...file, path: dirOf(w.path) }), Date.now())
+    let got: { bin?: string }
     try {
-      await guestChange('files.recycle', { path: w.path, op: guestOp(op, i) })
+      got = await guestChange<{ bin?: string }>('files.recycle', { path: w.path, op: guestOp(op, i) })
     } catch (err) {
       // Refused or lost, no row stands for it: the same id again asks the guest, which answers what it did, and that makes the row.
       ctx.db.prepare(`DELETE FROM work_files_trash WHERE id = ?`).run(id)
       throw err
     }
-    ctx.db.prepare(`UPDATE work_files_trash SET state = 'held' WHERE id = ? AND state = 'moving'`).run(id)
+    if (got?.bin) ctx.db.prepare(`UPDATE work_files_trash SET ref = ? WHERE id = ?`).run(JSON.stringify({ ...file, bin: got.bin }), id)
+    ctx.db.prepare(`UPDATE work_files_trash SET state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'`).run(Date.now(), id)
     said(ctx, workspaceId, w.library, [dirOf(w.path)])
     return id
   })
+}
+
+export const VM_NO_RESTORE = 'Put it back from the Recycle Bin in the Windows VM.'
+
+/**
+ * Put back of a VM row: the helper takes the thing out of the Recycle Bin, by where it said it lies there, to the
+ * folder it was in, never over anything (`files.restore`, which checks the bin's own record names that place). A
+ * helper without the verb says to put it back from the Recycle Bin there.
+ */
+export async function vmRestore(ctx: WorkCtx, workspaceId: string, row: { path: string; bin: string; place: string }, op: string): Promise<FileEntry> {
+  if (!vmVerbs(ctx.db).includes('files.restore')) throw new Error(VM_NO_RESTORE)
+  const at = teamsPlaces(ctx, OWN).places.find((p) => p.place.id === row.place)
+  if (!at) throw new Error(VM_NO_RESTORE)
+  const e = await withFileLocks([libraryKey(at, row.path)], async () => (await guestChange<{ entry: GuestEntry }>('files.restore', { bin: row.bin, to: row.path, op: guestOp(op) })).entry)
+  said(ctx, workspaceId, at, [dirOf(e.path)])
+  return entryOf(ctx, workspaceId, at, e)
 }

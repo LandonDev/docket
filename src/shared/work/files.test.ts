@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CANVAS_KINDS, ContextChipSchema } from './canvas'
+import { LIBRARY_CAN, vmCanOf } from './filePlaces'
 import {
+  deleteAsk,
   audienceOf,
   canDo,
   chipsOf,
@@ -223,15 +225,28 @@ describe('the verbs table', () => {
     }
   })
 
-  it('refuses a delete where others see it until the provider\'s bin is proven, then asks first', () => {
+  it('deletes where others see it once the place carries out its bin, asking first; a place with no bin to reach says where to delete', () => {
+    // A place that cannot reach its bin (a VM helper without the verb) still says where to delete it.
     expect(refusal(TEAMS, 'trash', FILE)).toEqual({ text: 'Delete it in Teams.', press: 'open-web' })
     expect(refusal(ONEDRIVE, 'trash', FILE)).toEqual({ text: 'Delete it in OneDrive.', press: 'open-web' })
-    const proven = { ...TEAMS, can: [...TEAMS.can, 'trash' as const] }
-    expect(refusal(proven, 'trash', FILE)).toBeNull()
-    expect(questionFor(proven, 'trash', FILE)).toBe('Delete for everyone?')
+    const binned = { ...TEAMS, can: [...TEAMS.can, 'trash' as const] }
+    expect(refusal(binned, 'trash', FILE)).toBeNull()
+    expect(questionFor(binned, 'trash', FILE)).toBe('Delete for everyone?')
     // A Drive file others can open is a shared file in a place that is otherwise his own.
     expect(questionFor(DRIVE, 'trash', { ...FILE, shared: true })).toBe('Delete for everyone?')
     expect(questionFor(DRIVE, 'trash', FILE)).toBeNull()
+  })
+
+  it('gives a library on a disk the delete (its computer\'s own bin), and a VM place the delete where its helper recycles', () => {
+    expect(LIBRARY_CAN).toContain('trash')
+    expect(vmCanOf(['files.outcome', 'files.recycle'])).toEqual(['trash'])
+    expect(vmCanOf(['files.recycle'])).toEqual([])
+  })
+
+  it('names what a delete takes and who can open it, by the team, in its one question', () => {
+    expect(deleteAsk({ ...TEAMS, group: 'Sport Programs', name: 'Esports' }, ['Testing.pptx'])).toEqual({ title: 'Delete Testing.pptx for everyone?', body: 'Everyone in Sport Programs can open it.' })
+    expect(deleteAsk(TEAMS, ['a.txt', 'b.txt', 'c.txt'])).toEqual({ title: 'Delete 3 items for everyone?', body: 'Everyone in Esports Staff can open them.' })
+    expect(deleteAsk(ONEDRIVE, ['Plan.docx'])).toEqual({ title: 'Delete Plan.docx for everyone?', body: 'Whoever you shared My OneDrive with can open it.' })
   })
 
   it('moves across his own places as a copy, and only where the source can go to Trash', () => {
@@ -306,7 +321,7 @@ describe('the verbs table', () => {
     expect(refusal(vm, 'move', FILE, vm)).toBeNull()
     expect(refusal(vm, 'edit', FILE)).toBeNull()
     expect(refusal(vm, 'copy', FILE, vm)).toEqual({ text: 'Nothing can be copied in RecWell from here.' })
-    // A delete there waits for its bin, as in any place others can open; a move out of it is a team's file leaving.
+    // A delete there needs the helper's bin, as in any place others can open; a move out of it is a team's file leaving.
     expect(refusal(vm, 'trash', FILE)).toEqual({ text: 'Delete it in Teams.', press: 'open-web' })
     expect(refusal({ ...vm, can: [...vm.can, 'trash'] }, 'trash', FILE)).toBeNull()
     expect(refusal(vm, 'move', FILE, FOLDER)).toEqual({ text: 'Teams files stay in Teams.', press: 'open-here' })

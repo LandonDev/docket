@@ -1705,7 +1705,7 @@ public static class Guest {
   // same id again answers what the first did and does nothing twice (Journalled).
 
   // What this helper changes; the host offers a verb only where the helper lists it (`guest.status`'s `verbs`).
-  public static readonly string[] Changes = { "files.mkdir", "files.rename", "files.move", "files.write", "files.recycle", "files.outcome" };
+  public static readonly string[] Changes = { "files.mkdir", "files.rename", "files.move", "files.write", "files.recycle", "files.restore", "files.outcome" };
   public const int WriteMax = 16 * 1024 * 1024;
   const long HashMax = 64L * 1024 * 1024;
 
@@ -1886,6 +1886,9 @@ public static class Guest {
       using (var held = new Held(dir)) {
         var temp = Staged(dir, name, data);
         if (!MoveFileExW(Long(temp), Long(to), MOVEFILE_WRITE_THROUGH)) { var e = Failed("make", to); DeleteFileW(Long(temp)); throw e; }
+        // The staged file was hidden while it was written; the new file is not.
+        var made = GetFileAttributesW(Long(to));
+        if (made != INVALID && (made & HIDDEN) != 0) SetFileAttributesW(Long(to), made & ~HIDDEN);
         held.Check();
       }
       return Office.Obj("entry", Stat(to));
@@ -1925,6 +1928,53 @@ public static class Guest {
       held.Check();
     }
     return Office.Obj("name", name, "bin", bin);
+  }
+
+  // Put back: a thing `files.recycle` sent to the Recycle Bin (`bin`, where it said it lies there) goes back to the
+  // folder it was in (`to`, the path it had), under its own name or the first free "Name (restored)", never over
+  // anything and never across drives. The bin's own record of it ($I beside $R) must name `to`, so nothing else in
+  // the bin is taken out; the record goes once the thing is back, as Explorer's Restore does.
+  static object Restore(Dictionary<string, object> a) {
+    var bin = (a["bin"] as string ?? "").TrimEnd('\\');
+    var to = (a["to"] as string ?? "").TrimEnd('\\');
+    var inBin = BaseOf(bin);
+    var binDir = ParentOf(bin);
+    if (!inBin.StartsWith("$R", StringComparison.OrdinalIgnoreCase) || binDir.IndexOf("\\$Recycle.Bin\\", StringComparison.OrdinalIgnoreCase) < 0) throw new Refusal("refused", "That is not a thing in the Recycle Bin.");
+    var record = binDir + "\\$I" + inBin.Substring(2);
+    string was;
+    try { was = OriginalOf(File.ReadAllBytes(record)); } catch (Exception) { throw new Refusal("not-found", "That is not in the Recycle Bin any more."); }
+    if (!was.TrimEnd('\\').Equals(to, StringComparison.OrdinalIgnoreCase)) throw new Refusal("refused", "The Recycle Bin holds something else there, so nothing was put back.");
+    if (GetFileAttributesW(Long(bin)) == INVALID) throw new Refusal("not-found", "That is not in the Recycle Bin any more.");
+    var dir = ParentOf(to);
+    if (!IsDir(dir)) throw new Refusal("not-found", "The folder it was in is gone. Put it back from the Recycle Bin.");
+    dir = Admit(dir);
+    var name = BaseOf(to);
+    using (var held = new Held(dir)) {
+      for (var i = 0; i < 20; i++) {
+        var at = dir + "\\" + (i == 0 ? name : RestoredName(name, i));
+        if (MoveFileExW(Long(bin), Long(at), MOVEFILE_WRITE_THROUGH)) {
+          held.Check();
+          DeleteFileW(Long(record));
+          return Office.Obj("entry", Stat(at));
+        }
+        var err = Marshal.GetLastWin32Error();
+        if (err != 80 && err != 183) throw Failed("put back", bin, err);
+      }
+    }
+    throw new Refusal("refused", "Too many things named like " + name + " are there already.");
+  }
+  // "Plan.txt" put back beside one of its name: "Plan (restored).txt", then "Plan (restored) 2.txt", as the host's freeName.
+  static string RestoredName(string name, int i) {
+    var dot = name.LastIndexOf('.');
+    var stem = dot > 0 ? name.Substring(0, dot) : name;
+    return stem + " (restored)" + (i > 1 ? " " + i : "") + (dot > 0 ? name.Substring(dot) : "");
+  }
+  // The path a $I record says its thing had: version 2 (Windows 10 and later) a counted string at 24, version 1 a fixed one.
+  public static string OriginalOf(byte[] b) {
+    var v = BitConverter.ToInt64(b, 0);
+    if (v == 2) return Encoding.Unicode.GetString(b, 28, Math.Max(0, (BitConverter.ToInt32(b, 24) - 1) * 2));
+    if (v == 1) return Encoding.Unicode.GetString(b, 24, Math.Min(520, b.Length - 24)).TrimEnd('\0');
+    throw new Refusal("failed", "The Recycle Bin's record is of a kind tc-office does not read.");
   }
 
   // ---- The journal: one small file per operation id under %LOCALAPPDATA%\tc-office\ops, named by the id's hash.
@@ -2154,6 +2204,7 @@ public static class Guest {
       case "files.move": return Journalled(verb, a, () => Move(a));
       case "files.write": return Journalled(verb, a, () => Write(a));
       case "files.recycle": return Journalled(verb, a, () => Recycle(a));
+      case "files.restore": return Journalled(verb, a, () => Restore(a));
       case "files.outcome": return Outcome(a);
       case "files.fetch": return Fetch(Admit(a["path"]));
       case "files.free": return Free(Admit(a["path"]));

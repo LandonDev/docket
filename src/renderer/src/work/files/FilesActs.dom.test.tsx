@@ -27,6 +27,8 @@ const world = vi.hoisted(() => ({
   host: null as unknown,
   toasts: [] as { kind: string; title: string; description?: string; undo?: () => void }[],
   asked: [] as { title: string; action: string }[],
+  /** each question's line under its title, in order */
+  bodies: [] as (string | undefined)[],
   yes: true,
   started: [] as { chips: { kind: string; label: string; where?: { place: string } }[]; at: unknown }[],
 }));
@@ -62,7 +64,7 @@ vi.mock("../../components/ui/toaster", () => {
 // A question before a change is the app's own confirm: here it is answered at once, and kept.
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   ...(await original<typeof import("../../chrome/ConfirmDialog")>()),
-  confirmAction: async (request: { title: string; action: string }) => (world.asked.push({ title: request.title, action: request.action }), world.yes),
+  confirmAction: async (request: { title: string; body?: string; action: string }) => (world.asked.push({ title: request.title, action: request.action }), world.bodies.push(request.body), world.yes),
 }));
 
 const { View } = await import("./FilesView");
@@ -80,6 +82,7 @@ const PLACES: FilePlace[] = [
   lens("trash", "trash", "Trash", ["restore", "purge"]),
   { ...lens("folder", "folder", "Dummy Esports", [...ALL]), root: at("/w"), makes: ["document", "sheet", "deck", "text", "folder"] },
   { ...lens("b1", "teams", "General", ["make", "rename", "move", "copy", "edit"]), shared: true, group: "General", key: "general", root: at("/cloud/General"), makes: ["text", "folder"] },
+  { ...lens("b2", "teams", "Esports", ["make", "rename", "move", "copy", "edit", "trash"]), shared: true, group: "Esports", key: "esports", root: at("/cloud/Esports") },
 ];
 
 /** A host that keeps a folder: paths to what is there (true: a folder), and what Trash holds. */
@@ -101,7 +104,7 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
   };
   const pathOf = (ref: unknown): string => {
     const r = ref as FolderRef;
-    return r.at === "place" ? (r.id === "folder" ? "/w" : r.id === "b1" ? "/cloud/General" : r.id) : r.at === "file" ? r.path : "";
+    return r.at === "place" ? (r.id === "folder" ? "/w" : r.id === "b1" ? "/cloud/General" : r.id === "b2" ? "/cloud/Esports" : r.id) : r.at === "file" ? r.path : "";
   };
   const host: Host & { disk: Map<string, boolean>; trashed: typeof trashed; say(dir: string): void; fail: Record<string, string> } = {
     calls: [],
@@ -291,6 +294,7 @@ beforeEach(async () => {
   world.host = host;
   world.toasts.length = 0;
   world.asked.length = 0;
+  world.bodies.length = 0;
   world.started.length = 0;
   world.yes = true;
   localStorage.clear();
@@ -403,6 +407,34 @@ describe("a row's menu", () => {
     const off = await menuItem("Delete");
     expect(off.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(off);
+    expect(calls("work.files.trash")).toEqual([]);
+  });
+
+  it("asks once before a delete in a library others can open, naming the file and the team, then says it went with Undo", async () => {
+    host.disk.set("/cloud/Esports/Testing.pptx", false);
+    await mount();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports" }));
+    await waitFor(() => expect(rows()).toEqual(["Testing.pptx"]));
+    fireEvent.contextMenu(row("Testing.pptx"));
+    fireEvent.click(await menuItem("Delete"));
+    await waitFor(() => expect(calls("work.files.trash")).toHaveLength(1));
+    expect(world.asked).toEqual([{ title: "Delete Testing.pptx for everyone?", action: "Delete" }]);
+    expect(world.bodies).toEqual(["Everyone in Esports can open it."]);
+    expect(calls("work.files.trash")[0]).toMatchObject({ refs: [at("/cloud/Esports/Testing.pptx")], asked: true });
+    await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ kind: "message", title: "Deleted Testing.pptx", undo: expect.any(Function) }));
+    world.toasts.at(-1)!.undo!();
+    await waitFor(() => expect(calls("work.files.restore")).toHaveLength(1));
+  });
+
+  it("deletes nothing when he cancels the question", async () => {
+    host.disk.set("/cloud/Esports/Testing.pptx", false);
+    world.yes = false;
+    await mount();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports" }));
+    await waitFor(() => expect(rows()).toEqual(["Testing.pptx"]));
+    fireEvent.contextMenu(row("Testing.pptx"));
+    fireEvent.click(await menuItem("Delete"));
+    await waitFor(() => expect(world.asked).toHaveLength(1));
     expect(calls("work.files.trash")).toEqual([]);
   });
 
@@ -927,5 +959,23 @@ describe("the sidebar's places and their folders", () => {
     fireEvent.dragStart(row("Events"), { dataTransfer });
     fireEvent.dragOver(tab.parentElement!, { dataTransfer });
     expect(document.querySelector("[data-files-drag-label]")).toBeNull();
+  });
+});
+
+describe("a delete's open copies", () => {
+  it("finds the tabs on what goes, a copy by where its file lies, and whether one holds changes not sent", async () => {
+    const { tabsOn, unsentIn } = await import("./acts");
+    const deck: FileEntry = { key: "lib:esports:Testing.pptx", ref: { at: "file", host: "env_box", path: "C:\\Users\\tcuser\\Esports\\Testing.pptx" }, folder: null, name: "Testing.pptx", kind: "deck" };
+    const folder: FileEntry = { key: "lib:esports:Old", ref: null, folder: { at: "file", host: "env_mac", path: "/cloud/Esports/Old" }, name: "Old", kind: "folder" };
+    const tabs: FileTab[] = [
+      { id: "t1", kind: "file", name: "Testing.pptx", key: "file:env_box:C:\\Users\\tcuser\\Esports\\Testing.pptx", copyOf: { host: "env_box", path: "C:\\Users\\tcuser\\Esports\\Testing.pptx", vm: true }, back: { is: "ok" } },
+      { id: "t2", kind: "file", name: "Roster.xlsx", key: "file:env_mac:/cloud/Esports/Old/Roster.xlsx", copyOf: { host: "env_mac", path: "/cloud/Esports/Old/Roster.xlsx" }, back: { is: "away" } },
+      { id: "t3", kind: "file", name: "Other.xlsx", key: "file:env_mac:/cloud/Esports/Other.xlsx", copyOf: { host: "env_mac", path: "/cloud/Esports/Other.xlsx" }, back: { is: "changed" } },
+      { id: "t4", kind: "page", name: "Home", page: { name: "Home", at: { at: "place", id: "home" } } },
+    ];
+    expect(tabsOn(tabs, [deck]).map((t) => t.id)).toEqual(["t1"]);
+    expect(unsentIn(tabsOn(tabs, [deck]))).toBe(false);
+    expect(tabsOn(tabs, [folder]).map((t) => t.id)).toEqual(["t2"]);
+    expect(unsentIn(tabsOn(tabs, [folder]))).toBe(true);
   });
 });

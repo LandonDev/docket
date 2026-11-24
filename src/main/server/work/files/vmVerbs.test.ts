@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
-import { vmCanOf, VM_TRASH } from '@shared/work/filePlaces'
+import { vmCanOf } from '@shared/work/filePlaces'
 import type { Caller } from '../modules'
 import { fenceRequest, FenceError } from '../../remote/fence'
 import { setVmCall, VmUnreachable } from '../office/vm/link'
@@ -21,7 +21,7 @@ import { approver, at, HOST, peer, phone, thread, window, WS, type Rig, makeRig 
 
 const TOP = 'C:\\Users\\tcuser\\Dummy U\\Esports Staff - Documents'
 const GENERAL = `${TOP}\\General`
-const VERBS = ['files.mkdir', 'files.rename', 'files.move', 'files.write', 'files.recycle', 'files.outcome']
+const VERBS = ['files.mkdir', 'files.rename', 'files.move', 'files.write', 'files.recycle', 'files.restore', 'files.outcome']
 const OLD_HELPER = "Files in the Windows VM cannot be changed from here yet. Open it there."
 
 interface Call {
@@ -37,6 +37,8 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   /** the stand-in's own journal: an op answered once */
   let journal: Map<string, unknown>
   let lose: number
+  /** the stand-in's Recycle Bin: where each thing lies there, and the path it had */
+  let recycled: Map<string, { path: string; f: { path: string; dir: boolean; data: string; modified: number } }>
 
   const entryOf = (path: string) => {
     const f = disk.get(path.toLowerCase())!
@@ -106,8 +108,20 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
         }
         case 'files.recycle': {
           const path = args.path as string
+          const bin = `C:\\$Recycle.Bin\\S-1-5-21\\$R${journal.size}`
+          recycled.set(bin, { path, f: disk.get(path.toLowerCase())! })
           disk.delete(path.toLowerCase())
-          return { name: path.slice(path.lastIndexOf('\\') + 1), bin: `C:\\$Recycle.Bin\\S-1-5-21\\$R${journal.size}` }
+          return { name: path.slice(path.lastIndexOf('\\') + 1), bin }
+        }
+        case 'files.restore': {
+          const held = recycled.get(args.bin as string)
+          if (!held) throw new Error('That is not in the Recycle Bin any more.')
+          if (held.path.toLowerCase() !== (args.to as string).toLowerCase()) throw new Error('The Recycle Bin holds something else there, so nothing was put back.')
+          let to = held.path
+          for (let i = 1; disk.has(to.toLowerCase()); i++) to = held.path.replace(/(\.[^.\\]*)?$/, (ext) => ` (restored)${i > 1 ? ` ${i}` : ''}${ext}`)
+          disk.set(to.toLowerCase(), { ...held.f, path: to })
+          recycled.delete(args.bin as string)
+          return { entry: entryOf(to) }
         }
       }
       throw new Error(`unexpected ${verb}`)
@@ -130,6 +144,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     rig = makeRig()
     calls = []
     journal = new Map()
+    recycled = new Map()
     lose = 0
     disk = new Map()
     put(`${GENERAL}\\Plan.txt`, false, 'first')
@@ -150,7 +165,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
 
   describe('what the helper says it has', () => {
     it('maps the helper\'s verbs to the place\'s, and offers nothing without a way to ask a lost answer again', () => {
-      expect(vmCanOf(VERBS)).toEqual(['make', 'rename', 'move', 'edit', ...(VM_TRASH ? ['trash'] : [])])
+      expect(vmCanOf(VERBS)).toEqual(['make', 'rename', 'move', 'edit', 'trash'])
       expect(vmCanOf(['files.rename', 'files.outcome'])).toEqual(['rename'])
       expect(vmCanOf(VERBS.filter((v) => v !== 'files.outcome'))).toEqual([])
       expect(vmCanOf(undefined)).toEqual([])
@@ -248,24 +263,41 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(copy.copy.name).toBe('Plan (mine).txt')
     })
 
-    it(VM_TRASH ? 'sends a file to the Recycle Bin, keeping a row Trash lists' : 'refuses a delete there until the Recycle Bin is proven, and asks the guest nothing', async () => {
+    it('sends a file to the Recycle Bin after his window asks, keeping a row Trash lists, and puts it back on Undo', async () => {
       const id = op()
-      if (!VM_TRASH) {
-        await expect(call('work.files.trash', { refs: [at(`${GENERAL}\\Plan.txt`)], op: id, asked: true })).rejects.toThrow('Delete it in Teams.')
-        expect(changes()).toEqual([])
-        return
-      }
       await expect(call('work.files.trash', { refs: [at(`${GENERAL}\\Plan.txt`)], op: op() })).rejects.toThrow('Others can open that place: the window asks before this change.')
       const done = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Plan.txt`)], op: id, asked: true })
       expect(changes()).toEqual([{ verb: 'files.recycle', args: { path: `${GENERAL}\\Plan.txt`, op: `tc-files:${id}:0` } }])
       expect(done.trashed).toHaveLength(1)
-      expect(rig.db.prepare(`SELECT state, provider, name FROM work_files_trash WHERE id = ?`).get(done.trashed![0]!)).toEqual({ state: 'held', provider: 'onedrive', name: 'Plan.txt' })
+      const row = rig.db.prepare(`SELECT state, provider, name, ref FROM work_files_trash WHERE id = ?`).get(done.trashed![0]!) as { state: string; provider: string; name: string; ref: string }
+      expect([row.state, row.provider, row.name, JSON.parse(row.ref).bin]).toEqual(['held', 'onedrive', 'Plan.txt', expect.stringMatching(/^C:\\\$Recycle\.Bin\\/)])
       // Trash lists it; its file left the folder.
       const listed = (await call<{ entries: { name: string; where?: unknown }[] }>('work.files.list', { at: { at: 'place', id: 'trash' } })).entries
       expect(listed.map((e) => [e.name, e.where])).toEqual([['Plan.txt', { place: expect.stringMatching(/\/General$/), name: 'General', trail: [] }]])
       expect(disk.has(`${GENERAL}\\Plan.txt`.toLowerCase())).toBe(false)
-      await expect(call('work.files.restore', { ids: done.trashed, op: op() })).resolves.toMatchObject({ refused: [{ text: 'Put it back from the recycle bin.' }] })
+      // Undo: the helper takes it out of the bin to where it was, by where it said it lies.
+      const back = await call<FileDone>('work.files.restore', { ids: done.trashed, op: op() })
+      expect(back.entries.map((e) => e.name)).toEqual(['Plan.txt'])
+      expect(changes().at(-1)).toEqual({ verb: 'files.restore', args: { bin: JSON.parse(row.ref).bin, to: `${GENERAL}\\Plan.txt`, op: expect.stringMatching(/^tc-files:restore:/) } })
+      expect(disk.has(`${GENERAL}\\Plan.txt`.toLowerCase())).toBe(true)
+      expect(rig.db.prepare(`SELECT 1 FROM work_files_trash`).get()).toBeUndefined()
     })
+
+    it('puts a deleted folder back beside a new one of its name, and a helper without the verb says where to put it back', async () => {
+      const done = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Budgets`)], op: op(), asked: true })
+      put(`${GENERAL}\\Budgets`, true)
+      expect((await call<FileDone>('work.files.restore', { ids: done.trashed, op: op() })).entries.map((e) => e.name)).toEqual(['Budgets (restored)'])
+      const again = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Notes.txt`)], op: op(), asked: true })
+      status(VERBS.filter((v) => v !== 'files.restore'))
+      expect((await call<FileDone>('work.files.restore', { ids: again.trashed, op: op() })).refused).toEqual([{ name: 'Notes.txt', text: 'Put it back from the Recycle Bin in the Windows VM.' }])
+    })
+
+    it('refuses the place itself, and a delete a thread asks for is never run from the wire', async () => {
+      const top = await call<FileDone>('work.files.trash', { refs: [at(GENERAL)], op: op(), asked: true })
+      expect(top.refused).toEqual([{ name: 'General', text: 'A place itself cannot be deleted.' }])
+      expect(changes()).toEqual([])
+    })
+
   })
 
   describe('a lost answer', () => {

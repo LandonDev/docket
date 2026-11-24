@@ -92,6 +92,18 @@ function ownRows(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, workspaceId: 
   return workspace
 }
 
+/**
+ * The rows a delete and its Put back keep here: the workspace's own, or, for a workspace another host keeps, a stand-in
+ * that holds only library rows (a delete in a library on this disk, asked by his window of the file's own host).
+ */
+function binRows(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, workspaceId: string, o: { peer?: boolean } = {}): WorkspaceRow {
+  if (by.kind === 'model') throw new Error(THREADS_NO_TABS)
+  admitCaller(ctx, by, workspaceId)
+  // Another host of his reaches only this host's libraries, and changes one only with where the change began (the door, before this).
+  if (by.peer && !o.peer) throw new Error(PEER_LIBRARIES)
+  return workspaceHere(ctx.db, workspaceId) ?? { id: workspaceId, name: '', path: '', sector: null }
+}
+
 /** Whether a caller could name a path of this host itself: everyone but a remote key always; a key by the listener's fence, and a file in the Windows VM by the guest-path rule. */
 const reaches = (ctx: Pick<WorkCtx, 'reaches'>, by: Caller, path: string): boolean => by.kind !== 'remote' || !!by.peer || (isGuestPath(path) && process.platform !== 'win32') || ctx.reaches(by, path)
 
@@ -951,10 +963,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string))
       }
       if (!journalled(ctx.db, p.op as string, p.workspaceId, 'trash')) held(admitChange(ctx, by, 'trash', p as never, m))
-      ownRows(ctx, by, p.workspaceId)
+      // A library's delete may come for a workspace another host keeps (his window asks the file's own host): its row is kept here.
+      binRows(ctx, by, p.workspaceId, { peer: true })
       return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string))
     case 'work.files.restore': {
-      const workspace = ownRows(ctx, by, p.workspaceId)
+      const workspace = binRows(ctx, by, p.workspaceId)
       if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error(MAY_NOT('put files back'))
       return handled(await restoreRows(ctx, by, workspace, p.ids as string[], p.op as string))
     }

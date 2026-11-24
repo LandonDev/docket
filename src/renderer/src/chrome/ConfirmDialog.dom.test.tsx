@@ -127,4 +127,13 @@ describe("a dialog's exit", () => {
     await waitFor(() => expect(answer).toBe(false));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
+
+  it("opens with Cancel focused, so Return on a red verb never deletes by itself", async () => {
+    render(<ConfirmHost />);
+    await act(async () => {
+      void confirmAction({ title: "Delete Testing.pptx for everyone?", body: "Everyone in Sport Programs can open it.", action: "Delete", danger: true });
+    });
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+  });
 });

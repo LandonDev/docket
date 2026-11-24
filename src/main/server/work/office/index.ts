@@ -10,7 +10,7 @@ import { unfollowAll } from './grid'
 import { officeActs } from './held'
 import { addinHandle, addinHub, addinTools, ensureAddinTables, startAddin } from './addin'
 import { withAddin } from './addin/carrier'
-import { comCarrier } from './com/carrier'
+import { comCarrier, type ComCarrier } from './com/carrier'
 import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
@@ -39,6 +39,8 @@ const desktopCarrier = (): OfficeCarrier | null =>
 let desktop: OfficeCarrier | null | undefined
 const desktopOnce = (): OfficeCarrier | null => (desktop === undefined ? (desktop = desktopCarrier()) : desktop)
 let carrierFor: () => OfficeCarrier | null = () => withAddin(desktopOnce(), addinHub)
+/** tc-office on a PC, for what is not Office (the Recycle Bin of a library's delete, files/trash.ts); null on any other host. */
+export const desktopHelper = (): Pick<ComCarrier, 'call'> | null => (process.platform === 'win32' ? (desktopOnce() as ComCarrier | null) : null)
 /** A test hands its own carrier (a `FakeOffice`); null: this host has none. */
 export const setCarrier = (fn: () => OfficeCarrier | null): void => {
   carrierFor = fn

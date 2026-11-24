@@ -48,16 +48,16 @@ async function tool(name: string, args: Record<string, unknown>): Promise<WorkTo
 describe('every agent route into a folder others can open', () => {
   it('is held or refused, and the folder is as it was', async () => {
     const before = tree(rig.team)
-    // The files_* tools: each change held as a file.act, a delete refused.
+    // The files_* tools: each change held as a file.act, a delete too.
     for (const [name, args] of [
       ['files_make', { place: 'General', kind: 'text', name: 'Notes' }],
       ['files_move', { place: 'General', paths: ['Plan.docx'], name: 'Plan v2.docx' }],
       ['files_move', { place: 'folder', paths: ['notes.txt'], to: { place: 'General', path: '' } }],
-      ['files_copy', { place: 'folder', paths: ['notes.txt'], to: { place: 'Events', path: '' } }]
+      ['files_copy', { place: 'folder', paths: ['notes.txt'], to: { place: 'Events', path: '' } }],
+      ['files_trash', { place: 'General', paths: ['Plan.docx'] }]
     ] as const)
       expect((await tool(name, args)).text, name).toMatch(/^Held as item \d+\./)
-    expect(held).toHaveLength(4)
-    expect(await tool('files_trash', { place: 'General', paths: ['Plan.docx'] })).toMatchObject({ isError: true, text: 'Delete it in Teams.' })
+    expect(held).toHaveLength(5)
     // The wire itself: a thread's change by work.files.* is refused, whatever it claims.
     for (const [method, params] of [
       ['work.files.make', { at: at(join(rig.team, 'General')), kind: 'text', op: 'op-000001' }],

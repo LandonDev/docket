@@ -19,16 +19,12 @@ export interface LibraryPlace {
 const sepOf = (path: string): string => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 const joinIn = (dir: string, name: string): string => `${dir.replace(/[\\/]+$/, '')}${sepOf(dir)}${name}`
 
-/** The verbs a library's adapter carries out today, on this host's own disk. */
-export const LIBRARY_CAN: FilePlace['can'] = ['make', 'rename', 'move', 'copy', 'edit']
-
 /**
- * Whether a delete in the Windows VM is offered: the helper's `files.recycle` sends a file or folder to the Recycle
- * Bin, from where OneDrive takes it to the library's own bin. Off: the rig proved the Recycle Bin holds a file and a
- * folder on a dummy mount, but a shared library's delete waits for a live proof on a real OneDrive that the
- * library's own bin holds a file, a folder and a cloud-only file (docs/agents/work-files.md "The Windows VM's verbs").
+ * The verbs a library's adapter carries out on this host's own disk. A delete goes to the computer's own bin (the
+ * Trash on a Mac, the Recycle Bin on a PC), never for good, and OneDrive takes it to the library's own recycle bin
+ * (docs/agents/work-files.md "A delete in a library").
  */
-export const VM_TRASH: boolean = false
+export const LIBRARY_CAN: FilePlace['can'] = ['make', 'rename', 'move', 'copy', 'edit', 'trash']
 
 /**
  * The verbs a library in the Windows VM carries out, by what its helper says it has (`guest.status`'s `verbs`): New
@@ -44,7 +40,7 @@ export function vmCanOf(verbs: readonly string[] | null | undefined): FilePlace[
   if (has.has('files.rename')) can.push('rename')
   if (has.has('files.move')) can.push('move')
   if (has.has('files.write')) can.push('edit')
-  if (VM_TRASH && has.has('files.recycle')) can.push('trash')
+  if (has.has('files.recycle')) can.push('trash')
   return can
 }
 

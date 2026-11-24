@@ -500,6 +500,9 @@ export async function openPageTab(link: string, workspaceId: string, page: FileP
   await change(link, workspaceId, null, "work.files.tabOpen", { page, ...(after ? { after } : {}) }, (answer) => answer.tabId);
 }
 
+/** The workspace's tabs as this window last heard them from its host. */
+export const tabsNow = (link: string, workspaceId: string): readonly FileTab[] => tabsOf(link, workspaceId).tabs;
+
 /** Closes a tab at once; the last one closed becomes the workspace's folder. `discard`: a copy's changes that have not reached its file go with it. */
 export async function closeTab(link: string, workspaceId: string, tabId: string, last: FilePage, discard = false): Promise<void> {
   const entry = tabsOf(link, workspaceId);

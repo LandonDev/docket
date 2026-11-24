@@ -1,13 +1,14 @@
 import { ATTACHMENT_CHUNK_BYTES } from "@shared/contract-attachments";
-import type { FileDone, FileRef } from "@shared/contract-work-files";
+import type { FileDone, FileRef, FileTab } from "@shared/contract-work-files";
 import type { CanvasSource } from "@shared/work";
-import { questionFor, refusal, type FileEntry, type FolderRef, type MakeKind } from "@shared/work/files";
+import { deleteAsk, questionFor, refusal, type FileEntry, type FolderRef, type MakeKind } from "@shared/work/files";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { doneWords, refusedWords, type PlaceCopy } from "./model";
+import { closeTab, tabsNow } from "./store";
 
 /**
  * The window's side of every change in the Files place (docs/agents/work-files.md "New, rename, move and copy",
@@ -92,20 +93,45 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
   }
 }
 
-/** Delete: to Trash, said in one toast with Undo. A place that keeps its own bin says where to delete instead. */
+/** A copy's states whose changes have not reached its file yet. */
+const UNSENT = new Set(["sending", "changed", "away", "refused"]);
+/** The workspace's file tabs on these things, or on anything inside these folders: a tab names a file by where it lies. */
+export function tabsOn(tabs: readonly FileTab[], entries: readonly FileEntry[]): FileTab[] {
+  const paths = entries.flatMap((e) => {
+    const ref = e.ref ?? e.folder;
+    return ref && ref.at === "file" ? [{ host: ref.host, path: ref.path }] : [];
+  });
+  const under = (host: string, path: string): boolean => paths.some((p) => p.host === host && (path === p.path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}\\`)));
+  const keys = new Set(entries.map((e) => e.key));
+  return tabs.filter((t) => t.kind === "file" && ((t.key && keys.has(t.key)) || (t.copyOf ? under(t.copyOf.host, t.copyOf.path) : false)));
+}
+/** Whether a copy among these tabs holds changes that have not reached its file. */
+export const unsentIn = (tabs: readonly FileTab[]): boolean => tabs.some((t) => !!t.back && UNSENT.has(t.back.is));
+
+/**
+ * Delete: to Trash, or in a place others can open to its computer's own bin, said in one toast with Undo. A place
+ * others can open asks first, naming what goes and who can open it, and says when a copy of it holds changes not sent.
+ */
 export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileEntry[]): Promise<boolean> {
   if (!entries.length) return false;
   const no = entries.map((entry) => refusal(copy.place, "trash", entry)).find((r) => r !== null);
   if (no) return (failed("Nothing was deleted", new Error(no.text)), false);
   const question = questionFor(copy.place, "trash", entries[0]);
-  if (question && !(await confirmAction({ title: question, action: "Delete", danger: true }))) return false;
+  const open = tabsOn(tabsNow(of.home, of.workspaceId), entries);
+  if (question) {
+    const ask = deleteAsk(copy.place, entries.map((e) => e.name));
+    const body = unsentIn(open) ? `${ask.body} Changes in its open copy that have not reached it are lost.` : ask.body;
+    if (!(await confirmAction({ title: ask.title, body, action: "Delete", danger: true }))) return false;
+  }
   try {
     const done = await registry.linkOf(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}) }, longWait(copy));
     const ids = done.trashed ?? [];
     const gone = entries.length - done.refused.length;
     if (gone > 0) {
-      const names = entries.filter((e) => !done.refused.some((r) => r.name === e.name)).map((e) => e.name);
-      said(doneWords("Deleted", names), { description: leftovers(done), ...(ids.length ? { undo: () => void restore(of, copy.link, ids) } : {}) });
+      const went = entries.filter((e) => !done.refused.some((r) => r.name === e.name));
+      // A file of another computer leaves its seat here too: the workspace's own host keeps its tabs and copies.
+      if (copy.link !== of.home) for (const tab of tabsOn(tabsNow(of.home, of.workspaceId), went)) void closeTab(of.home, of.workspaceId, tab.id, HOME_PAGE, true).catch(() => undefined);
+      said(doneWords("Deleted", went.map((e) => e.name)), { description: leftovers(done), ...(ids.length ? { undo: () => void restore(of, copy.link, ids) } : {}) });
     } else failed("Nothing was deleted", new Error(leftovers(done) ?? "Nothing went to Trash."));
     return gone > 0;
   } catch (err) {
@@ -113,6 +139,8 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
     return false;
   }
 }
+/** Where a window that keeps its own tabs lands when a delete closes its last one. */
+const HOME_PAGE = { name: "Home", at: { at: "place" as const, id: "home" } };
 
 /** Put back from Trash. */
 export async function restore(of: ActsOf, link: string, ids: readonly string[]): Promise<boolean> {

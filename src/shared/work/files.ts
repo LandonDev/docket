@@ -223,7 +223,7 @@ export interface FileEntry {
   fresh?: boolean
   starred?: boolean
   /** Home's Waiting on you: a thread's change to it waits in the Outbox for his press (a held `file.act`); the row opens that item */
-  held?: { id: string; verb: 'make' | 'rename' | 'move' | 'copy' }
+  held?: { id: string; verb: 'make' | 'rename' | 'move' | 'copy' | 'trash' }
 }
 
 /** One place two computers may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */
@@ -475,7 +475,7 @@ export function refusal(place: AskedOf, verb: FileVerb, entry?: AskedEntry | nul
   }
 
   if (verb === 'trash' || verb === 'restore' || verb === 'purge') {
-    // A delete in a place others see is the provider's own, and stays off until its bin is proven to hold what is deleted.
+    // A delete in a place others see goes to the provider's own bin; a place that has none to reach says where to delete instead.
     if ((place.shared || entry?.shared) && !place.can.includes(verb)) return { text: `Delete it in ${serviceOf(place)}.`, press: 'open-web' }
     if (place.kind === 'lifeos' && !place.can.includes(verb)) return { text: 'LifeOS cannot put a document back yet. Delete it in LifeOS.' }
   }
@@ -511,6 +511,16 @@ export function questionFor(place: AskedOf & Pick<FilePlace, 'group'>, verb: Fil
   if (across && (verb === 'copy' || verb === 'move') && to!.shared) return `${verb === 'copy' ? 'Copy' : 'Move'} to ${to!.name}? ${audienceOf(to!)}`
   if (verb === 'trash' && (place.shared || entry?.shared)) return 'Delete for everyone?'
   return null
+}
+
+/**
+ * The words of his window's one question before a delete others will see (`questionFor` says whether it asks): the
+ * thing by name, or how many, and who can open them, by the team or folder's own name.
+ */
+export function deleteAsk(place: Pick<FilePlace, 'kind' | 'name' | 'group'>, names: readonly string[]): { title: string; body: string } {
+  const what = names.length === 1 ? names[0]! : `${names.length} items`
+  const body = audienceOf(place, true)
+  return { title: `Delete ${what} for everyone?`, body: names.length === 1 ? body : body.replace(/ it\.$/, ' them.') }
 }
 
 // ── a file in a message ───────────────────────────────────────────────

@@ -203,8 +203,10 @@ export function fileActWords(p: Pick<FileAct, 'verb' | 'request' | 'things' | 'f
       ? `Make ${p.request.name ?? 'a new file'} in ${from}.`
       : p.verb === 'rename'
         ? `Rename ${what} to ${p.request.name} in ${from}.`
-        : `${p.verb === 'move' ? 'Move' : 'Copy'} ${what} to ${whereWords(p.into!)}.`
-  return { summary: `${head} ${p.audience}`, verb: { make: 'Make', rename: 'Rename', move: 'Move', copy: 'Copy' }[p.verb] }
+        : p.verb === 'trash'
+          ? `Delete ${what} from ${from}.`
+          : `${p.verb === 'move' ? 'Move' : 'Copy'} ${what} to ${whereWords(p.into!)}.`
+  return { summary: `${head} ${p.audience}`, verb: { make: 'Make', rename: 'Rename', move: 'Move', copy: 'Copy', trash: 'Delete' }[p.verb] }
 }
 
 const STALE = {
@@ -261,19 +263,21 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     } else {
       done = (await act.peer.call(toolCtx, p.host).call('files', p.verb, params)) as FileDone
     }
-    if (!done.entries.length && done.refused.length) throw new ActNotSent(done.refused.map((r) => `${r.name}: ${r.text}`).join(' '))
+    // A delete answers what it sent to the bin, not entries: what was not refused went.
+    const went = p.verb === 'trash' ? p.things.filter((t) => !done.refused.some((r) => r.name === t.name)).map((t) => ({ key: t.key, name: t.name })) : done.entries
+    if (!went.length && done.refused.length) throw new ActNotSent(done.refused.map((r) => `${r.name}: ${r.text}`).join(' '))
     if (p.verb === 'make') markMade(act, p.workspaceId, item.sessionId, done.entries)
     const words = fileActWords(p)
-    const past = { make: 'Made', rename: 'Renamed', move: 'Moved', copy: 'Copied' }[p.verb]
+    const past = { make: 'Made', rename: 'Renamed', move: 'Moved', copy: 'Copied', trash: 'Deleted' }[p.verb]
     const left = done.refused.length ? ` Not done: ${done.refused.map((r) => `${r.name} (${r.text})`).join('; ')}` : ''
-    return { summary: `${past}: ${done.entries.map((e) => e.name).join(', ')}.${left}`, ref: { keys: done.entries.map((e) => e.key), asked: words.summary } }
+    return { summary: `${past}: ${went.map((e) => e.name).join(', ')}.${left}`, ref: { keys: went.map((e) => e.key), asked: words.summary } }
   }
 }
 
 // ── a change, run or held ─────────────────────────────────────────────
 
 interface Asked {
-  verb: FileActVerb | 'trash'
+  verb: FileActVerb
   named: Named
   /** what the verb is sent */
   request: FileAct['request']
@@ -316,7 +320,6 @@ async function change(ctx: ToolCtx, workspaceId: string, a: Asked): Promise<Work
     verdict = 'hold'
   }
   if (verdict === 'hold') {
-    if (a.verb === 'trash') throw new Error(`Delete it in ${place.name} itself: a thread's delete there is not held.`)
     return hold(ctx, workspaceId, a, things)
   }
   const op = `tool:${randomUUID()}`
@@ -359,7 +362,7 @@ async function runHere(ctx: ToolCtx, me: Caller, workspaceId: string, a: Asked, 
 /** A change others will see: held for his press, bound to each thing as it is now. */
 function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEntry[]): WorkToolResult {
   const { host, place } = a.named
-  const verb = a.verb as FileActVerb
+  const verb = a.verb
   const at = a.into?.named.place ?? place
   const payload: FileAct = {
     workspaceId,
@@ -731,7 +734,7 @@ export const filesTools: WorkTool[] = [
   }),
   tool({
     name: 'files_trash',
-    description: "Puts files or folders of the workspace's own folder in Trash, where the owner can put them back for 30 days. A delete in a place others can open is refused: it is done there by a person.",
+    description: "Deletes files or folders. In the workspace's own folder they go to Trash at once, where the owner can put them back for 30 days. In a place others can open (Teams, OneDrive) nothing is deleted: the delete is held for the owner's press, which sends them to that computer's own bin.",
     input: { place: Place, paths: z.array(PathIn.min(1)).min(1).max(100), host: Host },
     readOnly: false,
     run: async (a, ctx, workspaceId) => {

@@ -1,17 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { execFile } from 'node:child_process'
-import { existsSync, lstatSync, readdirSync, realpathSync, rmSync, statSync, type Stats } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, rmSync, statSync, type Stats } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { FileDone, FileRef } from '@shared/contract-work-files'
 import { freeName, kindOfEntry, LIST_PAGE_MAX, PLACE, refKey, refusal, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { doorPlace, filesState } from './handle'
-import { libraryKey, teamsPlaces } from './places/teams'
-import { vmRecycle } from './vmVerbs'
+import { libraryEntry, libraryKey, teamsPlaces, type LibraryPlace } from './places/teams'
+import { vmRecycle, vmRestore } from './vmVerbs'
+import { gioBin, macBin, type SystemBin } from './bin'
+import { desktopHelper } from '../office/index'
+import { copyClosing } from './copies'
 import { folderEntry, folderName } from './places/folder'
 import { dropName } from './names'
-import { locate, within, type WorkspaceRow } from './policy'
+import { locate, within, workspaceHere, type WorkspaceRow } from './policy'
 import { isGuestPath } from '../office/vm/files'
 import { DRIVE_ROOT, driveOf, type DriveItem } from '../google/drive'
 import { driveChanged, driveEntry, drivePlaceId, itemShared, kindOfItem } from './places/drive'
@@ -130,16 +132,25 @@ async function settleMoving(ctx: TrashCtx, row: TrashRow): Promise<'held' | 'und
   return 'undone'
 }
 
-/** Closes the Files tabs that show this file, or anything inside this folder: their items go with them. */
-function closeTabsOn(ctx: TrashCtx, workspace: WorkspaceRow, root: string, path: string): void {
+/**
+ * Closes the Files tabs that show this file, or anything inside this folder: their items go with them. A tab is
+ * found by any of the file's keys (`keys`: its own, and for a library file the plain key a copy's tab holds), and
+ * `sep` is the separator of the file's own disk. A copy's tab closes through the copies' own door (`copyClosing`),
+ * its changes let go: his window asked before a delete of a file whose copy held changes not sent yet.
+ */
+export function closeTabsOn(ctx: TrashCtx, workspace: WorkspaceRow, keys: readonly string[], sepOf: string = sep): void {
   const state = filesState(ctx)
-  const key = refKey({ at: 'file', host: ctx.host, path })
+  const on = (key: string | undefined): boolean => !!key && keys.some((k) => key === k || key.startsWith(`${k}${sepOf}`))
+  const root = workspace.path
   for (const tab of state.tabs.list(workspace.id).tabs) {
-    if (tab.kind !== 'file' || !tab.key || !(tab.key === key || tab.key.startsWith(`${key}${sep}`))) continue
+    if (tab.kind !== 'file' || !on(tab.key)) continue
+    if (tab.copyOf) copyClosing(ctx as WorkCtx, workspace.id, tab, true)
     state.tabs.tabClose(workspace.id, tab.id, { at: { at: 'place', id: PLACE.folder }, name: folderName(workspace, root, root) })
   }
-  state.tabs.sidesDrop(workspace.id, key, sep)
-  state.tabs.seatsDrop(workspace.id, key, sep)
+  for (const key of keys) {
+    state.tabs.sidesDrop(workspace.id, key, sepOf)
+    state.tabs.seatsDrop(workspace.id, key, sepOf)
+  }
 }
 
 /** One file or folder of the workspace's folder (a real path inside `root`) to Trash. Answers its row's id. */
@@ -149,7 +160,7 @@ async function trashOne(ctx: TrashCtx, workspace: WorkspaceRow, root: string, pa
   if (!locked && fileLocked(key)) throw new FileRefused('busy', WRITING)
   const under = locked ? <T,>(_keys: readonly string[], fn: () => Promise<T>): Promise<T> => fn() : withFileLocks
   return under([key], async () => {
-    closeTabsOn(ctx, workspace, root, path)
+    closeTabsOn(ctx, workspace, [key])
     // Go to forgets it at once, and everything under a folder.
     dropName(ctx.db, workspace.id, key)
     const id = randomUUID()
@@ -192,8 +203,18 @@ export function trashFiles(ctx: LocateCtx, by: Caller, workspaceId: string, refs
         }
         continue
       }
+      if (at.in === 'library') {
+        // A library on this host's disk: to this computer's own bin, from where OneDrive takes it to the library's.
+        try {
+          const { library } = doorPlace(ctx as WorkCtx, by, at)
+          trashed.push(await trashInLibrary(ctx, workspaceId, library!, at.path, op, i))
+        } catch (e) {
+          refused.push({ name: basename(at.path), text: textOf(e) })
+        }
+        continue
+      }
       if (at.in !== 'folder') {
-        refused.push({ name: at.in === 'place' || at.in === 'drive' ? at.id : basename(at.path), text: 'Only a file of the workspace\'s folder goes to Trash here.' })
+        refused.push({ name: at.id, text: 'Only a file of the workspace\'s folder goes to Trash here.' })
         continue
       }
       try {
@@ -227,9 +248,9 @@ const trailOf = (root: string, dir: string): string[] => relative(root, dir).spl
 /** The Trash lens: the workspace's held rows, newest first, as rows that name where each was. */
 export function trashEntries(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow): FileEntry[] {
   const rows = ctx.db.prepare(`SELECT * FROM work_files_trash WHERE workspace_id = ? AND state = 'held' ORDER BY deleted_at DESC, id LIMIT ?`).all(workspace.id, LIST_PAGE_MAX) as unknown as TrashRow[]
-  const root = rootOf(workspace)
-  // A row of a delete in the Windows VM names its place there and the folders below that place's top.
-  const vmPlaces = rows.some((row) => row.provider && isGuestPath(pathOf(row.ref)) && process.platform !== 'win32') ? teamsPlaces(ctx, by).places : []
+  const root = workspace.path ? rootOf(workspace) : ''
+  // A row of a delete in a library (the Windows VM's, or one on this disk) names its place and the folders below that place's top.
+  const vmPlaces = rows.some((row) => row.provider && !inDriveBin(row)) ? teamsPlaces(ctx, by).places : []
   const whereOf = (row: TrashRow): NonNullable<FileEntry['where']> => {
     if (inDriveBin(row)) {
       const at = JSON.parse(row.was_at) as { account: string; trail?: string[] }
@@ -237,7 +258,7 @@ export function trashEntries(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow
     }
     const was = pathOf(row.was_at)
     const vm = vmPlaces.find((p) => p.place.id === row.place)
-    if (vm) return { place: row.place, name: vm.place.name, trail: was.slice(vm.top.length).split('\\').filter(Boolean) }
+    if (vm) return { place: row.place, name: vm.place.name, trail: was.slice(vm.top.length).split(/[\\/]/).filter(Boolean) }
     return { place: row.place, name: workspace.name, trail: trailOf(root, was) }
   }
   return rows
@@ -262,7 +283,7 @@ export function trashEntries(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow
 /** A held row's bytes back where they were, or at the folder's top when that folder is gone, under a free name. */
 async function putBack(ctx: TrashCtx, workspace: WorkspaceRow, root: string, row: TrashRow): Promise<FileEntry> {
   if (inDriveBin(row)) return untrashInDrive(ctx, workspace, row)
-  if (row.provider) throw new Error('Put it back from the recycle bin.')
+  if (row.provider) return putBackFromBin(ctx, workspace, row)
   const from = join(binOf(ctx.dataDir, workspace.id, row.id), row.name)
   const was = pathOf(row.was_at)
   let dir = root
@@ -294,7 +315,8 @@ async function putBack(ctx: TrashCtx, workspace: WorkspaceRow, root: string, row
 /** `work.files.restore`: Put back. A row of another workspace, one not held, or one the caller could not name, is that id's refusal. */
 export function restoreRows(ctx: TrashCtx & Pick<WorkCtx, 'reaches'>, by: Caller, workspace: WorkspaceRow, ids: string[], op: string): Promise<FileDone> {
   return runOp(ctx.db, { id: op, workspaceId: workspace.id, verb: 'restore', refs: ids }, async () => {
-    const root = rootOf(workspace)
+    // A library row needs no folder here: its file goes back from the computer's own bin.
+    let root: string | null = null
     const entries: FileEntry[] = []
     const refused: FileDone['refused'] = []
     for (const id of ids) {
@@ -305,7 +327,7 @@ export function restoreRows(ctx: TrashCtx & Pick<WorkCtx, 'reaches'>, by: Caller
         continue
       }
       try {
-        entries.push(await putBack(ctx, workspace, root, mine))
+        entries.push(await putBack(ctx, workspace, mine.provider ? '' : (root ??= rootOf(workspace)), mine))
       } catch (e) {
         ctx.db.prepare(`UPDATE work_files_trash SET state = 'held' WHERE id = ? AND state = 'restoring'`).run(id)
         refused.push({ name: mine.name, text: textOf(e) })
@@ -382,52 +404,121 @@ export function removeTrashOf(ctx: Pick<WorkCtx, 'dataDir'>, workspaceId: string
   rmSync(join(trashRoot(ctx.dataDir), workspaceId), { recursive: true, force: true })
 }
 
-// ── a place others can open: the provider's own bin (not wired) ─────────
+// ── a library: the computer's own bin ─────────────────────────────────
+
+export type { SystemBin } from './bin'
+
+export const FROM_THE_BIN = 'Put it back from the recycle bin.'
+export const PLACE_ITSELF = 'A place itself cannot be deleted.'
 
 /**
- * Moves a file or folder to the system's own bin: the Finder's Trash on a Mac, the Recycle Bin on Windows, `gio
- * trash` on Linux. OneDrive then takes the delete to the library's own recycle bin.
+ * This host's own bin: the Trash on a Mac (bin.ts); on a PC the Recycle Bin through tc-office's `files.recycle`, which
+ * cancels a delete Windows would make for good (too big for the bin, a drive with none) and says where the thing
+ * lies, and its `files.restore`; `gio trash` on Linux, which never deletes for good, with no way back by path.
  */
-export function systemBin(path: string): Promise<void> {
-  const [cmd, args] =
-    process.platform === 'darwin'
-      ? ['osascript', ['-e', 'on run argv', '-e', 'tell application "Finder" to delete (POSIX file (item 1 of argv) as alias)', '-e', 'end run', path]]
-      : process.platform === 'win32'
-        ? [
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-Command',
-              "Add-Type -AssemblyName Microsoft.VisualBasic; $p = $args[0]; if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }",
-              path
-            ]
-          ]
-        : ['gio', ['trash', '--', path]]
-  return new Promise((resolve, reject) => execFile(cmd as string, args as string[], { timeout: 30_000 }, (err) => (err ? reject(err) : resolve())))
+export function systemBin(): SystemBin {
+  if (process.platform === 'darwin') return macBin()
+  if (process.platform === 'win32') {
+    const helper = (): NonNullable<ReturnType<typeof desktopHelper>> => {
+      const got = desktopHelper()
+      if (!got) throw new Error('tc-office is not running on this PC.')
+      return got
+    }
+    return {
+      put: async (path, op) => (await helper().call<{ bin?: string }>('files.recycle', { path, op: `${op}:bin` })).bin || null,
+      back: async (bin, to, op) => (await helper().call<{ entry: { path: string } }>('files.restore', { bin, to, op: `${op}:back` })).entry.path
+    }
+  }
+  return gioBin()
+}
+
+/** His own window, as the host itself asks for its places. */
+const OWN: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
+
+/** The bin library deletes use; a test hands its own. */
+let theBin: SystemBin | null = null
+export const setSystemBin = (bin: SystemBin | null): void => void (theBin = bin)
+const binHere = (): SystemBin => (theBin ??= systemBin())
+
+/** A library file's keys: its own, and the plain one a copy's tab holds. */
+const keysOf = (ctx: Pick<WorkCtx, 'host'>, library: LibraryPlace, path: string): string[] => [libraryKey(library, path), refKey({ at: 'file', host: ctx.host, path })]
+const sameDir = (a: string, b: string): boolean => a.replace(/[\\/]+$/, '').toLowerCase() === b.replace(/[\\/]+$/, '').toLowerCase()
+
+/**
+ * A delete in a library on this host's disk (Teams, OneDrive): the row is written first (`moving`), the thing goes to
+ * this computer's own bin, never for good, and the row is held with `provider: 'onedrive'`, no bytes here, and where
+ * the bin says it lies (`bin` in its ref), from where Put back takes it. OneDrive then takes the delete to the
+ * library's own recycle bin. A Files tab on it closes first. Answers the row's id.
+ */
+export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library: LibraryPlace, path: string, op: string, i = 0, bin: SystemBin = binHere()): Promise<string> {
+  if (sameDir(path, library.top) || sameDir(path, library.library.path)) throw new FileRefused('busy', PLACE_ITSELF)
+  const keys = keysOf(ctx, library, path)
+  if (keys.some(fileLocked)) throw new FileRefused('busy', WRITING)
+  return withFileLocks([keys[0]!], async () => {
+    if (!lstatOr(path)) throw new FileRefused('gone', 'That file or folder is not there any more.')
+    const workspace = workspaceHere(ctx.db, workspaceId)
+    if (workspace) closeTabsOn(ctx, workspace, keys)
+    dropName(ctx.db, workspaceId, keys[0]!)
+    const id = randomUUID()
+    const file = { at: 'file', host: ctx.host, path }
+    ctx.db
+      .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by, provider) VALUES (?, ?, ?, ?, ?, ?, 'moving', ?, 'owner', 'onedrive')`)
+      .run(id, workspaceId, JSON.stringify(file), basename(path), library.place.id, JSON.stringify({ ...file, path: dirname(path) }), Date.now())
+    let where: string | null
+    try {
+      where = await bin.put(path, `${op}:${i}`)
+    } catch (e) {
+      // A bin that failed after the thing left (a crash on its answer's way back) moved it all the same: the row stands, with no way back by path.
+      if (lstatOr(path)) {
+        dropRow(ctx, id)
+        throw e
+      }
+      ctx.log(`files: ${basename(path)} left for the bin, whose answer failed: ${textOf(e)}`)
+      where = null
+    }
+    if (where) ctx.db.prepare(`UPDATE work_files_trash SET ref = ? WHERE id = ?`).run(JSON.stringify({ ...file, bin: where }), id)
+    holdRow(ctx, id, 'moving')
+    const dir = dirname(path)
+    filesState(ctx).lister.forget(dir)
+    try {
+      ctx.push({ push: 'work.files', workspaceId, at: libraryKey(library, dir) }, { need: 'read', path: dir })
+    } catch (err) {
+      ctx.log(`files: a changed folder's push failed: ${textOf(err)}`)
+    }
+    changed(ctx, workspaceId, null)
+    return id
+  })
 }
 
 /**
- * A delete in a library (Teams, OneDrive) through the provider's own bin: the row is written first, the file goes
- * to the system's bin (`bin`), and the row is held with `provider: 'onedrive'` and no bytes here. NOT reachable
- * yet: a library's `can` has no `trash`, so the grammar refuses first ("Delete it in Teams."). It is turned on only
- * after a live proof, on an account that is not his university's, shows the provider's bin holds a file, a folder
- * and a cloud-only file.
+ * Put back of a library row: from the computer's own bin to where it was, by where the bin said it lies, never over
+ * anything ("Name (restored)" beside one of its name). A row whose bin said nothing, or a bin that cannot be asked
+ * so, says to put it back from the recycle bin.
  */
-export async function trashInLibrary(ctx: Pick<WorkCtx, 'db' | 'host'>, o: { workspaceId: string; placeId: string; path: string }, bin: (path: string) => Promise<void> = systemBin): Promise<string> {
-  if (!existsSync(o.path)) throw new FileRefused('gone', 'That file or folder is not there any more.')
-  const id = randomUUID()
-  const file = { at: 'file', host: ctx.host, path: o.path }
-  ctx.db
-    .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by, provider) VALUES (?, ?, ?, ?, ?, ?, 'moving', ?, 'owner', 'onedrive')`)
-    .run(id, o.workspaceId, JSON.stringify(file), basename(o.path), o.placeId, JSON.stringify({ ...file, path: dirname(o.path) }), Date.now())
-  try {
-    await bin(o.path)
-  } catch (e) {
-    dropRow(ctx, id)
-    throw e
+async function putBackFromBin(ctx: TrashCtx, workspace: WorkspaceRow, row: TrashRow): Promise<FileEntry> {
+  const ref = JSON.parse(row.ref) as { path: string; bin?: string }
+  if (!ref.bin) throw new Error(FROM_THE_BIN)
+  const guest = isGuestPath(ref.path) && process.platform !== 'win32'
+  const op = `restore:${row.id}`
+  let back: FileEntry
+  if (guest) back = await vmRestore(ctx as WorkCtx, workspace.id, { path: ref.path, bin: ref.bin, place: row.place }, op)
+  else {
+    const bin = binHere()
+    if (!bin.back) throw new Error(FROM_THE_BIN)
+    const path = await bin.back(ref.bin, ref.path, op)
+    const got = await filesState(ctx).lister.row(path)
+    const at = teamsPlaces(ctx as WorkCtx, OWN).places.find((p) => p.place.id === row.place)
+    back =
+      at && got
+        ? libraryEntry(at, dirname(path), got)
+        : { key: refKey({ at: 'file', host: ctx.host, path }), ref: { at: 'file', host: ctx.host, path }, folder: null, name: basename(path), kind: kindOfEntry(basename(path)).kind, shared: true }
+    const dir = dirname(path)
+    filesState(ctx).lister.forget(dir)
+    if (at) ctx.push({ push: 'work.files', workspaceId: workspace.id, at: libraryKey(at, dir) }, { need: 'read', path: dir })
   }
-  holdRow(ctx, id, 'moving')
-  return id
+  dropRow(ctx, row.id)
+  changed(ctx, workspace.id, null)
+  return back
 }
 
 // ── a Google Drive: Drive's own bin ───────────────────────────────────

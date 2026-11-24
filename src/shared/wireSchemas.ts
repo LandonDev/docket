@@ -1545,7 +1545,7 @@ export const FileEntrySchema = z.object({
   madeBy: z.string().optional(),
   fresh: z.boolean().optional(),
   starred: z.boolean().optional(),
-  held: z.object({ id: z.string(), verb: z.enum(['make', 'rename', 'move', 'copy']) }).optional()
+  held: z.object({ id: z.string(), verb: z.enum(['make', 'rename', 'move', 'copy', 'trash']) }).optional()
 })
 /** `work.files.places`, as the phone reads it: `sources` (why a Teams place is not listed) stays the desktop's. */
 export const FilesPlacesPhoneSchema = z.object({ host: z.string(), places: z.array(FilePlaceSchema), rev: z.number() })

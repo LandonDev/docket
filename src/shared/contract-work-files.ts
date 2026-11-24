@@ -73,8 +73,8 @@ export type FileOrigin = z.infer<typeof FileOriginSchema>
 export const FILE_MAKE_KINDS = MAKE_KINDS
 export type FileMakeKind = (typeof FILE_MAKE_KINDS)[number]
 
-/** The verbs a thread's change in a place others can open is held as (`file.act`). A delete there is the provider's, refused before any hold. */
-export const FILE_ACT_VERBS = ['make', 'rename', 'move', 'copy'] as const
+/** The verbs a thread's change in a place others can open is held as (`file.act`): a delete there too, which his press sends to the computer's own bin. */
+export const FILE_ACT_VERBS = ['make', 'rename', 'move', 'copy', 'trash'] as const
 export type FileActVerb = (typeof FILE_ACT_VERBS)[number]
 
 /**
