@@ -9,6 +9,7 @@ import {
   NOTES_MECHANICS,
   NOTES_REARM_MS,
   NOTES_REMINDER_CONTEXT,
+  WORK_NOTES_MECHANICS,
   STEER_MECHANICS,
   isCommitCall,
   isNoteDecisionCall,
@@ -16,10 +17,11 @@ import {
   notesAfterCompaction,
   wrapSteer
 } from './notesPrompts'
-import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
+import { MASTER_MECHANICS, chatSpawnPrompt, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
 import { appNoteDecision, appUpdateNotes, setAppBridge } from './apptools'
 import { NOTES_STREAK_STOP } from '@shared/notes'
+import { WORK_SETTING_KEY } from '@shared/work'
 import { cancelMirrors, threadDigest, writeThreadDigest } from './mirror'
 import { readFile } from 'node:fs/promises'
 
@@ -161,6 +163,19 @@ describe('the reminder after a commit', () => {
     settle()
     await flush()
     // The parent hears the settle; nobody hears a notes reminder.
+    expect(sends.some((t) => t.includes('<notes-reminder'))).toBe(false)
+  })
+
+  it('a Work thread is never reminded of a commit', async () => {
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const s = await registry.create({ scope: 'work', threadType: 'chat', workspaceId: null, provider: 'claude' })
+    expect(s.scope).toBe('work')
+    await registry.send(s.id, 'tidy the folder')
+    await flush()
+    running()
+    emit!({ type: 'tool-call', callId: 'c1', name: 'Bash', input: { command: 'git commit -am "x"' } })
+    settle()
+    await flush()
     expect(sends.some((t) => t.includes('<notes-reminder'))).toBe(false)
   })
 })
@@ -426,6 +441,20 @@ describe('the mechanics text', () => {
     expect(NOTES_MECHANICS).toMatch(/Never update them in place of doing the task/)
     expect(NOTES_MECHANICS).not.toMatch(/after every decision/)
     expect(NOTES_REARM_MS).toBe(15 * 60_000)
+  })
+
+  it("a Work thread's mechanics name no branch, commit or merge; a code thread's keep them", async () => {
+    expect(NOTES_MECHANICS).toContain('— files, commands, ids, branches, URLs that matter.')
+    expect(NOTES_MECHANICS).toContain('when work lands or gets blocked (State), after a commit or merge. One call')
+    expect(WORK_NOTES_MECHANICS).toContain('— files, links and ids that matter.')
+    expect(WORK_NOTES_MECHANICS).toContain('when a step is done or gets blocked (State). One call')
+    expect(WORK_NOTES_MECHANICS).not.toMatch(/branch|commit|merge/i)
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const work = await registry.create({ scope: 'work', threadType: 'chat', workspaceId: null, provider: 'claude' })
+    const code = await registry.create({ projectId: 'p1', threadType: 'chat', provider: 'claude' })
+    expect(chatSpawnPrompt(work)).toContain(WORK_NOTES_MECHANICS)
+    expect(chatSpawnPrompt(work)).not.toContain(NOTES_MECHANICS)
+    expect(chatSpawnPrompt(code)).toContain(NOTES_MECHANICS)
   })
 
   it('tells a commit from any shell tool and the notes tool from any surface', () => {

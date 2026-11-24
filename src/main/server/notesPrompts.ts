@@ -1,5 +1,7 @@
 import { NOTE_SECTIONS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { NOTE_DECISION_TOOL_NAME } from '@shared/away'
+import type { SessionMeta } from '@shared/events'
+import { sessionScopeOf } from '@shared/work/ids'
 
 /**
  * What the harness is told about its working notes (threadNotes.ts), and
@@ -11,14 +13,33 @@ import { NOTE_DECISION_TOOL_NAME } from '@shared/away'
  * preamble (threads.ts).
  */
 
-export const NOTES_MECHANICS = `## Working notes (every thread keeps them)
+/** The notes mechanics, with the Pointers line and the update moments as one thread kind reads them. A code
+ *  thread's words name branches and commits; a Work thread's (a job's mail, files and documents) do not. */
+function notesMechanics(pointers: string, moments: string): string {
+  return `## Working notes (every thread keeps them)
 This thread has a notes file the app keeps beside its attachments (notes.md) and shows live in the Notes panel. It is the ONE document that survives a context compaction (the app re-sends it after each one) and seeds any successor thread (a digest or a plan hand-off carries it ahead of the transcript). Keep it current with the ${UPDATE_NOTES_TOOL_NAME} tool, one section per call (replace, or append a paragraph), under these fixed headings:
 - ${NOTE_SECTIONS[0]} — what the thread is for, in two lines.
 - ${NOTE_SECTIONS[1]} — the choices made and why, newest last.
 - ${NOTE_SECTIONS[2]} — what is done, what is in flight, what is blocked. Its first line is the one-line status: the thread's row shows it while the thread waits on the person.
-- ${NOTE_SECTIONS[3]} — files, commands, ids, branches, URLs that matter.
+- ${NOTE_SECTIONS[3]} — ${pointers}
 - ${NOTE_SECTIONS[4]} — what is unresolved, and for whom.
-Update when something real changes: once the goal and plan are clear (Goal, Pointers), when you make a decision, when work lands or gets blocked (State), after a commit or merge. One call per section that changed. A task of a few steps needs no notes. Never update them in place of doing the task, and never only because the app showed them to you. Notes are a brief, not a transcript: short lines, concrete names, no narration. The person may edit the file between your calls and ${UPDATE_NOTES_TOOL_NAME} reads it first, so never rewrite the whole thing from memory — update the section that changed.`
+Update when something real changes: once the goal and plan are clear (Goal, Pointers), ${moments} One call per section that changed. A task of a few steps needs no notes. Never update them in place of doing the task, and never only because the app showed them to you. Notes are a brief, not a transcript: short lines, concrete names, no narration. The person may edit the file between your calls and ${UPDATE_NOTES_TOOL_NAME} reads it first, so never rewrite the whole thing from memory — update the section that changed.`
+}
+
+export const NOTES_MECHANICS = notesMechanics(
+  'files, commands, ids, branches, URLs that matter.',
+  'when you make a decision, when work lands or gets blocked (State), after a commit or merge.'
+)
+
+/** A Work thread's notes mechanics: no branches, commits or merges. */
+export const WORK_NOTES_MECHANICS = notesMechanics(
+  'files, links and ids that matter.',
+  'when you make a decision, when a step is done or gets blocked (State).'
+)
+
+/** The notes mechanics a thread is handed: a Work thread's words, else a code thread's. */
+export const notesMechanicsFor = (session: Pick<SessionMeta, 'scope'>): string =>
+  sessionScopeOf(session) === 'work' ? WORK_NOTES_MECHANICS : NOTES_MECHANICS
 
 /** The rule every harness gets about a person's message into its turn,
  *  beside the notes mechanics (orchestration.ts for claude's system
@@ -37,6 +58,8 @@ export const NOTES_REMINDER_CONTEXT = `<notes-reminder reason="context">
 This window is close to compaction. If the notes are behind what you know, bring the sections that changed current with ${UPDATE_NOTES_TOOL_NAME}, one call each, then carry on with the task. If they are current, carry on.
 </notes-reminder>`
 
+/** Sent after a code thread's turn that committed or merged without updating the notes; never to a Work
+ *  thread (sessions.ts counts no commit for one). */
 export const NOTES_REMINDER_COMMIT = `<notes-reminder reason="commit">
 The turn that just ended committed or merged work but did not update the notes. Call ${UPDATE_NOTES_TOOL_NAME} now — State (what landed, what remains), Pointers (branch, commit, files), Decisions if any — then stop. Do not start new work in this turn.
 </notes-reminder>`

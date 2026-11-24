@@ -13,7 +13,9 @@
   person's edit since the last call is never overwritten. Mechanics text
   (`NOTES_MECHANICS`, src/main/server/notesPrompts.ts) rides every claude
   system prompt through `orchestratorMechanics` and, for other harnesses,
-  the first-message preamble's app-tools note.
+  the first-message preamble's app-tools note. A Work thread reads
+  `WORK_NOTES_MECHANICS` instead (`notesMechanicsFor`): no branches,
+  commits or merges.
 - The app reminds the thread twice: a `<notes-reminder reason="context">`
   whispered into the live turn when the context meter passes 0.7 of the
   window, asking for an update only if the notes are behind; once per
@@ -21,7 +23,7 @@
   it re-arms only 15 minutes after the last reminder and never within 15
   minutes of an `update_notes` (`NOTES_REARM_MS`, notesPrompts.ts); and a
   `<notes-reminder reason="commit">` as the app's own short turn (a
-  `turn-pass` marker reading "Notes") when a root thread's turn committed
+  `turn-pass` marker reading "Notes") when a root code thread's turn committed
   or merged (`isCommitCall`) without an `update_notes` call and none in the
   last 15 minutes; with a queued message the reminder rides ahead of it
   instead.

@@ -191,7 +191,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
   })
 
   it('lists a Work thread no code tool and refuses a call to one without asking the app; a code thread lists them all', async () => {
-    const hidden = ['merge_branch', 'plan_complete', 'batch_gate', 'batch_rules']
+    const hidden = ['merge_branch', 'report_findings', 'plan_complete', 'batch_gate', 'batch_rules']
     const work = await startBridge((request, ws) => reply(ws, request, 'ok'), { TEMP_CODE_SCOPE: 'work' })
     const names = (await work.request(1, 'tools/list')).result.tools.map((t) => t.name)
     expect(names.filter((n) => hidden.includes(n))).toEqual([])

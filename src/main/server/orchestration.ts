@@ -1,5 +1,5 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
-import { NOTES_MECHANICS, STEER_MECHANICS } from './notesPrompts'
+import { notesMechanicsFor, STEER_MECHANICS } from './notesPrompts'
 import { awayMechanics } from './awayPrompts'
 import { nanoid } from 'nanoid'
 import { computerMechanicsFor } from './apptools'
@@ -1368,7 +1368,7 @@ export const ORCHESTRATOR_TOOLS = [
 // table), rendered to text — and enforced in code where possible (tool
 // denial in the driver, spawn caps above).
 
-const orchestratorMechanics = (rules: OrchestrationRules, role: PolicyRole = 'thread'): string =>
+const orchestratorMechanics = (rules: OrchestrationRules, role: PolicyRole, notes: string): string =>
   `
 You can orchestrate subagents across providers with the orchestrator tools
 (spawn_agent, send_to_agent, check_agent, wait_for_agent, answer_agent,
@@ -1439,7 +1439,7 @@ when its warm context genuinely helps (same files, same subsystem);
 otherwise spawn fresh agents scoped to the new request. Never leave
 follow-up work implicit or bolt it onto a finished agent's stale task.
 
-${NOTES_MECHANICS}
+${notes}
 
 ${STEER_MECHANICS}`.trim()
 
@@ -1557,7 +1557,7 @@ export function masterPinNotice(master: boolean): string {
 export function mechanicsFor(session: SessionMeta): string {
   // COMPUTER_MECHANICS rides here for claude alone: a codex or Muse thread reads it in its first message (sessions.ts)
   const computer = session.provider === 'claude' ? computerMechanicsFor(session) : ''
-  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session))}\n\n${awayMechanics(awayNow())}${computer ? `\n\n${computer}` : ''}`
+  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session), notesMechanicsFor(session))}\n\n${awayMechanics(awayNow())}${computer ? `\n\n${computer}` : ''}`
   return isMasterSession(session) ? `${base}\n\n${MASTER_MECHANICS}` : base
 }
 
@@ -1590,11 +1590,12 @@ independent review, a second opinion — and supervise what you spawn.`
 /** Mechanics for chat threads: conversation first, delegation when real
  *  work would help the discussion. */
 export function chatSpawnPrompt(session: SessionMeta): string {
+  // a Work chat's own example: a job's mail and documents, never code
+  const example = sessionScopeOf(session) === 'work' ? 'reading through a long mail thread or a folder of documents' : 'mapping\nexisting code'
   return `${mechanicsFor(session)}
 
 This is a conversation thread: think with the user by default. Spawn
-subagents when concrete work would sharpen the discussion — mapping
-existing code, an experiment, an independent second opinion — and
+subagents when concrete work would sharpen the discussion — ${example}, an experiment, an independent second opinion — and
 supervise what you spawn while the conversation continues.`
 }
 

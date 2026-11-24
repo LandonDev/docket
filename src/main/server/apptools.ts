@@ -306,8 +306,8 @@ export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | 
   return renderComputerMechanics({ ...wordsFor(session), search: claude && !eagerComputer(session, host), provenance: provenanceOf(session), held: !claude, platform })
 }
 
-/** The code tools' methods: merge, the plan's completion, a batch's gate and landing rules. A Work thread is listed none of them, by any harness. */
-export const WORK_HIDDEN_METHODS: ReadonlySet<string> = new Set(['app.mergeBranch', 'app.planComplete', 'app.batchGate', 'app.batchRules'])
+/** The code tools' methods: merge, a merge review's findings, the plan's completion, a batch's gate and landing rules. A Work thread is listed none of them, by any harness. */
+export const WORK_HIDDEN_METHODS: ReadonlySet<string> = new Set(['app.mergeBranch', 'app.reportFindings', 'app.planComplete', 'app.batchGate', 'app.batchRules'])
 
 /** Why a Work thread's app.* call is refused, or null: the code tools are not a Work thread's, whichever harness asks (the bridge lists them none). */
 export function workBridgeRefusal(method: string, params: unknown, get: (sessionId: string) => Pick<SessionMeta, 'scope'> | null | undefined): string | null {
@@ -1084,9 +1084,9 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             })
           ]
         : []),
-      // report_findings only for the reviewer thread of a run: the handle
+      // report_findings only for the reviewer thread of a run, never a Work thread: the handle
       // boots after the run is registered, so the check at boot is current.
-      ...(mergeReviews()?.isReviewer(session.id)
+      ...(!work && mergeReviews()?.isReviewer(session.id)
         ? [
             tool(REPORT_FINDINGS_TOOL_NAME, REPORT_FINDINGS_TOOL_DESCRIPTION, REPORT_FINDINGS_SHAPE, async (args) =>
               text(mergeReviews()?.reportFindings(session, args) ?? 'refused: merge reviews are not available here')

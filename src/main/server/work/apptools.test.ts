@@ -103,7 +103,7 @@ describe('the tools a Work thread is listed', () => {
 
   it("the app refuses a Work thread's code-tool calls whichever harness asks, and a code thread's pass on", () => {
     const get = (id: string): SessionMeta | null => registry.get(id)
-    for (const method of ['app.mergeBranch', 'app.planComplete', 'app.batchGate', 'app.batchRules']) {
+    for (const method of ['app.mergeBranch', 'app.reportFindings', 'app.planComplete', 'app.batchGate', 'app.batchRules']) {
       expect(workBridgeRefusal(method, { sessionId: work.id }, get)).toBe(`refused: ${method} is not a Work thread's tool`)
       expect(workBridgeRefusal(method, { sessionId: chat.id }, get)).toBe(`refused: ${method} is not a Work thread's tool`)
       expect(workBridgeRefusal(method, { sessionId: code.id }, get)).toBeNull()

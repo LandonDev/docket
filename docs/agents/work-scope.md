@@ -82,7 +82,7 @@ a pillar knows (a guest link, a shared LifeOS document) is not guessed yet.
 | `app_list_threads`, `app_read_thread` | its own scope's threads only | apptools.ts |
 | `send_to_agent`, `wait_for_agent`, `check_agent`, `answer_agent`, `interrupt_agent` | never a thread outside its scope, however it came to hang under it | `supervisedBy`, orchestration.ts |
 | a batch | one scope: a Work master takes only Work threads of its workspace; a Work thread joins no other batch, and none on another host | `assertBatchScope`, sessions.ts; `thread.adopt`, crossHostThreads.ts |
-| `merge_branch`, `batch_gate`, `batch_rules`, the plan tools | not listed, by Claude's server or by the stdio bridge (told `TEMP_CODE_SCOPE=work`, `WORK_HIDDEN`), and the app refuses their `app.*` methods for a Work row whichever harness asks | `appToolsMcp`, `workBridgeRefusal`, apptools.ts; scripts/app-mcp-bridge.mjs |
+| `merge_branch`, `report_findings`, `batch_gate`, `batch_rules`, the plan tools | not listed, by Claude's server or by the stdio bridge (told `TEMP_CODE_SCOPE=work`, `WORK_HIDDEN`), and the app refuses their `app.*` methods for a Work row whichever harness asks | `appToolsMcp`, `workBridgeRefusal`, apptools.ts; scripts/app-mcp-bridge.mjs |
 | the Mac bridge's tools, computer use carried to a Mac | only when the workspace's Work settings name that Mac (`mayUseDesktop`); a Work Chat never. Checked when the tools are mounted and again at every call, so taking a Mac off the list stops a running thread | `mayUseFarDesktop`, work/scope.ts; the hook in drivers/claude.ts; every `mac.*` call at dispatch in macTools.ts (`MAC_NOT_FOR_WORKSPACE`), whichever harness makes it |
 | `windows_apps`, `windows_observe`, `windows_act`, `windows_batch`, `windows_result` (the Windows VM) | only a thread of a workspace whose Work settings turn on "Computer use on the Windows VM" (`windowsVm`, on for a new Work workspace), on the host that keeps the VM, once it is set up; a Work Chat never. Checked when the tools are listed and again at every call, so turning the setting off stops a running thread. One thread uses the VM at a time | `vmOffered`, work/winvm/tools.ts; the lease, work/winvm/lease.ts; [work-winvm.md](work-winvm.md) "The service on the box" |
 | add-ons | its own Work workspace's rows, and the global rows marked for Work (`addons.for_work`); a child never sees more than its parent. On a host where Work's rule did not come up, a Work row reads none (`WORK_UNSCOPED`) | `workspaceIdOf`, `visibleAddons`, addons/scope.ts |
@@ -482,6 +482,33 @@ The text is, in order (work/preamble.ts):
 `WORK_STANDING_RULE` is the same rule in three sentences. It sits where a
 compaction does not reach: Claude's system prompt and Codex's developer
 instructions.
+
+### No code words in a Work thread's instructions
+
+The thread-type text a Work thread reads speaks of no branches, commits,
+merges, codebase or code-only thread types. Each Work variant sits beside
+the code text, and a code thread reads the code text byte for byte as
+before (threads.test.ts, sessions-notes.test.ts):
+
+- A chat's handoffs (`workChatHandoffs`, threads.ts): a research thread,
+  or another chat, the only roots a Work thread may start
+  (`WORK_THREAD_TYPES`); no plan or build, no "which thread type"
+  question. Confirm only deletes and sending things, never "prod changes".
+- A research thread draws on the live web and the job's own files (mail,
+  documents, the files in its workspace folder); their file paths count
+  as sources.
+- The app tools note names no `planPath` and no planning thread reporting
+  back.
+- The project context (`projectContext`) names no branch and no
+  `plan-*.md`; a durable outcome is "a decision, a document or file
+  finished, an approach abandoned".
+- The notes mechanics are `WORK_NOTES_MECHANICS` (notesPrompts.ts,
+  `notesMechanicsFor`): Pointers are files, links and ids, and nothing
+  waits on a commit or merge. Claude reads them in its system prompt
+  (`mechanicsFor`), the other harnesses in their first message. The
+  reminder after a commit never fires for a Work thread (sessions.ts).
+- Claude's chat append gives reading a long mail thread or a folder of
+  documents as its reason to spawn, where a code chat's maps code.
 
 ## With the switch off, and for a code thread
 

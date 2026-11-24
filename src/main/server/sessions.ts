@@ -5253,9 +5253,10 @@ export class SessionRegistry {
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete') {
-      // A root thread that committed or merged this turn without touching
-      // its notes owes a reminder turn once it settles (idle below).
-      if (this.turnCommitted.has(sessionId) && !this.turnNoted.has(sessionId) && !persisted?.parentId) {
+      // A root code thread that committed or merged this turn without touching
+      // its notes owes a reminder turn once it settles (idle below). A Work
+      // thread is never told of commits: its notes speak of no git.
+      if (this.turnCommitted.has(sessionId) && !this.turnNoted.has(sessionId) && !persisted?.parentId && sessionScopeOf(persisted ?? {}) !== 'work') {
         this.notesDue.add(sessionId)
       }
       this.turnCommitted.delete(sessionId)

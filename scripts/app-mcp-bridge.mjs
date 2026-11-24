@@ -24,7 +24,7 @@
  *   TEMP_CODE_COMPUTER_TOKEN  enables computer_* tools discovered from the app;
  *                      each call and cancellation carries this thread's token
  *   TEMP_CODE_COMPUTER_IMAGES  'parts' for MCP images, otherwise 'none'
- *   TEMP_CODE_SCOPE    'work' for a Work thread: the code tools (merge_branch,
+ *   TEMP_CODE_SCOPE    'work' for a Work thread: the code tools (merge_branch, report_findings,
  *                      plan_complete, batch_gate, batch_rules) are not
  *                      listed, and a call to one is refused here and by the app
  *   TEMP_CODE_WORK_TOKEN  set only for a thread whose Work scope has tools at
@@ -911,7 +911,7 @@ export const ADDON_CALL_TOOLS = [
 ]
 
 /** The code tools a Work thread is not listed (apptools.ts WORK_HIDDEN_METHODS on the app's side). */
-export const WORK_HIDDEN = new Set(['merge_branch', 'plan_complete', 'batch_gate', 'batch_rules'])
+export const WORK_HIDDEN = new Set(['merge_branch', 'report_findings', 'plan_complete', 'batch_gate', 'batch_rules'])
 
 /** The tools this thread lists: the add-on finder only with add-ons in scope, the Mac's only while its bridge is on, no code tool for a Work thread. */
 export function listedTools(macToken = MAC_TOKEN, addons = ADDONS, work = WORK_SCOPE) {
