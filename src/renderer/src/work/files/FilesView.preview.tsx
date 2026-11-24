@@ -381,7 +381,7 @@ const saveLines: { name: string; line: SavedLine | null }[] = [
   { name: "Run of show.md", line: { state: "offline", pending: 3, actions: [{ id: "retry", label: "Retry", run: noop }] } },
   { name: "Run of show.md", line: { state: "conflict", detail: "This file changed at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep mine as a copy", run: noop }] } },
   { name: "Vendor contacts.xlsx", line: { state: "copy", detail: "MacBook", actions: [{ id: "there", label: "Open on MacBook", run: noop }] } },
-  { name: "Ballroom contract.pdf", line: { state: "readonly", detail: "a mail's file", actions: [{ id: "keep", label: "Keep", run: noop }] } },
+  { name: "Ballroom contract.pdf", line: { state: "readonly", detail: "a mail's file", actions: [{ id: "keep", label: "Save to workspace", run: noop }] } },
   { name: "Stage plot.pdf", line: { state: "downloading", detail: "2.1 of 8.4 MB" } },
   { name: "Site policy.docx", line: { state: "asleep", detail: "The Windows VM", at: NOW - 25 * 60_000, actions: [{ id: "wake", label: "Wake it", run: noop }] } },
   { name: "Assets.zip", line: null },
