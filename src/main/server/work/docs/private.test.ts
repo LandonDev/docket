@@ -11,6 +11,7 @@ import { createCollabSigner, fileDocName, generateCollabKeys, TEMPCODE_COLLAB_AU
 import * as Y from 'yjs'
 import type { ClientRequest } from '@shared/contract'
 import type { DocOpen } from '@shared/contract-work-docs'
+import { filesPaneOf } from '@shared/work'
 import type { ExportAnswer, ImportAnswer, PreviewAnswer } from '@shared/contract-work-formats'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { formats } from '../formats/index'
@@ -56,7 +57,11 @@ const CORPUS = join(dirname(createRequire(import.meta.url).resolve('work-kit/for
 const SUGGESTED = 'Zanzibar budget review'
 const open: { dirs: string[]; services: RunningService[]; convex: FakeConvex[]; ctxs: WorkCtx[]; clients: CollaborationClient[] } = { dirs: [], services: [], convex: [], ctxs: [], clients: [] }
 
+/** The canvas items each pane shows, by its session: emptied after each test. */
+const shown: { sessionId: string; kind: string; source: { at: string; path?: string } }[] = []
+
 afterEach(async () => {
+  shown.length = 0
   setCloudDir(() => join(homedir(), 'Library', 'CloudStorage'))
   await Promise.all(open.clients.splice(0).map((c) => c.destroy()))
   for (const ctx of open.ctxs.splice(0)) {
@@ -151,7 +156,8 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
       get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', kind: 'document', source: null } : null),
       replace: () => ({ id: 'i9' }),
       onReplaced: () => () => {},
-      forSession: () => []
+      // What each pane shows: a test seats a document in a Files tab by pushing it here.
+      forSession: (id: string) => shown.filter((item) => item.sessionId === id)
     },
     threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => said.some((words) => words.includes(quote) && (!about || about.some((name) => words.toLowerCase().includes(name.toLowerCase())))) },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
@@ -294,6 +300,8 @@ describe("the document kept for a Word file of another computer", () => {
     r.db
       .prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at, auto) VALUES ('ws1', 'env_mac', '/Teams/General/Plan.docx', 0, 'Plan.docx', 'v0', 'sha', ?, ?, NULL, NULL, ?, 1)`)
       .run(source.path, Math.round(statSync(source.path).mtimeMs), Date.now())
+    // Open in a Files tab, as it is whenever he types in it: the autosave looks again only at a document a tab shows (files/word.ts).
+    shown.push({ sessionId: filesPaneOf('ws1'), kind: 'document', source })
     return source
   }
   /** The autosave, run as if the document had been still for its pause: it sees the live revision, then a pause later saves. */
