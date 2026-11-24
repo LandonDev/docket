@@ -401,7 +401,7 @@ describe("the other states", () => {
 
   it("claims no empty list where a source of it did not answer: one muted line says it is not whole, and the red line over the sections says why", () => {
     const { view, now } = fixtureView("full");
-    const bare = (left: string[]) => ({ ...view, review: { ...view.review!, shipped: [], slipped: [], left, known: { calendar: !left.includes(LEFT.calendar), desk: true, shipped: !left.includes(LEFT.held), slipped: false } } });
+    const bare = (left: string[]) => ({ ...view, review: { ...view.review!, shipped: [], slipped: [], left, known: { calendar: !left.includes(LEFT.calendar), calendarCounted: !left.includes(LEFT.calendar), desk: true, shipped: !left.includes(LEFT.held), slipped: false } } });
     const { unmount, container } = render(<ReviewPageView view={bare([LEFT.calendar])} now={now} gone={new Set()} canOpen={() => true} onOpen={vi.fn()} onPress={vi.fn()} onRetry={vi.fn()} />);
     expect(text(section("Slipped"))).toBe("Slipped Some of it could not be read");
     expect(text(section("Shipped"))).toBe("Shipped Nothing went out");
@@ -433,7 +433,7 @@ describe("the other states", () => {
   it("waits, and claims nothing, while a host is still answering: an empty list and a job with no hours are bones until all are in", () => {
     const { view, now } = fixtureView("clear");
     // The first host is in; the second has not answered yet, so "nothing" is not known and nothing has failed.
-    const partial = { ...view, settled: false, review: { ...view.review!, known: { calendar: true, desk: false, shipped: false, slipped: false } } };
+    const partial = { ...view, settled: false, review: { ...view.review!, known: { calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false } } };
     const { rerender, props, container } = draw("clear", { view: partial, now });
     expect(text(section("Slipped"))).toBe("Slipped");
     expect(section("Slipped").querySelector("[data-review-pending]")).not.toBeNull();

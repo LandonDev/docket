@@ -181,6 +181,15 @@ describe('how long the threads worked', () => {
     expect((await scan()).ran).toEqual([[0, 20 * MIN]])
   })
 
+  it('counts a turn that started before the week’s end and was running only after it, as the scan inside the span does', async () => {
+    // A host's start: `starting` Sunday 11:58 PM, `running` Monday 12:01 AM, `idle` 12:10 AM. Read after it settled.
+    rig.session('start', { status: 'idle' })
+    rig.status('start', WEEK.to - 2 * MIN, 'starting')
+    rig.status('start', WEEK.to + MIN, 'running')
+    rig.status('start', WEEK.to + 10 * MIN, 'idle')
+    expect((await scan()).ran).toEqual([[0, 2 * MIN]])
+  })
+
   it('counts a quiet week whole for a turn open across it: no row of its own in the span', async () => {
     rig.session('quiet', { status: 'idle' })
     rig.status('quiet', WEEK.from - HOUR, 'running')

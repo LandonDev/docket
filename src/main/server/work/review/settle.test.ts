@@ -4,7 +4,7 @@ import { review } from '.'
 import { LEFT } from '@shared/work/review'
 import { NO_JOB_HERE, NOT_A_PERSON, OPEN_IN_OUTBOX, settle, undo, UNDO_GONE, UNDO_MOVED, undoCount, WAIT_CHANGED } from './settle'
 import { hiddenKeys } from './store'
-import { approver, DAY, HOUR, makeRig, MON, reader, thread, TZ, WEEK, window, type Rig } from './testkit'
+import { approver, DAY, HOUR, makeRig, MIN, MON, reader, thread, TZ, WEEK, window, type Rig } from './testkit'
 
 /** His presses on a slipped row: each reaches its thing's own write and nothing else, and what can be taken back is. */
 
@@ -143,6 +143,15 @@ describe('a held item', () => {
     await press(heldRow, 'later')
     await undo(window, token!, NOW)
     expect([...hiddenKeys(rig.db, NOW)]).toEqual([])
+  })
+
+  it('an older press’s Undo never takes back a newer decision on the same row', async () => {
+    // Two windows: Next week in the first, then None needed in the second while its row still showed.
+    const { undo: first } = await press(meeting, 'later')
+    await settle(rig.ctx, window, { row: meeting, how: 'drop', tz: TZ }, NOW + MIN)
+    await expect(undo(window, first!, NOW + 2 * MIN)).rejects.toThrow(UNDO_MOVED)
+    // The meeting stays away for good, as he said last.
+    expect([...hiddenKeys(rig.db, WEEK.to + 365 * DAY)]).toEqual(['meeting:e1'])
   })
 
   it('Discard is the Outbox’s own discard, as his press, and cannot be taken back', async () => {

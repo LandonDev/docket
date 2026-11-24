@@ -105,8 +105,10 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
         probe: db.prepare(`SELECT seq, ts FROM ${table} WHERE session_id = ? AND seq >= ? ORDER BY seq LIMIT 1`),
         // Only short rows are looked at, so a tool's output in the rows before the span is never loaded.
         prior: db.prepare(`SELECT json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq DESC LIMIT 1`),
-        // The first status at or past the span's end, among short rows a bounded way on: what closed a turn open there.
-        next: db.prepare(`SELECT ts, json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq LIMIT 1`),
+        // The first status at or past the span's end that is not a working one, among short rows a bounded way on: what
+        // closed a turn open there. A working status on the way (`starting` then `running`, as a host's start writes
+        // them) is the same open turn, as it is inside the span.
+        next: db.prepare(`SELECT ts, json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' AND json_extract(payload, '$.status') NOT IN (${[...WORKING].map((w) => `'${w}'`).join(', ')}) ORDER BY seq LIMIT 1`),
         // The time of the last row before the span's end, of any kind (a tool's output too), by its key alone.
         lastBefore: db.prepare(`SELECT ts FROM ${table} WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT 1`),
         heads: db.prepare(`SELECT seq, length(payload) AS n FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ${HEADS}`),
@@ -168,8 +170,8 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
      */
     const openEnd = (): number => {
       const next = st.next.get(s.id, last, last + LOOK_AHEAD) as { ts: number; st: string | null } | undefined
-      if (next?.st && !WORKING.has(next.st)) return next.ts
-      if (!next && WORKING.has(s.status)) return week.to
+      if (next) return next.ts
+      if (WORKING.has(s.status)) return week.to
       return (st.lastBefore.get(s.id, last) as { ts: number } | undefined)?.ts ?? lo
     }
 

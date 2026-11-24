@@ -136,6 +136,19 @@ describe('the meetings judged', () => {
     expect(merged.slipped.map((r) => r.key)).not.toContain('meeting:old')
   })
 
+  it('says Prep unread on a host whose LifeOS is out, so a meeting another host lists stands as last known', async () => {
+    WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle() { return { handled: true, result: { meetings: [] } } } })
+    rig.connected = false
+    const mac = { ...(await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)), host: 'mac' }
+    expect(mac.left).toEqual([LEFT.lifeos, LEFT.prep])
+    // The box read LifeOS and judged the meeting; the Mac, which may hold its notes, could not look.
+    rig.connected = true
+    const box = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY + MIN)
+    const merged = mergeReview([{ environmentId: 'env-box', body: box }, { environmentId: 'env-mac', body: mac }], FRIDAY + MIN, { home: 'env-box' })!
+    expect(merged.slipped.filter((r) => r.ref.kind === 'meeting').map((r) => r.unchecked)).toEqual([true])
+    expect(merged.left).toContain(LEFT.prep)
+  })
+
   it('says a Prep that did not answer, and keeps every meeting as last known', async () => {
     WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle() { throw new Error('LifeOS down') } })
     const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)

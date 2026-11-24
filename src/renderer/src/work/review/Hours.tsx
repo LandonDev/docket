@@ -77,7 +77,7 @@ export function Hours({
       ))}
       {/* The bar's key. A narrow page draws no bar, so the shapes go and the two sentences run on. */}
       <p className="flex flex-wrap gap-x-3 pt-2 text-xs text-muted-foreground @max-[30rem]/page:block">
-        {known.calendar ? (
+        {known.calendarCounted ? (
           <span className="inline-flex items-center gap-1 @max-[30rem]/page:inline">
             <span aria-hidden className={cn(KEY, "bg-muted-foreground")} />
             {CALENDAR_NOTE}{" "}
@@ -92,7 +92,7 @@ export function Hours({
   );
 }
 
-function HoursRow({ job, hours, compare, money, scale, known, pending, startOpen = false }: { job: MergedJob; hours: JobHours | null; compare: string | null; money: JobMoney | null; scale: number; known: { calendar: boolean; desk: boolean }; pending: boolean; startOpen?: boolean }) {
+function HoursRow({ job, hours, compare, money, scale, known, pending, startOpen = false }: { job: MergedJob; hours: JobHours | null; compare: string | null; money: JobMoney | null; scale: number; known: { calendar: boolean; calendarCounted: boolean; desk: boolean }; pending: boolean; startOpen?: boolean }) {
   const [open, setOpen] = useState(startOpen);
   const total = hours ? totalWords(hours) : null;
   // While a host is still answering, what desk time stands on is not all in and nothing has failed: the words wait as a bone.
@@ -144,8 +144,8 @@ function HoursRow({ job, hours, compare, money, scale, known, pending, startOpen
       <CollapsibleContent>
         {/* On the row's own grid: a fact's name under the job's, its value from the bar's edge. A narrow page sets the name over the value. */}
         <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-2 gap-y-1 pb-2 ps-6 pt-1 text-xs leading-4 @max-[30rem]/page:grid-cols-1">
-          {/* With the calendar unread there is no calendar fact to state, not "Nothing"; a job with none of his own time states neither of his. */}
-          {facts && total && known.calendar ? <Fact name="On the calendar" values={[facts.calendar]} details={facts.calendarDetail ? [facts.calendarDetail] : []} /> : null}
+          {/* With the calendar unread there is no calendar fact to state, not "Nothing": a calendar counted only part of the span states its time, never its "Nothing". A job with none of his own time states neither of his. */}
+          {facts && total && known.calendarCounted && (known.calendar || hours!.calendarMs > 0) ? <Fact name="On the calendar" values={[facts.calendar]} details={facts.calendarDetail ? [facts.calendarDetail] : []} /> : null}
           {facts?.desk ? <Fact name="At the desk" values={[facts.desk]} details={facts.deskDetail ? `from ${facts.deskDetail}`.split(", ") : []} /> : null}
           {facts?.ran ? <Fact name="Threads ran" values={[facts.ran]} details={["not counted in your hours"]} /> : null}
           {/* Money owns every sum of money: these are its own, for the same days. */}

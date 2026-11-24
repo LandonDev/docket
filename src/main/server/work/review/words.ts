@@ -25,7 +25,7 @@ export function reviewText(body: ReviewBody, now: number, money: { in: number; o
   else {
     const f = factsOf(hours)
     lines.push(`- In all: ${total}`)
-    if (r.known.calendar) lines.push(`- On the calendar (measured): ${f.calendar}${f.calendarDetail ? `, ${f.calendarDetail}` : ''}`)
+    if (r.known.calendarCounted && (r.known.calendar || hours.calendarMs > 0)) lines.push(`- On the calendar (measured): ${f.calendar}${f.calendarDetail ? `, ${f.calendarDetail}` : ''}`)
     if (f.desk) lines.push(`- At the desk (an estimate, never a measure): ${f.desk}${f.deskDetail ? `, from ${f.deskDetail}` : ''}`)
   }
   const ran = hours ? factsOf(hours).ran : null

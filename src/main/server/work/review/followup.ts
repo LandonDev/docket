@@ -20,6 +20,9 @@ export function followedUp(event: Pick<ReviewEvent, 'id' | 'endsAt' | 'addresses
  * the mail rule stands alone. A Prep that does not answer is null, which the caller says: an empty set there would
  * list a meeting he followed up as not.
  */
+/** Whether this host runs Prep at all. */
+export const prepHere = (): boolean => !!WORK_MODULES.find((m) => (m.id as string) === 'prep')?.handle
+
 export async function preppedAfter(ctx: WorkCtx, from: number, to: number): Promise<Set<string> | null> {
   const prep = WORK_MODULES.find((m) => (m.id as string) === 'prep')
   if (!prep?.handle || to <= from) return new Set()

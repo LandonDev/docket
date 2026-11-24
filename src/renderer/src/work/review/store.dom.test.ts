@@ -165,7 +165,7 @@ describe("the week across hosts", () => {
     const view = reviewNow(WEEK);
     // Its old part still stands in the numbers, as last known; nothing is settled, compared or called empty on it.
     expect(view.settled).toBe(false);
-    expect(view.review!.known).toEqual({ calendar: true, desk: false, shipped: false, slipped: false });
+    expect(view.review!.known).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false });
     expect(view.review!.slipped.filter((r) => r.unchecked).map((r) => r.key)).toEqual(["env-mac:held:host:h1"]);
     await loadWeek(WEEK);
     expect(reviewNow(WEEK)).toMatchObject({ settled: true, review: { known: { desk: true, slipped: true } } });
@@ -228,13 +228,13 @@ describe("the week across hosts", () => {
     const before = { from: WEEK.from - 7 * 86_400_000, to: WEEK.to - 7 * 86_400_000, lifeos: { events: [{ sector: "cosmic", from: WEEK.from - 6 * 86_400_000, to: WEEK.from - 6 * 86_400_000 + 8 * 3_600_000 }], sent: [] }, points: [] };
     bodies.box = { ...bodies.box!, before };
     await loadWeek(WEEK);
-    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, desk: true, shipped: true, slipped: true });
+    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, calendarCounted: true, desk: true, shipped: true, slipped: true });
     expect(reviewNow(WEEK).review!.compare.map((c) => c.job)).toEqual(["cosmic"]);
     // The Mac times out: its old part still stands in the totals, so nothing is compared and no "nothing" is claimed.
     links["env-mac"]!.answer = () => new Error("the request timed out");
     await loadWeek(WEEK);
     expect(reviewNow(WEEK).review!.compare).toEqual([]);
-    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, desk: false, shipped: false, slipped: false });
+    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false });
     // Off: out of both weeks alike, so the comparison holds; what it holds is still not known.
     links["env-mac"]!.status = offline;
     await loadWeek(WEEK);
@@ -346,7 +346,8 @@ describe("the week across hosts", () => {
     await loadWeek(WEEK);
     const view = reviewNow(WEEK);
     expect(view.review!.lifeosFrom).toBe("env-mac");
-    expect(view.review!.left).toEqual([LEFT.held]);
+    // The meetings listed are the home's, by his marks there: with its LifeOS out they stand as last known, and say so.
+    expect(view.review!.left).toEqual([LEFT.held, LEFT.meetings]);
   });
 
   it("is not settled, and has no review, until a host has answered", () => {

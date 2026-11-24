@@ -140,24 +140,28 @@ export async function settle(ctx: WorkCtx, by: Caller, p: { row: SlippedRef; how
       return { undo: null }
     }
     const key = heldKey(row.ref)
-    const back = unmark(ctx, key)
-    setMark(ctx.db, { key, how: 'later', until: monday }, now)
-    return kept(back)
+    return kept(mark(ctx, { key, how: 'later', until: monday }, now))
   }
 
   // A meeting: following up is a thread he starts in the window, so only the two marks land here.
   if (how === 'now') throw new Error('Start the follow-up from the page: it opens a new thread about the meeting.')
   const key = `meeting:${row.eventId}`
-  const back = unmark(ctx, key)
-  setMark(ctx.db, { key, how, until: how === 'later' ? monday : null }, now)
-  return kept(back)
+  return kept(mark(ctx, { key, how, until: how === 'later' ? monday : null }, now))
 }
 
 /**
- * What takes a mark back: the mark that stood before it put back whole, or none. A meeting he put off last week is
- * in this week's review because of that older mark; an Undo that only deleted the new one would lose the meeting.
+ * Sets a mark, and answers what takes it back: the mark that stood before it put back whole, or none. A meeting he
+ * put off last week is in this week's review because of that older mark; an Undo that only deleted the new one would
+ * lose the meeting. The Undo acts only while the mark this press wrote still stands: a later press in another window
+ * ("None needed" after this "Next week") is his newer decision, and an older token never undoes it.
  */
-function unmark(ctx: WorkCtx, key: string): () => Promise<void> {
-  const before: (Mark & { at: number }) | null = markOf(ctx.db, key)
-  return async () => (before ? setMark(ctx.db, before, before.at) : dropMark(ctx.db, key))
+function mark(ctx: WorkCtx, m: Mark, now: number): () => Promise<void> {
+  const before: (Mark & { at: number }) | null = markOf(ctx.db, m.key)
+  setMark(ctx.db, m, now)
+  return async () => {
+    const stands = markOf(ctx.db, m.key)
+    if (!stands || stands.how !== m.how || stands.until !== m.until || stands.at !== now) throw new Error(UNDO_MOVED)
+    if (before) setMark(ctx.db, before, before.at)
+    else dropMark(ctx.db, m.key)
+  }
 }

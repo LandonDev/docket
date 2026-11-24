@@ -374,7 +374,9 @@ describe('what is kept', () => {
     expect(noCalendar.left).toEqual([LEFT.calendarKept])
     const r = mergeReview([{ environmentId: 'env-box', body: noCalendar }], later)!
     expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(HOUR)
-    expect(r.known.calendar).toBe(true)
+    // Counted and shown, but no "nothing" stands on it: it was read only to Friday's make.
+    expect(r.known.calendarCounted).toBe(true)
+    expect(r.known.calendar).toBe(false)
     expect(r.known.slipped).toBe(false)
     // LifeOS out altogether: its kept facts show, and the line says they are as last read.
     const dark = mergeKept(kept, body({ over: true, madeAt: later, jobs, left: [LEFT.lifeos] }), later)
@@ -382,6 +384,24 @@ describe('what is kept', () => {
     expect(mergeReview([{ environmentId: 'env-box', body: dark }], later)!.left).toEqual([LEFT.lifeosKept])
     // A kept read that had failed too is no stand-in: the line stays as it was.
     expect(mergeKept({ ...kept, left: [LEFT.calendar] }, body({ over: true, madeAt: later, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar] }), later).left).toEqual([LEFT.calendar])
+  })
+
+  it('never calls a calendar no read held empty: a Friday whose calendar failed, looked back on with LifeOS down', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const later = WEEK.to + HOUR
+    const jobs = [{ workspaceId: 'w-purdue', sector: 'purdue' as const, name: 'Purdue' }]
+    const kept = body({ madeAt: friday, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar], read: { sent: friday, answered: friday, done: friday, due: friday, waits: friday } })
+    const dark = mergeKept(kept, body({ over: true, madeAt: later, jobs, left: [LEFT.lifeos] }), later)
+    expect(dark.left).toEqual([LEFT.lifeosKept, LEFT.calendar])
+    const r = mergeReview([{ environmentId: 'env-box', body: dark }], later)!
+    expect(r.known.calendar).toBe(false)
+    expect(r.known.calendarCounted).toBe(false)
+    // An empty Friday calendar, the Monday read failing: what was read is shown, and no "nothing" stands on it.
+    const empty = body({ madeAt: friday, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, read: { events: friday, sent: friday, answered: friday, done: friday, due: friday, waits: friday, meetings: friday } })
+    const monday = mergeKept(empty, body({ over: true, madeAt: later, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar], read: { sent: later, answered: later, done: later, due: later, waits: later } }), later)
+    const r2 = mergeReview([{ environmentId: 'env-box', body: monday }], later)!
+    expect(r2.known.calendar).toBe(false)
+    expect(r2.known.calendarCounted).toBe(true)
   })
 
   it('a kept calendar stands in for one that failed, cut to the moment it was read', () => {
@@ -495,7 +515,8 @@ describe('one review from every host’s part', () => {
     const r = mergeReview([down, parts[1]!], now, { home: 'env-box' })!
     expect(r.lifeosFrom).toBe('env-mac')
     // The box could not reach LifeOS but the Mac could: only what is still missing is said.
-    expect(r.left).toEqual([LEFT.held])
+    // The meetings listed are the box's, by his marks there: with its LifeOS out they stand as last known, and say so.
+    expect(r.left).toEqual([LEFT.held, LEFT.meetings])
     expect(r.hours[0]!.calendarMs).toBe(HOUR)
   })
 
@@ -503,9 +524,9 @@ describe('one review from every host’s part', () => {
     // The box's calendar failed; the Mac read everything. The box is home.
     const half = { environmentId: 'env-box', body: { ...box, lifeos: { ...lifeos, events: [] }, left: [LEFT.calendar] } }
     const r = mergeReview([half, parts[1]!], now, { home: 'env-box' })!
-    expect(r.lifeosFrom).toBe('env-mac')
+    // The calendar is the Mac's; the meetings stay the box's (his marks are there), unjudged, and say so.
     expect(r.hours[0]!.calendarMs).toBe(HOUR)
-    expect(r.left).toEqual([])
+    expect(r.left).toEqual([LEFT.meetings])
     expect(r.known.calendar).toBe(true)
     // Only the box has LifeOS, from an answer before this one timed out: its empty calendar is not "nothing".
     const old = mergeReview([{ environmentId: 'env-box', body: { ...box, lifeos: { ...lifeos, events: [] } }, stale: true }, { environmentId: 'env-mac', body: { ...mac, lifeos: null, left: [LEFT.lifeos] } }], now, { home: 'env-box', fresh: false })!
@@ -522,12 +543,10 @@ describe('one review from every host’s part', () => {
     const r = mergeReview([boxPart, macPart], now, { home: 'env-box' })!
     expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(HOUR)
     expect(r.shipped.filter((x) => x.kind === 'finished').map((x) => [x.key, x.environmentId])).toEqual([['done:k1', 'env-box']])
-    expect(r.left).toEqual([])
-    // Each row is the part's that read it, and its press goes there.
-    expect(r.slipped.filter((x) => x.ref.kind !== 'held').map((x) => [x.key, x.environmentId]).sort()).toEqual([
-      ['meeting:e1', 'env-mac'],
-      ['task:k9', 'env-box']
-    ])
+    // Each row is the part's that read it, and its press goes there; the meetings are the home's alone, by his marks
+    // there, so the Mac's meeting (judged without them) is not listed, and the box's unjudged meetings say so.
+    expect(r.left).toEqual([LEFT.meetings])
+    expect(r.slipped.filter((x) => x.ref.kind !== 'held').map((x) => [x.key, x.environmentId]).sort()).toEqual([['task:k9', 'env-box']])
     expect(r.known.calendar).toBe(true)
   })
 
@@ -544,6 +563,94 @@ describe('one review from every host’s part', () => {
     // Up to the box's read neither week has anything: "nothing by this point last week" would compare the Mac's
     // afternoon with a week cut at noon.
     expect(r.compare).toEqual([])
+  })
+
+  it('lists the meetings from the home, whose marks they follow, though another read of the home failed', () => {
+    const meeting = (id: string) => slip(`meeting:${id}`, { ref: { kind: 'meeting', eventId: id }, title: id })
+    const reads = { events: MON + 4 * 24 * HOUR, sent: MON + 4 * 24 * HOUR, answered: MON + 4 * 24 * HOUR, waits: MON + 4 * 24 * HOUR, meetings: MON + 4 * 24 * HOUR }
+    const made = MON + 4 * 24 * HOUR
+    // On the box he marked "Budget review" None needed and put "Roster call" off into this week; its tasks read failed.
+    const boxPart = { environmentId: 'env-box', body: { ...box, madeAt: made, left: [LEFT.tasks], read: reads, slipped: { at: made, rows: [meeting('roster')] } } }
+    // The Mac read everything, with none of the box's marks: Budget review is open there, the Roster call unknown.
+    const macPart = { environmentId: 'env-mac', body: { ...mac, madeAt: made, read: { ...reads, done: made, due: made }, slipped: { at: made, rows: [meeting('budget')] } } }
+    const r = mergeReview([boxPart, macPart], made, { home: 'env-box' })!
+    expect(r.slipped.filter((x) => x.ref.kind === 'meeting').map((x) => [x.key, x.environmentId, !!x.unchecked])).toEqual([['meeting:roster', 'env-box', false]])
+    // The box's put-off meeting could not be read: its rows stand as last known, and the line stays.
+    const carriedFailed = { ...boxPart, body: { ...boxPart.body, left: [LEFT.carried], read: { ...reads, done: made, due: made, meetings: undefined } } }
+    const r2 = mergeReview([carriedFailed, macPart], made, { home: 'env-box' })!
+    expect(r2.slipped.filter((x) => x.ref.kind === 'meeting').map((x) => [x.key, !!x.unchecked])).toEqual([['meeting:roster', true]])
+    expect(r2.left).toContain(LEFT.carried)
+    expect(r2.known.slipped).toBe(false)
+  })
+
+  it('takes each mail and task list from a host that read that list: the box’s sent mail and the Mac’s answers both stand', () => {
+    const made = MON + 4 * 24 * HOUR
+    const boxPart = { environmentId: 'env-box', body: { ...box, madeAt: made, lifeos: { ...lifeos, answered: [] }, left: [LEFT.mail], read: { events: made, sent: made, done: made, due: made } } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, madeAt: made, lifeos: { ...lifeos, sent: [] }, left: [LEFT.mail], read: { events: made, answered: made, waits: made, meetings: made } } }
+    const r = mergeReview([boxPart, macPart], made, { home: 'env-box' })!
+    expect(r.shipped.filter((x) => x.kind === 'sent' || x.kind === 'answered').map((x) => [x.kind, x.environmentId]).sort()).toEqual([
+      ['answered', 'env-mac'],
+      ['sent', 'env-box']
+    ])
+    expect(r.left).not.toContain(LEFT.mail)
+  })
+
+  it('says no "nothing" of calendar time its read did not reach, while still counting what it did', () => {
+    const noon = MON + 3 * 24 * HOUR + 12 * HOUR
+    // The box read the calendar at noon; the Mac woke at 5 PM and answered alone since.
+    const boxPart = { environmentId: 'env-box', body: { ...box, madeAt: noon, read: { events: noon, sent: noon, answered: noon, done: noon, due: noon, waits: noon, meetings: noon } } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, lifeos: null, madeAt: noon + 5 * HOUR, left: [LEFT.lifeos] } }
+    const r = mergeReview([boxPart, macPart], noon + 5 * HOUR, { home: 'env-box' })!
+    expect(r.madeAt).toBe(noon + 5 * HOUR)
+    expect(r.known.calendarCounted).toBe(true)
+    expect(r.known.calendar).toBe(false)
+    // Read to the span's end, it may.
+    expect(mergeReview([boxPart], noon, { home: 'env-box' })!.known.calendar).toBe(true)
+  })
+
+  it('compares a running week across a clock change over the same length of time in both weeks', () => {
+    // Chicago, the week of March 9 2026, read 167½ hours in; the week before had a clock change and 167 hours.
+    const week = weekOf(Date.parse('2026-03-11T12:00:00Z'), TZ)
+    const prev = stepWeek(week, -1, TZ)
+    expect(prev.to - prev.from).toBe(167 * HOUR)
+    const read = week.from + 167.5 * HOUR
+    const ev = (id: string, from: number, ms: number) => ({ id, sector: 'purdue' as const, title: id, startsAt: from, endsAt: from + ms, allDay: false, declined: false, hidden: false, people: [], others: 0, addresses: [] })
+    const part = {
+      environmentId: 'env-box',
+      body: {
+        ...box,
+        from: week.from,
+        to: week.to,
+        madeAt: read,
+        lifeos: { events: [ev('a', week.from + 10 * HOUR, 5.75 * HOUR), ev('late', week.from + 167 * HOUR, 0.5 * HOUR)], sent: [], done: [], answered: [], answeredSince: null },
+        points: [],
+        ran: [],
+        slipped: { at: read, rows: [] },
+        shipped: [],
+        before: { from: prev.from, to: prev.to, lifeos: { events: [{ sector: 'purdue' as const, from: prev.from + 10 * HOUR, to: prev.from + 14 * HOUR }], sent: [] }, points: [] }
+      }
+    }
+    const r = mergeReview([part], read)!
+    expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(6.25 * HOUR)
+    // Over the 167 hours both cover, 5 h 45 m against 4 h moves less than two hours: no line.
+    expect(r.compare).toEqual([])
+  })
+
+  it('keeps a week’s own Friday list over a host that looks the week up for the first time, and checks it with that read', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const monday = WEEK.to + 9 * HOUR
+    const late = slip('task:late')
+    // The box kept Friday's list; on Monday its tasks read answered (the task is done) and its calendar failed.
+    const boxPart = { environmentId: 'env-box', body: { ...box, over: true, madeAt: monday, left: [LEFT.calendar], read: { sent: monday, answered: monday, done: monday, due: monday, waits: monday }, slipped: { at: friday, rows: [{ ...late, open: false }] } } }
+    // The Mac was away on Friday: its first read of the week knows only what is open now.
+    const macPart = { environmentId: 'env-mac', body: { ...mac, over: true, madeAt: monday, read: { events: monday, sent: monday, answered: monday, done: monday, due: monday, waits: monday, meetings: monday }, slipped: { at: monday, rows: [] } } }
+    const r = mergeReview([boxPart, macPart], monday, { home: 'env-box' })!
+    expect(r.slipped.filter((x) => x.ref.kind === 'task').map((x) => [x.key, x.open])).toEqual([['task:late', false]])
+    expect(r.slippedAt).toBe(friday)
+    // A kept row the box could not check is checked by the Mac's read of the same list.
+    const unread = { ...boxPart, body: { ...boxPart.body, left: [LEFT.tasks], read: { sent: monday, answered: monday, waits: monday }, slipped: { at: friday, rows: [late] } } }
+    const r2 = mergeReview([unread, macPart], monday, { home: 'env-box' })!
+    expect(r2.slipped.filter((x) => x.ref.kind === 'task').map((x) => [x.key, x.open, !!x.unchecked])).toEqual([['task:late', false, false]])
   })
 
   it('files a held row by its own sector when its workspace is another job’s', () => {
@@ -692,18 +799,18 @@ describe('one review from every host’s part', () => {
 
   it('says where an empty list is known to be empty', () => {
     const known = (left: string[], over: Partial<ReviewBody> = {}, opts: { fresh?: boolean; whole?: boolean } = {}) => mergeReview([{ environmentId: 'env-box', body: { ...box, left, ...over } }], now, opts)!.known
-    expect(known([])).toEqual({ calendar: true, desk: true, shipped: true, slipped: true })
-    expect(known([LEFT.calendar])).toEqual({ calendar: false, desk: true, shipped: true, slipped: false })
-    expect(known([LEFT.mail])).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
-    expect(known([LEFT.tasks])).toEqual({ calendar: true, desk: true, shipped: false, slipped: false })
+    expect(known([])).toEqual({ calendar: true, calendarCounted: true, desk: true, shipped: true, slipped: true })
+    expect(known([LEFT.calendar])).toEqual({ calendar: false, calendarCounted: false, desk: true, shipped: true, slipped: false })
+    expect(known([LEFT.mail])).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false })
+    expect(known([LEFT.tasks])).toEqual({ calendar: true, calendarCounted: true, desk: true, shipped: false, slipped: false })
     // What he approved goes out through the held items, and deciding one is desk time.
-    expect(known([LEFT.held])).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
-    expect(known([LEFT.threads])).toEqual({ calendar: true, desk: false, shipped: true, slipped: true })
-    expect(known([LEFT.files])).toEqual({ calendar: true, desk: false, shipped: true, slipped: true })
+    expect(known([LEFT.held])).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false })
+    expect(known([LEFT.threads])).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: true, slipped: true })
+    expect(known([LEFT.files])).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: true, slipped: true })
     // The mail he sent is desk time too: with LifeOS out neither is known.
-    expect(known([LEFT.lifeos], { lifeos: null })).toEqual({ calendar: false, desk: false, shipped: false, slipped: false })
+    expect(known([LEFT.lifeos], { lifeos: null })).toEqual({ calendar: false, calendarCounted: false, desk: false, shipped: false, slipped: false })
     // A host that is off, or did not answer this time, holds threads and held items nobody read.
-    for (const gap of [{ whole: false }, { fresh: false }]) expect(known([], {}, gap)).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
+    for (const gap of [{ whole: false }, { fresh: false }]) expect(known([], {}, gap)).toEqual({ calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false })
   })
 
   it('says "nothing" of a job with no hours only as far as it was read', () => {

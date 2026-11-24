@@ -183,7 +183,7 @@ export function ReviewPageView({
   // and Slipped's meetings, a held item Shipped's approvals, Slipped's rows and desk time. Threads and document
   // history feed Hours alone and are said there. The first red line on the page carries the one Retry.
   // A host that did not answer says whether what it answered before still stands in the numbers.
-  const over = [...view.errors.map((e) => `${e.name} did not answer: ${e.error.replace(/\.$/, "")}.${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.tasks, LEFT.tasksKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried, LEFT.prep, LEFT.held)];
+  const over = [...view.errors.map((e) => `${e.name} did not answer: ${e.error.replace(/\.$/, "")}.${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.tasks, LEFT.tasksKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried, LEFT.meetings, LEFT.prep, LEFT.held)];
   // A list read in part is a fact of the week, as a host that is off is: one muted line each, with no Retry, since
   // asking again reads the same cut list. It still keeps every "nothing" and comparison off.
   const part = of(LEFT.mailPart, LEFT.heldPart, LEFT.filesPart);

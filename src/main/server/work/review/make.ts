@@ -1,9 +1,9 @@
-import { countedSpan, LEFT, stepWeek, type HostPoint, type ReviewBefore, type ReviewBody, type ReviewEvent, type ReviewLifeos, type ReviewSent, type SlippedRow } from '@shared/work/review'
+import { countedSpan, LEFT, stepWeek, type HostPoint, type Reads, type ReviewBefore, type ReviewBody, type ReviewEvent, type ReviewLifeos, type ReviewSent, type SlippedRow } from '@shared/work/review'
 import type { SectorKey } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { PREP_UPCOMING_MAX_MS } from '@shared/contract-work-prep'
 import type { WorkCtx } from '../modules'
-import { meetingsSlipped, preppedAfter } from './followup'
+import { meetingsSlipped, preppedAfter, prepHere } from './followup'
 import { eventById, eventsBetween, ownAddresses } from './gather/calendar'
 import { jobsOf, type Asked } from './gather/common'
 import { fileFacts } from './gather/files'
@@ -68,8 +68,14 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   let beforeLifeos: ReviewBefore['lifeos'] = null
   let prepped: string[] = []
   const slipped: SlippedRow[] = []
-  if (!ctx.lifeos.connected()) left.push(LEFT.lifeos)
-  else {
+  // Each of LifeOS's lists this read holds whole, as of now: the merge takes a list only from a host that read it.
+  const read: Reads = {}
+  if (!ctx.lifeos.connected()) {
+    left.push(LEFT.lifeos)
+    // Prep reads LifeOS too: on a host that has Prep and a job, a meeting followed up here cannot be told apart from
+    // one that was not, so the meetings every host lists stand as last known.
+    if (prepHere() && jobs.list.length > 0) left.push(LEFT.prep)
+  } else {
     const owner = ctx.lifeos.owner()
     const lifeosLeft: string[] = []
     // Without his own addresses he would be "someone else" on every event: no meeting is judged on that read, and the
@@ -97,6 +103,12 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     else prepped = [...inPrep]
     if (!events && !sent && !done && !answered && !due && !waits) left.push(LEFT.lifeos)
     else {
+      if (events) read.events = a.now
+      if (sent) read.sent = a.now
+      if (answered) read.answered = a.now
+      if (done) read.done = a.now
+      if (due) read.due = a.now
+      if (waits && !waits.part) read.waits = a.now
       if (waits?.part) lifeosLeft.push(LEFT.mailPart)
       left.push(...lifeosLeft)
       lifeos = { events: events ?? [], sent: sent ?? [], done: done ?? [], answered: answered?.rows ?? [], answeredSince: answered?.answeredSince ?? null }
@@ -115,6 +127,8 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
         const sentEarlier = back.length ? await ask(ctx, left, LEFT.mail, 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked)) : []
         const judged = sentEarlier ? [...events, ...back] : events
         slipped.push(...meetingsSlipped(judged, [...(sentEarlier ?? []), ...sent, ...sentAfter], { from: a.from, cut }, hidden, inPrep ?? new Set(), new Set(back.map((e) => e.id))))
+        // Judged whole only with every put-off meeting read and the mail since them.
+        if (sentEarlier && !left.includes(LEFT.carried)) read.meetings = a.now
       }
       // Both or neither: half of last week's facts would turn a failed read into a change in his hours.
       if (eventsBefore && sentBefore) beforeLifeos = { events: spansOf(eventsBefore, asked.before), sent: sentBefore.map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }
@@ -147,6 +161,7 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     shipped: held?.shipped ?? [],
     before: asked.before.to > asked.before.from ? { from: asked.before.from, to: asked.before.to, lifeos: beforeLifeos, points: before } : null,
     left,
+    read,
     // The meetings this host's Prep calls dealt with: the window drops them whoever's rows it lists, since a job's
     // Prep pages live on the host that holds its workspace.
     ...(prepped.length ? { prepped } : {})
