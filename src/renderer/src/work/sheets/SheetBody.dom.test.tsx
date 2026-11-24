@@ -7,7 +7,7 @@
  * person's op brought in, the written line, charts and pictures, and the switch.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import { SHEET_EDIT_MAX, SHEET_LOAD_MAX, SHEET_NOTES } from "@shared/contract-work-sheets";
 import type { CanvasItem } from "@shared/work";
@@ -798,6 +798,9 @@ describe("the sheet kind", () => {
   });
 
   it("spins the full editor's side while the host starts it, and takes one press at a time", async () => {
+    // The desktop app's bridge: the full editor is offered only where its app can carry it (fullHere.ts).
+    (window as { api?: unknown }).api = { app: { openFullEditor: async () => {} } };
+    onTestFinished(() => void delete (window as { api?: unknown }).api);
     let started = (): void => {};
     open(sheetView({ reach: { parts: ["pivot tables", "charts"], to: "full" } }));
     sheetHost.switchWait = new Promise<void>((resolve) => (started = resolve));
