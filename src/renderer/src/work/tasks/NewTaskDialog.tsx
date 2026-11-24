@@ -7,7 +7,7 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 
 /**
  * New task (prototype workspace.html, the Tasks header's verb): a plain write
@@ -89,7 +89,7 @@ function Body({
         },
         (err: unknown) => {
           setPending(false);
-          setError(refusalWords(err) || "LifeOS refused it");
+          setError(workErrorWords(err) || "LifeOS refused it");
         },
       );
       return;
@@ -103,7 +103,7 @@ function Body({
       },
       (err: unknown) => {
         setPending(false);
-        setError(refusalWords(err) || "LifeOS refused it");
+        setError(workErrorWords(err) || "LifeOS refused it");
       },
     );
   };

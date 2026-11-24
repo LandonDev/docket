@@ -10,7 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
@@ -218,7 +218,7 @@ export function StartPlaceForm({
       // The reads showed it landed while the answer was out: the dialog has closed on that.
       if (finished.current) return;
       setPending(null);
-      const words = refusalWords(err) || "LifeOS refused it";
+      const words = workErrorWords(err) || "LifeOS refused it";
       // A refusal is an answer: nothing landed, and nothing is left to look for.
       if (words !== UNSURE) setSent(null);
       setError(words);

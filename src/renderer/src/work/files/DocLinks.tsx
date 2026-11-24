@@ -6,7 +6,7 @@ import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { KindGlyph } from "./KindGlyph";
 import { openSaveAs } from "./saveAsPort";
@@ -67,7 +67,7 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
     void registry
       .linkOf(link)
       .request<DocLink[]>("work.files.linkAct", { workspaceId: workspace.id, id: l.id, act }, { timeoutMs: 180_000 })
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error(act === "unlink" ? "Not unlinked" : `${l.name} was not saved`, { description: refusalWords(err) || undefined })))
+      .catch((err: unknown) => void loadToast().then((toast) => toast.error(act === "unlink" ? "Not unlinked" : `${l.name} was not saved`, { description: workErrorWords(err) || undefined })))
       .finally(() => setBusy(false));
   };
   const open = (l: DocLink, page: boolean): void =>

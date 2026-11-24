@@ -291,6 +291,33 @@ Settings → Work.
   `project.setPreamble` and `work.project.open`. Tests:
   workProjectGate.test.ts.
 
+## Errors on screen
+
+A host answers a refusal in its own words, and some were never written for
+him: a wire method's name, a path on the host's disk, an errno, a wait in
+seconds, a schema's complaint. Work words every error it shows through one
+function, `workErrorWords(error, { host?, write? })`
+(src/renderer/src/lib/workErrorWords.ts), in place of `refusalWords`:
+
+- A known raw form has its sentence (the table in that file: the fence, a
+  key that may not, a request the host could not read, Work off, no answer,
+  a dropped link, a part of Work not running, a workspace or tab that is
+  gone, the disk's errnos, a conversion with no output, LifeOS signed out, a
+  guest link elsewhere, a VM file's bytes).
+- A refusal that is already plain passes as the host wrote it.
+- Anything else that still carries a path, a method, an id, a code or a
+  stack answers "", so the caller's own line for that act shows ("Budget.xlsx
+  did not open") and the raw text does not.
+- `write: true` marks an act that changes something: a lost answer is then
+  said as uncertain ("did not confirm the change. Check whether it went
+  through"), never as failed.
+- `host` is the computer's name as the rail gives it; without it the words
+  say "that computer".
+
+A site that branches on a host's raw text (a stale version, a conflict)
+reads `err.message`, never these words. The test holds the raw lines found
+on screen to what he reads now (lib/workErrorWords.test.ts).
+
 ## Mirrors follow LifeOS
 
 A mirror is the TempCode project that holds a Work workspace's threads

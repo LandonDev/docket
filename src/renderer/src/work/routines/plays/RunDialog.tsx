@@ -11,7 +11,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 import { Spinner } from "../../../components/ui/spinner";
 import { Textarea } from "../../../components/ui/textarea";
 import { registry } from "../../../lib/connection";
-import { refusalWords } from "../../../lib/settingsHome";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { startPlay, usePlays } from "./data";
 import { alsoLine, pickerKinds, playsFor, startInputs, TAKE_LABEL, takesLeft, today } from "./model";
 
@@ -193,7 +193,7 @@ function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; 
           .request<MentionAnswer>("work.canvas.mentions", { sessionId: `play-${workspaceId}`, draft: { workspaceId, work: true }, text: query, kinds: pickerKinds(take) })
           .then(
             (a) => live && setAnswer(a.failed?.length && !a.hits?.length ? { error: "Couldn't reach LifeOS" } : { hits: a.hits ?? [] }),
-            (err: unknown) => live && setAnswer({ error: refusalWords(err) || "The host did not answer" }),
+            (err: unknown) => live && setAnswer({ error: workErrorWords(err) || "The host did not answer" }),
           ),
       query ? 120 : 0,
     );

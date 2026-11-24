@@ -8,7 +8,7 @@ import { Input } from "../../../components/ui/input";
 import { Textarea } from "../../../components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-group";
 import { registry } from "../../../lib/connection";
-import { refusalWords } from "../../../lib/settingsHome";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { blankPlay, orderedTakes, playFormProblem, TAKE_LABEL, type PlayForm } from "./model";
 
 /** What the dialog writes: a new play, an edit, his Add on a proposal or a starter, or a play saved from a thread. */
@@ -78,7 +78,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
       },
       (err: unknown) => {
         setPending(false);
-        setError(refusalWords(err) || "The host refused it");
+        setError(workErrorWords(err) || "The host refused it");
       },
     );
   };
@@ -92,7 +92,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
       () => finish(() => {}),
       (err: unknown) => {
         setOther(null);
-        setError(refusalWords(err) || "The host refused it");
+        setError(workErrorWords(err) || "The host refused it");
       },
     );
   };
@@ -109,7 +109,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
       },
       (err: unknown) => {
         setOther(null);
-        setError(refusalWords(err) || "The draft did not come back");
+        setError(workErrorWords(err) || "The draft did not come back");
       },
     );
   };

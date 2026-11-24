@@ -1,7 +1,7 @@
 import type { MoneyKept } from "@shared/contract-work-money";
 import type { ExportAnswer } from "@shared/contract-work-formats";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { request } from "./api";
 import { bytesOfBase64, partsOf } from "./receive";
 
@@ -15,7 +15,7 @@ export async function printPage(env: string, name: string, html: string): Promis
   try {
     return await registry.linkOf(env).request<ExportAnswer>("work.formats.print", { name, html, paper: "Letter" }, { timeoutMs: 2 * 60_000 });
   } catch (err) {
-    throw new Error(refusalWords(err) || "The page was not printed");
+    throw new Error(workErrorWords(err) || "The page was not printed");
   }
 }
 

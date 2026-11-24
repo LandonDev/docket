@@ -12,7 +12,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { defineChunk } from "../../lib/lazyChunk";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
 import { openWorkView, useWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
 import { resetAgendaPlace } from "../agenda/place";
@@ -88,7 +88,7 @@ function useEventId(workspaceId: string): string | null {
 
 export const eventChip = (event: { id: string; title: string }): ContextChip => ({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event.id } });
 
-const said = (err: unknown, fallback = "The host did not answer"): void => void loadToast().then((toast) => toast.error(refusalWords(err) || fallback));
+const said = (err: unknown, fallback = "The host did not answer"): void => void loadToast().then((toast) => toast.error(workErrorWords(err) || fallback));
 
 /** The header's verb now: from the page, the clock, and what this window knows of the page's two threads. */
 function useHeadVerb(page: PrepPage | null): HeadVerb {
@@ -488,7 +488,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
       try {
         now = await onDecide(ids, decision);
       } catch (err) {
-        now = ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" }));
+        now = ids.map((id) => ({ id, error: workErrorWords(err) || "The host did not answer" }));
       }
       setFailed((was) => [...was.filter((f) => !ids.includes(f.id)), ...now]);
       setFiling(false);

@@ -7,7 +7,7 @@ import { isChatSource, REPLY_MAY_HAVE_GONE, type ChatDetail, type ChatDraft, typ
 import { loadToast } from "../../components/ui/toaster";
 import { ConnectionLostError, registry, TimeoutError } from "../../lib/connection";
 import { saveDownload } from "../../lib/native";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import { shell } from "../../stores/shell";
 import { openItem } from "../canvas/store";
@@ -99,7 +99,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     try {
       return await registry.linkOf(env).request<T>(method, args);
     } catch (err) {
-      throw new Error(refusalWords(err) || "The host did not answer");
+      throw new Error(workErrorWords(err) || "The host did not answer");
     }
   };
   const write = (name: string, id: string, failed: string, onFailed?: () => void): void => {
@@ -229,7 +229,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       if (kind) {
         // The host may refuse the tab (it is away, or the pane reads no chat): say so, or the press looks dead.
         openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, messageId, file), title: file.name.slice(0, 200) }).catch((err: unknown) =>
-          loadToast().then((toast) => toast.error(refusalWords(err) || `Couldn't open ${file.name}`)),
+          loadToast().then((toast) => toast.error(workErrorWords(err) || `Couldn't open ${file.name}`)),
         );
         return;
       }
@@ -247,7 +247,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
  * request went out (a timeout, a socket that closed under it). A link that was down never sent the request at all.
  */
 export function sendFailure(err: unknown): Error {
-  const words = refusalWords(err) || "The host did not answer";
+  const words = workErrorWords(err) || "The host did not answer";
   const lost = err instanceof TimeoutError || (err instanceof ConnectionLostError && err.message === "connection closed");
   const unknown = lost || words.startsWith(REPLY_MAY_HAVE_GONE);
   return Object.assign(new Error(lost ? `${REPLY_MAY_HAVE_GONE}: the host did not answer` : words), unknown ? { unknown: true } : {});

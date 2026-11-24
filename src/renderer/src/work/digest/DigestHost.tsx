@@ -9,7 +9,7 @@ import { workPlaceRow } from "../../lib/workPlaces";
 import { openWorkPlaceAt } from "../../lib/workPlaceAt";
 import { choose, digestOpensPort, openWorkView, stillChosen, workEnterPort, workOpenPort, workViewNow } from "../../lib/workSwitch";
 import { loadToast } from "../../components/ui/toaster";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
@@ -133,7 +133,7 @@ export function DigestHost() {
           return openInFiles(workspace, { ref, name: "Untitled" }).catch((err: unknown) => {
             if (!stillChosen(mine + 1, before, workspaceId)) return;
             openWorkView({ workspaceId, view: "files" });
-            void loadToast().then((toast) => toast.error("It did not open", { description: refusalWords(err) || undefined }));
+            void loadToast().then((toast) => toast.error("It did not open", { description: workErrorWords(err) || undefined }));
           });
         });
         return true;

@@ -5,7 +5,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatBytes } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { filesLink } from "./farLink";
 import { bytesOfBase64 } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
@@ -206,7 +206,7 @@ export function MediaPlay({ from, entry, itemId, still, read = readWhole }: { fr
     setState({ is: "reading", read: 0 });
     void read(from, entry, stop.current, (n) => setState({ is: "reading", read: n }), itemId).then(
       (blob) => blob && setState({ is: "playing", url: URL.createObjectURL(blob) }),
-      (err: unknown) => setState({ is: "failed", why: refusalWords(err) || "The host did not answer." }),
+      (err: unknown) => setState({ is: "failed", why: workErrorWords(err) || "The host did not answer." }),
     );
   };
   if (state.is === "playing")
@@ -283,7 +283,7 @@ export function FilePreviewPane({
                   setFetched(entry.key);
                   setFetching(null);
                 },
-                (err: unknown) => setFetching({ key: entry.key, why: refusalWords(err) || "It did not download." }),
+                (err: unknown) => setFetching({ key: entry.key, why: workErrorWords(err) || "It did not download." }),
               );
             }}
           >

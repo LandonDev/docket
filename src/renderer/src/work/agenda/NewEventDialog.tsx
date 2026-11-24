@@ -8,7 +8,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { tellAdded } from "./added";
 import { eventPayload, type EventForm, pad } from "./newEvent";
 
@@ -107,7 +107,7 @@ function Body({
         },
         (err: unknown) => {
           setPending(false);
-          const words = refusalWords(err) || "LifeOS refused it";
+          const words = workErrorWords(err) || "LifeOS refused it";
           setError(/NEEDS_WRITE_GRANT/.test(words) ? "This calendar's Google account must be connected again before LifeOS may write to it." : words);
         },
       );

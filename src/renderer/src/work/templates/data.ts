@@ -6,7 +6,7 @@ import type { CanvasSource } from "@shared/work/canvas";
 import { dayOf, type Template, type TemplateMade } from "@shared/work/templates";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { namesTemplatesFolder } from "./model";
 
 /**
@@ -39,7 +39,7 @@ export function useTemplates(env: string, workspaceId: string): [Load<TemplatesL
     link,
     () =>
       link!.request<TemplatesList>("work.templates.list", { workspaceId }).catch((err: unknown) => {
-        throw new Error(refusalWords(err) || "The host did not answer");
+        throw new Error(workErrorWords(err) || "The host did not answer");
       }),
     workspaceId,
   );
@@ -59,7 +59,7 @@ async function ask<T>(env: string, method: string, params: object, failed: strin
   try {
     return await registry.linkOf(env).request<T>(method, params);
   } catch (err) {
-    throw new Error(refusalWords(err) || failed);
+    throw new Error(workErrorWords(err) || failed);
   }
 }
 

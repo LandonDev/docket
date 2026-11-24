@@ -3,7 +3,7 @@ import { useMailClient } from "work-kit/mail";
 import { Tip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { loadToast } from "../../../components/ui/toaster";
-import { refusalWords } from "../../../lib/settingsHome";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { openWorkView } from "../../../lib/workSwitch";
 import { Trash2 as Trash } from "../../../chrome/icons";
 import { patch, putInReply, usePage } from "../page";
@@ -79,14 +79,14 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
                     setRestored(id);
                     setGone(false);
                   },
-                  async (err: unknown) => (await loadToast()).error("Couldn't bring the draft back", { description: refusalWords(err) || undefined }),
+                  async (err: unknown) => (await loadToast()).error("Couldn't bring the draft back", { description: workErrorWords(err) || undefined }),
                 ),
             },
           }),
         ),
       async (err: unknown) => {
         setGone(false);
-        (await loadToast()).error("Couldn't discard the draft", { description: refusalWords(err) || undefined });
+        (await loadToast()).error("Couldn't discard the draft", { description: workErrorWords(err) || undefined });
       },
     );
   };

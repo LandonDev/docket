@@ -5,7 +5,7 @@ import type { CanvasSource } from "@shared/work";
 import { DEFAULT_SORT, PLACE, refKey, sortEntries, type FileEntry, type FileSort, type FolderRef } from "@shared/work/files";
 import type { LibraryPlace } from "@shared/work/filePlaces";
 import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
 import { farName, filesLink, keepFarName, reachThrough } from "./farLink";
@@ -139,7 +139,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         const current = (): boolean => live && asked.get(link) === mine;
         const failed = (err: unknown): void => {
           if (!current()) return;
-          reads.set(link, { link, name, desktop, wire: reads.get(link)?.wire ?? "files", failed: { words: refusalWords(err) || "No answer.", unreachable: unreachable(err) } });
+          reads.set(link, { link, name, desktop, wire: reads.get(link)?.wire ?? "files", failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: unreachable(err) } });
           paint();
         };
         // Past the deadline the host shows as not answering; an answer that comes later still takes its place.
@@ -756,7 +756,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   } catch (err) {
     const now = listings.get(key);
     if (!now || now.round !== round) return;
-    putListing(key, { ...now, loaded: true, loading: false, error: refusalWords(err) || "The host did not answer.", away: unreachable(err), lostPage: more });
+    putListing(key, { ...now, loaded: true, loading: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
 
@@ -833,7 +833,7 @@ export function useHome(link: string, workspaceId: string): { home: FilesHome | 
     const read = (): void =>
       void ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
         (home) => live && setState({ home, error: null }),
-        (err: unknown) => live && setState((was) => ({ home: was.home, error: refusalWords(err) || "The host did not answer." })),
+        (err: unknown) => live && setState((was) => ({ home: was.home, error: workErrorWords(err) || "The host did not answer." })),
       );
     read();
     const off = registry.linkOf(link).onPush((push) => {

@@ -3,7 +3,7 @@ import type { PrepAddedPerson, PrepAhead, PrepPage } from "@shared/contract-work
 import type { CanvasSource } from "@shared/work";
 import { attachmentSettings, blobSource, formatBytes, uploadFile, type UploadProgress } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { stillChosen, workViewNow, type OpenWorkView } from "../../lib/workSwitch";
 
 /**
@@ -73,7 +73,7 @@ export function loadPrep(environmentId: string, workspaceId: string, eventId: st
         // An answer older than what is held (a write's own answer won the race) keeps what is held.
         put(key, { ...(now?.page && page.rev < now.page.rev ? {} : { page }), loaded: true, error: null, fetching: false });
       },
-      (err: unknown) => put(key, { loaded: true, error: refusalWords(err) || "The host did not answer", fetching: false }),
+      (err: unknown) => put(key, { loaded: true, error: workErrorWords(err) || "The host did not answer", fetching: false }),
     )
     .then(() => {
       reading.delete(key);

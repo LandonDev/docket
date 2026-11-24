@@ -5,7 +5,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { decideProposal, removeRule, useDraftProposals } from "./data";
 import { Evidence } from "./Evidence";
@@ -42,7 +42,7 @@ function Line({ env, proposal, workspace, onGone }: { env: string; proposal: Rul
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
-  const failed = (what: string) => (err: unknown) => void loadToast().then((toast) => toast.error(what, { description: refusalWords(err) || undefined }));
+  const failed = (what: string) => (err: unknown) => void loadToast().then((toast) => toast.error(what, { description: workErrorWords(err) || undefined }));
 
   const undo = (rule: string): void => {
     setBusy(true);

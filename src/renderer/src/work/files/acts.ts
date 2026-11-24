@@ -6,7 +6,7 @@ import { confirmAction } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { doneWords, refusedWords, type PlaceCopy } from "./model";
 import { closeTab, tabsNow } from "./store";
 
@@ -22,7 +22,7 @@ const opId = (): string => (typeof crypto !== "undefined" && "randomUUID" in cry
 const refOf = (entry: FileEntry): FileRef => (entry.ref ?? entry.folder)!;
 const longWait = (copy: PlaceCopy): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: 120_000 } : {});
 
-const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: refusalWords(err) || undefined }));
+const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: workErrorWords(err) || undefined }));
 const said = (title: string, o: { description?: string; undo?: () => void } = {}): void =>
   void loadToast().then((toast) => toast.message(title, { ...(o.description ? { description: o.description } : {}), ...(o.undo ? { action: { label: "Undo", onClick: o.undo } } : {}) }));
 
@@ -278,7 +278,7 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
     } catch (err) {
       if (uploadId) void link.request("attachment.abort", { uploadId }).catch(() => undefined);
       if (o.signal?.aborted) break;
-      lost.push({ name: file.name, text: refusalWords(err) || "It did not upload." });
+      lost.push({ name: file.name, text: workErrorWords(err) || "It did not upload." });
     }
   }
   o.onProgress?.(null);

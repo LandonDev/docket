@@ -4,7 +4,7 @@ import { makeFunctionReference } from "convex/server";
 import { useMailClient } from "work-kit/mail";
 import { Button } from "../../../components/ui/button";
 import { loadToast } from "../../../components/ui/toaster";
-import { refusalWords } from "../../../lib/settingsHome";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { useSessionActions } from "../../../surfaces/threadChat";
 import { Runs } from "../MailCanvas";
 import { pageOf, patch } from "../page";
@@ -53,8 +53,8 @@ export function RewriteCard({ draftId, at }: { draftId: string; at: OfferAt }) {
       (err: unknown) => {
         setBusy(false);
         if (open) patch(at.workspaceId, { compose: open });
-        if (/changed|edited|version/i.test(refusalWords(err))) setDone("changed");
-        else void loadToast().then((toast) => toast.error("Couldn't settle the rewrite", { description: refusalWords(err) || undefined }));
+        if (/changed|edited|version/i.test(err instanceof Error ? err.message : String(err))) setDone("changed");
+        else void loadToast().then((toast) => toast.error("Couldn't settle the rewrite", { description: workErrorWords(err) || undefined }));
       },
     );
   };

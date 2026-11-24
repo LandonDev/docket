@@ -3,7 +3,7 @@ import { canvasSourcePath, type CanvasItem, type CanvasKind, type CanvasSource }
 import { kindOfEntry, type FileEntry } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workOpenPort } from "../../lib/workSwitch";
@@ -34,7 +34,7 @@ export interface OpenFrom {
   allowed?(): void;
 }
 
-const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: refusalWords(err) || undefined }));
+const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: workErrorWords(err) || undefined }));
 const readMs = (copy: PlaceCopy, ms: number): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: ms } : {});
 
 /** A thread's item on screen: opened and shown in its pane, the thread folded away or beside it. */

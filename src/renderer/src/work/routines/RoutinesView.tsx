@@ -9,7 +9,7 @@ import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { hostKind, platformOf } from "../../lib/hostPlatform";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { loadToast } from "../../components/ui/toaster";
 import { workOpenPort } from "../../lib/workSwitch";
 import { cn } from "../../lib/cn";
@@ -62,7 +62,7 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
       const mine = ++asked;
       return link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
         (r) => live && mine === asked && setState({ status: "ready", value: r.routines }),
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: refusalWords(err) || "The host did not answer" }),
+        (err: unknown) => live && mine === asked && setState({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
       );
     };
     void fetch();
@@ -96,7 +96,7 @@ function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | 
       .request<{ runs: RoutineRun[] }>("work.routines.runs", { id, limit: 30 })
       .then(
         (r) => live && setRuns({ id, runs: r.runs }),
-        (err: unknown) => live && setRuns({ id, runs: { error: refusalWords(err) || "The host did not answer" } }),
+        (err: unknown) => live && setRuns({ id, runs: { error: workErrorWords(err) || "The host did not answer" } }),
       );
     return () => {
       live = false;
@@ -197,7 +197,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
           () => setBusy(null),
           (err: unknown) => {
             setBusy(null);
-            void loadToast().then((toast) => toast.error(refusalWords(err) || "The host refused it"));
+            void loadToast().then((toast) => toast.error(workErrorWords(err) || "The host refused it"));
           },
         );
     },

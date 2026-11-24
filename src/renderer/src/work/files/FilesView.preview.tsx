@@ -356,7 +356,7 @@ export function FilesStates() {
         <PageView {...common} copy={asleep} listing={listing({ asOf: NOW - 25 * 60_000 })} />
       </Window>
       <Window width={720} height={300}>
-        <PageView {...common} listing={listing({ error: "No answer in 4 s", away: true })} />
+        <PageView {...common} listing={listing({ error: "The box did not answer. Try again once it is connected.", away: true })} />
       </Window>
       {notes.map((n) => (
         <Window key={n.name} width={720} height={300}>

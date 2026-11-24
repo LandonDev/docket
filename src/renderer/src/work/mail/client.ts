@@ -4,7 +4,7 @@ import { createLifeosMailClient } from "work-kit/lifeos";
 import type { MailSeen, MailSendAnswer } from "@shared/contract-work-mail";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { workOpenPort } from "../../lib/workSwitch";
 
 /**
@@ -71,7 +71,7 @@ export async function startNudge(env: string, workspaceId: string, threadId: str
     toast.dismiss(id);
     workOpenPort.get()?.(sessionId);
   } catch (err) {
-    toast.error("The nudge did not start", { id, description: refusalWords(err) || undefined });
+    toast.error("The nudge did not start", { id, description: workErrorWords(err) || undefined });
   }
 }
 

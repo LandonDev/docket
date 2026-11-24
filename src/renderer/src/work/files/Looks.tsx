@@ -11,7 +11,7 @@ import { formatBytes } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { chordKey, modOrCtrl } from "../../lib/keys";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { CanvasPane } from "../canvas/CanvasPane";
 import { sayError, useFrame } from "../canvas/frame";
@@ -239,7 +239,7 @@ function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEnt
       .request<FilesOpened>("work.files.open", { workspaceId: workspace.id, ref: entry.ref, name: entry.name, beside: thisWindow() })
       .then(
         (opened) => live && setGot({ key: entry.key, item: opened.item ?? null, ...(opened.item ? {} : { why: "A thread has it open. Open it in a tab to see it there." }) }),
-        (err: unknown) => live && setGot({ key: entry.key, item: null, why: refusalWords(err) || "It did not open." }),
+        (err: unknown) => live && setGot({ key: entry.key, item: null, why: workErrorWords(err) || "It did not open." }),
       );
     return () => {
       live = false;

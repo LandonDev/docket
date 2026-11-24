@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PlayInputs, PlayRow } from "@shared/contract-work-routines";
 import { registry } from "../../../lib/connection";
-import { refusalWords } from "../../../lib/settingsHome";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { workOpenPort } from "../../../lib/workSwitch";
 
 /**
@@ -24,7 +24,7 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
       const mine = ++asked;
       link.request<{ plays: PlayRow[] }>("work.routines.plays", { workspaceId }).then(
         (r) => live && mine === asked && setState({ status: "ready", value: r.plays }),
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: refusalWords(err) || "The host did not answer" }),
+        (err: unknown) => live && mine === asked && setState({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
       );
     };
     fetch();
@@ -49,6 +49,6 @@ export async function startPlay(env: string, playId: string, inputs: PlayInputs)
     const { sessionId } = await registry.linkOf(env).request<{ sessionId: string }>("work.routines.playStart", { id: playId, inputs });
     workOpenPort.get()?.(sessionId);
   } catch (err) {
-    throw new Error(refusalWords(err) || "The host did not start it");
+    throw new Error(workErrorWords(err) || "The host did not start it");
   }
 }

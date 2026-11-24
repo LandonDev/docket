@@ -10,7 +10,7 @@ import { reveal } from "../../components/ui/reveal";
 import { loadToast } from "../../components/ui/toaster";
 import { useSortable } from "../../hooks/useSortable";
 import { cn } from "../../lib/cn";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
 import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice, type Again } from "./data";
@@ -30,7 +30,7 @@ import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
 /** Past this many rules, a find field sits over the list. */
 const FIND_PAST = 12;
 
-const failed = (what: string) => (err: unknown) => void loadToast().then((toast) => toast.error(what, { description: refusalWords(err) || undefined }));
+const failed = (what: string) => (err: unknown) => void loadToast().then((toast) => toast.error(what, { description: workErrorWords(err) || undefined }));
 
 function Marked({ text, find }: { text: string; find: string }): ReactNode {
   if (!find) return text;

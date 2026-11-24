@@ -11,7 +11,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
 import { modOrCtrl } from "../../lib/keys";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
 import { choose, workViewNow } from "../../lib/workSwitch";
 import { Face } from "../mail/face";
@@ -101,7 +101,7 @@ export function PeopleForm({
       },
       (err: unknown) => {
         setPending(false);
-        setError(refusalWords(err) || "The host did not answer");
+        setError(workErrorWords(err) || "The host did not answer");
       },
     );
   };
@@ -221,7 +221,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     dropNotes(workspaceId, eventId);
   };
   const failed = (err: unknown) => {
-    const why = refusalWords(err) || "The host did not answer";
+    const why = workErrorWords(err) || "The host did not answer";
     setPending(null);
     setUpload(null);
     setError(why);
@@ -261,7 +261,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     void (typed.trim().length > PREP_NOTES_MAX ? Promise.reject(new Error(TOO_LONG)) : keepPrepNotes(env, workspaceId, eventId, typed, { base: kept.current })).then(
       () => dropNotes(workspaceId, eventId),
       (err: unknown) => {
-        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : err instanceof NotesChanged ? err.message : `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
+        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : err instanceof NotesChanged ? err.message : `The notes were not kept: ${workErrorWords(err) || "the host did not answer"}`);
         reopenNotes.current?.(workspaceId, eventId);
       },
     );

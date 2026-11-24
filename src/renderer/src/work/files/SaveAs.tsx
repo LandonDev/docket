@@ -12,7 +12,7 @@ import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { makeIn } from "./acts";
 import { KindGlyph } from "./KindGlyph";
@@ -108,7 +108,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
       }
       close();
     } catch (err) {
-      void loadToast().then((toast) => toast.error("Not saved", { description: refusalWords(err) || undefined }));
+      void loadToast().then((toast) => toast.error("Not saved", { description: workErrorWords(err) || undefined }));
     } finally {
       setPending(false);
     }

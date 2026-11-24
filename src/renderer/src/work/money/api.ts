@@ -4,7 +4,7 @@ import { receiptSource } from "@shared/contract-work-money";
 import type { CanvasSource } from "@shared/work/canvas";
 import type { Period, RowAt } from "@shared/work/money";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { openWorkView } from "../../lib/workSwitch";
 import { loadToast } from "../../components/ui/toaster";
 
@@ -52,7 +52,7 @@ export function useMoney(env: string, workspaceId: string, period: Period): [Mon
           if (mine === asked.current) setState({ key: of, read, error: null, loading: false });
         },
         (err: unknown) => {
-          if (mine === asked.current) setState((s) => ({ key: of, read: s.key === of ? s.read : null, error: refusalWords(err) || "The host did not answer", loading: false }));
+          if (mine === asked.current) setState((s) => ({ key: of, read: s.key === of ? s.read : null, error: workErrorWords(err) || "The host did not answer", loading: false }));
         },
       );
   }, [env, workspaceId, from, to]);
@@ -163,7 +163,7 @@ export const openReceipt = (env: string, workspaceId: string, read: MoneyRead, r
 
 /** Runs a press and says a refusal as a toast. */
 export function withToast(run: () => Promise<unknown>): void {
-  run().catch((err: unknown) => void loadToast().then((toast) => toast.error(refusalWords(err) || "The host did not answer")));
+  run().catch((err: unknown) => void loadToast().then((toast) => toast.error(workErrorWords(err) || "The host did not answer")));
 }
 
 /** A call on the workspace's host, with the host's refusal in its own words. */
@@ -171,6 +171,6 @@ export async function request<T>(env: string, method: string, params: object, o?
   try {
     return await registry.linkOf(env).request<T>(method, params, o);
   } catch (err) {
-    throw new Error(refusalWords(err) || "The host did not answer");
+    throw new Error(workErrorWords(err) || "The host did not answer");
   }
 }

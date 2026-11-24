@@ -6,7 +6,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
 /**
@@ -33,7 +33,7 @@ export function WaitingSection({ workspace }: { workspace: WorkspaceMeta }) {
     let live = true;
     ask(env, "work.mail.waiting", { workspaceId: workspace.id }).then(
       (value) => live && setLoad({ status: "ready", value }),
-      (err: unknown) => live && setLoad({ status: "error", error: refusalWords(err) || "The host did not answer" }),
+      (err: unknown) => live && setLoad({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
     ).finally(() => live && setRetrying(false));
     return () => {
       live = false;
@@ -45,7 +45,7 @@ export function WaitingSection({ workspace }: { workspace: WorkspaceMeta }) {
       setLoad({ status: "ready", value: await ask(env, "work.mail.setWaiting", { workspaceId: workspace.id, ...patch }) });
       return true;
     } catch (err) {
-      void loadToast().then((toast) => toast.error(failed, { description: refusalWords(err) || undefined }));
+      void loadToast().then((toast) => toast.error(failed, { description: workErrorWords(err) || undefined }));
       return false;
     }
   };

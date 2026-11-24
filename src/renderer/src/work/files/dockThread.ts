@@ -3,7 +3,7 @@ import type { CanvasItem, CanvasSource, ContextChip } from "@shared/work";
 import { chipsOf, fileChipOf, TOO_MANY_FILES, type FileEntry, type FilePlace } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { addContextChip, CHIPS_MAX, contextChipsOf } from "../canvas/chips";
 import { openItem } from "../canvas/store";
 import { fileOf, heldBy, type OpenFrom } from "./open";
@@ -21,7 +21,7 @@ import type { DockSubject } from "../dock/subject";
 
 type Workspace = OpenFrom["workspace"];
 
-const say = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: refusalWords(err) || undefined }));
+const say = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: workErrorWords(err) || undefined }));
 
 /** The `file` chip a draft starts with, so the first message says which file it is about; he may take it off. */
 export const fileChip = (tab: Pick<FileTab, "name" | "copyOf">, item: Pick<CanvasItem, "source" | "title">): ContextChip | null => {

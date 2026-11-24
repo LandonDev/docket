@@ -13,7 +13,7 @@ import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { readyToClose } from "../canvas/closeDoor";
 import { liveSourceOf } from "../office/live/liveSwitch";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { invoke } from "../../lib/native";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { shell } from "../../stores/shell";
@@ -267,7 +267,7 @@ export function SidebarView({
   );
 }
 
-const say = (title: string, err?: unknown): void => void loadToast().then((toast) => (err === undefined ? toast.message(title) : toast.error(title, { description: refusalWords(err) || undefined })));
+const say = (title: string, err?: unknown): void => void loadToast().then((toast) => (err === undefined ? toast.message(title) : toast.error(title, { description: workErrorWords(err) || undefined })));
 
 /** A note's press: it spins until done; a refusal is one toast. */
 function useFixes(workspace: WorkspaceMeta, again: () => void): NoteFixes {

@@ -1,7 +1,7 @@
 import type { CanvasSource } from "@shared/work/canvas";
 import type { FolderRef } from "@shared/work/files";
 import type { Template } from "@shared/work/templates";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { baseName } from "./model";
 
@@ -76,6 +76,6 @@ export async function openMade(ask: { workspaceId: string; source: CanvasSource;
     const { openInFiles } = await import("../files/openFrom");
     await openInFiles({ id: ask.workspaceId, environmentId }, { ref: ask.source, name });
   } catch (err) {
-    throw new Error(refusalWords(err) || "The host did not open the file");
+    throw new Error(workErrorWords(err) || "The host did not open the file");
   }
 }

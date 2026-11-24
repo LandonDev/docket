@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { THUMB_SIZES, type FileArchive, type FileBytes, type FilePreview } from "@shared/contract-work-files";
 import type { FileEntry } from "@shared/work/files";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { filesLink } from "./farLink";
 import { bytesOfBase64, decodeText, triedAsText } from "./fileText";
 import type { PlaceCopy, TileSize } from "./model";
@@ -228,7 +228,7 @@ export function usePreviewPage(from: PictureFrom | null, entry: FileEntry | null
       },
       (err: unknown) => {
         // Not kept: the next look asks again.
-        if (live) setFailed({ key, why: refusalWords(err) || "The host did not answer." });
+        if (live) setFailed({ key, why: workErrorWords(err) || "The host did not answer." });
       },
     );
     return () => {
@@ -255,7 +255,7 @@ export function useArchive(from: PictureFrom | null, entry: FileEntry | null, en
     const ask = previewSeams.archive ? previewSeams.archive(from!, entry!) : filesLink(from!.copy.link).request<FileArchive>("work.files.archive", { workspaceId: from!.workspaceId, ref: entry!.ref });
     void ask.then(
       (got) => live && setView({ key, view: { is: "list", entries: got.entries, more: got.more } }),
-      (err: unknown) => live && setView({ key, view: { is: "failed", why: refusalWords(err) || "The host did not answer." } }),
+      (err: unknown) => live && setView({ key, view: { is: "failed", why: workErrorWords(err) || "The host did not answer." } }),
     );
     return () => {
       live = false;

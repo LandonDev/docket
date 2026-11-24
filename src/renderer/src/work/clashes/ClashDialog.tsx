@@ -14,7 +14,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { ConnectionLostError, registry, TimeoutError } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { MailtoDraft } from "work-kit/mail";
 import { writeMail } from "../mail/mailto";
@@ -235,7 +235,7 @@ function Body({
   const failed = (err: unknown, fallback: string) => {
     setPending(false);
     setBusy(null);
-    setError(refusalWords(err) || fallback);
+    setError(workErrorWords(err) || fallback);
   };
   // The pair as the last render had it, for a press whose answer comes later.
   const latest = useRef(clash);
@@ -340,7 +340,7 @@ function Body({
                 setLost(true);
                 return setRefused("The host did not confirm the send. Check the calendar before trying again.");
               }
-              setRefused(refusalWords(err) || "LifeOS refused it");
+              setRefused(workErrorWords(err) || "LifeOS refused it");
             },
           );
         }}

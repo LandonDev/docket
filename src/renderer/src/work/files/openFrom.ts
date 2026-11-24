@@ -2,7 +2,7 @@ import type { FilePage } from "@shared/contract-work-files";
 import type { CanvasSource } from "@shared/work";
 import { PLACE } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { choose, openWorkView, stillChosen, workViewNow } from "../../lib/workSwitch";
@@ -51,7 +51,7 @@ export function filesOfDocs(doc?: { id: string; title?: string }): FilesTarget {
  */
 export function openDocInFiles(workspaceId: string, doc: { id: string; title?: string }): Promise<void> {
   const workspace = workspaceStore.getSnapshot().workspaces.find((w) => w.id === workspaceId);
-  const said = (err: unknown): void => void loadToast().then((toast) => toast.error("It did not open", { description: refusalWords(err) || undefined }));
+  const said = (err: unknown): void => void loadToast().then((toast) => toast.error("It did not open", { description: workErrorWords(err) || undefined }));
   if (!workspace) return Promise.resolve(said(new Error("That workspace is not in this window.")));
   return openInFiles(workspace, filesOfDocs(doc)).catch(said);
 }

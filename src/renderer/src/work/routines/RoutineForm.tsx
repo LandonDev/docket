@@ -11,7 +11,7 @@ import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { blankForm, DAY_CHOICES, EVENT_CHOICES, EVERY_CHOICES, formOf, saveParamsOf, type EndsOn, type RoutineForm, type StartsOn } from "./model";
 
 type Props = {
@@ -129,7 +129,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
         },
         (err: unknown) => {
           setPending(false);
-          setError(refusalWords(err) || "The host refused it");
+          setError(workErrorWords(err) || "The host refused it");
         },
       );
   };
@@ -145,7 +145,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
         () => finish(() => {}),
         (err: unknown) => {
           setRemoving(false);
-          setError(refusalWords(err) || "The host refused it");
+          setError(workErrorWords(err) || "The host refused it");
         },
       );
   };

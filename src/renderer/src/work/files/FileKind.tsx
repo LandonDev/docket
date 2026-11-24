@@ -6,7 +6,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { ItemSkeleton } from "../canvas/ItemBones";
@@ -105,7 +105,7 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
     if (busy) return;
     setBusy(what);
     void fn()
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error(what === "app" ? `${name} did not open` : `${name} did not download`, { description: refusalWords(err) || undefined })))
+      .catch((err: unknown) => void loadToast().then((toast) => toast.error(what === "app" ? `${name} did not open` : `${name} did not download`, { description: workErrorWords(err) || undefined })))
       .finally(() => setBusy(null));
   };
   const download = async (): Promise<void> => {

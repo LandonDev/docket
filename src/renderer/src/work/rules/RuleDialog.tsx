@@ -5,7 +5,7 @@ import { Field, FieldRow } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { addRule, editRule, removeRule } from "./data";
 import { Evidence } from "./Evidence";
 
@@ -95,7 +95,7 @@ function Body({
       if (close) close(onClose);
       else onClose();
     } catch (err) {
-      setError(refusalWords(err) || "The host did not answer");
+      setError(workErrorWords(err) || "The host did not answer");
       setPending(null);
     }
   };

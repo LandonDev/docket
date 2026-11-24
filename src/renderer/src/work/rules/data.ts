@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DraftProposals, HouseRule, RuleProposal, RulesPage, VoiceFacts } from "@shared/contract-work-rules";
 import { registry } from "../../lib/connection";
-import { refusalWords } from "../../lib/settingsHome";
+import { workErrorWords } from "../../lib/workErrorWords";
 
 /**
  * What the rules screens ask of the workspace's host (docs/agents/work-rules.md):
@@ -45,7 +45,7 @@ function usePushed<T>(env: string | undefined, key: string | null, read: () => P
       const mine = ++asked.current;
       read().then(
         (value) => live && mine === asked.current && setState({ key, load: { status: "ready", value } }),
-        (err: unknown) => live && mine === asked.current && setState({ key, load: { status: "error", error: refusalWords(err) || "The host did not answer" } }),
+        (err: unknown) => live && mine === asked.current && setState({ key, load: { status: "error", error: workErrorWords(err) || "The host did not answer" } }),
       );
     };
     fetch();
@@ -70,7 +70,7 @@ function usePushed<T>(env: string | undefined, key: string | null, read: () => P
     read()
       .then(
         (value) => mine === asked.current && setState({ key, load: { status: "ready", value } }),
-        (err: unknown) => mine === asked.current && setState({ key, load: { status: "error", error: refusalWords(err) || "The host did not answer" } }),
+        (err: unknown) => mine === asked.current && setState({ key, load: { status: "error", error: workErrorWords(err) || "The host did not answer" } }),
       )
       .finally(() => setRetrying(false));
   };
