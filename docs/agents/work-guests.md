@@ -264,10 +264,16 @@ sends the service names the file (`sheetFile`), and the live socket
 token of that name, while the pass stands, through the service's one sheet
 host. A guest's token, LifeOS's token and a name no pass gave a file open
 nothing of it. A file's pass is looked at again at every pass over the list
-(`stillOpens`, every 30 s): once its item is closed, names another file, or
-its place is one others can open, the pass is dropped, the sheet's socket
-closes within a second and the document's token is not renewed (it runs out
-within ten minutes). Tests: guests/fileTicket.test.ts.
+(`stillOpens`, every 30 s): once its item is closed (its row stays, `state:
+'closed'`, and a closed item gets no ticket either), names another file, its
+spelling reaches another file (a `.tcsheet`'s pass keeps the file its
+spelling reached when it was made, so a linked folder pointed elsewhere ends
+it), or its place is one others can open, the pass is dropped, the sheet's
+socket closes within a second and the document's token is not renewed (it
+runs out within ten minutes). A document socket already open is not closed
+by the drop: the owner's token names no pass (work-kit lets only a guest's
+token name a link), so the service cannot tell which pass it came in on.
+Tests: guests/fileTicket.test.ts.
 
 The page's own Comment action is a guest's (`commentsOnPage` in
 src/hosted/guest/session.ts): the owner's pass shows none, since the page

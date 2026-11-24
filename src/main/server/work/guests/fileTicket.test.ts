@@ -296,4 +296,29 @@ describe("the owner's ticket for a file-kept item", () => {
     // One workbook for the phone and the desktop: both name it by the item's own path (sheets/held.ts).
     expect(got.body.sheet).toBe(fileSheetId(spelled))
   })
+
+  it('ends a sheet’s pass when the link its spelling goes through comes to point at another folder', async () => {
+    const r = await rig()
+    const first = join(r.folder, 'Budgets')
+    const other = join(r.folder, 'Other')
+    mkdirSync(first)
+    mkdirSync(other)
+    symlinkSync(first, join(r.folder, 'Linked'))
+    const spelled = join(r.folder, 'Linked', 'Trip.tcsheet')
+    TcsheetBackend.create(join(first, 'Trip.tcsheet'), 'Trip')
+    TcsheetBackend.create(join(other, 'Trip.tcsheet'), 'Other trip')
+    const got = await redeem(r, (await r.rt.ticket(item(r.open('sheet', file(spelled))), 'Trip', PHONE)).url)
+    const ws = new WsSocket(`${r.base.replace('http', 'ws')}/w/sheet/${got.body.sheet!}`)
+    const messages: { t: string }[] = []
+    ws.on('message', (d) => messages.push(JSON.parse(String(d)) as { t: string }))
+    ws.on('error', () => {})
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', token: got.body.token })))
+    const closed = new Promise<number>((res) => ws.on('close', (code) => res(code)))
+    await until('the workbook arrives', () => messages.some((m) => m.t === 'state'))
+    // The same spelling now reaches another workbook: the pass ends, and its socket with it.
+    rmSync(join(r.folder, 'Linked'))
+    symlinkSync(other, join(r.folder, 'Linked'))
+    await r.rt.tick()
+    expect(await closed).toBe(4403)
+  })
 })

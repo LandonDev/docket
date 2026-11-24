@@ -78,7 +78,7 @@ export const guestUrl = (origin: string, id: string, secret: string): string => 
  * by its resolved path, as the docs pillar names its room; a `.tcsheet` by its item's own spelling of the path,
  * as the sheets pillar names its workbook (sheets/held.ts), so the phone and the desktop are on one workbook.
  */
-type Opens = { at: 'lifeos'; source: GuestSource } | { at: 'tcdoc'; path: string } | { at: 'tcsheet'; path: string }
+type Opens = { at: 'lifeos'; source: GuestSource } | { at: 'tcdoc'; path: string } | { at: 'tcsheet'; path: string; real: string }
 
 /** A file sheet's name on the live socket: no path is ever in an address, and main alone says which file a name is (the pass's `sheetFile`). */
 export const fileSheetId = (path: string): string => `tc${createHash('sha256').update(path).digest('hex').slice(0, 40)}`
@@ -269,7 +269,8 @@ export class GuestRuntime {
       if (name.endsWith('.tcdoc')) return { at: 'tcdoc', path }
       throw new Error(/\.(docx?|odt|rtf)$/.test(name) ? TICKET_REFUSALS.word : TICKET_REFUSALS.elsewhere)
     }
-    if (name.endsWith('.tcsheet')) return { at: 'tcsheet', path: s.path }
+    // The file its spelling reached when the pass was made: a linked folder pointed elsewhere later ends the pass.
+    if (name.endsWith('.tcsheet')) return { at: 'tcsheet', path: s.path, real: path }
     throw new Error(/\.(xlsx?|xlsm|ods|csv)$/.test(name) ? TICKET_REFUSALS.excel : TICKET_REFUSALS.elsewhere)
   }
 
@@ -285,6 +286,8 @@ export class GuestRuntime {
     const s = item.source
     if ( s.at !== 'file' || s.host !== this.ctx.host) return false
     if ((p.opens.at === 'tcdoc' ? canonicalPath(s.path) : s.path) !== p.opens.path) return false
+    // A sheet is named by its spelling: the same spelling through a link that now points at another folder is another file.
+    if (p.opens.at === 'tcsheet' && canonicalPath(s.path) !== p.opens.real) return false
     return !sharedOf(this.ctx, s)
   }
 
