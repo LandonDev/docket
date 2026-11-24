@@ -94,9 +94,23 @@ import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typin
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
 import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
 import { readBuildStamp, waitForGateBuild } from './lib/gateBuild'
+import { slowLink } from './lib/slowLink'
 import { recordReconnect, type ReconnectSeed } from './lib/soakReconnectRun'
 
-const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
+/** The reconnect scene's own options, taken out before the shared parse. */
+const RECONNECT_VALUES = ['--link', '--probe-every']
+const reconnectValue = (name: string): number | undefined => {
+  const i = process.argv.indexOf(name)
+  return i < 0 ? undefined : Number(process.argv[i + 1])
+}
+const args = parseSoakArgs(process.argv.slice(2).filter((a, i, all) => a !== '--why' && a !== '--still' && !RECONNECT_VALUES.includes(a) && !RECONNECT_VALUES.includes(all[i - 1])))
+/** --still (reconnect): the streams add their rows through the cut and pause once the socket is back, so the window's long tasks are the catch-up's alone. */
+const still = process.argv.includes('--still')
+/** --link <KiB/s> (reconnect): the window reaches the host through a relay that gives it this much a second (scripts/lib/slowLink.ts), as the Mac's tunnel to the box. */
+const linkKiB = reconnectValue('--link')
+/** --probe-every <ms> (reconnect): the window is brought forward this often (the supervisor's foreground probe), as his clicks did. */
+const probeEveryMs = reconnectValue('--probe-every')
+let linkRelay: { peak(): number; resetPeak(): void } | undefined
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
 const why = process.argv.includes('--why')
 const ROOT = '/tmp/tc-soak'
@@ -434,7 +448,7 @@ function hostCommand(): [string, string[]] {
   if (!mac && args.scene !== 'reconnect') return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...thought, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync('bun', ['scripts/bundle-server.ts', 'scripts/soak-host.ts'], { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] })
-  return ['node', [out, '--scene', args.scene, ...burst, ...thought, ...history]]
+  return ['node', [out, '--scene', args.scene, ...burst, ...thought, ...history, ...(still ? ['--still'] : [])]]
 }
 
 async function startSynthetic(c: Cdp): Promise<Shown> {
@@ -468,8 +482,17 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
     soakHost!.on('exit', (code) => fail(new Error(`the synthetic host exited (${code}); its log (${hostLog}) ends:\n${tail()}`)))
   })
   const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string; history?: ReconnectSeed }
+  let url = host.baseUrl
+  if (linkKiB) {
+    const target = new URL(host.baseUrl)
+    const relay = await slowLink({ host: target.hostname, port: Number(target.port) }, linkKiB * 1024)
+    linkRelay = relay
+    process.once('exit', () => relay.close())
+    url = `${target.protocol}//127.0.0.1:${relay.port}`
+    log(`the window reaches the host at ${linkKiB} KiB/s`)
+  }
   await c.eval(
-    `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: host.baseUrl, key: host.key, name: 'soak' })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
+    `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url, key: host.key, name: 'soak' })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
   )
   log(`paired with the synthetic host ${host.environmentId}`)
   return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId, history: host.history }
@@ -629,10 +652,10 @@ async function main(): Promise<void> {
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
   if (args.scene === 'reconnect') {
     if (!soakHost || !shown.history) throw new Error('the reconnect scene needs the synthetic host and its seed')
-    const report = await recordReconnect(c, soakHost, shown.history, shown.threadId, shown.environmentId, waitFor, log)
+    const report = await recordReconnect(c, soakHost, shown.history, shown.threadId, shown.environmentId, waitFor, log, { still, probeEveryMs, link: linkRelay })
     const build = readBuildStamp(tree)
     reconnectSummary = {
-      scene: 'reconnect', label: args.label, build, loadedRows: report.loadedRows,
+      scene: 'reconnect', label: args.label, still, linkKiB, probeEveryMs, build, loadedRows: report.loadedRows,
       cut: report.cut.summary, relaunch: report.relaunch.summary, ok: report.verdict.ok
     }
     writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ ...report, build }, null, 2) + '\n')

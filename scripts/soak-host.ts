@@ -41,7 +41,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const cut = /^cut (\d+)$/.exec(command)
   if (reconnect && (cut || command === 'relaunch')) {
     const phase = cut ? 'cut' : 'relaunch'
-    const start = reconnect.begin(phase, cut ? Number(cut[1]) : RECONNECT_CUT_MS, (wire) => answer({ wire }))
+    // --still: the load pauses once the socket is back and runs again after the window.
+    const still = process.argv.includes('--still')
+    const start = reconnect.begin(phase, cut ? Number(cut[1]) : RECONNECT_CUT_MS, (wire) => {
+      if (still) driver?.resume()
+      answer({ wire })
+    }, still ? () => driver?.pause() : undefined)
     answer({ began: phase, start })
   } else if (command === 'go' && host.scene === 'scenarios') {
     host.playScenarios((step) => answer({ step: step.label, at: Date.now() - started, clicks: step.clicks }))

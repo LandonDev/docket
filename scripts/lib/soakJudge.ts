@@ -346,6 +346,8 @@ export interface ReconnectWindow {
   phase: 'cut' | 'relaunch'
   longTasks: { maxMs: number }
   maxUnsentBytes: number
+  /** --link: the most the slow link held for the window (scripts/lib/slowLink.ts) */
+  linkHeldBytes?: number
   connections: number
   remote: boolean
   rows: { exact: boolean }
@@ -353,15 +355,17 @@ export interface ReconnectWindow {
   streaming: boolean
 }
 
-export function judgeReconnect(windows: readonly [ReconnectWindow, ReconnectWindow], rule = RECONNECT_RULE): { ok: boolean; verdicts: Verdict[] } {
+/** `still`: the load paused once the socket was back (--still), so no stream is owed. */
+export function judgeReconnect(windows: readonly [ReconnectWindow, ReconnectWindow], rule = RECONNECT_RULE, options: { still?: boolean } = {}): { ok: boolean; verdicts: Verdict[] } {
   const verdicts: Verdict[] = windows.flatMap((w) => [
     { what: `${w.phase}: longest long task, ms`, got: w.longTasks.maxMs, limit: rule.longTaskMaxMs, ok: w.longTasks.maxMs <= rule.longTaskMaxMs },
     { what: `${w.phase}: max unsent bytes per socket`, got: w.maxUnsentBytes, limit: rule.maxUnsentBytes, ok: w.maxUnsentBytes < rule.maxUnsentBytes },
+    ...(w.linkHeldBytes === undefined ? [] : [{ what: `${w.phase}: most held behind the slow link`, got: w.linkHeldBytes, limit: rule.maxUnsentBytes, ok: w.linkHeldBytes < rule.maxUnsentBytes }]),
     { what: `${w.phase}: connections opened`, got: w.connections, limit: rule.connections, ok: w.connections === rule.connections },
     { what: `${w.phase}: remote wire`, got: Number(w.remote), limit: 1, ok: w.remote },
     { what: `${w.phase}: exact row sequence`, got: Number(w.rows.exact), limit: 1, ok: w.rows.exact },
     { what: `${w.phase}: mounted transcripts loaded`, got: w.loaded, limit: rule.loaded, ok: w.loaded === rule.loaded },
-    { what: `${w.phase}: focused stream resumed`, got: Number(w.streaming), limit: 1, ok: w.streaming }
+    ...(options.still ? [] : [{ what: `${w.phase}: focused stream resumed`, got: Number(w.streaming), limit: 1, ok: w.streaming }])
   ])
   return { ok: verdicts.every((v) => v.ok), verdicts }
 }

@@ -109,7 +109,8 @@ export async function recordReconnect(
   focus: string,
   environmentId: string,
   waitFor: (c: Cdp, expr: string, ms: number, what: string) => Promise<void>,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  options: { still?: boolean; probeEveryMs?: number; link?: { peak(): number; resetPeak(): void } } = {}
 ) {
   const ids = Object.keys(seed)
   if (ids.length !== 6 || !ids.includes(focus)) throw new Error('the reconnect host must seed six threads, including the focused stream')
@@ -133,12 +134,26 @@ export async function recordReconnect(
   const loadedRows = await c.eval<number[]>(`[${ids.map((id) => `${entry(id)}.rows.length`).join(', ')}]`)
   log(`six remote transcripts loaded (${loadedRows.join(', ')} rows in the store)`)
   log('cutting the remote WebSocket for 6 s')
-  const cutWire = await profiled(c, 'cut', () => hostPhase(host, 'cut', async () => {}))
+  // His clicks on the window: each one probes the link (registry.probeAll('foreground')).
+  const forward = (): (() => void) => {
+    if (!options.probeEveryMs) return () => undefined
+    const timer = setInterval(() => void c.eval(`window.__monocode.registry.probeAll('foreground'), true`).catch(() => undefined), options.probeEveryMs)
+    return () => clearInterval(timer)
+  }
+  options.link?.resetPeak()
+  const stopCut = forward()
+  const cutWire = await profiled(c, 'cut', () => hostPhase(host, 'cut', async () => {})).finally(stopCut)
+  const cutHeld = options.link?.peak()
   const cut = await readWindow(c, ids, focus, cutWire)
+  if (cutHeld !== undefined) Object.assign(cut.summary, { linkHeldBytes: cutHeld })
   log(`cut recorded, ${cut.summary.connections} connection(s), ${cut.summary.longTasks.maxMs} ms longest task`)
   log('reloading the window with its saved layout')
-  const relaunchWire = await hostPhase(host, 'relaunch', () => c.send('Page.reload'))
+  options.link?.resetPeak()
+  const stopRelaunch = forward()
+  const relaunchWire = await hostPhase(host, 'relaunch', () => c.send('Page.reload')).finally(stopRelaunch)
+  const relaunchHeld = options.link?.peak()
   const relaunch = await readWindow(c, ids, focus, relaunchWire)
-  const verdict = judgeReconnect([cut.summary, relaunch.summary])
+  if (relaunchHeld !== undefined) Object.assign(relaunch.summary, { linkHeldBytes: relaunchHeld })
+  const verdict = judgeReconnect([cut.summary, relaunch.summary], undefined, options)
   return { seed, loadedRows, cut, relaunch, verdict }
 }

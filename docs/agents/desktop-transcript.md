@@ -73,8 +73,10 @@
   seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
   past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
   (`FocusSignal.shown`, `sessionStore.followShown`) goes at once and jumps
-  the queue when it changes; the panes on the page, then the kept ones, go
-  one at a time, each followed by a pause of its bytes at
+  the queue when it changes, and no other starts while its fetch is out
+  (so its page never queues behind another on the socket); the panes on
+  the page, then the kept ones, go one at a time, each followed by a pause
+  of its bytes at
   CATCH_UP_BYTES_PER_SEC (2 MiB/s) and at least one macrotask. A page folds
   in slices of FOLD_SLICE_MS (8 ms) with the window given back between
   them; pushes stay held until the last slice. A cold load at launch takes

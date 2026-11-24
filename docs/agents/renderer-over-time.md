@@ -93,6 +93,12 @@
     after the new socket opened. The full report in
     `/tmp/tc-soak/<label>.json` keeps individual long tasks and per-thread
     row checks.
+  - `--still` keeps the streams adding rows through the cut and the reload
+    gap (the resets and gaps still happen) and pauses them once the socket
+    is back, so the window's long tasks are the catch-up's alone; the six
+    panes streaming at once make long tasks of their own on the box
+    (layout, the height glide, live markdown), which a run without it
+    counts too. No stream is owed in that mode.
   - Add `--gate` to fail if either window sees a long task over 100 ms,
     reaches 2 MiB unsent on a socket, opens zero or several connections,
     loses row order or coverage, fails to load all six panes, or stops

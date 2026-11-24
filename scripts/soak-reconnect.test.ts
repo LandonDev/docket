@@ -80,6 +80,27 @@ describe('the reconnect scene', () => {
       expect(judgeReconnect([good, { ...relaunch, ...failure }]).ok).toBe(false)
     }
   })
+
+  it('owes no stream when the load paused at the reconnect (--still), and still judges the rest', () => {
+    const quiet: ReconnectWindow = {
+      phase: 'cut', longTasks: { maxMs: 100 }, maxUnsentBytes: 0,
+      connections: 1, remote: true, rows: { exact: true }, loaded: 6, streaming: false
+    }
+    const relaunch = { ...quiet, phase: 'relaunch' as const }
+    expect(judgeReconnect([quiet, relaunch]).ok).toBe(false)
+    expect(judgeReconnect([quiet, relaunch], undefined, { still: true }).ok).toBe(true)
+    expect(judgeReconnect([{ ...quiet, longTasks: { maxMs: 101 } }, relaunch], undefined, { still: true }).ok).toBe(false)
+  })
+
+  it('holds the bytes behind a slow link (--link) to the same limit as a socket', () => {
+    const quiet: ReconnectWindow = {
+      phase: 'cut', longTasks: { maxMs: 50 }, maxUnsentBytes: 0, linkHeldBytes: RECONNECT_RULE.maxUnsentBytes - 1,
+      connections: 1, remote: true, rows: { exact: true }, loaded: 6, streaming: true
+    }
+    const relaunch = { ...quiet, phase: 'relaunch' as const }
+    expect(judgeReconnect([quiet, relaunch]).ok).toBe(true)
+    expect(judgeReconnect([{ ...quiet, linkHeldBytes: RECONNECT_RULE.maxUnsentBytes }, relaunch]).ok).toBe(false)
+  })
 })
 
 it('cuts live sockets, refuses upgrades, then measures each real send on the replacement', async () => {

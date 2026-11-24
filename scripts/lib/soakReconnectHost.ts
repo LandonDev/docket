@@ -7,6 +7,7 @@ type Measurement = {
   sockets: Map<SocketBytes, number>
   finish: (wire: ReconnectWire) => void
   timer: ReturnType<typeof setTimeout>
+  connected?: () => void
 }
 
 /**
@@ -48,6 +49,7 @@ export function watchReconnectSocket(port: number, cursors: () => Cursors) {
         if (wire.connectedAt === null) {
           wire.connectedAt = Date.now()
           wire.connected = cursors()
+          active.connected?.()
           if (wire.phase === 'cut') {
             clearTimeout(active.timer)
             wire.end = wire.connectedAt + RECONNECT_WINDOW_MS
@@ -101,7 +103,7 @@ export function watchReconnectSocket(port: number, cursors: () => Cursors) {
   WebSocketServer.prototype.handleUpgrade = upgrade
 
   return {
-    begin(phase: ReconnectPhase, cutMs: number, finish: (wire: ReconnectWire) => void): number {
+    begin(phase: ReconnectPhase, cutMs: number, finish: (wire: ReconnectWire) => void, connected?: () => void): number {
       if (active) throw new Error('a reconnect measurement is already running')
       const before = cursors()
       const start = Date.now()
@@ -114,7 +116,7 @@ export function watchReconnectSocket(port: number, cursors: () => Cursors) {
         before, through: before, connected: before
       }
       active = {
-        wire, finish,
+        wire, finish, connected,
         sockets: new Map([...peers.values()].map((written) => [written, written()])),
         timer: setTimeout(complete, limit)
       }
