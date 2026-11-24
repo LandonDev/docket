@@ -119,6 +119,8 @@ export interface FormListRow {
   count: number | null
   lastAnswerAt: number | null
   updatedAt: number
+  /** ours: the pane the form lives in (a thread's, or the Files place's) */
+  sessionId?: string
 }
 
 /** The answers as the Responses half draws them (our forms' `FormResponses` shape), newest first. */

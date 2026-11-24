@@ -49,7 +49,7 @@ function listForms(ctx: WorkCtx, by: Caller, workspaceId: string): FormListRow[]
     .filter((i) => i.kind === 'form')
     .flatMap((i): FormListRow[] => {
       const row = store.get(i.id)
-      return row ? [{ kind: 'ours', id: i.id, title: row.body.title, state: row.state, count: null, lastAnswerAt: null, updatedAt: i.updatedAt }] : []
+      return row ? [{ kind: 'ours', id: i.id, title: row.body.title, state: row.state, count: null, lastAnswerAt: null, updatedAt: i.updatedAt, sessionId: i.sessionId }] : []
     })
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }

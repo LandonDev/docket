@@ -1,4 +1,4 @@
-import type { MsFormResponses } from "@shared/contract-work-msforms";
+import type { FormListRow, MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
 import { isOther, type MsAnyQuestion, type MsQuestion } from "@shared/work/msforms";
 
 /**
@@ -35,4 +35,20 @@ export function answerBarsOf(got: Pick<MsFormResponses, "rows">, chart: { option
     if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
   }
   return [...counts].map(([label, count]) => ({ label, count }));
+}
+
+/** The Forms view's one list: our forms and Microsoft's, newest change first. */
+export function mergeForms(ours: readonly FormListRow[], ms: readonly MsFormView[]): FormListRow[] {
+  const theirs = ms.map((f): FormListRow => ({ kind: "ms", id: f.formId, title: f.title, state: f.state, count: f.count, lastAnswerAt: f.lastAnswerAt, updatedAt: f.updatedAt }));
+  return [...ours, ...theirs].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+const STATE_WORDS: Record<string, string> = { draft: "Draft", collecting: "Collecting", open: "Collecting", closed: "Closed" };
+
+/** A row's one muted line: "Microsoft · Collecting · 12 · 2:14 PM". */
+export function rowLine(row: FormListRow, time: (at: number) => string): string {
+  const parts = [row.kind === "ms" ? "Microsoft" : "TempCode", STATE_WORDS[row.state] ?? row.state];
+  if (row.count !== null && row.state !== "draft") parts.push(String(row.count));
+  if (row.lastAnswerAt) parts.push(time(row.lastAnswerAt));
+  return parts.join(" · ");
 }

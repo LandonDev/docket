@@ -6,6 +6,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosSession } from "../shell/lifeos";
 import { agendaView } from "../agenda/view";
 import { filesView } from "../files/view";
+import { formsView } from "../msforms/view";
 import { mailView } from "../mail/view";
 import { messagesView } from "../messages/view";
 import { peopleView } from "../people/view";
@@ -23,7 +24,7 @@ import { templatesView } from "../templates/view";
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and the rest after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "money" | "files" | "templates" | "plays" | "routines";
+export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "money" | "files" | "forms" | "templates" | "plays" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -71,6 +72,7 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   people: peopleView,
   money: moneyView,
   files: filesView,
+  forms: formsView,
   templates: templatesView,
   plays: playsView,
   routines: routinesView,
