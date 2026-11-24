@@ -26,7 +26,9 @@ vi.mock("../../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ na
 vi.mock("../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
 
 const { Dock } = await import("./Dock");
-const { resetDocks } = await import("./dockThread");
+const { resetDocks, showFound } = await import("./dockThread");
+/** Forget what the dock showed for the subject, keeping what find said (a thread he archived elsewhere since). */
+const resetShown = (): void => showFound("w1/tab1", "gone");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { newSession } = await import("../../lib/session");
 const { workDockPort } = await import("../../lib/workSwitch");
@@ -112,6 +114,22 @@ describe("a box he can type in at once", () => {
     expect(draft).not.toBe("t-old");
     await act(async () => undefined);
     expect(shownId()).toBe("t-old");
+  });
+
+  it("a kept answer he has archived since is no answer: the draft stays", async () => {
+    let meta: SessionMeta = OLD;
+    vi.spyOn(sessionStore, "metaOf").mockImplementation(((id: string) => (id === "t-old" ? meta : null)) as never);
+    const find = vi.fn(async () => "t-old");
+    const first = draw(subject(find));
+    await act(async () => undefined);
+    expect(shownId()).toBe("t-old");
+    first.unmount();
+    resetShown();
+    meta = { ...OLD, archived: true };
+    draw(subject(find));
+    await act(async () => undefined);
+    expect(shownId()).not.toBe("t-old");
+    expect(find).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the draft he has typed in when find answers late", async () => {
