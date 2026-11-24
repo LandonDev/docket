@@ -75,9 +75,12 @@ socket counts each update it sends (Hocuspocus sync steps 2 and 3, read from
 the frame's head, `frameHead`) and each SyncStatus the service answers once
 it has applied one, and a new socket must first have sent its own state (its
 step 2) before it counts as caught up. A socket still connecting is waited
-for (`relayTiming.syncWaitMs`). The flush fails on a failed send, an update
-the host refused, a socket that closes or never catches up in time, and
-while frames lost since the last confirmed store wait (`storedAll`); the
+for (`relayTiming.syncWaitMs`), and so is the provider's next socket after
+the host dropped one (what he typed meanwhile waits in the window). An
+update sent while the host stores sends the flush round again, so the
+store it confirms covers the latest. The flush fails on a failed send, an
+update the host refused, a socket that closes or never catches up in time,
+and while frames lost since the last confirmed store wait (`storedAll`); the
 document says "Couldn't save your last edits to Plan" and the flush's
 failure reaches the close (what the close does then is Files'). The live revision (`/internal/docs/rev`, the
 Word file's autosave and header) hashes the Yjs snapshot, the delete set with

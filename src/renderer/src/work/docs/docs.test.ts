@@ -277,6 +277,80 @@ describe("the relayed socket", () => {
     }
   });
 
+  it("a socket the host dropped is waited out: the flush stores through the provider's next socket once it has caught up", async () => {
+    relayTiming.syncWaitMs = 400;
+    try {
+      const inbox: { frames: string[]; closed?: { code: number; reason: string } }[] = [];
+      let wake: () => void = () => undefined;
+      const calls: string[] = [];
+      let n = 0;
+      link.request.mockImplementation(async (method, params) => {
+        if (method === "work.docs.connect") return { socket: `s${++n}`.padEnd(24, "x") };
+        if (method === "work.docs.recv") {
+          while (!inbox.length) await new Promise<void>((resolve) => (wake = resolve));
+          return inbox.shift();
+        }
+        if (method === "work.docs.send") calls.push(params.stored ? `stored ${String(params.socket).slice(0, 2)}` : "frames");
+        return { ok: true };
+      });
+      const down = (got: { frames: string[]; closed?: { code: number; reason: string } }) => {
+        inbox.push(got);
+        wake();
+      };
+      const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+      const first = await opened(Socket);
+      first.send(state());
+      down({ frames: [applied()] });
+      await storedAll(Socket);
+      expect(calls.filter((c) => c.startsWith("stored"))).toEqual(["stored s1"]);
+      // The host drops it; he types, and closes before the provider has made its next socket.
+      down({ frames: [], closed: { code: 1006, reason: "gone" } });
+      await vi.waitFor(() => expect(first.readyState).toBe(3));
+      const flushed = storedAll(Socket);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(calls.filter((c) => c.startsWith("stored"))).toEqual(["stored s1"]);
+      // The provider's next socket sends the window's state, the edit among it, and hears it applied.
+      const next = await opened(Socket);
+      next.send(state());
+      down({ frames: [applied()] });
+      await flushed;
+      expect(calls.filter((c) => c.startsWith("stored"))).toEqual(["stored s1", "stored s2"]);
+      // Dropped, with no next socket in time: not stored.
+      down({ frames: [], closed: { code: 1006, reason: "gone" } });
+      await vi.waitFor(() => expect(next.readyState).toBe(3));
+      await expect(storedAll(Socket)).rejects.toThrow(NOT_SENT);
+    } finally {
+      relayTiming.syncWaitMs = 6000;
+    }
+  });
+
+  it("an update sent while the host stores is applied and stored in its turn before the flush passes", async () => {
+    const h = fakeHost();
+    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = await opened(Socket);
+    ws.send(state());
+    h.down(applied());
+    // The store is on its way when he types once more.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const base = link.request.getMockImplementation()!;
+    link.request.mockImplementation(async (method, params, opts) => {
+      const got = await base(method, params, opts);
+      if (method === "work.docs.send" && params.stored && h.calls.filter((c) => c === "stored").length === 1) await held;
+      return got;
+    });
+    let done = false;
+    const flushed = storedAll(Socket).then(() => void (done = true));
+    await vi.waitFor(() => expect(h.calls).toContain("stored"));
+    ws.send(update(5));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    h.down(applied());
+    await flushed;
+    expect(h.calls).toEqual(["state", "stored", "update 5", "stored"]);
+  });
+
   it("reads a frame's head as Hocuspocus writes it, and nothing from bytes that are not one", () => {
     expect(frameHead(state())).toEqual({ type: 0, step: 1, value: null });
     expect(frameHead(frame(8, 1))).toEqual({ type: 8, step: null, value: 1 });

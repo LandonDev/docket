@@ -117,7 +117,14 @@ export const relayTiming = { syncWaitMs: 6000 };
 export const NOT_TAKEN = "The host did not take the last edits to this document";
 
 /** The sockets each relayed class has open, and the last frames one lost (a failed send, a close with frames unsent). */
-type Relayed = { open: Set<{ stored(): Promise<void> }>; lost: Error | null };
+type Relayed = {
+  open: Set<{ stored(): Promise<void> }>;
+  lost: Error | null;
+  /** The last socket was dropped (by the host, a failure), not closed by its own side: the provider makes another. */
+  dropped: boolean;
+  /** Told when the provider's next socket is made. */
+  arrived: Set<() => void>;
+};
 const relayedOf = new WeakMap<object, Relayed>();
 
 /** Said when the window has no connection to tell the host what it typed: the flush fails, never passes. */
@@ -132,9 +139,22 @@ export async function storedAll(socket: new (url: string) => WebSocket): Promise
   const relayed = relayedOf.get(socket);
   if (!relayed) return;
   const lost = relayed.lost;
-  if (!relayed.open.size && lost) throw lost;
+  // Between the provider's sockets, what he typed waits in the window: the next socket is waited for, and its state.
+  if (!relayed.open.size && (relayed.dropped || lost)) {
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        relayed.arrived.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, relayTiming.syncWaitMs);
+      relayed.arrived.add(done);
+    });
+    if (!relayed.open.size) throw lost ?? new Error(NOT_SENT);
+  }
   await Promise.all([...relayed.open].map((s) => s.stored()));
   if (lost && relayed.lost === lost) relayed.lost = null;
+  relayed.dropped = false;
 }
 
 /**
@@ -145,7 +165,7 @@ export async function storedAll(socket: new (url: string) => WebSocket): Promise
  */
 export function relaySocket(env: string, source: CanvasSource): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const relayed: Relayed = { open: new Set(), lost: null };
+  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set() };
   const open = relayed.open;
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
@@ -169,6 +189,8 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
      */
     private unacked = 0;
     private stateSent = false;
+    /** How many updates this socket has sent: one sent while a store is made may not be in it. */
+    private sentCount = 0;
     private waiters = new Set<() => void>();
     private settle(): void {
       for (const done of this.waiters) done();
@@ -178,6 +200,7 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       super();
       this.url = url;
       open.add(this);
+      for (const told of relayed.arrived) told();
       void this.start();
     }
 
@@ -260,7 +283,14 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
         await this.flush();
         if (this.failed) throw this.failed;
         if (this.readyState === READY.CLOSED || this.readyState === READY.CLOSING) throw new Error(NOT_SENT);
-        if (this.applied()) break;
+        if (this.applied()) {
+          const at = this.sentCount;
+          await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
+          // An update sent while the host stored may not be in what it stored: it is applied and stored in its turn.
+          if (this.sentCount === at) return;
+          if (Date.now() > deadline) throw new Error(NOT_SENT);
+          continue;
+        }
         const left = deadline - Date.now();
         if (left <= 0) throw new Error(NOT_SENT);
         await new Promise<void>((resolve) => {
@@ -273,7 +303,6 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
           this.waiters.add(done);
         });
       }
-      await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
     }
 
     send(data: ArrayBufferLike | ArrayBufferView): void {
@@ -283,6 +312,7 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       const head = frameHead(bytes);
       if ((head?.type === 0 || head?.type === 4) && (head.step === 1 || head.step === 2)) {
         this.unacked++;
+        this.sentCount++;
         if (head.step === 1) this.stateSent = true;
       }
       this.outbox.push(toBase64(bytes));
@@ -309,6 +339,8 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       // Closed by the host or a failure with frames still waiting, or sent and never heard applied: they may not have
       // reached it from this socket. The provider's next socket sends the window's state again.
       if ((this.outbox.length > 0 || this.unacked > 0) && !this.closing) relayed.lost ??= new Error(NOT_SENT);
+      // Not closed by its own side: the provider makes another socket, and what he types meanwhile waits for it.
+      if (!this.closing) relayed.dropped = true;
       this.settle();
       // A plain event with a close's fields: what the provider reads, wherever CloseEvent is missing.
       this.dispatchEvent(Object.assign(new Event("close"), { code, reason, wasClean: code === 1000 }));
