@@ -360,6 +360,11 @@ function, `workErrorWords(error, { host?, write? })`
 - `host` is the computer's name as the rail gives it; without it the words
   say "that computer".
 
+A canvas pane words both its failures this way, naming the pane's computer
+(`useFailedWords`, canvas/FetchState.tsx): the centred "Couldn't open this
+…" and the detail of every kind's state line ("Couldn't save", "History did
+not load"); a raw detail shows none, and the line's word stands alone.
+
 A site that branches on a host's raw text (a stale version, a conflict)
 reads `err.message`, never these words. The test holds the raw lines found
 on screen to what he reads now (lib/workErrorWords.test.ts).

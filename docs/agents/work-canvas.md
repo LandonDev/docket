@@ -331,9 +331,11 @@ What a kind should know:
   when the code lands.
   A load that failed holds no bone (nothing is loading): the body says
   "Couldn't open this document" with Retry, and Retry loads the code again
-  for the body and for every seat that saw it fail (`useKindLoad`,
-  `loadAgain` in CanvasPane.tsx), so the kind's tools come once it lands.
-  lib/lazyChunk.tsx is unchanged.
+  (`useKindLoad`, `loadAgain` in CanvasPane.tsx). Only once it lands are
+  the bars and bodies of every pane that saw it fail woken together, so no
+  pane shows its kind's tools over a body that still says it could not
+  open; a Retry that fails again wakes none. lib/lazyChunk.tsx is
+  unchanged.
 - The bar is drawn only while the kind has something in it. Its order is
   fixed: people, the mode, the kind's `Bar`, History (drawn by the pane for
   a def with `history: true`), then the stepper or the written line.

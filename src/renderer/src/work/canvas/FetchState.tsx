@@ -28,16 +28,22 @@ export const FailedHost = createContext<string | null>(null);
 const paneHost = (environmentId: string): string | null => (registry.environment(environmentId) ? hostName(environmentId) : null);
 
 /**
+ * A host's reason in his words (`workErrorWords`), naming the pane's computer: a link that is down says which is away.
+ * A raw line answers "", so the title or the state's word stands alone.
+ */
+export function useFailedWords(why: string | null | undefined): string {
+  const env = useContext(FailedHost);
+  const host = why && env ? paneHost(env) : null;
+  return why ? workErrorWords(why, host ? { host } : {}) : "";
+}
+
+/**
  * A viewer with nothing to show (docs/DESIGN.md "The canvas pane"): the centred `Empty` with the kind in its title,
  * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
  * dropped while the content stays.
  */
 export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first) */ onRetry?: (() => void) | undefined }) {
-  // A host's reason in his words (`workErrorWords`), naming the pane's computer: a link that is down says which is
-  // away. A raw line says nothing, and the title stands alone.
-  const env = useContext(FailedHost);
-  const host = why && env ? paneHost(env) : null;
-  const said = why ? workErrorWords(why, host ? { host } : {}) : "";
+  const said = useFailedWords(why);
   return (
     <Empty data-canvas-failed>
       <EmptyHeader>

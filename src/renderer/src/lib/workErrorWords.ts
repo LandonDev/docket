@@ -34,7 +34,8 @@ const RULES: Rule[] = [
   [/^no answer in \d+ ?s\b|timed out after \d|\btimed out\b|^timeout\b/i, lost],
   // The link's own bare word: with a computer named it says which is away; unnamed it stands as it is.
   [/^not connected\.?$/i, (c, m) => (c.named ? `${c.Host} is not connected. Try again once it is back.` : m.input)],
-  [/connection closed|socket closed/i, (c) => `The connection to ${c.host} dropped.${c.write ? " Check whether the change went through." : " Try again once it is back."}`],
+  // A link closed for good rejects with its bare word (connection/transport.ts).
+  [/connection closed|socket closed|^closed\.?$/i, (c) => `The connection to ${c.host} dropped.${c.write ? " Check whether the change went through." : " Try again once it is back."}`],
   // Work's own parts that did not load (work/ctx.ts, shared/work/ids.ts).
   [/did not start on this host|^not built\b|is not built yet|no handler for/i, (c) => `This part of Work is not running on ${c.host}. Look under Settings, Connections; if the two computers run different versions, update both.`],
   [/^(unknown|no such) workspace\b/i, (c) => `This workspace is no longer on ${c.host}.`],

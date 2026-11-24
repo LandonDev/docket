@@ -43,4 +43,38 @@ describe("a kind whose code did not load", () => {
     expect(screen.getByTestId("kind-tools")).toBeTruthy();
     expect(document.querySelector("[data-bar-bone]")).toBeNull();
   });
+
+  it("wakes every pane of the kind with its bar once one pane's Retry lands the code, and none before", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let tries = 0;
+    let land: () => void = () => undefined;
+    const chunk = defineChunk<CanvasKindModule>("test-kind-retry-two", () => {
+      tries += 1;
+      if (tries === 1) return Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/kind.js"));
+      // The second try fails; the third waits for the test to land it.
+      if (tries === 2) return Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/kind.js"));
+      return new Promise((resolve) => (land = () => resolve(module)));
+    });
+    const kinds = { ...CANVAS, document: { ...CANVAS.document, history: false, chunk } };
+    const pane = (id: string) => <CanvasPane item={canvasItem(id)} environmentId="local" feeds={NO_FEEDS} shell={shell} onAsk={() => undefined} kinds={kinds} />;
+    await act(async () => void render(<>{pane("a")}{pane("b")}</>));
+    await act(async () => undefined);
+    expect(screen.getAllByText("Its viewer did not load")).toHaveLength(2);
+    // A Retry whose load fails again wakes no other pane's bar.
+    await act(async () => void fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]!));
+    await act(async () => undefined);
+    expect(screen.getAllByText("Its viewer did not load")).toHaveLength(2);
+    expect(screen.queryByTestId("kind-tools")).toBeNull();
+    expect(document.querySelector("[data-bar-bone]")).toBeNull();
+    // While the next try is out, the other pane is as it was: no tools over its failure.
+    await act(async () => void fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]!));
+    expect(screen.getAllByText("Its viewer did not load")).toHaveLength(1);
+    expect(screen.queryByTestId("kind-tools")).toBeNull();
+    await act(async () => land());
+    await act(async () => undefined);
+    expect(screen.queryByText("Its viewer did not load")).toBeNull();
+    expect(screen.getAllByTestId("body")).toHaveLength(2);
+    expect(screen.getAllByTestId("kind-tools")).toHaveLength(2);
+  });
 });
+

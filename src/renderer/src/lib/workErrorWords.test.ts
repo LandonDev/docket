@@ -40,6 +40,11 @@ describe("an error as Work says it to him", () => {
   ];
   it.each(TWENTY)("%s", (raw, words, context) => expect(says(raw, context ?? box)).toBe(words));
 
+  it("says a link closed for good, which rejects with its bare word, as a dropped connection", () => {
+    expect(says("closed")).toBe("The connection to the box dropped. Try again once it is back.");
+    expect(says("the file is closed")).toBe("The file is closed");
+  });
+
   it("passes a refusal that is already plain, as the host wrote it", () => {
     expect(says("refused: only a document, sheet or deck can be a template")).toBe("Only a document, sheet or deck can be a template");
     expect(says("Budget.xlsx is open in Excel on This Mac. Close it there first.")).toBe("Budget.xlsx is open in Excel on This Mac. Close it there first.");

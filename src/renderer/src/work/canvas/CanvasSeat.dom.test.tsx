@@ -74,15 +74,6 @@ async function seat(items: CanvasItem[], kinds?: Parameters<typeof CanvasSeat>[0
   return view;
 }
 
-describe("the state line's words", () => {
-  it("says a transport's own words as a person reads them", async () => {
-    const { detailWords } = await import("./CanvasPane");
-    expect(detailWords("not connected")).toBe("The host is not connected");
-    expect(detailWords("request timed out after 15 s")).toBe("The host did not answer in time");
-    expect(detailWords("that file is not there any more")).toBe("that file is not there any more");
-  });
-});
-
 describe("a body that fails", () => {
   /** The document kind with a body that throws while `fail` says so, or whose code never arrives. */
   async function failing(how: "throws" | "no code") {
@@ -814,7 +805,7 @@ describe("the frame a kind drives through its shell", () => {
     const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => 100);
     try {
       act(() => shell.statusLine({ tone: "failed", word: "Couldn't open this document", detail: "short" }));
-      const whole = within(container.querySelector<HTMLElement>("[data-canvas-state]")!).getByText("short");
+      const whole = within(container.querySelector<HTMLElement>("[data-canvas-state]")!).getByText("Short");
       expect(whole.hasAttribute("tabindex")).toBe(false);
       act(() => shell.statusLine(null));
       cut.value = true;

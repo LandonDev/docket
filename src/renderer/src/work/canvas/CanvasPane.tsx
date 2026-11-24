@@ -11,15 +11,31 @@ import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 import { SelectionBar } from "./SelectionBar";
-import { FailedHost, FetchState, OpenFailed } from "./FetchState";
+import { FailedHost, FetchState, OpenFailed, useFailedWords } from "./FetchState";
 import { CutDetail, QuietLine } from "./QuietLine";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
-/** The seats whose kind's code did not load, by chunk: Retry on the body wakes them to load it again (`loadAgain`). */
+/**
+ * The bars and bodies whose kind's code did not load, by chunk. A body's Retry loads the code again (`loadAgain`), and
+ * only once it lands are they all woken together, so every pane of that kind shows its tools and its body at once, and
+ * none shows tools over a body that still says it could not open.
+ */
 const asleep = new Map<Chunk<CanvasKindModule>, Set<() => void>>();
+function sleep(chunk: Chunk<CanvasKindModule>, wake: () => void): () => void {
+  let seats = asleep.get(chunk);
+  if (!seats) asleep.set(chunk, (seats = new Set()));
+  seats.add(wake);
+  return () => void seats.delete(wake);
+}
 function loadAgain(chunk: Chunk<CanvasKindModule>): void {
-  for (const wake of [...(asleep.get(chunk) ?? [])]) wake();
+  // A load that fails again wakes nothing: the pressed body says so itself.
+  chunk.load().then(
+    () => {
+      for (const wake of [...(asleep.get(chunk) ?? [])]) wake();
+    },
+    () => undefined,
+  );
 }
 
 /**
@@ -27,8 +43,8 @@ function loadAgain(chunk: Chunk<CanvasKindModule>): void {
  * `TabEnd`) are read from it. The module is kept in state, never read from the chunk while drawing: the React Compiler
  * holds a call's answer for as long as its argument is the same, so `chunk.loaded()` read in the hook's body stayed
  * null after the chunk landed, and a kind first opened in a window kept the bar's bone and never drew its tools.
- * A load that failed is not loading: the bar drops its bone, and the body's Retry starts it again (`loadAgain`), so a
- * retry that lands puts the kind's tools in the bar.
+ * A load that failed is not loading: the bar drops its bone, and the body's Retry starts it again (`loadAgain`); once
+ * that load lands, the kind's tools come into the bar with its body.
  */
 export function useKindLoad(chunk: Chunk<CanvasKindModule>): { module: CanvasKindModule | null; failed: boolean } {
   const [held, setHeld] = useState<{ chunk: Chunk<CanvasKindModule>; module: CanvasKindModule | null; failed: boolean }>(() => ({ chunk, module: chunk.loaded(), failed: false }));
@@ -54,13 +70,7 @@ export function useKindLoad(chunk: Chunk<CanvasKindModule>): { module: CanvasKin
   const failed = now.failed;
   useEffect(() => {
     if (!failed) return;
-    const wake = () => setHeld((was) => (was.chunk === chunk ? { chunk, module: chunk.loaded(), failed: false } : was));
-    let seats = asleep.get(chunk);
-    if (!seats) asleep.set(chunk, (seats = new Set()));
-    seats.add(wake);
-    return () => {
-      seats.delete(wake);
-    };
+    return sleep(chunk, () => setHeld((was) => (was.chunk === chunk ? { chunk, module: chunk.loaded(), failed: false } : was)));
   }, [chunk, failed]);
   return { module: now.module, failed };
 }
@@ -70,16 +80,8 @@ export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule 
   return useKindLoad(chunk).module;
 }
 
-/** A transport's own words, said as a person would read them on the state line. */
-export function detailWords(detail: string): string {
-  if (/^not connected\.?$/i.test(detail.trim())) return "The host is not connected";
-  if (/timed? ?out/i.test(detail)) return "The host did not answer in time";
-  return detail;
-}
-
-/** The state line's detail, cut to its room: while cut it takes the focus too, so the keyboard can bring up the whole of it in the same tip the pointer does. */
-/** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover. */
-function StateLine({ line }: { line: StatusLine }) {
+/** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover and on focus. */
+export function StateLine({ line }: { line: StatusLine }) {
   if (line.tone === "quiet") return <QuietLine data-canvas-state="quiet" word={line.word} detail={line.detail} press={line.action} />;
   return <LoudLine line={line} />;
 }
@@ -87,7 +89,8 @@ function StateLine({ line }: { line: StatusLine }) {
 function LoudLine({ line }: { line: StatusLine }) {
   const [running, setRunning] = useState(false);
   const action = line.action;
-  const detail = typeof line.detail === "string" && line.detail ? detailWords(line.detail) : null;
+  // A host's reason is worded once, as the centred failure words it; a raw one shows no detail.
+  const detail = useFailedWords(typeof line.detail === "string" ? line.detail : null) || null;
   return (
     <div data-canvas-state={line.tone} role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
       <StatusMark
@@ -144,6 +147,8 @@ function BodyFailed({ kind, chunk, error, retry }: { kind: CanvasKind; chunk: Ch
     shell.saved?.(null);
     shell.ready?.(false);
   }, [shell]);
+  // A body whose code did not load sleeps with the bars: another pane's Retry that lands it wakes this one too.
+  useEffect(() => (chunk.loaded() ? undefined : sleep(chunk, retry)), [chunk, retry]);
   // The body's lazy loads the code again, and every seat that saw it fail waits on that same load.
   const again = () => {
     retry();
@@ -217,16 +222,16 @@ export function CanvasPane({
         lead={barLead}
         end={barEnd}
       />
-      {feeds.status ? <StateLine line={feeds.status} /> : null}
-      <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        <FailedHost.Provider value={environmentId}>
+      <FailedHost.Provider value={environmentId}>
+        {feeds.status ? <StateLine line={feeds.status} /> : null}
+        <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
             <PaneShell.Provider value={shell}>
               <Body {...props} />
             </PaneShell.Provider>
           )}
-        </FailedHost.Provider>
-      </div>
+        </div>
+      </FailedHost.Provider>
       <SelectionBar selection={feeds.selection} onAsk={onAsk} onDismiss={() => shell.selection(null)} />
     </div>
   );

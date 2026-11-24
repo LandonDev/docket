@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 /**
  * The canvas pane's failure and its quiet line (docs/DESIGN.md "The canvas pane"): a failed open names the pane's
- * computer when the link is down, and a cut read-only reason can be read whole, on hover and from the keyboard.
+ * computer when the link is down, the state line words a host's reason the same way, and a cut read-only reason can
+ * be read whole, on hover and from the keyboard.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 vi.mock("../../lib/connection/registry", async (original) => ({
   ...(await original<typeof import("../../lib/connection/registry")>()),
-  registry: { environment: (id: string) => (id === "env_box" ? { id, name: "The box", platform: "linux" } : undefined) },
+  registry: { environment: (id: string) => (id === "env_box" ? { id, name: "The box", platform: "linux" } : undefined), onLink: () => () => undefined },
 }));
 const { FailedHost, OpenFailed } = await import("./FetchState");
+const { StateLine } = await import("./CanvasPane");
 import { QuietLine } from "./QuietLine";
 
 beforeAll(async () => {
@@ -42,6 +44,29 @@ describe("a failed open", () => {
       </FailedHost.Provider>,
     );
     expect(screen.getByText("Not connected")).toBeTruthy();
+  });
+});
+
+describe("the state line's reason", () => {
+  const line = (detail: string, env = "env_box") =>
+    render(
+      <FailedHost.Provider value={env}>
+        <StateLine line={{ tone: "failed", word: "Couldn't save", detail }} />
+      </FailedHost.Provider>,
+    ).container.textContent;
+
+  it("words a host's reason as the failed open does, naming the pane's computer", () => {
+    expect(line("connection closed")).toBe("Couldn't saveThe connection to the box dropped. Try again once it is back.");
+    cleanup();
+    expect(line("Not connected")).toBe("Couldn't saveThe box is not connected. Try again once it is back.");
+    cleanup();
+    expect(line("work.sheets.write timed out after 30 s")).toBe("Couldn't saveThe box did not answer. Try again once it is connected.");
+  });
+
+  it("shows no detail for a raw reason, and a plain one as it is", () => {
+    expect(line("ENOTDIR: /srv/agents/work/Budget.xlsx")).toBe("Couldn't save");
+    cleanup();
+    expect(line("Read only, as of 2:04 PM")).toBe("Couldn't saveRead only, as of 2:04 PM");
   });
 });
 
