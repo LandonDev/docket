@@ -19,10 +19,10 @@ import { sayError } from "../canvas/frame";
 import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
-import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
+import { linkSheetHost, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
-import { reviewWhich, saidLine, savedLine, sheetChanges } from "./model";
+import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
 import { useWorkCommands } from "../formats/command";
@@ -484,14 +484,19 @@ function useFeeds(
       const at = whereOf(next);
       if (at) handle?.reveal(at);
     };
-    const which = (w: number | { group: string } | "all"): ReviewWhich => reviewWhich(list, w);
+    // Each batch of the ids on screen in turn; the view the last one answers is the sheet as it stands.
+    const decide = async (w: number | { group: string } | "all", verdict: "accept" | "reject"): Promise<SheetView> => {
+      let view: SheetView | null = null;
+      for (const which of reviewBatches(list, w)) view = await host.review(which, verdict);
+      return view ?? Promise.reject(new Error("Nothing on screen to decide."));
+    };
     const review: ReviewAdapter = {
       groups: changes.groups,
       index: current,
       count: list.length,
       step,
-      accept: (w) => act(host.review(which(w), "accept"), "Couldn't accept the change"),
-      reject: (w) => act(host.review(which(w), "reject"), "Couldn't reject the change"),
+      accept: (w) => act(decide(w, "accept"), "Couldn't accept the change"),
+      reject: (w) => act(decide(w, "reject"), "Couldn't reject the change"),
     };
     shell.review(review);
     return () => shell.review(null);

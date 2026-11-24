@@ -1082,8 +1082,8 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 **His press on what waits.** The window names the ids it shows for Accept all
 and for a group (`reviewWhich`, renderer sheets/model.ts), never `all` or a
 change set the host would pick from what waits now, so a suggestion that came
-after he looked is not taken (past 5,000 ids it names the set or all, as
-before). One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
+after he looked is not taken; past 5,000 ids (the wire's limit) it sends them
+in batches of that many (`reviewBatches`), never all. One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on
 Google or Excel never writes what a Reject in another window dropped, and two
 Accepts never write the same rows. A Google Sheet suggestion keeps its own

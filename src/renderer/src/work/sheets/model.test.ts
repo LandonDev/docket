@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, holds, REVIEW_IDS_MOST, reviewWhich, sheetChanges, savedLine } from "./model";
+import { cellText, holds, REVIEW_IDS_MOST, reviewBatches, sheetChanges, savedLine } from "./model";
 import { suggestion } from "./testkit";
 
 describe("the sheet canvas's model", () => {
@@ -57,15 +57,17 @@ describe("the saved line", () => {
 describe("what a press of Accept or Reject names", () => {
   const said = (changeSet: string, ids: string[]) => ({ kind: "orphaned" as const, changeSet, ids });
   const list = [said("cs1", ["cs1:A1", "cs1:A2"]), said("cs2", ["cs2:B1"])];
-  it("names the ids on screen, for all and for a group, so what came after he looked is not taken", () => {
-    expect(reviewWhich(list, "all")).toEqual({ ids: ["cs1:A1", "cs1:A2", "cs2:B1"] });
-    expect(reviewWhich(list, { group: "cs2" })).toEqual({ ids: ["cs2:B1"] });
-    expect(reviewWhich(list, 0)).toEqual({ ids: ["cs1:A1", "cs1:A2"] });
+  it("names the ids on screen, for all, for a group and for one, so what came after he looked is not taken", () => {
+    expect(reviewBatches(list, "all")).toEqual([{ ids: ["cs1:A1", "cs1:A2", "cs2:B1"] }]);
+    expect(reviewBatches(list, { group: "cs2" })).toEqual([{ ids: ["cs2:B1"] }]);
+    expect(reviewBatches(list, 0)).toEqual([{ ids: ["cs1:A1", "cs1:A2"] }]);
   });
-  it("names the set, or all, past the wire's own limit or with nothing on screen", () => {
-    const many = [said("cs9", Array.from({ length: REVIEW_IDS_MOST + 1 }, (_, i) => `cs9:${i}`))];
-    expect(reviewWhich(many, "all")).toBe("all");
-    expect(reviewWhich(many, { group: "cs9" })).toEqual({ changeSet: "cs9" });
-    expect(reviewWhich([], "all")).toBe("all");
+  it("sends a large review as batches of the ids it shows, never all, and nothing for nothing on screen", () => {
+    const many = [said("cs9", Array.from({ length: REVIEW_IDS_MOST * 2 + 1 }, (_, i) => `cs9:${i}`))];
+    const batches = reviewBatches(many, "all");
+    expect(batches.map((b) => b.ids.length)).toEqual([REVIEW_IDS_MOST, REVIEW_IDS_MOST, 1]);
+    expect(batches.flatMap((b) => b.ids)).toEqual(many[0]!.ids);
+    expect(reviewBatches(many, { group: "cs9" })).toHaveLength(3);
+    expect(reviewBatches([], "all")).toEqual([]);
   });
 });
