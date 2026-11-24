@@ -14,7 +14,6 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
-import { clockTime } from "../../lib/duration";
 import { nameInLine } from "../../lib/hostWords";
 import { defineChunk } from "../../lib/lazyChunk";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
@@ -58,25 +57,6 @@ const hostOf = (environmentId: string): string | undefined => registry.environme
  * own page holds what is its own. Grants join this page with the Outbox
  * (milestone 14).
  */
-
-/** What a host's LifeOS state reads as, in one line. */
-export function lifeosLine(state: LifeosState, now = Date.now()): { line: string; failed?: boolean } {
-  switch (state.state) {
-    case "connected":
-      return { line: "Signed in" };
-    case "signed-out":
-    case "off":
-      return { line: "Not signed in" };
-    case "pairing":
-      return { line: `Waiting for approval, ${Math.max(0, Math.ceil((state.expiresAt - now) / 60_000))} min left` };
-    case "connecting":
-      return { line: "Connecting…" };
-    case "unreachable":
-      return { line: `LifeOS did not answer, since ${clockTime(state.since)}`, failed: true };
-    case "refused":
-      return { line: "LifeOS refused this host's sign-in", failed: true };
-  }
-}
 
 export function WorkSettingsBody() {
   const environments = useEnvironments();

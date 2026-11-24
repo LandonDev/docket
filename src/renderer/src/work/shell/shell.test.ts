@@ -4,7 +4,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { switchLine } from "../../surfaces/settings/Work";
 import { sectorName } from "./actions";
 import { columnProjects } from "./WorkColumn";
-import { keyLine, lifeosLine } from "./settings";
+import { keyLine } from "./settings";
 import { addMenuRows, addMenuState, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
 import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
 
@@ -124,16 +124,6 @@ describe("Settings → Work's lines", () => {
     expect(switchLine(envs, new Set(["env_box"]))).toBe("On for tempcode-box, off for this Mac");
     // "the box" mid-line, as every Work line names it.
     expect(switchLine([{ id: "env_box", name: "The box" }, { id: "local", name: "This Mac" }], new Set(["env_box"]))).toBe("On for the box, off for this Mac");
-  });
-
-  it("draws every LifeOS state a screen must draw", () => {
-    const now = 1_000_000;
-    expect(lifeosLine({ state: "connected", ownerId: "landon", since: 1 })).toEqual({ line: "Signed in" });
-    expect(lifeosLine({ state: "signed-out" })).toEqual({ line: "Not signed in" });
-    expect(lifeosLine({ state: "pairing", expiresAt: now + 4 * 60_000 }, now)).toEqual({ line: "Waiting for approval, 4 min left" });
-    expect(lifeosLine({ state: "connecting" })).toEqual({ line: "Connecting…" });
-    expect(lifeosLine({ state: "unreachable", since: now, error: "x" }).failed).toBe(true);
-    expect(lifeosLine({ state: "refused", error: "revoked" })).toEqual({ line: "LifeOS refused this host's sign-in", failed: true });
   });
 
   it("says nothing of a ready key, and why another is not", () => {
