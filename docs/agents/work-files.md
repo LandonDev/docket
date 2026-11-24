@@ -1022,11 +1022,19 @@ anything else. Then:
   (`ctx.results.add`, kind `file.<verb>`) whose Undo is `files_undo {op}`,
   and its answer names that Undo. The inverse reads the change from the
   journal (`work_files_ops`): a move goes back to the folder each thing came
-  from, a rename back, a made file or a copy to Trash, a file put in Trash
-  back. Each thing the change left must still be that thing (its key, and
-  its size and change time); one that is not is refused, "notes.txt changed
-  since, so it was left as it is.", and left as it is. Only a tool's own
-  operation ids are undone.
+  from (the move keeps where each thing that moved came from in its journal
+  row, `MoveDone.moved`, never on the wire, so two of one name from two
+  folders go back each to its own; a row from before that, by its name, only
+  where one thing of that name moved), a rename back, a made file or a copy to
+  Trash, a file put in Trash back. Each thing the change left must still be
+  that thing (its key, and its size and change time); one that is not is
+  refused, "notes.txt changed since, so it was left as it is.", and left as it
+  is. An inverse stops where others can open what it would change now (the
+  place became a library, or a Drive folder was shared, since the change): the
+  door answers `hold` for a New, Copy, Rename or Move, and for a delete's Put
+  back the rows are asked as Put back asks them (`restoresShared`), and the
+  answer is "Others can open it now, so the owner changes it back himself.";
+  nothing is held for it. Only a tool's own operation ids are undone.
 - **In a place others can open** nothing is written: it is held as a
   `file.act` (below), and the answer is "Held as item N. It waits for the
   owner's press: <the sentence>". A delete there is held too ("Delete
@@ -1092,11 +1100,21 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   `boundInto` in verbs.ts), so a file replaced, or a link that comes to name
   another file, between the press's check and the write is not copied, moved or
   renamed; such a press, and a Copy whose name is taken, is stale, as a New's
-  is. A Drive's and the VM's verbs do not check the things yet (a Drive file
-  replaced has a new id, which the press's own check sees). Stale does
-  nothing. First of all, on this host, the act's own operation id is looked
-  up (`replayed`): a press whose answer was lost, pressed again, answers what
-  it did from that receipt rather than calling the old path gone. On
+  is. The VM's verbs ask the guest for each thing's size and change time just
+  before it changes (`boundGuest`): a Rename's thing, every thing of a Move
+  before any moves and each again under its own lock just before its own move,
+  so one replaced while the ones before it moved is refused alone (the guest's
+  move takes a path, not a version, so the moment between its stat and its
+  move stays open). A Drive's verbs read each thing from Drive just before the
+  call that changes it and hold it to the card's key, version and sharing
+  (`boundDrive`, driveVerbs.ts; `origin.things[].shared`): an edit, a move or
+  a share since the press's check is refused, and Drive's call takes no
+  version, so the seconds between that read and the call stay open. Stale
+  does nothing. First of all, on this host, the act's own operation id is
+  looked up (`replayed`; for a delete its journal row, `trashReceipt`, since a
+  delete's things are in Trash, not where they were): a press whose answer was
+  lost, pressed again, answers what it did from that receipt rather than
+  calling the old path gone. On
   another host that receipt is the far host's own and no wire asks for it
   yet, so such a press there goes stale and says nothing was done, though it
   was (for the owner: a receipt-first call). Then the window's own
@@ -1411,7 +1429,7 @@ its paths; a LifeOS ref never reaches it.
 | New | a LifeOS document (`docs:create`) or sheet (the sheets service's `create` into LifeOS), at the top or in a project; a folder is refused "A project is made in Projects.", a deck or a text file "LifeOS holds documents and sheets. Make anything else in your workspace's folder." |
 | Rename | `docs:rename`, `sheets:rename`: the title, whole |
 | Move | between projects, or to the top (`docs:setProject`, `sheets:setProject`); out of LifeOS the grammar's "A LifeOS document lives in LifeOS. Export a copy instead."; a file of a disk into LifeOS "Only a LifeOS document lives in LifeOS. Make one there instead." |
-| Delete | into LifeOS's own trash (`docs:remove`, `sheets:remove`), and the row's live guest links end here at once (`guestRuntime(ctx).revoke`); before LifeOS's trash is live, "LifeOS cannot put a document back yet. Delete it in LifeOS." A selection with other rows passes their door first (`admitTrash`): one refused refuses the whole delete, and no LifeOS row goes |
+| Delete | into LifeOS's own trash (`docs:remove`, `sheets:remove`), and the row's live guest links end here at once (`guestRuntime(ctx).revoke`); before LifeOS's trash is live, "LifeOS cannot put a document back yet. Delete it in LifeOS." A selection with other rows passes their door first (`admitTrash`): one refused refuses the whole delete, and no LifeOS row goes; one the other rows' own run refuses after the LifeOS rows went (a Drive file gone since its door) still says what went, with its Trash rows for Undo, beside each other row's refusal. A mixed Put back does the same |
 | Put back | the Trash lens lists LifeOS's trash (`catalog:trash`) beside the folder's, keyed `trash:lifeos:<table>:<id>`; `restore` sends each id to its own place, and a LifeOS id only when it is in this sector's trash; a row LifeOS says others can open needs his press, as its delete does. The whole selection is admitted first ("Trash"). Empty Trash empties the folder's rows; LifeOS's go after its 30 days |
 
 Each passes `admitWrite` with the row's `shared`: a row with a live guest
@@ -1715,7 +1733,9 @@ over a file that changed there.
   (`oneCopyAtATime`, handle.ts: `copyIn` writes one path a file), and an open that waited looks for the tab first:
   two windows opening the file at once get one tab, and the second never reads the file over an edit the first took.
   The tab is found by where the file lies as well as by its key, so a library row and a file chip, which name one file
-  by two keys, open one tab on one copy.
+  by two keys, open one tab on one copy. A key another tab holds for another file (a merged library row whose host
+  changed, the Mac's file and then the VM's) is never taken over: the file opens under its own address in a tab of its
+  own, and the first tab's copy keeps saving to its own file.
 - **One send** (`sendBack`): reads the copy as it lies and sends it only when its hash differs from `sent`. One send
   a copy is in flight; one asked while it runs runs once after it, reading the copy then, so the newest bytes go
   once. Another host: the peer verb `work.files.writeBack {ref, data, version, origin: {from: 'window'}}`, admitted
