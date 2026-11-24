@@ -11,6 +11,8 @@ import type { MailClient, ThreadSummary } from "work-kit/mail";
 
 const convex = vi.hoisted(() => ({ proposed: null as null | { subject?: string; text: string; html: string; at: number; by: string }, settle: vi.fn(), mutations: [] as unknown[], sources: [] as unknown[] }));
 vi.mock("convex/react", () => ({
+  // The New event dialog watches LifeOS's own row for its toast (agenda/added.ts): no row comes in a test.
+  useConvex: () => ({ watchQuery: () => ({ onUpdate: () => () => undefined, localQueryResult: () => undefined }) }),
   useQuery: (ref: unknown) => {
     const name = String((ref as Record<symbol, string>)[Symbol.for("functionName")] ?? "");
     if (name.includes("sources")) return convex.sources;
