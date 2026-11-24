@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { capabilityRefusal, type Principal } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush } from '@shared/contract'
+import { REVEAL_INVALID } from '@shared/contract-work-reveal'
 import { shortHostName } from '@shared/hostNames'
 import {
   RELAY_BOX_LOCAL,
@@ -404,7 +405,7 @@ export class HostRelay {
     const parsed = ClientRequestSchema.safeParse(raw)
     if (!parsed.success) {
       const id = (raw as { id?: string })?.id
-      if (id) this.send(lane, { id, ok: false, error: `bad request: ${parsed.error.message}` })
+      if (id) this.send(lane, { id, ok: false, error: (raw as { method?: unknown })?.method === 'work.reveal' ? REVEAL_INVALID : `bad request: ${parsed.error.message}` })
       return
     }
     const req = parsed.data

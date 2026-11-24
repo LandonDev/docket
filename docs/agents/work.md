@@ -107,6 +107,29 @@ with its six views, linking a workspace to a sector, and Settings → Work
 - A Work row made while the switch was on keeps its fence with it off: the
   row decides. Off only means nothing new of Work is made.
 
+## Open on a computer
+
+`work.reveal {target}` opens a saved destination in the host's own TempCode
+window. The phone calls the destination host on the owner's press. The key
+needs `approve`, access to the destination, and `admin` for administrative
+Settings pages. The host checks the Work fence against the stored rows and
+file sources. The request carries a thread ID, a workspace view and ID, a
+Work place, a canvas item ID, a held ref, or a named Settings page. The
+destination needs an unlocked screen and a ready local window.
+
+Main brings the window forward and opens the destination. Automatic read
+marks for threads, Mail, Messages, Review and Forms responses wait for a
+local press after navigation. A refused reveal lifts its pause. A stalled
+prepare or opener releases its hold after ten seconds.
+
+On macOS, Handoff accepts `dev.landon.tempcode.open` with `userInfo: {target}`.
+It runs as the local user and checks that the destination exists and can be
+read. Handoff skips the remote `approve` and `admin` gates.
+
+`work/reveal.test.ts` covers accepted destinations and refusals.
+`revealWindow.test.ts`, `workHandoff.test.ts` and `lib/revealPort.test.ts`
+cover the window, activity and navigation paths.
+
 ## The first paint
 
 Nothing of Work is in the renderer's first paint, switch on or off: no

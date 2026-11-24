@@ -3,7 +3,7 @@ import type { z } from 'zod'
 import { METHOD_CAPABILITY, requiredCapability } from './capabilities'
 import { ClientRequestSchema, type ServerPush } from './contract'
 import { RELAY_METHODS, RELAY_NOT_CARRIED } from './contract-relay'
-import { WORK_CAPS, WORK_CORE_CAPS, WORK_NOT_CARRIED, WORK_PILLAR_CONTRACTS, WORK_RELAY, WorkRequestSchemas, type WorkPush } from './contract-work'
+import { WORK_CAPS, WORK_CORE_CAPS, WORK_CORE_RELAY, WORK_NOT_CARRIED, WORK_PILLAR_CONTRACTS, WORK_RELAY, WorkRequestSchemas, type WorkPush } from './contract-work'
 import { PILLAR_IDS } from './work/ids'
 import { isWorkMethod, pillarMethodProblem, pillarOfMethod } from './work/wire'
 
@@ -22,9 +22,9 @@ describe("Work's contract", () => {
   it('mounts every pillar once, in order', () => {
     expect(Object.keys(WORK_PILLAR_CONTRACTS)).toEqual([...PILLAR_IDS])
   })
-  it("adds the core's eleven methods and each pillar's own, and nothing else, to the contract", () => {
+  it("adds the core's twelve methods and each pillar's own, and nothing else, to the contract", () => {
     const pillarMethods = PILLAR_IDS.flatMap((id) => WORK_PILLAR_CONTRACTS[id].requests.map(methodOf))
-    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.desktops', 'work.get', 'work.health', 'work.lapses', 'work.project.open', 'work.set', 'work.workspace.get', 'work.workspace.set']
+    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.desktops', 'work.get', 'work.health', 'work.lapses', 'work.project.open', 'work.reveal', 'work.set', 'work.workspace.get', 'work.workspace.set']
     expect(WorkRequestSchemas.map(methodOf).sort()).toEqual([...core, ...pillarMethods].sort())
     // every Work method the contract speaks came through this mount, and no method is declared twice
     expect(all.filter(isWorkMethod).sort()).toEqual([...core, ...pillarMethods].sort())
@@ -39,6 +39,7 @@ describe("Work's contract", () => {
       'work.workspace.set': 'admin',
       'work.project.open': 'operate',
       'work.health': 'read',
+      'work.reveal': 'approve',
       'work.lapses': 'read',
       'app.workTools': 'local',
       'app.workCall': 'local',
@@ -69,7 +70,7 @@ describe("Work's contract", () => {
     expect(Object.keys(WORK_CAPS).sort()).toEqual(WorkRequestSchemas.map(methodOf).sort())
   })
   it("carries a Work method a key can hold to another host unless its pillar's relay row says otherwise, and never a local one", () => {
-    const rows: Record<string, 'screen' | 'never'> = Object.assign({}, ...PILLAR_IDS.map((id) => WORK_PILLAR_CONTRACTS[id].relay))
+    const rows: Record<string, 'screen' | 'never'> = Object.assign({}, WORK_CORE_RELAY, ...PILLAR_IDS.map((id) => WORK_PILLAR_CONTRACTS[id].relay))
     const remote = Object.entries(WORK_CAPS as Record<string, string>).filter(([, cap]) => cap !== 'local').map(([m]) => m)
     const problems: string[] = []
     for (const id of PILLAR_IDS) {

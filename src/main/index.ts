@@ -1,10 +1,11 @@
 import { createComputerBanner } from './computerBanner'
 import { computerBannerHooks } from './server/computer/hold'
-import { app, shell, dialog, net, BrowserWindow, ipcMain, powerMonitor, powerSaveBlocker } from 'electron'
+import { app, shell, dialog, net, BrowserWindow, Notification, ipcMain, powerMonitor, powerSaveBlocker } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
+import { REVEAL_NO_WINDOW } from '@shared/contract-work-reveal'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates, selfUpdate, setCodeStatus } from './update'
 import { applyHarness, bakedHarness } from './harness'
@@ -31,7 +32,7 @@ import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, setRemoteMedia, setRemotePages } from './assets'
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
-import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
+import { isHeadless, noDisplay, personsDesktop, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 import { declareUserActivity, MacPresenceWatcher, macScreenReader, presenceFromEnv, screenOfIdleState } from './presence'
 import { AttentionWatcher } from './attention'
 import { PersonIdle } from './personIdle'
@@ -60,6 +61,8 @@ import {
 import { setSignInParent } from './aliax/signInWindow'
 import { aboutPanelOptions, buildInfo } from './buildInfo'
 import { installWarningLog } from './warningLog'
+import { registerRevealWindow } from './revealWindow'
+import { queueWorkHandoff, registerWorkHandoff } from './workHandoff'
 import { APP_USER_MODEL_ID, localUserData } from './windowFrame'
 
 // First statement of the bundle: everything before this mark is Electron's
@@ -114,6 +117,17 @@ if (soakWindow()) for (const name of SOAK_SWITCHES) app.commandLine.appendSwitch
 // Chromium's headless Ozone backend stands in for one so the hidden
 // preview window can still paint.
 const headless = isHeadless()
+const refuseHandoff = (words: string): void => {
+  console.warn('[handoff]', words)
+  void app.whenReady().then(() => {
+    if (Notification.isSupported()) new Notification({ title: 'TempCode', body: words }).show()
+  })
+}
+const handoff = queueWorkHandoff(async (params) => {
+  if (!server) throw new Error(REVEAL_NO_WINDOW)
+  await server.revealLocal(params)
+}, refuseHandoff)
+if (process.platform === 'darwin' && !headless) registerWorkHandoff(app, handoff.receive, refuseHandoff)
 /** Set once openSavedWindows has run: before that, a hidden helper's going is not a quit. */
 let userWindowsOpened = false
 if (headless) {
@@ -224,6 +238,15 @@ app.whenReady().then(async () => {
     attention.start()
   }
   if (process.platform === 'darwin' && !headless) computerBannerHooks.current = createComputerBanner()
+  const revealWindow = personsDesktop() ? registerRevealWindow(ipcMain, {
+    target: targetWindow,
+    presence: () => presence.snapshot(),
+    dismissSaver: () => presence.dismissSaver(),
+    onReady: () => {
+      if (presence.snapshot().screen === 'unknown') void presence.refresh().then(handoff.windowReady)
+      else handoff.windowReady()
+    }
+  }) : undefined
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     prodData: isProdData(app.getPath('userData'), defaultUserData),
     // Counted from the code that runs, never app.getAppPath(): under a code-only update that is the
@@ -249,6 +272,7 @@ app.whenReady().then(async () => {
     // A code-only update from a linked host is staged for boot.ts and offered on the update row (codeUpdates.ts).
     code: headless ? undefined : { boot: codeBoot(), onStatus: setCodeStatus },
     presence,
+    revealWindow,
     personIdle: personIdle ?? undefined,
     // The display stays awake while threads work (server/keepAwake.ts): a Mac or a Windows PC with a desktop.
     keepAwake:

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ConvexProvider, useConvex, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { Mailbox, MailClientProvider, MailKitProvider, opening, useMailClient, type ComposeState, type MailNav } from "work-kit/mail";
+import { MailClientProvider, MailKitProvider, opening, useMailClient, type ComposeState, type MailNav } from "work-kit/mail";
 import type { InlineOp } from "work-kit/formats/diff";
 import "work-kit/mail/styles.css";
 import "./mail.css";
@@ -17,7 +17,7 @@ import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../s
 import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 import { RuleLine } from "../rules/RuleLine";
-import { mailClientFor } from "./client";
+import { mailClientFor, RevealMailbox } from "./client";
 import { placedKit } from "./files";
 import { tempcodeMailKit } from "./kit";
 import { proposalDiff, type Proposal } from "./proposal";
@@ -181,7 +181,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div data-mail-kit className="relative min-h-0 flex-1">
-          <Mailbox nav={nav} accounts={accounts} compose={null} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
+          <RevealMailbox nav={nav} accounts={accounts} compose={null} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
         </div>
         <div data-mail-rewrite className="flex max-h-[60%] min-h-0 shrink-0 flex-col border-t border-border">
           {rewrite}
@@ -193,7 +193,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
   if (!open && !threadId) return <Letter draft={doc.message} lead={`${sentState(doc) ?? "Sending"} to`} />;
   return (
     <div data-mail-kit className="contents">
-      <Mailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
+      <RevealMailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
     </div>
   );
 }

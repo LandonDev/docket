@@ -15,6 +15,7 @@ import { draftPicks, projectDrafts, projectDraftsStore } from "../lib/projectDra
 import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
 import { installHostMarks, markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
+import { mayMarkRevealRead, onRevealReadChange } from "../lib/revealRead";
 import { createReadMarks } from "../lib/readMarks";
 import { focusSignal } from "../lib/tcserver/commands";
 import {
@@ -259,7 +260,7 @@ export function installActiveSessionSync(): Teardown {
   let markTimer: ReturnType<typeof setTimeout> | null = null;
   const markId = (id: string | undefined) => {
     const meta = id ? sessionStore.metaOf(id) : null;
-    if (!id || !meta) return;
+    if (!id || !meta || !mayMarkRevealRead()) return;
     if (marked?.id === id && marked.updatedAt === meta.updatedAt) return;
     marked = { id, updatedAt: meta.updatedAt };
     markSessionSeen(id, meta.updatedAt);
@@ -294,6 +295,7 @@ export function installActiveSessionSync(): Teardown {
   sync();
   const scheduled = afterWrites(sync);
   return teardownAll([
+    onRevealReadChange(() => markId(focusedId)),
     workspaceTabsStore.subscribe(scheduled),
     sessionStore.subscribe(scheduled),
     sessionStore.onMetaChange(scheduled),
@@ -529,9 +531,10 @@ export function installReadMarks(): Teardown {
     environmentOf: (id) => sessionStore.environmentOf(id),
     onMetaChange: (listener) => sessionStore.onMetaChange((changes) => listener(changes.ids)),
     linkOf: (environmentId) => registry.link(environmentId),
+    mayRead: mayMarkRevealRead,
     attended: () => focusSignal.attended(),
     shown: () => focusSignal.shown(),
-    onFocusChange: (listener) => focusSignal.onChange(listener),
+    onFocusChange: (listener) => teardownAll([focusSignal.onChange(listener), onRevealReadChange(listener)]),
   });
   const uninstall = installHostMarks(marks);
   return () => {

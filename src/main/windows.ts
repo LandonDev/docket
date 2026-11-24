@@ -182,13 +182,9 @@ function alive(id: number | null): BrowserWindow | null {
 /** Where window-scoped pushes go: the focused window, else the one the
  *  user had in front last (an appshot hotkey fires while another app is
  *  frontmost, so nothing is focused then), else any live window. */
-export function targetWindow(): BrowserWindow | null {
-  return (
-    BrowserWindow.getFocusedWindow() ??
-    alive(lastFocusedId) ??
-    [...windows.values()].map((e) => e.win).find((w) => !w.isDestroyed()) ??
-    null
-  )
+export function targetWindow(accept?: (win: BrowserWindow) => boolean): BrowserWindow | null {
+  const candidates = [BrowserWindow.getFocusedWindow(), alive(lastFocusedId), ...[...windows.values()].map((entry) => entry.win)]
+  return candidates.find((win) => win && !win.isDestroyed() && (!accept || (entryOf(win) && accept(win)))) ?? null
 }
 
 export function slotOf(win: BrowserWindow): string | null {

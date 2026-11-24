@@ -5,6 +5,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import { logoAssetUrl } from '../shared/assets'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '../shared/launchMirror'
 import { aliaxApi } from './aliax'
+import type { RevealNavigation } from '@shared/contract-work-reveal'
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
 import type { ShowAsk, ShowDisplay, ShowFrames } from '../shared/slidesShow'
 import type { LiveTicketAsk } from '../shared/work/officeLive'
@@ -225,6 +226,24 @@ const api = {
     /** Writes bytes the window holds into Downloads under a safe, free name; answers the path. */
     saveDownload: (name: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('files:save-download', name, bytes),
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
+    /** Main's navigation-only request for this window. */
+    onReveal: (prepare: (token: string) => void, open: (token: string, navigation: RevealNavigation) => void, cancel: (token: string) => void): (() => void) => {
+      const arm = (_e: unknown, token: string): void => {
+        prepare(token)
+        ipcRenderer.send('app:reveal-prepared', token)
+      }
+      const navigate = (_e: unknown, token: string, navigation: RevealNavigation): void => open(token, navigation)
+      const cancelled = (_e: unknown, token: string): void => cancel(token)
+      ipcRenderer.on('app:reveal-prepare', arm)
+      ipcRenderer.on('app:reveal-open', navigate)
+      ipcRenderer.on('app:reveal-cancel', cancelled)
+      ipcRenderer.send('app:reveal-ready')
+      return () => {
+        ipcRenderer.removeListener('app:reveal-prepare', arm)
+        ipcRenderer.removeListener('app:reveal-open', navigate)
+        ipcRenderer.removeListener('app:reveal-cancel', cancelled)
+      }
+    },
     /** A system notification while no window is in front, once per key (src/main/notice.ts); `onOpen` hears the key of the one he clicked. */
     notice: {
       show: (ask: { key: string; title: string; body: string; silent?: boolean; telling?: string }): Promise<void> => ipcRenderer.invoke('app:notice', ask),

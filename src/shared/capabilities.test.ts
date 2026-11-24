@@ -91,7 +91,7 @@ describe('METHOD_CAPABILITY', () => {
       ].sort()
     )
   })
-  it('approve covers exactly the prompt-skipping methods', () => {
+  it('approve covers exactly the owner press methods', () => {
     // macBridge.thread.set lets a box thread call the Mac without a box prompt (the Mac still asks for itself).
     // The live picture and live video are the person's own to watch: a key needs approve, and a second rule
     // (video/access.ts `mayWatch`) says which caller on which host.
@@ -108,7 +108,8 @@ describe('METHOD_CAPABILITY', () => {
         'video.open',
         'video.close',
         'video.paste',
-        'video.copy'
+        'video.copy',
+        'work.reveal'
       ].sort()
     )
   })

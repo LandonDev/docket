@@ -610,6 +610,11 @@ export const attention = {
   onChange: (cb: (present: boolean) => void): (() => void) => api()?.app?.onAttention?.(cb) ?? (() => {}),
 };
 
+/** Navigation requests from main reach only a desktop shell. */
+export function listenForReveal(...handlers: Parameters<typeof window.api.app.onReveal>): UnlistenFn {
+  return api()?.app?.onReveal?.(...handlers) ?? (() => {});
+}
+
 export const updates = {
   get: (): Promise<UpdateStatus> => api().updates.get(),
   check: (): Promise<UpdateStatus> => api().updates.check(),

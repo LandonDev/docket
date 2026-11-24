@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import type { ComposeMessage, MailClient, MailWrite, OutboxActions } from "work-kit/mail";
+import { createContext, createElement, useContext, useLayoutEffect, useMemo, useRef, type ComponentProps } from "react";
+import { Mailbox, type ComposeMessage, type MailClient, type MailWrite, type OutboxActions, type ThreadSummary } from "work-kit/mail";
 import { createLifeosMailClient } from "work-kit/lifeos";
 import type { MailSeen, MailSendAnswer } from "@shared/contract-work-mail";
 import { loadToast } from "../../components/ui/toaster";
+import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { workOpenPort } from "../../lib/workSwitch";
@@ -127,9 +128,43 @@ export const write: MailWrite = async ({ run, failed, message, undo }) => {
 /** A failed act's title, from the verb work-kit hands over ("archive", "mark it read"): "Did not archive". */
 export const failedLine = (failed: string): string => `Did not ${failed}`;
 
+export const MailReadThread = createContext<string | null>(null);
+
+/** Scope a deferred read mark to the Mailbox that still has that thread open. */
+export function RevealMailbox(props: ComponentProps<typeof Mailbox>) {
+  return createElement(MailReadThread.Provider, { value: props.nav.threadId }, createElement(Mailbox, props));
+}
+
 function wrapClient(env: string, inner: MailClient): MailClient {
   return {
     ...inner,
+    useMailActions() {
+      const actions = inner.useMailActions();
+      const openId = useContext(MailReadThread);
+      const pending = useRef<ThreadSummary | null>(null);
+      useLayoutEffect(() => {
+        if (pending.current?.id !== openId) pending.current = null;
+        const resume = () => {
+          if (!mayMarkRevealRead() || !pending.current) return;
+          const thread = pending.current;
+          pending.current = null;
+          actions.markRead(thread, true, true);
+        };
+        resume();
+        return onRevealReadChange(resume);
+      }, [actions, openId]);
+      return useMemo(() => ({
+        ...actions,
+        markRead(thread, read, quiet) {
+          if (quiet && read && !mayMarkRevealRead()) {
+            if (thread.id === openId) pending.current = thread;
+            return;
+          }
+          if (pending.current?.id === thread.id) pending.current = null;
+          actions.markRead(thread, read, quiet);
+        },
+      } satisfies typeof actions), [actions, openId]);
+    },
     useOutboxActions() {
       const actions = inner.useOutboxActions();
       return useMemo(() => sendThroughHost(env, actions), [actions]);

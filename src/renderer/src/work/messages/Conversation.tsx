@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useSyncExternalStore, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
 import { firstWords, lastHeard, staleOf, syncWhen, type ChatDetail, type ChatMessage, type ChatRow } from "@shared/work/messages";
 import { ArrowLeft, ChevronDown, Copy, MessageSquarePlus, MoreHorizontal } from "../../chrome/icons";
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
@@ -6,6 +6,7 @@ import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { anchorShift, RowLayout, type RowAnchor } from "../../lib/transcriptWindow";
 import { openWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -87,16 +88,17 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   // Opening marks it read; so does a newer message while it is open and the window is in front, or his coming back to
   // the window while something waits.
   const markRead = data.markRead;
-  const wants = placed && messages.status === "ready" && chat && !holding ? wantsRead(chat) : false;
+  const mayMarkRead = useSyncExternalStore(onRevealReadChange, mayMarkRevealRead);
+  const wants = mayMarkRead && placed && messages.status === "ready" && chat && !holding ? wantsRead(chat) : false;
   const marked = useRef(false);
   useEffect(() => {
-    if (!wants) return;
+    if (!wants || !mayMarkRevealRead()) return;
     if (!marked.current || document.hasFocus()) {
       marked.current = true;
       markRead(chatId);
       return;
     }
-    const onFocus = (): void => markRead(chatId);
+    const onFocus = (): void => { if (mayMarkRevealRead()) markRead(chatId); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [wants, chatId, markRead]);

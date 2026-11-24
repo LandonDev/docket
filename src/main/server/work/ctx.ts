@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
 import { allows, LOCAL_CAPS, principalCaps, type Principal as SocketPrincipal } from '@shared/capabilities'
+import type { FilesTabs } from '@shared/contract-work-files'
 import type { ClientRequest, CreateSessionParams } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -49,7 +50,8 @@ import { callRefusalOf, ensureNarrowMarks, NARROWING_BROKEN } from './narrowing'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
 import type { HealthReport, WorkDesktop } from '@shared/work'
 import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
-import { heldPart } from './outbox/ctx'
+import { heldPart, outboxHostOf } from './outbox/ctx'
+import { reveal, type RevealWindow } from './reveal'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
 import { lifeosProjectIn, mirrorsPart } from './projects/mirrors'
@@ -93,6 +95,8 @@ export interface WorkDeps {
   dataDir: string
   /** The listener's path fence for a remote key (index.ts `managedRoots` and the folders it denies): `ctx.reaches` and `PushTo.path` ask it. Absent only in a test, where a remote key then reaches no file. */
   remoteFence?: { roots(): string[]; denied(): string[] }
+  /** The local desktop’s navigation port. Absent on the box and in test mounts. */
+  revealWindow?: RevealWindow
   /** Whether a route may reach a host (devices/binding.ts `mayRoute`): a removed given computer is off every Work route. Absent: every host. */
   hostLive?: (envId: string) => boolean
   /** the links to other hosts, and the calls a registered host answers */
@@ -516,6 +520,18 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           }
           return handled(await making)
         }
+        case 'work.reveal':
+          return handled(await reveal({
+            platform: process.platform,
+            registry: deps.registry,
+            ctx,
+            window: deps.revealWindow,
+            held: async (ref) => await outboxHostOf(ctx)?.outbox.get(ref) ?? null,
+            files: async (by, workspaceId, signal) => {
+              const answer = await byId.get('files')?.handle?.({ id: req.id, method: 'work.files.tabs', params: { workspaceId } }, ctx, by, signal)
+              return answer?.handled ? answer.result as FilesTabs : null
+            }
+          }, req.params, principal, socket?.signal))
         case 'work.health': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const signal = socket?.signal ? AbortSignal.any([socket.signal, period.signal]) : period.signal

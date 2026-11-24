@@ -7,6 +7,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tip, TruncateTip } from "../../components/tip";
+import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -382,12 +383,14 @@ function Responses({ view, host, item, shell }: { view: MsFormView; host: MsForm
       (r) => on && setGot(r),
       () => on && setGot((was) => (was && was !== "failed" ? was : "failed")),
     );
-    // Shown: what came in is seen.
-    void host.seen().catch(() => undefined);
     return () => {
       on = false;
     };
   }, [host, count]);
+  const maySee = useSyncExternalStore(onRevealReadChange, mayMarkRevealRead);
+  useEffect(() => {
+    if (maySee && mayMarkRevealRead()) void host.seen().catch(() => undefined);
+  }, [host, count, maySee]);
   const chart = useMemo(() => (got && got !== "failed" ? chartOf(view.questions, got) : null), [got, view.questions]);
   // The addresses the answers carry (Record name on): who hasn't answered is read against them.
   const answered = useMemo(() => {

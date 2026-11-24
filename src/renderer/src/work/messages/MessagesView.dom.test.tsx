@@ -7,6 +7,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { beginRevealNavigation } from "../../lib/revealRead";
 import { MessagesDataProvider } from "./data";
 import { CHATS, fixtureData, JOB, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
@@ -96,6 +97,22 @@ describe("the list", () => {
     expect(row("Dana Lee").dataset.unread).toBeUndefined();
     expect(row("Dana Lee").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("log", { name: "Messages" })).toBeTruthy();
+  });
+
+  it("keeps a conversation unread when the window reveals it", () => {
+    const target = new EventTarget();
+    const listen = vi.spyOn(target, "addEventListener");
+    beginRevealNavigation(target, "test")();
+    try {
+      const { data } = mount({}, { chatId: "c_dana" });
+      fireEvent.focus(window);
+      expect(screen.getByRole("log", { name: "Messages" })).toBeTruthy();
+      expect(data.log.read).toEqual([]);
+      expect(row("Dana Lee").dataset.unread).toBe("true");
+    } finally {
+      const keydown = listen.mock.calls.find(([kind]) => kind === "keydown")?.[1] as EventListener;
+      act(() => keydown({ isTrusted: true } as Event));
+    }
   });
 
   it("marks a row read or unread from its hover act, without opening it", () => {

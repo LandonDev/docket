@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LEFT, madeWords, SETTLED_WORDS, type MergedJob, type Placed, type SettleHow, type SlippedRow } from "@shared/work/review";
 import { PageError } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -6,6 +6,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { nameInLine } from "../../lib/hostWords";
 import { takeWorkPlaceAt, useWorkPlaceAt } from "../../lib/workPlaceAt";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -60,10 +61,11 @@ export function View(_props: WorkPlaceProps) {
     if (!naming) void loadWeek({ from: week.from, to: week.to });
   }, [naming, week.from, week.to, view.tz]);
   // He has seen the week once it has drawn: Today's row and the digest's line go.
+  const mayMarkSeen = useSyncExternalStore(onRevealReadChange, mayMarkRevealRead);
   const drawn = view.review !== null && !naming;
   useEffect(() => {
-    if (drawn) markSeen({ from: week.from, to: week.to });
-  }, [drawn, week.from, week.to]);
+    if (drawn && mayMarkSeen && mayMarkRevealRead()) markSeen({ from: week.from, to: week.to });
+  }, [drawn, mayMarkSeen, week.from, week.to]);
 
   // Rows a press settled leave at once, in the week the press was made in, and stay away until a read of that week
   // no longer lists them as open. From then on the week's own reads say what is there: a thing reopened elsewhere

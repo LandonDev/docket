@@ -41,6 +41,7 @@ export type ReadMarksDeps = {
   linkOf(environmentId: string): MarkLink | undefined;
   /** The thread the person looks at, the one on screen, and their changes. */
   attended(): string | null;
+  mayRead?(): boolean;
   shown(): string | null;
   onFocusChange(listener: () => void): () => void;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -149,7 +150,7 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
   // The thread the person looks at is read, and stays read as it moves.
   let attendedId = deps.attended();
   const readAttended = () => {
-    if (attendedId) read([attendedId]);
+    if (attendedId && deps.mayRead?.() !== false) read([attendedId]);
   };
   readAttended();
 
@@ -164,7 +165,7 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
     const leaving = attendedId;
     attendedId = deps.attended();
     // The thread leaving as it stands (what landed before the next write), then the one arriving.
-    if (leaving && leaving !== attendedId) read([leaving]);
+    if (leaving && leaving !== attendedId && deps.mayRead?.() !== false) read([leaving]);
     readAttended();
     const shown = deps.shown();
     if (shown !== shownId) {

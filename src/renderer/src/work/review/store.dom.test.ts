@@ -3,6 +3,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEFT, weekOf, type ReviewBody } from "@shared/work/review";
+import { beginRevealNavigation } from "../../lib/revealRead";
 import { registry, TimeoutError, type EnvironmentStatus } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
@@ -180,7 +181,7 @@ describe("the week across hosts", () => {
     expect(reviewNow(WEEK)).toMatchObject({ settled: true, review: { known: { desk: true, slipped: true } } });
   });
 
-  it("moves to a named week before it reads or marks any week seen", async () => {
+  it.each([false, true])("opens a named week with reveal read guard %s", async (fromReveal) => {
     // This week is cached and unseen; an older run's row opens the page at its own week.
     await loadZone();
     await loadWeek(thisWeek());
@@ -188,6 +189,9 @@ describe("the week across hosts", () => {
     const { openWorkPlaceAt, takeWorkPlaceAt } = await import("../../lib/workPlaceAt");
     const { View } = await import("./ReviewPage");
     resetShown();
+    const target = new EventTarget();
+    const listen = vi.spyOn(target, "addEventListener");
+    if (fromReveal) beginRevealNavigation(target, "test")();
     act(() => openWorkPlaceAt("review", WEEK.from));
     const page = render(createElement(View, {} as never));
     // The bones, not this week's rows.
@@ -197,6 +201,14 @@ describe("the week across hosts", () => {
       for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
     });
     const asked = (method: string) => Object.values(links).flatMap((l) => l.calls.filter((c) => c.method === method).map((c) => c.params.from));
+    if (fromReveal) {
+      try {
+        expect(asked("work.review.seen")).toEqual([]);
+      } finally {
+        const input = listen.mock.calls.find(([kind]) => kind === "keydown")?.[1] as EventListener;
+        act(() => input({ isTrusted: true } as Event));
+      }
+    }
     expect(new Set(asked("work.review.seen"))).toEqual(new Set([WEEK.from]));
     expect(new Set(asked("work.review.week"))).toEqual(new Set([WEEK.from]));
     expect(shownWeek().from).toBe(WEEK.from);

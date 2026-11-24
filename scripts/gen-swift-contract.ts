@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { CONTRACT_VERSION, METHOD_CAPABILITY } from '../src/shared/capabilities'
 import { ClientRequestSchema } from '../src/shared/contract'
+import { RevealAnswerSchema, RevealTargetSchema } from '../src/shared/contract-work-reveal'
 import { GUEST_ROLES, GuestNameSchema, GuestTitleSchema, LifeosGuestSourceSchema } from '../src/shared/contract-work-guests'
 import {
   BatchAdoptResultSchema,
@@ -596,6 +597,8 @@ export const SUBSET: SubsetEntry[] = [
   type('TellGroup', TellGroupSchema),
   type('TellLevel', TellLevelSchema),
   type('TellOpen', W.TellOpenPhoneSchema),
+  type('RevealTarget', RevealTargetSchema),
+  method('work.reveal', RevealAnswerSchema),
   type('TellRow', W.TellRowPhoneSchema),
   type('DigestDay', W.DigestDayWireSchema),
   type('DigestSettings', W.DigestSettingsWireSchema),

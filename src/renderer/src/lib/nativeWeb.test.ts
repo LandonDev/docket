@@ -42,6 +42,25 @@ describe("web mode", () => {
     expect(web.isWebMode()).toBe(false);
     expect(web.assetHref("tempcode-asset://logo/a.png")).toBe("tempcode-asset://logo/a.png");
   });
+  it("subscribes to reveals through preload and keeps the browser listener inert", async () => {
+    vi.stubGlobal("window", { location: { origin: "https://tc.example" } });
+    const native = await import("./native");
+    const prepare = vi.fn();
+    const open = vi.fn();
+    const cancel = vi.fn();
+    const dispose = vi.fn();
+    native.listenForReveal(prepare, open, cancel)();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+
+    const onReveal = vi.fn(() => dispose);
+    vi.stubGlobal("window", { api: { app: { onReveal } } });
+    native.listenForReveal(prepare, open, cancel)();
+    expect(onReveal).toHaveBeenCalledWith(prepare, open, cancel);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("routes native.ts through webApi: slot web, terminal refused", async () => {
     vi.stubGlobal("window", { location: { origin: "https://tc.example" } });
     vi.stubGlobal("location", { origin: "https://tc.example" });

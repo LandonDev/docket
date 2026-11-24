@@ -10,6 +10,7 @@ import { withinRoots } from './fspaths'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService, accountsPusher } from './accounts'
+import { REVEAL_INVALID, type RevealParams } from '@shared/contract-work-reveal'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { gateway as runningGateway, startGateway, type Gateway, type SpawnGatewayChild } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
@@ -257,6 +258,7 @@ import {
   setAppWork,
   setProjectPlans
 } from './apptools'
+import type { RevealWindow } from './work/reveal'
 import { loadWork } from './work/load'
 import { isWorkMethod } from '@shared/work/wire'
 import { workspaceKindOf } from '@shared/work/ids'
@@ -411,6 +413,8 @@ export interface RunningServer {
   port: number
   /** This app's own window mounted its app shell (windows.ts): one of the two signs a code-only update started (codeUpdates.ts). */
   codeWindowMounted: () => void
+  /** Continue a validated macOS activity as the local user through the same Work route. */
+  revealLocal(params: RevealParams): Promise<void>
   /** The Work switch, for the main process's capture key (src/main/capture.ts): off, and never on, when Work could not come up. */
   workSwitch: { enabled(): boolean; onChange(fn: () => void): () => void }
   /** This server's stable identity (<userData>/environment.json). */
@@ -507,6 +511,7 @@ export async function startServer(
     remotePort?: number
     /** This host has a desktop of its own (video/access.ts `mayWatch`). Absent: a Mac or a PC that is not headless, never a Linux host (`personsDesktop`). A test says which. */
     desktop?: boolean
+    revealWindow?: RevealWindow
     /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
     assets?: (request: Request) => Promise<Response>
     /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
@@ -2355,6 +2360,7 @@ export async function startServer(
     registry,
     environmentId,
     dataDir: options.dataDir ?? dirname(dbPath),
+    revealWindow: options.revealWindow,
     // The listener's own fence, so a module that reaches a file through an id judges a remote key as the listener would.
     remoteFence: { roots: () => managedRoots(), denied: () => [computerHistoryRoot] },
     hostLive: (envId) => deviceBindings.mayRoute(envId),
@@ -2672,7 +2678,7 @@ export async function startServer(
       const parsed = ClientRequestSchema.safeParse(raw)
       if (!parsed.success) {
         const id = (raw as { id?: string })?.id
-        if (id) sendFrame({ id, ok: false, error: `bad request: ${parsed.error.message}` })
+        if (id) sendFrame({ id, ok: false, error: (raw as { method?: unknown })?.method === 'work.reveal' ? REVEAL_INVALID : `bad request: ${parsed.error.message}` })
         return
       }
       // `lane: 'ui'` rides beside the method (lane.ts); the schema strips it.
@@ -4588,6 +4594,9 @@ export async function startServer(
     hostDevices,
     projectPlans,
     macBridge,
+    revealLocal: async (params) => {
+      await work.handle({ id: 'handoff', method: 'work.reveal', params }, LOCAL_PRINCIPAL)
+    },
     workSwitch: {
       enabled: () => {
         try {

@@ -5,6 +5,7 @@
  * closed line with Reopen), the presses it makes, and the answers drawn from
  * `work.msforms.responses` as our forms' Responses are.
  */
+import { beginRevealNavigation } from "../../lib/revealRead";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
@@ -119,6 +120,22 @@ describe("the bar", () => {
 });
 
 describe("Responses", () => {
+  it("keeps a revealed form's answers unseen until local input", async () => {
+    const target = new EventTarget();
+    const listen = vi.spyOn(target, "addEventListener");
+    beginRevealNavigation(target, "form")();
+    const host = hostOf({ ...BASE, count: 2, unseen: 2 });
+    try {
+      await bar(BASE, host, "responses");
+      await waitFor(() => expect(host.responses).toHaveBeenCalled());
+      expect(host.seen).not.toHaveBeenCalled();
+    } finally {
+      const keydown = listen.mock.calls.find(([kind]) => kind === "keydown")?.[1] as EventListener;
+      act(() => keydown({ isTrusted: true } as Event));
+    }
+    expect(host.seen).toHaveBeenCalledOnce();
+  });
+
   it("draws the answers from work.msforms.responses, with the choice question's bars, and marks them seen", async () => {
     const view = { ...BASE, state: "collecting" as const, link: LINK, count: 3 };
     const { host } = await bar(view, hostOf(view), "responses");

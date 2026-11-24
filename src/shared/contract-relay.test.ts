@@ -99,8 +99,9 @@ describe('RELAY_METHODS', () => {
     }
     for (const m of RELAY_BOX_LOCAL) expect(contractMethods.has(m), m).toBe(true)
   })
-  it('needs the screen only for opening Xcode (a Work pillar says its own, contract-work.test.ts)', () => {
+  it('needs the screen for Xcode and desktop reveals, with other Work methods pinned in contract-work.test.ts', () => {
     expect(Object.entries(RELAY_METHODS).filter(([m, need]) => need === 'screen' && !isWorkMethod(m)).map(([m]) => m)).toEqual(['host.device.openXcode'])
+    expect(RELAY_METHODS['work.reveal']).toBe('screen')
   })
   it('covers every method the phone speaks (the Swift SUBSET)', () => {
     // scripts/ is outside tsconfig.node.json, so the SUBSET is read off the generator's text: its method('…') rows.

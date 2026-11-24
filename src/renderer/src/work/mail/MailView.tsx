@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
-import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest, type MailtoDraft } from "work-kit/mail";
+import { MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest, type MailtoDraft } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -8,7 +8,7 @@ import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
-import { mailClientFor, startNudge } from "./client";
+import { mailClientFor, RevealMailbox, startNudge } from "./client";
 import { tempcodeMailKit } from "./kit";
 import { mailPaneOf, type ContextChip } from "@shared/work";
 import { CanvasSeat } from "../canvas/CanvasSeat";
@@ -255,7 +255,7 @@ export function MailScreen({
     [env, onAsk, pane],
   );
   const box = (
-    <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} onView={chat ? onView : undefined} />
+    <RevealMailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} onView={chat ? onView : undefined} />
   );
   const asked = useAsked(id);
   return (

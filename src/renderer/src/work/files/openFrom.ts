@@ -6,10 +6,10 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { choose, openWorkView, stillChosen, workViewNow } from "../../lib/workSwitch";
-import { openFileTab, openPageTab } from "./store";
+import { openFileTab, openPageTab, showSavedTab } from "./store";
 
 /** What another screen opens in Files: a file, in a tab of its own, or a page to stand on (a place, a folder). */
-export type FilesTarget = { ref: CanvasSource; name: string; key?: string } | { page: FilePage };
+export type FilesTarget = { ref: CanvasSource; name: string; key?: string } | { page: FilePage } | { tab: string; itemId: string };
 
 /**
  * Opens a file for him from another screen of Work (Today, Search, a meeting's prep, Money, a template): in a
@@ -27,7 +27,9 @@ export async function openInFiles(workspace: Pick<WorkspaceMeta, "id" | "environ
   // A slow host: he may have opened a mail, another file or a thread by now. The tab is made, behind the one
   // Files shows, and the window stays with him.
   const latest = (): boolean => stillChosen(mine, before, workspace.id);
-  if ("page" in what) await openPageTab(workspace.environmentId, workspace.id, what.page);
+  if ("tab" in what) {
+    if (!await showSavedTab(workspace.environmentId, workspace.id, what, latest)) return;
+  } else if ("page" in what) await openPageTab(workspace.environmentId, workspace.id, what.page);
   else await openFileTab(workspace.environmentId, workspace.id, what, undefined, { show: latest });
   if (!latest()) return;
   openWorkView({ workspaceId: workspace.id, view: "files" });

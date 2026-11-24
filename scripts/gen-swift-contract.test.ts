@@ -78,6 +78,16 @@ describe('the subset', () => {
       expect(cap, entry.method).not.toBe('local')
     }
   })
+  it("gives a reveal flat optional target fields for Swift", () => {
+    const types = files['Types.swift']
+    const start = types.indexOf('public struct RevealTarget:')
+    expect(start).toBeGreaterThan(-1)
+    const target = types.slice(start, types.indexOf('\n}\n', start))
+    expect(target).toContain('public let thread: String?')
+    expect(target).toContain('public let held: Held?')
+    expect(target).toContain('public let item: String?')
+    expect(files['Methods.swift']).toContain('public init(target: RevealTarget)')
+  })
   it('gives every remote push a case and keeps the unknown default', () => {
     const swift = files['ServerPush.swift']
     for (const name of pushNames) expect(swift).toContain(`case ${camel(name)}(${pascal(name)}Push)`)

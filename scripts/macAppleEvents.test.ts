@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
 // Office scripting on the Mac (docs/agents/work-office.md) and the terminal restart after an
@@ -8,12 +9,18 @@ import { describe, expect, it } from 'vitest'
 const root = resolve(__dirname, '..')
 
 describe('the macOS build may send Apple Events', () => {
-  it('names Office in the usage string under mac.extendInfo', () => {
-    const yml = readFileSync(join(root, 'electron-builder.yml'), 'utf8')
-    const mac = yml.slice(yml.indexOf('\nmac:'), yml.indexOf('\ndmg:'))
-    const line = mac.split('\n').find((l) => l.includes('NSAppleEventsUsageDescription:'))
-    expect(line).toBeDefined()
-    for (const app of ['Excel', 'Word', 'PowerPoint', 'Outlook']) expect(line).toContain(app)
+  it('keeps all five usage strings and the Handoff activity in the Info.plist map', () => {
+    const config = load(readFileSync(join(root, 'electron-builder.yml'), 'utf8')) as { mac: { extendInfo: Record<string, unknown> } }
+    const info = config.mac.extendInfo
+    expect(Array.isArray(info)).toBe(false)
+    expect(info).toMatchObject({
+      NSCameraUsageDescription: "Application requests access to the device's camera.",
+      NSMicrophoneUsageDescription: "Application requests access to the device's microphone.",
+      NSDocumentsFolderUsageDescription: "Application requests access to the user's Documents folder.",
+      NSDownloadsFolderUsageDescription: "Application requests access to the user's Downloads folder.",
+      NSAppleEventsUsageDescription: 'TempCode drives Excel, Word, PowerPoint and Outlook for your agents, and restarts your terminal sessions after switching accounts.',
+      NSUserActivityTypes: ['dev.landon.tempcode.open']
+    })
   })
 
   it('carries the automation entitlement, which the helpers inherit', () => {

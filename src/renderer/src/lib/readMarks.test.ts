@@ -7,7 +7,7 @@ function rig(metas: MarkMeta[], hosts: Record<string, string> = {}) {
   const byId = new Map(metas.map((m) => [m.id, m]));
   const metaListeners = new Set<(ids: ReadonlySet<string>) => void>();
   const focusListeners = new Set<() => void>();
-  const focus = { attended: null as string | null, shown: null as string | null };
+  const focus = { mayRead: true, attended: null as string | null, shown: null as string | null };
   const timers: { fn: () => void; at: number }[] = [];
   let now = 0;
   const sent: { env: string; items: { sessionId: string; at: number }[] }[] = [];
@@ -38,6 +38,7 @@ function rig(metas: MarkMeta[], hosts: Record<string, string> = {}) {
     onMetaChange: (l) => (metaListeners.add(l), () => metaListeners.delete(l)),
     linkOf: link,
     attended: () => focus.attended,
+    mayRead: () => focus.mayRead,
     shown: () => focus.shown,
     onFocusChange: (l) => (focusListeners.add(l), () => focusListeners.delete(l)),
     setTimer: (fn, ms) => {
@@ -89,6 +90,26 @@ function rig(metas: MarkMeta[], hosts: Record<string, string> = {}) {
 }
 
 describe("readMarks", () => {
+  it("marks neither the old nor the newly revealed thread until local input", async () => {
+    const r = rig([{ id: "a", updatedAt: 100, readAt: 0 }, { id: "b", updatedAt: 200, readAt: 0 }]);
+    try {
+      r.focus.mayRead = false;
+      r.focus.attended = "a";
+      r.focusMoved();
+      r.focus.attended = "b";
+      r.focusMoved();
+      r.update({ id: "b", updatedAt: 210, readAt: 0 });
+      await r.advance(QUIET_MS);
+      expect(r.sent).toEqual([]);
+      r.focus.mayRead = true;
+      r.focusMoved();
+      await r.advance(QUIET_MS);
+      expect(r.sent).toEqual([{ env: "local", items: [{ sessionId: "b", at: 210 }] }]);
+    } finally {
+      r.restore();
+    }
+  });
+
   it("collects the marks of the hosts that keep them, and leaves the rest to the window", () => {
     const r = rig([
       { id: "a", updatedAt: 100, readAt: 100 },

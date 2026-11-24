@@ -11,7 +11,7 @@ import {
   sessionFromDraft,
   type DraftRetype,
 } from "./lib/projectDrafts";
-import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
+import { invoke, listen, getCurrentWindow, isWebMode, listenForReveal, message } from "./lib/native";
 import { messageListFold } from "./lib/messageListFold";
 import {
   useCallback,
@@ -301,6 +301,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, setupHostChunk, terminalChunk, threadBannersChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
+import { beginRevealNavigation, cancelRevealReads, prepareRevealReads } from "./lib/revealRead";
 import { choose, openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { returnOf } from "./lib/workReturn";
@@ -2135,17 +2136,34 @@ export default function App() {
     return () => workEnterPort.set(null);
   }, [onSelectProject]);
   // Work's views open a thread here: a routine's run, the thread that set a watch (work/routines).
+  const openWorkThread = useCallback((sessionId: string) => {
+    // A thread opened under an overlay is not seen. A pending Files open also yields to this choice.
+    shell.closeOverlays();
+    choose();
+    openWorkView(null);
+    return onSelectHistorySessionRef.current?.(sessionId) ?? Promise.resolve();
+  }, []);
   useEffect(() => {
-    workOpenPort.set((sessionId) => {
-      // Whatever lies over the board (Today, Review, the Inbox, Settings) leaves: a thread opened under it is not seen.
-      // And this is his latest choice: a file still on its way from a slow host no longer takes the window.
-      shell.closeOverlays();
-      choose();
-      openWorkView(null);
-      onOpenSessionById(sessionId);
-    });
+    workOpenPort.set(openWorkThread);
     return () => workOpenPort.set(null);
-  }, [onOpenSessionById]);
+  }, [openWorkThread]);
+
+  useEffect(() => listenForReveal(
+    (token) => prepareRevealReads(window, token),
+    (token, navigation) => {
+      const finish = beginRevealNavigation(window, token);
+      void import("./lib/revealPort")
+        .then(({ revealInWindow }) => revealInWindow(navigation, openWorkThread))
+        .then(() => finish(), (err: unknown) => {
+          finish(false);
+          return import("./components/ui/toaster").then(({ loadToast }) => loadToast()).then((toast) => {
+            toast.error(err instanceof Error ? err.message : String(err));
+          });
+        })
+        .catch((err: unknown) => console.warn("[reveal]", err));
+    },
+    cancelRevealReads,
+  ), [openWorkThread]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);

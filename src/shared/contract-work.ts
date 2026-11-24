@@ -3,6 +3,7 @@ import type { MethodCapability } from './capabilities'
 import type { PillarId } from './work/ids'
 import type { WorkSettings } from './work/scope'
 import { request, type CapsOf } from './work/wire'
+import { RevealParamsSchema } from './contract-work-reveal'
 import { OUTBOX_CAPS, OUTBOX_RELAY, OutboxRequestSchemas, type OutboxPush } from './contract-work-outbox'
 import { CANVAS_CAPS, CANVAS_RELAY, CanvasRequestSchemas, type CanvasPush } from './contract-work-canvas'
 import { LIFEOS_CAPS, LIFEOS_RELAY, LifeosRequestSchemas, type LifeosPush } from './contract-work-lifeos'
@@ -70,6 +71,8 @@ export const WorkCoreRequestSchemas = [
   ),
   /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask. The host asks LifeOS for the project and its name; `name` is what an older client still sends, and is not read. */
   request('work.project.open', z.object({ workspaceId: z.string(), lifeosProjectId: z.string().min(1), name: z.string().max(200).optional(), forSettings: z.boolean().optional() })),
+  /** → RevealAnswer: open a saved destination in this host's window. */
+  request('work.reveal', RevealParamsSchema),
   /** → HealthReport: every connection Work leans on, as this host's pillars answer for them now (docs/agents/work-connections.md); checks that change nothing */
   request('work.health', z.object({}).optional()),
   /** → Lapse[]: what ends on this host and when, read from what it holds, soonest first */
@@ -95,6 +98,7 @@ export const WORK_CORE_CAPS = {
   'work.workspace.set': 'admin',
   'work.project.open': 'operate',
   'work.health': 'read',
+  'work.reveal': 'approve',
   'work.lapses': 'read',
   'app.workTools': 'local',
   'app.workCall': 'local',
@@ -272,7 +276,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
  * it on this host. Both hosts gate the capability. A `local` method never
  * crosses.
  */
-const relayRows: Record<string, 'screen' | 'never'> = Object.assign({}, ...Object.values(WORK_PILLAR_CONTRACTS).map((c) => c.relay))
+export const WORK_CORE_RELAY = { 'work.reveal': 'screen' } as const
+const relayRows: Record<string, 'screen' | 'never'> = Object.assign({}, WORK_CORE_RELAY, ...Object.values(WORK_PILLAR_CONTRACTS).map((c) => c.relay))
 const remoteMethods = Object.entries(WORK_CAPS as Record<string, MethodCapability>)
   .filter(([, cap]) => cap !== 'local')
   .map(([method]) => method)

@@ -418,6 +418,17 @@ function putTabs(link: string, workspaceId: string, answer: FilesTabs, show?: st
 
 const ask = <T,>(link: string, method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<T> => filesLink(link).request<T>(method, params, options);
 
+/** Select a saved file's tab without opening a new file or adding to Recent. */
+export async function showSavedTab(link: string, workspaceId: string, saved: { tab: string; itemId: string }, show: () => boolean): Promise<boolean> {
+  const answer = await ask<FilesTabs>(link, "work.files.tabs", { workspaceId });
+  if (!show()) return false;
+  putTabs(link, workspaceId, answer);
+  const tab = tabsOf(link, workspaceId).tabs.find((tab) => tab.id === saved.tab);
+  if (tab?.itemId !== saved.itemId && tab?.side?.itemId !== saved.itemId) return false;
+  selectTab(link, workspaceId, saved.tab);
+  return true;
+}
+
 /** Fetch (or fetch again) the workspace's tabs from its host; an empty place gets its first tab, made once whichever window asks first. */
 export function loadTabs(link: string, workspaceId: string, first: FilePage): Promise<void> {
   const entry = tabsOf(link, workspaceId);

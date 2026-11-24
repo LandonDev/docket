@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], shown: [] as boolean[], fail: null as Error | null, slow: null as (() => unknown) | null }));
+const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], saved: [] as unknown[][], shown: [] as boolean[], fail: null as Error | null, slow: null as (() => unknown) | null }));
 vi.mock("./store", () => ({
   openFileTab: async (...args: unknown[]) => {
     // the file, as the door hands it over; `show` is asked once the host has answered
@@ -10,6 +10,10 @@ vi.mock("./store", () => ({
     opened.shown.push((args[4] as { show?: () => boolean } | undefined)?.show?.() ?? true);
     if (opened.fail) throw opened.fail;
     return { rev: 1, tabs: [], tabId: "t1" };
+  },
+  showSavedTab: async (host: string, workspaceId: string, saved: { tab: string; itemId: string }, show: () => boolean) => {
+    opened.saved.push([host, workspaceId, saved.tab, saved.itemId]);
+    return saved.tab === "saved" && show();
   },
   openPageTab: async (...args: unknown[]) => {
     opened.pages.push(args);
@@ -26,6 +30,7 @@ const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
 afterEach(() => {
   opened.calls.length = 0;
   opened.pages.length = 0;
+  opened.saved.length = 0;
   opened.shown.length = 0;
   toasts.length = 0;
   opened.fail = null;
@@ -36,6 +41,16 @@ afterEach(() => {
 describe("opening a file from another screen", () => {
   const workspace = { id: "w1", environmentId: "box" };
   const ref = { at: "file" as const, host: "env_box", path: "/w/Budget.xlsx" };
+
+  it("selects a saved tab without opening a file or making another tab", async () => {
+    await openInFiles(workspace, { tab: "gone", itemId: "i1" });
+    expect(workViewNow()).toBeNull();
+    await openInFiles(workspace, { tab: "saved", itemId: "i1" });
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+    expect(opened.saved).toEqual([["box", "w1", "gone", "i1"], ["box", "w1", "saved", "i1"]]);
+    expect(opened.calls).toEqual([]);
+    expect(opened.pages).toEqual([]);
+  });
 
   it("opens it in a Files tab on the workspace's host, then shows the Files place: no thread is made", async () => {
     await openInFiles(workspace, { ref, name: "Budget.xlsx" });
