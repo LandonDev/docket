@@ -1672,9 +1672,13 @@ Around the canvas:
   and for a key that may not change them one line says so ("Computer use
   is changed from a computer that manages the box"). A key that may switch
   no host gets no Work switch, only the line saying where Work is changed.
-  A section that needs LifeOS while it is signed out shows one muted line,
-  "Not signed in to LifeOS", with Sign in at its end opening Settings →
-  Connections (`SignedOutLine`), never disabled controls.
+  A section that needs LifeOS with no session says the state the host
+  answered in the views' words (`LifeosLine`), never disabled controls:
+  bones while the answer is out; "Not signed in to LifeOS" (or the refused
+  sign-in) with Sign in at its end opening Settings → Connections only when
+  the host says so; "LifeOS did not answer" in red with Retry; a host never
+  heard from by name with Retry; a computer kept from LifeOS, a sign-in that
+  waits and Work off with no press.
 - **The Files place** (`work/files/`, the Files row): the finder with
   tabs, under the app's strip in the view's own frame. Three regions.
   The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px

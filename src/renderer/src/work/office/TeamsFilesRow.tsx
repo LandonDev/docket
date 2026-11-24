@@ -67,7 +67,8 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
   const value = read.value;
   const add = editable && value ? (
-    <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "add" })}>
+    // Its words end on the controls' edge, as "Open the digest" does: the ghost's 10px inset hangs past it.
+    <Button variant="ghost" size="sm" className="-me-2.5" onClick={() => setDialog({ kind: "add" })}>
       Add folder…
     </Button>
   ) : undefined;

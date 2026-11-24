@@ -63,4 +63,30 @@ describe("AddinRow", () => {
     expect(calls.find((c) => c.method === "work.office.addin.remove")?.params).toEqual({ id: "k1" });
     expect(await screen.findByText("Not paired")).toBeTruthy();
   });
+
+  it("holds the code's 24px line with a bone while it is asked for, so nothing moves when it lands", async () => {
+    let land!: (v: unknown) => void;
+    const { link } = fakeLink([]);
+    const base = link.request.bind(link);
+    (link as { request: unknown }).request = (method: string, params: unknown) => (method === "work.office.addin.pair" ? new Promise((r) => (land = r)) : base(method, params as never));
+    await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pair…" })));
+    const bone = screen.getByRole("status", { name: "Asking for a code" });
+    expect(bone.className).toContain("h-6");
+    expect(screen.queryByText("Asking for a code…")).toBeNull();
+    await act(async () => land({ code: "K7M2Q9XP", expiresAt: NOW + 60_000 }));
+    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    expect(screen.getByText("K7M2Q9XP")).toBeTruthy();
+  });
+
+  it("says a failed list and a failed Remove in his words, never the link's text", async () => {
+    const { link } = fakeLink([KEY]);
+    const base = link.request.bind(link);
+    (link as { request: unknown }).request = (method: string, params: unknown) =>
+      method === "work.office.addin.remove" ? Promise.reject(new Error("work.office.addin.remove: EIO at /Users/landon/.tc")) : base(method, params as never);
+    await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove" })));
+    expect(screen.getByText("The computer did not remove the add-in.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("addin.remove");
+  });
 });

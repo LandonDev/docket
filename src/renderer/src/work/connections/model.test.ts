@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HealthRow } from "@shared/work/health";
-import { checkDetail, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
+import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
 
 const row = (over: Partial<HealthRow>): HealthRow => ({ id: "x", pillar: "office", group: "Office", title: "Excel", state: "working", ...over });
 const ready = (id: string, name: string, rows: HealthRow[]): HostView => ({ id, name, status: "ready", report: { host: id, at: 0, rows } });
@@ -52,10 +52,14 @@ describe("the rest of the page's words", () => {
   });
 
   it("says a failed check's cause once: nothing after Did not answer that says it again", () => {
-    expect(checkDetail("The host did not answer")).toBeUndefined();
-    expect(checkDetail("The box did not answer. Try again once it is connected.")).toBeUndefined();
-    expect(checkDetail("")).toBeUndefined();
-    expect(checkDetail("Work is off on the box. Turn it on in Settings, Work.")).toBe("Work is off on the box. Turn it on in Settings, Work.");
+    expect(checkFailure("The host did not answer")).toEqual({ word: "Did not answer", silent: true });
+    expect(checkFailure("The box did not answer. Try again once it is connected.")).toEqual({ word: "Did not answer", silent: true });
+  });
+
+  it("words a host that answered with a refusal as Not checked, never Did not answer", () => {
+    expect(checkFailure("Work is off on the box. Turn it on in Settings, Work.")).toEqual({ word: "Not checked", silent: false, error: "Work is off on the box. Turn it on in Settings, Work." });
+    // Raw words that `workErrorWords` dropped: the word alone.
+    expect(checkFailure("")).toEqual({ word: "Not checked", silent: false });
   });
 
   it("lists only the hosts that could not be checked", () => {

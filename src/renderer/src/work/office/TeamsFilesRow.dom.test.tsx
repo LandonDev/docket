@@ -130,7 +130,8 @@ describe("Folders in Settings", () => {
     const { link, host } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders on MacBook Pro" host="MacBook Pro" editable />));
     const section = screen.getByRole("region", { name: "Folders on MacBook Pro" });
-    expect(within(section).getByRole("button", { name: "Add folder…" })).toBeTruthy();
+    // Its words end on the controls' edge, as the digest's Open does.
+    expect(within(section).getByRole("button", { name: "Add folder…" }).className).toContain("-me-2.5");
     host.refuse = "work.office.filesSetRoots: EIO at /Users/landon/.tc";
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Purdue Esports" })));
     expect(screen.getByText("MacBook Pro did not save the folders.")).toBeTruthy();

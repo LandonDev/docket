@@ -3,8 +3,8 @@ import { MailClientProvider, MailKitProvider, MailSettings } from "work-kit/mail
 import "work-kit/mail/styles.css";
 import "./mail.css";
 import { PageRowsSkeleton, PageSection } from "../../components/page";
-import { SignedOutLine } from "../connections/SignedOutLine";
-import { sessionWaits, useLifeosSession } from "../shell/lifeos";
+import { LifeosLine } from "../connections/LifeosLine";
+import { useLifeosSession } from "../shell/lifeos";
 import { mailClientFor } from "./client";
 import { tempcodeMailKit } from "./kit";
 
@@ -16,7 +16,7 @@ import { tempcodeMailKit } from "./kit";
  */
 export function Section({ environmentId }: { environmentId: string }) {
   const lifeos = useLifeosSession(environmentId, null);
-  if (!lifeos.client) return <PageSection title="Mail">{sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <SignedOutLine />}</PageSection>;
+  if (!lifeos.client) return <PageSection title="Mail"><LifeosLine session={lifeos} waiting={<PageRowsSkeleton rows={3} />} /></PageSection>;
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>

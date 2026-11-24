@@ -6,10 +6,19 @@ import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { resetLifeos, setLifeosStatus } from "./lifeos";
 
-vi.mock("../../lib/connection", async (original) => ({
-  ...(await original<object>()),
-  useEnvironments: () => [{ id: "env_box", name: "The box", platform: "linux" }],
-}));
+// A link's transport by hand where a test sets one; else the real hook.
+const transport = vi.hoisted(() => ({ now: null as string | null }));
+vi.mock("../../lib/connection", async (original) => {
+  const real = await original<typeof import("../../lib/connection")>();
+  return {
+    ...real,
+    useEnvironments: () => [{ id: "env_box", name: "The box", platform: "linux" }],
+    useEnvironmentStatus: (id: string) => {
+      const status = real.useEnvironmentStatus(id);
+      return transport.now ? { ...status, transport: transport.now } : status;
+    },
+  };
+});
 // The rows under LifeOS are what this test reads; the sections after it stand still.
 vi.mock("../office/AddinRow", () => ({ AddinRow: () => null }));
 vi.mock("../guests/GuestLinksSection", () => ({ GuestLinksSection: () => null }));
@@ -146,6 +155,36 @@ describe("a code workspace with no sector, LifeOS signed out", () => {
     expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(requestSettings).toHaveBeenCalledWith("connections");
+  });
+});
+
+describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1)", () => {
+  const status = (answer: () => Promise<unknown>) => {
+    setWorkOn("env_box", true);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(answer), onPush: () => () => {}, onOpen: () => () => {} } as never);
+  };
+
+  it("draws the sector row's bones while the host's status is on its way, never the signed-out line", async () => {
+    status(() => new Promise(() => {}));
+    transport.now = "open";
+    try {
+      render(<CodeWorkspaceSector workspaceId="bare" />);
+      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+      expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
+      expect(screen.getByLabelText("Loading")).toBeTruthy();
+    } finally {
+      transport.now = null;
+    }
+  });
+
+  it("says LifeOS did not answer with Retry when the host cannot reach it", async () => {
+    status(async () => ({ lifeos: { state: "unreachable", since: 1, error: "x" }, keys: [] }));
+    setLifeosStatus("env_box", { lifeos: { state: "unreachable", since: 1, error: "x" }, keys: [] });
+    render(<CodeWorkspaceSector workspaceId="bare" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });
 

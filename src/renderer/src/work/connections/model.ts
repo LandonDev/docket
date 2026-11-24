@@ -14,7 +14,7 @@ export type HostView =
   | { id: string; name: string; status: "checking"; report?: HealthReport }
   | { id: string; name: string; status: "ready"; report: HealthReport }
   | { id: string; name: string; status: "offline" }
-  | { id: string; name: string; status: "failed"; error?: string; report?: HealthReport };
+  | { id: string; name: string; status: "failed"; error?: string; silent?: boolean; report?: HealthReport };
 
 export interface PlacedRow {
   key: string;
@@ -32,7 +32,7 @@ export interface Section {
 }
 
 /** The order the sections take: what everything else leans on first. A group not named here follows, in the order it came. */
-export const GROUP_ORDER = ["LifeOS", "Mail and calendar", "Google", "Office", "Files", "Browser", "Windows VM", "Work service", "Tools", "Frame.io"];
+export const GROUP_ORDER = ["LifeOS", "Mail and calendar", "Google", "Office", "Files", "Browser", "Windows VM", "Hosting", "Tools", "Frame.io"];
 
 const rank = (group: string): number => {
   const at = GROUP_ORDER.indexOf(group);
@@ -68,11 +68,13 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
 }
 
 /**
- * A failed check's detail after the row's "Did not answer", in his words (`workErrorWords` already applied): none
- * where it would only say that again ("The host did not answer"), so one fact is said once.
+ * A failed check as the row says it, from his words (`workErrorWords` already applied). An answer that never came is
+ * "Did not answer", with no detail that would only say that again ("The host did not answer"); a host that answered
+ * with a refusal did answer, so its word is "Not checked" and the refusal's words follow it.
  */
-export function checkDetail(words: string): string | undefined {
-  return words && !/\bdid not answer\b/i.test(words) ? words : undefined;
+export function checkFailure(words: string): { word: string; error?: string; silent: boolean } {
+  const silent = /\bdid not answer\b/i.test(words);
+  return silent ? { word: "Did not answer", silent } : { word: "Not checked", silent, ...(words ? { error: words } : {}) };
 }
 
 /** The hosts that could not be checked: offline, or refused. */

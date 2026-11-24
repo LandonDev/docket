@@ -24,8 +24,8 @@ const BOX: HealthRow[] = [
   r({ id: "browser.running", pillar: "browser", group: "Browser", title: "The box's browser", state: "working", line: "Running, headed" }),
   r({ id: "browser.site:owa", pillar: "browser", group: "Browser", title: "Outlook on the web", state: "needs-you", line: "Not signed in. Sign in from the live browser" }),
   r({ id: "browser.vm", pillar: "browser", group: "Windows VM", title: "Windows VM", state: "working", line: "Stopped, its disk is ready", until: Date.UTC(2027, 1, 18, 4, 59) }),
-  r({ id: "guests.service", pillar: "guests", group: "Work service", title: "Work service", state: "working" }),
-  r({ id: "guests.tunnel", pillar: "guests", group: "Work service", title: "Hosted pages", state: "broken", line: "tempcode.landonhale.com did not answer from outside" }),
+  r({ id: "guests.service", pillar: "guests", group: "Hosting", title: "Work service", state: "working" }),
+  r({ id: "guests.tunnel", pillar: "guests", group: "Hosting", title: "Hosted pages", state: "broken", line: "tempcode.landonhale.com did not answer from outside" }),
   r({ id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "working", line: "LibreOffice 26.8, Python 3.12, ffmpeg 9.0 and IronCalc 0.9" }),
   r({ id: "formats.tool:screen-relay", pillar: "formats", group: "Tools", title: "Screen relay", state: "working", line: "Installed" }),
 ];
@@ -61,7 +61,12 @@ const HOSTS: Record<string, HostView[]> = {
   /** The Mac's check ran out of time: Did not answer, said once. */
   macFailed: [
     { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: BOX } },
-    { id: "mac", name: "Mac", status: "failed" },
+    { id: "mac", name: "Mac", status: "failed", silent: true },
+  ],
+  /** The Mac answered with a refusal: Not checked, the refusal's own words after it. */
+  macRefused: [
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: BOX } },
+    { id: "mac", name: "Mac", status: "failed", silent: false, error: "Work is off on Mac. Turn it on in Settings, Work." },
   ],
 };
 

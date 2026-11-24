@@ -3,9 +3,8 @@ import type { ClientRequest } from "@shared/contract";
 import type { HealthFix, HealthReport } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
 import { syncWhen } from "@shared/work/messages";
-import { PageActions, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageActions, PageRow, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
@@ -19,7 +18,8 @@ import { AddinRow } from "../office/AddinRow";
 import { SignInDialog } from "../shell/settings";
 import { useLifeosStatus } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
-import { checkDetail, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
+import { FirstCheckBones } from "./FirstCheckBones";
+import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 
 /**
  * Settings → Connections (docs/agents/work-connections.md): every sign-in
@@ -46,7 +46,8 @@ export function ConnectionsPage() {
       const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", {}), CHECK_DEADLINE_MS);
       next = { id, name, status: "ready", report };
     } catch (err) {
-      next = { id, name, status: "failed", error: checkDetail(workErrorWords(err, { host: nameInLine(name) })) };
+      const { error, silent } = checkFailure(workErrorWords(err, { host: nameInLine(name) }));
+      next = { id, name, status: "failed", error, silent };
     }
     setViews((all) => ({ ...all, [id]: next.status === "failed" ? { ...next, report: viewReport(all[id]) } : next }));
   }, []);
@@ -98,8 +99,11 @@ function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** A row's state line as a block in the description, its detail wrapping: a narrow window cuts none of the fix's words. */
-const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal";
+/**
+ * A row's state line as a block in the description, its detail wrapping: a narrow window cuts none of the fix's words.
+ * The glyph keeps the word's first 16px line (1px over its 14px), never the middle of a wrapped block.
+ */
+const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal [&>[data-slot=status-glyph]]:mt-px [&>[data-slot=status-glyph]]:self-start";
 
 /** The page as the hosts' answers leave it: what the preview and the test draw. */
 export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string) => void; now?: number }) {
@@ -114,7 +118,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
             host.status === "offline" ? (
               <PageRow key={host.id} title={host.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
             ) : (
-              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word="Did not answer" detail={host.status === "failed" ? host.error : undefined} />}>
+              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word={host.status === "failed" && !host.silent ? "Not checked" : "Did not answer"} detail={host.status === "failed" ? host.error : undefined} />}>
                 <Button variant="ghost" size="sm" onClick={() => onRecheck(host.id)}>
                   Retry
                 </Button>
@@ -130,17 +134,8 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
           ))}
         </PageSection>
       ))}
-      {waiting.length && !sections.length ? (
-        // A heading's bone over the rows, as the first section lands; most rows have no press, so the bones draw none.
-        <PageSection>
-          <div aria-hidden className="flex h-5 items-center">
-            <Skeleton className="h-3 w-16" />
-          </div>
-          <div className="mt-2">
-            <PageRowsSkeleton rows={6} description control="none" />
-          </div>
-        </PageSection>
-      ) : null}
+      {/* A heading's bone over the rows, as the first section lands. */}
+      {waiting.length && !sections.length ? <FirstCheckBones /> : null}
     </>
   );
 }

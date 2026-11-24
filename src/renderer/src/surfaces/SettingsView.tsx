@@ -33,13 +33,15 @@ import { workShellChunk } from "./chunks";
 import { PageEmpty, PageRowsSkeleton } from "../components/page";
 import { useWorkOn } from "../lib/workSwitch";
 import { defineChunk } from "../lib/lazyChunk";
+import { FirstCheckBones } from "../work/connections/FirstCheckBones";
 
 // A Work workspace's own page, and a code workspace's sector, ride Work's chunk (work/shell/settings.tsx).
 const WorkWorkspacePage = workShellChunk.surface("WorkWorkspacePage", <PageRowsSkeleton rows={4} description control="button" />);
 const CodeWorkspaceSector = workShellChunk.surface("CodeWorkspaceSector");
 // Connections is a chunk of its own (work/connections): nothing of it loads until the page opens.
 const connectionsChunk = defineChunk("work-connections", () => import("../work/connections/ConnectionsPage"));
-const ConnectionsPage = connectionsChunk.surface("ConnectionsPage", <PageRowsSkeleton rows={6} description control="button" />);
+// Its fallback is the page's own first-check bones, so nothing changes shape when the chunk lands.
+const ConnectionsPage = connectionsChunk.surface("ConnectionsPage", <FirstCheckBones />);
 
 type Props = {
   cwd: string;

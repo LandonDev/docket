@@ -26,7 +26,7 @@ describe('the Work service connections', () => {
   it('a Mac: the service answers on its port, and no public rows', async () => {
     const seen: string[] = []
     const rows = await guestsRows(on, signal, { service: service('running'), fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 404 }, seen), ...MAC })
-    expect(rows).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Work service', title: 'Work service', state: 'working' }])
+    expect(rows).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Hosting', title: 'Work service', state: 'working' }])
     expect(seen).toEqual(['http://127.0.0.1:7695/w/hosted/'])
   })
 
@@ -55,7 +55,7 @@ describe('the Work service connections', () => {
 
   it('a service that is down is one broken row, with no public rows that hang on it', async () => {
     const seen: string[] = []
-    expect(await guestsRows(on, signal, { service: service('waiting'), fetch: fetcher({}, seen), ...BOX })).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Work service', title: 'Work service', state: 'broken', line: 'It stopped; it restarts by itself' }])
+    expect(await guestsRows(on, signal, { service: service('waiting'), fetch: fetcher({}, seen), ...BOX })).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Hosting', title: 'Work service', state: 'broken', line: 'It stopped; it restarts by itself' }])
     expect(await guestsRows(on, signal, { service: service('starting'), fetch: fetcher({}, seen), ...BOX })).toMatchObject([{ state: 'broken', line: 'Still starting' }])
     expect(await guestsRows(on, signal, { service: service('off'), fetch: fetcher({}, seen), canFork: true, ...BOX })).toMatchObject([{ state: 'broken', line: 'Not running' }])
     expect(seen).toEqual([])

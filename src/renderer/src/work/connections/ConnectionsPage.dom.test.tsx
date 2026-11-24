@@ -22,7 +22,8 @@ vi.mock("../winvm/signIn", () => ({ signInOnVm }));
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
-const { ConnectionsPage } = await import("./ConnectionsPage");
+const { ConnectionsPage, ConnectionsView } = await import("./ConnectionsPage");
+const { FirstCheckBones } = await import("./FirstCheckBones");
 const { Page } = await import("../../components/page");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -135,11 +136,12 @@ describe("Connections", () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it("says a host that refuses did not answer, with Retry", async () => {
+  it("says a host that refuses was not checked, never that it did not answer, with the refusal's words and Retry", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn(async () => Promise.reject(new Error("Work is off on this host"))) } as never);
     render(<ConnectionsPage />);
     await settle();
-    expect(screen.getByText("Did not answer")).toBeTruthy();
+    expect(screen.getByText("Not checked")).toBeTruthy();
+    expect(screen.queryByText("Did not answer")).toBeNull();
     expect(screen.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
@@ -174,5 +176,18 @@ describe("Connections", () => {
     const mark = screen.getByText("Broken").closest("[data-slot=status-mark]")!;
     expect(mark.className).toContain("[&>[data-slot=status-detail]]:whitespace-normal");
     expect(mark.className.split(" ")).toContain("flex");
+    // The glyph keeps the word's first line when the detail wraps, never the block's middle.
+    expect(mark.className).toContain("[&>[data-slot=status-glyph]]:self-start");
+  });
+
+  it("draws the same bones while its chunk loads as while the first check is out, so nothing changes shape", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    // The settings page's fallback for the chunk is the page's own first-check bones.
+    expect(readFileSync(join(import.meta.dirname, "../../surfaces/SettingsView.tsx"), "utf8")).toContain('connectionsChunk.surface("ConnectionsPage", <FirstCheckBones />)');
+    const page = render(<ConnectionsView hosts={[{ id: "box", name: "the box", status: "checking" }]} onRecheck={() => {}} />);
+    const first = page.container.innerHTML;
+    page.unmount();
+    expect(render(<FirstCheckBones />).container.innerHTML).toBe(first);
   });
 });

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { errorText } from "../../chrome/ConfirmDialog";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
+import { hostFailure } from "../../lib/hostFailure";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
 /**
@@ -21,7 +21,7 @@ export function TeamsCopyRow({ workspace, hostName, desktops }: { workspace: Pic
   if (!read.value) {
     if (!read.error) return <PageRowsSkeleton rows={1} description control="switch" />;
     return (
-      <PageRow title={title} error={read.error}>
+      <PageRow title={title} error={hostFailure(workspace.environmentId, read.error, "could not read whether it copies Teams files")}>
         <Button variant="ghost" size="sm" onClick={read.retry}>
           Retry
         </Button>
@@ -33,7 +33,7 @@ export function TeamsCopyRow({ workspace, hostName, desktops }: { workspace: Pic
     try {
       read.set(await link.request<{ on: boolean }>("work.office.filesCopySet", { workspaceId: workspace.id, on }));
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(workspace.environmentId, err, "did not save the change", true));
     }
   };
   return (

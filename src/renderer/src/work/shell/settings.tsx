@@ -29,7 +29,7 @@ import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
-import { SignedOutLine } from "../connections/SignedOutLine";
+import { LifeosLine } from "../connections/LifeosLine";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
@@ -448,7 +448,7 @@ export function CodeWorkspaceSector({ workspaceId }: { workspaceId: string }) {
           />
         </PageRow>
       ) : (
-        <SignedOutLine />
+        <LifeosLine session={session} waiting={<PageRowsSkeleton rows={[{ description: true, media: true, control: "select" }]} />} />
       )}
     </PageSection>
   );

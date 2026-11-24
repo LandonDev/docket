@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { OfficeAddinCode, OfficeAddinKey } from "@shared/contract-work-office";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
+import { Skeleton } from "../../components/ui/skeleton";
+import { hostFailure } from "../../lib/hostFailure";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { timeAgo } from "../../lib/duration";
@@ -36,7 +38,7 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
   if (!keys) {
     if (!read.error) return <PageRowsSkeleton rows={1} description control="button" />;
     return (
-      <PageRow title={title} error={read.error}>
+      <PageRow title={title} error={hostFailure(link!.environmentId, read.error, "could not list the paired add-ins")}>
         <Button variant="ghost" size="sm" onClick={read.retry}>
           Retry
         </Button>
@@ -50,7 +52,7 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
       await link!.request("work.office.addin.remove", { id });
       reload();
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(link!.environmentId, err, "did not remove the add-in", true));
     } finally {
       setRemoving(null);
     }
@@ -85,7 +87,7 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
     let live = true;
     link.request<OfficeAddinCode>("work.office.addin.pair", {}).then(
       (answer) => live && setCode(answer),
-      (err: unknown) => live && setError(errorText(err)),
+      (err: unknown) => live && setError(hostFailure(link.environmentId, err, "did not give a code")),
     );
     return () => {
       live = false;
@@ -128,7 +130,10 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
             {code ? (
               <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
             ) : error ? null : (
-              <span className="text-xs text-muted-foreground">Asking for a code…</span>
+              // The code's own 24px line, a bone its width: nothing moves when it lands (the LifeOS code's, settings.tsx).
+              <div role="status" aria-label="Asking for a code" data-code-bone className="flex h-6 items-center">
+                <Skeleton className="h-4 w-20" />
+              </div>
             )}
             {code ? (
               <span className="text-xs text-muted-foreground tabular-nums">

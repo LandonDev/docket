@@ -51,7 +51,7 @@ export async function guestsRows(ctx: Pick<WorkCtx, 'enabled'>, signal: AbortSig
   const service = d.service
   if (!service) return []
   const fetcher = d.fetch ?? fetch
-  const row = { id: 'guests.service', pillar: 'guests', group: 'Work service', title: 'Work service' } as const
+  const row = { id: 'guests.service', pillar: 'guests', group: 'Hosting', title: 'Work service' } as const
   const state = service.state()
   const port = service.port()
   if (state === 'off' && !(d.canFork ?? !!process.versions.electron)) return []
@@ -67,7 +67,7 @@ export async function guestsRows(ctx: Pick<WorkCtx, 'enabled'>, signal: AbortSig
   if (!origin) return rows
   const where = new URL(origin).host
   const [hosted, guest] = await Promise.all([get(fetcher, `${origin}/w/hosted/`, signal, true), get(fetcher, `${origin}/g/health-check`, signal, true)])
-  const pub = (id: string, title: string, r: true | string): HealthRow => ({ id, pillar: 'guests', group: 'Work service', title, state: r === true ? 'working' : 'broken', line: r === true ? `Reached at ${where}` : r })
+  const pub = (id: string, title: string, r: true | string): HealthRow => ({ id, pillar: 'guests', group: 'Hosting', title, state: r === true ? 'working' : 'broken', line: r === true ? `Reached at ${where}` : r })
   rows.push(pub('guests.hosted', 'Hosted pages', hosted), pub('guests.links', 'Guest links', guest))
   return rows
 }

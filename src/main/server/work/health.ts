@@ -63,7 +63,7 @@ export function cleanRow(row: HealthRow, pillar: PillarId): HealthRow {
 }
 
 /** The group a pillar's fault sits under: what the pillar is to him. */
-const FAULT_GROUP: Partial<Record<PillarId, string>> = { lifeos: 'LifeOS', google: 'Google', office: 'Office', browser: 'Browser', formats: 'Tools', frameio: 'Frame.io', guests: 'Work service' }
+const FAULT_GROUP: Partial<Record<PillarId, string>> = { lifeos: 'LifeOS', google: 'Google', office: 'Office', browser: 'Browser', formats: 'Tools', frameio: 'Frame.io', guests: 'Hosting' }
 
 function faultRow(pillar: PillarId, line: string): HealthRow {
   return { id: `${pillar}.check`, pillar, group: FAULT_GROUP[pillar] ?? 'Work', title: `The ${pillar} check`, state: 'broken', line: oneLine(line) }
