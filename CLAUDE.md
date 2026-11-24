@@ -172,7 +172,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
   (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\TempCode`); every Windows build
   passes `--config build/electron-builder.win.yml` and stages the win32 Claude CLI first
-  (scripts/win-stage.ts); `release:publish --win`; the frame (src/main/windowFrame.ts), the
+  (scripts/win-stage.ts); every `release:publish` adds them once the Mac's release is live, never failing it (scripts/release-publish-win.sh, `--no-win`); the frame (src/main/windowFrame.ts), the
   updater's Windows path (only "Restart to update" installs there), one key map (`modKey`,
   `keyHint` in src/renderer/src/lib/keys.ts), the skills links as junctions on win32
   (src/main/server/skills/links.ts); `bun scripts/e2e-updater.ts --win` proves it in the rig.

@@ -160,3 +160,23 @@ export function packagesIn(nodeModules: string): string[] {
   }
   return names
 }
+
+/**
+ * The Windows pack's own config (scripts/release-win.ts): the Windows config, the output folder
+ * and the commit the build came from (`tempcodeBuild.sha`, src/main/buildInfo.ts), in one file
+ * the log keeps, so the box and the Mac pack from the same words.
+ */
+export function winBuilderConfig(winConfig: string, output: string, sha: string): Record<string, unknown> {
+  return {
+    extends: winConfig,
+    directories: { buildResources: 'build', output },
+    extraMetadata: { tempcodeBuild: { sha } }
+  }
+}
+
+/** Every reason a packed app's `resources/app-update.yml` would not reach this repo's feed; empty when it does. */
+export function winFeedProblems(yml: string | null): string[] {
+  if (yml === null) return ['missing: electron-builder writes it only when the targets include nsis or zip']
+  const lines = yml.split(/\r?\n/).map((l) => l.trim())
+  return ['provider: github', 'owner: LandonDev', 'repo: temp-code'].filter((want) => !lines.includes(want)).map((want) => `does not say '${want}'`)
+}

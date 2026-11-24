@@ -32,10 +32,14 @@
 #               else will download; needs the notary Keychain profile
 #   --dmg       or TEMP_CODE_DMG=1       build and upload the dmg too, for
 #               a fresh install (the README's download link)
-#   --win       or TEMP_CODE_WIN=1       build, check and upload the Windows
-#               files too: the unsigned installer with its blockmap, the
-#               zip and latest.yml (docs/agents/windows-build.md). Off by
-#               default: without it this script does what it always did
+#   --no-win    or TEMP_CODE_WIN=0       leave out the Windows files. By
+#               default, once the Mac's release is live, the Windows pass
+#               (scripts/release-publish-win.sh) builds, checks and adds
+#               the unsigned installer with its blockmap, the zip and
+#               latest.yml (docs/agents/windows-build.md). It never holds
+#               back or fails the Mac's release: a failure is one
+#               `proof ✗ windows <why>, log <path>` line and the exit stays
+#               0. To retry, run scripts/release-publish-win.sh at the tag
 #   --pack-only [dist-dir]               the box packing step alone, from
 #               the out/ already built: nothing signed or uploaded
 #   --gated     or TEMP_CODE_GATED=1     the publish tier runs BESIDE the
@@ -53,6 +57,7 @@
 #   phase ✗ build 12s     it failed
 #   phase – gate skipped  it was skipped
 #   phase ✓ total 4m12s 1.0.283   the feed serves it: the release is live
+#   phase ✓ windows 4m02s         the Windows files are on it, after the total
 #   proof ✗ soak exit 1, log <path>   a red proof row, after the total line
 #   proof ✓ soak passed on the second try
 #
@@ -69,7 +74,7 @@ export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
 
 NOTARIZE=${TEMP_CODE_NOTARIZE:-0}
 DMG=${TEMP_CODE_DMG:-0}
-WIN=${TEMP_CODE_WIN:-0}
+WIN=${TEMP_CODE_WIN:-1}
 GATED=${TEMP_CODE_GATED:-0}
 DRY=0
 while [ $# -gt 0 ]; do
@@ -78,9 +83,10 @@ while [ $# -gt 0 ]; do
     --notarize) NOTARIZE=1 ;;
     --dmg) DMG=1 ;;
     --win) WIN=1 ;;
+    --no-win) WIN=0 ;;
     --gated) GATED=1 ;;
     --dry-run) DRY=1 ;;
-    *) echo "usage: $0 [--notarize] [--dmg] [--win] [--gated] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--notarize] [--dmg] [--no-win] [--gated] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -172,7 +178,7 @@ else
     echo "v$VERSION is already published — commit something and let the train bump first" >&2
     exit 1
   fi
-  echo "publishing $VERSION ($(git rev-parse --short HEAD)) signed as $IDENTITY, $([ "$NOTARIZE" = 1 ] && echo notarized || echo 'not notarized'), $([ "$DMG" = 1 ] && echo 'zip and dmg' || echo 'zip only')$([ "$WIN" = 1 ] && echo ', and the Windows installer')"
+  echo "publishing $VERSION ($(git rev-parse --short HEAD)) signed as $IDENTITY, $([ "$NOTARIZE" = 1 ] && echo notarized || echo 'not notarized'), $([ "$DMG" = 1 ] && echo 'zip and dmg' || echo 'zip only')$([ "$WIN" = 1 ] && echo ', then the Windows installer')"
 
   # Push the source first: GitHub creates the v1.0.N tag at master's remote tip
   # the moment the release leaves draft, so master must already be there or the
@@ -228,6 +234,15 @@ run_proofs() {
   mkdir -p "$(dirname "$PROOFS_LOG")"
   { TEMP_CODE_SOAK_BUILD_DONE="$STAGE/build.done" bun run gate --tier publish --after-release="$PREV" 2>&1 || true; } |
     tee "$PROOFS_LOG" | grep --line-buffered -E '^(phase|proof) ' || true
+}
+
+# The Windows files, after the total line: the Mac's release is live by then
+# and nothing here can change that or this script's exit. Its phase and proof
+# lines reach the app; its log is <git-dir>/temp-code-gate/windows.log.
+# Before the proofs, so the soaks never share the machine with the pack.
+windows_pass() {
+  if [ "$WIN" = 0 ]; then echo "phase – windows skipped (--no-win)"; return 0; fi
+  if [ "$DRY" = 1 ]; then scripts/release-publish-win.sh --built --dry-run || true; else scripts/release-publish-win.sh --built || true; fi
 }
 
 # ── build ───────────────────────────────────────────────────────────────
@@ -296,38 +311,6 @@ if [ ! -f dist/latest-mac.yml ]; then
     >dist/latest-mac.yml
 fi
 
-# The Windows files, with --win: a second electron-builder call, on the
-# Windows config (build/electron-builder.win.yml: the Mac's plus the file
-# rules a Windows pack needs), packs the
-# same out/ for win32 x64 into dist/win-unpacked and makes the one-click
-# installer (with its blockmap), the zip and latest.yml, the feed file a
-# Windows install reads. Unsigned: build/sign-win.mjs is the empty hook.
-# The Claude Agent SDK ships its CLI as one optional package per platform and
-# this machine has only its own, so the win32 one is staged first
-# (scripts/win-stage.ts, checked against bun.lock's checksum), and the packed
-# app is refused without a claude.exe, with another platform's package in it,
-# or without the feed config. tc-computer.exe, the computer-use service the
-# pack carries in resources/native, is cross-built first with cargo-xwin
-# (scripts/build-tc-computer-win.ts): a release with an old or no exe would
-# leave computer use off on Windows. Nothing here touches the Mac's files above.
-if [ "$WIN" = 1 ]; then
-  echo "building the Windows installer and zip (unsigned)"
-  bun scripts/win-stage.ts stage >"$STAGE/win.log" 2>&1 || { tail -20 "$STAGE/win.log" >&2; exit 1; }
-  bun scripts/build-tc-computer-win.ts >>"$STAGE/win.log" 2>&1 ||
-    { tail -20 "$STAGE/win.log" >&2; echo "REFUSING TO PUBLISH $VERSION: tc-computer.exe did not build (cargo-xwin, docs/computer-protocol.md §29.6)" >&2; exit 1; }
-  bunx electron-builder --win --x64 --publish never --config build/electron-builder.win.yml \
-    -c.extraMetadata.tempcodeBuild.sha="$SHA" \
-    >>"$STAGE/win.log" 2>&1 || { tail -40 "$STAGE/win.log" >&2; exit 1; }
-  bun scripts/win-stage.ts check-app dist/win-unpacked ||
-    { echo "REFUSING TO PUBLISH $VERSION: the Windows app is not fit to ship" >&2; exit 1; }
-  WIN_FEED_FILE=dist/win-unpacked/resources/app-update.yml
-  for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
-    grep -qx "$want" "$WIN_FEED_FILE" 2>/dev/null ||
-      { echo "REFUSING TO PUBLISH $VERSION: the Windows app's resources/app-update.yml does not say '$want'" >&2; exit 1; }
-  done
-  bun scripts/win-stage.ts check-files dist "$VERSION" ||
-    { echo "REFUSING TO PUBLISH $VERSION: the Windows files are not all there" >&2; exit 1; }
-fi
 end
 
 # ── upload, to the draft, beside the check ──────────────────────────────
@@ -343,11 +326,6 @@ if [ "$DMG" = 1 ]; then
   cp "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
   set -- "$@" "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
   [ -f "dist/TempCode-$VERSION-arm64.dmg.blockmap" ] && set -- "$@" "dist/TempCode-$VERSION-arm64.dmg.blockmap"
-fi
-if [ "$WIN" = 1 ]; then
-  # The four names scripts/lib/winRelease.ts checks (winReleaseFiles).
-  set -- "$@" "dist/temp-code-$VERSION-setup.exe" "dist/temp-code-$VERSION-setup.exe.blockmap" \
-    "dist/TempCode-$VERSION-win-x64.zip" dist/latest.yml
 fi
 if [ "$DRY" = 0 ]; then
   bg_phase upload "$STAGE/upload.log" gh release upload "v$VERSION" --repo "$REPO" --clobber "$@" &
@@ -406,7 +384,8 @@ PACK_PID=
 
 if [ "$DRY" = 1 ]; then
   echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
-  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball$([ "$WIN" = 1 ] && echo ', and the Windows installer, zip and latest.yml'); nothing left this machine"
+  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball; nothing left this machine"
+  windows_pass
   run_proofs
   exit 0
 fi
@@ -423,10 +402,10 @@ gh release edit "v$VERSION" --repo "$REPO" --draft=false >/dev/null
 DRAFTED=0
 feed_version() { curl -sL "https://github.com/$REPO/releases/latest/download/$1" | sed -n 's/^version: //p'; }
 tries=0
-until [ "$(feed_version latest-mac.yml)" = "$VERSION" ] && { [ "$WIN" = 0 ] || [ "$(feed_version latest.yml)" = "$VERSION" ]; }; do
+until [ "$(feed_version latest-mac.yml)" = "$VERSION" ]; do
   tries=$((tries + 1))
   [ "$tries" -lt 60 ] || {
-    echo "the feed still serves '$(feed_version latest-mac.yml)'$([ "$WIN" = 1 ] && echo " (Windows '$(feed_version latest.yml)')"), expected '$VERSION'" >&2
+    echo "the feed still serves '$(feed_version latest-mac.yml)', expected '$VERSION'" >&2
     exit 1
   }
   sleep 1
@@ -435,4 +414,5 @@ end
 
 echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
 echo "published $VERSION — feed verified at github.com/$REPO/releases"
+windows_pass
 run_proofs

@@ -27,6 +27,7 @@ describe('build-tc-computer-win', () => {
   it('cross-builds the release exe for x64 MSVC with cargo-xwin, where the Windows pack takes it from', async () => {
     const { buildCommand, builtExe } = await import('./build-tc-computer-win')
     expect(buildCommand().args).toEqual(['xwin', 'build', '--release', '--target', 'x86_64-pc-windows-msvc'])
+    expect(buildCommand().env.XWIN_ACCEPT_LICENSE).toBe('1')
     expect(builtExe).toMatch(/native\/tc-computer-win\/target\/x86_64-pc-windows-msvc\/release\/tc-computer\.exe$/)
     const { readFileSync } = await import('node:fs')
     const yml = readFileSync(new URL('../build/electron-builder.win.yml', import.meta.url), 'utf8')

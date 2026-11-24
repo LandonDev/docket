@@ -41,6 +41,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, wr
 import { join } from 'node:path'
 import { attach, type Cdp, prepareEnv, readPackage, REPO, sh, sleep, waitForReleaseTrain } from './lib/packagedApp'
 import { parseFeed, WIN_CONFIG, winReleaseFiles } from './lib/winRelease'
+import { wineStandIn } from './release-win'
 import { rigConfig, rigPaths, STANDARD_USER } from '../src/main/server/work/winvm/machine/config'
 
 const ROOT = '/tmp/tc-updater-e2e-win'
@@ -123,33 +124,6 @@ await waitForReleaseTrain(log)
 const outDir = (which: 'old' | 'new'): string => join(ROOT, `build-${which}`)
 const installerOf = (which: 'old' | 'new'): string => join(outDir(which), winReleaseFiles(which === 'old' ? OLD : NEW).installer)
 
-/**
- * electron-builder writes the uninstaller by running the half-built installer once. On a Mac it
- * reads it out of the file instead, in JavaScript (`UninstallerReader`); on Linux it wants wine,
- * which the box does not have (its own bundled wine does not start here either). So a Linux
- * build is handed a `wine` that does what the Mac's build does: the same reader, on the same file.
- * Returns the folder to put first on PATH.
- */
-function wineStandIn(): string {
-  const bin = join(ROOT, 'bin')
-  mkdirSync(bin, { recursive: true })
-  const reader = join(bin, 'write-uninstaller.cjs')
-  writeFileSync(
-    reader,
-    [
-      "const path = require('node:path')",
-      `const { UninstallerReader } = require(${JSON.stringify(join(REPO, 'node_modules/app-builder-lib/out/targets/nsis/nsisUtil.js'))})`,
-      'const installer = process.argv[2]',
-      "if (!installer || !installer.endsWith('.exe')) { console.error('wine stand-in: expected the installer, got ' + process.argv.slice(2).join(' ')); process.exit(2) }",
-      "// The name electron-builder's NsisTarget expects (UNINSTALLER_OUT_FILE).",
-      "const out = path.join(path.dirname(installer), path.basename(installer, 'exe') + '__uninstaller.exe')",
-      'UninstallerReader.exec(installer, out).catch((error) => { console.error(String(error)); process.exit(1) })'
-    ].join('\n')
-  )
-  writeFileSync(join(bin, 'wine'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(reader)} "$@"\n`, { mode: 0o755 })
-  return bin
-}
-
 async function pack(version: string, which: 'old' | 'new'): Promise<void> {
   log(`packing ${version} → ${outDir(which)}`)
   // A config of the run's own, on top of the Windows one: `--config <file>` and `-c.key=value` do not mix.
@@ -179,7 +153,7 @@ async function pack(version: string, which: 'old' | 'new'): Promise<void> {
   try {
     await sh(['bunx', 'electron-builder', '--win', 'nsis', '--x64', '--publish', 'never', '--config', config], {
       quiet: true,
-      env: process.platform === 'linux' ? { PATH: `${wineStandIn()}:${process.env.PATH ?? ''}` } : {}
+      env: process.platform === 'linux' ? { PATH: `${wineStandIn(join(ROOT, 'bin'))}:${process.env.PATH ?? ''}` } : {}
     })
   } finally {
     writeFileSync(pkg.path, pkg.text)

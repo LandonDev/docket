@@ -37,14 +37,15 @@ a junction view through gc in the rig): [windows-host.md](windows-host.md) "Link
   `files` strings into one file set and a platform's strings become a second, wider one, whose
   union undoes every exclusion (the first Windows pack carried `src/`, `docs/` and `ios/`). Two
   configs joined by `extends` merge into one set.
-- **Where it is built.** On the Mac beside the Mac's zip (`release:publish --win`), or on the box.
+- **Where it is built.** On the Mac by every publish, once the Mac's release is live (below), or on
+  the box by hand (`bun scripts/release-win.ts`, after `electron-vite build`).
   electron-builder makes the NSIS installer anywhere, but it writes the uninstaller by running
   the half-built installer once: on a Mac it reads it out of the file in JavaScript instead
   (`UninstallerReader`), as LifeOS's release does, and on Linux it wants wine. The box has no
   wine, and electron-builder's own bundle (`toolsets.wine: 1.0.1`) does not start there (it
   carries no Windows DLLs of its own: `failed to load ntdll.dll`). So the box's build
-  (scripts/e2e-updater-win.ts `wineStandIn`) puts a `wine` first on PATH that calls the same
-  `UninstallerReader` the Mac's build uses.
+  (scripts/release-win.ts `wineStandIn`, which the updater proof uses too) puts a `wine` first on
+  PATH that calls the same `UninstallerReader` the Mac's build uses.
 - **The Claude CLI.** The Claude Agent SDK ships its CLI as one optional package per platform, and
   a package manager installs only the builder's. With `npmRebuild: false` and `asar: false` a
   Windows build made on a Mac would carry a Mach-O `claude` and no `claude.exe`. So
@@ -64,12 +65,54 @@ a junction view through gc in the rig): [windows-host.md](windows-host.md) "Link
   on a download (More info, Run anyway). A certificate goes in the hook only if a machine refuses
   the build; LifeOS's hook (jsign with Azure Artifact Signing) is the pattern.
 
+## The tools
+
+tc-computer.exe, the Windows computer-use service (native/tc-computer-win, Rust), is cross-built
+with cargo-xwin, which downloads Microsoft's CRT and Windows SDK headers and libraries on its first
+run and links with lld. On the box: `~/.cargo/bin`, the SDK under `~/.cache/cargo-xwin`. On the
+Mac, in the owner's account with no admin: rustup (`~/.rustup`, `~/.cargo`), the
+`x86_64-pc-windows-msvc` target and `cargo install --locked cargo-xwin`, the SDK under
+`~/Library/Caches/cargo-xwin` (1.1 GB; installed 2026-11-23, .temp-code/plans/landed/F-windows-installer.md).
+The link step runs `lld-link`: on the box cargo-xwin's own, on the Mac Homebrew's `lld` formula
+(`/opt/homebrew/bin/lld-link`, already there; `brew install lld` on a Mac without it). No clang-cl
+or llvm-lib is needed while the crate compiles no C. The license question of the first download is
+answered by `XWIN_ACCEPT_LICENSE=1`, which `buildCommand` sets.
+`scripts/build-tc-computer-win.ts` puts `~/.cargo/bin` first on PATH, so a login shell without it
+still finds them. Without cargo-xwin the Windows pass stops at its first step and says so.
+
 ## The release
 
-`bun run release:publish --win` (or `TEMP_CODE_WIN=1`) adds the Windows pass to the `sign` phase:
-stage the CLI, one more electron-builder call on the Windows config, `check-app`, the feed config
-in `resources/app-update.yml`, `check-files`; then the upload carries four more files and the feed
-step reads `latest.yml` too. Without the flag the script does what it always did. The files:
+Every `bun run release:publish` makes the Windows files, after the Mac's: the Mac zip and
+`latest-mac.yml` go live first exactly as before, the `phase ✓ total` line comes, and only then
+does `scripts/release-publish-win.sh --built` run (`windows_pass`, before the proofs, so the soaks
+never share the Mac with the pack). It never holds back or fails the Mac's release:
+
+- `scripts/release-win.ts` makes the files from the `out/` the publish just built: cargo-xwin there,
+  the win32 Claude CLI staged, tc-computer.exe cross-built, one electron-builder call on the Windows
+  config (a config file of the run's own carries the output folder and `tempcodeBuild.sha`), the
+  packed app checked (`check-app`), its `resources/app-update.yml` read for github LandonDev/temp-code,
+  the four files checked against `latest.yml` (`check-files`). It exits 1 with one line saying which
+  step failed.
+- `release-publish-win.sh` uploads to the live release: the installer, its blockmap and the zip, then
+  `latest.yml` alone, so a Windows install never reads a feed whose installer is not there yet; then
+  reads `latest.yml` back from the release (from `releases/latest/download/` when the release is
+  Latest) once a second for a minute. It reads Latest before and after and puts it back with
+  `gh release edit --latest` if it moved (adding files does not move it; publishing an older release
+  again did, 2026-11-23).
+- Its lines: `phase › windows`, then `phase ✓ windows 4m12s`, or `phase ✗ windows 3m02s` and
+  `proof ✗ windows <why>, log <path>`. The app reads that proof line as it reads a red proof: a notice
+  beside the live release ("The proofs after v1.0.N are red: windows (…). The release stays live."),
+  and the publish's exit stays 0. The log is `<git-dir>/temp-code-gate/windows.log`.
+- `--no-win` (or `TEMP_CODE_WIN=0`) leaves it out: `phase – windows skipped (--no-win)`. `--win` is
+  the default and kept for old callers. `--dry-run` runs it too, with nothing uploaded.
+- **A retry, or a release that went out without them:** check out its tag (`git checkout v1.0.N` in
+  a clean clone) and run `scripts/release-publish-win.sh`: it builds `out/` itself (without `--built`),
+  refuses a HEAD that is not the release's tag and a release that is still a draft, and adds the files.
+- **"Restart to update" during the pass ends it**: the app's Publisher runs the script, and the
+  restart stops the Publisher's process group. That release then has no Windows files until a retry
+  or the next release; a Windows install's check fails quietly meanwhile.
+
+The files:
 
 | File | What |
 |---|---|
@@ -78,8 +121,8 @@ step reads `latest.yml` too. Without the flag the script does what it always did
 | `TempCode-1.0.N-win-x64.zip` | the app unpacked, for a PC that refuses the installer; a copy made this way does not update itself |
 | `latest.yml` | the feed file a Windows install reads, beside the Mac's `latest-mac.yml` |
 
-A release published without `--win` has no `latest.yml`, and a Windows install's check of it fails
-quietly until the next one that has. Turn the flag on for every publish once a Windows host is in use.
+A release with no `latest.yml` (before 1.0.366, or one whose pass failed) leaves a Windows install's
+check failing quietly until the next one that has it.
 
 ## Install
 

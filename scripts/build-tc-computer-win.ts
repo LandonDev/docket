@@ -12,16 +12,20 @@
 import { spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, renameSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 
 export const WIN_TARGET = 'x86_64-pc-windows-msvc'
 export const crate = resolve(import.meta.dirname, '..', 'native', 'tc-computer-win')
 export const builtExe = join(crate, 'target', WIN_TARGET, 'release', 'tc-computer.exe')
 
-/** The command, so a test can read it without running cargo. */
+/**
+ * The command, so a test can read it without running cargo. XWIN_ACCEPT_LICENSE: cargo-xwin's first
+ * run downloads Microsoft's CRT and SDK and asks to accept their license; the owner accepted it
+ * (2026-11-23), and a publish has no one to answer the question.
+ */
 export function buildCommand(): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } {
-  const path = [join(homedir(), '.cargo', 'bin'), process.env.PATH ?? ''].join(':')
-  return { cmd: 'cargo', args: ['xwin', 'build', '--release', '--target', WIN_TARGET], env: { ...process.env, PATH: path } }
+  const path = [join(homedir(), '.cargo', 'bin'), process.env.PATH ?? ''].join(delimiter)
+  return { cmd: 'cargo', args: ['xwin', 'build', '--release', '--target', WIN_TARGET], env: { ...process.env, PATH: path, XWIN_ACCEPT_LICENSE: '1' } }
 }
 
 /** Copies the exe into `dir` under its own name, whole or not at all (a copy beside it, then a rename). */

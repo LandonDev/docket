@@ -14,6 +14,8 @@ import {
   tarballUrl,
   WIN_CLI_PACKAGE,
   WIN_CONFIG,
+  winBuilderConfig,
+  winFeedProblems,
   winFilesProblems,
   winReleaseFiles,
   type PackedApp
@@ -78,29 +80,15 @@ describe('the Windows release file list', () => {
     ])
   })
 
-  it('is what release-publish.sh uploads with --win, and only with it', () => {
-    const script = read('scripts/release-publish.sh')
+  it('is what release-publish-win.sh uploads, latest.yml after the installer', () => {
+    const script = read('scripts/release-publish-win.sh')
     const files = winReleaseFiles('$VERSION')
     for (const name of Object.values(files)) expect(script).toContain(`dist/${name}`)
-    // Off by default: the Windows pass and its upload both sit behind the flag.
-    expect(script).toMatch(/^WIN=\$\{TEMP_CODE_WIN:-0\}$/m)
-    const guarded = [...script.matchAll(/^if \[ "\$WIN" = 1 \]; then\n([\s\S]*?)^fi$/gm)].map((m) => m[1]).join('\n')
-    expect(guarded).toContain(`electron-builder --win --x64 --publish never --config ${WIN_CONFIG}`)
-    expect(guarded).toContain('win-stage.ts stage')
-    // tc-computer.exe is built before the pack that carries it
-    expect(guarded).toContain('bun scripts/build-tc-computer-win.ts')
-    expect(guarded.indexOf('build-tc-computer-win.ts')).toBeLessThan(guarded.indexOf('electron-builder --win'))
-    expect(guarded).toContain('win-stage.ts check-app')
-    expect(guarded).toContain('win-stage.ts check-files')
-    expect(guarded).toContain('dist/latest.yml')
-    const unguarded = script
-      .replace(/^if \[ "\$WIN" = 1 \]; then\n[\s\S]*?^fi$/gm, '')
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('#'))
-      .join('\n')
-    expect(unguarded).not.toContain('--win --x64')
-    expect(unguarded).not.toContain('win-stage.ts')
-    expect(unguarded).not.toContain('setup.exe')
+    const first = script.indexOf('gh release upload')
+    const second = script.indexOf('gh release upload', first + 1)
+    expect(script.slice(first, second)).toContain(files.installer)
+    expect(script.slice(first, second)).not.toContain('latest.yml')
+    expect(script.slice(second, script.indexOf('\n', second))).toContain('dist/latest.yml')
   })
 
   it('refuses a missing or empty file and a feed that names another build', () => {
@@ -187,6 +175,34 @@ describe('the staged Claude CLI', () => {
   it('the signing hook is empty: it resolves and touches nothing', async () => {
     const hook = (await import('../build/sign-win.mjs')) as { default: (configuration: { path: string }) => Promise<void> }
     await expect(hook.default({ path: '/nonexistent/TempCode.exe' })).resolves.toBeUndefined()
+  })
+})
+
+describe('the Windows pack', () => {
+  it('builds from its own config file: the Windows config, the output and the commit', () => {
+    expect(winBuilderConfig('/r/build/electron-builder.win.yml', '/r/dist', 'abc123')).toEqual({
+      extends: '/r/build/electron-builder.win.yml',
+      directories: { buildResources: 'build', output: '/r/dist' },
+      extraMetadata: { tempcodeBuild: { sha: 'abc123' } }
+    })
+  })
+
+  it('stages the CLI and builds tc-computer.exe before the one electron-builder call, then checks the app and the files', () => {
+    const code = read('scripts/release-win.ts')
+    const order = ["'cargo', 'xwin', '--version'", "win-stage.ts', 'stage'", "build-tc-computer-win.ts'", "'electron-builder', '--win', '--x64'", "'check-app'", 'winFeedProblems(', "'check-files'"].map((text) => {
+      expect(code, text).toContain(text)
+      return code.indexOf(text)
+    })
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    // the config file says the whole build: no -c.* overrides beside it
+    expect(code).not.toMatch(/'-c\./)
+  })
+
+  it("reads the packed app's feed config", () => {
+    expect(winFeedProblems('provider: github\nowner: LandonDev\nrepo: temp-code\nupdaterCacheDirName: temp-code-updater\n')).toEqual([])
+    expect(winFeedProblems('provider: github\r\nowner: LandonDev\r\nrepo: temp-code\r\n')).toEqual([])
+    expect(winFeedProblems('provider: github\nowner: someone\nrepo: temp-code\n')).toEqual(["does not say 'owner: LandonDev'"])
+    expect(winFeedProblems(null)).toHaveLength(1)
   })
 })
 

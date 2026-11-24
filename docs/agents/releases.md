@@ -148,7 +148,8 @@ Two separate steps, on purpose, over one gate.
    `phase ✓ build 1m11s`, `phase ✗ sign 12s`, `phase – gate after the
    release`, `phase ✓ total 4m12s 1.0.N`, then `phase › proofs` and its
    `proof` lines; the parser is src/shared/releasePhases.ts; the phases are
-   install, gate, build, sign, pack, check, upload, feed and proofs). The
+   install, gate, build, sign, pack, check, upload, feed, then windows and
+   proofs after the total line). The
    total line is the moment the release is live: the app that ran the
    script fetches the update there, and a batch's publish step passes there,
    not when the proofs end. Restarting to update ends the proofs the app's
@@ -162,14 +163,16 @@ Two separate steps, on purpose, over one gate.
    `TEMP_CODE_DMG=1`) builds and uploads the dmg too, for a fresh install;
    both for a release someone else will download. `--dry-run` runs every
    local phase with its timing on any commit and pushes, releases and
-   uploads nothing; `--pack-only [dir]` is the tarball alone. `--win` (or
-   `TEMP_CODE_WIN=1`) adds the Windows files inside the `sign` phase: the
-   win32 Claude CLI staged, a second electron-builder call on
-   build/electron-builder.win.yml, the packed app and the four files checked
-   (scripts/win-stage.ts), the installer with its blockmap, the zip and
-   `latest.yml` uploaded and that feed read back; off by default, and without
-   it the script does what it always did
-   ([windows-build.md](windows-build.md)). It refuses a
+   uploads nothing; `--pack-only [dir]` is the tarball alone. After the total line,
+   before the proofs, the `windows` phase adds the Windows files to the live
+   release (scripts/release-publish-win.sh, scripts/release-win.ts): the
+   unsigned installer with its blockmap, the zip, then `latest.yml`, read
+   back. It is on by default and never fails or holds back the Mac's
+   release: a failure is `phase ✗ windows` and one `proof ✗ windows <why>,
+   log <path>` line, the exit stays 0, and the app shows it as it shows a red
+   proof. `--no-win` (or `TEMP_CODE_WIN=0`) leaves it out; the same script
+   run at a release's tag adds the files to it later
+   ([windows-build.md](windows-build.md) "The release"). It refuses a
    version the feed already serves. Apple silicon only; Intel is out of
    scope for now. The box's `box-update v1.0.N` lays that tarball in
    instead of building (docs/box.md "Build once"). docs/release-gate.md

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { parseProofLine, redProofsNotice } from '../src/shared/releasePhases'
 
 // release-publish.sh's order, read from the script: what stands between a
 // commit and the feed, and what runs only after it.
@@ -67,5 +68,60 @@ describe('release-publish.sh', () => {
   it('compiles the ShipIt check once per version of its source', () => {
     expect(code).toContain('SQRL="$SQRL_DIR/sqrlcheck-$(shasum -a 256 scripts/sqrlcheck.swift | cut -c1-16)"')
     expect(code).toMatch(/if \[ -x "\$SQRL" \] \|\| \{/)
+  })
+
+  it('makes the Windows files by default, only after the Mac release is live, and never fails on them', () => {
+    expect(code).toMatch(/^WIN=\$\{TEMP_CODE_WIN:-1\}$/m)
+    expect(code).toContain('--no-win) WIN=0 ;;')
+    // nothing of Windows before the total line: no pack, no upload, no feed wait
+    expect(code).not.toContain('electron-builder --win')
+    expect(code).not.toContain('setup.exe')
+    expect(code).not.toContain('feed_version latest.yml')
+    const pass = code.slice(at('windows_pass() {'), code.indexOf('\n}\n', at('windows_pass() {')))
+    expect(pass).toContain('echo "phase – windows skipped (--no-win)"')
+    for (const call of pass.split('\n').filter((line) => line.includes('release-publish-win.sh'))) {
+      for (const run of call.split(/; (?:else|then) /).filter((part) => part.includes('release-publish-win.sh'))) expect(run).toMatch(/--built.* \|\| true/)
+    }
+    // in a dry run and a real one alike: after the total line, before the proofs
+    for (const total of [code.indexOf(TOTAL), code.lastIndexOf(TOTAL)]) {
+      const windows = code.indexOf('windows_pass\n', total)
+      expect(windows).toBeGreaterThan(total)
+      expect(code.indexOf('run_proofs\n', total)).toBeGreaterThan(windows)
+    }
+  })
+})
+
+describe('release-publish-win.sh', () => {
+  const win = readFileSync(resolve(__dirname, 'release-publish-win.sh'), 'utf8')
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n')
+
+  it("says a failure in one proof line, which the app reads as a notice beside the live release", () => {
+    expect(win).toContain('echo "proof ✗ windows $1, log $LOG"')
+    const row = parseProofLine('proof ✗ windows not built: cargo-xwin is missing, log /r/.git/temp-code-gate/windows.log')
+    expect(row).toEqual({ row: 'windows', outcome: 'failed', note: 'not built: cargo-xwin is missing', log: '/r/.git/temp-code-gate/windows.log' })
+    expect(redProofsNotice('1.0.367', [row!])).toBe(
+      'The proofs after v1.0.367 are red: windows (not built: cargo-xwin is missing, log /r/.git/temp-code-gate/windows.log). The release stays live.'
+    )
+  })
+
+  it("adds files only to a published release, from that release's own tag, and uploads nothing on a dry run", () => {
+    expect(win).toContain('fail "v$VERSION is not a published release"')
+    expect(win).toContain('[ "$(git rev-parse -q --verify "v$VERSION^{commit}")" = "$SHA" ]')
+    expect(win).not.toMatch(/gh release (create|delete)|--draft/)
+    const dry = win.indexOf('if [ "$DRY" = 1 ]; then\n  echo "phase ✓ windows')
+    expect(dry).toBeGreaterThan(-1)
+    expect(win.indexOf('exit 0', dry)).toBeLessThan(win.indexOf('gh release upload'))
+  })
+
+  it('reads Latest before and after the upload and puts it back if it moved', () => {
+    const before = win.indexOf('LATEST=$(gh api "repos/$REPO/releases/latest"')
+    const upload = win.indexOf('gh release upload')
+    const after = win.indexOf('AFTER=$(gh api "repos/$REPO/releases/latest"')
+    expect(before).toBeGreaterThan(-1)
+    expect(before).toBeLessThan(upload)
+    expect(after).toBeGreaterThan(upload)
+    expect(win).toContain('gh release edit "$LATEST" --repo "$REPO" --latest')
   })
 })
