@@ -10,8 +10,8 @@ import { sessionStore } from "../../lib/tcserver/store";
  * task puts the chip on the draft (`addContextChip`), Ask in a canvas puts a
  * selection on the thread beside it, and the composer draws the row, lets a
  * chip alone be sent and writes each chip into the message as a line the
- * model reads. A draft's first chip also rides `session.create` as `about`,
- * so the host links the thread to it. The composer is in the first paint and
+ * model reads. A draft's first chip, when it is a LifeOS row, also rides
+ * `session.create` as `about`, so the host links the thread to it. The composer is in the first paint and
  * this is not: it reaches the store through `chipPort` (lib/contextChips.ts),
  * which this module fills as it loads.
  */
@@ -91,6 +91,17 @@ export function aboutFor(sessionId: string, created: (id: string) => boolean = (
   return undefined;
 }
 
+/**
+ * What `session.create` carries as `about`: a LifeOS row alone, the one thing a host links a new thread to
+ * (work/lifeos/links.ts `entityOf`). A file's chip is a line of the message and an item the thread holds; its
+ * path may be another computer's, and a host's fence refuses such a path in a create (Ask beside a Teams file
+ * once made no thread for it).
+ */
+export function createAbout(sessionId: string): ContextChip | undefined {
+  const about = aboutFor(sessionId);
+  return about?.ref.at === "lifeos" ? about : undefined;
+}
+
 const quoted = (text: string): string => text.split("\n").map((line) => `> ${line}`).join("\n");
 
 /**
@@ -137,5 +148,5 @@ export function resetContextChips(): void {
 chipPort.set({
   count: (sessionId) => contextChipsOf(sessionId).length,
   send: (sessionId, firstSend, text) => withContextChips(takeContextChips(sessionId, firstSend), text),
-  about: (sessionId) => aboutFor(sessionId),
+  about: createAbout,
 });

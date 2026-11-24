@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ContextChip } from "@shared/work";
 import { chipPort } from "../../lib/contextChips";
-import { aboutFor, addContextChip, chipLine, CHIPS_MAX, contextChipsOf, removeContextChip, resetContextChips, startAboutChip, takeContextChips, withContextChips } from "./chips";
+import { aboutFor, addContextChip, createAbout, chipLine, CHIPS_MAX, contextChipsOf, removeContextChip, resetContextChips, startAboutChip, takeContextChips, withContextChips } from "./chips";
 
 const task: ContextChip = { kind: "task", label: "Book the ballroom for April 10", ref: { at: "lifeos", table: "tasks", id: "k1" } };
 const mail: ContextChip = { kind: "mail", label: "Re: Ballroom for April 10", ref: { at: "lifeos", table: "mailThreads", id: "m1" } };
@@ -37,6 +37,18 @@ describe("what a message is about", () => {
 
   const draft = (): boolean => false;
   const exists = (): boolean => true;
+
+  it("the create carries a LifeOS row alone: a file's path may be another computer's, which a host's fence refuses", () => {
+    const file = { kind: "file", label: "Bylaws.pdf", ref: { at: "file", host: "env_mac", path: "/Users/l/Library/CloudStorage/OneDrive-SharedLibraries-Org/Staff - Documents/General/Bylaws.pdf" } } as ContextChip;
+    addContextChip("f1", file);
+    takeContextChips("f1", true);
+    // Still what the send was about (the dock reads it to tell a send from a chip he took off), but not the create's.
+    expect(aboutFor("f1", draft)).toEqual(file);
+    expect(createAbout("f1")).toBeUndefined();
+    addContextChip("m1", mail);
+    takeContextChips("m1", true);
+    expect(createAbout("m1")).toEqual(mail);
+  });
 
   it("gives the chips to the send that takes them, once", () => {
     addContextChip("t1", task);

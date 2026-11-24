@@ -871,7 +871,9 @@ describe("the chat docked beside a file", () => {
     await waitFor(() => expect(calls(host, "session.send")).toHaveLength(1));
     const order = host.calls.map((c) => c.method).filter((m) => m === "session.create" || m === "work.canvas.open" || m === "session.send");
     expect(order).toEqual(["session.create", "work.canvas.open", "session.send"]);
-    expect(calls(host, "session.create")).toMatchObject([{ params: { id, workspaceId: "w1", about: { kind: "file", label: "Budget.xlsx" } } }]);
+    // The create names no file: a file's path may be another computer's, which the host's fence refuses there.
+    expect(calls(host, "session.create")).toMatchObject([{ params: { id, workspaceId: "w1" } }]);
+    expect(calls(host, "session.create")[0]!.params).not.toHaveProperty("about");
     expect(calls(host, "work.canvas.open")).toMatchObject([{ params: { sessionId: id, kind: "sheet", title: "Budget.xlsx", source: { at: "file", host: "env_box", path: "/w/Budget.xlsx" } } }]);
     const message = calls(host, "session.send")[0]!.params.text as string;
     expect(message).toContain('About this file: Budget.xlsx ({"at":"file","host":"env_box","path":"/w/Budget.xlsx"})');

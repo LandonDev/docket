@@ -338,6 +338,13 @@ export const workDockPort = {
   },
 };
 
+/**
+ * The chats a dock shows now (work/dock/dockThread.ts). A dock is no tab, so the idle sweep
+ * (stores/subscriptions.ts) would take its chat out of the open set, and a send into a chat that is not open
+ * went nowhere: the sweep leaves these alone.
+ */
+export const dockShown = new Set<string>();
+
 /** A file drop Work opens (work/canvas/fileDrop.tsx), marked first; the composer lets it pass. */
 const claimedDrops = new WeakSet<Event>();
 export const claimFileDrop = (event: Event): void => void claimedDrops.add(event);

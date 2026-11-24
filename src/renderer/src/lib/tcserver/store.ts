@@ -826,6 +826,18 @@ class SessionStore {
     return this.openOrder.includes(id);
   }
 
+  /**
+   * The session a send goes into, opened if it was not. A chat shown with no tab of its own (a dock, a board's
+   * pane) leaves the open set while it idles, and every write of a send maps over the open set: a send into one
+   * the store still holds opens it again in place of going nowhere.
+   */
+  openForSend(id: string): Session | undefined {
+    const entry = this.entries.get(id);
+    if (!entry) return undefined;
+    if (!this.openOrder.includes(id)) this.mutate((prev) => [...prev, entry.session]);
+    return entry.session;
+  }
+
   queueOf(id: string): QueuedMessage[] {
     return this.queues.get(id) ?? NO_QUEUE;
   }

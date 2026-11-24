@@ -243,6 +243,20 @@ describe("sessionFromMeta / applyMeta", () => {
 });
 
 describe("sessionStore", () => {
+  it("openForSend opens a chat the open set lost, and answers nothing for one the store never held", () => {
+    const chat = { ...newSession("local", "claude", "/repo"), id: "docked" };
+    sessionStore.mutate([chat]);
+    // The idle sweep's write: the chat has no tab, so it leaves the open set while its entry stays.
+    sessionStore.mutate([]);
+    expect(sessionStore.getSnapshot()).toEqual([]);
+    expect(sessionStore.openForSend("docked")?.id).toBe("docked");
+    expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["docked"]);
+    // Open already: the same session, and no second entry.
+    expect(sessionStore.openForSend("docked")).toBe(sessionStore.getSnapshot()[0]);
+    expect(sessionStore.getSnapshot()).toHaveLength(1);
+    expect(sessionStore.openForSend("never")).toBeUndefined();
+  });
+
   it("lists metas on connect without opening them", async () => {
     link.metas = [wireMeta(), wireMeta({ id: "s2", title: "two" })];
     sessionStore.attach(link);

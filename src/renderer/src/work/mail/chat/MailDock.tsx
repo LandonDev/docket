@@ -122,7 +122,7 @@ function Starters({ sessionId, rows }: { sessionId: string; rows: string[] }) {
     return () => dock.removeEventListener("input", read);
   }, []);
   if (!draft || typed) return <div ref={root} hidden />;
-  const send = (text: string): void => actions.onSubmit(sessionId, chipPort.get()?.send(sessionId, true, text) || text, []);
+  const send = (text: string): void => void actions.onSubmit(sessionId, chipPort.get()?.send(sessionId, true, text) || text, []);
   return (
     <div ref={root} data-mail-starters className="mb-2 flex flex-col">
       {rows.map((text) => (

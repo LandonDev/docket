@@ -2565,8 +2565,9 @@ export default function App() {
         intent?: ComposerIntent;
       },
     ) => {
-      const current = sessionStore.getSnapshot().find((s) => s.id === sessionId);
-      if (!current) return;
+      // False tells the composer nothing took the message, so it keeps his words.
+      const current = sessionStore.openForSend(sessionId);
+      if (!current) return false;
       if (options?.intent === "pause") {
         void serverCommands.pause(sessionId).catch(() => undefined);
         return;

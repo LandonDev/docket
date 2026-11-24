@@ -83,7 +83,7 @@ export type SessionActions = {
     text: string,
     attachments: Attachment[],
     options?: { newPass?: boolean; intent?: ComposerIntent },
-  ) => void;
+  ) => boolean | void;
   /** Settles once the host has the Stop (or failed to), so the Stop control stops spinning. */
   onStop: (sessionId: string) => Promise<void> | void;
   /** Settles once the host has the decision, so the card can take it back on a failure. */
@@ -199,7 +199,7 @@ export const ThreadComposer = memo(function ThreadComposer({
     ) : null;
   const bound = useMemo(() => boundTo(actions, id), [actions, id]);
   const submit = (text: string, attachments: Attachment[], intent: ComposerIntent) => {
-    actions.onSubmit(id, text, attachments, { ...(newPass ? { newPass: true } : {}), intent });
+    if (actions.onSubmit(id, text, attachments, { ...(newPass ? { newPass: true } : {}), intent }) === false) return false;
     onSent?.();
   };
   return (

@@ -26,7 +26,7 @@ const { dockThread, enterDock, leaveDock, resetDocks } = await import("./dockThr
 const { contextChipsOf, resetContextChips, takeContextChips } = await import("../canvas/chips");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { newSession } = await import("../../lib/session");
-const { workDockPort } = await import("../../lib/workSwitch");
+const { dockShown, workDockPort } = await import("../../lib/workSwitch");
 const { afterCreate, ensureCreated } = await import("../../lib/tcserver/commands");
 import type { DockSubject } from "./subject";
 
@@ -59,6 +59,30 @@ describe("one chat a subject", () => {
 
   it("shows the subject's thread from before when there is one", async () => {
     expect(await dockThread(workspace, subject({ find: async () => "s-old" }))).toEqual({ id: "s-old", draft: false });
+  });
+});
+
+describe("a docked chat stays open", () => {
+  it("a draft the dock shows is marked for the idle sweep, and let go when the dock closes", async () => {
+    const a = await dockThread(workspace, subject());
+    enterDock(a.id);
+    expect(dockShown.has(a.id)).toBe(true);
+    expect(sessionStore.isOpen(a.id)).toBe(true);
+    leaveDock(a.id);
+    expect(dockShown.has(a.id)).toBe(false);
+    expect(sessionStore.isOpen(a.id)).toBe(false);
+  });
+
+  it("a thread the dock shows is opened, so a send into it has a session", async () => {
+    const thread = { ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), id: "t-before" };
+    sessionStore.mutate([thread]);
+    sessionStore.mutate([]);
+    expect(sessionStore.isOpen("t-before")).toBe(false);
+    const a = await dockThread(workspace, subject({ find: async () => "t-before" }));
+    enterDock(a.id);
+    expect(a).toEqual({ id: "t-before", draft: false });
+    expect(sessionStore.isOpen("t-before")).toBe(true);
+    expect(dockShown.has("t-before")).toBe(true);
   });
 });
 

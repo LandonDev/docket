@@ -471,9 +471,11 @@ until the composer sends:
   task: Book the ballroom (LifeOS tasks k1)`; a selection's words quoted
   under it). The lines go above his words, or after them when the message
   opens with a slash command, which a harness reads only at the start.
-- A draft's first chip also rides `session.create` as `about` (`aboutFor`,
-  read by `ensureCreated`, kept until the thread exists so a create tried
-  again still says it), which the host answers through
+- A draft's first chip, when it is a LifeOS row, also rides `session.create`
+  as `about` (`createAbout` over `aboutFor`, read by `ensureCreated`, kept
+  until the thread exists so a create tried again still says it; a file's
+  chip never rides it, since its path may be another computer's and the
+  fence refuses that in a create), which the host answers through
   `work.admitSession` and links in LifeOS (`ctx.links.link`, work-lifeos.md).
 - Ask's key is ⌘L (Ctrl+L off macOS), live while a kind feeds a selection.
   Settings → Keybindings lists it in the Work group while Work is on.

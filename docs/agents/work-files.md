@@ -348,7 +348,15 @@ control, takes it away.
   **draft**. App fills `workDockPort` (lib/workSwitch.ts): `draft(workspace,
   id?)` answers a Session seeded as New thread seeds one, in the Work
   workspace, placed in no tab and recorded in no project draft; the dock
-  puts it in the session store's open set. A draft has no meta, so no rail
+  puts it in the session store's open set, and names every chat it shows in
+  `dockShown` (lib/workSwitch.ts) while it shows it: a dock is no tab, so
+  the idle sweep (stores/subscriptions.ts) would otherwise take the chat out
+  of the open set, and a send into a chat that is not open went nowhere
+  (he typed, sent, the words vanished and no thread was made). A send into
+  a chat the store holds opens it again whatever swept it
+  (`sessionStore.openForSend`, App's `onSubmit`), and a send nothing took
+  leaves his words in the field with "Not sent" under them
+  (`Composer`'s `onSubmit` answering false). A draft has no meta, so no rail
   lists it, and nothing is on any host. Its composer starts with one chip,
   the file (a `file` chip, the file's own source as its ref: "Agents"),
   put on each time the dock shows the draft (`enterDock`), the first Ask of
@@ -356,8 +364,10 @@ control, takes it away.
   (`heedChips` on `chipPort`), and a chip he took off is not put back; the composer draws no draft row (folder, host, branch, type,
   Master thread, name: `draftRow: false`), since the dock decides them.
 - **The first send** goes the composer's normal way (App's `onSubmit`,
-  `commands.send`). In it, in this order: `session.create` (the chip rides
-  it as `about`, and its line leads the message), then the step the dock
+  `commands.send`). In it, in this order: `session.create` (it names no file:
+  `about` carries a LifeOS row alone, `createAbout` in work/canvas/chips.ts,
+  since a library file's path is another computer's and the host's fence
+  refuses one in a create; the chip's line leads the message), then the step the dock
   set with `afterCreate.set(draftId, …)` (lib/tcserver/commands.ts, run once
   inside `ensureCreated`, after the create and the Mac bridge), which, while
   the file's chip was still on the composer when he sent, opens the file as

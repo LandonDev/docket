@@ -158,7 +158,8 @@ type Props = {
   onInboxCardDismiss?: () => void
   onNoteCardDismiss?: () => void
   onHandoffCardDismiss?: () => void
-  onSubmit: (text: string, attachments: Attachment[], intent: ComposerIntent) => void
+  /** False when nothing took the message: the field keeps his words and says so. */
+  onSubmit: (text: string, attachments: Attachment[], intent: ComposerIntent) => boolean | void
   /** The one button's Pause face, shown when the box is empty mid-turn. */
   onPause?: () => void
   /** Rides on the box's top edge (the implementation board's pass banner). */
@@ -809,7 +810,12 @@ export function Composer({
     // The composer that mounts for the thread next starts from this box.
     if (draft && frameRef.current) recordComposerHandoff(sessionId, frameRef.current.getBoundingClientRect())
     // The chips go as lines of the message; a draft's first one also rides its create (commands.ts ensureCreated).
-    onSubmit((sessionId && chipPort.get()?.send(sessionId, draft, text)) || text, files, intent === 'pause' ? 'send' : intent)
+    const taken = onSubmit((sessionId && chipPort.get()?.send(sessionId, draft, text)) || text, files, intent === 'pause' ? 'send' : intent)
+    // Nothing took it (the chat is gone from this window): his words stay in the field, with the reason.
+    if (taken === false) {
+      setAttachNote('Not sent. This chat is no longer open in this window.')
+      return
+    }
     inputRef.current?.clear()
     setAttachments([])
     setUploads({})

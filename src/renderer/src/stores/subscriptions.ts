@@ -30,6 +30,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
 import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { PARK_MS } from "../lib/warmTabs";
+import { dockShown } from "../lib/workSwitch";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
 import { environmentStore } from "./environment";
@@ -149,6 +150,8 @@ export function installIdleSweep(): Teardown {
   const sweep = () => {
     pending = null;
     const visibleIds = openSessionIds(workspaceTabsStore.getState().tabs);
+    // A chat docked beside a file or a mail is on screen with no tab of its own.
+    for (const id of dockShown) visibleIds.add(id);
     const unseen = liveAgentTracker.unseenIds();
     const idleDetached = sessionStore.getSnapshot().filter(
       (session) =>
