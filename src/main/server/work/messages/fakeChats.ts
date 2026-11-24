@@ -24,6 +24,10 @@ export class FakeChats implements LifeosClient {
   leaky = false
   /** LifeOS's `settings.timezone`, his zone; none: `settings:get` answers no zone */
   timezone: string | undefined = undefined
+  /** the next `replies:undo` throws this */
+  undoFails: unknown = null
+  /** conversations whose `chats:messages` read fails */
+  messagesFail = new Set<string>()
   /** the next `chats:reply` throws this */
   refuseNext: unknown = null
   private n = 0
@@ -44,6 +48,7 @@ export class FakeChats implements LifeosClient {
       lastWho: 'Dana Lee',
       lastFromMe: false,
       lastInAt: 1_000,
+      lastInId: `${id}-in`,
       lastForMeAt: 1_000,
       unread: true,
       faces: [{ name: 'Dana Lee' }],
@@ -82,6 +87,7 @@ export class FakeChats implements LifeosClient {
       case 'chats:list':
         return { page: this.newest([...this.chats.values()].filter(this.inSector(args.sector))), isDone: true, continueCursor: '' } as T
       case 'chats:messages': {
+        if (this.messagesFail.has(String(args.chatId))) throw new Error('LifeOS is unreachable')
         const all = this.messages.get(String(args.chatId)) ?? []
         const n = (args.paginationOpts as { numItems?: number } | undefined)?.numItems ?? 50
         return { page: all.slice(0, n), isDone: all.length <= n, continueCursor: '' } as T
@@ -107,6 +113,11 @@ export class FakeChats implements LifeosClient {
         return id as T
       }
       case 'replies:undo':
+        if (this.undoFails) {
+          const err = this.undoFails
+          this.undoFails = null
+          throw err
+        }
         this.undone.push(String(args.id))
         return (this.replies.find((r) => r.id === args.id)?.text ?? '') as T
       case 'replies:retry':

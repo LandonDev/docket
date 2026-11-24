@@ -1972,11 +1972,11 @@ Around the canvas:
   flush with the mark (the 10px is the line's gap); only the thread's name
   may be cut, its whole shown on hover while it is; no tip repeats the line;
   no Discard, its words never in the field, no amber mark on its row); his
-  own Send whose outcome is unknown (the amber mark and "May have gone.",
+  own Send or Undo whose outcome is unknown (the amber mark and "May have gone.",
   10px on, muted, "Check above before sending it again", and Use words at
   the far end, off while the field holds a draft's words; its words wait
   there, never in the field; Undo's words held while a draft sends take the
-  same line, muted "Taken back while a draft was sending", no mark); a held
+  same line, muted "Taken back while the field held a draft", no mark); a held
   draft another window is sending (the draft's line with "Sending from the
   Outbox", the field read only, Send off, no Discard or Use draft), or one
   out of the Outbox's list not yet known to have ended (the same, "Waiting

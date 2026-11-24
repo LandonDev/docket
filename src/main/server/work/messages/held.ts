@@ -29,21 +29,27 @@ export const ChatReplySchema = z.object({
 export type ChatReply = z.infer<typeof ChatReplySchema>
 
 export const CHAT_GONE = 'This conversation is no longer in LifeOS, or it moved to another job. Nothing was sent.'
-export const NEW_SINCE = 'A new message came into the conversation after this reply was drafted, and the reply names no message it answers. Nothing was sent: draft it again.'
+export const NO_PARENT = 'This Slack reply names no message it answers, so LifeOS could put it under a newer one. Nothing was sent: draft it again.'
+export const PARENT_UNREAD = 'LifeOS did not answer with the conversation, so the message this reply answers cannot be fixed. Nothing was held: try again.'
 
 /**
  * The message a Slack reply answers, fixed when it is held, by the rule the Outbox's quote reads (ChatReplyAct.tsx
  * `answeredOf`): the one named; else the conversation's newest from someone else as it stands now; else, a conversation
  * of only his own words, his newest stored message on the newest page (a row still carrying `reply` is an outgoing reply,
  * not a stored message). Slack threads a reply under it, so a message that comes in before his press, his own included,
- * must not take its place. Other sources do not thread, and get only what was named. A page that cannot be read pins
- * nothing: the press then goes stale if anything came since (`execute`).
+ * must not take its place. A Slack reply is never held without one: a page that cannot be read, or one with no stored
+ * message, throws (`PARENT_UNREAD`, `NO_PARENT`) and nothing is held. Other sources do not thread, and get only what was
+ * named.
  */
 export async function pinnedReplyTo(owner: Pick<LifeosClient, 'query'>, source: ChatSource, named: string | undefined, chat: Pick<ChatDetail['chat'], '_id' | 'lastInId'>): Promise<string | undefined> {
   if (named || source !== 'slack') return named
   if (chat.lastInId) return chat.lastInId
-  const page = await owner.query<{ page: ChatMessage[] } | null>('chats:messages', { chatId: chat._id, paginationOpts: { numItems: 50, cursor: null } }).catch(() => null)
-  return page?.page?.find((m) => m.who.me && !m.reply)?._id
+  const page = await owner.query<{ page: ChatMessage[] } | null>('chats:messages', { chatId: chat._id, paginationOpts: { numItems: 50, cursor: null } }).catch(() => {
+    throw new Error(PARENT_UNREAD)
+  })
+  const mine = page?.page?.find((m) => m.who.me && !m.reply)?._id
+  if (!mine) throw new Error(NO_PARENT)
+  return mine
 }
 
 export const chatReplyKind: ActKindDef<ChatReply, never> = {
@@ -66,11 +72,10 @@ export const chatReplyKind: ActKindDef<ChatReply, never> = {
     const source = got.chat.source
     if (CHAT_ROUTES[source] !== 'lifeos') throw new ActNotSent(got.route?.can === false ? got.route.why : `LifeOS can't reply in ${SOURCE_NAME[source]} yet`)
     if (got.route?.can === false) throw new ActNotSent(got.route.why)
-    // A Slack reply held with no parent fixed (pinnedReplyTo) goes under LifeOS's newest from someone else, or, with none,
-    // his own newest: once such a message has come since it was held, that is no longer the one it was drafted for, nor
-    // the one he may have read.
-    const since = (at: number | undefined): boolean => (at ?? 0) > act.item.createdAt
-    if (source === 'slack' && !p.replyTo && (since(got.chat.lastInAt) || (!got.chat.lastInId && since(got.chat.lastOutAt)))) throw new ActStale(NEW_SINCE)
+    // A Slack reply goes only under the message fixed when it was held (pinnedReplyTo). One with none (held before the pin)
+    // would go under whatever LifeOS finds newest at its send, which a message arriving after this read could change: it
+    // is stale, never sent.
+    if (source === 'slack' && !p.replyTo) throw new ActStale(NO_PARENT)
     let outboxId: string
     try {
       outboxId = await owner.mutation<string>('chats:reply', { chatId: p.chatId, ...(p.replyTo ? { replyTo: p.replyTo } : {}), text: p.text })

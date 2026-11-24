@@ -114,7 +114,7 @@ describe("words kept aside", () => {
     await flush();
     expect(field().value).toBe(EDIT);
     expect(field().readOnly).toBe(true);
-    expect(asideLine()?.textContent).toContain("Taken back while a draft was sending");
+    expect(asideLine()?.textContent).toContain("Taken back while the field held a draft");
     expect(inComposer("Use words")!.disabled).toBe(true);
     act(() => data.dropElsewhere(HELD_DRAFT.id));
     await flush();

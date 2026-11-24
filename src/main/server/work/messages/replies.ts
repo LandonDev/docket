@@ -74,7 +74,14 @@ async function replyOf(ctx: WorkCtx, sector: SectorKey, chatId: string, outboxId
 export async function undoReply(ctx: WorkCtx, by: Caller, p: { workspaceId: string; chatId: string; id: string }): Promise<{ text: string }> {
   mustBe(by, 'approve')
   await replyOf(ctx, workSector(ctx, p.workspaceId), p.chatId, p.id)
-  return { text: await lifeosSays(() => ctx.lifeos.owner().mutation<string>('replies:undo', { id: p.id })) }
+  const owner = ctx.lifeos.owner()
+  try {
+    return { text: await owner.mutation<string>('replies:undo', { id: p.id }) }
+  } catch (err) {
+    // As his Send: LifeOS's refusal took nothing back; any other fault may have, and the window keeps the words it showed.
+    if (isRefusal(err)) throw new Error(refusalWords(err))
+    throw new Error(`${REPLY_MAY_HAVE_GONE}: ${refusalWords(err)}`)
+  }
 }
 
 export async function retryReply(ctx: WorkCtx, by: Caller, p: { workspaceId: string; chatId: string; id: string }): Promise<Record<string, never>> {

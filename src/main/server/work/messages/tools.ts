@@ -125,7 +125,13 @@ export const draftTool: WorkTool = {
     const source = got.chat.source
     // A route is the source's, not LifeOS's word now: a Mac asleep now may be awake at his press, which reads it again.
     if (CHAT_ROUTES[source] === 'lifeos') {
-      const replyTo = await pinnedReplyTo(ctx.lifeos.owner(), source, reply_to, got.chat)
+      let replyTo: string | undefined
+      try {
+        replyTo = await pinnedReplyTo(ctx.lifeos.owner(), source, reply_to, got.chat)
+      } catch (err) {
+        // No message it answers could be fixed: nothing is held, rather than a reply whose place could move.
+        return failed(errorText(err))
+      }
       const payload = ChatReplySchema.parse({ chatId: got.chat._id, ...(replyTo ? { replyTo } : {}), source, chat: got.chat.name, text })
       const item = ctx.held.create({ kind: 'chat.reply', sessionId: ctx.sessionId, payload })
       return workText(`Held: ${item.summary}. It waits for the owner's press; nothing is sent until then. This is a finished step, not a failure: carry on.`)

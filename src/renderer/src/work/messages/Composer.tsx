@@ -12,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { lockedOrigin, originOf, useWaitingDrafts } from "./drafts";
-import { draftSeen, endDraft, fieldAsPressed, filledUntouched, gateFree, keepFailedPress, keepUnsure, markFilled, rememberDraft, startGated, takeAside, useAside, useDraftEnded, useGate, seeDraft, keepRefusal, keepTyped, markDraft, stillPressed, typedIn, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { draftSeen, endDraft, fieldAsPressed, filledUntouched, gateFree, keepFailedPress, markFilled, keepAside, shownOwnAtPress, rememberDraft, startGated, takeAside, useAside, useDraftEnded, useGate, seeDraft, keepRefusal, keepTyped, markDraft, stillPressed, typedIn, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -206,15 +206,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     setRefused(null);
     field.current?.focus();
     if (!pressing) {
-      // His own words leave the field at the press, before anything awaits.
+      // His own words leave the field at the press, before anything awaits; what of his the page shows is noted now, so
+      // only a reply that comes after this press can prove it went.
       keepTyped(workspaceId, chatId, "", null);
+      const before = shownOwnAtPress(workspaceId, chatId);
       void startGated(workspaceId, chatId, { kind: "send", text: sent }, async () => {
         try {
           await data.send(chatId, sent);
         } catch (err) {
           // LifeOS may have queued them: they wait aside behind "May have gone", never back under a plain Send, each press
-          // its own part, until his reply shows above or he puts them back.
-          if ((err as { unknown?: boolean }).unknown) return keepUnsure(workspaceId, chatId, sent, clock);
+          // its own part, until a reply of this press shows above or he puts them back.
+          if ((err as { unknown?: boolean }).unknown) return keepAside(workspaceId, chatId, { text: sent, kind: "sent", at: clock, before });
           const now = typedIn(workspaceId, chatId);
           keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
           keepRefusal(workspaceId, chatId, refusalOf(err));
@@ -314,7 +316,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         {alert ? <div className="flex min-h-6 items-center px-3 pb-1">{alert}</div> : null}
         {aside.length ? (
           <div className="flex min-h-6 items-center px-3 pb-1">
-            <AsideLine unsure={aside.some((part) => part.unsure)} onUse={pending || !fieldIsHis ? undefined : useAsideWords} />
+            <AsideLine unsure={aside.some((part) => part.kind !== "recalled")} onUse={pending || !fieldIsHis ? undefined : useAsideWords} />
           </div>
         ) : null}
         {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
@@ -377,7 +379,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         </div>
         {/* One status region, always mounted, so a screen reader speaks what became of his press as it changes. */}
         <span role="status" data-press-status className="sr-only">
-          {sentences([aside.some((part) => part.unsure) ? `May have gone. ${UNSURE_WHY}` : undefined, draft && failed ? spokenFailure(draft) : undefined])}
+          {sentences([aside.some((part) => part.kind !== "recalled") ? `May have gone. ${UNSURE_WHY}` : undefined, draft && failed ? spokenFailure(draft) : undefined])}
         </span>
       </div>
     </div>
@@ -425,8 +427,9 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
 const UNSURE_WHY = "Check above before sending it again";
 
 /**
- * His own words kept aside. A Send whose outcome is unknown: the amber mark and "May have gone.", then 10px on, muted,
- * what to do first. Only Undo's words, recalled while a draft in the field was sending: one muted line saying so. Use
+ * His own words kept aside. A Send, or an Undo, whose outcome is unknown (the reply may have gone either way): the amber
+ * mark and "May have gone.", then 10px on, muted, what to do first. Only Undo's words, recalled while the field held a
+ * draft that was another's to settle: one muted line saying so. Use
  * words at the far end puts them back in the field, off while the field holds a draft's words. The words never stand in
  * the field meanwhile, so no plain Send posts them twice.
  */
@@ -434,7 +437,7 @@ function AsideLine({ unsure, onUse }: { unsure: boolean; onUse?: () => void }) {
   return (
     <span data-send-unknown={unsure ? "" : undefined} data-aside className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
       {unsure ? <StatusMark state="waiting" word="May have gone." className="shrink-0" /> : null}
-      <span className="min-w-0 text-muted-foreground">{unsure ? UNSURE_WHY : "Taken back while a draft was sending"}</span>
+      <span className="min-w-0 text-muted-foreground">{unsure ? UNSURE_WHY : "Taken back while the field held a draft"}</span>
       <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" disabled={!onUse} onClick={onUse}>
         Use words
       </Button>

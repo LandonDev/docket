@@ -85,6 +85,7 @@ describe('messages_read', () => {
 
   it('gives no id to a reply of his still queued, sending or failed: only a stored message is a target', async () => {
     t.chats.messages.set('c-dana', [
+      { _id: 's1', who: { name: 'Landon', me: true }, text: 'Sending words', sentAt: Date.UTC(2026, 10, 20, 19), files: [], reply: { outboxId: 'o0', status: 'sending' } },
       { _id: 'q1', who: { name: 'Landon', me: true }, text: 'Queued words', sentAt: Date.UTC(2026, 10, 20, 18), files: [], reply: { outboxId: 'o1', status: 'queued' } },
       { _id: 'f1', who: { name: 'Landon', me: true }, text: 'Failed words', sentAt: Date.UTC(2026, 10, 20, 17), files: [], reply: { outboxId: 'o2', status: 'failed', error: 'Slack said no' } },
       { _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Stored words', sentAt: Date.UTC(2026, 10, 20, 16), files: [] }
@@ -93,6 +94,7 @@ describe('messages_read', () => {
     expect(lines[1]).toMatch(/Dana Lee: Stored words; message m1$/)
     expect(lines[2]).toMatch(/You: Failed words \(not sent: Slack said no\)$/)
     expect(lines[3]).toMatch(/You: Queued words \(queued\)$/)
+    expect(lines[4]).toMatch(/You: Sending words \(sending\)$/)
   })
 
   it("gives a file-only message's id, and a draft that names it answers that message", async () => {
@@ -181,6 +183,14 @@ describe('his presses', () => {
   it('his Send that failed past a refusal says it may have gone, apart from a refusal', async () => {
     t.chats.refuseNext = new Error('socket hang up')
     await expect(t.rig.rpc('work.messages.send', { workspaceId: 'ws-cosmic', chatId: 'c-dana', text: 'x' })).rejects.toThrow(/^It may have gone: socket hang up$/)
+  })
+
+  it('his Undo that failed past a refusal says it may have gone; a refusal stays its words', async () => {
+    t.chats.messages.set('c-dana', [{ _id: 'mine', who: { name: 'Landon', me: true }, text: 'On it.', sentAt: 1, files: [], reply: { outboxId: 'out_7', status: 'queued' } }])
+    t.chats.undoFails = new Error('socket hang up')
+    await expect(t.rig.rpc('work.messages.undo', { workspaceId: 'ws-cosmic', chatId: 'c-dana', id: 'out_7' })).rejects.toThrow(/^It may have gone: socket hang up$/)
+    t.chats.undoFails = FakeChats.refusal('Too late to undo')
+    await expect(t.rig.rpc('work.messages.undo', { workspaceId: 'ws-cosmic', chatId: 'c-dana', id: 'out_7' })).rejects.toThrow(/^Too late to undo$/)
   })
 
   it('with OWN_REPLY_HELD his reply waits in the Outbox instead, with no thread, and the answer names it', async () => {

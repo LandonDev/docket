@@ -32,9 +32,9 @@ export const OWN_REPLY_HELD = false
 export const AGENT_CHAT_SECTORS: readonly SectorKey[] = ['cosmic', 'hypixel', 'purdue', 'ref', 'unify', 'life']
 
 /**
- * How the host's answer to his own Send begins when LifeOS may have queued the reply (the call failed in a way that is
- * not LifeOS's refusal: a socket gone, a fault, no answer in time). The window reads it as an unknown outcome: the words
- * are not put back under a plain Send.
+ * How the host's answer to his own Send, or to his Undo, begins when LifeOS may have acted all the same (the call failed
+ * in a way that is not LifeOS's refusal: a socket gone, a fault, no answer in time). The window reads it as an unknown
+ * outcome: the words are kept aside, never put back under a plain Send.
  */
 export const REPLY_MAY_HAVE_GONE = 'It may have gone'
 

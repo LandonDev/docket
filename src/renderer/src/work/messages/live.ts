@@ -148,7 +148,14 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
         throw sendFailure(err);
       }
     },
-    undo: async (chatId, id) => (await host<{ text: string }>("work.messages.undo", { workspaceId, chatId, id })).text,
+    undo: async (chatId, id) => {
+      try {
+        return (await registry.linkOf(env).request<{ text: string }>("work.messages.undo", { workspaceId, chatId, id })).text;
+      } catch (err) {
+        // Read as his Send's: an answer lost after the request went may hide a reply LifeOS took back.
+        throw sendFailure(err);
+      }
+    },
     retry: async (chatId, id) => {
       await host("work.messages.retry", { workspaceId, chatId, id });
     },
@@ -235,7 +242,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
 }
 
 /**
- * His Send's failure as the composer must read it: refused (nothing was queued; the words go back in the field), or
+ * His Send's (or Undo's) failure as the composer must read it: refused (nothing was queued; the words go back in the field), or
  * `unknown` (LifeOS may have queued them): the host said so (REPLY_MAY_HAVE_GONE), or its answer never came after the
  * request went out (a timeout, a socket that closed under it). A link that was down never sent the request at all.
  */

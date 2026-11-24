@@ -92,14 +92,16 @@ answered as if it did not exist when its sector differs (`chatIn`).
   conversation of only his own words, his newest stored message on the
   newest page (a row still carrying `reply` is an outgoing reply, not a
   message), so a message that comes in before his press, his own included,
-  never takes its place and the Outbox quotes what it answers; other
-  sources keep only what was named. Words "Reply in Slack to Dana Lee:
+  never takes its place and the Outbox quotes what it answers. A Slack
+  reply is never held without one: a page that cannot be read
+  (`PARENT_UNREAD`) or one with no stored message of his (`NO_PARENT`) holds
+  nothing, and the tool (or his held Send) says so. Other sources keep only
+  what was named. Words "Reply in Slack to Dana Lee:
   “first words”", verb Send. On the press it reads `chats:get` again: gone,
   or in another sector than the item's → stale; a Copy source or a route
-  that says no → not sent in LifeOS's sentence; a Slack reply held with no
-  `replyTo` (from before the pin, or a page that could not be read) once a
-  message from someone else came in after it was held, or, with none from
-  anyone else, one of his own → stale (`NEW_SINCE`: draft it again); else `chats:reply` →
+  that says no → not sent in LifeOS's sentence; a Slack reply with no
+  `replyTo` (held before the pin) → stale whatever came since (`NO_PARENT`),
+  and LifeOS is asked to send nothing (`NEW_SINCE`: draft it again); else `chats:reply` →
   "Sent to Dana Lee in Slack", ref `{at: 'lifeos', table: 'outbox', id}`; a
   refusal of `chats:reply` is not sent in its words, any other fault may
   have gone. No way back. It earns nothing (`wordsOf` keeps `{chatId,
@@ -138,10 +140,11 @@ answered as if it did not exist when its sector differs (`chatIn`).
   list is compared as Today shows it, `waitingOf`), so Today's rows follow.
   What moves in one turn makes one push (`tell`, a microtask), not one a
   subscription.
-- **His own Send** (`sendReply`): LifeOS's refusal comes back in its words
-  (nothing was queued); any other failure of `chats:reply` may have reached
-  it, and comes back as "It may have gone: …" (`REPLY_MAY_HAVE_GONE`), which
-  the window reads as an unknown outcome.
+- **His own Send** (`sendReply`) **and his Undo** (`undoReply`): LifeOS's
+  refusal comes back in its words (nothing was done); any other failure of
+  `chats:reply` or `replies:undo` may have reached it, and comes back as "It
+  may have gone: …" (`REPLY_MAY_HAVE_GONE`), which the window reads as an
+  unknown outcome.
 
 ## Threads and the digest
 
@@ -302,15 +305,21 @@ The look is docs/DESIGN.md "The Messages view".
   Send: one 12px line above the box, the amber mark and "May have gone.",
   10px on, muted, "Check above before sending it again", and Use words at
   its far end, which puts them back before whatever he typed since. Each
-  press is its own part (`AsidePart`), so a second lost Send keeps the
-  first; Use words gives them all, oldest first, a line apart. An unsure
-  part goes by itself once his reply with those words shows in the
-  conversation, sent no earlier than it was kept less two minutes
-  (`settleAside`: LifeOS took it), or when Undo brings that reply's words
-  back (`dropAsideWords`); else only by Use words: a later Send of his own
-  drops nothing. Undo's words recalled while the field holds a draft that
-  is sending elsewhere or out of the list wait aside too, the line then
-  muted "Taken back while a draft was sending" with no mark. Use words is
+  press is its own part (`AsidePart`: `sent`, `undo` or `recalled`), so a
+  second keeps the first; Use words gives them all, oldest first, a line
+  apart. A part goes by Use words, or, for a Send, on evidence of that very
+  press, never by words alone (`settleAside`): a message of his with its
+  words that was not on the loaded page at the press (`before`, noted by
+  the conversation, `noteShownOwn`; a press made before the page loaded has
+  none and waits for Use words), sent no earlier than the press less two
+  minutes, and not already taken as another press's evidence: one row
+  proves one press, oldest first. A later Send of his own drops nothing.
+  An Undo whose answer is lost (LifeOS may have taken the reply back, and
+  its row with it) keeps the words the row showed, taken at the press, as
+  an `undo` part under the same "May have gone." line. Undo's words
+  recalled while the field holds a draft that is sending elsewhere or out
+  of the list wait aside too, the line then muted "Taken back while the
+  field held a draft" with no mark. Use words is
   off while the field holds a draft's words (held, copy-only, failed,
   sending or unlisted), so kept words never join a draft's and take its
   place; it is on again once the field is empty or his own. Use draft
@@ -540,8 +549,9 @@ failures, a write that fails, picked for a chat's file and never a mail's),
 `src/shared/work/messages.test.ts` (stale, the sync line, folded file names,
 only the reader's tail cut). The view: `model.test.ts`, `today.test.ts`,
 `Composer.dom.test.tsx`, `MessagesView.dom.test.tsx`, `ChatReplyAct.dom.test.tsx`,
-`cold`, `files`, `open`, `ways` and `council` to `council12.dom.test.tsx`,
-`council12.dom.test.tsx` (two lost Sends kept, a reply shown above lets go, Use words off over a draft, Undo while a
+`cold`, `files`, `open`, `ways` and `council` to `council13.dom.test.tsx`,
+`council13.dom.test.tsx` (an older reply of the same words proves nothing, one reply proves one press, a lost Undo
+keeps its words), `council12.dom.test.tsx` (two lost Sends kept, a reply shown above lets go, Use words off over a draft, Undo while a
 draft sends, a draft out of the capped list), `keptKeys.dom.test.tsx` (dropped keys stay dropped, a keeper that leaves
 hands on) and `live.dom.test.tsx` (his Send's failure read, a Discard of a
 draft no longer listed, the copy-only drafts read again on the link's open,

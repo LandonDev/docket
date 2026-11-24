@@ -4,7 +4,7 @@ import { loadWorkModules, WORK_MODULES } from '../modules'
 import { wordsOf } from '../outbox/earned'
 import { approveKey } from '../outbox/rig'
 import { FakeChats } from './fakeChats'
-import { CHAT_GONE, chatReplyKind, NEW_SINCE } from './held'
+import { CHAT_GONE, chatReplyKind, NO_PARENT, PARENT_UNREAD } from './held'
 import { makeChatRig, type ChatRig } from './testRig'
 
 /**
@@ -144,12 +144,17 @@ describe('on his press', () => {
     expect(t.chats.replies.at(-1)).toMatchObject({ chatId: 'c-notes', replyTo: 'm-a' })
   })
 
-  it('is stale for an unpinned Slack reply in a conversation of only his words once he wrote there after it was held', async () => {
-    t.chats.chat({ _id: 'c-notes', name: '#my-notes', kind: 'channel', lastInId: undefined, lastInAt: undefined, lastOutAt: 5_000 })
-    const act = (createdAt: number) => ({ lifeos: t.chats.client(), item: { sector: 'cosmic', createdAt } }) as never
-    const p = { chatId: 'c-notes', source: 'slack' as const, chat: '#my-notes', text: words }
-    await expect(chatReplyKind.execute(p, act(4_000))).rejects.toThrow(NEW_SINCE)
-    expect(t.chats.replies).toEqual([])
+  it('holds nothing in a Slack conversation of only his words when its page cannot be read, or holds no message of his', async () => {
+    t.chats.chat({ _id: 'c-notes', name: '#my-notes', kind: 'channel', lastInId: undefined, lastInAt: undefined, lastFromMe: true })
+    t.chats.messagesFail.add('c-notes')
+    const refused = await draft({ chat: 'c-notes', text: words })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toBe(PARENT_UNREAD)
+    t.chats.messagesFail.clear()
+    t.chats.messages.set('c-notes', [{ _id: 'out-row', who: { name: 'Landon', me: true }, text: 'x', sentAt: 1, files: [], reply: { outboxId: 'o1', status: 'queued' } }])
+    expect(text(await draft({ chat: 'c-notes', text: words }))).toBe(NO_PARENT)
+    expect(await t.rig.waiting()).toEqual([])
+    expect(t.chats.calls.map((c) => c.fn)).not.toContain('chats:reply')
   })
 
   it('names no parent where a source does not thread', async () => {
@@ -158,14 +163,10 @@ describe('on his press', () => {
     expect((await t.rig.waiting())[0]!.payload).not.toHaveProperty('replyTo')
   })
 
-  it('is stale for a Slack reply held with no parent once a message came in after it was held', async () => {
-    const act = (createdAt: number) => ({ lifeos: t.chats.client(), item: { sector: 'cosmic', createdAt } }) as never
-    const p = { chatId: 'c-dana', source: 'slack' as const, chat: 'Dana Lee', text: words }
-    t.chats.chats.get('c-dana')!.lastInAt = 5_000
-    await expect(chatReplyKind.execute(p, act(4_000))).rejects.toThrow(NEW_SINCE)
-    expect(t.chats.replies).toEqual([])
-    await expect(chatReplyKind.execute(p, act(6_000))).resolves.toMatchObject({ summary: 'Sent to Dana Lee in Slack' })
-    expect(t.chats.replies).toHaveLength(1)
+  it('is stale for a Slack reply held with no parent, whatever came since, and asks LifeOS to send nothing', async () => {
+    const act = { lifeos: t.chats.client(), item: { sector: 'cosmic', createdAt: Date.now() } } as never
+    await expect(chatReplyKind.execute({ chatId: 'c-dana', source: 'slack', chat: 'Dana Lee', text: words }, act)).rejects.toThrow(NO_PARENT)
+    expect(t.chats.calls.map((c) => c.fn)).not.toContain('chats:reply')
   })
 
   it('reads a source that has no way to send as not sent, in its own words', async () => {

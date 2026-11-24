@@ -14,7 +14,7 @@ import { Composer } from "./Composer";
 import { keptWithin, useKeptKeys } from "./keptKeys";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, heldUnread, settleAside, useAside, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
+import { dropWanted, heldUnread, noteShownOwn, settleAside, useAside, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -49,12 +49,16 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const data = useMessagesData();
   const detail = data.useChat(chatId);
   const messages = data.useMessages(chatId);
-  // A Send of his that may have gone, kept aside, goes once his reply with those words shows here: LifeOS took it.
-  // Read again when a part is kept, too: the reply may show above before its Send's lost answer comes back.
+  // What of his the page shows, by id, for a Send's press to note (page.ts); and a Send of his that may have gone, kept
+  // aside, goes on evidence of that very press (`settleAside`). Read again when a part is kept, too: the reply may show
+  // above before its Send's lost answer comes back.
   const shown = messages.status === "ready" ? messages.value.rows : null;
   const aside = useAside(workspaceId, chatId);
   useEffect(() => {
-    if (shown && aside.length) settleAside(workspaceId, chatId, shown.filter((m) => m.who.me));
+    if (!shown) return;
+    const mine = shown.filter((m) => m.who.me);
+    noteShownOwn(workspaceId, chatId, new Set(mine.map((m) => m._id)));
+    if (aside.length) settleAside(workspaceId, chatId, mine);
   }, [shown, aside, workspaceId, chatId]);
   const chat = detail.status === "ready" ? detail.value?.chat : undefined;
 

@@ -165,17 +165,19 @@ export const filledUntouched = (workspaceId: string, chatId: string): boolean =>
 
 /**
  * His own words kept aside, out of the field, until he puts them back (Use words): a Send that may have gone (the host's
- * answer was lost, or LifeOS failed past a refusal, so it may have queued them), and Undo's words recalled while a draft
- * in the field was sending elsewhere. Each press is its own part, so a second lost Send never writes over the first.
- * An unsure part goes once his reply with those words shows in the conversation (it went; `settleAside`), else only by
- * Use words: a later Send of his own does not drop them.
+ * answer was lost, or LifeOS failed past a refusal, so it may have queued them), an Undo that may have taken a reply back
+ * (its answer was lost, so the words it would have returned are kept as they were shown), and Undo's words recalled while
+ * a draft in the field was another's to settle. Each press is its own part, so a second never writes over the first.
+ * A part goes by Use words, or, for a Send, on evidence of that very press (`settleAside`); never by words alone.
  */
 export interface AsidePart {
   text: string;
-  /** a Send that may have gone, as against words Undo recalled */
-  unsure: boolean;
-  /** when it was kept aside, on the view's clock */
+  /** `sent`: a Send that may have gone; `undo`: an Undo that may have taken its reply back; `recalled`: Undo's words, back */
+  kind: "sent" | "undo" | "recalled";
+  /** when he pressed, on the view's clock */
   at: number;
+  /** a Send's: his own messages shown at the press, by id; null when the page had not loaded (then nothing proves it went) */
+  before?: ReadonlySet<string> | null;
 }
 const aside = new Map<string, readonly AsidePart[]>();
 const NO_ASIDE: readonly AsidePart[] = [];
@@ -187,8 +189,6 @@ const setAside = (at: string, parts: readonly AsidePart[]): void => {
 };
 export const asideOf = (workspaceId: string, chatId: string): readonly AsidePart[] => aside.get(key(workspaceId, chatId)) ?? NO_ASIDE;
 export const keepAside = (workspaceId: string, chatId: string, part: AsidePart): void => setAside(key(workspaceId, chatId), [...asideOf(workspaceId, chatId), part]);
-/** His Send that may have gone, its words kept aside. */
-export const keepUnsure = (workspaceId: string, chatId: string, words: string, at: number): void => keepAside(workspaceId, chatId, { text: words, unsure: true, at });
 /** Every part, oldest first, joined a line apart, and let go: Use words. */
 export function takeAside(workspaceId: string, chatId: string): string {
   const words = asideOf(workspaceId, chatId)
@@ -197,23 +197,36 @@ export function takeAside(workspaceId: string, chatId: string): string {
   setAside(key(workspaceId, chatId), NO_ASIDE);
   return words;
 }
-/** The clock may run a little apart between the view and LifeOS: a reply this much older than its part still counts. */
+
+/** His own messages on the conversation's loaded page, by id, as the conversation last showed them; absent until loaded. */
+const shownOwn = new Map<string, ReadonlySet<string>>();
+export const noteShownOwn = (workspaceId: string, chatId: string, ids: ReadonlySet<string>): void => void shownOwn.set(key(workspaceId, chatId), ids);
+/** Taken at a Send's press, before anything awaits: what of his was already there. */
+export const shownOwnAtPress = (workspaceId: string, chatId: string): ReadonlySet<string> | null => shownOwn.get(key(workspaceId, chatId)) ?? null;
+/** Rows of his that already proved a Send went: each proves one press only. */
+const claimed = new Map<string, Set<string>>();
+/** The clock may run a little apart between the view and LifeOS: a reply this much older than its press still counts. */
 const ASIDE_SLACK_MS = 120_000;
 /**
- * Drops each unsure part whose words now show as his own message in the conversation, sent no earlier than the part was
- * kept: LifeOS took that Send, so the words are there and need no second press. Undo's words that match go the same way.
+ * Drops a Send's part on evidence of that very press: a message of his with its words that was not on the page when he
+ * pressed (`before`), sent no earlier than the press less two minutes, and not already taken as another press's
+ * evidence. One row proves one press, oldest first. Words alone prove nothing: an older "On it." never clears a new one,
+ * and a part pressed before the page loaded, an Undo's or a recalled one, waits for Use words.
  */
-export function settleAside(workspaceId: string, chatId: string, mine: readonly { text: string; sentAt: number }[]): void {
+export function settleAside(workspaceId: string, chatId: string, mine: readonly { _id: string; text: string; sentAt: number }[]): void {
   const parts = asideOf(workspaceId, chatId);
   if (!parts.length) return;
-  const left = parts.filter((part) => !part.unsure || !mine.some((m) => m.text.trim() === part.text.trim() && m.sentAt >= part.at - ASIDE_SLACK_MS));
-  if (left.length !== parts.length) setAside(key(workspaceId, chatId), left);
-}
-/** Undo put these words back in the field: an unsure part of the same words is that very reply, and goes. */
-export function dropAsideWords(workspaceId: string, chatId: string, words: string): void {
-  const parts = asideOf(workspaceId, chatId);
-  const left = parts.filter((part) => !(part.unsure && part.text.trim() === words.trim()));
-  if (left.length !== parts.length) setAside(key(workspaceId, chatId), left);
+  const at = key(workspaceId, chatId);
+  const used = claimed.get(at) ?? new Set<string>();
+  const left = parts.filter((part) => {
+    if (part.kind !== "sent" || !part.before) return true;
+    const proof = mine.find((m) => !used.has(m._id) && !part.before!.has(m._id) && m.text.trim() === part.text.trim() && m.sentAt >= part.at - ASIDE_SLACK_MS);
+    if (!proof) return true;
+    used.add(proof._id);
+    return false;
+  });
+  claimed.set(at, used);
+  if (left.length !== parts.length) setAside(at, left);
 }
 export function useAside(workspaceId: string, chatId: string): readonly AsidePart[] {
   return useSyncExternalStore(
@@ -521,6 +534,8 @@ export function resetPages(): void {
   typedRevs.clear();
   filledRevs.clear();
   aside.clear();
+  shownOwn.clear();
+  claimed.clear();
   fieldDrafts.clear();
   endedDrafts.clear();
   draftMarks.clear();

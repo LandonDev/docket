@@ -20,7 +20,7 @@ import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
 import { lockedOrigin, originOf, useWaitingDrafts } from "./drafts";
 import { KeptKeys } from "./keptKeys";
-import { dropAsideWords, fieldAsPressed, keepAside, keepRefusal, keepTyped, runGated, stillPressed, typedIn, wantFile } from "./page";
+import { fieldAsPressed, keepAside, keepRefusal, keepTyped, runGated, stillPressed, typedIn, wantFile } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -77,7 +77,7 @@ export const MessageBlock = memo(function MessageBlock({
             {/* Once its files are listed beside it, the names LifeOS's readers folded into its words go. */}
             <Words text={message.files.length ? fileMarkers(message.text, message.files) : message.text} />
             {message.files.length ? <Files workspaceId={workspaceId} message={message} chatId={chatId} chat={chat} /> : null}
-            {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
+            {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} shown={message.text} workspaceId={workspaceId} chatId={chatId} /> : null}
           </div>
         </div>
         {onMore ? (
@@ -332,7 +332,7 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
  * the words back in the composer; failed, the red mark, "Not sent." and
  * LifeOS's reason, with Retry.
  */
-function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; workspaceId: string; chatId: string }) {
+function ReplyState({ reply, shown, workspaceId, chatId }: { reply: ChatReplyState; shown: string; workspaceId: string; chatId: string }) {
   const data = useMessagesData();
   // The drafts still waiting, read at settlement through a ref: the Undo answers after he may have edited one.
   const drafts = useWaitingDrafts(workspaceId, chatId);
@@ -349,21 +349,28 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
    * has nowhere to be saved), stay behind his, a line between.
    */
   const undo = async (): Promise<void> => {
-    // The recall goes at once on his press, never held for a draft's sake; its own failure stays on this row.
-    const words = await data.undo(chatId, reply.outboxId);
+    // The recall goes at once on his press, never held for a draft's sake; its own failure stays on this row. The words as
+    // shown are taken at the press: when Undo's answer is lost, LifeOS may have taken the reply back (and its row with it)
+    // all the same, so they wait aside behind "May have gone." rather than go with the row.
+    const pressedAt = Date.now();
+    let words: string;
+    try {
+      words = await data.undo(chatId, reply.outboxId);
+    } catch (err) {
+      if ((err as { unknown?: boolean }).unknown && shown.trim()) keepAside(workspaceId, chatId, { text: shown, kind: "undo", at: pressedAt });
+      throw err;
+    }
     // Placing the words queues on the conversation's gate (page.ts): it waits for whatever holds it (a held draft's
     // press, his Send, a Discard), then holds it itself, so nothing starts in the composer while it reads and writes.
     await runGated(workspaceId, chatId, { kind: "undo" }, async () => {
       // The field as it is now. A held draft's edit there is saved to its item before the recalled words take the field.
       let pressed = fieldAsPressed(workspaceId, chatId);
       let saved: string | null = null;
-      // That very reply is back: words of it kept aside as may-have-gone are these, and go.
-      dropAsideWords(workspaceId, chatId, words);
       for (let round = 0; round < 5; round++) {
         const at = originOf(workspaceId, chatId, pressed.from, waiting.current);
         // A draft in the field that is another's to settle (sending elsewhere, or out of the list): its words are not his
         // yet and are not touched. His recalled words wait aside behind Use words until the field can take them.
-        if (pressed.text.trim() && lockedOrigin(at)) return keepAside(workspaceId, chatId, { text: words, unsure: false, at: Date.now() });
+        if (pressed.text.trim() && lockedOrigin(at)) return keepAside(workspaceId, chatId, { text: words, kind: "recalled", at: Date.now() });
         if (at.kind !== "held" || !pressed.text.trim()) break;
         const edit = pressed.text.trim();
         if (edit !== (saved ?? at.draft.text)) {

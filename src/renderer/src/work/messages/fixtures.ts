@@ -280,6 +280,10 @@ export interface FixtureOptions {
   sendUnknown?: boolean;
   /** His own Send's answer is lost and LifeOS never queued it: it rejects as `unknown`, and nothing shows above. */
   sendLost?: boolean;
+  /** Each of his Sends in turn: its answer lost, LifeOS having queued it (`queued`) or not (`lost`). */
+  sendOutcomes?: ("queued" | "lost")[];
+  /** Undo's answer is lost after LifeOS took the reply back: its row goes, and it rejects as `unknown`. */
+  undoLost?: boolean;
   /** Discard is refused with these words and the item stays held. */
   discardRefused?: string;
   /** Discard is answered with the item in this state, not discarded (another window claimed it first). */
@@ -591,10 +595,13 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     async send(chatId, text) {
       if (options.slow) await new Promise<void>((go) => (letGo = go));
       if (options.sendLost) throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
+      const outcome = options.sendOutcomes?.shift();
+      if (outcome === "lost") throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
       if (options.refuse) throw new Error(options.refuse);
       if (options.refuseSend) throw new Error(options.refuseSend);
       log.sent.push({ chatId, text });
       reply(chatId, text);
+      if (outcome === "queued") throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
       if (options.sendUnknown) throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
     },
     async undo(chatId, id) {
@@ -603,6 +610,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       const all = messagesOf(chatId);
       const own = all.find((m) => m.reply?.outboxId === id);
       putMessages(chatId, all.filter((m) => m !== own));
+      if (options.undoLost) throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
       return own?.text ?? "";
     },
     async retry(chatId, id) {
