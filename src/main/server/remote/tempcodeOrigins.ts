@@ -1,3 +1,5 @@
+import { lookup } from 'node:dns/promises'
+import { shortHostName } from '@shared/hostNames'
 import { isIP } from 'node:net'
 import { hostname, networkInterfaces } from 'node:os'
 import { kindOf, listEnvironments, type EnvironmentsStore } from './environments'
@@ -74,12 +76,59 @@ export function isTempCodeOrigin(url: string, origins: TempCodeOrigins): boolean
   })
 }
 
-export function readTempCodeOrigins(
-  store: EnvironmentsStore,
+/** Resolve both sides at a protected port. A failed or empty lookup leaves the caller unable to verify the target. */
+export async function resolvesToTempCodeOrigin(
+  url: string,
+  origins: TempCodeOrigins
+): Promise<boolean> {
+  if (isTempCodeOrigin(url, origins)) return true
+  const target = endpoint(url)
+  if (!target) return false
+  const { host, port } = target
+  const listenerPort = origins.listenerPorts.includes(port)
+  const remoteHosts = origins.remoteRoutes.flatMap((route) => {
+    const configured = endpoint(route)
+    return configured && (listenerPort || configured.port === port) ? [configured.host] : []
+  })
+  // The public tunnel can accept either standard web port, even when the saved route names only HTTPS.
+  if (listenerPort || port === 80 || port === 443) remoteHosts.push(...(origins.tunnelHosts ?? []))
+  if (!listenerPort && !remoteHosts.length) return false
+
+  const resolve = async (name: string): Promise<string[]> => {
+    if (isIP(name)) return [name]
+    const answers = await lookup(name, { all: true })
+    if (!answers.length) throw new Error('no addresses returned')
+    return answers.map((answer) => address(answer.address))
+  }
+  const addresses = await resolve(host)
+  if (
+    addresses.some((ip) =>
+      isTempCodeOrigin(`http://${isIP(ip) === 6 ? `[${ip}]` : ip}:${port}`, origins)
+    )
+  )
+    return true
+  const remoteAddresses = await Promise.all([...new Set(remoteHosts)].map(resolve))
+  return remoteAddresses.some((ips) => ips.some((ip) => addresses.includes(ip)))
+}
+
+/** Browser requests must name a known local endpoint. Never authorize an incoming Host by resolving it. */
+export function isTempCodeBrowserHost(
+  host: string,
+  proto: 'http' | 'https',
+  origins: TempCodeOrigins
+): boolean {
+  if (!/^(?:[a-z\d_.-]+|\[[a-f\d:.]+\])(?::\d+)?$/i.test(host)) return false
+  return isTempCodeOrigin(`${proto}://${host}`, origins)
+}
+
+export function readLocalTempCodeOrigins(
+  store: Pick<EnvironmentsStore, 'getSetting'>,
   listenerPort: number | null,
   boundPort?: number
 ): TempCodeOrigins {
   const settings = readRemoteSettings(store)
+  const name = hostname()
+  const short = shortHostName(name)
   const publicRoutes = [settings.publicOrigin, settings.learnedOrigin ?? '']
   const tunnelHosts = publicRoutes.flatMap((route) => {
     const host = endpoint(route)?.host
@@ -92,12 +141,26 @@ export function readTempCodeOrigins(
       ...(boundPort ? [boundPort] : [])
     ],
     lanAddresses: [
-      hostname(),
+      name,
+      short,
+      `${short}.local`,
       ...Object.values(networkInterfaces()).flatMap((rows) => rows?.map((row) => row.address) ?? [])
     ],
     tunnelHosts,
+    remoteRoutes: publicRoutes
+  }
+}
+
+export function readTempCodeOrigins(
+  store: EnvironmentsStore,
+  listenerPort: number | null,
+  boundPort?: number
+): TempCodeOrigins {
+  const local = readLocalTempCodeOrigins(store, listenerPort, boundPort)
+  return {
+    ...local,
     remoteRoutes: [
-      ...publicRoutes,
+      ...local.remoteRoutes,
       ...listEnvironments(store).flatMap((env) => env.routes.map((route) => route.url))
     ]
   }

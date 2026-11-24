@@ -1,4 +1,4 @@
-import { isTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
+import { resolvesToTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
 import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ConfirmNeed } from '@shared/computer/policy'
@@ -229,10 +229,14 @@ export function refusedTarget(app: { pid: number; bundleId: string | null }, use
 
 export const BROWSER_ADDRESS_UNAVAILABLE = 'refused: the computer service could not verify this browser tab’s address.'
 
-export function refusedBrowserTarget(target: { browser: boolean; url?: string }, origins: TempCodeOrigins): string | null {
+export async function refusedBrowserTarget(target: { browser: boolean; url?: string }, origins: TempCodeOrigins): Promise<string | null> {
   if (!target.browser) return null
   if (!target.url || !URL.canParse(target.url)) return BROWSER_ADDRESS_UNAVAILABLE
-  return isTempCodeOrigin(target.url, origins) ? TEMPCODE_ORIGIN_REFUSAL : null
+  try {
+    return await resolvesToTempCodeOrigin(target.url, origins) ? TEMPCODE_ORIGIN_REFUSAL : null
+  } catch {
+    return BROWSER_ADDRESS_UNAVAILABLE
+  }
 }
 
 /** Old native services cannot read a browser address. Known browsers stay off limits until the service is updated. */

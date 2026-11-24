@@ -14,6 +14,7 @@ import { VIDEO_PUBLISH_PATH } from '@shared/contract-videopublish'
 import { FAREWELL_CLOSE } from '@shared/contract-devices'
 import { refuseVideoUpgrade, type VideoSockets } from '../video/sockets'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
+import { isTempCodeBrowserHost, readLocalTempCodeOrigins } from './tempcodeOrigins'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
 import { SetupError, type SetupPairings } from '../devices/setupPairings'
 import { SetupClaimBodySchema, SetupCodeBodySchema } from '@shared/devices/setupLink'
@@ -204,6 +205,9 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
   // sizes it, and attach() gives the principal the remote profile.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: remoteDeflateOptions() })
   let boundPort = 0
+  const browserHostAllowed = (ctx: Pick<RequestContext, 'req' | 'host' | 'proto'>): boolean =>
+    header(ctx.req, 'host') !== undefined &&
+    isTempCodeBrowserHost(ctx.host, ctx.proto, readLocalTempCodeOrigins(store, options.port, boundPort))
 
   /** The proxy's view of this host, remembered for pairing links. Taught
    *  only by an admin's own authenticated request (R2 L1): the Host of an
@@ -360,6 +364,9 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       }
     }
     if (path === '/mcp' && options.mcp) return void (await options.mcp(ctx))
+    if (path === '/ui' || path.startsWith('/ui/')) {
+      if (!browserHostAllowed(ctx)) throw new HttpError(403, 'browser host refused')
+    }
     if (options.ui && (await options.ui(ctx))) return
     notFound(res)
   }
@@ -378,7 +385,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
             if (v && auth.inFarewell(v.principal.keyId) && base.path !== '/api/farewell') throw new HttpError(403, 'farewell: this key reaches only /api/farewell')
             // A setup link's pending key (devices/setupPairings.ts) reaches /api/setup/* alone until Allow.
             if (v && v.principal.caps.includes('pending') && !base.path.startsWith('/api/setup/')) throw new HttpError(403, 'a pending key reaches only /api/setup/*')
-            if (v && v.principal.audience === 'client' && allows(v.principal.caps, 'admin')) learnOrigin(ctx)
+            if (v && !v.session && v.principal.audience === 'client' && allows(v.principal.caps, 'admin')) learnOrigin(ctx)
             return v
           })),
       setCookie: (value) => res.setHeader('Set-Cookie', sessionCookie(value, base.proto === 'https'))
@@ -440,6 +447,8 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       if (auth.retryAfter(base.ip) > 0) return refuseUpgrade(socket, 429, 'Too Many Requests')
       let principal: (Principal & { kind: 'remote' }) | null = null
       const ticket = base.query.get('ticket')
+      // Browser sockets use the session cookie; origin-bearing ticket requests are browser traffic too.
+      if ((!ticket || header(req, 'origin') !== undefined) && !browserHostAllowed(base)) return refuseUpgrade(socket, 403, 'Forbidden')
       if (ticket) {
         principal = auth.consumeTicket(ticket)
         if (!principal) auth.recordFailure(base.ip)

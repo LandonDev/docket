@@ -740,7 +740,7 @@ async function runChecked(
       if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
       return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined }
     })
-    const line = refusedBrowserTarget(report, origins)
+    const line = await refusedBrowserTarget(report, origins)
     if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
     return report.browser ? report.url : undefined
   }

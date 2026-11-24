@@ -1391,7 +1391,9 @@ The session tier activates the app, moves the real pointer and types at the focu
 
 A targeted tool call checks the native service's `browser.target` result
 before reading or acting. The method reports whether the target is a browser
-and the current document URL if it can read it. For a verified browser tab,
+and the current document URL if it can read it. On a listener's port the
+host checks all DNS answers against local, linked and tunnel addresses.
+A failed lookup stops the call. For a verified browser tab,
 the host passes `browserUrl` on the native request. A changed or missing
 address stops a read or a later step with `browser_refused`. The host
 refuses known browsers whose service cannot supply the address. This gate

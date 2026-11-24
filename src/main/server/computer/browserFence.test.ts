@@ -1,12 +1,33 @@
-import { afterEach, expect, it } from 'vitest'
+import { lookup } from 'node:dns/promises'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TEMPCODE_ORIGIN_REFUSAL } from '../remote/tempcodeOrigins'
 import { BROWSER_ADDRESS_UNAVAILABLE } from './policy'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
+
+const dns: Record<string, string[]> = {
+  'ordinary.test': ['203.0.113.20'],
+  'lan-alias.test': ['2001:db8::abcd', '192.168.4.20'],
+  'tunnel-alias.test': ['2001:db8:abcd::8'],
+  'tunnel.example': ['203.0.113.8', '2001:db8:abcd::8'],
+  'peer.example': ['203.0.113.7'],
+  'peer-alias.test': ['203.0.113.7']
+}
+beforeEach(() => {
+  vi.mocked(lookup).mockImplementation((async (host: string, options: { all: boolean }) => {
+    expect(options.all).toBe(true)
+    const addresses = dns[host]
+    if (!addresses) throw new Error('DNS failed')
+    return addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }))
+  }) as typeof lookup)
+})
+
 const origins = () => ({
   listenerPorts: [7677],
-  lanAddresses: [],
-  remoteRoutes: ['https://peer.example']
+  lanAddresses: ['192.168.4.20'],
+  remoteRoutes: ['https://peer.example', 'https://tunnel.example'],
+  tunnelHosts: ['tunnel.example']
 })
 const open: ComputerHarness[] = []
 afterEach(async () => {
@@ -85,5 +106,26 @@ it('refuses a known browser on an old native service', async () => {
 
 it('treats the Windows VM gateway as the box loopback at the listener port', async () => {
   const h = make(true, 'http://10.0.2.2:7677/ui')
-  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
+  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({
+    body: TEMPCODE_ORIGIN_REFUSAL
+  })
+})
+
+it.each([
+  ['http://lan-alias.test:7677/ui', TEMPCODE_ORIGIN_REFUSAL],
+  ['https://tunnel-alias.test/ui', TEMPCODE_ORIGIN_REFUSAL],
+  ['https://tunnel-alias.test:7677/ui', TEMPCODE_ORIGIN_REFUSAL],
+  ['https://peer-alias.test/ui', TEMPCODE_ORIGIN_REFUSAL],
+  ['http://unresolved.test:7677/ui', BROWSER_ADDRESS_UNAVAILABLE]
+])('refuses reads and acts before dispatch on %s', async (url, line) => {
+  const h = make(false, url)
+  const target = { app: 'Webby' }
+  expect(await h.run('computer_observe', target)).toMatchObject({ isError: true, body: line })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({
+    isError: true,
+    body: line
+  })
+  expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(
+    false
+  )
 })

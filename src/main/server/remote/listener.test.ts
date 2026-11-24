@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, networkInterfaces, tmpdir } from 'node:os'
+import { shortHostName } from '@shared/hostNames'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { configure } from 'aliax-core'
@@ -600,6 +601,52 @@ describe('/ui and /pair', () => {
       )
     ).toBe('no-cache')
   })
+  it('refuses UI and browser upgrades on an alias, including an already-paired admin cookie', async () => {
+    const cookie = await cookieFor(['admin', 'approve'])
+    const alias = `lan-alias.test:${server.remote!.port}`
+    const hostHeaders = { Host: alias, Cookie: cookie }
+    const wsUrl = base.replace('http', 'ws') + '/ws'
+    const learned = server.store.getSetting('remote.learnedOrigin')
+    await call('GET', '/api/hello', { headers: { ...hostHeaders, 'X-Forwarded-Proto': 'https' } })
+    expect(server.store.getSetting('remote.learnedOrigin')).toBe(learned)
+    expect((await call('GET', '/ui', { headers: hostHeaders })).status).toBe(403)
+    expect((await call('GET', '/ui/assets/app.js', { headers: hostHeaders })).status).toBe(403)
+    expect(await upgradeStatus(wsUrl, hostHeaders)).toBe(403)
+    expect(await upgradeStatus(wsUrl, { ...hostHeaders, Origin: `http://${alias}` })).toBe(403)
+    const ticket = (await call('POST', '/api/ticket', { headers: bearer(await adminKey()) })).body.ticket
+    const ticketUrl = `${wsUrl}?ticket=${ticket}`
+    expect(await upgradeStatus(ticketUrl, { Host: alias, Origin: `http://${alias}` })).toBe(403)
+    expect(await upgradeStatus(ticketUrl)).toBe(101)
+  })
+
+  it('serves paired clients on loopback, LAN addresses, local names, and configured and learned tunnel names', async () => {
+    const cookie = await cookieFor(['approve'])
+    const port = server.remote!.port
+    const wsUrl = base.replace('http', 'ws') + '/ws'
+    const name = hostname()
+    const lan = Object.values(networkInterfaces()).flatMap((rows) => rows ?? []).find((row) => !row.internal && row.family === 'IPv4')
+    const oldPublic = server.store.getSetting('remote.publicOrigin')
+    const oldLearned = server.store.getSetting('remote.learnedOrigin')
+    server.store.setSetting('remote.publicOrigin', 'https://configured.example')
+    server.store.setSetting('remote.learnedOrigin', 'https://learned.example')
+    try {
+      const localHosts = ['127.0.0.1', 'localhost', '[::1]', name, shortHostName(name), `${shortHostName(name)}.local`, ...(lan ? [lan.address] : [])]
+      for (const Host of new Set(localHosts.map((h) => `${h}:${port}`))) {
+        const headers = { Cookie: cookie, Host, Origin: `http://${Host}` }
+        expect((await call('GET', '/ui/', { headers })).status).toBe(200)
+        expect(await upgradeStatus(wsUrl, headers)).toBe(101)
+      }
+      for (const Host of ['configured.example', 'learned.example']) {
+        const headers = { Cookie: cookie, Host, Origin: `https://${Host}`, 'X-Forwarded-Proto': 'https' }
+        expect((await call('GET', '/ui/', { headers })).status).toBe(200)
+        expect(await upgradeStatus(wsUrl, headers)).toBe(101)
+      }
+    } finally {
+      server.store.setSetting('remote.publicOrigin', oldPublic)
+      server.store.setSetting('remote.learnedOrigin', oldLearned)
+    }
+  })
+
   it('traversal and missing files are 404; other methods fall through', async () => {
     const cookie = await cookieFor()
     for (const path of [

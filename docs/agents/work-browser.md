@@ -251,9 +251,10 @@ refuse a tab already on one of these addresses. The profile drops any
 existing TempCode session cookie when Chromium starts, and Chrome exports
 and box imports leave that cookie out.
 
-The proxy knows the routes saved by this host. It cannot identify an
-unlisted tunnel alias or an unrelated site that proxies the UI. It does
-not apply to shell commands or to a browser the owner runs on his own.
+The listener serves the owner UI and its browser socket on known Host
+names. These include loopback, LAN IPs, the host's name and its `.local`
+name, and the configured or learned tunnel. A DNS alias alone does not
+add a Host. The box proxy applies to Chromium started by TempCode.
 
 ## Logins
 
