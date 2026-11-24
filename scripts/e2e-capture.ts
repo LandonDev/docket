@@ -51,6 +51,7 @@ const env: Record<string, string> = {
   ...(process.env as Record<string, string>),
   HOME: home,
   TMPDIR: join(root, 'tmp'),
+  WINVM_DIR: `${data}/no-vm`,
   TEMP_CODE_USER_DATA: data,
   TEMP_CODE_REMOTE_PORT: '0',
   TEMP_CODE_ALIAX_DATA_DIR: join(data, 'aliax'),

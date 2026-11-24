@@ -76,6 +76,7 @@ function launch(): void {
     ...(process.env as Record<string, string>),
     HOME: home,
     TMPDIR: join(root, 'tmp'),
+    WINVM_DIR: `${data}/no-vm`,
     TEMP_CODE_USER_DATA: data,
     TEMP_CODE_HEADLESS: '0',
     TEMP_CODE_DEBUG_PORT: String(debug),

@@ -99,6 +99,7 @@ async function launch(): Promise<void> {
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     TMPDIR: tmp,
+    WINVM_DIR: `${data}/no-vm`,
     TEMP_CODE_USER_DATA: data,
     TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
     TEMP_CODE_HEADLESS: '1',

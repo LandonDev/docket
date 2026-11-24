@@ -122,6 +122,7 @@ async function launch(n: number): Promise<Launch> {
   Object.assign(env, {
     HOME: join(ROOT, LABEL, 'home'),
     NODE_ENV: 'production',
+    WINVM_DIR: `${USER_DATA}/no-vm`,
     TEMP_CODE_USER_DATA: USER_DATA,
     TEMP_CODE_DEBUG_PORT: String(PORT),
     TEMP_CODE_REMOTE_PORT: '0',

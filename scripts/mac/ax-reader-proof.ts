@@ -512,7 +512,7 @@ async function tempcodeDev(): Promise<void> {
   const front = frontApp()
   // its own data, vault and CLI config; TEMP_CODE_SOAK_WINDOW=1 opens the window inactive (src/main/soakWindow.ts)
   const env = {
-    ...process.env, TEMP_CODE_USER_DATA: data, TEMP_CODE_DEBUG_PORT: '9241', TEMP_CODE_REMOTE_PORT: '0', TEMP_CODE_ALIAX_DATA_DIR: join(data, 'aliax'),
+    ...process.env, WINVM_DIR: `${data}/no-vm`, TEMP_CODE_USER_DATA: data, TEMP_CODE_DEBUG_PORT: '9241', TEMP_CODE_REMOTE_PORT: '0', TEMP_CODE_ALIAX_DATA_DIR: join(data, 'aliax'),
     ALIAX_CREDENTIAL_BACKEND: 'file', CLAUDE_CONFIG_DIR: join(data, 'claude'), CODEX_HOME: join(data, 'codex'), TEMP_CODE_WARM_HARNESS: '0', TEMP_CODE_SOAK_WINDOW: '1'
   } as Record<string, string>
   delete env.ELECTRON_RUN_AS_NODE

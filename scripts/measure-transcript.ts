@@ -55,6 +55,7 @@ async function measure(): Promise<void> {
   const env: Record<string, string> = { ...(process.env as Record<string, string>) }
   delete env.ELECTRON_RUN_AS_NODE
   Object.assign(env, {
+    WINVM_DIR: `${USER_DATA}/no-vm`,
     TEMP_CODE_USER_DATA: USER_DATA,
     TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT),
     TEMP_CODE_REMOTE_PORT: '0',

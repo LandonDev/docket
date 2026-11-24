@@ -75,6 +75,7 @@ mkdirSync(data, { recursive: true })
 const env: Record<string, string> = {
   ...(process.env as Record<string, string>),
   TEMP_CODE_HEADLESS: '1',
+  WINVM_DIR: `${data}/no-vm`,
   TEMP_CODE_USER_DATA: data,
   TEMP_CODE_REMOTE_PORT: '0',
   TEMP_CODE_GATEWAY_SHAPE: '1',

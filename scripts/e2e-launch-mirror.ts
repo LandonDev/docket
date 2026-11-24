@@ -84,6 +84,7 @@ function launch(inst: Inst, mode: 'headless' | 'window', extra: Record<string, s
     ...(process.env as Record<string, string>),
     HOME: inst.home,
     TMPDIR: inst.tmp,
+    WINVM_DIR: `${inst.data}/no-vm`,
     TEMP_CODE_USER_DATA: inst.data,
     TEMP_CODE_REMOTE_PORT: mode === 'headless' ? String(inst.remote) : '0',
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),

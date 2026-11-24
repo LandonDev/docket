@@ -141,6 +141,7 @@ function launch(logPath: string) {
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   env.TEMP_CODE_USER_DATA = USER_DATA
+  env.WINVM_DIR = `${USER_DATA}/no-vm`
   env.TEMP_CODE_DEBUG_PORT = String(DEBUG_PORT)
   const file = Bun.file(logPath)
   return Bun.spawn([ELECTRON, ROOT], { cwd: ROOT, env, stdout: file, stderr: file })

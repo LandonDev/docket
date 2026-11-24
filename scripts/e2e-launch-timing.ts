@@ -167,6 +167,7 @@ log(
 // The environment wins over the baked harness block, so a bundle packed for
 // another harness (--app) still comes up on this run's paths.
 const env = launchEnv({
+  WINVM_DIR: `${USER_DATA}/no-vm`,
   TEMP_CODE_USER_DATA: USER_DATA,
   TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT),
   TEMP_CODE_UPDATE_FEED: FEED_URL,

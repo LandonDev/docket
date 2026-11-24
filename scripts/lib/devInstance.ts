@@ -89,6 +89,7 @@ export function electronMain(pgid: number): number | null {
 export function devEnv(base: NodeJS.ProcessEnv, dir: string, port: number): Record<string, string> {
   const env: Record<string, string> = {
     ...Object.fromEntries(Object.entries(base).filter((e): e is [string, string] => e[1] !== undefined && !e[0].startsWith('GIT_'))),
+    WINVM_DIR: `${join(dir, 'dev')}/no-vm`,
     TEMP_CODE_USER_DATA: join(dir, 'dev'),
     TEMP_CODE_SOAK_WINDOW: '1',
     TEMP_CODE_ALIAX_DATA_DIR: join(dir, 'aliax'),

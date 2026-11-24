@@ -56,7 +56,7 @@ for (const inst of [A, B]) {
 type Inst = typeof A
 const procs: ReturnType<typeof Bun.spawn>[] = []
 function launch(inst: Inst): void {
-  const env = { ...process.env, TEMP_CODE_USER_DATA: inst.data, TEMP_CODE_DEBUG_PORT: String(inst.debug), TEMP_CODE_REMOTE_PORT: String(inst.remote) } as Record<string, string>
+  const env = { ...process.env, WINVM_DIR: `${inst.data}/no-vm`, TEMP_CODE_USER_DATA: inst.data, TEMP_CODE_DEBUG_PORT: String(inst.debug), TEMP_CODE_REMOTE_PORT: String(inst.remote) } as Record<string, string>
   delete env.ELECTRON_RUN_AS_NODE
   const out = Bun.file(inst.log)
   procs.push(Bun.spawn([join(REPO, 'node_modules', '.bin', 'electron-vite'), 'preview', '--skipBuild'], { cwd: REPO, env, stdout: out, stderr: out }))

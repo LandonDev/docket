@@ -56,7 +56,7 @@ const pidsOn = async (port: number): Promise<number[]> =>
     .map((s) => Number(s.trim()))
     .filter((n) => n > 0)
 
-const env = { ...process.env, TEMP_CODE_USER_DATA: USER_DATA, TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED, TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT), TEMP_CODE_REMOTE_PORT: String(REMOTE_PORT) } as Record<string, string>
+const env = { ...process.env, WINVM_DIR: `${USER_DATA}/no-vm`, TEMP_CODE_USER_DATA: USER_DATA, TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED, TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT), TEMP_CODE_REMOTE_PORT: String(REMOTE_PORT) } as Record<string, string>
 delete env.ELECTRON_RUN_AS_NODE
 const appLog = join(tmpdir(), `tc-remote-ui-app-${process.pid}.log`)
 const appOut = Bun.file(appLog)

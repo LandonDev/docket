@@ -37,7 +37,7 @@ function workEnv(): Record<string, string> {
   const root = resolve(base, 'work-root')
   mkdirSync(data, { recursive: true })
   mkdirSync(root, { recursive: true })
-  return { TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1', TC_TEST_NO_HARNESS: '1', TEMP_CODE_USER_DATA: data, TEMP_CODE_WORK_ROOT: root }
+  return { TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1', TC_TEST_NO_HARNESS: '1', WINVM_DIR: `${data}/no-vm`, TEMP_CODE_USER_DATA: data, TEMP_CODE_WORK_ROOT: root }
 }
 // The work set runs the Work service in the server's process (history and a form's answers call it); the seeds
 // read the same switch. TC_TEST_WORK_SERVICE=0 runs without it, as before milestone 49.

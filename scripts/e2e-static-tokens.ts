@@ -319,6 +319,7 @@ let procs: ReturnType<typeof Bun.spawn>[] = []
 function launch(inst: Inst, extra: Record<string, string> = {}): ReturnType<typeof Bun.spawn> {
   const env = {
     ...process.env,
+    WINVM_DIR: `${inst.data}/no-vm`,
     TEMP_CODE_USER_DATA: inst.data,
     TEMP_CODE_DEBUG_PORT: String(inst.debug),
     TEMP_CODE_REMOTE_PORT: String(inst.remote),

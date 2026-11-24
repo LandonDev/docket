@@ -151,6 +151,7 @@ export class Run {
       ...Object.fromEntries(Object.entries(process.env as Record<string, string>).filter(([k]) => !/^(TEMP_CODE_|CLAUDE|ANTHROPIC_)/.test(k) && k !== 'ELECTRON_RUN_AS_NODE')),
       HOME: this.home,
       TMPDIR: join(this.root, 'tmp'),
+      WINVM_DIR: `${this.data}/no-vm`,
       TEMP_CODE_USER_DATA: this.data,
       TEMP_CODE_REMOTE_PORT: '0',
       TEMP_CODE_ALIAX_DATA_DIR: join(this.data, 'aliax'),

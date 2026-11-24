@@ -129,6 +129,7 @@ const server = spawn('node', [serverOut], {
     TC_TEST_EXEC_BROKER: broker,
     TC_TEST_NO_RELAY: '1',
     TC_TEST_NO_HARNESS: '1',
+    WINVM_DIR: `${join(scratch, 'userdata')}/no-vm`,
     TEMP_CODE_USER_DATA: join(scratch, 'userdata'),
     TEMP_CODE_WORK_ROOT: join(scratch, 'work-root'),
     TEMP_CODE_WORK_PORT: String(workPort),

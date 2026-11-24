@@ -278,6 +278,7 @@ function launchEnv(): Record<string, string> {
   return {
     ...base,
     ...(args.build === 'prod' ? { NODE_ENV: 'production' } : {}),
+    WINVM_DIR: `${userData}/no-vm`,
     TEMP_CODE_USER_DATA: userData,
     TEMP_CODE_DEBUG_PORT: String(args.port),
     TEMP_CODE_REMOTE_PORT: '0',

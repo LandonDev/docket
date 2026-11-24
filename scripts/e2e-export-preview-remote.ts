@@ -60,6 +60,7 @@ async function launch(name: string, headless: boolean) {
         TMPDIR: tmp,
         NODE_ENV: 'production',
         AGENT_CLI_CREDENTIAL_STORE: 'file',
+        WINVM_DIR: `${data}/no-vm`,
         TEMP_CODE_USER_DATA: data,
         TEMP_CODE_WORK_ROOT: work,
         TEMP_CODE_ALIAX_DATA_DIR: join(data, 'aliax'),

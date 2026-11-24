@@ -28,6 +28,11 @@ What they share is `scripts/e2e-work-lib.ts` (`Run`):
 - One windowed instance under xvfb, in a folder of its own under /tmp,
   with its own HOME, userData, Work root, debug port and Work service port
   (both ports picked free). It never opens the installed app's database.
+- It names `WINVM_DIR`, a folder of its own that holds no machine. Left unset, an isolated
+  instance on the box reads the standing Windows VM under `/srv/agents/win-vm`, and its
+  keeper's idle tick can hibernate that machine under his Work threads after 30 minutes.
+  Every script that hands an instance `TEMP_CODE_USER_DATA` does the same
+  (`scripts/noRealVm.test.ts`; its allow-list names the four that may not, with the reason).
   It uses the box's installed conversion and meeting tools by linking each
   tool's folder into the run's own `work-tools/`; the run keeps its own
   `jobs/`, `run/` and `downloads/`, though a tool may still write its own

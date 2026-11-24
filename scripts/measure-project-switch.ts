@@ -206,6 +206,7 @@ async function main(): Promise<void> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   Object.assign(env, {
+    WINVM_DIR: `${userData}/no-vm`,
     TEMP_CODE_USER_DATA: userData,
     TEMP_CODE_DEBUG_PORT: String(port),
     TEMP_CODE_REMOTE_PORT: '0',

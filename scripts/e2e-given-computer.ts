@@ -219,6 +219,7 @@ function launch(i: Inst, extra: Record<string, string> = {}): void {
     ...(process.env as Record<string, string>),
     HOME: i.home,
     TMPDIR: i.tmp,
+    WINVM_DIR: `${i.data}/no-vm`,
     TEMP_CODE_USER_DATA: i.data,
     TEMP_CODE_HEADLESS: '1',
     TEMP_CODE_REMOTE_PORT: String(i.remote),
