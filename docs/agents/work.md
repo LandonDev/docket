@@ -347,6 +347,15 @@ A site that branches on a host's raw text (a stale version, a conflict)
 reads `err.message`, never these words. The test holds the raw lines found
 on screen to what he reads now (lib/workErrorWords.test.ts).
 
+**The asks table.** Every new wire ask from Work's renderer needs a row in
+`src/shared/work/asks.ts`. The guard reads the renderer and checks a small
+request against the wire schema, the caller's caps and the Linux host's path
+fence. To refresh the table, add or update the request in `ASK_PARAMS` and run
+`NODE_ENV=test bunx vitest run src/renderer/src/lib/workAsksGuard.test.ts`.
+Copy the reported verdicts into the sorted table and check the control for
+each refusal. The `/ui` column uses a read pairing. Check the browser shim
+when a preload call changes.
+
 ## Mirrors follow LifeOS
 
 A mirror is the TempCode project that holds a Work workspace's threads
