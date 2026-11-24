@@ -14,6 +14,12 @@ const VERB: Record<Rows["act"], [string, string]> = { archive: ["Archive", "Arch
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const day = (ms: number): string => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
 
+/** The line for rows the job's mail does not hold: "1 other is not in this job's mail", or all of them. */
+export function elsewhereLine(elsewhere: number, all: number): string {
+  if (elsewhere === all) return all === 1 ? "Not in this job's mail" : "None of these are in this job's mail";
+  return elsewhere === 1 ? "1 other is not in this job's mail" : `${elsewhere} others are not in this job's mail`;
+}
+
 /** A row read again is the same row unless what the card shows or acts on changed: a client may answer a fresh object each time. */
 const sameRow = (a: ThreadSummary | null, b: ThreadSummary | null): boolean =>
   a === b || (!!a && !!b && a.id === b.id && a.version === b.version && a.subject === b.subject && a.lastMessageAt === b.lastMessageAt && a.archived === b.archived);
@@ -40,6 +46,8 @@ export function RowsCard({ rows }: { rows: Rows }) {
   const [done, setDone] = useState<{ n: number; at: number } | null>(null);
   const act = batchOf(rows);
   const ticked = rows.threadIds.filter((id) => threads[id] && !unticked.has(id));
+  // Rows the job's mail does not hold: no subject to show and nothing to act on, so one line under the rest says how many.
+  const elsewhere = rows.threadIds.filter((id) => threads[id] === null).length;
   const [verb, past] = VERB[rows.act];
   const run = (): void => {
     if (!act || ticked.length === 0) return;
@@ -72,6 +80,7 @@ export function RowsCard({ rows }: { rows: Rows }) {
             }
           />
         ))}
+        {elsewhere ? <li className="flex h-9 items-center px-3 text-xs text-muted-foreground">{elsewhereLine(elsewhere, rows.threadIds.length)}</li> : null}
       </ul>
       <div className={FOOT}>
         {done ? (
@@ -98,16 +107,12 @@ function RowOf({ id, ticked, locked, onThread, onTick }: { id: string; ticked: b
     // onThread compares rows by what they show, so an equal row read again changes nothing.
   }, [loaded, thread, onThread]);
   const sender = thread?.senders[0] ?? "";
+  // A mail the job's mail does not hold is said once, under the rows (`elsewhereLine`).
+  if (loaded && !thread) return null;
   return (
     <li data-row={id} className="flex h-9 items-center gap-2.5 px-3">
-      {view === undefined ? (
-        <span className="size-3.5 shrink-0" />
-      ) : thread ? (
-        <Checkbox checked={ticked} disabled={locked} aria-label={thread.subject} onCheckedChange={(on) => onTick(!!on)} />
-      ) : (
-        <span className="size-3.5 shrink-0" />
-      )}
-      <span className={`min-w-0 flex-1 truncate text-[13px] ${thread ? "text-foreground" : "text-muted-foreground"}`}>{thread ? thread.subject : view === undefined ? "" : "Not in this job's mail"}</span>
+      {thread ? <Checkbox checked={ticked} disabled={locked} aria-label={thread.subject} onCheckedChange={(on) => onTick(!!on)} /> : <span className="size-3.5 shrink-0" />}
+      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{thread?.subject ?? ""}</span>
       {sender ? <span className="max-w-[35%] shrink-0 truncate text-xs text-muted-foreground">{sender}</span> : null}
       {thread ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{day(thread.lastMessageAt)}</span> : null}
     </li>

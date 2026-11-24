@@ -218,7 +218,9 @@ describe("rows to act on", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Archive 2" })).toBeTruthy());
     // A mail this job does not hold has no tick.
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
-    expect(screen.getByText("Not in this job's mail")).toBeTruthy();
+    // It is said once under the rows, not as a row of its own.
+    expect(await screen.findByText("1 other is not in this job's mail")).toBeTruthy();
+    expect(document.querySelectorAll("[data-row]")).toHaveLength(2);
     fireEvent.click(screen.getByRole("checkbox", { name: "Gym hours" }));
     fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
     expect(batches).toEqual([{ ids: ["t1"], act: { kind: "archive", archived: true } }]);
