@@ -310,7 +310,7 @@ export const RelayPrincipalSchema = z.object({
   keyId: z.string().min(1).max(40),
   name: z.string().max(120),
   audience: z.enum(['client', 'mcp']),
-  caps: z.array(z.enum(['read', 'operate', 'approve', 'admin']))
+  caps: z.array(z.enum(['read', 'operate', 'approve', 'admin', 'give', 'device']))
 })
 export type RelayPrincipal = z.infer<typeof RelayPrincipalSchema>
 

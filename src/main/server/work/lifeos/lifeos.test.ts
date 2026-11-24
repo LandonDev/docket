@@ -280,7 +280,7 @@ describe('the JWT for a screen', () => {
     expect(allows(principalCaps(readKey), requiredCapability({ method: 'work.lifeos.jwt' as never }) as never)).toBe(false)
     expect(allows(principalCaps(approveKey), 'approve')).toBe(true)
     expect(requiredCapability({ method: 'work.lifeos.status' as never })).toBe('read')
-    expect(requiredCapability({ method: 'work.lifeos.setToken' as never })).toBe('admin')
+    expect(requiredCapability({ method: 'work.lifeos.setToken' as never })).toBe('local')
     const before = fake.jwts.length
     const a = await call<LifeosJwtAnswer>('work.lifeos.jwt', { sector: 'purdue' }, approveKey)
     const b = await call<LifeosJwtAnswer>('work.lifeos.jwt', { sector: 'purdue' }, approveKey)
