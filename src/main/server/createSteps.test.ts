@@ -10,6 +10,9 @@ import { CHAT_DID_NOT_START, hasCreateSteps, runCreateSteps, type CreateStepPara
 const file = { at: 'file', host: 'box', path: '/w/Budget.xlsx' } as const
 const far = { at: 'file', path: 'C:\\\\Budget.xlsx', host: 'pc' } as const
 
+/** A step's params, whatever its method. */
+const paramsOf = (req: ClientRequest): unknown => (req as { params?: unknown }).params
+
 function stepper(fail: Partial<Record<string, string>> = {}) {
   const asked: ClientRequest[] = []
   let n = 0
@@ -37,22 +40,22 @@ describe('a folded create', () => {
     expect(hasCreateSteps(p)).toBe(true)
     await runCreateSteps('t1', p, s.step, s.id)
     expect(s.asked.map((r) => r.method)).toEqual(['work.canvas.open'])
-    expect(s.asked[0].params).toEqual({ sessionId: 't1', kind: 'sheet', source: file, title: 'Budget' })
+    expect(paramsOf(s.asked[0])).toEqual({ sessionId: 't1', kind: 'sheet', source: file, title: 'Budget' })
   })
 
   it("a far file's copy is made first and the thread opens the copy", async () => {
     const s = stepper()
     await runCreateSteps('t1', { items: [{ kind: 'sheet', source: far, title: 'Budget', copy: true }] }, s.step, s.id)
     expect(s.asked.map((r) => r.method)).toEqual(['work.office.filesCopy', 'work.canvas.open'])
-    expect(s.asked[0].params).toEqual({ sessionId: 't1', source: far })
-    expect((s.asked[1].params as { source: unknown }).source).toEqual({ at: 'file', host: 'box', path: '/w/.copies/Budget.xlsx' })
+    expect(paramsOf(s.asked[0])).toEqual({ sessionId: 't1', source: far })
+    expect((paramsOf(s.asked[1]) as { source: unknown }).source).toEqual({ at: 'file', host: 'box', path: '/w/.copies/Budget.xlsx' })
   })
 
   it('the bridge, then the mail chat, then the items: each its own request with its own id', async () => {
     const s = stepper()
     await runCreateSteps('t1', { bridge: { macPeer: 'mac-1' }, mailAdopt: { workspaceId: 'w1', kind: 'mail', mailThreadId: 'mt1' }, items: [{ kind: 'sheet', source: file, title: 'B' }] }, s.step, s.id)
     expect(s.asked.map((r) => r.method)).toEqual(['macBridge.thread.set', 'work.mail.chat.adopt', 'work.canvas.open'])
-    expect(s.asked[1].params).toEqual({ workspaceId: 'w1', kind: 'mail', mailThreadId: 'mt1', sessionId: 't1' })
+    expect(paramsOf(s.asked[1])).toEqual({ workspaceId: 'w1', kind: 'mail', mailThreadId: 'mt1', sessionId: 't1' })
     expect(new Set(s.asked.map((r) => r.id)).size).toBe(3)
   })
 
