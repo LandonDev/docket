@@ -103,7 +103,7 @@ Opening is the caller's: the window opens the file in a Files tab; a tool calls 
 
 `ctx.peer` refuses its own host, so Files' `work.files.make` and `work.files.trash`, and the exports of formats and sheets, are called through the module's `handle` from the registry (`WORK_MODULES`), with the real caller, so Files' door judges who pressed.
 
-A remote key makes, saves and lists only for a workspace whose folder it may reach (`ctx.reaches`). A save's source must be in its reach too, but for a starter or a template for all jobs on that workspace's shelf: those lie in the app's own folders, which no key's fence names, and "Edit a copy" copies one.
+A remote key makes, saves and lists only for a workspace whose folder it may reach (`ctx.reaches`). A save's source must be in its reach too, but for a starter or a template for all jobs on that workspace's shelf: those lie in the app's own folders, which no key's fence names, and "Edit a copy" copies one. The window names it by its id (`work.templates.save { template }`, `copyTemplate` in work/templates/data.ts), never by its path: the listener's fence refuses a path of the app's own folders before the handler is asked, which once refused every Edit a copy from a window on another computer. The host finds the file on the workspace's shelf (`resolveTemplate`) after the workspace's own fence.
 
 ## The wire (`src/shared/contract-work-templates.ts`)
 
@@ -111,7 +111,7 @@ A remote key makes, saves and lists only for a workspace whose folder it may rea
 |---|---|---|
 | `work.templates.list { workspaceId }` | read | `{ templates, hidden }` |
 | `work.templates.make { workspaceId, template, into?, fields?, today?, title? }` | operate | `{ source, kind, title, unfilled }` |
-| `work.templates.save { workspaceId, source, name?, everywhere? }` | operate | `Template` |
+| `work.templates.save { workspaceId, source? or template?, name?, everywhere? }` | operate | `Template` |
 | `work.templates.rename { workspaceId, template, name }` | operate | `Template` |
 | `work.templates.move { workspaceId, template, everywhere }` | operate | `Template` |
 | `work.templates.remove { workspaceId, template, confirmed?, version? }` | operate | `{ trashed?, confirm?, version? }` |

@@ -142,6 +142,9 @@ describe('save', () => {
     expect((await saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(starter), name: 'Game report' }, { pillars: none })).id).toBe('job:Game report.docx')
     expect((await saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(shared), name: 'Letter' }, { pillars: none })).id).toBe('job:Letter.docx')
     expect(shelfFiles()).toEqual(['Game report.docx', 'Letter.docx'])
+    // Named by its id, as the window's "Edit a copy" does: no path of the host's own folders crosses the wire.
+    expect((await saveTemplate(rig.ctx, phone, { workspaceId: WS, template: 'all:Letter.docx', name: 'Letter mine' }, { pillars: none })).id).toBe('job:Letter mine.docx')
+    await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS }, { pillars: none })).rejects.toThrow('Name the file or the template to save.')
     // Any other file in the app's own folders stays out of reach.
     const other = rig.put(join(rig.ctx.dataDir, 'work-templates', 'scratch', 'x.docx'), docx('x'))
     await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(other) }, { pillars: none })).rejects.toThrow(OUT_OF_REACH)

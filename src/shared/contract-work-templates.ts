@@ -27,8 +27,12 @@ export const TemplatesRequestSchemas = [
   request('work.templates.list', z.object({ workspaceId: Workspace })),
   /** → TemplateMade: a new file from the template, its fields filled, kept in `into` (the workspace's folder when absent). Opening it is the caller's. */
   request('work.templates.make', z.object({ workspaceId: Workspace, template: TemplateRef, into: FolderRefSchema.optional(), fields: TemplateFieldsSchema.optional(), today: Day.optional(), title: Name.optional() })),
-  /** → Template: a copy of the file on the shelf, for this job or (`everywhere`) for all jobs on this host. */
-  request('work.templates.save', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, name: Name.optional(), everywhere: z.boolean().optional() })),
+  /**
+   * → Template: a copy of the file on the shelf, for this job or (`everywhere`) for all jobs on this host. The file
+   * is a `source`, or a `template` of this shelf by its id ("Edit a copy" of a starter or one for all jobs: those
+   * lie in the host's own folders, a path no key's fence passes, so the host finds the file itself).
+   */
+  request('work.templates.save', z.object({ workspaceId: Workspace, source: CanvasSourceSchema.optional(), template: TemplateRef.optional(), name: Name.optional(), everywhere: z.boolean().optional() })),
   /** → Template: one of his own under a new name. */
   request('work.templates.rename', z.object({ workspaceId: Workspace, template: TemplateRef, name: Name })),
   /** → Template: one of his own moved between this job's and all jobs'. */

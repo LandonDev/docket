@@ -28,7 +28,9 @@ import { TemplatesStore } from './store'
 
 export interface SaveAsk {
   workspaceId: string
-  source: CanvasSource
+  /** the file to copy, or (`template`) one on this workspace's shelf by its id or name */
+  source?: CanvasSource
+  template?: string
   name?: string
   everywhere?: boolean
 }
@@ -139,7 +141,11 @@ function admitJobShelf(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, dir: s
 
 export async function saveTemplate(ctx: WorkCtx, by: Caller, ask_: SaveAsk, deps: SaveDeps = {}): Promise<Template> {
   const workspace = reachWorkspace(ctx, by, ask_.workspaceId)
-  const path = pathOf(ctx, ask_.source)
+  // A template named by its id is found on this workspace's shelf, after the workspace's own fence: the same file its
+  // `source` names, without a path of the host's own folders on the wire.
+  const source = ask_.source ?? (ask_.template ? toTemplate(resolveTemplate(ctx, workspace.id, ask_.template).entry).source : null)
+  if (!source) throw new Error('Name the file or the template to save.')
+  const path = pathOf(ctx, source)
   if (by.kind === 'remote' && !by.peer && !reachesFile(ctx, by, path) && !shelved(ctx, workspace.id, path)) throw new Error(OUT_OF_REACH)
   // The file the checks judged, by its real path, resolved in the same step: a copy reads that file, whatever a link leads to later.
   const readAt = real(path)
@@ -161,7 +167,7 @@ export async function saveTemplate(ctx: WorkCtx, by: Caller, ask_: SaveAsk, deps
   if (!ask_.everywhere) admitJobShelf(ctx, by, workspace, target.path)
   // Before anything is exported: a folder others can open takes a thread's file only on his press.
   admitDirect(ctx, by, target.path, 'make')
-  const kept = await shelfFile(ctx, by, workspace, ask_.source, path, formed.form, deps, readAt)
+  const kept = await shelfFile(ctx, by, workspace, source, path, formed.form, deps, readAt)
   let name: string
   try {
     // A name that leads elsewhere now is refused: the file would land where the shelf no longer reads.

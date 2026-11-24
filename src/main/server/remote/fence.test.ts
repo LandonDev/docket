@@ -363,6 +363,11 @@ describe('Work: a file named inside a CanvasSource', () => {
     const about = (path: string): ClientRequest => req('session.create', { provider: 'claude', model: 'm', about: { kind: 'selection', label: 'A', ref: file(path) } })
     expect(() => fenceRequest(about(join(root, 'src', 'a.ts')), [root])).not.toThrow()
     expect(() => fenceRequest(about('/etc/hosts'), [root])).toThrow('forbidden: session.create is outside app-managed roots')
+    // What the window sends, so that the fence stays as it is: a starter copied by its id (its file lies in the app's
+    // own folders, which no key may name by path), and a create whose chip is a LifeOS row, never a library's path.
+    expect(() => fenceRequest(req('work.templates.save', { workspaceId: 'w', source: file(join(outside, 'work-templates', 'Letter.docx')), name: 'Letter' }), [root])).toThrow(FenceError)
+    expect(() => fenceRequest(req('work.templates.save', { workspaceId: 'w', template: 'all:Letter.docx', name: 'Letter' }), [root])).not.toThrow()
+    expect(() => fenceRequest(req('session.create', { provider: 'claude', model: 'm', about: { kind: 'mail', label: 'A', ref: { at: 'lifeos', table: 'mailThreads', id: 'm1' } } }), [root])).not.toThrow()
   })
   it('refuses a Work request nested deeper than it reads, never passing it unread', () => {
     let deep: unknown = file('/etc/hosts')

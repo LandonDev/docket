@@ -70,6 +70,10 @@ export const makeFrom = (env: string, workspaceId: string, template: string, opt
 export const saveTemplate = (env: string, workspaceId: string, source: CanvasSource, opts: { name?: string; everywhere?: boolean } = {}): Promise<Template> =>
   ask(env, "work.templates.save", { workspaceId, source, ...(opts.name ? { name: opts.name } : {}), ...(opts.everywhere ? { everywhere: true } : {}) }, "The host did not save it");
 
+/** His own copy of a template of this shelf, named by its id: a starter's or an all-jobs template's file lies in the host's own folders, which a window's key may not name by path. */
+export const copyTemplate = (env: string, workspaceId: string, template: string, name: string): Promise<Template> =>
+  ask(env, "work.templates.save", { workspaceId, template, name }, "The host did not copy it");
+
 export const renameTemplate = (env: string, workspaceId: string, template: string, name: string): Promise<Template> =>
   ask(env, "work.templates.rename", { workspaceId, template, name }, "The host did not rename it");
 

@@ -186,7 +186,8 @@ describe("the Templates view", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "Season log" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Edit a copy" }));
     await settle();
-    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: LOG.source, name: "Season log" }]);
+    // By its id: the starter's file lies in the host's own folders, a path the host's fence refuses from a window's key.
+    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", template: LOG.id, name: "Season log" }]);
     expect(asked("work.files.open").map((p) => p.ref)).toEqual([{ at: "file", host: "box", path: "/w/Dummy Esports/Templates/Season log.docx" }]);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
@@ -573,7 +574,7 @@ describe("the Templates view", () => {
     expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "Remove"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit a copy" }));
     await settle();
-    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: WEEKLY.source, name: "Weekly" }]);
+    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", template: WEEKLY.id, name: "Weekly" }]);
     expect(asked("work.files.open").map((p) => p.ref)).toEqual([{ at: "file", host: "box", path: "/w/Dummy Esports/Templates/Season log.docx" }]);
   });
 

@@ -13,7 +13,7 @@ import { getPathForFile } from "../../lib/native";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
+import { copyTemplate, makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
 import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, unfilledLine, type TileAction, type TileRow } from "./model";
 import { askTemplateFields, openMade } from "./open";
 import { RenameDialog } from "./RenameDialog";
@@ -235,7 +235,7 @@ export function View({ env, workspace }: WorkViewProps) {
       // A starter, or one for all jobs (in the host's own data, which Files does not open): Edit a copy makes his own
       // for this job, which takes its place on the shelf, and opens that.
       const own = editsACopy(t)
-        ? saveTemplate(env, workspace.id, t.source, { name: t.name }).then(
+        ? copyTemplate(env, workspace.id, t.id, t.name).then(
             (saved) => saved.source,
             (err: unknown) => {
               failed(`${t.name} was not copied`)(err);
