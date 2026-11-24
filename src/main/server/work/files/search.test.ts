@@ -292,10 +292,15 @@ describe('the Windows VM', () => {
     if (process.platform === 'win32') return
     expect(names(await search('budget', {}, thread('t1')))).not.toContain('VM budget.xlsx')
     rig.settings.set(WS, { windowsVm: true })
-    const got = await search('budget', {}, thread('t1'))
+    // A thread's search wakes it no more than his window's does: its places are named as left out.
+    const asleep = await search('budget', {}, thread('t1'))
+    expect(calls).toEqual([])
+    expect(asleep.asleep).toEqual(['Events', 'General'])
+    setVmState(() => ({ state: 'awake', cannot: null }))
+    // (Other words than the search just kept, which would answer from what it found.)
+    const got = await search('vm budget', {}, thread('t1'))
     expect(calls).toEqual(['files.search'])
     expect(got.entries.find((e) => e.name === 'VM budget.xlsx')).toMatchObject({ shared: true, local: false, key: 'lib:esportsstaffgeneral:Plans/VM budget.xlsx', where: { name: 'General', trail: ['Plans'] } })
-    setVmState(() => ({ state: 'awake', cannot: null }))
     const awake = await search('budget')
     expect(awake.asleep).toBeUndefined()
     expect(names(awake)).toContain('VM budget.xlsx')

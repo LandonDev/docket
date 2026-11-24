@@ -269,7 +269,8 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
 
     it("checks each thing of a held move just before its own move: one replaced while the one before it moved is refused, never moved", async () => {
       const files = [`${GENERAL}\\Plan.txt`, `${GENERAL}\\Notes.txt`]
-      const stat = (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: files.map((f) => at(f)) })).entries
+      // Each one's own look: a page of VM rows asked at once is not looked at row by row.
+      const stat = await Promise.all(files.map(async (f) => (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: [at(f)] })).entries[0]!))
       const things = stat.map((e) => ({ key: e.key, version: `${e.size ?? 0}:${e.changed ?? 0}:` }))
       // The first move's answer comes back once OneDrive has replaced the second file.
       setVmCall(async (verb, args) => {

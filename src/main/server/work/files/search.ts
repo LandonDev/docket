@@ -302,15 +302,14 @@ const librarySource: PlaceSource = async (s) => {
 }
 
 /**
- * The libraries in the Windows VM, through the guest's own walk. A caller with a window that must never wait
- * (his window, a remote key) does not wake a sleeping VM: its places are named in `asleep`. A thread, or another
- * host of his, has no screen to repaint and may wake it.
+ * The libraries in the Windows VM, through the guest's own walk. A search wakes no one's VM, whoever asks (his window,
+ * a remote key, a thread, another host of his): waking it is his press alone, so a sleeping VM's places are named in
+ * `asleep`.
  */
 const vmSource: PlaceSource = async (s) => {
   const libs = librariesOfScope(s, true)
   if (!libs.length) return { hits: [] }
-  const window = s.by.kind === 'local' || (s.by.kind === 'remote' && !s.by.peer)
-  if (window && vmState()?.state !== 'awake') {
+  if (vmState()?.state !== 'awake') {
     const names = s.libraries.filter((l) => l.library.vm && wants(s.filter, l.place.id)).map((l) => l.place.name)
     return { hits: [], more: true, asleep: [...new Set(names)] }
   }

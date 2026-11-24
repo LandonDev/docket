@@ -106,6 +106,7 @@ describe('the Windows VM through its helper', () => {
 
   it('lists a folder there through the helper, sorted and keyed as any library folder, hidden names and links left out, and asks once for the pages of one scroll', async () => {
     if (process.platform === 'win32') return
+    setVmState(() => ({ state: 'awake', cannot: null }))
     const got = await call<FilesListing>('work.files.list', { at: at(`${TOP}\\General`) })
     expect(got.entries.map((e) => [e.name, e.kind, e.key, e.local])).toEqual([
       ['Budgets', 'folder', 'lib:esportsstaffgeneral:Budgets', undefined],
@@ -114,7 +115,8 @@ describe('the Windows VM through its helper', () => {
     ])
     expect(got.entries[0]!.folder).toEqual(at(`${TOP}\\General\\Budgets`))
     expect(got.trail!.map((c) => c.name)).toEqual(['General'])
-    expect(got.asOf).toBe(1_700_000_000_000)
+    // Read from the guest now: not a list kept from before.
+    expect(got.asOf).toBeUndefined()
     await call<FilesListing>('work.files.list', { at: at(`${TOP}\\General`), sort: { by: 'name', dir: 'desc' } })
     expect(calls.filter((c) => c.verb === 'files.list')).toHaveLength(1)
     // A path outside OneDrive's mounts never reaches the helper.

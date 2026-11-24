@@ -18,6 +18,7 @@ import {
 import { BYTES_MAX, FETCH_MS, noText, readText, SEARCH_MAX, TEXT_MAX, windowsLibrary } from '../files/library'
 import type { WindowsOneDriveMount } from '../files/oneDrive'
 import type { WorkCtx } from '../../modules'
+import { keepOnlyWhere } from '../../files/places/vmKept'
 import { vmCall, VmAsleep } from './link'
 
 /**
@@ -167,6 +168,8 @@ export async function refreshVm(db: DatabaseSync, opts: { wake?: boolean; signal
   }
   const stored: Stored = { at: (opts.now ?? Date.now)(), status, tops }
   setValue(db, 'vm:status', JSON.stringify(stored))
+  // A library OneDrive there no longer syncs takes the folder lists kept of it with it.
+  keepOnlyWhere((dir) => status.mounts.some((m) => guestWithin(dir, m.path)))
   await syncWanted(db, stored, opts.signal).catch(() => undefined)
   return stored
 }
@@ -282,20 +285,21 @@ export function vmOfficeStatus(db: DatabaseSync, vm: { state: string; cannot: st
   return { office: stored ? stored.status.office : null, onedrive: vmPlace(db, vm) ?? { kind: 'vm', state: 'not-set-up', account: null }, at: stored?.at ?? null }
 }
 
-export async function vmList(library: TeamsLibrary, dir: string, signal?: AbortSignal): Promise<TeamsEntry[]> {
-  return shownEntries(library.id, (await vmCall('files.list', { dir }, { signal })) as GuestEntry[])
+/** A folder's rows through the helper. `wake: false`: asked only of a machine awake now (asleep, it fails with `VmAsleep`). */
+export async function vmList(library: TeamsLibrary, dir: string, signal?: AbortSignal, wake = true): Promise<TeamsEntry[]> {
+  return shownEntries(library.id, (await vmCall('files.list', { dir }, { signal, wake })) as GuestEntry[])
 }
 
 export async function vmStat(library: string, path: string, signal?: AbortSignal): Promise<TeamsEntry> {
   return entryOfGuest(library, (await vmCall('files.stat', { path }, { signal })) as GuestEntry)
 }
 
-/** Names holding every word, newest first: the guest walks its own disk (names only, nothing downloads). */
+/** Names holding every word, newest first: the guest walks its own disk (names only, nothing downloads). It never wakes the machine. */
 export async function vmSearch(libs: readonly TeamsLibrary[], query: string, kind?: TeamsFileKind, signal?: AbortSignal): Promise<{ entries: TeamsEntry[]; more: boolean }> {
   if (!libs.length) return { entries: [], more: false }
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   const filter = !kind ? { only: 'any' } : kind === 'folder' ? { only: 'folder' } : kind === 'other' ? { only: 'other', exts: teamsKnownExts() } : { only: 'exts', exts: teamsExtsOf(kind) }
-  const got = (await vmCall('files.search', { roots: libs.map((l) => l.path), words, ...filter, maxDirs: 20_000, maxHits: 1_000, ms: 15_000 }, { timeoutMs: 60_000, signal })) as { hits: GuestEntry[]; more: boolean }
+  const got = (await vmCall('files.search', { roots: libs.map((l) => l.path), words, ...filter, maxDirs: 20_000, maxHits: 1_000, ms: 15_000 }, { timeoutMs: 60_000, signal, wake: false })) as { hits: GuestEntry[]; more: boolean }
   const hits = got.hits
     .filter((e) => !hidden(e.name) && !e.link)
     .map((e) => entryOfGuest(libs.find((l) => l.path.toLowerCase() === (e.root ?? '').toLowerCase())?.id ?? '', e))
@@ -307,7 +311,8 @@ export async function vmSearch(libs: readonly TeamsLibrary[], query: string, kin
 /** Downloads a file OneDrive keeps in the cloud (the helper reads it to its end as tcuser); answers it as it is now. */
 /** Whether OneDrive in the VM has uploaded the file as it lies there; null from a helper that cannot say. Nothing downloads. */
 export async function vmSynced(path: string, signal?: AbortSignal): Promise<boolean | null> {
-  const e = (await vmCall('files.stat', { path }, { signal })) as GuestEntry
+  // A status look never wakes the machine: asleep, it fails with `VmAsleep` and what was known stands.
+  const e = (await vmCall('files.stat', { path }, { signal, wake: false })) as GuestEntry
   return typeof e.synced === 'boolean' ? e.synced : null
 }
 

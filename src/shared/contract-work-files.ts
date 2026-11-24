@@ -150,9 +150,12 @@ export const THUMB_SIZES = [192, 288, 416] as const
 export const FilesRequestSchemas = [
   /** → FilesPlaces: this host's places for the workspace and each one's state. Never waits on a Windows VM. */
   request('work.files.places', z.object({ workspaceId: Workspace })),
-  /** → FilesListing: one folder or lens, a page at a time (`LIST_PAGE_MAX` entries, `LIST_PAGE_BYTES`). `cursor` is the last answer's `next`; a folder that changed between pages answers `stale`, and the window lists again. */
-  request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional() })),
-  /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive when several are asked at once (each look is round trips over the link). */
+  /**
+   * → FilesListing: one folder or lens, a page at a time (`LIST_PAGE_MAX` entries, `LIST_PAGE_BYTES`). `cursor` is the last answer's `next`; a folder that changed between pages answers `stale`, and the window lists again.
+   * `wake`: his press for this folder, which may wake the Windows VM behind the answer; false for a list he did not press for (a restored tab, a refetch). Absent, a window's list wakes it and a thread's never does.
+   */
+  request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional(), wake: z.boolean().optional() })),
+  /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive or in the Windows VM when several are asked at once (each look is round trips over the link, or a call in the guest, which names no one who saved). */
   request('work.files.stat', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100) })),
   /**
    * → what `host` answers to `method` (places, a folder's page, the rows on screen): a desktop of his the window has
@@ -367,6 +370,12 @@ export interface FilesListing {
   more?: true
   /** a search left these places out, by name, because their machine sleeps and only his press wakes it (the Windows VM) */
   asleep?: string[]
+  /**
+   * the folder's machine sleeps (the Windows VM): the rows are what was kept (`asOf`), or none. `waking`: a wake goes on
+   * (his press, this one or another), and a `work.files` push names the folder once its rows land; `asleep`: only his
+   * press wakes it.
+   */
+  sleeping?: 'asleep' | 'waking'
 }
 
 /** One open tab. A page tab stands on a folder or a lens; a file tab holds one canvas item of the workspace's Files pane (`filesPaneOf`). */

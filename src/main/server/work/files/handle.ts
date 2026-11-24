@@ -32,7 +32,7 @@ import { winDirHost } from './places/winDir'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetLibraries } from './places/libraries'
 import { changeElsewhere, farHostOf, filesAcross, restoreElsewhere, trashElsewhere } from './across'
-import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace } from './places/teams'
+import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace, type VmPage } from './places/teams'
 import { placeExtras } from './extras'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
@@ -236,7 +236,7 @@ export function withMarks(state: FilesState, workspaceId: string, entries: FileE
 /** The stall log's word for where a Files call went: `place=vm` on its slow-request line (stalls.ts). */
 const placeWord = (at: Located): string => (at.in === 'library' ? (at.library.vm ? 'vm' : 'library') : at.in)
 
-async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; cursor?: string; sort?: FileSort; foldersOnly?: boolean }, method: string, signal?: AbortSignal): Promise<FilesListing> {
+async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; cursor?: string; sort?: FileSort; foldersOnly?: boolean; wake?: boolean }, method: string, signal?: AbortSignal): Promise<FilesListing> {
   const state = filesState(ctx)
   const sort = p.sort ?? DEFAULT_SORT
   let at = locate(ctx, by, p.workspaceId, p.at, method)
@@ -284,7 +284,11 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
   if (at.in !== 'library') throw new Error(NOT_BUILT_PLACE)
   const { library, path } = at
   const { library: place } = doorPlace(ctx, by, at)
-  const page = library.vm ? await vmPage(library, path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal }) : await state.lister.page(path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal })
+  // A folder in the VM wakes it only for his press (`wake`; a window a release behind sends none and still wakes it); a thread's list never does.
+  const wake = by.kind !== 'model' && p.wake !== false
+  const page: VmPage = library.vm
+    ? await vmPage(ctx, library, path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal, wake, tell: { workspaceId: p.workspaceId, at: libraryKey(place!, path) } })
+    : await state.lister.page(path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal })
   if (first && !page.stale && !library.vm) {
     state.lister.watch(path, () => {
       try {
@@ -298,11 +302,17 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
   // A pillar's own rows in the folder (a Microsoft form just before its answers workbook): never in a list of folders.
   const extras = p.foldersOnly || page.stale ? [] : folderExtrasHooks().flatMap((fn) => fn(ctx, { workspaceId: p.workspaceId, library, path }))
   const entries = placeExtras(rows, extras, { first, inFolder: (name) => (library.vm ? vmHas(library, path, name) : existsSync(join(path, name))) })
-  return listing(page, withMarks(state, p.workspaceId, entries), first ? { place: place!.place.id, trail: libraryTrail(place!, path), ...(place!.place.state.at && place!.place.state.state !== 'ok' ? { asOf: place!.place.state.at } : {}) } : {})
+  const asOf = page.asOf ?? (!library.vm && place!.place.state.at && place!.place.state.state !== 'ok' ? place!.place.state.at : undefined)
+  const head = first ? { place: place!.place.id, trail: libraryTrail(place!, path), ...(asOf ? { asOf } : {}) } : {}
+  const got = listing(page, withMarks(state, p.workspaceId, entries), head)
+  return page.sleeping && !page.stale ? { ...got, sleeping: page.sleeping } : got
 }
 
 const listing = (page: DiskPage, entries: FileEntry[], head: { place?: string; trail?: FileCrumb[]; asOf?: number }): FilesListing =>
   page.stale ? { entries: [], stale: true } : { entries, ...(page.next ? { next: page.next } : {}), ...head }
+
+/** A file in the Windows VM, by its guest path: a page of its rows is never looked at one by one. */
+const inGuest = (ref: FileRef): boolean => ref.at === 'file' && isGuestPath(ref.path)
 
 /** A file on a drive that may hang (a mapped letter, a share): what a page of rows never looks at one by one. */
 const onLinkedDrive = (ref: FileRef): boolean => ref.at === 'file' && linkedDrive(ref.path) !== null
@@ -1076,7 +1086,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         if (signal?.aborted) throw new Error('cancelled')
         // A page of rows on a mapped or network drive is never looked at row by row: each look is round trips over
         // the link, and a zip read per Office file held the host for seconds. One file (its own tab) still is.
-        if (refs.length > 1 && onLinkedDrive(ref)) {
+        // Nor a page of rows in the Windows VM: the guest says no one who saved a file, and each look is a call there.
+        if (refs.length > 1 && (onLinkedDrive(ref) || inGuest(ref))) {
           entries.push(null)
           continue
         }
