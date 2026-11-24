@@ -94,7 +94,8 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
     push: (p: WorkPush) => pushes.push(p),
     reaches: (by: Caller) => by.kind !== 'remote',
     canvas: { get: (id: string) => (id === 'i1' ? item : null), paneOf: (id: string) => id },
-    threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => (o.ownerSaid ?? []).some((said) => said.includes(quote) && (!about || about.some((name) => said.toLowerCase().includes(name.toLowerCase())))) },
+    // His messages, `{path}` standing for this document's path as an Ask chip's head writes it.
+    threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => (o.ownerSaid ?? []).map((said) => said.replaceAll('{path}', path)).some((said) => said.includes(quote) && (!about || about.some((name) => said.toLowerCase().includes(name.toLowerCase())))) },
     lifeos: { connected: () => false, owner: () => ({ query: async (fn: string, args: { id?: string }) => (fn === 'docs:get' ? (convex.docs.get(args.id ?? '') ?? null) : []), mutation: async () => null }) },
     service: {
       internal: (route: string, body: unknown) => post(config.socketPath, route, body),
@@ -178,7 +179,7 @@ describe('an agent writing a document', () => {
   })
 
   it('on a shared document, "asked" with words he never typed is the agent\'s own idea and waits; with his words it is written', async () => {
-    const r = await rig({ shared: true, ownerSaid: ['In the onboarding plan, move week 2 to the clinic'] })
+    const r = await rig({ shared: true, ownerSaid: ['About this selection: “Shadow the front desk”, Onboarding plan ({path})\n\nmove week 2 to the clinic'] })
     const made = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'the owner wants this' })
     expect(made.text).toBe("Suggested changes to 1 section: others share this document, so he accepts or rejects each one. The quote was not found among the owner's words in this thread, so this counts as your own idea.")
     expect(await r.text()).toContain('front desk')
@@ -189,14 +190,14 @@ describe('an agent writing a document', () => {
     expect(docsPushes(r.pushes).some((p) => p.written)).toBe(false)
   })
 
-  it('on a shared document, his words about another document are not his ask for this one: it waits', async () => {
-    const r = await rig({ shared: true, ownerSaid: ['In the run of show, move week 2 to the clinic'] })
+  it('on a shared document, his words about another document, or naming it by its title alone, are not his ask for this one: it waits', async () => {
+    const r = await rig({ shared: true, ownerSaid: ['In the Onboarding plan, move week 2 to the clinic'] })
     const said = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'move week 2 to the clinic' })
-    expect(said.text).toBe('Suggested changes to 1 section: others share this document, so he accepts or rejects each one. Others share this document and the owner\'s message with that quote does not name it ("Onboarding plan"), so this counts as your own idea.')
+    expect(said.text).toBe('Suggested changes to 1 section: others share this document, so he accepts or rejects each one. Others share this document and the owner\'s message with that quote does not point at it ("Onboarding plan": an Ask from the document, or its path), so this counts as your own idea.')
     expect(await r.text()).toContain('front desk')
     expect(await r.branches()).toHaveLength(1)
     // On his own document the quote alone is enough: nobody else reads it, and History keeps what was there.
-    const mine = await rig({ ownerSaid: ['In the run of show, move week 2 to the clinic'] })
+    const mine = await rig({ ownerSaid: ['In the Onboarding plan, move week 2 to the clinic'] })
     expect((await mine.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'move week 2 to the clinic' })).text).toBe('Wrote 1 section.')
   })
 
@@ -342,7 +343,7 @@ describe('an agent formatting a document', () => {
   })
 
   it('a shared document keeps its bytes when asked has no owner quote, and writes with a verified quote', async () => {
-    const r = await rig({ shared: true, ownerSaid: ['Make both headings blue in the onboarding plan'] })
+    const r = await rig({ shared: true, ownerSaid: ['About this file: Onboarding plan ({path})\n\nMake both headings blue'] })
     const before = await snapshot(r)
     const no = await r.tool('doc_format', { file: r.path, ...blue, because: 'asked', quote: 'words he never typed' })
     expect(no.text).toMatch(/^Suggested formatting on 2 paragraphs: .*quote was not found/)

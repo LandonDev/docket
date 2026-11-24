@@ -99,6 +99,8 @@ const zipText = (path: string): Record<string, string> => Object.fromEntries(Obj
 const docxXml = (data: string | Uint8Array): string => strFromU8(unzipSync(typeof data === 'string' ? new Uint8Array(Buffer.from(data, 'base64')) : data)['word/document.xml']!)
 
 async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
+  // His messages in the thread; a test adds one once it knows the document's path.
+  const said = [...(o.ownerSaid ?? [])]
   const dir = mkdtempSync(join(tmpdir(), 'doc-private-'))
   open.dirs.push(dir)
   const convex = await startFakeConvex()
@@ -147,7 +149,7 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
       onReplaced: () => () => {},
       forSession: () => []
     },
-    threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => (o.ownerSaid ?? []).some((said) => said.includes(quote) && (!about || about.some((name) => said.toLowerCase().includes(name.toLowerCase())))) },
+    threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => said.some((words) => words.includes(quote) && (!about || about.some((name) => words.toLowerCase().includes(name.toLowerCase())))) },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
     service: { internal: (route: string, body: unknown) => post(config.socketPath, route, body), url: (route: string) => `ws://127.0.0.1:${service.port}${route}` },
     // LibreOffice stands in: every Word file handed to it is kept, and it hands back bytes of its own.
@@ -196,7 +198,7 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
     return client
   }
   const privateDir = join(config.dataDir, 'private-branches')
-  return { dir, work, library, db, ctx, tool, ask, call, make, text, branches, second, service, converted, docxIn, privateDir }
+  return { dir, work, library, db, ctx, tool, ask, call, make, text, branches, second, service, converted, docxIn, privateDir, said }
 }
 
 const stateText = (c: CollaborationClient) => Buffer.from(Y.encodeStateAsUpdate(c.document)).toString('latin1')
@@ -254,8 +256,9 @@ describe('a .tcdoc others can open', () => {
   })
 
   it('asked in his own words, the change is written at once', async () => {
-    const r = await rig({ ownerSaid: [`In the run of show, add a line: ${SUGGESTED} with finance`] })
+    const r = await rig()
     const { path } = await r.make(join(r.library, 'Run of show.tcdoc'))
+    r.said.push(`About this selection: “Week 1”, Run of show (${path})\n\nAdd a line: ${SUGGESTED} with finance`)
     const said = await r.tool('doc_write', { file: path, markdown: AFTER, because: 'asked', quote: `${SUGGESTED} with finance` })
     expect(said).toEqual({ text: 'Wrote 1 section.', error: false })
     expect(await r.text(path)).toContain(SUGGESTED)

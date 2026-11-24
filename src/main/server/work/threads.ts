@@ -92,18 +92,29 @@ export function typedWords(text: string): string {
 /** The shortest name of a thing that binds a message to it: a shorter one is in too many messages to say which thing was meant. */
 export const OWNER_NAME_MIN = 3
 
+/** Where a name may start and end in a message: never inside a longer word, path or id ("/a/w/Plan.tcdoc" is not "/w/Plan.tcdoc"). */
+const BEFORE = /[\s("'“‘«[{,]/
+const AFTER = /[\s)"'”’»\]},.;:!?]/
+const namedIn = (text: string, name: string): boolean => {
+  for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + 1)) {
+    const end = at + name.length
+    if ((at === 0 || BEFORE.test(text[at - 1]!)) && (end === text.length || AFTER.test(text[end]!))) return true
+  }
+  return false
+}
+
 /**
  * Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing
- * aside. With `about` (a document's title, path or id), the same message must also name one of them, typed or in the
- * head of a chip Ask put in it (a selection's chip names its document): words he wrote about one document never
- * stand for a change to another.
+ * aside. With `about`, the same message must also name one of those, whole: for a document, what identifies it alone
+ * (its path or its LifeOS id, as the head of a chip Ask put in carries them), never a title two documents may share or
+ * one inside another's ("Plan" in "Travel Plan"). Words he wrote about one document never stand for a change to another.
  */
 export function ownerSaid(words: OwnerWords, sessionId: string, quote: string, about?: readonly string[]): boolean {
   const want = plain(quote)
   if (want.length < OWNER_QUOTE_MIN) return false
   const names = about?.map(plain).filter((name) => name.length >= OWNER_NAME_MIN)
   if (names && !names.length) return false
-  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!names || names.some((name) => plain(text).includes(name))))
+  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!names || names.some((name) => namedIn(plain(text), name))))
 }
 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {

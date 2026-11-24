@@ -184,16 +184,25 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('Please approve the overtime for the build crew')).toBe(false)
   })
 
-  it('with what it is about, only in a message that also names it: typed, or in the head of a chip Ask put in', async () => {
+  it('with what it is about, only in a message that names it whole: a path or an id, never inside a longer one', async () => {
     const purdue = await workWorkspace('purdue')
-    const thread = await registry.startWith({ threadType: 'chat', workspaceId: purdue }, 'In the run of show, move the keynote to 2:00 PM please.', { by: { kind: 'owner' } })
+    const thread = await registry.startWith(
+      { threadType: 'chat', workspaceId: purdue },
+      'About this selection: “Keynote at 1”, Travel Plan (/w/Travel Plan.tcdoc)\n> Keynote at 1\n\nmove the keynote to 2:00 PM please.',
+      { by: { kind: 'owner' } }
+    )
     await settle(thread.id)
-    await registry.send(thread.id, 'About this selection: “Doors at 6”, Budget (LifeOS docs d7)\n> Doors at 6\n\nchange doors to 6:30 PM for everyone', { by: { kind: 'owner' } })
+    await registry.send(thread.id, 'About this selection: “Doors at 6”, Budget (LifeOS docs kd7q2x)\n> Doors at 6\n\nchange doors to 6:30 PM for everyone', { by: { kind: 'owner' } })
+    await settle(thread.id)
+    await registry.send(thread.id, 'About this selection: “Lunch”, Plan (/archive/w/Plan.tcdoc)\n> Lunch\n\nmove lunch to noon for the whole team', { by: { kind: 'owner' } })
     const said = (quote: string, about: string[]): boolean => work.ctx.threads.ownerSaid(thread.id, quote, about)
-    expect(said('move the keynote to 2:00 PM', ['Run of show', '/w/Run of show.tcdoc'])).toBe(true)
-    expect(said('move the keynote to 2:00 PM', ['Budget', 'd7'])).toBe(false)
-    expect(said('change doors to 6:30 PM for everyone', ['Budget'])).toBe(true)
-    expect(said('change doors to 6:30 PM for everyone', ['Run of show'])).toBe(false)
+    expect(said('move the keynote to 2:00 PM', ['/w/Travel Plan.tcdoc'])).toBe(true)
+    // "Plan" stands inside "Travel Plan", and a path inside a longer one: neither names this document.
+    expect(said('move the keynote to 2:00 PM', ['/w/Plan.tcdoc'])).toBe(false)
+    expect(said('move lunch to noon for the whole team', ['/w/Plan.tcdoc'])).toBe(false)
+    expect(said('move lunch to noon for the whole team', ['/archive/w/Plan.tcdoc'])).toBe(true)
+    expect(said('change doors to 6:30 PM for everyone', ['kd7q2x'])).toBe(true)
+    expect(said('change doors to 6:30 PM for everyone', ['kd7q2'])).toBe(false)
     // a name too short to say which document was meant binds nothing
     expect(said('move the keynote to 2:00 PM', ['Ru'])).toBe(false)
   })

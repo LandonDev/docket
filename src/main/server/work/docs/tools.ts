@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { DocFormatResult } from 'work-kit/collab-server'
 import { docFormatFields } from './formatToolInput'
-import { agentPrincipal, workText, type CanvasSource, type WorkToolResult } from '@shared/work'
+import { agentPrincipal, canvasSourcePath, workText, type CanvasSource, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
@@ -51,7 +51,7 @@ function orphaned(ctx: ToolCtx): boolean {
 /** The sectors a thread may reach: its workspace's one; none for a workspace with no sector or a thread with no Work home; every sector for a Work Chat (which reads through its own key). */
 const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : ctx.scope.workspaceId || orphaned(ctx) ? [] : 'all')
 
-async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all'; title: string }> {
+async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all'; title: string; asked: CanvasSource }> {
   let source: CanvasSource
   if (a.item) {
     const item = ctx.canvas.get(a.item)
@@ -76,7 +76,7 @@ async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t:
   // A document of another sector is not this thread's to see, whatever id it was handed.
   if (row && fence !== 'all' && !fence.includes(row.sector)) throw new Error('LifeOS has no such document')
   // A .tcdoc in a synced library or cloud folder is shared as surely as a guest-linked LifeOS document: an agent's own idea there only suggests.
-  return { t, shared: othersOpen(ctx, t, row) || ctx.scope.shared(t.source), fence, title: titleOf(t, row) }
+  return { t, shared: othersOpen(ctx, t, row) || ctx.scope.shared(t.source), fence, title: titleOf(t, row), asked: source }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly string[]): boolean {
@@ -88,8 +88,16 @@ function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly str
   }
 }
 
-/** The names a message of his must hold for his words to stand for a change to this document: its title, its path or its LifeOS id. */
-const namesOf = (t: DocTarget, title: string): string[] => [title, t.at === 'file' ? t.path : t.docId]
+/**
+ * What a message of his must name for his words to stand for a change to this document: what identifies it alone, its
+ * path (as the canvas and the host write it, and as a file chip's JSON writes it) or its LifeOS id. A title does not:
+ * two documents may share it, and one may stand inside another's.
+ */
+const namesOf = (t: DocTarget, asked: CanvasSource): string[] => {
+  if (t.at === 'lifeos') return [t.docId]
+  const paths = [...new Set([t.path, canvasSourcePath(asked) ?? t.path])]
+  return [...new Set(paths.flatMap((path) => [path, JSON.stringify(path).slice(1, -1)]))]
+}
 
 type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
 
@@ -116,11 +124,11 @@ const READ_FIRST = 'Read the document with doc_read first and pass its `revision
 const CHANGED = 'The document changed since you read it (the owner or someone else edited it), so your rewrite would undo their words. Read it again with doc_read and write your change over the text as it is now.'
 
 
-function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, title: string) {
+function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, title: string, source: CanvasSource) {
   const said = a.because === 'asked' && ownerSaid(ctx, a.quote)
   // On a document others read, his words write at once only in a message that names this document: a request about
   // another document, quoted here, is not his ask for this one.
-  const asked = said && (!shared || ownerSaid(ctx, a.quote, namesOf(t, title)))
+  const asked = said && (!shared || ownerSaid(ctx, a.quote, namesOf(t, source)))
   // A routine's run writes directly only where nobody else reads: on a shared document no grant covers it, so it suggests (milestone 50's hold review, finding 6).
   const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !shared
   const verdict = asked ? 'asked' : routine ? 'routine' : 'own'
@@ -128,7 +136,7 @@ function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, tit
   const note =
     a.because === 'asked' && !asked
       ? said
-        ? ` Others share this document and the owner's message with that quote does not name it ("${title}"), so this counts as your own idea.`
+        ? ` Others share this document and the owner's message with that quote does not point at it ("${title}": an Ask from the document, or its path), so this counts as your own idea.`
         : " The quote was not found among the owner's words in this thread, so this counts as your own idea."
       : a.because === 'routine' && !routine
         ? ctx.scope.routineRunId
@@ -139,8 +147,8 @@ function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, tit
 }
 
 async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string }): Promise<WorkToolResult> {
-  const { t, shared, fence, title } = await resolve(ctx, a, true)
-  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title)
+  const { t, shared, fence, title, asked } = await resolve(ctx, a, true)
+  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
   const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
   // A whole-text rewrite drafted from an older read would take back what was typed since: refused, never merged by guess.
   if (!a.suggest && !a.revision) return fail(READ_FIRST)
@@ -168,8 +176,8 @@ const formatInput = z.strictObject({ ...target, ...docFormatFields })
 type FormatArgs = z.infer<typeof formatInput>
 
 async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
-  const { t, shared, fence, title } = await resolve(ctx, a, true)
-  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title)
+  const { t, shared, fence, title, asked } = await resolve(ctx, a, true)
+  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
   const { on, run, paragraph, style, theme, setup, header, footer } = a
   const change = {
     ...(on ? { text: { target: on, ...(run ? { run } : {}), ...(paragraph ? { paragraph } : {}) } } : {}),
