@@ -2241,8 +2241,12 @@ Around the canvas:
   him. Entries is the flat `Table` (Date, Who, Category, Amount, and a
   paperclip where a receipt is kept; every row's money in the one shared
   form, `moneyWords`: "+$30.00", "$20.00", "+$30.00 and $20.00", "-$20.00
-  out" for a correction below zero; Amount is 112px, and 176px only
-  while a shown row has money both ways, so a rare row never narrows Who);
+  out" for a correction below zero; Amount is 112px always, and a rare
+  row with money both ways breaks its two figures onto two lines in its
+  own cell, so it grows taller and no row's Who is cut to a letter; rows
+  with money and no date Money can read are one quiet muted line under the
+  table ("Row 7 has money and no date Money can read, so no month or year
+  counts it.") with Open ledger, as the mileage log's fault line is);
   the whole row is one press, reached
   by Tab, that opens the entry dialog, and it takes a `muted` fill in hand
   and while focused within, the table's one row with one, since the row is
@@ -2269,7 +2273,8 @@ Around the canvas:
   changed", "No In or Out column" and Restore columns, or, where an
   unknown header holds cells, "No Out column: Spent may be it, name it
   back in the ledger" and Open ledger, never Restore (it would add an
-  empty column beside his figures). The entry dialog is one form for a new
+  empty column beside his figures); a money header that stands twice says
+  "Two Out columns: rename or remove one in the ledger" and Open ledger. The entry dialog is one form for a new
   entry, a row and a receipt to confirm: Amount (focused and selected, "$"
   quiet before it) beside Date, Who (the ledger's names offered) beside
   Category (the list, then New…), Spent or Received with To be paid back
