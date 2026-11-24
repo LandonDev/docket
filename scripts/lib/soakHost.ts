@@ -60,6 +60,8 @@ import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
 import { emitLiveEdit } from '../../src/main/server/livediff'
 import type { AgentEvent } from '../../src/shared/events'
+import { reconnectHistory, reconnectLiveRows } from './soakReconnect'
+import { watchReconnectSocket } from './soakReconnectHost'
 import { playScenarios, type ScenarioStep } from './soakScenarios'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
 import { profileOf, startLoad, TYPING_EDIT_PATHS, TYPING_FLOOD_POOL, TYPING_FLOOD_SIZE, TYPING_SETTLERS, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
@@ -140,6 +142,8 @@ export interface SoakHost {
   startLoad(clock?: SoakClock, burst?: BurstCadence | null): SoakDriver
   /** The scenarios scene: plays the no-jerk timeline once on its chat, from now; returns a stop. */
   playScenarios(onStep?: (step: ScenarioStep) => void): () => void
+  reconnect?: ReturnType<typeof watchReconnectSocket>
+  history?: Record<string, { rows: number; eventBytes: number }>
   close(): Promise<void>
 }
 
@@ -190,6 +194,7 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
     registry.append(id, { type: 'tool-result', callId: `${id}-seed-read`, output: 'export {}\n', isError: false })
   }
   let children: string[]
+  let history: SoakHost['history']
   let batchRow: ReturnType<typeof batchRowMidRun> | null = null
   if (scene === 'scenarios') {
     // One quiet chat the timeline plays on once the soak says go (playScenarios).
@@ -202,6 +207,23 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
     registry.append(SOAK_SCENARIOS, { type: 'turn-complete' })
     registry.append(SOAK_SCENARIOS, { type: 'status', status: 'idle' })
     children = [SOAK_SCENARIOS]
+  } else if (scene === 'reconnect') {
+    history = {}
+    children = Array.from({ length: profile.children }, (_, i) => `soak-reconnect-${i + 1}`)
+    for (const [i, id] of children.entries()) {
+      await registry.create({ ...base, id, threadType: 'chat', title: TITLES[i]! })
+      let eventBytes = 0
+      for (const event of reconnectHistory(id)) {
+        server.store.appendEvent(id, event)
+        eventBytes += Buffer.byteLength(JSON.stringify(event))
+      }
+      server.store.flushEvents()
+      history[id] = { rows: server.store.lastSeq(id), eventBytes }
+      if (i === profile.focused || profile.streamers.includes(i)) {
+        registry.append(id, { type: 'user-text', text: 'Run the next set of export checks.' })
+        registry.append(id, { type: 'status', status: 'running' })
+      }
+    }
   } else if (scene === 'chat') {
     await registry.create({ ...base, id: SOAK_CHAT, threadType: 'chat', title: TITLES[0]! })
     registry.append(SOAK_CHAT, { type: 'user-text', text: `${TITLES[0]}.` })
@@ -303,6 +325,13 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
       edit: burst ? { path, kind: 'changed', diff: null, bytes: 2_400, burst: true, ts: Date.now() } : { path, kind: 'changed', adds: 12, dels: 12, diff: EDIT_DIFF, bytes: 2_400, ts: Date.now() }
     })
   const apply = (emit: SoakEmit): void => {
+    if (scene === 'reconnect') {
+      const id = children[emit.child!]!
+      // A cold tail can start after the turn's first running status.
+      if (emit.n % 24 === 0) append(id, { type: 'status', status: 'running' })
+      for (const event of reconnectLiveRows(id, emit.n)) append(id, event)
+      return
+    }
     if (emit.kind === 'log') {
       if (!batchRow) return
       batchRow = withShellLog(batchRow, [`soak ${String(emit.n).padStart(5, '0')}: checking the billing page`])
@@ -359,11 +388,16 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   }
   let driver: SoakDriver | null = null
 
+  const reconnect = scene === 'reconnect'
+    ? watchReconnectSocket(server.remote.port, () => Object.fromEntries(children.map((id) => [id, server.store.lastSeq(id)])))
+    : undefined
   return {
     baseUrl: `http://127.0.0.1:${server.remote.port}`,
     environmentId: server.environmentId,
     scene,
-    masterId: scene === 'chat' ? '' : SOAK_MASTER,
+    masterId: scene === 'chat' || scene === 'reconnect' ? '' : SOAK_MASTER,
+    reconnect,
+    history,
     children,
     focusedId: children[profile.focused]!,
     streamerIds: profile.streamers.map((i) => children[i]!),
@@ -381,6 +415,7 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
     },
     async close() {
       driver?.stop()
+      reconnect?.close()
       await server.close()
       rmSync(root, { recursive: true, force: true })
     }

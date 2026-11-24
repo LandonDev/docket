@@ -8,7 +8,7 @@
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat|typing|switch|send|scenarios` (switch: the rail's two workspaces
+  board|chat|typing|switch|send|scroll|scenarios|reconnect` (switch: the rail's two workspaces
   clicked in turn, each click timed to its column and strip and to its
   landing thread's rows, `--workspaces a,b`, `--clicks`, scripts/lib/soakSwitch.ts,
   a hand-run scene; docs/box.md "Switching workspaces"; send: messages sent
@@ -70,6 +70,37 @@
   `head` stamp and builds when out/ is not HEAD's clean build. docs/box.md
   "The renderer over time" has the numbers; docs/RENDERER_RETENTION.md the
   bounds on the renderer's caches and logs.
+- `bun scripts/measure-renderer-soak.ts --scene reconnect` opens six remote
+  transcripts in one saved split layout. The separate Node host pairs over
+  a client key and serves the remote wire profile with compression. Each
+  thread has over 20,000 saved rows and over 3 MiB of event JSON. Three
+  turns stream throughout the run. Two grow beyond the 128-row resume
+  limit in six seconds and one stays below it.
+  - The host's stdin command `cut 6000` drops its WebSockets and refuses
+    upgrades for six seconds. The saved link reconnects on its own. The
+    first window lasts from the cut to 20 seconds after the first accepted
+    socket. The second lasts 20 seconds from a page reload with the same
+    layout and user data.
+  - The final JSON line reports long-task counts, total and max duration,
+    and the count over 100 ms. It splits the UTF-8 payload bytes into
+    `session.events` answers, pushes and other frames. `socketBytes` counts
+    bytes written to the TCP sockets, including WebSocket framing and
+    compression. The report includes peak `ws.bufferedAmount`, accepted
+    connections, refused upgrades, and event and queue answer counts.
+    Gap answers include empty gaps. The store must contain each row
+    appended during the cut or reload gap exactly once in seq order.
+    A new assistant block in the focused busy turn proves it advanced
+    after the new socket opened. The full report in
+    `/tmp/tc-soak/<label>.json` keeps individual long tasks and per-thread
+    row checks.
+  - Add `--gate` to fail if either window sees a long task over 100 ms,
+    reaches 2 MiB unsent on a socket, opens zero or several connections,
+    loses row order or coverage, fails to load all six panes, or stops
+    folding the focused stream. The reconnect rule lives in
+    `scripts/lib/soakJudge.ts`. Run the scene directly as a report or a
+    gate step. See
+    [.temp-code/plans/landed/F-reconnect-catchup/before.md](../../.temp-code/plans/landed/F-reconnect-catchup/before.md)
+    for the Linux baseline.
 - A push re-renders only what it changed, and these keep it so: an equal
   `session` push schedules no flush (store `mergeMeta` returns whether it
   changed anything); a thread row keeps its object while it reads the same

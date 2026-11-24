@@ -9,6 +9,7 @@
  *   bun scripts/measure-renderer-soak.ts --build dev --label dev-board       # needs port 5173 free
  *   bun scripts/measure-renderer-soak.ts --gate                              # the release gate's board scene, 90 s
  *   bun scripts/measure-renderer-soak.ts --gate --scene chat                 # its chat scene
+ *   bun scripts/measure-renderer-soak.ts --scene reconnect --label before    # remote cut and reload
  *   bun scripts/measure-renderer-soak.ts --scene scenarios --screencast /tmp/cast   # the no-jerk timeline, every frame
  *   bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5  # a hand run: CPU read, not failed, and the frames traced
  *
@@ -92,7 +93,8 @@ import { scenarioLength, questionClicks } from './lib/soakScenarios'
 import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
 import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
-import { waitForGateBuild } from './lib/gateBuild'
+import { readBuildStamp, waitForGateBuild } from './lib/gateBuild'
+import { recordReconnect, type ReconnectSeed } from './lib/soakReconnectRun'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -115,6 +117,7 @@ let app: ChildProcess | null = null
 let soakHost: ChildProcess | null = null
 let boxCredential: { kind: 'key' | 'pairing'; id: string } | null = null
 let cdp: Cdp | null = null
+let reconnectSummary: object | undefined
 
 /** Every pid carrying this instance's TEMP_CODE_USER_DATA (children inherit it). */
 function markedPids(): number[] {
@@ -417,17 +420,18 @@ const PAGE_STATS = `(() => ({
 }))()`
 
 // ── the host and the pairing ─────────────────────────────────────────────
-type Shown = { environmentId: string; masterId: string; threadId: string }
+type Shown = { environmentId: string; masterId: string; threadId: string; history?: ReconnectSeed }
 
 /** How the synthetic host runs: bun with the electron stub on Linux (relative
  *  paths from the checkout, which the host's port sweep knows for a proof);
  *  on macOS bundled by esbuild under node, since the Mac's bun has no
- *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
+ *  node:sqlite (scripts/ios-client-test.ts runs its server the same way).
+ *  Reconnect uses Node on both so it measures the same ws sender as Electron. */
 function hostCommand(): [string, string[]] {
   const burst = args.burstMs ? ['--burst', String(args.burstMs)] : []
   const thought = args.thought ? ['--thought'] : []
   const history = args.scene === 'send' || args.scene === 'scroll' ? ['--history', String(args.history)] : []
-  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...thought, ...history]]
+  if (!mac && args.scene !== 'reconnect') return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...thought, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync('bun', ['scripts/bundle-server.ts', 'scripts/soak-host.ts'], { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] })
   return ['node', [out, '--scene', args.scene, ...burst, ...thought, ...history]]
@@ -463,12 +467,12 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
     })
     soakHost!.on('exit', (code) => fail(new Error(`the synthetic host exited (${code}); its log (${hostLog}) ends:\n${tail()}`)))
   })
-  const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string }
+  const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string; history?: ReconnectSeed }
   await c.eval(
     `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: host.baseUrl, key: host.key, name: 'soak' })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
   )
   log(`paired with the synthetic host ${host.environmentId}`)
-  return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId }
+  return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId, history: host.history }
 }
 
 async function pairBox(c: Cdp): Promise<Shown> {
@@ -623,6 +627,21 @@ async function main(): Promise<void> {
   const c = cdp
   await waitFor(c, `window.__monocode?.registry?.primary?.()?.connected && typeof window.__monocode.open === 'function'`, 90_000, 'the app (is the tree from this branch on?)')
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
+  if (args.scene === 'reconnect') {
+    if (!soakHost || !shown.history) throw new Error('the reconnect scene needs the synthetic host and its seed')
+    const report = await recordReconnect(c, soakHost, shown.history, shown.threadId, shown.environmentId, waitFor, log)
+    const build = readBuildStamp(tree)
+    reconnectSummary = {
+      scene: 'reconnect', label: args.label, build, loadedRows: report.loadedRows,
+      cut: report.cut.summary, relaunch: report.relaunch.summary, ok: report.verdict.ok
+    }
+    writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ ...report, build }, null, 2) + '\n')
+    for (const check of report.verdict.verdicts) {
+      log(`${check.ok ? '✓' : '✗'} ${check.what}: ${check.got} (limit ${check.limit})`)
+    }
+    if (args.gate && !report.verdict.ok) process.exitCode = 1
+    return
+  }
   if (args.scene !== 'switch') await openView(c, shown)
   await c.eval(OBSERVERS)
   if (args.evalJs) log(`experiment: ${JSON.stringify(await c.eval(args.evalJs))}`)
@@ -1628,4 +1647,5 @@ try {
   await cleanup()
   log('done')
 }
+if (reconnectSummary) console.log(JSON.stringify(reconnectSummary))
 process.exit(process.exitCode ?? 0)

@@ -257,6 +257,11 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The renderer over time** — React 19.3.1, the renderer soak and its gate
   rows, the rules that keep a push re-rendering only what it changed.
   [docs/agents/renderer-over-time.md](docs/agents/renderer-over-time.md)
+  The synthetic `--scene reconnect` pairs six long transcripts over a
+  remote key, measures a six-second socket cut and a saved-layout reload,
+  and checks row order and continued streaming. `--gate` enforces 100 ms
+  for long tasks, under 2 MiB unsent per socket, and one accepted connection
+  in each window.
 - **The shape that scales** — profiling, checkpoints, the running cap and the
   stats worker. [docs/agents/shape-that-scales.md](docs/agents/shape-that-scales.md)
 - **The iOS contract** — `ios/TempCodeContract` is generated from zod by

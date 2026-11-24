@@ -50,6 +50,8 @@
  * of paying what the pause would have owed.
  */
 
+import { RECONNECT_PROFILE } from './soakReconnect'
+
 export type SoakKind = 'meta' | 'delta' | 'tool' | 'log' | 'settle' | 'resume' | 'edit' | 'flood'
 
 /** One stream of the load: a kind, the child it is about (null for the master), and its rate. */
@@ -95,8 +97,9 @@ export const SOAK_PROFILE: SoakProfile = profile()
  *  `switch` is the board's load with a second workspace to switch to and from;
  *  `send` is the board's load with the master's history grown long, sent into;
  *  `scroll` is the same with the rail and the workspace column grown past a screen, scrolled;
- *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts). */
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios'
+ *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts);
+ *  `reconnect` keeps three of six long threads streaming through a cut and reload. */
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,
@@ -128,6 +131,7 @@ export const TYPING_PROFILE: SoakProfile = {
 
 export function profileOf(scene: SoakScene): SoakProfile {
   if (scene === 'typing') return TYPING_PROFILE
+  if (scene === 'reconnect') return RECONNECT_PROFILE
   return scene === 'chat' || scene === 'scenarios' ? CHAT_PROFILE : SOAK_PROFILE
 }
 

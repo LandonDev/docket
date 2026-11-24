@@ -31,7 +31,7 @@ import { SCROLL_SURFACES, type ScrollSurface } from './soakScroll'
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -101,14 +101,17 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll or scenarios')
+  if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios', 'reconnect'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll, scenarios or reconnect')
   // The send scene sends: never into the box's own threads.
-  if ((scene === 'chat' || scene === 'scenarios' || scene === 'send') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
+  if ((scene === 'chat' || scene === 'scenarios' || scene === 'send' || scene === 'reconnect') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll' ? 'board' : 'stream')) as SoakView
+  const view = (flag('--view') ?? (scene === 'reconnect' ? 'split' : scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll' ? 'board' : 'stream')) as SoakView
   if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
   if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
   if ((scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
+  if (scene === 'reconnect' && ['--view', '--minutes', '--every', '--trace', '--eval', '--peer-delay', '--reduced-motion', '--cpu-report-only'].some((arg) => argv.includes(arg))) {
+    throw new Error('--scene reconnect uses a fixed split layout, load and timing')
+  }
   if (scene === 'switch' && argv.includes('--view')) throw new Error('--scene switch clicks the rail: it opens no view of its own')
   if (scene !== 'switch' && (argv.includes('--clicks') || argv.includes('--workspaces'))) throw new Error('--clicks and --workspaces belong to --scene switch')
   const clicks = Number(flag('--clicks') ?? (gate ? '12' : '20'))
@@ -245,7 +248,7 @@ export interface SoakRule {
  * a run pass.
  */
 /** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, `send` SEND_RULE, `scroll` SCROLL_RULE, and `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll'>
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll' | 'reconnect'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
@@ -334,6 +337,32 @@ export function judgeSend(summary: { row: { p95: number | null }; missed: number
     { what: "send to the person's row p95, ms", got, limit: rule.rowP95Ms, ok: got <= rule.rowP95Ms },
     { what: 'sends whose row never painted', got: summary.missed, limit: 0, ok: summary.missed === 0 }
   ]
+  return { ok: verdicts.every((v) => v.ok), verdicts }
+}
+
+export const RECONNECT_RULE = { longTaskMaxMs: 100, maxUnsentBytes: 2 * 1024 * 1024, connections: 1, loaded: 6 }
+
+export interface ReconnectWindow {
+  phase: 'cut' | 'relaunch'
+  longTasks: { maxMs: number }
+  maxUnsentBytes: number
+  connections: number
+  remote: boolean
+  rows: { exact: boolean }
+  loaded: number
+  streaming: boolean
+}
+
+export function judgeReconnect(windows: readonly [ReconnectWindow, ReconnectWindow], rule = RECONNECT_RULE): { ok: boolean; verdicts: Verdict[] } {
+  const verdicts: Verdict[] = windows.flatMap((w) => [
+    { what: `${w.phase}: longest long task, ms`, got: w.longTasks.maxMs, limit: rule.longTaskMaxMs, ok: w.longTasks.maxMs <= rule.longTaskMaxMs },
+    { what: `${w.phase}: max unsent bytes per socket`, got: w.maxUnsentBytes, limit: rule.maxUnsentBytes, ok: w.maxUnsentBytes < rule.maxUnsentBytes },
+    { what: `${w.phase}: connections opened`, got: w.connections, limit: rule.connections, ok: w.connections === rule.connections },
+    { what: `${w.phase}: remote wire`, got: Number(w.remote), limit: 1, ok: w.remote },
+    { what: `${w.phase}: exact row sequence`, got: Number(w.rows.exact), limit: 1, ok: w.rows.exact },
+    { what: `${w.phase}: mounted transcripts loaded`, got: w.loaded, limit: rule.loaded, ok: w.loaded === rule.loaded },
+    { what: `${w.phase}: focused stream resumed`, got: Number(w.streaming), limit: 1, ok: w.streaming }
+  ])
   return { ok: verdicts.every((v) => v.ok), verdicts }
 }
 

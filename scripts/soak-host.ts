@@ -7,6 +7,7 @@
  * scripts/ios-client-test.ts runs its server.
  */
 import { createInterface } from 'node:readline'
+import { RECONNECT_CUT_MS } from './lib/soakReconnect'
 import { startSoakHost } from './lib/soakHost'
 import type { SoakDriver } from './lib/soakLoad'
 
@@ -24,19 +25,25 @@ import type { SoakDriver } from './lib/soakLoad'
 // answered `{"paused": true}` or `{"resumed": true}` once it holds.
 const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const named = argAfter('--scene')
-const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000), thought: process.argv.includes('--thought') })
+const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' || named === 'reconnect' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000), thought: process.argv.includes('--thought') })
 const started = Date.now()
 let driver: SoakDriver | null = null
 if (host.scene !== 'scenarios') {
   const burstMs = Number(argAfter('--burst') ?? 0)
   driver = host.startLoad(undefined, burstMs > 0 ? { everyMs: burstMs } : null)
 }
-// JSON drops the two functions; the rest is the line the soak reads.
-process.stdout.write(JSON.stringify({ ready: true, ...host }) + '\n')
+// The controls stay in this process. The window receives the seed and key.
+const { reconnect, ...ready } = host
+process.stdout.write(JSON.stringify({ ready: true, ...ready }) + '\n')
 const answer = (line: object): boolean => process.stdout.write(JSON.stringify(line) + '\n')
 createInterface({ input: process.stdin }).on('line', (line) => {
   const command = line.trim()
-  if (command === 'go' && host.scene === 'scenarios') {
+  const cut = /^cut (\d+)$/.exec(command)
+  if (reconnect && (cut || command === 'relaunch')) {
+    const phase = cut ? 'cut' : 'relaunch'
+    const start = reconnect.begin(phase, cut ? Number(cut[1]) : RECONNECT_CUT_MS, (wire) => answer({ wire }))
+    answer({ began: phase, start })
+  } else if (command === 'go' && host.scene === 'scenarios') {
     host.playScenarios((step) => answer({ step: step.label, at: Date.now() - started, clicks: step.clicks }))
   } else if (command === 'pause' && driver) {
     driver.pause()
