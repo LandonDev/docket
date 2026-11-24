@@ -155,6 +155,28 @@ describe('a folder in the Windows VM', () => {
     expect(lists()).toHaveLength(1)
   })
 
+  it('serves the rows kept while it wakes, and the folder as it is now once the woken read lands: a file added elsewhere shows', async () => {
+    if (process.platform === 'win32') return
+    vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    const first = list()
+    await new Promise((r) => setTimeout(r, 0))
+    await release()
+    await first
+    state = 'asleep'
+    vi.spyOn(Date, 'now').mockReturnValue(1_000_000 + 30_000)
+    // Added in Teams by someone else while the VM slept.
+    rows = [...rows, 'Added elsewhere.docx']
+    const waking = await list({ wake: true })
+    expect(waking).toMatchObject({ asOf: 1_000_000, sleeping: 'waking' })
+    expect(waking.entries.map((e) => e.name)).not.toContain('Added elsewhere.docx')
+    await release()
+    expect(filesPushes()).toHaveLength(1)
+    const now = await list({ wake: false })
+    expect(now.entries.map((e) => e.name)).toContain('Added elsewhere.docx')
+    expect(now.asOf).toBeUndefined()
+    expect(now.sleeping).toBeUndefined()
+  })
+
   it('a wake that fails is pushed too, and the folder then says it sleeps, with its press', async () => {
     if (process.platform === 'win32') return
     state = 'asleep'
