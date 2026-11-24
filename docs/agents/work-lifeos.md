@@ -181,7 +181,10 @@ stayed open is down: the session is `unreachable` with `unanswered`, so
 cards and canvas, a held calendar act, a project's sheet) draws its line,
 "The box did not answer" (`sessionWords`), with Retry. Retry
 (`reopenLifeos`) asks the status again through `refreshLifeos`; that, the
-`work.lifeos` push or the link's next open brings the session back.
+`work.lifeos` push or the link's next open brings the session back. One
+JWT ask is out a session at a time (`openSession`): Retry and the session's
+own opening share it, and a failure never takes the place of a client that
+reads.
 
 ## What Files asks of LifeOS
 

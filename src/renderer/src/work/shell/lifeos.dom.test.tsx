@@ -241,3 +241,79 @@ describe("a host's status that could not be read", () => {
     expect(result.current).toBe(false);
   });
 });
+
+/** Council round 5 (Sol P1): Retry and the session's own effect both opened the session; a late failure replaced the client. */
+describe("one JWT ask a session", () => {
+  function deferredHost(status: () => Promise<unknown>) {
+    const asks: { resolve: (v: unknown) => void; reject: (e: unknown) => void }[] = [];
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: (method: string) => (method === "work.lifeos.status" ? status() : new Promise((resolve, reject) => asks.push({ resolve, reject }))),
+    } as never);
+    return asks;
+  }
+  const ok = { ok: true, jwt: "jwt-1", expiresAt: 2, url: "https://lifeos.test" };
+  const timeout = () => Object.assign(new Error("no answer in 15 s"), { name: "TimeoutError" });
+
+  it("answers the effect and Retry with one ask when the effect asks first, and keeps the client it made", async () => {
+    resetLifeos();
+    let status: () => Promise<unknown> = () => Promise.reject(timeout());
+    const asks = deferredHost(() => status());
+    const { reopenLifeos } = await import("./lifeos");
+    const { result } = renderHook(() => useLifeosSession("env_one", "purdue"));
+    await act(flush);
+    expect(result.current.unanswered).toBe(true);
+    status = () => Promise.resolve(connected);
+    let retried: Promise<void> = Promise.resolve();
+    await act(async () => {
+      retried = reopenLifeos("env_one", "purdue");
+      await flush();
+    });
+    expect(asks).toHaveLength(1);
+    await act(async () => {
+      asks[0]!.resolve(ok);
+      await retried;
+      await flush();
+    });
+    expect([result.current.state, !!result.current.client]).toEqual(["connected", true]);
+    expect(clients).toHaveLength(1);
+  });
+
+  it("answers Retry and a reader that mounts while its ask is out with one ask, and says one failure", async () => {
+    resetLifeos();
+    const asks = deferredHost(() => Promise.resolve(connected));
+    const { reopenLifeos } = await import("./lifeos");
+    setLifeosStatus("env_two", connected);
+    const retried = reopenLifeos("env_two", null).catch(() => {});
+    await act(flush);
+    const { result } = renderHook(() => useLifeosSession("env_two", null));
+    await act(flush);
+    expect(asks).toHaveLength(1);
+    await act(async () => {
+      asks[0]!.reject(timeout());
+      await retried;
+      await flush();
+    });
+    expect([result.current.state, result.current.client]).toEqual(["unreachable", null]);
+  });
+
+  it("never lets a failure that answers after a client was made take its place", async () => {
+    resetLifeos();
+    const asks = deferredHost(() => Promise.resolve(connected));
+    setLifeosStatus("env_three", connected);
+    const { result } = renderHook(() => useLifeosSession("env_three", "purdue"));
+    await act(flush);
+    await act(async () => {
+      asks[0]!.resolve(ok);
+      await flush();
+    });
+    expect(!!result.current.client).toBe(true);
+    // A second ask of the same session once it reads starts nothing.
+    const { reopenLifeos } = await import("./lifeos");
+    await act(() => reopenLifeos("env_three", "purdue"));
+    expect(asks).toHaveLength(1);
+    expect([result.current.state, !!result.current.client]).toEqual(["connected", true]);
+  });
+});

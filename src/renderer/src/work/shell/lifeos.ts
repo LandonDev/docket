@@ -199,11 +199,28 @@ workSwitch.subscribe(() => {
 const jwtOf = (environmentId: string, sector: SectorKey | null): Promise<LifeosJwtAnswer> =>
   registry.linkOf(environmentId).request<LifeosJwtAnswer>("work.lifeos.jwt", sector ? { sector } : {});
 
-/** The session for a host and sector, opened at the first ask while the host is connected to LifeOS. */
-async function openSession(environmentId: string, sector: SectorKey | null): Promise<void> {
+/** The JWT ask out for each session, with the generation it was made in: a second opener waits on it, never asks again. */
+const opening = new Map<string, { generation: number; done: Promise<void> }>();
+
+/**
+ * The session for a host and sector, opened at the first ask while the host is connected to LifeOS. The session's
+ * effect and Retry (`reopenLifeos`) can both ask at once: one JWT ask a host, sector and generation answers both, so a
+ * second answer that fails later never replaces the client the first made.
+ */
+function openSession(environmentId: string, sector: SectorKey | null): Promise<void> {
   const key = keyOf(environmentId, sector);
-  if (sessions.get(key)?.client) return;
   const generation = generations.get(key) ?? 0;
+  const out = opening.get(key);
+  if (out?.generation === generation) return out.done;
+  const done = askSession(environmentId, sector, key, generation).finally(() => {
+    if (opening.get(key)?.done === done) opening.delete(key);
+  });
+  opening.set(key, { generation, done });
+  return done;
+}
+
+async function askSession(environmentId: string, sector: SectorKey | null, key: string, generation: number): Promise<void> {
+  if (sessions.get(key)?.client) return;
   // A close (a sign-out, Work off, the last screen gone) while the JWT was asked for wins over its answer.
   const stale = (): boolean => (generations.get(key) ?? 0) !== generation || statuses.get(environmentId)?.lifeos.state !== "connected";
   // A key the host never hands its session to is not asked: the answer is a refusal, which is not silence.
@@ -215,7 +232,9 @@ async function openSession(environmentId: string, sector: SectorKey | null): Pro
   try {
     first = await jwtOf(environmentId, sector);
   } catch (err) {
-    if (!stale()) putSession({ environmentId, sector, client: null, state: "unreachable", ...(/^forbidden\b/.test(errorText(err)) ? { withheld: true as const } : {}) });
+    // A failure never takes the place of a client that reads.
+    if (!stale() && !sessions.get(key)?.client)
+      putSession({ environmentId, sector, client: null, state: "unreachable", ...(/^forbidden\b/.test(errorText(err)) ? { withheld: true as const } : {}) });
     return;
   }
   if (stale() || sessions.get(key)?.client) return;
@@ -376,6 +395,7 @@ export function resetLifeos(): void {
   watched.clear();
   statuses.clear();
   unanswered.clear();
+  opening.clear();
   for (const key of [...sessions.keys()]) closeSession(key);
   for (const timer of closing.values()) clearTimeout(timer);
   closing.clear();
