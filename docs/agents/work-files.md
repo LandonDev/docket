@@ -954,7 +954,10 @@ follows; the title shows the old name until the tab opens again).
 - At commit the size and sha256 are checked as for every upload; then the
   door is passed again for the same caller, the folder located again and
   the name checked again, and the file is made with `makeFile` under a free
-  name ("Name 2.ext"), never over anything. A folder swapped for a link
+  name ("Name 2.ext"), never over anything. It is copied and checked under a
+  hidden name beside it, then linked to its own name (`copyAside`: a link
+  refuses a taken name), so a stop mid-copy leaves no part of a file under
+  the name; a disk with no hard links copies straight to it. A folder swapped for a link
   since the begin, or in the moment of the write, is refused and nothing
   lands outside. The folder's listing is dropped and pushed, and the commit
   answers the attachment with the made row as `entry`.

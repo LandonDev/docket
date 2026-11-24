@@ -102,7 +102,7 @@ async function land(ctx: WorkCtx, p: UploadAsk, how: UploadInto, staged: string,
       // Where it goes, on the op's row before the file is made: a stop between the two is settled from it.
       amendOp(ctx.db, p.op, { uploadId, landing: join(dir, name) } satisfies UploadRow)
       try {
-        return await makeFile(fence, dir, name, { from: staged })
+        return await makeFile(fence, dir, name, { from: staged, aside: true })
       } catch (e) {
         // Another writer took the name between the look and the write: look again.
         if (!(e instanceof FileRefused && e.code === 'taken' && tries < 3)) throw e

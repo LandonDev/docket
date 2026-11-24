@@ -36,6 +36,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   delete writeSeams.beforeWrite
+  delete writeSeams.beforeCheck
   LIBRARY_CAN.splice(0, LIBRARY_CAN.length)
   uploads.close()
   closeFilesState(rig.db)
@@ -172,6 +173,27 @@ describe('an upload into his own folder', () => {
     writeFileSync(join(rig.folder, 'g.txt'), 'not the upload')
     restart()
     expect(await again('g.txt', 'gggg', 'op-upload-other')).toEqual({ uploadId: other })
+  })
+
+  it('copies out of sight and names the file only once it is whole: a stop mid-copy leaves nothing under the name', async () => {
+    const id = await begin('h.txt', 'hhhh')
+    let seen: { copy: string; named: boolean } | null = null
+    writeSeams.beforeCheck = (copy) => {
+      seen = { copy, named: existsSync(join(rig.folder, 'h.txt')) }
+    }
+    await send(id, 'hhhh')
+    expect(seen!.named).toBe(false)
+    expect(seen!.copy.startsWith(join(rig.folder, '.h.txt.'))).toBe(true)
+    expect(readFileSync(join(rig.folder, 'h.txt'), 'utf8')).toBe('hhhh')
+    expect(readdirSync(rig.folder).filter((n) => n.endsWith('.part'))).toEqual([])
+    // The host stops while the copy is being checked: no file has its name, and nothing is left beside it.
+    const next = await begin('i.txt', 'iiii')
+    writeSeams.beforeCheck = () => {
+      throw new Error('the host stopped')
+    }
+    await expect(send(next, 'iiii')).rejects.toThrow('the host stopped')
+    expect(existsSync(join(rig.folder, 'i.txt'))).toBe(false)
+    expect(readdirSync(rig.folder).filter((n) => n.endsWith('.part'))).toEqual([])
   })
 
   it('refuses a name no place takes, before anything is staged', async () => {

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { constants, createReadStream, type Stats } from 'node:fs'
 import { link, lstat, mkdir, open, readdir, realpath, rename, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
@@ -243,11 +243,16 @@ export async function makeFolder(fence: WriteFence, dir: string, name: string): 
   return to
 }
 
-/** A new file `name` in `dir` holding `data` (bytes, or a path of this host to copy from, which need not be in the fence: a staged upload or a blank file shipped with the app). Exclusive create: never replaces. Written to disk (fsync) before it answers. Returns its path. */
-export async function makeFile(fence: WriteFence, dir: string, name: string, data: Uint8Array | { from: string }): Promise<string> {
+/**
+ * A new file `name` in `dir` holding `data` (bytes, or a path of this host to copy from, which need not be in the fence: a staged upload or a blank file shipped with the app). Exclusive create: never replaces. Written to disk (fsync) before it answers. Returns its path.
+ * `aside` (an upload): the copy is made and checked under a hidden name beside it, then linked to its own name, which
+ * refuses a taken one; a stop mid-copy leaves no part of a file under the name (`copyAside`).
+ */
+export async function makeFile(fence: WriteFence, dir: string, name: string, data: Uint8Array | { from: string; aside?: true }): Promise<string> {
   const { parent, to } = await targetOf(fence, dir, name)
   try {
-    if (data instanceof Uint8Array) {
+    if (!(data instanceof Uint8Array) && data.aside) await copyAside(data.from, parent, to)
+    else if (data instanceof Uint8Array) {
       const out = await open(to, 'wx')
       try {
         await out.writeFile(data)
@@ -264,6 +269,24 @@ export async function makeFile(fence: WriteFence, dir: string, name: string, dat
   }
   await landed(parent, to, removeIfSame(await lstat(to)))
   return to
+}
+
+/**
+ * Copies `from` to a hidden name in `parent` and checks it (`copyOne`), then gives it the name `to` with a hard link,
+ * which never replaces (EEXIST is the caller's to name), and drops the hidden name. A disk with no hard links copies
+ * straight to `to`, as before.
+ */
+async function copyAside(from: string, parent: string, to: string): Promise<void> {
+  const aside = join(parent, `.${basename(to)}.${randomBytes(6).toString('hex')}.part`)
+  await copyOne(from, aside, false)
+  try {
+    await link(aside, to)
+  } catch (e) {
+    await unlink(aside).catch(() => {})
+    if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EMLINK', 'EXDEV'].includes(codeOf(e) ?? '')) throw e
+    return void (await copyOne(from, to, false))
+  }
+  await unlink(aside).catch(() => {})
 }
 
 /**
