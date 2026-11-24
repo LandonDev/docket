@@ -282,12 +282,31 @@ const show = {
 }
 export type ShowApi = typeof show
 
+/** A live Office file's guest (src/main/officeLive.ts): the ticket its `<webview>` attaches on, asked by this page alone. */
+const live = {
+  ticket: (url: string): Promise<{ ok: true; src: string; partition: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('office-live:ticket', url),
+  /** Escape is TempCode's while the tab fills the window (main's `forwardedKey`). */
+  fullWindow: (guestId: number, on: boolean): Promise<void> => ipcRenderer.invoke('office-live:full-window', guestId, on),
+  typed: (guestId: number): Promise<number> => ipcRenderer.invoke('office-live:typed', guestId),
+  /** Leaves the file: 'holding' while Word is still saving, until `force`. */
+  unload: (guestId: number, force: boolean): Promise<'unloaded' | 'holding' | 'gone'> => ipcRenderer.invoke('office-live:unload', guestId, force),
+  /** A key of TempCode's pressed in the guest, played to this page. */
+  onKey: (cb: (init: KeyboardEventInit) => void): (() => void) => {
+    const listener = (_e: unknown, init: KeyboardEventInit): void => cb(init)
+    ipcRenderer.on('office-live:key', listener)
+    return () => void ipcRenderer.removeListener('office-live:key', listener)
+  }
+}
+export type LiveOfficeApi = typeof live
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
     contextBridge.exposeInMainWorld('aliax', aliaxApi)
     contextBridge.exposeInMainWorld('tcShow', show)
+    contextBridge.exposeInMainWorld('tcLive', live)
   } catch (error) {
     console.error(error)
   }
@@ -298,4 +317,6 @@ if (process.contextIsolated) {
   window.api = api
   // @ts-ignore (define in dts)
   window.tcShow = show
+  // @ts-ignore (define in dts)
+  window.tcLive = live
 }

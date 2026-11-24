@@ -35,6 +35,7 @@ import { declareUserActivity, MacPresenceWatcher, macScreenReader, presenceFromE
 import { AttentionWatcher } from './attention'
 import { PersonIdle } from './personIdle'
 import { htmlPreviewer } from './htmlPreview'
+import { registerOfficeLive } from './officeLive'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
@@ -372,6 +373,8 @@ app.whenReady().then(async () => {
       rendererDir: join(__dirname, '../renderer'),
       userData: app.getPath('userData')
     })
+    // A live Office file's tickets, before any window can ask for one (officeLive.ts).
+    registerOfficeLive()
     openSavedWindows()
     userWindowsOpened = true
     // Capture from anywhere (capture.ts): his key opens the capture window while Work is on here.

@@ -39,12 +39,14 @@ done
 moved=()
 for dir in "$(dirname "$data")"/temp-code.moved-*; do [[ -d $dir ]] && moved+=("$dir"); done
 # Files' previews are pictures of files made again on demand (docs/agents/work-files.md "Previews"): left out.
+# So is every live Office session (docs/agents/work-office-live.md "What TempCode keeps"): Purdue's files stay off the backup.
 excludes=()
 for dir in "$data" ${moved[@]+"${moved[@]}"}; do
   excludes+=(--exclude "$dir/Cache" --exclude "$dir/Code Cache" --exclude "$dir/GPUCache"
     --exclude "$dir/DawnCache" --exclude "$dir/DawnWebGPUCache" --exclude "$dir/DawnGraphiteCache"
     --exclude "$dir/blob_storage" --exclude "$dir/Crashpad" --exclude "$dir/Service Worker"
-    --exclude "$dir/work-files/previews" --exclude "$dir/work-files/preview-scratch")
+    --exclude "$dir/work-files/previews" --exclude "$dir/work-files/preview-scratch"
+    --exclude "$dir/Partitions/office-live-*")
 done
 restic backup --host mac --tag daily --quiet \
   --exclude "$data/*.db" --exclude "$data/*.db-wal" --exclude "$data/*.db-shm" --exclude "$data/*.db-journal" \

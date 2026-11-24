@@ -10,6 +10,7 @@ import { appIndexUrl } from './appScheme'
 import { isCaptureWindow } from './captureWindow'
 import { badgeText, shouldBounce } from './dockBadge'
 import { registerNotices } from './notice'
+import { attachLiveFence } from './officeLive'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
@@ -232,9 +233,12 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
       sandbox: false,
       // The soak's window keeps its timers and paint behind other windows (soakWindow.ts).
       backgroundThrottling: !soakWindow(),
-      additionalArguments: [`--tc-window-slot=${slot}`]
+      additionalArguments: [`--tc-window-slot=${slot}`],
+      // A live Office file's guest (officeLive.ts): the fence refuses every attach its page holds no ticket for.
+      webviewTag: true
     }
   })
+  attachLiveFence(win)
   const id = win.webContents.id
   windows.set(id, { win, slot })
   loadStateFile().windows[slot] = state
@@ -310,6 +314,8 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     return windowOpenHandler(details, (url) => void shell.openExternal(url), loadStateFile().popOut ?? null)
   })
   win.webContents.on('did-create-window', (child, details) => {
+    // A child takes this window's preferences, the guest tag with them; it holds no ticket, so it attaches none.
+    attachLiveFence(child)
     if (details.frameName !== POP_OUT_FRAME) return
     popOuts.set(id, child)
     popOutCreated(child)

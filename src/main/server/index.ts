@@ -326,6 +326,7 @@ import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
 import type { WireProfile } from '@shared/wire'
+import { originAllowed } from './originAllowed'
 
 /** A code workspace is a folder the caller names; only a Work workspace has none to name. */
 function requireWorkspacePath(path: string | undefined): string {
@@ -3864,6 +3865,11 @@ export async function startServer(
   }
 
   httpServer.on('upgrade', (req, socket, head) => {
+    // A browser page that is not the app's own (a site, a live Office guest) never reaches the local trust.
+    if (!originAllowed(req.headers.origin)) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+      return
+    }
     // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
     // the hot path. Same localhost-only single-user trust as everything
     // else; the serverId is validated against the pool.
