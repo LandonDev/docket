@@ -18,6 +18,7 @@ import { readAnswered, type AnsweredForm } from "../msforms/answered";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
 import { keepPlace, keptPlace } from "../shell/place";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
@@ -112,6 +113,8 @@ export function BackTitle({ name, onBack }: { name: string | undefined; onBack: 
 export function Head(props: WorkViewProps) {
   const { person } = usePlace(props.workspace.id);
   const directory = useDirectory(props.lifeos, props.sector);
+  // The search and a page's verbs act on what LifeOS read: a session that is down has no list or page under them.
+  if (downOf(props.lifeos)) return null;
   if (!person) return <SearchField workspaceId={props.workspace.id} />;
   const who = directory.status === "ready" ? directory.value.find((p) => p._id === person) : undefined;
   if (!who) return null;
@@ -217,9 +220,11 @@ export function View(props: WorkViewProps) {
     openWorkView({ workspaceId, view: "people" });
   }, [ask, rows, workspaceId]);
 
+  // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here, a kept
+  // person's page included: the person stays chosen, and their page comes back once Retry brings the session.
+  if (!props.lifeos.client && !sessionWaits(props.lifeos)) return null;
   if (person) return <PersonPageView {...props} person={person} faces={faces} />;
-  // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
-  if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <ListSkeleton /> : null;
+  if (!props.lifeos.client) return <ListSkeleton />;
   if (directory.status === "failed") return <EmptyState title="People did not load" line={directory.error} />;
   if (!rows) return <ListSkeleton />;
   return <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />;

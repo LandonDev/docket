@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import { Users } from "../../chrome/icons";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { boxSilent, JOB, standUpView, ViewAt } from "../kit.preview";
 import { BackTitle, PageVerbs, PeopleList, PersonPageBody, setPlace } from "./PeopleView";
 import type { DirectoryPerson, PersonPage } from "./model";
 
@@ -9,8 +10,10 @@ import type { DirectoryPerson, PersonPage } from "./model";
  * The People view over fixed data, for `bun run ui:preview
  * src/renderer/src/work/people/PeopleView.preview.tsx#PeoplePreview --props '{"state":"list"}'`:
  * `list` (the sector's people, newest contact first), `page` (one person with
- * something of every kind), `quiet` (a person with nothing live). Rendered by
- * nothing in the app.
+ * something of every kind), `quiet` (a person with nothing live) and
+ * `page-silent` (a person's page kept from a visit before, the box silent on its
+ * LifeOS status: the frame's one line, nothing under it). Rendered by nothing in
+ * the app.
  */
 
 const NOW = new Date(2026, 10, 19, 15, 0).getTime();
@@ -69,7 +72,18 @@ function Frame({ title, head, children }: { title: ReactNode; head?: ReactNode; 
   );
 }
 
+let silent = false;
+
 export function PeoplePreview({ state = "list" }: { state?: string }) {
+  if (state === "page-silent") {
+    if (!silent) {
+      silent = true;
+      standUpView("people", { "people:directory": PEOPLE, "mail:faces": [], "people:page": PAGE }, (method) => (method === "work.guests.list" ? [] : undefined));
+      setPlace(JOB.id, { person: "p1" });
+      boxSilent();
+    }
+    return <ViewAt view="people" height={360} />;
+  }
   if (state === "page" || state === "quiet") {
     const page = state === "page" ? PAGE : QUIET;
     return (

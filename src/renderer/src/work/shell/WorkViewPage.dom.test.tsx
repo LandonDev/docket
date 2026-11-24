@@ -90,7 +90,7 @@ describe("a host that did not answer its status", () => {
 });
 
 describe("the view frame's Retry", () => {
-  it("says a failed Retry in the host's words, never its raw text", async () => {
+  it("says a failed Retry once, in the host's words, never its raw text, and never the line's words again", async () => {
     toasts.length = 0;
     let fail = false;
     vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
@@ -111,7 +111,8 @@ describe("the view frame's Retry", () => {
     fail = true;
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     await vi.waitFor(() => expect(toasts).toHaveLength(1));
-    expect(toasts[0]).toEqual({ message: "LifeOS did not answer", description: "The box did not answer. Try again once it is connected." });
+    // The line says LifeOS's silence; the host's own is the new fact, said once, alone.
+    expect(toasts[0]).toEqual({ message: "The box did not answer. Try again once it is connected." });
   });
 });
 
@@ -147,13 +148,14 @@ describe("a key the host never hands its LifeOS session", () => {
 describe("what stands between a view and LifeOS", () => {
   const quiet = () =>
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => new Promise(() => {})) } as never);
-  it("Work off on the host says so with Settings, never a sign-in", async () => {
+  it("Work off on the host says so, the computer named, with no press and never a sign-in", async () => {
     quiet();
+    vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
     setLifeosStatus("env_box", { lifeos: { state: "off" }, keys: [] });
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
-    expect(screen.getByText(/^Work is off on /)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(screen.getByText("Work is off on the box")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
     expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
   });
   it("signed out, Sign in opens the sign-in dialog in place; a sign-in waiting says so and shows its code", async () => {

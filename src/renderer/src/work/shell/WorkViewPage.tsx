@@ -12,7 +12,6 @@ import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
-import { openWorkSettings } from "./open";
 import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
@@ -114,9 +113,10 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // Pairing a host with LifeOS is its admin rule: a key that may not start it is told who can, never offered the press.
   const maySignIn = useLinkMay(environmentId, "work.lifeos.pairStart");
   const host = registry.environment(environmentId)?.name ?? "This host";
-  // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header.
+  // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header, as does the
+  // line of a session that did not answer: the view draws nothing under it then, its head included.
   const blocked = signedOut || pairing || off || away || withheld;
-  const headless = !!def.ownHead && !blocked;
+  const headless = !!def.ownHead && !blocked && !unreachable;
   // The view covers the thread's pane, which goes inert under it (App.tsx): focus that was in the pane, or fell to the
   // page with it, lands on the view's heading, never on a composer or canvas control no one can see.
   const region = useRef<HTMLDivElement | null>(null);
@@ -130,8 +130,13 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const [retrying, setRetrying] = useState(false);
   const retry = (): void => {
     setRetrying(true);
+    // A Retry the host did not answer either is said once. The line says so already where it names the host's silence;
+    // over LifeOS's own ("LifeOS did not answer") the host's silence is a new fact, and one toast says it, alone.
     reopenLifeos(environmentId, sector)
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error(silence, { description: workErrorWords(err, { host: nameInLine(host) }) || undefined })))
+      .catch((err: unknown) => {
+        if (session.unanswered) return;
+        void loadToast().then((toast) => toast.error(workErrorWords(err, { host: nameInLine(host) }) || sessionFailure("unanswered", false, host)));
+      })
       .finally(() => setRetrying(false));
   };
   return (
@@ -165,6 +170,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <StatusMark
             state="failed"
             word={silence}
+            // A long computer name wraps beside Retry, never cut.
+            wrap
             detail={status?.lifeos.state === "unreachable" ? `As of ${clockTime(status.lifeos.since)}` : undefined}
             className="min-w-0 flex-1"
           />
@@ -177,7 +184,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         {away ? (
           <EmptyState title={`${host} is not connected`} action={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />
         ) : off ? (
-          <EmptyState title={`Work is off on ${host}`} action={{ label: "Open Settings", onClick: openWorkSettings }} />
+          // No press: Work is switched on for a host in Settings, Work, where the line would only send him (lifeosDown.ts).
+          <EmptyState title={sessionFailure("off", false, lifeosHostName(environmentId))} />
         ) : withheld ? (
           <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (

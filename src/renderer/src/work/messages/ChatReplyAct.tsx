@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 import { useKeptKeys } from "./keptKeys";
 import { chatFact } from "./model";
 
@@ -91,7 +93,9 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
  * then its words exactly as they go. The conversation is read from LifeOS on
  * the item's own sector; until it answers, the payload's own words stand and a
  * line of bones holds the quote's place. A quote that could not be read offers
- * Retry, which reads afresh.
+ * Retry, which reads afresh. A session that is down says so once in the
+ * quote's place, with its own press (`DownLine`: Retry there asks the host for
+ * the session again); the hold itself is untouched.
  */
 export function View(props: ActViewProps) {
   const [attempt, setAttempt] = useState(0);
@@ -116,6 +120,8 @@ function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
   const missing = Boolean(target) && (page.status === "failed" || (page.status === "ready" && !page.value.page.some((m) => m._id === target)));
   const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
   if (!reply) return <div data-slot="act-payload" className="text-[13px] leading-5 text-muted-foreground">This reply could not be read</div>;
+  // Every read fails at once on a session that is down, and remounting them reads the same session: its line instead.
+  if (downOf(session)) return <ReplyBody reply={reply} answered={null} down={<DownLine session={session} className="text-xs" />} />;
   return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
 }
 
@@ -125,11 +131,14 @@ export function ReplyBody({
   chat,
   answered,
   onRetry,
+  down,
 }: {
   reply: ChatReplyPayload;
   chat?: Pick<ChatRow, "source" | "accountName" | "kind">;
   answered: Answered;
   onRetry?: () => void;
+  /** the LifeOS session's own line, in the quote's place, while it is down */
+  down?: ReactNode;
 }) {
   // In a direct chat the writer is left out when it is the one the reply goes to, named on the To line already; his own
   // words still say "You".
@@ -145,7 +154,9 @@ export function ReplyBody({
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         {/* The quote's slot holds its place through every state. */}
         <div data-quote-slot role="group" aria-label="The message it answers" className="empty:hidden">
-          {answered === "loading" ? (
+          {down ? (
+            down
+          ) : answered === "loading" ? (
             <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
               <Skeleton className="size-3 rounded-sm" />
               <Skeleton className="h-2.5 w-[60%]" />

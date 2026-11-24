@@ -143,6 +143,22 @@ describe("a person's page", () => {
     expect(files.opened).toEqual([[{ id: "ws", environmentId: "box" }, { ref: { at: "msform", host: "box", workspaceId: "ws", formId: "f1", tenant: "purdue0" }, name: "Spring LAN sign-up" }]]);
   });
 
+  /** Council round 5 (Sol rest 1): a kept person's page said "This page did not load" under the frame's own line. */
+  it("draws nothing under the frame's line while the session is down, a kept person's page included, and keeps the person", async () => {
+    setPlace("ws", { person: "p_maya" });
+    const down = { ...props(), lifeos: { environmentId: "box", sector: "purdue", client: null, state: "unreachable", unanswered: true } } as never;
+    const { container } = render(
+      <>
+        <Head {...down} />
+        <View {...down} />
+      </>,
+    );
+    await act(async () => {});
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("button, input")).toBeNull();
+    expect(placeOf("ws").person).toBe("p_maya");
+  });
+
   it("opens each row where that thing lives", async () => {
     setPlace("ws", { person: "p_maya" });
     mount();
