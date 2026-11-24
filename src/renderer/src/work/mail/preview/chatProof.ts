@@ -48,12 +48,12 @@ export async function runChatProof(page: Page, url: string, dir: string, theme: 
   });
 
   // 2. ⌘L (Ctrl+L here) closes it and opens it again.
-  await step("⌘L closes the dock and opens it again", async () => {
+  await step("Cmd+L closes the dock and opens it again", async () => {
     await page.press("l", { ctrl: true });
     await page.until(`!document.querySelector("[data-mail-dock]")`, "the dock gone", 5_000);
     await page.press("l", { ctrl: true });
     await page.until(`!!document.querySelector("[data-mail-dock]")`, "the dock back", 10_000);
-    claim("⌘L closes the dock and opens it again", true);
+    claim("Cmd+L closes the dock and opens it again", true);
   });
 
   // 3. A draft card's Put in reply: the reply box holds the draft; nothing is sent.

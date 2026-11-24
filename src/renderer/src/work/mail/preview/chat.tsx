@@ -114,7 +114,7 @@ export function ChatSide({ workspaceId }: { workspaceId: string }) {
   const at = { sessionId: "mail-chat", workspaceId, sector: "unify" as const };
   return (
     <>
-      <aside data-chat-cards className="flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto border-s border-border p-4">
+      <aside data-chat-cards className="flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto overflow-x-hidden border-s border-border p-4">
         <OfferCard offer={{ draft: { draftId: "chat-reply" } }} at={at} />
         <OfferCard offer={{ rows: { act: "archive", title: "Archive 3 notices", threadIds: ["c-receipt", "c-newsletter", "c-workspace"] } }} at={at} />
       </aside>
