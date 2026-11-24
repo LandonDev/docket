@@ -485,10 +485,10 @@ export function uncheckedIn(body: Pick<ReviewBody, 'left' | 'lifeos'>, r: Pick<S
   const left = (line: string): boolean => body.left.includes(line)
   // A list cut at its cap says nothing of a row past the cut: a part read is a read that failed for every row it missed.
   if (r.ref.kind === 'held') return left(LEFT.held) || left(LEFT.heldPart)
-  if (!body.lifeos || left(LEFT.lifeos)) return true
-  if (r.ref.kind === 'task') return left(LEFT.tasks)
-  if (r.ref.kind === 'mail') return left(LEFT.mail) || left(LEFT.mailPart)
-  return left(LEFT.calendar) || left(LEFT.mail) || left(LEFT.self) || left(LEFT.prep)
+  if (!body.lifeos || left(LEFT.lifeos) || left(LEFT.lifeosKept)) return true
+  if (r.ref.kind === 'task') return left(LEFT.tasks) || left(LEFT.tasksKept)
+  if (r.ref.kind === 'mail') return left(LEFT.mail) || left(LEFT.mailPart) || left(LEFT.mailKept)
+  return left(LEFT.calendar) || left(LEFT.calendarKept) || left(LEFT.mail) || left(LEFT.mailKept) || left(LEFT.self) || left(LEFT.carried) || left(LEFT.prep)
 }
 
 /**
@@ -509,11 +509,16 @@ function union<T>(fresh: readonly T[], kept: readonly T[], key: (x: T) => string
   return [...fresh, ...kept.filter((x) => !have.has(key(x)))]
 }
 
-/** `fresh`'s points with each of `kept`'s that it lacks, the job found again by workspace (the two may list jobs apart). */
+/**
+ * `fresh`'s points with each of `kept`'s that it lacks, the job found again by workspace (the two may list jobs
+ * apart). A point is one thing he did at one moment: matched by its moment and kind, whatever job it was filed under,
+ * so a fresh read that files an edit under its own job (a Cosmic document once counted for the Purdue tab it was open
+ * in) replaces the kept one and never counts it twice.
+ */
 function unionPoints(fresh: ReviewBody, kept: ReviewBody, f: readonly HostPoint[], k: readonly HostPoint[]): HostPoint[] {
   const index = new Map(fresh.jobs.map((j, i) => [j.workspaceId, i]))
   const counts = new Map<string, number>()
-  const id = (p: HostPoint): string => `${p[0]}:${p[1]}:${p[2]}`
+  const id = (p: HostPoint): string => `${p[0]}:${p[2]}`
   for (const p of f) counts.set(id(p), (counts.get(id(p)) ?? 0) + 1)
   const out = [...f]
   for (const [at, job, kind] of k) {
@@ -539,9 +544,18 @@ function unionPoints(fresh: ReviewBody, kept: ReviewBody, f: readonly HostPoint[
 function keepFacts(kept: ReviewBody, fresh: ReviewBody): ReviewBody {
   const failed = (line: string): boolean => fresh.left.includes(line)
   const was = kept.lifeos ? { ...kept.lifeos, events: kept.over ? kept.lifeos.events : readTo(kept.lifeos.events, kept.madeAt) } : null
+  // Where a kept read of a source stands in for one that failed now, the line says what is shown: what it said when
+  // last read, never "not counted" over figures that count it.
+  const keptHad = (line: string): boolean => !!was && !kept.left.includes(LEFT.lifeos) && !kept.left.includes(line)
+  const swap: Record<string, string> = {}
   let lifeos = fresh.lifeos
-  if (!lifeos) lifeos = was
-  else if (was) {
+  if (!lifeos) {
+    lifeos = was
+    if (was && !kept.left.includes(LEFT.lifeos)) swap[LEFT.lifeos] = LEFT.lifeosKept
+  } else if (was) {
+    if (failed(LEFT.calendar) && keptHad(LEFT.calendar)) swap[LEFT.calendar] = LEFT.calendarKept
+    if (failed(LEFT.tasks) && keptHad(LEFT.tasks)) swap[LEFT.tasks] = LEFT.tasksKept
+    if (failed(LEFT.mail) && keptHad(LEFT.mail)) swap[LEFT.mail] = LEFT.mailKept
     lifeos = {
       events: failed(LEFT.calendar) ? was.events : lifeos.events,
       sent: union(lifeos.sent, was.sent, (m) => m.id),
@@ -563,6 +577,7 @@ function keepFacts(kept: ReviewBody, fresh: ReviewBody): ReviewBody {
       : fresh.before
   return {
     ...fresh,
+    left: fresh.left.map((l) => swap[l] ?? l),
     lifeos,
     points: unionPoints(fresh, kept, fresh.points, kept.points),
     ran: [...ran].sort((a, b) => a[0] - b[0]),
@@ -697,9 +712,11 @@ export function mergeReview(
   // LifeOS at all, and its line stays.
   const rank = (p: ReviewPart): number => (p.stale ? 100 : 0) + lifeosLines(p) * 2 + (p.environmentId === opts.home ? 0 : 1)
   const best = (ps: readonly ReviewPart[]): ReviewPart | null => ps.reduce<ReviewPart | null>((b, p) => (!b || rank(p) < rank(b) ? p : b), null)
-  const answers = (p: ReviewPart, src: LifeosSource): boolean => !!p.body.lifeos && !SOURCE_LINES[src].some((l) => p.body.left.includes(l))
+  // `answers`: read this time; `holdsOf`: has the source's facts, a kept read standing in counted.
+  const holdsOf = (p: ReviewPart, src: LifeosSource): boolean => !!p.body.lifeos && !SOURCE_LINES[src].some((l) => p.body.left.includes(l))
+  const answers = (p: ReviewPart, src: LifeosSource): boolean => holdsOf(p, src) && !KEPT_LINES[src].some((l) => p.body.left.includes(l))
   const source = best(parts.filter((p) => !!p.body.lifeos))
-  const from = (src: LifeosSource): ReviewPart | null => best(parts.filter((p) => answers(p, src))) ?? source
+  const from = (src: LifeosSource): ReviewPart | null => best(parts.filter((p) => answers(p, src))) ?? best(parts.filter((p) => holdsOf(p, src))) ?? source
   const at = { calendar: from('calendar'), tasks: from('tasks'), mail: from('mail'), meetings: from('meetings') }
   // Read this time, by a part that answered: what "nothing" may stand on.
   const got = (src: LifeosSource): boolean => parts.some((p) => !p.stale && answers(p, src))
@@ -858,10 +875,11 @@ export function mergeReview(
     left,
     // An answer kept from before is no read of now: "nothing" stands only on LifeOS's facts read this time.
     known: {
-      calendar: got('calendar') && !missing(LEFT.lifeos, LEFT.calendar),
-      desk: whole && got('mail') && !missing(LEFT.lifeos, LEFT.threads, LEFT.held, LEFT.heldPart, LEFT.files, LEFT.filesPart, LEFT.mail),
-      shipped: whole && got('mail') && got('tasks') && !missing(LEFT.lifeos, LEFT.mail, LEFT.tasks, LEFT.held, LEFT.heldPart),
-      slipped: whole && got('mail') && got('tasks') && got('meetings') && !missing(LEFT.lifeos, LEFT.tasks, LEFT.mail, LEFT.mailPart, LEFT.calendar, LEFT.self, LEFT.prep, LEFT.held, LEFT.heldPart)
+      // A kept calendar standing in is counted, and said: its fact and key show with it, as last known.
+      calendar: (got('calendar') || (!!at.calendar && !at.calendar.stale && holdsOf(at.calendar, 'calendar'))) && !missing(LEFT.lifeos, LEFT.calendar),
+      desk: whole && got('mail') && !missing(LEFT.lifeos, LEFT.lifeosKept, LEFT.mailKept, LEFT.threads, LEFT.held, LEFT.heldPart, LEFT.files, LEFT.filesPart, LEFT.mail),
+      shipped: whole && got('mail') && got('tasks') && !missing(LEFT.lifeos, LEFT.lifeosKept, LEFT.mailKept, LEFT.tasksKept, LEFT.mail, LEFT.tasks, LEFT.held, LEFT.heldPart),
+      slipped: whole && got('mail') && got('tasks') && got('meetings') && !missing(LEFT.lifeos, LEFT.lifeosKept, LEFT.calendarKept, LEFT.tasksKept, LEFT.mailKept, LEFT.tasks, LEFT.mail, LEFT.mailPart, LEFT.calendar, LEFT.self, LEFT.carried, LEFT.prep, LEFT.held, LEFT.heldPart)
     }
   }
 }
@@ -882,8 +900,16 @@ export const LEFT = {
   filesPart: 'Not every document’s history could be read, so document edits may be short.',
   /** his own addresses did not answer: every event's others would include him, so no meeting is judged */
   self: 'Your mail addresses could not be read, so no meeting is judged.',
+  /** a meeting put off into the week could not be read by its id: it stands as last known, and the calendar did answer */
+  carried: 'A put-off meeting could not be read, so it stands as last known.',
   /** this host's Prep did not answer: a meeting followed up there may still be listed */
-  prep: 'Prep could not be read, so a meeting followed up there may still be listed.'
+  prep: 'Prep could not be read, so a meeting followed up there may still be listed.',
+  // A source that did not answer this time while a kept read of it stands in (`keepFacts`): the figures and rows are
+  // what it said when last read, and the line says so, in place of "not counted".
+  lifeosKept: 'LifeOS did not answer, so what it said when last read is shown.',
+  calendarKept: 'The calendar did not answer, so the hours count what it said when last read.',
+  tasksKept: 'Tasks did not answer, so what they said when last read is shown.',
+  mailKept: 'Mail did not answer, so what it said when last read is shown.'
 } as const
 
 /** LifeOS's sources as the merge takes them, and the lines that say a part did not answer each. */
@@ -893,7 +919,15 @@ const SOURCE_LINES: Record<LifeosSource, readonly string[]> = {
   calendar: [LEFT.lifeos, LEFT.calendar],
   tasks: [LEFT.lifeos, LEFT.tasks],
   mail: [LEFT.lifeos, LEFT.mail, LEFT.mailPart],
-  meetings: [LEFT.lifeos, LEFT.calendar, LEFT.mail, LEFT.self]
+  meetings: [LEFT.lifeos, LEFT.calendar, LEFT.mail, LEFT.self, LEFT.carried]
+}
+/** The lines of a part whose facts of a source are a kept read standing in: it has them, but did not read them now. */
+const KEPT_LINES: Record<LifeosSource, readonly string[]> = {
+  any: [LEFT.lifeosKept],
+  calendar: [LEFT.lifeosKept, LEFT.calendarKept],
+  tasks: [LEFT.lifeosKept, LEFT.tasksKept],
+  mail: [LEFT.lifeosKept, LEFT.mailKept],
+  meetings: [LEFT.lifeosKept, LEFT.calendarKept, LEFT.mailKept]
 }
 /** Each LifeOS line, by the source a part's answer makes it untrue for. */
 const LINE_SOURCE: Record<string, LifeosSource> = {
@@ -902,7 +936,12 @@ const LINE_SOURCE: Record<string, LifeosSource> = {
   [LEFT.tasks]: 'tasks',
   [LEFT.mail]: 'mail',
   [LEFT.mailPart]: 'mail',
-  [LEFT.self]: 'meetings'
+  [LEFT.self]: 'meetings',
+  [LEFT.carried]: 'meetings',
+  [LEFT.lifeosKept]: 'any',
+  [LEFT.calendarKept]: 'calendar',
+  [LEFT.tasksKept]: 'tasks',
+  [LEFT.mailKept]: 'mail'
 }
 const LIFEOS_LEFT = new Set<string>(Object.keys(LINE_SOURCE))
 /** The lines LifeOS's own reads leave, each of which a host whose read answered it does not repeat. */

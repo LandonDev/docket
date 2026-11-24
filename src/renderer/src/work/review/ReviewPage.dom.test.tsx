@@ -412,6 +412,24 @@ describe("the other states", () => {
     expect(text(section("Shipped"))).toBe("Shipped Some of it could not be read");
   });
 
+  it("says a list read in part as a muted fact with no Retry, which would read the same cut list again", () => {
+    const { view, now } = fixtureView("full");
+    const { container } = draw("full", { view: { ...view, review: { ...view.review!, left: [LEFT.heldPart, LEFT.filesPart], known: { ...view.review!.known, desk: false, shipped: false, slipped: false } } }, now });
+    expect([...container.querySelectorAll("[data-review-part]")].map(text)).toEqual([LEFT.heldPart, LEFT.filesPart]);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("says a kept calendar standing in is counted, and shows its fact with the hours that count it", () => {
+    const { view, now } = fixtureView("full");
+    const { container } = draw("full", { view: { ...view, review: { ...view.review!, left: [LEFT.calendarKept], compare: [] } }, now });
+    expect([...container.querySelectorAll('[role="alert"]')].map(text)).toEqual([LEFT.calendarKept]);
+    const hours = section("Hours");
+    fireEvent.click(within(hours.querySelector('[data-review-job="purdue"]') as HTMLElement).getByRole("button"));
+    expect(text(hours.querySelector('[data-review-job="purdue"] dl')!)).toContain("On the calendar");
+    expect(text(hours)).toContain("Calendar time is measured.");
+  });
+
   it("waits, and claims nothing, while a host is still answering: an empty list and a job with no hours are bones until all are in", () => {
     const { view, now } = fixtureView("clear");
     // The first host is in; the second has not answered yet, so "nothing" is not known and nothing has failed.

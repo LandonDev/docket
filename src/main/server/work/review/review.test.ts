@@ -207,7 +207,8 @@ describe('what is kept', () => {
     }
     const later = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, WEEK.to + 2 * DAY)
     // Nobody can say the meeting was followed up or not: it stays open, and the gap is said.
-    expect(later.left).toEqual([LEFT.mail])
+    // The mail he sent in the week is the kept read joined to the fresh one, and the line says it is as last read.
+    expect(later.left).toEqual([LEFT.mailKept])
     expect(later.slipped.rows.find((r) => r.key === 'meeting:e1')!.open).toBe(true)
   })
 

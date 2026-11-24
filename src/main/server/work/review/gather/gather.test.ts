@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { followedUp, meetingsSlipped, preppedAfter } from '../followup'
 import { setMark } from '../store'
@@ -207,8 +210,11 @@ describe('documents he changed', () => {
 
   it('files a document by its own sector, never by the tab it was open in', async () => {
     rig.lifeos['docs:get'] = (a: { id: string }) => ({ sector: a.id === 'cosmic-doc' ? 'cosmic' : 'purdue' })
-    rig.db.prepare(`UPDATE workspaces SET path = ? WHERE id = ?`).run('/work/cosmic', 'w-cosmic')
-    const file = { at: 'file', host: 'box', path: '/work/cosmic/Notes/patch.tcdoc' } as const
+    const root = mkdtempSync(join(tmpdir(), 'review-docs-'))
+    mkdirSync(join(root, 'cosmic', 'Notes'), { recursive: true })
+    writeFileSync(join(root, 'cosmic', 'Notes', 'patch.tcdoc'), '')
+    rig.db.prepare(`UPDATE workspaces SET path = ? WHERE id = ?`).run(join(root, 'cosmic'), 'w-cosmic')
+    const file = { at: 'file', host: 'box', path: join(root, 'cosmic', 'Notes', 'patch.tcdoc') } as const
     // A Cosmic LifeOS document and a .tcdoc in Cosmic's folder, both open in a Purdue thread's canvas.
     rig.items.set('w-purdue', [docItem('cosmic-doc', 'w-purdue', MON + HOUR), { ...docItem('f', 'w-purdue', MON + HOUR), source: file }])
     rig.versions.set(JSON.stringify({ at: 'lifeos', table: 'docs', id: 'cosmic-doc' }), [{ at: MON + HOUR, by: ['owner'] }])
@@ -220,6 +226,30 @@ describe('documents he changed', () => {
       [MON + HOUR, 1, 'edited'],
       [MON + 2 * HOUR, 1, 'edited']
     ])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('reads a file by the path History reads: a link from Purdue’s folder into Cosmic’s is Cosmic’s file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'review-alias-'))
+    mkdirSync(join(root, 'purdue'))
+    mkdirSync(join(root, 'cosmic'))
+    writeFileSync(join(root, 'cosmic', 'plan.tcdoc'), '')
+    symlinkSync(join(root, 'cosmic'), join(root, 'purdue', 'shared'))
+    rig.db.prepare(`UPDATE workspaces SET path = ? WHERE id = ?`).run(join(root, 'purdue'), 'w-purdue')
+    rig.db.prepare(`UPDATE workspaces SET path = ? WHERE id = ?`).run(join(root, 'cosmic'), 'w-cosmic')
+    const viaLink = { at: 'file', host: 'box', path: join(root, 'purdue', 'shared', 'plan.tcdoc') } as const
+    rig.items.set('w-purdue', [{ ...docItem('f', 'w-purdue', MON + HOUR), source: viaLink }])
+    rig.versions.set(JSON.stringify(viaLink), [{ at: MON + HOUR, by: ['owner'] }])
+    expect((await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).points).toEqual([[MON + HOUR, 1, 'edited']])
+    expect((await fileFacts(rig.ctx, asked({ only: 'purdue' }), jobsOf(rig.db, { workspaceId: 'w-purdue' }))).points).toEqual([])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('skips a document that is gone, as no read that failed', async () => {
+    rig.lifeos['docs:get'] = (a: { id: string }) => (a.id === 'deleted' ? null : { sector: 'purdue' })
+    rig.items.set('w-purdue', [docItem('d1', 'w-purdue', MON + HOUR), docItem('deleted', 'w-purdue', MON + HOUR), { ...docItem('moved', 'w-purdue', MON + HOUR), source: { at: 'file', host: 'box', path: '/nowhere/moved.tcdoc' } }])
+    rig.versions.set(JSON.stringify({ at: 'lifeos', table: 'docs', id: 'd1' }), [{ at: MON + HOUR, by: ['owner'] }])
+    expect(await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).toEqual({ points: [[MON + HOUR, 0, 'edited']], before: [], part: false })
   })
 })
 

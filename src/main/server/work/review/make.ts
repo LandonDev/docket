@@ -108,7 +108,7 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
         // Looked back on, the kept week's own meetings are asked for the same way: its calendar no longer holds one
         // that ended before it. A lookup that fails says so, and the kept row keeps its last state.
         const carried = (a.now >= a.from && a.now < a.to ? carriedMeetings(ctx.db, a.now) : (a.carry ?? [])).filter((id) => !events.some((e) => e.id === id))
-        const back = (await Promise.all(carried.map((id) => ask(ctx, left, LEFT.calendar, 'a put-off meeting', () => eventById(owner, id, self, asked, true))))).filter((e): e is ReviewEvent => e !== null)
+        const back = (await Promise.all(carried.map((id) => ask(ctx, left, LEFT.carried, 'a put-off meeting', () => eventById(owner, id, self, asked, true))))).filter((e): e is ReviewEvent => e !== null)
         const earliest = Math.min(a.from, ...back.map((e) => e.endsAt ?? a.from))
         // A read that fails here is the mail of the carried meetings: none of them can be judged, and the line it
         // leaves keeps a kept one as it last stood.

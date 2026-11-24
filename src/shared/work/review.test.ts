@@ -342,6 +342,18 @@ describe('what is kept', () => {
     expect(got.left).toEqual([LEFT.heldPart])
   })
 
+  it('counts an edit once when a fresh read files it under another job than Friday did', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const jobs = [
+      { workspaceId: 'w-purdue', sector: 'purdue' as const, name: 'Purdue' },
+      { workspaceId: 'w-cosmic', sector: 'cosmic' as const, name: 'Cosmic' }
+    ]
+    // Friday (before the sector check) filed a Cosmic document's edit under the Purdue tab it was open in.
+    const kept = body({ madeAt: friday, jobs, points: [[MON + HOUR, 0, 'edited']] })
+    const fresh = body({ over: true, madeAt: WEEK.to + HOUR, jobs, points: [[MON + HOUR, 1, 'edited']] })
+    expect(mergeKept(kept, fresh, WEEK.to + HOUR).points).toEqual([[MON + HOUR, 1, 'edited']])
+  })
+
   it('takes a finished task back when the fresh read no longer lists it: a tick can be undone', () => {
     const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
     const done = { id: 'k1', title: 'Order the new jerseys', at: MON + HOUR, sector: 'purdue' as const }
@@ -350,6 +362,26 @@ describe('what is kept', () => {
     expect(mergeKept(kept, fresh, friday + HOUR).lifeos!.done).toEqual([])
     // With tasks unread, the kept list stands.
     expect(mergeKept(kept, { ...fresh, left: [LEFT.tasks] }, friday + HOUR).lifeos!.done).toEqual([done])
+  })
+
+  it('says a kept read standing in as last known, and lets its calendar fact show, so the words and the figure agree', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const ev = { id: 'thu', sector: 'purdue' as const, title: 'thu', startsAt: MON + 3 * 24 * HOUR, endsAt: MON + 3 * 24 * HOUR + HOUR, allDay: false, declined: false, hidden: false, people: [], others: 0, addresses: [] }
+    const jobs = [{ workspaceId: 'w-purdue', sector: 'purdue' as const, name: 'Purdue' }]
+    const kept = body({ madeAt: friday, jobs, lifeos: { events: [ev], sent: [], done: [], answered: [], answeredSince: MON } })
+    const later = WEEK.to + HOUR
+    const noCalendar = mergeKept(kept, body({ over: true, madeAt: later, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar] }), later)
+    expect(noCalendar.left).toEqual([LEFT.calendarKept])
+    const r = mergeReview([{ environmentId: 'env-box', body: noCalendar }], later)!
+    expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(HOUR)
+    expect(r.known.calendar).toBe(true)
+    expect(r.known.slipped).toBe(false)
+    // LifeOS out altogether: its kept facts show, and the line says they are as last read.
+    const dark = mergeKept(kept, body({ over: true, madeAt: later, jobs, left: [LEFT.lifeos] }), later)
+    expect(dark.left).toEqual([LEFT.lifeosKept])
+    expect(mergeReview([{ environmentId: 'env-box', body: dark }], later)!.left).toEqual([LEFT.lifeosKept])
+    // A kept read that had failed too is no stand-in: the line stays as it was.
+    expect(mergeKept({ ...kept, left: [LEFT.calendar] }, body({ over: true, madeAt: later, jobs, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar] }), later).left).toEqual([LEFT.calendar])
   })
 
   it('a kept calendar stands in for one that failed, cut to the moment it was read', () => {

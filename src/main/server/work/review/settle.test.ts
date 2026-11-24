@@ -197,7 +197,8 @@ describe('a meeting', () => {
     // A lookup that fails says so and changes nothing.
     rig.lifeos['events:get'] = new Error('timed out')
     const dark = await weekFor(rig.ctx, { ...next, tz: TZ, by: 'owner' }, undefined, monday + HOUR)
-    expect(dark.left).toEqual([LEFT.calendar])
+    // Its own line: the calendar itself answered.
+    expect(dark.left).toEqual([LEFT.carried])
     expect(dark.slipped.rows.map((r) => [r.key, r.open])).toEqual([['meeting:e1', true]])
     // A mail to Dana since: it moves under "dealt with since".
     rig.lifeos['events:get'] = event

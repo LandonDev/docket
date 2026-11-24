@@ -1,8 +1,10 @@
+import { existsSync } from 'node:fs'
 import { relative, sep } from 'node:path'
 import type { HistoryVersions } from '@shared/contract-work-history'
 import type { CanvasSource, SectorKey } from '@shared/work'
 import type { HostPoint } from '@shared/work/review'
 import { WORK_MODULES, type WorkCtx } from '../../modules'
+import { canonicalPath } from '../../service/ctx'
 import { breathe, jobIndex, stopped, type Asked, type Jobs } from './common'
 import { HOST } from './held'
 
@@ -37,16 +39,26 @@ const inside = (root: string, path: string): boolean => {
  * Whose a document is: the LifeOS document's own sector, with the tab's workspace while it is of that sector; the
  * Work workspace whose folder holds a file; and only for a file outside every folder, the tab it was open in.
  */
-async function ownerOf(ctx: WorkCtx, source: CanvasSource, tab: string, folders: readonly { id: string; path: string; sector: SectorKey | null }[]): Promise<{ workspaceId: string; sector: SectorKey | null }> {
+async function ownerOf(ctx: WorkCtx, source: CanvasSource, tab: string, folders: readonly { id: string; path: string; sector: SectorKey | null }[]): Promise<{ workspaceId: string; sector: SectorKey | null } | 'gone'> {
   if (source.at === 'lifeos') {
     const doc = await ctx.lifeos.owner().query<{ sector?: string } | null>('docs:get', { id: source.id })
-    if (typeof doc?.sector !== 'string') throw new Error('LifeOS has no such document')
+    // A document LifeOS no longer has costs its own edits, and is no read that failed.
+    if (!doc) return 'gone'
+    if (typeof doc.sector !== 'string') throw new Error('LifeOS gave the document no sector')
     return { workspaceId: tab, sector: doc.sector }
   }
-  const path = source.at === 'file' ? source.path : ''
+  if (source.at !== 'file') return 'gone'
+  // Moved or deleted since its tab was open: nothing of it is here to read.
+  if (source.host === ctx.host && !existsSync(source.path)) return 'gone'
+  // Folders are compared by the path History reads, links followed: a Purdue path through a link into Cosmic's
+  // folder is Cosmic's file.
+  const path = canonicalPath(source.path)
   const holder = folders.filter((f) => f.path && inside(f.path, path)).sort((a, b) => b.path.length - a.path.length)[0]
   return holder ? { workspaceId: holder.id, sector: holder.sector } : { workspaceId: tab, sector: null }
 }
+
+/** One document however its tab spelled it: a file by the path History reads. */
+const docKey = (s: CanvasSource): string => (s.at === 'file' ? `file:${canonicalPath(s.path)}` : JSON.stringify(s))
 
 export async function fileFacts(ctx: WorkCtx, asked: Asked, jobs: Jobs): Promise<FileFacts> {
   const history = WORK_MODULES.find((m) => m.id === 'history')
@@ -56,23 +68,26 @@ export async function fileFacts(ctx: WorkCtx, asked: Asked, jobs: Jobs): Promise
   for (const j of jobs.list) {
     for (const item of ctx.canvas.forWorkspace(j.workspaceId, { panes: true })) {
       if (item.kind !== 'document' || item.updatedAt < since || !kept(item.source)) continue
-      const key = JSON.stringify(item.source)
+      const key = docKey(item.source)
       const have = docs.get(key)
       if (!have || have.at < item.updatedAt) docs.set(key, { source: item.source, workspaceId: j.workspaceId, at: item.updatedAt })
     }
   }
   // Every Work workspace's folder, the thread tool's narrowed jobs or not: a file in another job's folder is that job's.
-  const folders = (ctx.db.prepare(`SELECT id, path, sector FROM workspaces WHERE kind = 'work'`).all() as { id: string; path: string | null; sector: string | null }[]).map((r) => ({ id: r.id, path: r.path ?? '', sector: r.sector || null }))
+  const folders = (ctx.db.prepare(`SELECT id, path, sector FROM workspaces WHERE kind = 'work'`).all() as { id: string; path: string | null; sector: string | null }[]).map((r) => ({ id: r.id, path: r.path ? canonicalPath(r.path) : '', sector: r.sector || null }))
   const out: FileFacts = { points: [], before: [], part: docs.size > DOCS_MOST }
   let failed = 0
+  let skipped = 0
   const picked = [...docs.values()].sort((a, b) => b.at - a.at).slice(0, DOCS_MOST)
   for (const doc of picked) {
     stopped(asked.signal)
     try {
       const own = await ownerOf(ctx, doc.source, doc.workspaceId, folders)
-      // One of a job with no workspace on this host (or, for a thread's tool, not its own job) is not counted here.
-      const job = jobIndex(jobs, own.workspaceId, own.sector)
+      // One that is gone, or of a job with no workspace on this host (or, for a thread's tool, not its own job), is not
+      // counted here.
+      const job = own === 'gone' ? null : jobIndex(jobs, own.workspaceId, own.sector)
       if (job === null) {
+        skipped++
         await breathe()
         continue
       }
@@ -91,7 +106,7 @@ export async function fileFacts(ctx: WorkCtx, asked: Asked, jobs: Jobs): Promise
     await breathe()
   }
   // Every document failing is the history service being down, which the page should say.
-  if (picked.length > 0 && failed === picked.length) throw new Error('Document history did not answer')
+  if (picked.length > skipped && failed === picked.length - skipped) throw new Error('Document history did not answer')
   if (failed > 0) out.part = true
   return out
 }
