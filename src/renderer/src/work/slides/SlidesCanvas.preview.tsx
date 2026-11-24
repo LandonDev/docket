@@ -31,6 +31,7 @@ import { change, deckView, fakeDeckHost, slide, textShape } from "./testkit";
 
 export type SlidesMoment =
   | "sugg"
+  | "failed"
   | "notes"
   | "ppt"
   | "loading"
@@ -265,6 +266,7 @@ export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: Slid
   if (current) store.set({ current });
   store.set({ look: look ?? "slide", sheet: !!sheet, sheetTab: tab ?? "format" });
   if (moment === "ppt") store.set({ side: "powerpoint" });
+  if (moment === "failed") store.set({ error: "The deck is not where it was." });
   // The file's render in the deck's order; the proposed render in the revision's.
   let opened = 0;
   const docs = [sponsorDoc([1, 2, 3, 4, 5, 6, 8]), sponsorDoc([1, 2, 3, 6, 4, 7, 5, 8])];
