@@ -5,6 +5,7 @@ import type { CloudBack, FileTab, FileUploaded } from '@shared/contract-work-fil
 import type { Caller, WorkCtx } from '../modules'
 import { storedStatus, vmSynced } from '../office/vm/files'
 import { vmState } from '../office/vm/office'
+import { setUploadsOwed } from '../winvm/owed'
 import { filesState } from './handle'
 import { locate } from './policy'
 
@@ -77,6 +78,7 @@ export function uploadsOwed(now = Date.now()): boolean {
   for (const u of uploads.values()) if (u.vm && owed(u, now)) return true
   return false
 }
+setUploadsOwed(() => uploadsOwed())
 
 const owed = (u: Upload, now: number): boolean => u.looking && now - u.wrote < uploadTiming.give
 

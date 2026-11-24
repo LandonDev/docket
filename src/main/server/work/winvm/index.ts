@@ -19,7 +19,7 @@ import { ensurePuts } from './files'
 import { HELPER_PORT, HelperDoor } from './helperDoor'
 import { rigConfig, rigPaths } from './machine/config'
 import { TC_OFFICE_CS } from '../office/com/source'
-import { uploadsOwed } from '../files/uploads'
+import { uploadsOwed } from './owed'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
