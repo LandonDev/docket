@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -298,10 +298,28 @@ export class TcsheetBackend implements SheetBackend {
     writeTcsheet(path, { meta: { title, rev: 0, snapRev: 0 }, snapshots: new Map([[0, gz(blankWorkbook('workbook', title))]]), ops: [], suggestions: [] })
   }
 
+  /** The real file the held workbook was read from: a write goes there, and only while the path still names it. */
+  private bound: string | null = null
+
   private read(): Tcsheet {
     if (this.held) return this.held
     if (!existsSync(this.path)) throw new Error(`There is no file at ${this.path}.`)
-    return (this.held = readTcsheet(this.path))
+    this.bound = realpathSync(this.path)
+    return (this.held = readTcsheet(this.bound))
+  }
+  /**
+   * The path names the file that was read: a folder link along it that came to point at another folder would have the
+   * workbook held here written over another file. Refused instead; the sheet opens again from the file there now.
+   */
+  private same(): string {
+    let now: string | null
+    try {
+      now = realpathSync(this.path)
+    } catch {
+      now = null
+    }
+    if (this.bound !== null && now !== this.bound) throw new Error(`${this.path} names another file than the one this sheet was opened from: open it again.`)
+    return this.bound ?? this.path
   }
   private sideFile(): string | null {
     return this.side ? join(this.side, `${createHash('sha256').update(this.path).digest('hex').slice(0, 24)}.json`) : null
@@ -337,7 +355,7 @@ export class TcsheetBackend implements SheetBackend {
     renameSync(tmp, at)
   }
   private write(t: Tcsheet): void {
-    writeTcsheet(this.path, t)
+    writeTcsheet(this.same(), t)
     this.held = t
   }
 

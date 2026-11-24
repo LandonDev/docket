@@ -951,6 +951,12 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   `conflict` when its cell no longer holds what the agent saw, `orphaned`
   when its cell is gone;
 - a snapshot (Univer's JSON, gzipped) is cut every 500 ops;
+- a `.tcsheet` (`TcsheetBackend`) is bound to the real file it was read
+  from: every write goes there, and only while its path still names that
+  file, so a folder link along the path that came to point at another folder
+  is refused ("… names another file than the one this sheet was opened
+  from") rather than writing the held workbook over another one. (A guest
+  pass bound to the resolved file is the guests pillar's, guests/links.ts.)
 - history lists the ops; compare and restore replay from the nearest
   snapshot in a second engine;
 - every engine it makes mounts the grid's data plugins (`headlessSheet(…,
