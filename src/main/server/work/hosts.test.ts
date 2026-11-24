@@ -132,6 +132,7 @@ function makeHost(id: string, modules: WorkModule[], opts: { work?: boolean; old
       peerCalls: {
         online: (env: string) => hosts.has(env) && env !== id,
         registeredIds: () => [...hosts.keys()].filter((e) => e !== id),
+        info: (env: string) => (hosts.has(env) && env !== id ? { name: `registered ${env}` } : null),
         call: (env: string, method: string, params: unknown) => linkFrom(id).call(env, method, params, 60_000)
       } as never,
       log: () => {}
@@ -388,6 +389,8 @@ describe('ctx.peer: a Work tool on one host calls the same module on another', (
     const { box, mac } = await setUp()
     const far = hostReadOf(box.work.ctx)!
     expect(far.hosts()).toEqual([MAC])
+    // A host that dialed this one (a PC with no saved link here) is named by the name it registered with.
+    expect(far.name?.(MAC)).toBe(`registered ${MAC}`)
     expect(await far.read(MAC, 'office', 'rangeRead', { range: 'A1' })).toMatchObject({ on: MAC })
     expect(seen).toEqual([{ host: MAC, method: 'work.office.rangeRead', by: { kind: 'remote', caps: ['read', 'operate'], peer: BOX }, params: { range: 'A1' } }])
     // only what the policy allows: read alone still answers a read, off refuses it

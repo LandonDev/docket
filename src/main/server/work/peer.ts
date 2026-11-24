@@ -139,7 +139,8 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
   // its bridge policy for this one, as any call, and only a method a read key may call.
   hostReads.set(ctx, {
     hosts: () => (links?.reachable() ?? []).map((r) => r.id).filter((id) => id !== deps.environmentId),
-    name: (host) => deps.peers?.get(host)?.env.name ?? null,
+    // A host this one dialed, by the name he saved it under; else one that dialed this one (a PC), by the name it registered with.
+    name: (host) => deps.peers?.get(host)?.env.name ?? deps.peerCalls?.info(host)?.name ?? null,
     async read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T> {
       const answer = await ask<WorkCallResult>(host, { environmentId: deps.environmentId, sessionId: 'work', title: 'Work', permission: 'safe' }, { kind: 'call', module, verb, args })
       if (!answer || typeof answer !== 'object' || !('work' in answer)) throw new Error('that host runs a build from before Work')
