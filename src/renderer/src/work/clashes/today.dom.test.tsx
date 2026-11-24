@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 /** Clashes on Today: a mark on both events' rows with Resolve, a leave-by as the row's live line, and never a row of their own. */
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeosRange } from "@shared/work/clashes";
 import type { TodayAnswer, TodayEnv } from "../today/types";
 
 const HOUR = 3_600_000;
 const MINUTE = 60_000;
-const now = Date.now();
+// A fixed morning, and the clock held on it: the events below stand hours ahead, and a run late in the evening
+// carried them over midnight, where a clash's words gain the weekday ("Mon 11:00 PM") and no longer matched.
+const now = new Date(2026, 10, 23, 9, 0).getTime();
 const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: { status: "loading" } as unknown }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -22,8 +24,10 @@ const { clashAsk } = await import("./open");
 const { clockOf } = await import("@shared/work/clashes");
 const { TODAY_SOURCES } = await import("../today/sources");
 
+beforeEach(() => void vi.useFakeTimers({ now, toFake: ["Date"] }));
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   clashAsk.set(null);
   lifeos.asked.length = 0;
 });
