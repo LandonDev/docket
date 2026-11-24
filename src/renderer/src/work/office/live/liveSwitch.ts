@@ -15,8 +15,8 @@ export type LiveSetAnswer = { is: "done" } | { is: "ask"; why: "changed" | "gone
 
 export interface SwitchDeps {
   set(params: { mode: LiveMode; typed?: number; choice?: "keep-both" }): Promise<LiveSetAnswer>;
-  /** What the tab's kind still holds reaches the host (canvas/flush.ts). */
-  flush(): Promise<void>;
+  /** What the tab's kind still holds reaches the host (canvas/flush.ts `flushedItem`); false when its send did not land. */
+  flush(): Promise<boolean>;
   /** The guest unloads; false when he chose to stay (Word still saving). */
   leave(): Promise<boolean>;
   /** Keys he typed in the live file. */
@@ -46,7 +46,8 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
       return (await deps.set({ mode: "here", typed })).is === "done";
     }
     if (from.sending) deps.busy("Sending your changes first…");
-    await deps.flush();
+    // The item is replaced by the switch: an edit the kind could not send stops it, never goes with it.
+    if (!(await deps.flush())) throw new Error(`Your last change to ${from.name} has not been saved yet. Try again in a moment.`);
     let choice: "keep-both" | undefined;
     // At most one ask of each kind: a second refusal of the same kind is the host's last word.
     for (let tries = 0; tries < 3; tries++) {

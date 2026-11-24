@@ -1,5 +1,5 @@
 import { OfficeError, type OfficeFile } from '../carrier'
-import { sameCloudFile } from '../live/address'
+import { cloudKey, sameCloudFile } from '../live/address'
 import type { AddinKeys } from './keys'
 
 /**
@@ -155,9 +155,13 @@ export class AddinHub {
    * key that is another form of that address (a Files tab's `?web=1`, a `/:w:/r` link) finds it too (`sameCloudFile`).
    */
   sessionFor(app: AddinApp, key: string): AddinSession | undefined {
-    let best: AddinSession | undefined
-    for (const s of this.sessions.values()) if (s.app === app && s.file && sameCloudFile(s.file.key, key) && (!best || s.since >= best.since)) best = s
-    return best
+    // The very key first; another form of the address only where none has it.
+    const newest = (match: (k: string) => boolean): AddinSession | undefined => {
+      let best: AddinSession | undefined
+      for (const s of this.sessions.values()) if (s.app === app && s.file && match(s.file.key) && (!best || s.since >= best.since)) best = s
+      return best
+    }
+    return newest((k) => k === key) ?? newest((k) => sameCloudFile(k, key))
   }
 
   /** Whether any add-in has a file open. */
@@ -167,11 +171,13 @@ export class AddinHub {
 
   /** Every file open in an add-in of this app, once each (by `sessionFor`, so two forms of one address are one file). */
   files(app: AddinApp): AddinSession[] {
-    const once = new Map<number, AddinSession>()
+    // One file once, whatever form of its address each add-in has it under: the newest add-in on it.
+    const once = new Map<string, AddinSession>()
     for (const s of this.sessions.values())
       if (s.app === app && s.file) {
-        const best = this.sessionFor(app, s.file.key)!
-        once.set(best.conn, best)
+        const file = cloudKey(s.file.key) ?? s.file.key
+        const was = once.get(file)
+        if (!was || s.since >= was.since) once.set(file, s)
       }
     return [...once.values()]
   }

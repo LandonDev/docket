@@ -75,8 +75,19 @@ export interface CanvasStoreDeps {
  * pane's item is cut further: its tab was opened by browsing, so its name is a fact about a folder the caller
  * may not list, and both the name and the title go.
  */
+/** The file behind an item whose source names none (a live Office file by its web address), as a pillar knows it. */
+let itemFile: ((item: CanvasItem) => string | null) | null = null
+export function registerItemFile(fn: (item: CanvasItem) => string | null): () => void {
+  itemFile = fn
+  return () => {
+    if (itemFile === fn) itemFile = null
+  }
+}
+/** The path the fence checks for an item: its source's own, else the file a pillar names behind it. */
+export const itemPath = (item: CanvasItem): string | null => canvasSourcePath(item.source) ?? itemFile?.(item) ?? null
+
 export function fencedItem(item: CanvasItem, reaches: (path: string) => boolean): CanvasItem {
-  const path = canvasSourcePath(item.source)
+  const path = itemPath(item)
   if (path === null || reaches(path)) return item
   const s = item.source
   const pane = filesPaneWorkspace(item.sessionId) !== null

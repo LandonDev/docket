@@ -158,7 +158,7 @@ describe('a held edit on a live file', () => {
       sessionId: 't1'
     }) as unknown as ToolCtx
   /** The box: Outlook on the web as its own carrier, the add-in riding on it, Word in the VM beside. */
-  const box = (hub: AddinHub, vmWord: FakeOffice, synced?: AddinToolsOptions['synced']) => {
+  const box = (hub: AddinHub, vmWord: FakeOffice, synced?: AddinToolsOptions['synced'], mayOpen: AddinToolsOptions['mayOpen'] = async () => true) => {
     const owa = Object.assign(new FakeOffice(), { kind: 'owa' }) as unknown as OfficeCarrier
     const carrier = withAddin(owa, () => hub)
     const suggestions = new SuggestionStore(db)
@@ -167,7 +167,7 @@ describe('a held edit on a live file', () => {
       awake: async () => void woke++,
       here: () => ({ carrier: vmWord, excel: new ExcelHelper(vmWord, db, suggestions), suggestions }),
       open: { sleep: async () => {} }
-    }, { synced, hub: () => hub })
+    }, { synced, hub: () => hub, mayOpen })
     return { carrier, run: (name: string, args: unknown) => tools.find((t) => t.name === name)!.run(args, ctx()) }
   }
   const press = (carrier: OfficeCarrier, vmWord: FakeOffice) =>
@@ -221,6 +221,14 @@ describe('a held edit on a live file', () => {
     expect(vmWord.docs.get(FULL_NAME)!.paragraphs).toEqual(['Draft two.'])
     // opened once: the press found it by its FullName
     expect(vmWord.opened).toHaveLength(1)
+  })
+
+  it('never has the VM open an address outside every library the thread may reach', async () => {
+    const vmWord = new VmWord()
+    const { run } = box(hubWith(null, { paragraphs: [] }, []), vmWord, undefined, async () => false)
+    const r = await run('office_doc_read', { document: TAB })
+    expect(JSON.stringify(r)).toContain('not in a Teams or OneDrive library this thread may reach')
+    expect(vmWord.opened).toEqual([])
   })
 
   it('with neither, a read comes from the synced copy and says it may be behind; a change is not made of a copy', async () => {

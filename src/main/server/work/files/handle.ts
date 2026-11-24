@@ -10,7 +10,7 @@ import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
 import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
 import { sheetImportFormat } from '@shared/work/sheetFormats'
-import { fencedItem } from '../canvas/store'
+import { fencedItem, itemPath } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
@@ -532,7 +532,7 @@ function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
       return !(at.at === 'file' && at.host === ctx.host && !reaches(ctx, by, at.path))
     }
     const item = tab.itemId ? ctx.canvas.get(tab.itemId) : null
-    const path = item ? canvasSourcePath(item.source) : null
+    const path = item ? itemPath(item) : null
     return path === null || reaches(ctx, by, path)
   })
   // A file at a tab's side that the key could not name is left out of the tab it is told of.

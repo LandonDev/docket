@@ -107,8 +107,9 @@ export function cloudKey(url: string): string | null {
   const link = parsed(url)
   if (!link?.host) return null
   const path = link.pathname.split('/').map(decode).join('/').replace(/^\/:[wxp]:\/r(?=\/)/i, '').replace(/\/+$/, '')
-  // A GUID redirect carries no file path. Dropping its query would give every file at that site the same key.
-  if (/\/_layouts\/\d+\/doc\.aspx$/i.test(path)) return null
+  // A page that names its file in the query (Doc.aspx, WopiFrame.aspx, edit.aspx?resid=) carries no file path:
+  // dropping the query would give every file at that site one key.
+  if (/\/_layouts\//i.test(path) || /\.aspx$/i.test(path)) return null
   return link.host.toLowerCase() + path
 }
 

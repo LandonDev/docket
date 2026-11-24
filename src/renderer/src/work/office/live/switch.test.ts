@@ -7,7 +7,7 @@ function deps(answers: LiveSetAnswer[], over: Partial<SwitchDeps> = {}) {
   const lines: (string | null)[] = [];
   const d = {
     set: vi.fn(async () => answers.shift() ?? { is: "done" as const }),
-    flush: vi.fn(async () => undefined),
+    flush: vi.fn(async () => true),
     leave: vi.fn(async () => true),
     typed: vi.fn(async () => 0),
     confirm: vi.fn(async () => true),
@@ -25,6 +25,13 @@ describe("switching to Live", () => {
     expect(d.flush).toHaveBeenCalled();
     expect(d.set).toHaveBeenCalledWith({ mode: "live" });
     expect(d.confirm).not.toHaveBeenCalled();
+  });
+
+  it("stops when the kind could not send what it held, and asks the host nothing", async () => {
+    const { d, lines } = deps([{ is: "done" }], { flush: vi.fn(async () => false) });
+    await expect(switchTo("live", FROM, d)).rejects.toThrow("has not been saved yet");
+    expect(d.set).not.toHaveBeenCalled();
+    expect(lines.at(-1)).toBeNull();
   });
 
   it("says the copy's changes go first, and clears the line after", async () => {

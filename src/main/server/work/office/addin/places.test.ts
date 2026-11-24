@@ -87,7 +87,7 @@ describe('a tool call from a box thread', () => {
       },
       here: () => inVm,
       open: { ms: 4, every: 2, sleep: async () => {} }
-    })
+    }, { mayOpen: async () => true })
     return (name: string, args: unknown) => all.find((t) => t.name === name)!.run(args, ctx() as never)
   }
 

@@ -29,12 +29,17 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
   cancels anything not https or wss, or naming this machine, a private, link-local or carrier-NAT network, a single
   label, `*.local`, or a `file:`/`tempcode-*` scheme. Downloads go through his save dialog.
 - **Navigation**: the first page must be a Microsoft file (`isMicrosoftUrl`); after that https anywhere (a school's
-  sign-in). A new window that is Microsoft's loads in the guest, other web pages open in his browser.
+  sign-in). Popups stay on so every new window reaches the handler, which denies it: Microsoft's loads in the guest,
+  another web page opens in his browser (one every 2 s at most). WebRTC takes no UDP but through a proxy
+  (`disable_non_proxied_udp`), so it reaches no local address around the request block. A name that resolves to a
+  private address passes the block; the local server's Origin rule and TLS stand behind it.
 - **The local server** refuses a WebSocket whose browser Origin is not the app's (`server/originAllowed.ts`: no
   Origin, `tempcode-app://renderer`, or the dev renderer's own origin).
 - Nothing in TempCode types into the guest or runs script in it; computer use refuses TempCode's windows.
-- **What TempCode keeps**: each live session's HTTP cache, cache storage and service workers are cleared at every
-  start; cookies and local storage stay so his sign-in lasts. `Partitions/office-live-*` is left out of the Mac
+- **What TempCode keeps**: a live session keeps its HTTP cache in memory alone (`fromPartition(…, {cache: false})`,
+  `liveSessionOf`); at every start everything else it stored (IndexedDB, local storage, cache storage, service
+  workers, file system) is cleared, and no ticket is issued until that is done. Only cookies stay, where Entra keeps
+  his sign-in. `Partitions/office-live-*` is left out of the Mac
   backup (`scripts/mac/backup.sh`).
 - Proof: `heavy bun scripts/proof-office-live-fence.ts` (real Chromium on the box: the ticketed guest loads, the bare
   one never attaches, no bridge or Node in it, no loopback by fetch or WebSocket, the server refuses another origin).
@@ -74,7 +79,12 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Close Anyway". The
   host waits up to 60 s for the file's version on its computer to move when he typed, then `reseat`s it fresh. Every
   save back is by version, so a later OneDrive change is "changed there", never a write over Word's edits.
-- Closing a live tab follows the same unload rule (FilesView `closeOne`).
+- Closing a live tab follows the same unload rule (FilesView `closeOne`), and so does a guest let go past three: one
+  Word still holds stays loaded. A switch to Live stops when the kind could not send what it held (`flushedItem`).
+- A live item names no file, so the fence asks the office module for the one behind it (`registerItemFile`,
+  `liveItemFile`): a remote key that could not name the file sees neither its tab nor its address.
+- `cloudKey` gives no key for a page that names its file in the query (`_layouts`, any `.aspx`), so two files there
+  never meet as one.
 
 ## Keys and menus
 
@@ -96,8 +106,9 @@ which clears that session alone and is refused to every remote key, other host a
 
 An agent changes a live file only through Office: the add-in in his live view, or Word in the VM by COM, and every
 change of its own idea is the held `office.edit` that runs on his press (unchanged). `office/live/agents.ts` matches
-a tool's file by `cloudKey` to the add-in session or the VM's open document; with no add-in, a box workspace opens
-the file by address in the VM's Word (Microsoft addresses only) and reads it there, live; otherwise the thread reads
+a tool's file by `cloudKey` to the add-in session (the very key first) or the VM's open document; with no add-in, a
+box workspace opens the file by address in the VM's Word, only for an address inside a library the thread may reach
+(`mayOpenAddress`), and reads it there, live; otherwise the thread reads
 OneDrive's synced copy and says it may be behind. A thread asked from a live tab gets an item on the same live
 source (`holdFile`). Selection Ask does not exist in a live tab.
 

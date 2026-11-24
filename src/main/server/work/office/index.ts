@@ -26,7 +26,8 @@ import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
 import { officeConverters, type RenderDeps, type RenderPlace } from './render'
 import { liveRows } from './live/health'
-import { liveHandle } from './live/handle'
+import { liveHandle, liveItemFile } from './live/handle'
+import { registerItemFile } from '../canvas/store'
 import { dropWorkspaceModes, ensureLiveTables } from './live/memory'
 import { liveSeat, liveSet } from './live/switch'
 import { registerSeatChooser } from '../files/hooks'
@@ -97,6 +98,7 @@ const excelChanges = (ctx: () => WorkCtx | null): TriggerSource => ({
 })
 
 let started: WorkCtx | null = null
+let offItemFile: (() => void) | null = null
 
 /**
  * Office as a renderer here (render.ts): his Mac's apps, a Windows PC's, or the box's Windows VM. Read at each job:
@@ -265,6 +267,8 @@ export const office: WorkModule = {
     'Teams and SharePoint files synced on his Mac or in the Windows VM are reached with the `teams_*` tools (`teams_libraries` first); `teams_open` shows one to him and answers the key the office tools change it by.',
   start(ctx) {
     started = ctx
+    // A live tab's item names no file: the fence asks this module for the one behind it (live/handle.ts).
+    offItemFile = registerItemFile((item) => liveItemFile(ctx, item))
     const here = hereOf(ctx)
     let stopRoute: (() => void) | null = null
     let timer: ReturnType<typeof setInterval> | null = null
@@ -306,6 +310,8 @@ export const office: WorkModule = {
       here?.carrier.stop?.()
       unfollowAll()
       started = null
+      offItemFile?.()
+      offItemFile = null
     }
   },
 }

@@ -2,7 +2,8 @@ import type { ClientRequest } from '@shared/contract'
 import type { FileTab } from '@shared/contract-work-files'
 import type { CanvasSource } from '@shared/work/canvas'
 import type { OfficeLiveAddress, OfficeLiveApp, OfficeLiveDesktop, OfficeLiveLibraryDefault, OfficeLiveMode, OfficeLiveOf, OfficeStatus, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
-import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type Handled } from '@shared/work'
+import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Handled } from '@shared/work'
+import { isLiveSource } from '@shared/work/officeLive'
 import { FenceError } from '../../../remote/fence'
 import { filesState, ownRows } from '../../files/handle'
 import { reachesPath } from '../../files/names'
@@ -121,6 +122,22 @@ async function addressOf(ctx: WorkCtx, by: Caller, workspaceId: string, source: 
   const found = source.at === 'file' ? await libraryFile(ctx, by, workspaceId, source, ADDRESS, signal) : null
   const result = found?.at ? liveAddress(found.at.library, found.at.path, { libraries: found.libraries }) : null
   return found && result?.ok ? { address: result.url, app: found.app } : { address: null, app: null }
+}
+
+/**
+ * The file behind a live tab's item (it carries only its web address), for the fence: the canvas store asks it, so a
+ * remote key that could not name the file sees no more of it live than in Edit here. Null for any other item.
+ */
+export function liveItemFile(ctx: WorkCtx, item: CanvasItem): string | null {
+  if (!isLiveSource(item.source)) return null
+  const workspaceId = filesPaneWorkspace(item.sessionId)
+  if (!workspaceId) return null
+  const state = filesState(ctx)
+  const tab = state.tabs.list(workspaceId).tabs.find((t) => t.itemId === item.id)
+  if (!tab) return null
+  const refKey = tab.key ?? ''
+  const marked = refKey ? state.marks.of(workspaceId, [refKey]).get(refKey)?.at : undefined
+  return tab.copyOf?.path ?? (marked && 'file' in marked && marked.file.at === 'file' ? marked.file.path : null)
 }
 
 /** A Files tab of the workspace, its item, and the file it is of: the other computer's it stands for, the original its key marked, or its own. */

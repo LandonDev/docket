@@ -110,7 +110,9 @@ export function hardenAttach(prefs: Record<string, unknown>, params: Record<stri
   prefs.allowRunningInsecureContent = false
   prefs.webviewTag = false
   prefs.partition = ticket.partition
-  delete params.allowpopups
+  // New windows stay on, so each one reaches the window-open handler, which denies it and routes its address.
+  params.allowpopups = 'true'
+  prefs.disablePopups = false
   delete params.preload
   delete params.nodeintegration
   delete params.nodeintegrationinsubframes
@@ -228,13 +230,22 @@ export function keyInit(input: LiveInput): { key: string; code: string; metaKey:
   return { key: input.key, code: input.code, metaKey: input.meta, ctrlKey: input.control, shiftKey: input.shift, altKey: input.alt }
 }
 
-/** Whether a key is his typing in the file (a character, Enter, Backspace, Delete), counted for the switch back. */
-export const typedKey = (input: LiveInput): boolean =>
-  input.type === 'keyDown' && !input.meta && !(input.control && !input.alt) && (input.key.length === 1 || input.key === 'Enter' || input.key === 'Backspace' || input.key === 'Delete')
+/** Whether a key changes the file (a character, Enter, Backspace, Delete, or paste, cut, undo, redo), counted for the switch back. */
+export function typedKey(input: LiveInput): boolean {
+  if (input.type !== 'keyDown') return false
+  const chord = input.meta || (input.control && !input.alt)
+  if (chord) return /^Key[VXZY]$/.test(input.code)
+  return input.key.length === 1 || input.key === 'Enter' || input.key === 'Backspace' || input.key === 'Delete'
+}
 
 // ── Electron ──────────────────────────────────────────────────────────
 
 const store = new TicketStore()
+let cleared: Promise<void> = Promise.resolve()
+const EXTERNAL_EVERY_MS = 2_000
+
+/** A live session: its HTTP cache in memory alone, so no word of a file is written to disk by it. */
+export const liveSessionOf = (partition: string): Session => session.fromPartition(partition, { cache: false })
 const sessions = new WeakSet<Session>()
 
 /** Each live guest by its webContents id: the window that holds it, whether its tab fills the window, his typing. */
@@ -251,7 +262,7 @@ const guests = new Map<number, Guest>()
 
 /** A tenant's session, made ready once: its agent, permissions, the request block and downloads by his save dialog. */
 export function liveSession(partition: string): Session {
-  const ses = session.fromPartition(partition)
+  const ses = liveSessionOf(partition)
   if (sessions.has(ses)) return ses
   sessions.add(ses)
   ses.setUserAgent(plainChromeUa(ses.getUserAgent()))
@@ -266,10 +277,17 @@ export function liveSession(partition: string): Session {
 
 /** The guest once attached: where it may go and what opens elsewhere. */
 function fenceGuest(guest: WebContents): void {
+  // WebRTC takes no route the request block cannot see: no UDP but through a proxy, so no local address.
+  guest.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+  let opened = 0
   guest.setWindowOpenHandler(({ url }) => {
     const to = openTarget(url)
     if (to === 'guest') void guest.loadURL(url)
-    else if (to === 'browser') void shell.openExternal(url)
+    else if (to === 'browser' && Date.now() - opened > EXTERNAL_EVERY_MS) {
+      // A page may send one address to his browser at a time, never a burst.
+      opened = Date.now()
+      void shell.openExternal(url)
+    }
     return { action: 'deny' }
   })
   const top = (e: { preventDefault(): void }, to: string): void => {
@@ -378,15 +396,20 @@ export async function clearLiveCaches(): Promise<void> {
     return
   }
   for (const partition of livePartitionsIn(names)) {
-    const ses = session.fromPartition(partition)
+    const ses = liveSessionOf(partition)
     await ses.clearCache().catch(() => {})
-    await ses.clearStorageData({ storages: ['cachestorage', 'serviceworkers', 'shadercache'] }).catch(() => {})
+    // Everything but the cookies, where Entra keeps his sign-in.
+    await ses.clearStorageData({ storages: ['filesystem', 'indexdb', 'localstorage', 'shadercache', 'websql', 'serviceworkers', 'cachestorage'] }).catch(() => {})
   }
 }
 
 /** Main's side: the ticket IPC and the caches cleared (`windows.ts` puts `attachLiveFence` on each window). */
 export function registerOfficeLive(): void {
-  ipcMain.handle('office-live:ticket', (event, url: unknown) => answerTicket(store, event, url))
+  // No guest attaches before the start's clear is done.
+  ipcMain.handle('office-live:ticket', async (event, url: unknown) => {
+    await cleared
+    return answerTicket(store, event, url)
+  })
   ipcMain.handle('office-live:full-window', (event, guestId: unknown, on: unknown) => {
     const entry = ownGuest(event, guestId)
     if (entry) entry.fullWindow = on === true
@@ -397,5 +420,5 @@ export function registerOfficeLive(): void {
     const entry = ownGuest(event, guestId)
     return entry ? unloadGuest(entry, force === true) : Promise.resolve('gone')
   })
-  void clearLiveCaches()
+  cleared = clearLiveCaches().catch(() => undefined)
 }

@@ -99,22 +99,35 @@ export function syncedCopies(libraries: readonly TeamsLibrary[], url: string, vm
   return syncedFilesOf(libraries, url).filter((s) => vm || !s.library.vm)
 }
 
-/**
- * A file named by its address read from a synced copy on a host the thread may reach (`teams_read`'s own verb), for a
- * read no Office could answer. Null when no library there holds it, or none of its copies could be read.
- */
-export async function readSynced(ctx: ToolCtx, carrier: Deps, url: string, vm: boolean): Promise<{ text: string; truncated: boolean } | null> {
+/** The Teams libraries on the hosts the thread may reach, as each lists them now. */
+async function reachableLibraries(ctx: ToolCtx, carrier: Deps): Promise<TeamsLibrary[]> {
   const libraries: TeamsLibrary[] = []
   await Promise.all(
     reachableHosts(ctx).map(async (host) => {
       try {
         libraries.push(...((await on(ctx, carrier, host, 'filesLibraries', { cached: true })) as TeamsLibrariesAnswer).libraries)
       } catch {
-        // a host that does not answer holds no copy we can read
+        // a host that does not answer holds no library we can name
       }
     })
   )
-  for (const copy of syncedCopies(libraries, url, vm)) {
+  return libraries
+}
+
+/**
+ * Whether the thread may have Word in the VM open a file by its address: only a file in a library it may reach (any
+ * host's, the VM's included), never any address the VM's Office account could open.
+ */
+export async function mayOpenAddress(ctx: ToolCtx, carrier: Deps, url: string): Promise<boolean> {
+  return syncedFilesOf(await reachableLibraries(ctx, carrier), url).length > 0
+}
+
+/**
+ * A file named by its address read from a synced copy on a host the thread may reach (`teams_read`'s own verb), for a
+ * read no Office could answer. Null when no library there holds it, or none of its copies could be read.
+ */
+export async function readSynced(ctx: ToolCtx, carrier: Deps, url: string, vm: boolean): Promise<{ text: string; truncated: boolean } | null> {
+  for (const copy of syncedCopies(await reachableLibraries(ctx, carrier), url, vm)) {
     try {
       const host = copy.library.host
       return (await on(ctx, carrier, host, 'filesRead', { source: { at: 'file', host, path: copy.path }, as: 'text' })) as { text: string; truncated: boolean }

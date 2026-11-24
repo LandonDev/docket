@@ -258,6 +258,8 @@ export class LiveLayer {
       if (this.guests.get(key) !== guest) return;
       if (!ticket.ok) return this.set(key, { ...this.state(key), failed: ticket.error });
       el.setAttribute("partition", ticket.partition);
+      // New windows reach main's handler, which loads Microsoft's in the guest and sends other pages to his browser.
+      el.setAttribute("allowpopups", "");
       el.setAttribute("src", ticket.src);
       this.root!.appendChild(el);
       this.paint(guest);
@@ -286,7 +288,14 @@ export class LiveLayer {
 
   private evict(): void {
     const loaded = [...this.guests.entries()].sort((a, b) => b[1].shownAt - a[1].shownAt);
-    for (const [key, guest] of loaded.slice(MOST_LOADED)) if (!guest.visible) this.drop(key);
+    for (const [key, guest] of loaded.slice(MOST_LOADED)) if (!guest.visible) void this.retire(key, guest);
+  }
+
+  /** Lets a hidden guest go through Word's own unload: one still saving stays loaded until a later show passes it by. */
+  private async retire(key: string, guest: Guest): Promise<void> {
+    const bridge = this.bridge();
+    if (bridge && guest.guestId !== null && (await bridge.unload(guest.guestId, false)) === "holding") return;
+    if (this.guests.get(key) === guest && !guest.visible) this.drop(key);
   }
 
   /** A key of TempCode's pressed in a guest (main's `forwardedKey`): the page hears it as its own. */

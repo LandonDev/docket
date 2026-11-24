@@ -94,6 +94,8 @@ export async function liveSeat(ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: 
     const of = await liveFileOf(ctx, by, ask.workspaceId, { host, path }, key, { signal })
     if (of.mode !== 'live' || !of.address) return null
     const copyOf = far ? { copyOf: { host, path, ...(host === ctx.host ? { vm: true } : {}) } } : {}
+    // Opened live, a saved document made of the Word file goes, as on a switch: a later Edit here reads the file afresh.
+    if (far) forgetKept(ctx, ask.workspaceId, { copyOf: { host, path } } as FileTab)
     return { key, name, kind: APP_CANVAS[app], source: liveSource(ctx, app, name, of.address), file: { host, path }, ...copyOf }
   } catch {
     // Files' own open says what is wrong with it.
@@ -168,8 +170,8 @@ async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string
 /** He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until its version moves, 60 s at most. */
 async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, since: number, signal?: AbortSignal): Promise<void> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
-  // It came down already: the file changed after the live view opened.
-  if (first && first.changed > since) return
+  // It came down already: the file changed after the live view opened (on this host's own clock alone).
+  if (first && ref.host === ctx.host && first.changed > since) return
   const end = Date.now() + liveTiming.version
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))

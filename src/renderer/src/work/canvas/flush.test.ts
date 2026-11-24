@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { flushItem, registerFlush } from "./flush";
+import { flushedItem, flushItem, registerFlush } from "./flush";
 
 describe("what an item holds is sent before its tab closes", () => {
   it("awaits the kind's own send, once registered, and nothing after it is let go", async () => {
@@ -36,5 +36,20 @@ describe("what an item holds is sent before its tab closes", () => {
     offOld();
     await flushItem("item-4");
     expect(calls).toEqual(["new"]);
+  });
+});
+
+describe("flushedItem", () => {
+  it("answers whether the kind's send landed", async () => {
+    expect(await flushedItem("none")).toBe(true);
+    const off = registerFlush("ok", async () => undefined);
+    expect(await flushedItem("ok")).toBe(true);
+    off();
+    const offBad = registerFlush("bad", async () => Promise.reject(new Error("no")));
+    expect(await flushedItem("bad")).toBe(false);
+    offBad();
+    const offSlow = registerFlush("slow", () => new Promise(() => undefined));
+    expect(await flushedItem("slow", 5)).toBe(false);
+    offSlow();
   });
 });

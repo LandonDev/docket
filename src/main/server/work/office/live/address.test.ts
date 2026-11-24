@@ -113,3 +113,12 @@ describe('the file’s cloud identity', () => {
       .toEqual(['word', 'excel', 'excel', 'powerpoint', null, null, null])
   })
 })
+
+describe('cloudKey on a page that names its file in the query', () => {
+  it('gives no key, so two files there never meet as one', () => {
+    expect(cloudKey('https://purdue0.sharepoint.com/sites/RecWell/_layouts/15/WopiFrame.aspx?sourcedoc=%7Ba%7D')).toBeNull()
+    expect(cloudKey('https://purdue0.sharepoint.com/sites/RecWell/_layouts/15/WopiFrame.aspx?sourcedoc=%7Bb%7D')).toBeNull()
+    expect(cloudKey('https://onedrive.live.com/edit.aspx?resid=ABC!123')).toBeNull()
+    expect(cloudKey('https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Team%20RecWell')).toBe('purdue0.sharepoint.com/sites/RecWell/Shared Documents/Team RecWell')
+  })
+})

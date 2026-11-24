@@ -5,7 +5,7 @@ import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { serviceOf } from '../../service/ctx'
 import type { OfficeCarrier } from '../carrier'
 import { workTools, type ToolDeps } from '../tools'
-import { BEHIND, byAddress, fileOf, keyedArgs, openByAddress, readSynced, withKey, type OpenWait } from '../live/agents'
+import { BEHIND, byAddress, fileOf, keyedArgs, mayOpenAddress, openByAddress, readSynced, withKey, type OpenWait } from '../live/agents'
 import { AddinHub } from './hub'
 import { AddinKeys, ensureAddinTables } from './keys'
 
@@ -158,6 +158,8 @@ type Synced = (ctx: ToolCtx, url: string, vm: boolean) => Promise<{ text: string
 export interface AddinToolsOptions {
   synced?: Synced
   hub?: () => AddinHub | null
+  /** whether the thread may have the VM's Word open this address (live/agents.ts `mayOpenAddress`) */
+  mayOpen?: (ctx: ToolCtx, url: string) => Promise<boolean>
 }
 const READS = new Set(['office_doc_read', 'office_slides_read'])
 
@@ -169,6 +171,7 @@ const NO_DESKTOP = /may use no desktop/
 /** The office tools, each call run where `placesOf` says: here, in the Windows VM, or on the desktop host. */
 export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice, o: AddinToolsOptions = {}): WorkTool[] {
   const fromCopy: Synced = o.synced ?? ((ctx, url, offered) => readSynced(ctx, () => here(ctx)?.carrier ?? null, url, offered))
+  const mayOpen = o.mayOpen ?? ((ctx: ToolCtx, url: string) => mayOpenAddress(ctx, () => here(ctx)?.carrier ?? null, url))
   const hubNow = o.hub ?? (() => hub)
   const local = workTools({ here })
   const away = workTools({ here: () => null })
@@ -190,7 +193,9 @@ export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice, o: Addin
           return { ...workText(`The Windows VM could not be reached: ${err instanceof Error ? err.message : String(err)}`), isError: true }
         }
         if (!byAddress(f)) return inVm![i]!.run(args, ctx)
-        // A live file no add-in has open: Word in the VM opens it by its address and co-authors it.
+        // A live file no add-in has open: Word in the VM opens it by its address and co-authors it, but only a file in
+        // a library the thread may reach.
+        if (!(await mayOpen(ctx, f!.key))) return { ...workText('That file is not in a Teams or OneDrive library this thread may reach.'), isError: true }
         let key: string
         try {
           key = await openByAddress(vm!.here(ctx).carrier, f, vm!.open)

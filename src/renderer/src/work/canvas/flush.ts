@@ -25,3 +25,13 @@ export async function flushItem(itemId: string | null | undefined, waitMs = FLUS
   await Promise.race([flush().catch(() => undefined), new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]);
   clearTimeout(timer);
 }
+
+/** The same send, answered: true once the kind sent what it held (or held nothing), false when its send failed or ran past `waitMs`. A switch that would replace the item stops on false. */
+export async function flushedItem(itemId: string | null | undefined, waitMs = FLUSH_WAIT_MS): Promise<boolean> {
+  const flush = itemId ? flushers.get(itemId) : undefined;
+  if (!flush) return true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const sent = await Promise.race([flush().then(() => true, () => false), new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), waitMs)))]);
+  clearTimeout(timer);
+  return sent;
+}

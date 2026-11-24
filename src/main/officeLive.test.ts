@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { shell } from 'electron'
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>()
 const liveSessions = new Map<string, FakeSession>()
@@ -179,6 +180,7 @@ class FakeContents extends EventEmitter {
   close = vi.fn()
   loadURL = vi.fn()
   setWindowOpenHandler = vi.fn()
+  setWebRTCIPHandlingPolicy = vi.fn()
 }
 
 function attach(win: FakeContents, params: Record<string, string>, prefs: Record<string, unknown> = { preload: '/evil.js', nodeIntegration: true, sandbox: false }) {
@@ -198,31 +200,31 @@ describe('the fence on a window', () => {
   })
   const ticket = (url: string, sender: FakeContents = win): unknown => handlers.get('office-live:ticket')!({ sender, senderFrame: sender.mainFrame }, url)
 
-  it('refuses a <webview> with no ticket', () => {
+  it('refuses a <webview> with no ticket', async () => {
     expect(attach(win, { src: FILE, partition: PARTITION }).refused).toBe(true)
   })
 
-  it('refuses a ticket of another window, another address or another partition', () => {
+  it('refuses a ticket of another window, another address or another partition', async () => {
     const other = new FakeContents(ids++)
-    ticket(FILE, other)
+    await ticket(FILE, other)
     expect(attach(win, { src: FILE, partition: PARTITION }).refused).toBe(true)
-    ticket(FILE)
+    await ticket(FILE)
     expect(attach(win, { src: FILE, partition: 'persist:microsoft' }).refused).toBe(true)
     expect(attach(win, { src: 'https://purdue0.sharepoint.com/other.docx', partition: PARTITION }).refused).toBe(true)
   })
 
-  it('attaches once on a ticket, stripped of preloads and Node, sandboxed, without popups', () => {
-    ticket(FILE)
+  it('attaches once on a ticket, stripped of preloads and Node, sandboxed, without popups', async () => {
+    await ticket(FILE)
     const first = attach(win, { src: FILE, partition: PARTITION, allowpopups: 'true', preload: 'file:///evil.js', nodeintegration: 'on', webpreferences: 'sandbox=no' })
     expect(first.refused).toBe(false)
     expect(first.prefs).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false, webSecurity: true, partition: PARTITION })
     expect(first.prefs).not.toHaveProperty('preload')
-    expect(first.params).toEqual({ src: FILE, partition: PARTITION })
+    expect(first.params).toEqual({ src: FILE, partition: PARTITION, allowpopups: 'true' })
     expect(attach(win, { src: FILE, partition: PARTITION }).refused).toBe(true)
   })
 
-  it('makes the tenant session ready: plain Chrome, one permission, the block', () => {
-    ticket(FILE)
+  it('makes the tenant session ready: plain Chrome, one permission, the block', async () => {
+    await ticket(FILE)
     attach(win, { src: FILE, partition: PARTITION })
     const ses = liveSessions.get(PARTITION)!
     expect(ses.ua).not.toMatch(/Electron|TempCode/)
@@ -233,11 +235,11 @@ describe('the fence on a window', () => {
     expect(ses.before!(FILE)).toBe(false)
   })
 
-  it('closes a guest that is not on a live session, and fences one that is', () => {
+  it('closes a guest that is not on a live session, and fences one that is', async () => {
     const stray = new FakeContents(9, new FakeSession())
     win.emit('did-attach-webview', {}, stray)
     expect(stray.close).toHaveBeenCalled()
-    ticket(FILE)
+    await ticket(FILE)
     attach(win, { src: FILE, partition: PARTITION })
     const guest = new FakeContents(10, liveSessions.get(PARTITION))
     win.emit('did-attach-webview', {}, guest)
@@ -245,6 +247,10 @@ describe('the fence on a window', () => {
     const open = guest.setWindowOpenHandler.mock.calls[0][0] as (d: { url: string }) => { action: string }
     expect(open({ url: 'https://purdue0.sharepoint.com/b.docx' })).toEqual({ action: 'deny' })
     expect(guest.loadURL).toHaveBeenCalledWith('https://purdue0.sharepoint.com/b.docx')
+    expect(guest.setWebRTCIPHandlingPolicy).toHaveBeenCalledWith('disable_non_proxied_udp')
+    open({ url: 'https://example.com/a' })
+    open({ url: 'https://example.com/b' })
+    expect(shell.openExternal).toHaveBeenCalledTimes(1)
     const nav = { preventDefault: vi.fn() }
     guest.emit('will-navigate', nav, 'http://idp.purdue.edu/')
     expect(nav.preventDefault).toHaveBeenCalled()
@@ -305,11 +311,13 @@ describe('the guest\'s keys', () => {
     expect(forwardedKey(key({ type: 'keyUp', key: 'w', code: 'KeyW', meta: true }), 'darwin', false)).toBe(false)
   })
 
-  it('counts his typing, not his chords', () => {
+  it('counts his typing and the chords that change the file, not the others', () => {
     expect(typedKey(key({}))).toBe(true)
     expect(typedKey(key({ key: 'Enter', code: 'Enter' }))).toBe(true)
     expect(typedKey(key({ key: 'Backspace', code: 'Backspace' }))).toBe(true)
-    expect(typedKey(key({ key: 'z', code: 'KeyZ', meta: true }))).toBe(false)
+    expect(typedKey(key({ key: 'z', code: 'KeyZ', meta: true }))).toBe(true)
+    expect(typedKey(key({ key: 'v', code: 'KeyV', control: true }))).toBe(true)
+    expect(typedKey(key({ key: 'b', code: 'KeyB', meta: true }))).toBe(false)
     expect(typedKey(key({ key: 'ArrowLeft', code: 'ArrowLeft' }))).toBe(false)
     expect(typedKey(key({ type: 'keyUp' }))).toBe(false)
   })

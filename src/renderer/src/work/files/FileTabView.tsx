@@ -19,7 +19,7 @@ import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasKindDef, CanvasSelection, SavedAction, SavedLine } from "../canvas/kind";
 import { keepItem } from "../canvas/fetched";
-import { flushItem } from "../canvas/flush";
+import { flushedItem } from "../canvas/flush";
 import { liveLayer, STAGE_SHARE, useLiveState } from "../office/live/layer";
 import { LiveBody } from "../office/live/LiveBody";
 import { leaveLive } from "../office/live/leave";
@@ -400,7 +400,7 @@ export function FileTabView({
       { name, service: serviceOf(tab), sending: !!(copy && tab.back) },
       {
         set: (params) => registry.linkOf(link).request<LiveSetAnswer>("work.office.live.set", { workspaceId: workspace.id, tabId: tab.id, ...params }, { timeoutMs: 120_000, lane: "ui" }),
-        flush: () => flushItem(item.id),
+        flush: () => flushedItem(item.id),
         leave: () => leaveLive(item.id, name),
         typed: () => liveLayer.typed(item.id),
         confirm: confirmAction,

@@ -56,7 +56,7 @@ export async function liveRows(now = Date.now()): Promise<HealthRow[]> {
   if (!e?.session) return []
   return Promise.all(
     liveTenants(e.app.getPath('userData')).map(async (tenant) => {
-      const cookies = await e.session.fromPartition(`persist:office-live-${tenant}`).cookies.get({ domain: 'login.microsoftonline.com' }).catch(() => [])
+      const cookies = await e.session.fromPartition(`persist:office-live-${tenant}`, { cache: false }).cookies.get({ domain: 'login.microsoftonline.com' }).catch(() => [])
       return liveRow(tenant, cookies, now)
     })
   )
@@ -67,7 +67,7 @@ export async function signOutLive(tenant: string): Promise<void> {
   if (!TENANT.test(tenant)) throw new Error('No such Office for the web session.')
   const e = await electron()
   if (!e?.session) throw new Error('This computer has no Office for the web session.')
-  const ses = e.session.fromPartition(`persist:office-live-${tenant}`)
+  const ses = e.session.fromPartition(`persist:office-live-${tenant}`, { cache: false })
   await ses.clearStorageData()
   await ses.clearCache()
 }

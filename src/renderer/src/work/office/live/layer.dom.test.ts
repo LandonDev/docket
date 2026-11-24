@@ -110,6 +110,24 @@ describe("the layer", () => {
     expect(guests().map((g) => g.getAttribute("data-office-live"))).toEqual(["c", "d", "e"]);
   });
 
+  it("keeps a guest past three that Word still holds while saving", async () => {
+    const b = bridge();
+    const layer = new LiveLayer(() => b as never);
+    for (const key of ["a", "b", "c"]) {
+      layer.show(key, `${FILE}&${key}`, RECT, false);
+      await flush();
+      const el = guests().find((g) => g.getAttribute("data-office-live") === key)! as unknown as { getWebContentsId(): number } & HTMLElement;
+      el.getWebContentsId = () => key.charCodeAt(0);
+      el.dispatchEvent(new Event("dom-ready"));
+      layer.hide(key);
+    }
+    b.unload.mockResolvedValue("holding");
+    layer.show("d", `${FILE}&d`, RECT, false);
+    await flush();
+    expect(b.unload).toHaveBeenCalledWith("a".charCodeAt(0), false);
+    expect(guests().map((g) => g.getAttribute("data-office-live"))).toEqual(["a", "b", "c", "d"]);
+  });
+
   it("leaves at once when Word lets go, waits while it holds, then asks", async () => {
     const b = bridge();
     const layer = new LiveLayer(() => b as never);
