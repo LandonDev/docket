@@ -138,10 +138,13 @@ open, every way an agent's change is seen or taken asks it:
 - History's `branches` and `decide` on a shared document (a guest-linked
   LifeOS document, a `.tcdoc` `madeFromShared` calls shared). A decide
   carries the branch's `editedAt` as the screen read it (the desktop's
-  document and history canvases send it): a branch an agent changed since
-  is refused (`BRANCH_MOVED`, history/serviceRoutes.ts) rather than taken.
-  A client that sends none (the phone, until its own build does) is not
-  bound. The check runs in the same turn of the document as the take
+  document and history canvases send it, and the phone): a branch an agent
+  changed since is refused (`BRANCH_MOVED`, history/serviceRoutes.ts) rather
+  than taken. On a shared document an Accept that sends none is refused
+  (`NEEDS_REVISION`, round 3); a Reject needs none. A private branch's
+  revision is later than its last at every update, two in one millisecond
+  included (history/privateBranches.ts); a LifeOS document's is LifeOS's own
+  (work-kit's ConvexVersionStore), which this host does not set. The check runs in the same turn of the document as the take
   (round 2): every write, format, restore, accept and reject on the service's
   history goes through one queue per document on the host
   (history/hostQueue.ts), so an agent's write asked before his Accept lands

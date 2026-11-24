@@ -28,6 +28,19 @@ async function rig() {
 }
 
 describe('PrivateBranchStore', () => {
+  it("gives a branch a new revision at every update, two in one millisecond included, so a decision bound to one never takes the other", async () => {
+    const r = await rig()
+    const still = new PrivateBranchStore(r.inner, join(r.dir, 'data', 'private-branches'), () => 1_800_000_000_000)
+    const id = await still.createBranch(r.name, { state: strToU8('one'), baseVersionId: r.base, authors: ['agent:env_box:t1'], label: 'Suggestions' }, r.file)
+    const revision = async () => (await still.branches(r.name, r.file)).find((b) => b.id === id)!.editedAt
+    const seen = [await revision()]
+    for (const words of ['two', 'three']) {
+      await still.setBranch(r.name, id, { state: strToU8(words) }, r.file)
+      seen.push(await revision())
+    }
+    expect(new Set(seen).size).toBe(3)
+  })
+
   it('names an agent\'s branch by its principal: a thread\'s or a LifeOS bot\'s, never a person\'s', () => {
     expect(isAgentBranch({ authors: ['agent:env_box:t1'] })).toBe(true)
     expect(isAgentBranch({ authors: ['lifeos:bot:k1'] })).toBe(true)

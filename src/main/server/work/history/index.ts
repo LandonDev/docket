@@ -73,6 +73,8 @@ async function othersRead(ctx: WorkCtx, source: CanvasSource): Promise<boolean> 
 
 const call = <T>(ctx: WorkCtx, route: string, body: Record<string, unknown>): Promise<T> => ctx.service.internal(`/internal/history/${route}`, body) as Promise<T>
 
+export const NEEDS_REVISION = 'Others read this document: look at the change again, then take it from what is shown.'
+
 export const READ_ONLY = "This document is a mail's attachment, read only: keep it as a document of your own to decide its changes."
 
 export const history: WorkModule = {
@@ -91,6 +93,12 @@ export const history: WorkModule = {
     if ((req.method === 'work.history.branches' || req.method === 'work.history.decide') && !pressesFor(by)) {
       at(req.params.source)
       if (await othersRead(ctx, req.params.source)) throw new Error(NEEDS_PRESS)
+    }
+    // Taken into a document others read, a branch is bound to the revision his screen read (round 3): an Accept with
+    // none could take words an agent wrote after he looked.
+    if (req.method === 'work.history.decide' && req.params.accept && req.params.editedAt === undefined) {
+      at(req.params.source)
+      if (await othersRead(ctx, req.params.source)) throw new Error(NEEDS_REVISION)
     }
     switch (req.method) {
       case 'work.history.versions': {

@@ -162,7 +162,9 @@ export class PrivateBranchStore implements VersionStore {
     if (!row) return this.inner.setBranch(name, id, change, file)
     // Decided: accepted words are in the document now, rejected ones are gone; nothing of it stays.
     if (change.status && change.status !== 'pending') return this.save(file, rows.filter((r) => r.id !== id), { [id]: null })
-    row.editedAt = this.now()
+    // Its revision, which a decision is bound to (history/serviceRoutes.ts): later than the last, two updates in one
+    // millisecond included, so an Accept bound to what he read never takes words written in the same tick.
+    row.editedAt = Math.max(this.now(), (row.editedAt ?? 0) + 1)
     this.save(file, rows, change.state ? { [id]: change.state } : {})
   }
 }

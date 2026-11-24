@@ -13,7 +13,7 @@ import { servicePaths } from '../service/config'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
-import { history, namesFor } from './index'
+import { history, namesFor, NEEDS_REVISION } from './index'
 import { NEEDS_PRESS } from '../files/policy'
 import { BRANCH_MOVED } from './serviceRoutes'
 
@@ -131,12 +131,12 @@ describe('history of a .tcdoc on this host', () => {
     r.convex.docs.get('kd1')!.shared = true
     await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd1', markdown: md('# Plan', 'Alpha!', 'Bravo!'), because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
     const source = { at: 'lifeos', table: 'docs', id: 'kd1' } as const
-    const { branches, names } = await r.ask<{ branches: { id: string; diff: HistoryCompare['diff'] }[]; names: Record<string, string> }>('work.history.branches', { source })
+    const { branches, names } = await r.ask<{ branches: { id: string; editedAt: number; diff: HistoryCompare['diff'] }[]; names: Record<string, string> }>('work.history.branches', { source })
     expect(branches).toHaveLength(1)
     expect(names['agent:env_box:t1']).toBe('Venue for the spring LAN')
     const rows = branches[0]!.diff.rows
     expect(rows.map((row) => row.right?.text)).toEqual(['Alpha!', 'Bravo!'])
-    expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: [rows[0]!.id], accept: true })).toEqual(expect.objectContaining({ left: 1 }))
+    expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: [rows[0]!.id], accept: true, editedAt: branches[0]!.editedAt })).toEqual(expect.objectContaining({ left: 1 }))
     expect((await r.service.collab.read('kd1')).markdown).toBe('# Plan\n\nAlpha!\n\nBravo\n')
     expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: 'all', accept: false })).toEqual({ left: 0 })
     expect((await r.ask<{ branches: unknown[] }>('work.history.branches', { source })).branches).toEqual([])
@@ -144,6 +144,22 @@ describe('history of a .tcdoc on this host', () => {
 })
 
 describe('a decision bound to what he read', () => {
+  it('refuses an Accept on a shared document that names no revision, and takes a Reject without one', async () => {
+    const r = await rig()
+    r.convex.docs.set('kd6', { _id: 'kd6', sector: 'life', seq: 0, title: 'Plan', shared: false, markdown: '', plain: '' })
+    const fence = { sectors: 'all' }
+    await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd6', markdown: md('# Plan', 'Alpha'), because: 'asked', botId: 'k', fence })
+    r.convex.docs.get('kd6')!.shared = true
+    await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd6', markdown: md('# Plan', 'Alpha!'), because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
+    const source = { at: 'lifeos', table: 'docs', id: 'kd6' } as const
+    const [branch] = (await r.ask<{ branches: { id: string; editedAt: number }[] }>('work.history.branches', { source })).branches
+    await expect(r.ask('work.history.decide', { source, branchId: branch!.id, which: 'all', accept: true })).rejects.toThrow(NEEDS_REVISION)
+    expect((await r.service.collab.read('kd6')).markdown).toBe('# Plan\n\nAlpha\n')
+    // With the revision he read, it is taken.
+    await r.ask('work.history.decide', { source, branchId: branch!.id, which: 'all', accept: true, editedAt: branch!.editedAt })
+    expect((await r.service.collab.read('kd6')).markdown).toBe('# Plan\n\nAlpha!\n')
+  })
+
   it("refuses an Accept on a branch an agent changed since his screen read it, and takes one on the branch as read", async () => {
     const r = await rig()
     r.convex.docs.set('kd5', { _id: 'kd5', sector: 'life', seq: 0, title: 'Plan', shared: false, markdown: '', plain: '' })
@@ -183,10 +199,10 @@ describe('who may ask', () => {
       await expect(r.ask('work.history.branches', { source }, by)).rejects.toThrow(NEEDS_PRESS)
       await expect(r.ask('work.history.decide', { source, branchId: 'b', which: 'all', accept: true }, by)).rejects.toThrow(NEEDS_PRESS)
     }
-    const { branches } = await r.ask<{ branches: { id: string }[] }>('work.history.branches', { source }, approver)
+    const { branches } = await r.ask<{ branches: { id: string; editedAt: number }[] }>('work.history.branches', { source }, approver)
     expect(branches).toHaveLength(1)
     expect((await r.service.collab.read('kd4')).markdown).toBe('# Plan\n\nAlpha\n')
-    expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: 'all', accept: true }, approver)).toEqual(expect.objectContaining({ left: 0 }))
+    expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: 'all', accept: true, editedAt: branches[0]!.editedAt }, approver)).toEqual(expect.objectContaining({ left: 0 }))
     expect((await r.service.collab.read('kd4')).markdown).toBe('# Plan\n\nAlpha!\n')
     // On a document only he reads, a key that may operate decides as before.
     r.convex.docs.get('kd4')!.shared = false
