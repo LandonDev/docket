@@ -2000,6 +2000,10 @@ picks, and stays linked to that file: each later edit is written to it.
   `writeBack` (`deliver`, copies.ts). The revision written is the one read before the export, so an edit during it is
   written next. A document no item shows is looked at every 30 s (an edit from the phone's page). A PDF is written
   whole.
+- **An agent only suggests on a linked document** (docs/target.ts `othersOpen`, `linkedOut`): the link writes each
+  edit to a file others can open with no press of his, so an agent's own write waits as a suggestion and the link
+  carries none of it before his accept, as for a Word file's kept document. A renamed linked `.tcdoc` keeps its links
+  (files/moved.ts `moveCopies`).
 - **A change made there stops it.** A version that moved there (a colleague's save in Teams) answers a conflict: the
   link is `changed` and nothing more is written until his press. A file gone there is `gone`, never made again on its
   own. A place that does not answer (`unreachable`: the computer asleep, the VPN down) keeps the document as it is,

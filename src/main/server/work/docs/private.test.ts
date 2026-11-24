@@ -339,6 +339,22 @@ describe("the document kept for a Word file of another computer", () => {
   })
 })
 
+describe('a document linked by Save As to a file others can open', () => {
+  it("is shared: an agent's own write waits as a suggestion, so the link's own save never carries it there before his press", async () => {
+    const r = await rig()
+    ensureFilesTables(r.db)
+    const source = await r.make(join(r.work, 'Plan.tcdoc'))
+    expect((await r.ask<DocOpen>('docs', 'work.docs.open', { source })).shared).toBe(false)
+    r.db
+      .prepare(`INSERT INTO work_files_links (id, workspace_id, doc, format, host, path, name, place, version, sha, made_at) VALUES ('l1', 'ws1', ?, 'docx', 'env_mac', '/Teams/General/Plan.docx', 'Plan.docx', 'Esports Staff', 'v0', 'sha', ?)`)
+      .run(source.path, Date.now())
+    expect(await r.ask<DocOpen>('docs', 'work.docs.open', { source })).toMatchObject({ shared: true })
+    const wrote = await r.tool('doc_write', { file: source.path, markdown: AFTER, because: 'own' })
+    expect(wrote.text).toMatch(/others share this document/)
+    expect(await r.text(source.path)).not.toContain(SUGGESTED)
+  })
+})
+
 describe("a document's live revision", () => {
   it('moves with a deletion alone, as with any edit, and stands still while nothing changes', async () => {
     const r = await rig()

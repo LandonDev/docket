@@ -105,9 +105,28 @@ function keptForWord(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
   return near.some((r) => r.doc === path || canonicalPath(r.doc) === at)
 }
 
-/** Whether anyone but the owner can open it: its LifeOS row is shared (a guest link), or the file lies where others reach it. */
+/**
+ * Whether a document is linked by Save As (`work_files_links.doc`, files/saveAs.ts): the host writes each of its edits
+ * to the linked file again after a pause, so what it holds reaches a file others can open with no press of his.
+ */
+function linkedOut(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
+  if (!ctx.db || !path.toLowerCase().endsWith('.tcdoc')) return false
+  if (!(ctx.db.prepare(`SELECT count(*) AS n FROM pragma_table_info('work_files_links')`).get() as { n: number }).n) return false
+  const docs = ctx.db.prepare(`SELECT DISTINCT doc FROM work_files_links`).all() as { doc: string }[]
+  const name = basename(path).toLowerCase()
+  const near = docs.filter((r) => basename(r.doc).toLowerCase() === name)
+  if (!near.length) return false
+  const at = canonicalPath(path)
+  return near.some((r) => r.doc === path || canonicalPath(r.doc) === at)
+}
+
+/**
+ * Whether anyone but the owner can open it: its LifeOS row is shared (a guest link), the file lies where others reach
+ * it, or Save As links it to a file that does: an agent only suggests on it, so the link carries no word of an agent's
+ * before his accept.
+ */
 export const othersOpen = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, t: DocTarget, row: LifeosDocRow | null): boolean =>
-  !!row?.shared || (t.at === 'file' && madeFromShared(ctx, t.source))
+  !!row?.shared || (t.at === 'file' && (madeFromShared(ctx, t.source) || linkedOut(ctx, t.path)))
 
 /** Its title: LifeOS's, or the file's name without `.tcdoc`. */
 export const titleOf = (t: DocTarget, row: LifeosDocRow | null): string => row?.title ?? basename(t.at === 'file' ? t.path : t.doc).replace(/\.tcdoc$/i, '')
