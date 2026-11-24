@@ -6,6 +6,8 @@ import { Button } from "../../components/ui/button";
 import { EventRow } from "../agenda/AgendaView";
 import type { AgendaEvent } from "../tasks/client";
 import { Empty, Events, StepForm } from "./ClashDialog";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
+import { answerAs } from "../kit.preview";
 
 /**
  * Clashes, still, for `bun run ui:preview
@@ -23,6 +25,12 @@ if (typeof Element !== "undefined" && !Element.prototype.getAnimations) Element.
 
 const noop = (): void => {};
 const HOUR = 3_600_000;
+
+// The jobs as the rail names them: a clash names the other job by its workspace's name, never the sector's word.
+const named = (sector: string, name: string) => ({ id: `ws_${sector}`, name, path: `/home/work/${name}`, kind: "work", sector, createdAt: 1, environmentId: "local" });
+const JOBS = [named("purdue", "Purdue Esports"), named("ref", "Refereeing"), named("life", "Life"), named("cosmic", "CosmicGames")];
+workspaceStore.reset();
+workspaceStore.attach(answerAs((method) => (method === "workspace.list" ? JOBS : method === "project.list" ? [] : undefined)));
 /** Thursday, 26 November 2026, 1:00 PM on this machine's clock. */
 const T0 = new Date(2026, 10, 26, 13, 0).getTime();
 

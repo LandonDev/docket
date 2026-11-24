@@ -2201,7 +2201,7 @@ Around the canvas:
   muted line of its time span (tabular; a start on another day than the
   title's line names takes its weekday within three days, "Wed 11:00 PM",
   else its date, "Jan 7, 8:00 AM", and the end is said beside its own
-  start, "Tue 11:00 PM – Wed 3:00 PM") and, 8px after,
+  start, "Tue 11:00 PM to Wed 3:00 PM") and, 8px after,
   its job (the sector's 8px dot and, 8px on, its name), then where it is (the place as the
   map names it, less the country; his calendar's own words when the point
   is a town's centre or a start standing in); a long title or place
@@ -2235,7 +2235,7 @@ Around the canvas:
   until he edits and the day still named under To; a From or a To that
   is the second time its clock shows, the night the clocks go back, says
   so under its field ("Second 1:30 AM", "Next day, second 1:30 AM"), as
-  an event's own times do ("1:30 AM – second 1:30 AM"); a time already
+  an event's own times do ("1:30 AM to second 1:30 AM"); a time already
   gone is refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
@@ -2278,7 +2278,10 @@ Around the canvas:
   as he sees it, and LifeOS refuses it in words when a calendar changed
   the pair a moment before.
   In the Week and the Month a clashing event's block carries a 6px
-  `warning` dot before its title, named "Clashes with another event";
+  `warning` dot before its title, named "Clashes with another event".
+  Events at once share their day's width in the Week; a block under 64px
+  keeps its title on one line, cut whole with an ellipsis, and drops its
+  time line, since where it stands says the time (agenda/agenda.css);
   pressing the event opens its day's list, where the line is. An event
   that is over wears none, as its row carries no line.
   Start places is a section of Settings → Work on the Work home host,

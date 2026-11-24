@@ -9,3 +9,28 @@
     border-color: var(--border);
   }
 }
+
+/*
+ * Two events at once share their day's width in the Week, so a block can be
+ * under 64px. There work-kit's title, set to wrap over two lines, breaks
+ * mid-word ("Sta / ff…") and its time line is cut ("7:00 A"). In a block
+ * that narrow the title keeps one line, cut whole with an ellipsis, and the
+ * time line goes: where the block stands on the grid says the time.
+ * agendaWeek.dom.test.tsx holds work-kit's shapes these name.
+ */
+.wk-calendar button.absolute {
+  container: wk-event / inline-size;
+}
+@container wk-event (width < 64px) {
+  .wk-calendar .line-clamp-2 {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: hidden;
+    overflow-wrap: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wk-calendar button.absolute > span ~ span {
+    display: none;
+  }
+}

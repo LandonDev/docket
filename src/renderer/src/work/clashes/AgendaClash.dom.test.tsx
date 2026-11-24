@@ -64,6 +64,8 @@ describe("a clash on the Agenda row", () => {
     expect(line.className).toContain("text-xs");
     // Under the place, in the row's own column.
     expect(line.previousElementSibling?.textContent).toBe("Cedar Hall");
+    // The title keeps only the verb's own width (72px) clear at its end; the lines under it read the column's whole width.
+    expect(line.parentElement!.querySelector("[data-event-title]")!.className).toContain("pr-18");
     // The same span the list shows, every job's.
     const asked = lifeos.asked.find((a) => a.name === "clashes:range")!.args as { from: number; to: number };
     expect(asked.to - asked.from).toBe(14 * 24 * HOUR);

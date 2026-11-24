@@ -9,6 +9,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { jobNameNow } from "../jobName";
 import { tellAdded } from "./added";
 import { eventPayload, type EventForm, pad } from "./newEvent";
 
@@ -89,10 +90,12 @@ function Body({
   const sourceId = calendar || calendars[0]?._id;
   const made = eventPayload(form);
   const asks = typeof made !== "string" && (made.attendees?.length ?? 0) > 0;
+  // Read, and none of the job's calendars takes events: said before the press, which stays off.
+  const none = sources !== undefined && !sourceId;
 
   const submit = () => {
     if (typeof made === "string") return setError(made);
-    if (!sourceId) return setError("No calendar in this sector takes new events here.");
+    if (!sourceId) return;
     setError(null);
     setPending(true);
     saveOp({ kind: "create", sourceId, payload: made })
@@ -107,7 +110,7 @@ function Body({
         },
         (err: unknown) => {
           setPending(false);
-          const words = workErrorWords(err) || "LifeOS refused it";
+          const words = workErrorWords(err) || "LifeOS did not add the event";
           setError(/NEEDS_WRITE_GRANT/.test(words) ? "This calendar's Google account must be connected again before LifeOS may write to it." : words);
         },
       );
@@ -139,16 +142,21 @@ function Body({
           <Input value={form.where} onChange={(e) => patch({ where: e.target.value })} autoComplete="off" />
         </Field>
         <Field label="Invite" hint="Addresses, comma between">
-          <Input value={form.invite} onChange={(e) => patch({ invite: e.target.value })} placeholder="sam@purdue.edu" autoComplete="off" spellCheck={false} />
+          <Input value={form.invite} onChange={(e) => patch({ invite: e.target.value })} autoComplete="off" spellCheck={false} />
         </Field>
         {calendars.length > 1 ? (
           <Field label="Calendar">
             <ChoiceSelect label="Calendar" value={sourceId ?? ""} options={calendars.map((c) => ({ value: c._id, label: c.label ?? c.channel ?? c.account }))} onChange={setCalendar} />
           </Field>
         ) : null}
+        {none ? (
+          <p data-no-calendar className="text-[13px] leading-5 text-muted-foreground">
+            {jobNameNow(sector)} has no calendar that takes new events.
+          </p>
+        ) : null}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined} />
+      <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined || none} />
     </form>
   );
 }

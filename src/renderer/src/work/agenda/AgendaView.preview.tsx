@@ -1,13 +1,14 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/agenda/AgendaView.preview.tsx#AgendaPreview --props '{"state":"list"}'`:
 // the Agenda view under its header, over a LifeOS that answers from made-up events. States: `list` (the next days),
-// `week`, `month`, `new` (New event over the list), `empty` and `loading`. Rendered by nothing in the app.
+// `week`, `month`, `new` (New event over the list), `new-none` (New event where no calendar of the job takes events),
+// `empty` and `loading`. Rendered by nothing in the app.
 import { useEffect } from "react";
 import { startOfDay } from "work-kit/views/lib/agenda";
 import { keepPlace } from "../shell/place";
 import { JOB, standUpView, ViewAt } from "../kit.preview";
 import { agendaPlace, type AgendaShow } from "./place";
 
-type State = AgendaShow | "new" | "empty" | "loading";
+type State = AgendaShow | "new" | "new-none" | "empty" | "loading";
 
 const TODAY = startOfDay(Date.now());
 const HOUR = 3_600_000;
@@ -33,13 +34,13 @@ export function AgendaPreview({ state = "list" }: { state?: State }) {
     ready = true;
     // The visit opens on the view the workspace kept: the state's own, on today.
     keepPlace(JOB.id, "agenda", { view: state === "week" || state === "month" ? state : "list", day: TODAY, on: TODAY });
-    standUpView("agenda", { "events:range": state === "loading" ? undefined : state === "empty" ? [] : EVENTS, "people:directory": [], "sources:list": [{ _id: "s1", kind: "google", label: "landon@purdue.edu", sector: "purdue", calendars: [{ id: "c1", name: "Esports", writable: true }] }] });
+    standUpView("agenda", { "events:range": state === "loading" ? undefined : state === "empty" ? [] : EVENTS, "people:directory": [], "sources:list": state === "new-none" ? [] : [{ _id: "s1", kind: "gcal", account: "landon@purdue.edu", label: "landon@purdue.edu", sector: "purdue", enabled: true }] });
   }
   // New event is the header's own press: here the place it sets, once the visit has opened.
   useEffect(() => {
-    if (state !== "new") return;
+    if (state !== "new" && state !== "new-none") return;
     const t = setTimeout(() => agendaPlace.set({ ...agendaPlace.get(), adding: "now" }), 40);
     return () => clearTimeout(t);
   }, [state]);
-  return <ViewAt view="agenda" height={state === "month" || state === "week" || state === "new" ? 700 : 560} />;
+  return <ViewAt view="agenda" height={state === "month" || state === "week" || state === "new" || state === "new-none" ? 700 : 560} />;
 }
