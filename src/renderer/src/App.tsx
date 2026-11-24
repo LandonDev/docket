@@ -25,8 +25,6 @@ import { Sidebar } from "./chrome/Sidebar";
 import { confirmAction } from "./chrome/ConfirmDialog";
 import { actionFailed } from "./lib/threadActionToast";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
-import { ComputerAllowToasts } from "./chrome/ComputerAllowToasts";
-import { SetupFirstRun } from "./surfaces/setup/SetupFirstRun";
 import { MoveToasts } from "./chrome/ThreadHostChip";
 import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
 import { selectionFor } from "./lib/threadBatchSelection";
@@ -142,7 +140,6 @@ import {
 } from "./lib/handoff";
 import { isEditTool } from "./lib/harness/preview";
 import type { ComposerIntent } from "./lib/composerAction";
-import { ThreadBanners } from "./chrome/ThreadBanners";
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import type { EditorNavigation, OpenFileFn, OpenFileOptions } from "./lib/search";
@@ -304,7 +301,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, setupHostChunk, terminalChunk, threadBannersChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { choose, openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { returnOf } from "./lib/workReturn";
@@ -330,6 +327,8 @@ const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" l
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
 const OutboxView = workOutboxChunk.surface("OutboxView", <SurfaceSkeleton kind="page" label="Loading the Outbox" />);
 const WorkPlacePage = workPlacesChunk.surface("WorkPlacePage", <SurfaceSkeleton kind="column" label="Loading the page" />);
+const SetupHost = setupHostChunk.surface("SetupHost");
+const ThreadBanners = threadBannersChunk.surface("ThreadBanners");
 const ComputersView = computersChunk.surface("ComputersView", <SurfaceSkeleton kind="page" label="Loading Computers" />);
 const FullWindow = fullWindowChunk.surface("FullWindow");
 const PopOut = popOutChunk.surface("PopOut");
@@ -3768,8 +3767,8 @@ export default function App() {
       />
       <MacBridgeToasts />
       <ComputerAskToasts />
-      <ComputerAllowToasts />
-      <SetupFirstRun />
+      {/* The setup link's Allow notice and first screen: local methods, so the desktop alone. */}
+      {isWebMode() ? null : <SetupHost />}
       <HtmlRenderOverlay />
       {whatsNew ? (
         <WhatsNewDialog

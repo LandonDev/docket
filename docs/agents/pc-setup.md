@@ -424,7 +424,9 @@ until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
   and Teams reader under it; Folders in Files with each Work workspace, all
   ticked. **Make link** shows the link with Copy and "Ends in m:ss"; Cancel
   withdraws it (`devices.setup.cancel`), Done and Escape keep it.
-- **The Allow notice** (`chrome/ComputerAllowToasts.tsx`, mounted in App): on
+- **The Allow notice** (`chrome/ComputerAllowToasts.tsx`, with the first screen in
+  `surfaces/setup/SetupHost.tsx`, the `setupHost` chunk App mounts on the desktop; none of the setup's
+  modules is in the first paint, `NEVER_IN_ENTRY` in scripts/check-bundle-size.ts): on
   `device-allow`, a held toast "<name> wants to join", the three words, Allow
   (`devices.setup.allow`) and Remove (`devices.setup.deny`).
 - **On the computer** (`surfaces/setup/`, the `setup` chunk): one dialog that

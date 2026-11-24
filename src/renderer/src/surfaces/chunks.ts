@@ -51,6 +51,10 @@ export const selectChunk = defineChunk("select", () => import("../components/sel
 
 /** A setup link pasted on a computer: the paste, the confirm, the steps and Ready (surfaces/setup/UseSetupLink.tsx). */
 export const setupChunk = defineChunk("setup", () => import("./setup/UseSetupLink"));
+/** The paused, failed and stale-watch banners above the threads (chrome/ThreadBanners.tsx): a rare state, a beat after the first paint. */
+export const threadBannersChunk = defineChunk("threadBanners", () => import("../chrome/ThreadBanners"));
+/** The setup link's window-long parts: the giver's Allow notice and the computer's first screen (setup/SetupHost.tsx). */
+export const setupHostChunk = defineChunk("setupHost", () => import("./setup/SetupHost"));
 
 /** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
 export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));

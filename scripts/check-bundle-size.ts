@@ -109,7 +109,17 @@ export const NEVER_IN_ENTRY = [
   // A page's components ride the pages that draw them; the skeleton reads its frame from components/pageLayout.ts.
   // A thread's options ride threadTuneChunk (the chooser's tune view, the thread menu's Options… dialog).
   'src/renderer/src/components/page.tsx',
-  'src/renderer/src/chrome/ThreadTune.tsx'
+  'src/renderer/src/chrome/ThreadTune.tsx',
+  // The thread banners ride threadBannersChunk (paused, failed, stale watches: rare, and a beat late is fine).
+  'src/renderer/src/chrome/ThreadBanners.tsx',
+  // The setup link rides setupHostChunk (the Allow notice, the first screen) and setupChunk (the dialog).
+  'src/renderer/src/chrome/ComputerAllowToasts.tsx',
+  'src/renderer/src/surfaces/setup/SetupHost.tsx',
+  'src/renderer/src/surfaces/setup/SetupFirstRun.tsx',
+  'src/renderer/src/surfaces/setup/setupFlow.ts',
+  'src/renderer/src/surfaces/setup/UseSetupLink.tsx',
+  'src/renderer/src/surfaces/settings/hosts/computersText.ts',
+  'src/renderer/src/lib/devicesClient.ts'
 ]
 
 /**
