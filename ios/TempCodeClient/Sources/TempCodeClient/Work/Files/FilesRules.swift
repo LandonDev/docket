@@ -253,6 +253,8 @@ public enum FilesRules {
     public static func opening(_ entry: FileEntry, place: FilePlace, caps: Caps) -> Opening {
         let original = original(entry, place: place)
         if case .lifeos? = entry.ref, [.document, .sheet].contains(entry.kind) { return caps.operate ? .item : .quickLook(original) }
+        // A file others can open shows its facts alone, whatever its kind: no reader reads its bytes to the phone.
+        if place.shared || entry.shared == true { return .quickLook(original) }
         // A document or sheet kept as a file in a place of his own is seated too: the hosted editor takes it
         // first, and where its host will not open it there the screen shows Quick Look in its place (`.readOnly`).
         if original == .readOnly, caps.operate { return .item }

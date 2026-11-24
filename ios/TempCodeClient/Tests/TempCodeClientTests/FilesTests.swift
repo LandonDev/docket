@@ -112,6 +112,9 @@ struct FilesRulesTests {
         #expect(FilesRules.opening(try decode(entry("Memo.tcdoc", kind: "document")), place: folder, caps: full) == .item)
         #expect(FilesRules.opening(try decode(entry("Memo.tcdoc", kind: "document")), place: folder, caps: .readOnly) == .quickLook(.readOnly))
         #expect(FilesRules.opening(try decode(entry("Roster.xlsx", kind: "sheet")), place: library, caps: full) == .quickLook(.facts(host: "MacBook")))
+        // A PDF, deck, picture or video others can open is facts only too: no native reader reads its bytes.
+        #expect(FilesRules.opening(pdf, place: library, caps: full) == .quickLook(.facts(host: "MacBook")))
+        #expect(FilesRules.opening(try decode(entry("Kickoff.mp4", kind: "video")), place: library, caps: full) == .quickLook(.facts(host: "MacBook")))
         #expect(FilesRules.opening(try decode(entry("Cut.mov", kind: "audio", size: 60 * 1024 * 1024)), place: folder, caps: full) == .quickLook(.tooBig))
         let lifeos: FileEntry = try decode(#"{"key":"lifeos:docs:d1","ref":{"at":"lifeos","table":"docs","id":"d1"},"folder":null,"name":"Run of show","kind":"document"}"#)
         #expect(FilesRules.opening(lifeos, place: folder, caps: full) == .item)
