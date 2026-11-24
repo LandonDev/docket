@@ -7,6 +7,8 @@ import { useRovingList } from "../../hooks/useRovingList";
 import type { SectorKey } from "@shared/work";
 import { useEnvironments } from "../../lib/connection";
 import { cn } from "../../lib/cn";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { registerToastAnchor } from "../../lib/toastAnchor";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkPlaceProps } from "../places/registry";
@@ -378,8 +380,25 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
  * read the host is not at fault for has its own words (`said`).
  */
 function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
-  const detail = failure.said || TIMEOUT_WORDS.test(failure.error) ? undefined : failure.error;
-  return <PageLine failed word={failure.said ?? `${name} did not answer`} detail={detail} action={failure.retry ? { label: "Retry", run: failure.retry } : undefined} />;
+  // The state is the word, whole; what to do about it is the muted detail, which gives way first on a narrow page.
+  const [word, detail] = failure.said ? [failure.said] : splitFirst(hostFailureWords(failure.error, name));
+  return <PageLine failed word={word!} detail={detail} action={failure.retry ? { label: "Retry", run: failure.retry } : undefined} />;
+}
+
+/** "Work is off on the box. Turn it on in Settings, Work." as its first sentence and the rest. */
+const splitFirst = (line: string): [string, string?] => {
+  const at = line.indexOf(". ");
+  return at < 0 ? [line] : [line.slice(0, at + 1), line.slice(at + 2)];
+};
+
+/**
+ * A host's failed read in one true line: "did not answer" only for a wait that ran out; else the error as Work says it
+ * (`workErrorWords`: "The connection to Mac dropped. Try again once it is back."), never the host's raw text, and where it
+ * has no plain words, that the host could not read this part.
+ */
+export function hostFailureWords(error: string, name: string): string {
+  if (TIMEOUT_WORDS.test(error)) return `${name} did not answer`;
+  return workErrorWords(error, { host: nameInLine(name) }) || `${name} could not read this`;
 }
 
 /**

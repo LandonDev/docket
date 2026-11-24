@@ -214,8 +214,13 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   same (`useStableRows(rows, ways)`, today/stable.ts; `ways` is whatever
   the rows' presses close over, or null): rows are memoised.
 - A read that did not come back is a `failed` entry `{environmentId, error,
-  said?, retry?}`: the page says "<host> did not answer", with `error`
-  beside it unless it is the wait running out (`TIMED_OUT`, today/read.ts);
+  said?, retry?}`: the page says "<host> did not answer" only for the wait
+  running out (`TIMED_OUT`, today/read.ts); else the error as Work says it
+  (`hostFailureWords`, through `workErrorWords`), its first sentence the
+  line's word ("The connection to Mac dropped.") and the rest its muted
+  detail, which gives way first ("Try again once it is back."), and
+  "<host> could not read this" where it has no plain words, never the
+  host's raw text;
   `said` is the whole line in its place, for a read no host is at fault
   for ("LifeOS could not read clashes"). A failure from a host whose link
   is not open is no section's line: `page` takes it out and names the host

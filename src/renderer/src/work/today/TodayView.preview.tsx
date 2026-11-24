@@ -85,7 +85,7 @@ function modelOf(state: State) {
       return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
     case "hosts":
       return page(
-        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, {})],
+        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, { failed: [{ environmentId: "box", error: "Work is off on this host", retry: noop }] })],
         opts("ok", [...JOBS, job("mac", "purdue", false)]),
       );
     case "refused":

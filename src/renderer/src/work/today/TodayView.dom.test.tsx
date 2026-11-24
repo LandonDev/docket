@@ -123,7 +123,7 @@ import { nextHeld } from "./HeldSheet";
 import { forgetEach, readState, TIMED_OUT, useEachWorkspace } from "./read";
 import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
-import { View } from "./TodayView";
+import { hostFailureWords, View } from "./TodayView";
 import type { TodaySource } from "./types";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -283,14 +283,22 @@ describe("Today", () => {
     await loadOutbox();
     render(<View onClose={() => {}} />);
     const line = section("held").querySelector<HTMLElement>('[data-view-state="failed"]')!;
-    expect(line.textContent).toContain("Mac did not answer");
-    expect(line.textContent).toContain("socket closed");
+    // A host that answered with a dropped link is said as Work says it, never with the link's raw words.
+    // The state leads; what to do is its muted detail, which gives way first.
+    expect(line.querySelector('[data-slot="status-word"]')!.textContent).toBe("The connection to Mac dropped.");
+    expect(line.querySelector('[data-slot="status-detail"]')!.textContent).toBe("Try again once it is back.");
     expect(rowTitles()).toEqual(["Send to Marcus Bell"]);
     world.listDown.clear();
     world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { sector: "ref", workspaceId: "ws2" })]);
     fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(rowTitles()).toEqual(["Send to Marcus Bell", "Send to Northfield Parks"]));
     expect(section("held").querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
+  it("says a host's failure in Work's words: did not answer only for a wait, its plain refusal, or that it could not read this", () => {
+    expect(hostFailureWords(TIMED_OUT, "Mac")).toBe("Mac did not answer");
+    expect(hostFailureWords("Work is off on this host", "The box")).toBe("Work is off on the box. Turn it on in Settings, Work.");
+    expect(hostFailureWords("work.money.owed failed at /srv/agents/data/ledger.json", "The box")).toBe("The box could not read this");
   });
 
   it("says did not answer once for a host whose wait ran out, on the rows' grid; a read LifeOS refused is said in its own words", async () => {
