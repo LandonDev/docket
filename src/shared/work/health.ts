@@ -66,7 +66,7 @@ export interface Lapse {
  * row (work/health.ts `cleanRow`) and the page never sends one. A fix is a
  * repair; nothing that sends, grants, or turns Work off is ever one.
  */
-export const HEALTH_RUN_METHODS: readonly string[] = ['work.lifeos.signOut']
+export const HEALTH_RUN_METHODS: readonly string[] = ['work.lifeos.signOut', 'work.office.live.signOut']
 
 /**
  * The places a `page` fix may open: the LifeOS sign-in dialog, OneDrive's sign-in on the Windows VM the row's host

@@ -260,6 +260,8 @@ export const OfficeRequestSchemas = [
   request('work.office.live.of', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100) })),
   request('work.office.live.libraryDefault', LiveLibrary),
   request('work.office.live.setLibraryDefault', LiveLibrary.extend({ mode: OfficeLiveModeSchema })),
+  /** Signs this computer out of one tenant's Office for the web (Settings → Connections); a window of this computer alone. */
+  request('work.office.live.signOut', z.object({ tenant: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/) })),
   /** his edits to the list, from this computer's own window only: a folder added, a found one turned off, a folder's web address */
   request('work.office.filesSetRoots', z.object({ roots: z.array(TeamsRootSchema).max(100) })),
   /** whether a Work workspace on this host may copy Teams files from another host to here (off by default) */
@@ -321,6 +323,7 @@ export const OFFICE_CAPS = {
   'work.office.live.of': 'operate',
   'work.office.live.libraryDefault': 'operate',
   'work.office.live.setLibraryDefault': 'operate',
+  'work.office.live.signOut': 'operate',
   'work.office.filesSetRoots': 'local',
   'work.office.filesCopyGet': 'read',
   'work.office.filesCopySet': 'admin',

@@ -20,12 +20,14 @@ function fakeHost() {
     roots,
     off: roots.filter((r) => r.off).map((r) => r.folder),
   });
-  const host = { refuse: null as string | null };
+  const host = { refuse: null as string | null, opensIn: "here" as "here" | "live" };
   const link = {
     connected: true,
     onOpen: () => () => {},
     request: (method: string, params: unknown) => {
       calls.push({ method, params });
+      if (method === "work.office.live.setLibraryDefault") host.opensIn = (params as { mode: "here" | "live" }).mode;
+      if (method.startsWith("work.office.live.")) return Promise.resolve({ mode: host.opensIn });
       if (method === "work.office.filesSetRoots") {
         if (host.refuse) return Promise.reject(new Error(host.refuse));
         roots = (params as { roots: TeamsRoot[] }).roots;
@@ -37,6 +39,21 @@ function fakeHost() {
 }
 
 describe("Teams files in Settings", () => {
+  it("says where each library's Office files open, TempCode until he picks Office on the web", async () => {
+    const { link, calls, host } = fakeHost();
+    host.opensIn = "live";
+    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    const select = await screen.findByLabelText("Where Purdue Esports's Office files open");
+    expect(select.textContent).toContain("Office on the web");
+    expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
+  });
+
+  it("offers no choice where this window cannot edit the host's list", async () => {
+    const { link } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable={false} />));
+    expect(screen.queryByLabelText("Where Purdue Esports's Office files open")).toBeNull();
+  });
+
   it("names a found library by its team, its folder in the row's tip; a folder he added shows its path", async () => {
     const { link } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
@@ -94,7 +111,7 @@ describe("Teams files in Settings", () => {
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Purdue Esports" })));
     expect(calls.at(-1)).toEqual({ method: "work.office.filesSetRoots", params: { roots: [{ folder: FOUND.path, off: true }] } });
     await act(async () => fireEvent.click(screen.getByRole("switch")));
-    expect(calls.at(-1)).toEqual({ method: "work.office.filesSetRoots", params: { roots: [{ folder: FOUND.path }] } });
+    expect(calls.filter((c) => c.method === "work.office.filesSetRoots").at(-1)).toEqual({ method: "work.office.filesSetRoots", params: { roots: [{ folder: FOUND.path }] } });
   });
 
   it("gives a folder its web link through a dialog", async () => {

@@ -13,6 +13,7 @@ import { libraryOf } from '../files/library'
 import { vmLibraryOf, vmOfficeStatus } from '../vm/files'
 import { vmState } from '../vm/office'
 import { appOf, liveAddress, liveTwin, pathRules, relativeLivePath, tenantOf } from './address'
+import { signOutLive } from './health'
 import { libraryDefault, modeOf, setLibraryDefault } from './memory'
 
 const OF = 'work.office.live.of'
@@ -149,6 +150,11 @@ export async function liveHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, c
       if (req.method === 'work.office.live.setLibraryDefault') setLibraryDefault(ctx.db, libraryId, req.params.mode)
       return handled({ mode: libraryDefault(ctx.db, libraryId) } satisfies OfficeLiveLibraryDefault)
     }
+    case 'work.office.live.signOut':
+      // His sign-in lives in this computer's windows: a window here may end it, no remote key, no other host, no thread.
+      if (by.kind !== 'local' || by.peer) throw new Error('Sign out of Office for the web from a window on this computer.')
+      await signOutLive(req.params.tenant)
+      return handled({ signedOut: true as const })
     default:
       return NOT_HANDLED
   }

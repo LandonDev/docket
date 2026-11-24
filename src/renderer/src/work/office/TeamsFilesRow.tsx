@@ -5,6 +5,7 @@ import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
+import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
@@ -107,6 +108,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
         >
           {editable ? (
             <div className="flex items-center gap-2">
+              {row.library && row.on ? <OpensIn link={link!} libraryId={row.library.id} title={row.title} /> : null}
               {row.library && row.on ? (
                 <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "web", library: row.library! })}>
                   {row.library.web ? "Web link…" : "Add web link…"}
@@ -143,6 +145,37 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
   );
 }
 
+const OPENS_IN = [
+  { value: "here", label: "TempCode" },
+  { value: "live", label: "Office on the web" },
+] as const;
+
+/**
+ * Where a shared Office file of this library opens until he picks for the file itself (docs/agents/work-office-live.md
+ * "The control"): TempCode's own editor, or live in Office on the web.
+ */
+function OpensIn({ link, libraryId, title }: { link: Link; libraryId: string; title: string }) {
+  const read = useHostRead(link, () => link.request<{ mode: "here" | "live" }>("work.office.live.libraryDefault", { libraryId }), libraryId);
+  const [saving, setSaving] = useState(false);
+  if (!read.value) return null;
+  return (
+    <ChoiceSelect
+      label={`Where ${title}'s Office files open`}
+      size="sm"
+      value={read.value.mode}
+      options={[...OPENS_IN]}
+      disabled={saving}
+      onChange={(mode) => {
+        setSaving(true);
+        void link
+          .request<{ mode: "here" | "live" }>("work.office.live.setLibraryDefault", { libraryId, mode })
+          .then(read.set, () => read.retry())
+          .finally(() => setSaving(false));
+      }}
+    />
+  );
+}
+
 function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" | "web"; initial: string; onSave: (text: string) => Promise<boolean>; onClose: (saved: boolean) => void; error: string | null }) {
   const [text, setText] = useState(initial);
   const [pending, setPending] = useState(false);
@@ -157,7 +190,7 @@ function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" |
   };
   return (
     <Dialog {...root}>
-      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a Teams folder" : "Web link"} description={add ? "A folder OneDrive syncs that was not found." : "Paste the channel's Files → Copy link."} size="sm">
+      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a Teams folder" : "Web link"} description={add ? "A folder OneDrive syncs that was not found." : "The library folder's address, from the browser's address bar in SharePoint."} size="sm">
         <ModalBody>
           <Field label={add ? "Folder" : "Link"}>
             <Input

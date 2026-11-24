@@ -24,6 +24,7 @@ import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './fil
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
 import { officeConverters, type RenderDeps, type RenderPlace } from './render'
+import { liveRows } from './live/health'
 import { liveHandle } from './live/handle'
 import { ensureLiveTables } from './live/memory'
 import { canPresent, presentDeck, type PresentDeps } from './present'
@@ -216,7 +217,7 @@ export const office: WorkModule = {
   },
   // Connections: read as it lies; the route's state only if the running module already made it.
   health: {
-    check: (ctx, signal) => officeRows(officeProbe(ctx, () => made.get(ctx.db)?.route.state ?? null), signal)
+    check: async (ctx, signal) => [...(await officeRows(officeProbe(ctx, () => made.get(ctx.db)?.route.state ?? null), signal)), ...(await liveRows())]
   },
   // A new Work workspace may copy Teams files from his desktops from the start; he can turn it off.
   workspaceCreated(id, ctx) {
