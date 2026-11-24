@@ -247,10 +247,6 @@ export interface ComCarrier extends OfficeCarrier {
   stop(): void
 }
 
-/** Why the Windows helper takes no held change's press yet: it cannot check, as it writes, what he was shown. */
-export const UNCHECKED_WRITE = 'Office on Windows cannot yet check, as it writes, that the file still holds what was approved, so nothing was changed. Make this change in the file yourself.'
-const unchecked = (): OfficeError => new OfficeError(UNCHECKED_WRITE, 'not-allowed')
-
 export function comCarrier(deps: ComDeps = {}): ComCarrier {
   const log = deps.log ?? ((line: string) => console.log(`[office] ${line}`))
   const link = new Link({ start: deps.start ?? spawnHelper, timeoutMs: deps.timeoutMs ?? COM_TIMEOUT_MS, sendTimeoutMs: deps.sendTimeoutMs ?? SEND_TIMEOUT_MS, log })
@@ -347,13 +343,11 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
     writeRange: (book, sheet, address, grid: OfficeCell[][]) => call('writeRange', { book, sheet, address, grid }),
     documents: () => call('documents', {}),
     readDocument: (doc) => call('readDocument', { doc }),
-    // A held change's press carries what he was shown (`bound`); the helper cannot check it yet (native code,
-    // work-office.md "Not proven"), so such a press is refused here, before the helper is asked, rather than run as an
-    // unrestricted replace. An edit with no binding (his own, or an asked write) goes as before.
-    editDocument: (doc, edit, tracked, bound) => (bound ? Promise.reject(unchecked()) : call('editDocument', { doc, edit, tracked })),
+    // The binding goes to the helper, which does not check it yet (native code, work-office.md "Not proven").
+    editDocument: (doc, edit, tracked, bound) => call('editDocument', { doc, edit, tracked, ...(bound ? { bound } : {}) }),
     presentations: () => call('presentations', {}),
     readSlides: (pres) => call('readSlides', { pres }),
-    replaceSlideText: (pres, find, replace, bound) => (bound ? Promise.reject(unchecked()) : call('replaceSlideText', { pres, find, replace })),
+    replaceSlideText: (pres, find, replace, bound) => call('replaceSlideText', { pres, find, replace, ...(bound ? { bound } : {}) }),
     accounts: () => call('accounts', {}),
     listMail: (q) => call('listMail', q),
     readMail: (id) => call('readMail', { id }),

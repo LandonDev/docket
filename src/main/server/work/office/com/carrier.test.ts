@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { OfficeError } from '../carrier'
-import { comCarrier, comError, UNCHECKED_WRITE, type HelperProcess } from './carrier'
+import { comCarrier, comError, type HelperProcess } from './carrier'
 
 /**
  * The Windows carrier's wire, against a stand-in for tc-office.exe: one JSON
@@ -64,20 +64,6 @@ const make = (answer: Answer, opts: { ready?: boolean; timeoutMs?: number } = {}
   })
   return { carrier, procs, log }
 }
-
-describe("the Windows carrier and a held change's press", () => {
-  it('refuses an edit bound to what his press was shown, before the helper is asked, and sends an unbound one as before', async () => {
-    const { carrier, procs } = make((verb) => (verb === 'editDocument' || verb === 'replaceSlideText' ? 1 : null))
-    const bound = { places: 1, at: [[0, 'Draft one.']] as [number, string][] }
-    await expect(carrier.editDocument('C:\\a.docx', { find: 'one', replace: 'two' }, false, bound)).rejects.toMatchObject({ code: 'not-allowed', message: UNCHECKED_WRITE })
-    await expect(carrier.replaceSlideText('C:\\a.pptx', 'Q3', 'Q4', bound)).rejects.toMatchObject({ code: 'not-allowed' })
-    expect(procs).toHaveLength(0)
-    // His own edit, or an asked one, carries no binding: it goes to the helper as it did.
-    await expect(carrier.editDocument('C:\\a.docx', { find: 'one', replace: 'two' }, false)).resolves.toBe(1)
-    await expect(carrier.replaceSlideText('C:\\a.pptx', 'Q3', 'Q4')).resolves.toBe(1)
-    expect(procs[0]!.seen.map((s) => s.verb)).toEqual(['editDocument', 'replaceSlideText'])
-  })
-})
 
 describe('the Windows carrier', () => {
   it('starts one helper on the first call and sends each verb with its arguments as one line', async () => {
