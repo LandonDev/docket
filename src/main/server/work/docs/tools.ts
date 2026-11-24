@@ -99,7 +99,8 @@ const namesOf = (t: DocTarget, asked: CanvasSource, item?: string): string[] => 
   return [...new Set([...ids, ...(item ? [`item:${item}`] : [])])]
 }
 
-type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
+/** `undoable`: the after-version is the write's own state alone, so its Undo takes back the write and nothing else (serviceRoutes.ts). */
+type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string; undoable?: boolean } | { mode: 'branch'; branchId: string; versionId: string }
 
 /** The sections a rewrite touched, for the "Wrote 2 sections" line: by heading when the text has them, else by paragraph. */
 export function changedParts(before: string, after: string): { count: number; unit: 'section' | 'paragraph' } {
@@ -166,7 +167,8 @@ async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string
   }
   const text = `Wrote ${plural(parts.count, parts.unit)}`
   // His own document, on the agent's own idea: the bar says what was written, with Undo.
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, after: done.versionId }, pathOf(t))
+  // Undo is offered only for the write's own state: a word of his that landed in its after-version would go with it.
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
   return workText(`${text}.${note}`)
 }
 
@@ -187,7 +189,7 @@ async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
   }
   const done = await ctx.service.internal('/internal/docs/format', {
     ...serviceTarget(t, shared, fence), change, because: verdict, suggest, principal: agentPrincipal(ctx.host, ctx.sessionId)
-  }) as DocFormatResult
+  }) as DocFormatResult & { undoable?: boolean }
   if (done.missing) return workText(`Nothing in the document matches that.${note}`)
   if (!done.changed) return workText(`The document already has that formatting.${note}`)
   const page = style || theme || setup || header || footer
@@ -197,7 +199,7 @@ async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
     return workText(`Suggested formatting on ${amount}: he accepts or rejects it in the document.${note}`)
   }
   const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, after: done.versionId }, pathOf(t))
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
   return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
 }
 

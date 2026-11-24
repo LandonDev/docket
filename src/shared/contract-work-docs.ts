@@ -164,8 +164,10 @@ export const DocsRequestSchemas = [
   /**
    * → { ok: true, undone? }: the agent's write line goes. `undo`: first the version before the write is restored, only
    * while the document is still as the agent left it (`undone` says whether it was), in one turn of the document.
+   * `after`: the write the window's line shows (`DocWritten.after`); a line the host holds for another write is left
+   * as it is, and an Undo with no `after` restores nothing.
    */
-  request('work.docs.dismiss', z.object({ source: CanvasSourceSchema, undo: z.literal(true).optional() })),
+  request('work.docs.dismiss', z.object({ source: CanvasSourceSchema, undo: z.literal(true).optional(), after: z.string().min(1).max(64).optional() })),
   /** → { source, title }: a new LifeOS document in the sector, or in a project */
   request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) })),
   /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches; `refresh` reads LifeOS's catalog afresh */

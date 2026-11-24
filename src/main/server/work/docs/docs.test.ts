@@ -146,7 +146,10 @@ describe('an agent writing a document', () => {
     await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), { path: r.path })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(written)
     // Undo: the host puts back the version cut just before the write, while the document is as the agent left it.
-    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: true })
+    // A press that names no write (a window a release behind) restores nothing and leaves the line.
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: false })
+    expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(written)
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: written.after })).toEqual({ ok: true, undone: true })
     expect(await r.text()).toContain('9:00 AM')
     expect(await r.text()).not.toContain('9:30 AM')
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toBeNull()
@@ -155,14 +158,69 @@ describe('an agent writing a document', () => {
   it("Undo restores nothing once anyone changed the document after the agent's write: the check and the restore are the host's, in one turn", async () => {
     const r = await rig()
     await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    const after = docsPushes(r.pushes).find((p) => p.written)!.written!.after
     // His line, typed after the write and before his press (another window).
     await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
-    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: false })
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after })).toEqual({ ok: true, undone: false })
     expect(await r.text()).toContain('Bring the keys')
     expect(await r.text()).toContain('9:30 AM')
     // The line is gone either way; a second press has nothing to undo.
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toBeNull()
-    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: false })
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after })).toEqual({ ok: true, undone: false })
+  })
+
+  it("Undo acts only on the write its line shows: a newer write the window has not heard of is neither taken back nor cleared", async () => {
+    const r = await rig()
+    await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    const first = docsPushes(r.pushes).filter((p) => p.written).at(-1)!.written!
+    await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow at the clinic'), because: 'own' })
+    const second = docsPushes(r.pushes).filter((p) => p.written).at(-1)!.written!
+    expect(second.after).not.toBe(first.after)
+    // His window still shows the first write's line when he presses.
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: first.after })).toEqual({ ok: true, undone: false })
+    expect(await r.text()).toContain('clinic')
+    expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(second)
+  })
+
+  it('a write that lands while his Undo is asked keeps its own line', async () => {
+    const r = await rig()
+    await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    const first = docsPushes(r.pushes).filter((p) => p.written).at(-1)!.written!
+    const service = r.ctx.service as { internal(route: string, body: unknown): Promise<unknown> }
+    const forward = service.internal
+    service.internal = async (route, body) => {
+      if (route === '/internal/docs/undo') {
+        service.internal = forward
+        await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow at the clinic'), because: 'own' })
+      }
+      return forward(route, body)
+    }
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: first.after })).toEqual({ ok: true, undone: false })
+    service.internal = forward
+    const second = docsPushes(r.pushes).filter((p) => p.written).at(-1)!.written!
+    expect(second.after).not.toBe(first.after)
+    expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(second)
+    expect(await r.text()).toContain('clinic')
+  })
+
+  it("a word of his that lands between the rewrite and its after-version leaves the write with no Undo: it would take his word back", async () => {
+    const r = await rig()
+    const collab = r.service.collab as { edit: (...a: unknown[]) => Promise<void> }
+    const edit = collab.edit
+    // Right after the agent's own edit (the rewrite), his line lands, before the service cuts the version after it.
+    collab.edit = async (...a: unknown[]) => {
+      await edit.apply(r.service.collab, a)
+      if (a[1] !== 'owner') {
+        collab.edit = edit
+        await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+      }
+    }
+    const said = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    collab.edit = edit
+    expect(said.text).toBe('Wrote 1 section.')
+    const written = docsPushes(r.pushes).find((p) => p.written)!.written!
+    expect(written.after).toBeUndefined()
+    expect(await r.text()).toContain('Bring the keys')
   })
 
   it('set to suggest, its own idea waits as a branch and the text stays; asked in his own words, it is written', async () => {
@@ -336,10 +394,32 @@ describe('an agent formatting a document', () => {
     })
     const written = docsPushes(r.pushes).find((p) => p.written)?.written
     expect(written?.versionId).toBeTruthy()
+    // Its after-version holds the format alone: Undo is offered for it.
+    expect(written?.after).toBeTruthy()
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 36, right: 36 })
-    await r.post('/internal/history/restore', { file: r.path, versionId: written!.versionId, fence: { sectors: 'all' } })
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: written!.after })).toEqual({ ok: true, undone: true })
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 72, right: 72 })
     expect((await r.tool('doc_read', { item: 'i1', with: 'styles' })).text).not.toContain('#0F4761')
+  })
+
+  it('a format whose after-version also took in a word of his offers no Undo', async () => {
+    const r = await rig()
+    const collab = r.service.collab as { edit: (...a: unknown[]) => Promise<void> }
+    const edit = collab.edit
+    // Right after the format's own edit, his line lands, before the version after it is cut.
+    collab.edit = async (...a: unknown[]) => {
+      await edit.apply(r.service.collab, a)
+      if (typeof a[1] === 'string' && a[1].startsWith('agent:')) {
+        collab.edit = edit
+        await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+      }
+    }
+    expect((await r.tool('doc_format', { item: 'i1', ...blue, because: 'own' })).error).toBe(false)
+    collab.edit = edit
+    const written = docsPushes(r.pushes).find((p) => p.written)!.written!
+    expect(written.versionId).toBeTruthy()
+    expect(written.after).toBeUndefined()
+    expect(await r.text()).toContain('Bring the keys')
   })
 
   it('a shared document keeps its bytes when asked has no owner quote, and writes with a verified quote', async () => {

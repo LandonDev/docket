@@ -92,8 +92,10 @@ export function wrote(ctx: WorkCtx, doc: string, written: DocWritten, path?: str
   s.push({ push: 'work.docs', doc, written }, path)
 }
 
-export function dismissWritten(ctx: WorkCtx, doc: string, path?: string): void {
+/** The line goes; with `after`, only while it is still the line of that write (a newer write's line stays). */
+export function dismissWritten(ctx: WorkCtx, doc: string, path?: string, after?: string): void {
   const s = docsOf(ctx)
+  if (after !== undefined && s.written.get(doc)?.after !== after) return
   if (!s.written.delete(doc)) return
   s.push({ push: 'work.docs', doc, written: null }, path)
 }

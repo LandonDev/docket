@@ -159,18 +159,23 @@ export const docs: WorkModule = {
       }
       case 'work.docs.dismiss': {
         const t = await targetOf(ctx, by, req.method, req.params.source)
+        const { undo, after } = req.params
+        const w = s.written.get(t.doc)
+        // The press names the write its line shows: a newer write the window has not heard of yet is neither taken back
+        // nor cleared by it, and an Undo that names none (a window a release behind) restores nothing.
+        if (after !== undefined ? w?.after !== after : undo) return handled({ ok: true as const, ...(undo ? { undone: false } : {}) })
         let undone = false
-        if (req.params.undo) {
+        if (undo && w?.after) {
           // The bar's Undo: the write the line names, put back by the service only while the document is as the agent
           // left it (its `after` version), the check and the restore in one turn. A line with no `after` offers none.
           const row = await lifeosRow(ctx, t)
           const shared = othersOpen(ctx, t, row)
           await pressOn(ctx, by, t)
-          const w = s.written.get(t.doc)
-          if (w?.after) undone = ((await ctx.service.internal('/internal/docs/undo', { ...serviceTarget(t, shared), versionId: w.versionId, after: w.after })) as { undone: boolean }).undone
+          undone = ((await ctx.service.internal('/internal/docs/undo', { ...serviceTarget(t, shared), versionId: w.versionId, after: w.after })) as { undone: boolean }).undone
         }
-        dismissWritten(ctx, t.doc, pathOf(t))
-        return handled({ ok: true as const, ...(req.params.undo ? { undone } : {}) })
+        // Only that write's line: one an agent wrote while this was asked stays.
+        dismissWritten(ctx, t.doc, pathOf(t), after)
+        return handled({ ok: true as const, ...(undo ? { undone } : {}) })
       }
       case 'work.docs.create': {
         const { sector, projectId, title } = req.params

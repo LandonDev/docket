@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
 import { fileDocName, readDocument, writeMarkdown, type CollabContext, type CollabFile } from 'work-kit/collab-server'
+import type { BlockDiff } from 'work-kit/formats/diff'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 import { documentStyleLines } from './formatDescription'
@@ -56,6 +57,26 @@ function principalOf(body: Record<string, unknown>): string {
   return p
 }
 
+/** A document's state as one word: its Yjs snapshot (state vector and delete set) hashed; any edit moves it, a deletion alone included. */
+const stateRev = (doc: Y.Doc): string => createHash('sha256').update(Y.encodeSnapshot(Y.snapshot(doc))).digest('hex').slice(0, 32)
+
+/** The live document's state word now. */
+async function liveRev(ctx: RouteCtx, t: Target): Promise<string> {
+  let rev = ''
+  await ctx.collab.edit(t.name, 'owner', (doc) => void (rev = stateRev(doc)), t.file)
+  return rev
+}
+
+/**
+ * Whether a direct format's after-version holds formatting alone over its before-version: no words put in, taken out
+ * or moved, in a block or a table's cell. Anything else in it is someone's edit landed between the format and its
+ * cut, which an Undo of the format would take back too.
+ */
+function formattingAlone(diff: BlockDiff): boolean {
+  const words = (ops: readonly { op: string }[] | null | undefined): boolean => !!ops?.some((op) => op.op !== '=')
+  return diff.stats.added + diff.stats.removed + diff.stats.moved === 0 && diff.rows.every((row) => !words(row.inline) && !row.cells?.some((cells) => cells.some((cell) => words(cell))))
+}
+
 export const docsRoutes: InternalRoute[] = [
   {
     // The document's live revision: a hash of its state vector and its delete set as the collab server holds them
@@ -65,9 +86,7 @@ export const docsRoutes: InternalRoute[] = [
     milestone: 20,
     async run(body, ctx) {
       const t = await targetOf(body, ctx)
-      let snapshot: Uint8Array = new Uint8Array()
-      await ctx.collab.edit(t.name, 'owner', (doc) => void (snapshot = Y.encodeSnapshot(Y.snapshot(doc))), t.file)
-      return { rev: createHash('sha256').update(snapshot).digest('hex').slice(0, 32) }
+      return { rev: await liveRev(ctx, t) }
     }
   },
   {
@@ -127,6 +146,8 @@ export const docsRoutes: InternalRoute[] = [
         // a word he typed after the agent read is never written over.
         let stale = false
         let changed = 0
+        // The state the rewrite left, taken in the same tick it is made: the version its Undo is offered for must be it.
+        let left = ''
         await ctx.collab.edit(
           t.name,
           principal,
@@ -134,13 +155,17 @@ export const docsRoutes: InternalRoute[] = [
             const fragment = doc.getXmlFragment(DOCUMENT_FRAGMENT)
             if (revision !== undefined && revisionOf(readDocument(fragment).markdown) !== revision) return void (stale = true)
             changed = writeMarkdown(fragment, markdown).changed
+            left = stateRev(doc)
           },
           t.file
         )
         if (stale) return { stale: true }
         if (changed === 0) return { mode: 'direct', versionId: null, shared: t.shared }
         const row = await raw.cut(t.name, 'agent-turn', file)
-        return { mode: 'direct', versionId: row.id, beforeVersionId: before.id, shared: t.shared }
+        // Unchanged since the rewrite, the version just cut is the rewrite's own state; changed (his word between the
+        // two), it may hold that word, and an Undo to the version before would take it back: none is offered.
+        const undoable = (await liveRev(ctx, t)) === left
+        return { mode: 'direct', versionId: row.id, beforeVersionId: before.id, shared: t.shared, undoable }
       })
     }
   },
@@ -152,12 +177,18 @@ export const docsRoutes: InternalRoute[] = [
       const principal = principalOf(body)
       const t = await targetOf(body, ctx)
       const suggest = body.suggest === true
-      return { ...await ctx.history.format(t.name, principal, change, {
-        because: suggest ? 'own' : because,
-        shared: suggest || t.shared,
-        ...(t.file ? { file: t.file } : {}),
-        ...(paper ? { paper } : {})
-      }), shared: t.shared }
+      return ctx.history.inTurn(t.name, async (raw) => {
+        const done = await raw.format(t.name, principal, change, {
+          because: suggest ? 'own' : because,
+          shared: suggest || t.shared,
+          ...(t.file ? { file: t.file } : {}),
+          ...(paper ? { paper } : {})
+        })
+        // Its Undo is offered only while its after-version holds the format alone (`formattingAlone`).
+        const direct = done.mode === 'direct' && done.versionId && done.beforeVersionId
+        const undoable = direct ? formattingAlone(await raw.compare(t.name, done.beforeVersionId!, done.versionId!, t.file)) : false
+        return { ...done, shared: t.shared, undoable }
+      })
     }
   },
   {

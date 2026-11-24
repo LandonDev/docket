@@ -726,15 +726,19 @@ export const CHANGED_SINCE = "Not undone: the document has changed since. Restor
  */
 export function writtenLine(host: Pick<DocHost, "env" | "undo">, source: CanvasSource, w: DocWritten): WrittenLine {
   const text = `${w.text}, ${dayTime(w.at)}`;
-  return w.after ? { text, undo: () => undoWritten(host, source) } : { text };
+  const after = w.after;
+  return after ? { text, undo: () => undoWritten(host, source, after) } : { text };
 }
 
-export async function undoWritten(host: Pick<DocHost, "env" | "undo">, source: CanvasSource): Promise<void> {
-  const undone = await host.undo();
+/** What Undo says when the document's host is a release behind and cannot undo it there. */
+export const UNDO_ELSEWHERE = "Not undone here. Restore an earlier version from History.";
+
+export async function undoWritten(host: Pick<DocHost, "env" | "undo">, source: CanvasSource, after: string): Promise<void> {
+  const got = await host.undo(after);
   refreshHistory(host.env, source);
-  if (undone) return;
+  if (got === "undone") return;
   const toast = await loadToast();
-  toast.message(CHANGED_SINCE);
+  toast.message(got === "unknown" ? UNDO_ELSEWHERE : CHANGED_SINCE);
 }
 
 /** A selection as the composer's chip: its first 40 characters in quotes, then the document's name. */

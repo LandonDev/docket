@@ -18,8 +18,11 @@ export interface DocHost {
   thread<T = unknown>(change: DocThreadOp): Promise<T>;
   mode(mode: DocMode): Promise<DocOpen>;
   dismiss(): Promise<void>;
-  /** The agent's write line's Undo: whether the host put the version before it back (it does only while the document is as the agent left it). */
-  undo(): Promise<boolean>;
+  /**
+   * The agent's write line's Undo, for the write the line shows (its `after`): `undone`, `changed` (the document moved
+   * on, or the host holds another write's line), or `unknown` (a host a release behind that cannot undo it there).
+   */
+  undo(after: string): Promise<"undone" | "changed" | "unknown">;
   rename(title: string): Promise<void>;
   /** A pushed change to this document (named by the service's name for it). */
   onPush(doc: string, listener: (push: DocsPush) => void): () => void;
@@ -53,7 +56,10 @@ export function docHost(env: string, source: CanvasSource): DocHost {
     thread: (change) => call("work.docs.thread", { change }),
     mode: (mode) => call("work.docs.mode", { mode }),
     dismiss: async () => void (await call("work.docs.dismiss")),
-    undo: async () => (await call<{ undone?: boolean }>("work.docs.dismiss", { undo: true })).undone === true,
+    undo: async (after) => {
+      const got = await call<{ undone?: boolean }>("work.docs.dismiss", { undo: true, after });
+      return got.undone === undefined ? "unknown" : got.undone ? "undone" : "changed";
+    },
     rename: async (title) => void (await call("work.docs.rename", { title })),
     onPush: (doc, listener) =>
       link().onPush((push) => {
