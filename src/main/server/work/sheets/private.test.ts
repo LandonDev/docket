@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -857,6 +857,25 @@ describe('a .csv and an export in a folder others can open', () => {
     expect(csvEdited(own)).toBe(false)
     expect(csvSheetPath(dir, csv)).not.toBe(own)
     expect(csvEdited(join(dir, 'sheets', 'csv', 'missing.tcsheet'))).toBe(false)
+  })
+
+  it('an edit made on the cache the grid drew, after a co-author put a row in the .csv, is answered as a conflict and the grid reads the file again', async () => {
+    // Council r3 (Sol 1): the new cache also started at revision 0, and the old grid's A2 went into the co-author's new row.
+    const csv = join(library, 'Rows.csv')
+    writeFileSync(csv, 'name\nAda\nBo\n')
+    const itemId = open(csv, 'Rows.csv')
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    await call('work.sheets.load', { itemId, rev: view.rev, offset: 0, length: 1_000_000 })
+    writeFileSync(csv, 'name\nNew\nAda\nBo\n')
+    utimesSync(csv, new Date(), new Date(Date.now() + 5_000))
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 1: { 0: { v: 'Ada Lovelace' } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [typed] })).toEqual({ conflict: true, rev: 0 })
+    expect(readFileSync(csv, 'utf8')).toBe('name\nNew\nAda\nBo\n')
+    expect(await call('work.sheets.since', { itemId, rev: view.rev })).toEqual({ rev: 0, reload: true })
+    // read again, the grid's edit lands in the new cache and the file
+    await call('work.sheets.load', { itemId, rev: 0, offset: 0, length: 1_000_000 })
+    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [{ ...typed, params: { ...typed.params, cellValue: { 2: { 0: { v: 'Ada Lovelace' } } } } }] })).toEqual({ rev: 1 })
+    expect(readFileSync(csv, 'utf8')).toBe('name\nNew\nAda Lovelace\nBo\n')
   })
 
   it('a shared .csv that changes on disk is read again: its cache is named for the file as it stands', async () => {

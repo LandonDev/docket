@@ -148,7 +148,13 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   with, makes the change and then writes the file through Files' door
   (`saveFile`: its lock, one whole replace, and only while the file is still
   the bytes read before the change, so a co-author's save during the
-  service's wait refuses it, never patched over). The file is patched, not written again (`patchCsv`): a
+  service's wait refuses it, never patched over). After the save the cache
+  takes its stamp from the door's answer, the size and time it wrote, never
+  a later look (`stampWord`). A grid is bound to the cache it drew
+  (`drawnCsv`, its load): once a co-author's change has made a new cache
+  (which also starts at revision 0), an edit made on the old one answers a
+  conflict and its catch-up a reload, so the edit is said and the grid reads
+  the file again, never laid at its old address in the new cache. The file is patched, not written again (`patchCsv`): a
   field nobody changed keeps its own bytes (`1.50`, a quoted name), each
   row its own line break and count of fields, and the byte-order mark, the
   blank lines at the end and the last line's break stay as they were, so

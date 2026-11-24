@@ -1,10 +1,24 @@
 import { chmodSync, existsSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sharedOf } from '../files/policy'
 import { previewScratch } from '../files/preview'
 import { at, makeRig, type Rig } from '../files/testkit'
 import { CSV_NO_WRITE, CSV_NOT_UTF8, csvRows, delimitedAsCsv, forgetCsvCaches, patchCsv, sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
+
+/** Files' door as it is, with a hook run just after it writes (a co-author's file landing in that moment). */
+const door = vi.hoisted(() => ({ after: null as null | (() => void) }))
+vi.mock('../files/save', async (original) => {
+  const real = await original<typeof import('../files/save')>()
+  return {
+    ...real,
+    saveFile: async (...args: Parameters<typeof real.saveFile>) => {
+      const got = await real.saveFile(...args)
+      door.after?.()
+      return got
+    }
+  }
+})
 import { ensureCsvSheet, sharedCsvDir } from './held'
 import { TcsheetBackend } from './host/backends'
 import { SheetHost } from './host/host'
@@ -188,6 +202,21 @@ describe('a shared .csv saved through to its file', () => {
     })
     await expect(made).rejects.toThrow('changed in its folder')
     expect(readFileSync(csv, 'utf8')).toBe(theirs)
+  })
+
+  it('the cache goes on only as the file the save wrote: a co-author\'s file put there just after is read again, never taken as ours', async () => {
+    // Council r3 (Sol 1): the stamp after the save was read from whatever stood there, and adopted the replacement.
+    const sheet = open()
+    door.after = () => {
+      writeFileSync(csv, 'name,hours\r\nTheirs,1\r\n')
+      utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    }
+    try {
+      await throughCsv(rig.ctx, sheet, async () => host.apply({ tcsheet: sheet }, 0, [typedAt(2, 0, 'Bob')] as never, 'owner'))
+    } finally {
+      door.after = null
+    }
+    expect(sharedCsvCache(sharedCsvDir(rig.dataDir), csv)).not.toBe(sheet)
   })
 
   it('a suggestion changes no cell, so it never goes through to the file, even on a cache the file has moved past', async () => {

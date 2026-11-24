@@ -19,11 +19,13 @@ import { readCsv, writeCsv } from './writer'
  */
 
 const nameOf = (csv: string): string => createHash('sha256').update(csv).digest('hex').slice(0, 24)
-/** The file as it stands, in a few characters: the cache made of it is named for this. */
+/** A file's size and time, in a few characters: the cache made of it is named for this. */
+const stampWord = (size: number, mtimeMs: number): string => createHash('sha256').update(`${size}:${Math.round(mtimeMs)}`).digest('hex').slice(0, 8)
+/** The file as it stands. */
 function stampOf(csv: string): string {
   try {
     const st = statSync(csv)
-    return createHash('sha256').update(`${st.size}:${st.mtimeMs}`).digest('hex').slice(0, 8)
+    return stampWord(st.size, st.mtimeMs)
   } catch {
     return 'gone'
   }
@@ -137,8 +139,10 @@ export function throughCsv<T>(ctx: ServiceCtx, sheet: string, write: () => Promi
       throw new Error(`${title} could not be saved: ${code === 'EACCES' || code === 'EPERM' || code === 'EROFS' ? 'this folder is read only' : code === 'ENOSPC' || code === 'EDQUOT' ? 'the disk is full' : 'the folder did not take it'}. The edit is still in this tab.`)
     })
     if ('conflict' in got) throw new Error(changed(csv))
-    // The cache goes on as this file's: it is what the file now holds.
-    caches.set(csv, { sheet, stamp: stampOf(csv) })
+    // The cache goes on as this file's: it is what the file now holds, as the door wrote it (its size and time, never
+    // what a later look finds: a co-author's file put there just after is a change of the file, read again).
+    const [size, mtime] = got.version.split(':')
+    caches.set(csv, { sheet, stamp: stampWord(Number(size), Number(mtime)) })
     return out
   })
 }
