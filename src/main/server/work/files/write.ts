@@ -488,6 +488,14 @@ export function runOp<T>(db: DatabaseSync, op: { id: string; workspaceId: string
   return run
 }
 
+/**
+ * A done op's answer, told again later: an upload's begin learns at its commit that its file landed, so the same op
+ * sent again (the commit's answer was lost, even across a restart) answers that instead of a fresh upload (upload.ts).
+ */
+export function amendOp(db: DatabaseSync, id: string, result: unknown): void {
+  db.prepare(`UPDATE work_files_ops SET result = ? WHERE id = ? AND state = 'done'`).run(JSON.stringify(result ?? null), id)
+}
+
 /** At boot: rows left `running` by a process that died are marked failed ("The app stopped before this finished."). Returns how many. */
 export function settleOps(db: DatabaseSync): number {
   return Number(db.prepare(`UPDATE work_files_ops SET state = 'failed', result = ? WHERE state = 'running'`).run(failedRow(new Error('The app stopped before this finished.'))).changes)

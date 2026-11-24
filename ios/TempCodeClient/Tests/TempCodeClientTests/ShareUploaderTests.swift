@@ -16,6 +16,8 @@ final class ShareHost: @unchecked Sendable {
     var commitError: (any Error)?
     /// Thrown by the commit of this upload id, once.
     var commitFailures: [String: any Error] = [:]
+    /// Ops whose file the host made: a begin with one answers landed, as the op's row keeps it across a restart.
+    var landedOps: Set<String> = []
     /// Cancels the sending task when the chunk with this index arrives.
     var cancelAtIndex: Int?
     private var chunkCount = 0
@@ -39,7 +41,7 @@ final class ShareHost: @unchecked Sendable {
                     return "u\(self._begun.count)"
                 }
                 if let error = self.beginError { throw error }
-                return id
+                return ShareUploader.Begun(uploadId: id, landed: self.lock.withLock { self.landedOps.contains(params.op) })
             },
             chunk: { uploadId, index, data in
                 self.note("chunk \(uploadId) \(index) \(data)")
@@ -213,13 +215,31 @@ final class ShareHost: @unchecked Sendable {
         host.commitError = TransportError.notConnected
         let item = try rig.add(bytes)
         #expect(await uploader.send(item).state == .queued)
-        // The host made nothing under it (it never had the commit, and the upload ran out): the file goes again from begin.
+        // The host made nothing under it (it never had the commit, and the upload ran out): its op says not landed,
+        // and the file goes again from begin on a fresh op.
         host.commitError = nil
         host.commitFailures = ["u1": TransportError.server(method: "attachment.commit", message: "unknown upload (expired, aborted or never begun)")]
         let after = await uploader.send(item)
         #expect(after.state == .done)
-        #expect(host.calls.contains("commit u2"))
-        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"])
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0", "\(item.id)-1"])
+        #expect(host.calls.contains("commit u3"))
+        #expect(rig.inbox.item(item.id)?.committing == nil)
+    }
+
+    @Test func `a commit that landed before the host restarted is not sent again`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.commitError = TransportError.closed(CloseReason(kind: .network, message: "connection lost"))
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        // The host made the file, then restarted: it no longer knows the upload, but the begin's op says it landed.
+        host.commitError = nil
+        host.commitFailures = ["u1": TransportError.server(method: "attachment.commit", message: "unknown upload (expired, aborted or never begun)")]
+        host.landedOps = ["\(item.id)-0"]
+        let after = await uploader.send(item)
+        #expect(after.state == .done)
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0"])
+        #expect(!host.calls.contains { $0.hasPrefix("chunk u2") })
+        // Done and the cleared commit are one manifest write.
         #expect(rig.inbox.item(item.id)?.committing == nil)
     }
 

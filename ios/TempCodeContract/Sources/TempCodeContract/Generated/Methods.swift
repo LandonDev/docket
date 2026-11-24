@@ -5906,9 +5906,11 @@ public enum Methods {
 
         public struct Output: Codable, Hashable, Sendable {
             public let uploadId: String
+            public let landed: Bool?
 
-            public init(uploadId: String) {
+            public init(uploadId: String, landed: Bool? = nil) {
                 self.uploadId = uploadId
+                self.landed = landed
             }
         }
     }

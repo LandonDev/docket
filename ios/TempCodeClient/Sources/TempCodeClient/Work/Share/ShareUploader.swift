@@ -34,15 +34,15 @@ public final class ShareUploader {
     /// The calls an upload makes, so a test needs no socket. `.socket(_:)` is the real one.
     public struct Send: Sendable {
         public var settings: @Sendable () async throws -> AttachmentSettings
-        /// `work.files.upload`, answering the upload id.
-        public var begin: @Sendable (Methods.WorkFilesUpload.Params) async throws -> String
+        /// `work.files.upload`, answering the upload id, and whether that op's file has already landed.
+        public var begin: @Sendable (Methods.WorkFilesUpload.Params) async throws -> Begun
         public var chunk: @Sendable (_ uploadId: String, _ index: Int, _ dataBase64: String) async throws -> Void
         public var commit: @Sendable (_ uploadId: String) async throws -> Void
         public var abort: @Sendable (_ uploadId: String) async -> Void
 
         public init(
             settings: @escaping @Sendable () async throws -> AttachmentSettings,
-            begin: @escaping @Sendable (Methods.WorkFilesUpload.Params) async throws -> String,
+            begin: @escaping @Sendable (Methods.WorkFilesUpload.Params) async throws -> Begun,
             chunk: @escaping @Sendable (_ uploadId: String, _ index: Int, _ dataBase64: String) async throws -> Void,
             commit: @escaping @Sendable (_ uploadId: String) async throws -> Void,
             abort: @escaping @Sendable (_ uploadId: String) async -> Void
@@ -52,6 +52,21 @@ public final class ShareUploader {
             self.chunk = chunk
             self.commit = commit
             self.abort = abort
+        }
+    }
+
+    /// A begin's answer: the id the bytes go on, and `landed` once a commit on that op made the file (the host keeps it
+    /// on the op, across a restart), when there is nothing more to send.
+    public struct Begun: Equatable, Sendable {
+        public var uploadId: String
+        public var landed: Bool
+        public init(uploadId: String, landed: Bool = false) {
+            self.uploadId = uploadId
+            self.landed = landed
+        }
+
+        public init(_ answer: Methods.WorkFilesUpload.Output) {
+            self.init(uploadId: answer.uploadId, landed: answer.landed == true)
         }
     }
 
@@ -152,17 +167,32 @@ public final class ShareUploader {
         }
         if item.size > settings.maxBytes { return .refused(Self.tooLarge(host: hostName, limit: settings.maxBytes), final: true) }
         if let pending = item.committing {
+            // `committing` stays on the manifest until Done is written with it cleared, in one write (`ShareInbox.mark`).
             do {
                 try await request.commit(pending)
-                try? inbox.committing(item.id, uploadId: nil)
                 progress(1)
                 return .done
             } catch {
                 if error is CancellationError || Self.isUnreachable(error) { return .queued }
-                try? inbox.committing(item.id, uploadId: nil)
-                // The host no longer knows the upload, so it made nothing under it: begin again below.
-                if !Self.isExpired(error) { return Self.outcome(of: error) }
+                if !Self.isExpired(error) {
+                    try? inbox.committing(item.id, uploadId: nil)
+                    return Self.outcome(of: error)
+                }
             }
+            // The host no longer knows the upload (it restarted, or a day went by): the begin's op says whether its
+            // file landed. Sent again unchanged, the host answers from the op's row.
+            do {
+                let op = Self.op(item, attempts: max(0, (item.attempts ?? 1) - 1))
+                let again = try await request.begin(Methods.WorkFilesUpload.Params(workspaceId: item.workspaceId, at: item.folder.at, name: item.name, size: item.size, sha256: item.sha256, op: op))
+                if again.landed {
+                    progress(1)
+                    return .done
+                }
+            } catch {
+                if error is CancellationError || Self.isUnreachable(error) { return .queued }
+            }
+            // Nothing landed under it: begin anew below.
+            try? inbox.committing(item.id, uploadId: nil)
         }
         let step = AttachmentUpload.chunkBytes(answered: settings.chunkBytes)
         var attempts = item.attempts ?? 0
@@ -172,7 +202,12 @@ public final class ShareUploader {
             do {
                 try Task.checkCancellation()
                 let params = Methods.WorkFilesUpload.Params(workspaceId: item.workspaceId, at: item.folder.at, name: item.name, size: item.size, sha256: item.sha256, op: Self.op(item, attempts: attempts))
-                uploadId = try await request.begin(params)
+                let begun = try await request.begin(params)
+                if begun.landed {
+                    progress(1)
+                    return .done
+                }
+                uploadId = begun.uploadId
             } catch {
                 // Unanswered: the next try sends the same op. Refused: the host keeps that answer for the op.
                 if !(error is CancellationError || Self.isUnreachable(error)) { try? inbox.spent(item.id, attempts: attempts + 1) }
@@ -185,7 +220,6 @@ public final class ShareUploader {
                 try Task.checkCancellation()
                 try? inbox.committing(item.id, uploadId: uploadId)
                 try await request.commit(uploadId)
-                try? inbox.committing(item.id, uploadId: nil)
                 progress(1)
                 return .done
             } catch {

@@ -140,7 +140,7 @@ extension ShareUploader.Send {
     public static func client(_ client: EnvironmentClient) -> Self {
         Self(
             settings: { try await client.request(Methods.AttachmentSettings.self, .init()) },
-            begin: { try await client.request(Methods.WorkFilesUpload.self, $0).uploadId },
+            begin: { ShareUploader.Begun(try await client.request(Methods.WorkFilesUpload.self, $0)) },
             chunk: { uploadId, index, data in
                 _ = try await client.request(Methods.AttachmentChunk.self, .init(uploadId: uploadId, index: index, dataBase64: data))
             },

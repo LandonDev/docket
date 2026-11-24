@@ -6,7 +6,7 @@ import { freeName, refKey, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { filesState } from './handle'
 import type { Located } from './policy'
-import { checkName, FileRefused, makeFile, runOp, withFileLocks, type WriteFence } from './write'
+import { amendOp, checkName, FileRefused, makeFile, runOp, withFileLocks, type WriteFence } from './write'
 
 /**
  * An upload into a folder of the Files place (docs/agents/work-files.md "Upload"): a file from a desktop or a
@@ -54,17 +54,25 @@ function targetOf(at: Located): { dir: string; fence: WriteFence } {
   return { dir: at.path, fence: { roots: [at.in === 'folder' ? at.root : at.library.path] } }
 }
 
-/** `work.files.upload`: answers the id the bytes go on. The same `op` again answers the same id. */
-export function beginUpload(ctx: WorkCtx, by: Caller, p: UploadAsk, how: UploadInto): Promise<{ uploadId: string }> {
+/**
+ * `work.files.upload`: answers the id the bytes go on. The same `op` again answers the same id, and once that upload's
+ * file has landed, `landed: true` too: the answer is kept on the op's row (`amendOp`), so a commit whose answer was
+ * lost, before or across a restart of this host, is never saved a second time.
+ */
+export function beginUpload(ctx: WorkCtx, by: Caller, p: UploadAsk, how: UploadInto): Promise<{ uploadId: string; landed?: true }> {
   checkName(p.name)
   targetOf(how.into())
   const owner = ownerOf(by)
   const uploads = ctx.uploads
   if (!uploads) throw new Error('This host takes no uploads.')
-  return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'upload', refs: [p.at, p.name, p.size, p.sha256] }, async () => {
+  return runOp<{ uploadId: string; landed?: true }>(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'upload', refs: [p.at, p.name, p.size, p.sha256] }, async () => {
     const { uploadId } = await uploads.beginInto(owner, { name: p.name, size: p.size, sha256: p.sha256 }, (id) => ({
       dir: join(stagingRoot(ctx.dataDir), id),
-      land: (staged) => land(ctx, p, how, staged)
+      land: async (staged) => {
+        const landed = await land(ctx, p, how, staged)
+        amendOp(ctx.db, p.op, { uploadId: id, landed: true })
+        return landed
+      }
     }))
     return { uploadId }
   })

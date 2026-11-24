@@ -243,6 +243,8 @@ public final class ShareInbox: Sendable {
         item.state = state
         item.words = words
         item.isFinal = isFinal ? true : nil
+        // Done and the end of a commit on its way are one write: no stop between them leaves a commit to ask again.
+        if state == .done { item.committing = nil }
         if state != .sending { item.holder = nil }
         try write(item, to: claimed(id))
         if state != .sending { try move(claimed(id), to: manifest(id)) }

@@ -261,9 +261,13 @@ pictures and three movies.
   was lost is kept on the manifest (`committing`, the upload id) and asked
   again before anything else: the host keeps each commit's answer by upload
   id for a day (`AttachmentUploads.committed`, attachmentUploads.ts) and
-  answers it again, so the file is not saved twice. Only an upload the host
-  no longer knows (it never had the commit and the upload ran out, or a day
-  went by, or the host restarted) begins again.
+  answers it again, so the file is not saved twice. When the host no longer
+  knows the upload (it restarted, or a day went by), the phone sends the
+  begin's op again: the host kept "landed" on the op's row when the file was
+  made (`amendOp`, files/upload.ts; rows live a week), and answers
+  `{uploadId, landed: true}`, which ends the item as Done. Only an op whose
+  file never landed begins anew. Done is written with `committing` cleared in
+  the same manifest write (`ShareInbox.mark`).
 - **Final refusals.** What no retry can change is marked `isFinal` on the
   manifest (absent in an older one: retryable): the phone's "<host> takes
   files up to …", "The file is no longer on this phone." and "The file

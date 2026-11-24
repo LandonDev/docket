@@ -6,7 +6,7 @@ extension ShareUploader.Send {
     public static func socket(_ socket: TempCodeSocket) -> Self {
         Self(
             settings: { try await socket.request(Methods.AttachmentSettings.self, .init()) },
-            begin: { try await socket.request(Methods.WorkFilesUpload.self, $0).uploadId },
+            begin: { ShareUploader.Begun(try await socket.request(Methods.WorkFilesUpload.self, $0)) },
             chunk: { uploadId, index, data in
                 _ = try await socket.request(Methods.AttachmentChunk.self, .init(uploadId: uploadId, index: index, dataBase64: data))
             },

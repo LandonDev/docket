@@ -106,6 +106,20 @@ describe('an upload into his own folder', () => {
     expect((await send(id, 'c')).name).toBe('c.txt')
   })
 
+  it('answers a landed op as landed, across a restart of the host, and makes nothing twice', async () => {
+    const id = await begin('d.txt', 'd', { op: 'op-upload-landed' })
+    expect((await send(id, 'd')).name).toBe('d.txt')
+    // The host restarts: its uploads, and the commit answers they kept, are gone; the op's row is not.
+    uploads.close()
+    uploads = new AttachmentUploads({ dirFor: () => join(rig.base, 'unused'), store: { getSetting: () => null, setSetting: () => {} }, now: () => clock, sweepEveryMs: 0 })
+    ;(rig.ctx as { uploads: WorkCtx['uploads'] }).uploads = uploads
+    await expect(uploads.commit('local', id)).rejects.toMatchObject({ code: 'unknown-upload' })
+    const req = ClientRequestSchema.parse({ id: '2', method: 'work.files.upload', params: { workspaceId: WS, at: { at: 'place', id: 'folder' }, name: 'd.txt', size: 1, sha256: sha('d'), op: 'op-upload-landed' } })
+    const out = await files.handle!(req, rig.ctx, window)
+    expect(out.handled && out.result).toEqual({ uploadId: id, landed: true })
+    expect(readdirSync(rig.folder).filter((n) => n.startsWith('d'))).toEqual(['d.txt'])
+  })
+
   it('refuses a name no place takes, before anything is staged', async () => {
     await expect(begin('a:b.txt', 'x')).rejects.toThrow('A name cannot hold :')
     expect(staged()).toEqual([])
