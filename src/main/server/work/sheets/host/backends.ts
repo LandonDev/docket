@@ -356,9 +356,10 @@ export class TcsheetBackend implements SheetBackend {
       const list = Array.isArray(kept) ? kept : kept.list
       this.keep(list.map((x) => (x.state === 'pending' || x.state === 'conflict' ? { ...x, state: 'orphaned' as const } : x)))
     }
+    const proposed = this.proposed ?? []
     if (t.suggestions.length) {
-      const known = new Set(this.proposed.map((s) => s.id))
-      this.keep([...this.proposed, ...t.suggestions.filter((s) => !known.has(s.id))])
+      const known = new Set(proposed.map((s) => s.id))
+      this.keep([...proposed, ...t.suggestions.filter((s) => !known.has(s.id))])
       const carried = t.suggestions
       t.suggestions = []
       try {
@@ -368,7 +369,7 @@ export class TcsheetBackend implements SheetBackend {
         t.suggestions = carried
       }
     }
-    return this.proposed
+    return this.proposed ?? proposed
   }
   private keep(list: StoredSuggestion[]): void {
     this.proposed = list

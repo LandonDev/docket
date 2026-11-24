@@ -139,6 +139,10 @@ describe.skipIf(!there)('Preview behind LibreOffice', () => {
   it('draws OpenDocument and Excel 97-2003 from the exported file, CSV and TSV as one sheet, and the web page', { timeout: 300_000 }, async () => {
     const path = join(dir, 'files', 'formulas.xlsx')
     copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    // As Excel saves it: no ask to work it out again on load, so the values kept beside its formulas stand and its sheet
+    // of formulas is written as text (the corpus is XlsxWriter's, which asks: jobs.ts `unworkedIn`).
+    const z = readZip(new Uint8Array(readFileSync(path)))
+    writeFileSync(path, writeZip(z, new Map([['xl/workbook.xml', new TextEncoder().encode(readText(z, 'xl/workbook.xml').replace(/\s*fullCalcOnLoad="1"/, ''))]]), new Set(), new Map()))
     const item = itemOf(path, 'item-formats')
     const ods = await previewSheet(sheets(), item, { format: 'ods' })
     const xls = await previewSheet(sheets(), item, { format: 'xls' })
