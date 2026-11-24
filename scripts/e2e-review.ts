@@ -134,7 +134,7 @@ const WAITS: Wait[] = [
   { _id: 'mt-life-1', subject: 'Lease renewal', sector: 'life', since: at(1, 9), dueAt: at(5, 9), to: [P.morgan], state: 'waiting' }
 ]
 /** Every function the review module reads, as its testkit names them. */
-const REVIEW_READS = ['mail:accounts', 'events:range', 'events:get', 'review:sentBetween', 'review:doneBetween', 'review:answeredBetween', 'tasks:due', 'mailWaits:list', 'settings:get']
+const REVIEW_READS = ['mail:accounts', 'events:range', 'events:get', 'review:sentBetween', 'review:doneBetween', 'review:answeredBetween', 'tasks:due', 'tasks:get', 'mailWaits:list', 'mailWaits:get', 'docs:get', 'settings:get']
 
 type LifeosCall = { kind: 'query' | 'mutation' | 'action' | 'subscribe'; fn: string; args: Record<string, unknown> }
 const lifeosCalls: LifeosCall[] = []
@@ -142,6 +142,10 @@ const task = (id: unknown): Task => TASKS.find((t) => t._id === id) ?? assert.fa
 const wait = (id: unknown): Wait => WAITS.find((w) => w._id === id) ?? assert.fail(`no wait ${String(id)}`)
 const happened = (t: number): boolean => t <= clock.now
 const inSpan = (t: number, a: Record<string, unknown>): boolean => t >= Number(a.from) && t < Number(a.to)
+/** A waiting mail's row: its thread and when the wait began, as the review keys it (`waitKey`). */
+const waitRow = (id: string): string => `mail:${id}:${wait(id).since}`
+/** The LifeOS documents of the made-up week, by id: a document is filed by its own sector. */
+const DOC_SECTORS: Record<string, string> = { 'doc-hyp-notes': 'hypixel' }
 function answer(fn: string, a: Record<string, unknown>): unknown {
   switch (fn) {
     case 'settings:get':
@@ -153,6 +157,14 @@ function answer(fn: string, a: Record<string, unknown>): unknown {
     // A meeting put off to next week is read again by its id, once its day has come.
     case 'events:get':
       return EVENTS.find((e) => e._id === a.id) ?? null
+    case 'docs:get':
+      return DOC_SECTORS[String(a.id)] ? { _id: a.id, sector: DOC_SECTORS[String(a.id)] } : null
+    case 'tasks:get':
+      return { task: { _id: a.id, dueAt: task(a.id).dueAt } }
+    case 'mailWaits:get': {
+      const w = WAITS.find((x) => x._id === a.threadId && x.state === 'waiting')
+      return w ? { since: w.since, dueAt: w.dueAt, to: w.to } : null
+    }
     case 'review:sentBetween':
       return SENT.filter((m) => inSpan(m.sentAt, a) && happened(m.sentAt))
     case 'review:answeredBetween':
@@ -173,12 +185,14 @@ function answer(fn: string, a: Record<string, unknown>): unknown {
       return void Object.assign(task(a.id), { state: 'dropped' })
     case 'mailWaits:putOff': {
       const w = wait(a.threadId)
+      if (w.since !== a.since || w.state !== 'waiting') return null
       const was = { state: w.state, dueAt: w.dueAt }
       w.dueAt = Number(a.until)
       return was
     }
     case 'mailWaits:dismiss': {
       const w = wait(a.threadId)
+      if (w.since !== a.since || w.state !== 'waiting') return null
       const was = { state: w.state, dueAt: w.dueAt }
       w.state = 'dismissed'
       return was
@@ -474,7 +488,7 @@ try {
     assert.equal(body1.slipped.rows.find((r) => r.key === 'task:tk-ref-1')!.at, at(-6, 9))
   })
   await step('1. what slipped: the mails waiting past their time, and not the one due Saturday', () =>
-    assert.deepEqual(slipped1.filter((k) => k.startsWith('mail:')), ['mail:mt-cos-1', 'mail:mt-pur-1'])
+    assert.deepEqual(slipped1.filter((k) => k.startsWith('mail:')), [waitRow('mt-cos-1'), waitRow('mt-pur-1')])
   )
   await step('1. what slipped: the meetings with someone else on them and no mail to them after (not the ones Riley got a mail after, nor one alone or declined)', () => {
     assert.deepEqual(slipped1.filter((k) => k.startsWith('meeting:')), ['meeting:ev-hyp-3', 'meeting:ev-pur-1'])
@@ -579,16 +593,16 @@ try {
   await step("4. a task's Drop calls tasks:drop with its id and the reason, and nothing else", () =>
     assert.deepEqual({ lifeos: dropTask.lifeos, modules: dropTask.modules, outbox: dropTask.outbox }, { lifeos: [['tasks:drop', { id: 'tk-life-1', reason: 'Dropped in the weekly review' }]], ...nothingElse })
   )
-  const putOff = await press('mail:mt-pur-1', 'later')
+  const putOff = await press(waitRow('mt-pur-1'), 'later')
   await step("4. a waiting mail's Next week calls mailWaits:putOff to next Monday 9:00 AM, and nothing else", () =>
     assert.deepEqual({ lifeos: putOff.lifeos, modules: putOff.modules, outbox: putOff.outbox }, { lifeos: [['mailWaits:putOff', { threadId: 'mt-pur-1', until: NEXT_MON_9, since: at(0, 10) }]], ...nothingElse })
   )
-  const nudge = await press('mail:mt-cos-1', 'now', 'cosmic')
+  const nudge = await press(waitRow('mt-cos-1'), 'now', 'cosmic')
   await step("4. a waiting mail's Nudge asks the Mail pillar (stand-in) for a draft in the Cosmic workspace, writes nothing in LifeOS, and has no undo", () => {
     assert.deepEqual({ lifeos: nudge.lifeos, modules: nudge.modules, outbox: nudge.outbox }, { lifeos: [], modules: [['mail', 'work.mail.nudge', { workspaceId: 'w-cosmic', threadId: 'mt-cos-1' }]], outbox: [] })
     assert.deepEqual(nudge.out, { undo: null, sessionId: 'nudge-standin' })
   })
-  const stop = await press('mail:mt-cos-1', 'drop')
+  const stop = await press(waitRow('mt-cos-1'), 'drop')
   await step("4. a waiting mail's Stop waiting calls mailWaits:dismiss, and nothing else", () =>
     assert.deepEqual({ lifeos: stop.lifeos, modules: stop.modules, outbox: stop.outbox }, { lifeos: [['mailWaits:dismiss', { threadId: 'mt-cos-1', since: at(0, 11) }]], ...nothingElse })
   )
@@ -692,7 +706,7 @@ try {
   })
   await step('4. on Monday, Next week comes back for a task, a waiting mail and a held item (in the new week)', () => {
     const k = keys(nextWeek.slipped.rows)
-    for (const want of ['task:tk-hyp-1', 'mail:mt-pur-1', `held:host:${H2}`]) assert.ok(k.includes(want), `${want} is not back: ${k.join(', ')}`)
+    for (const want of ['task:tk-hyp-1', waitRow('mt-pur-1'), `held:host:${H2}`]) assert.ok(k.includes(want), `${want} is not back: ${k.join(', ')}`)
     assert.ok(!k.includes('meeting:ev-pur-1') && !keys(over.slipped.rows).includes('meeting:ev-pur-1'), 'None needed came back')
   })
   await step("4. on Monday, a meeting's Next week comes back (in last week's review or this week's)", () => {
