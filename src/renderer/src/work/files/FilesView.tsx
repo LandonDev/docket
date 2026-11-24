@@ -39,7 +39,7 @@ import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
-import { formKindsFor } from "../msforms/newForm";
+import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
@@ -850,11 +850,12 @@ function FolderPage({
           tabs: reach.tabs,
           ...farOf(copy, workspace.environmentId),
           make: (kind) => makeIn(of, copy, page.at, kind),
-          forms: {
-            kinds: formKindsFor(copy.place, { sameHost: copy.link === workspace.environmentId, offered: msOffered }),
+          forms: ((twin) => ({
+            ...formKindsFor(copy.place, { sameHost: copy.link === workspace.environmentId, offered: msOffered, twin: !!twin }),
             making: makingForm,
-            make: (kind) => makeAForm(kind, page.at.at === "file" ? page.at : copy.place.root),
-          },
+            // A library another computer holds is made in through the workspace host's copy of it.
+            make: (kind) => makeAForm(kind, twin ? formFolderOf(page.at.at === "file" ? page.at : copy.place.root, copy, twin) : page.at.at === "file" ? page.at : copy.place.root),
+          }))(twinOf(found?.row?.copies ?? [copy], copy, workspace.environmentId)),
           rename: (entry, name) => renameTo(of, copy, entry, name),
           carry: (verb, entries) => verbs.carry({ verb, entries, from: copy, start: { at: page.at, name: page.name } }),
           trash: (entries) => void trash(of, copy, entries),

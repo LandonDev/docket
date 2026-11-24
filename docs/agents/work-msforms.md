@@ -50,7 +50,7 @@ Forms: the `msform_*` tools are the only way, and branching, file upload, Rankin
 to do in the page.
 
 - **Operations, not steps** (ops.ts): `make`, `write`, `settings`, `collect`, `audience`, `close`, `count`, `pull`,
-  `prefill`, each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
+  each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
 - **Each runs under an authorization** (types.ts `authorize`, `checkAuth`) bound to the host, workspace, form (or
   folder), operation, a digest of its payload and the form's `rev`, from a grantor allowed it (`OPS_BY`): his press
   (`owner`), a claimed held act's execute (`act`), the pillar under Agent writes on a draft, a closing end date and a
@@ -76,6 +76,11 @@ carrier opens the folder's library page, Create or upload → Forms survey, foll
 (org only, record names, one answer each by default). If the first step fails the row keeps the form as a draft that
 may take answers and says "The form was made but may take answers: no one has its link. Open it and turn off Accept
 responses, or delete it." The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
+
+A library another computer holds (his Mac's OneDrive copy of RecWell) takes a Microsoft form through the box's own
+copy of the same library (`twinOf`, `formFolderOf`): the window asks the make for the same folder in the box's (or its
+VM's) copy, and the form lands in the same SharePoint folder. With no such copy on the box the row is there, off, and
+says "Only a library the box also holds takes a Microsoft form."; nothing is asked of any host.
 
 An agent's make (`msform_create`) is always held as `msform.make`: a form made in a Team shows to its members at
 once. `from` makes the questions from our form, a document, a sheet's header row or a template (msforms/makers,
@@ -214,8 +219,9 @@ counted in place ("3 new responses to …"), with no name; the routine's job fil
 (LifeOS stood in: no test session of his LifeOS on the box); `isFormsWorkbook` names the workbook.
 
 Not proven: the Files tab's guest (typing in the real builder and its reload on the agent's change) and Open the
-workbook Live, which need the Electron window; no windowed instance was run. The prefill (`Get Pre-filled URL`)
-reached the form's field and then did not find the link Forms shows: not working yet.
+workbook Live, which need the Electron window; no windowed instance was run. There is no prefilled link: the proof's
+prefill (`Get Pre-filled URL`) reached the form's fields, but Forms never showed the link it makes, so the share
+menu, the wire and the carrier no longer offer one (2026-11-24).
 
 Open, found by the proofs:
 - The box browser's 2 GB cap (`MEMORY_CAP_MB`, chromium.ts, the sum of each process's VmRSS) stopped it with a Forms

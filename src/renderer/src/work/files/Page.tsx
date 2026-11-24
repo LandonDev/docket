@@ -488,7 +488,7 @@ export interface PageActs {
   /** New: makes a thing of the kind here; answers it, to select and name */
   make(kind: MakeKind): Promise<FileEntry | null>;
   /** New → Form: the kinds this place offers and the make, which opens the form in a tab (work/msforms/newForm.ts) */
-  forms?: { kinds: readonly FormKind[]; make(kind: FormKind): Promise<void>; /** a Microsoft form is being made in Forms: about a minute */ making: boolean };
+  forms?: { kinds: readonly FormKind[]; /** a Microsoft form cannot be made here: the off row's line */ refused?: string; make(kind: FormKind): Promise<void>; /** a Microsoft form is being made in Forms: about a minute */ making: boolean };
   rename(entry: FileEntry, name: string): Promise<FileEntry | null>;
   /** Move to… and Copy to…: the dialog that picks the folder */
   carry(verb: "move" | "copy", entries: readonly FileEntry[]): void;
@@ -539,9 +539,11 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
   const makes = acts.place.makes ?? [];
   const upload = canDo(acts.place, "upload");
   const forms = acts.forms?.kinds ?? [];
-  // Two kinds of form are one Form row with a line each; one kind is the row itself.
-  const formRow: MenuRow[] =
-    forms.length > 1
+  const refused = acts.forms?.refused;
+  // Two kinds of form are one Form row with a line each; one kind is the row itself; a refused Microsoft form is an off row with its reason as its line, asked of no one.
+  const formRow: MenuRow[] = refused && !forms.length
+    ? [{ kind: "item", id: "form:refused", label: FORM_KIND_WORDS.microsoft.label, icon: ListChecks, description: refused, disabled: true }]
+    : forms.length > 1
       ? [{ kind: "sub", id: "form", label: "Form", icon: ListChecks, items: forms.map((f): MenuRow => ({ kind: "item", id: `form:${f}`, label: FORM_KIND_WORDS[f].label, description: FORM_KIND_WORDS[f].line })) }]
       : forms.length === 1
         ? [{ kind: "item", id: `form:${forms[0]}`, label: "Form", icon: ListChecks }]
@@ -558,7 +560,7 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
     { kind: "note", id: "where", content: <span className="min-w-0 truncate">Kept in {name}</span> },
   ];
   // A place that makes nothing and takes no upload offers no New: its rows' own menus say why.
-  if (!makes.length && !forms.length && !upload && !acts.addFromDrive) return null;
+  if (!makes.length && !forms.length && !refused && !upload && !acts.addFromDrive) return null;
   return (
     <RowsMenu
       label="New"
