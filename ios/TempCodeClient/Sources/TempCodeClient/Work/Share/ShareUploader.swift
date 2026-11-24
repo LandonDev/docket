@@ -26,7 +26,9 @@ extension ShareFolder {
 /// Each begin carries the op `<item id>-<attempts>`. The host answers the same upload id for the same op, so a
 /// begin whose answer was lost is sent again as it was and starts no second save. Once the host answers an
 /// op, the item counts it spent and the next begin sends a fresh one: after an upload the host forgot, after a
-/// lost connection mid-upload, after a refusal.
+/// lost connection mid-upload, after a refusal. A commit whose answer was lost is asked again on its upload id
+/// before anything else (`ShareItem.committing`): the host answers it as it did the first time, so the file is
+/// not saved twice; only an upload the host no longer knows begins again.
 @MainActor
 public final class ShareUploader {
     /// The calls an upload makes, so a test needs no socket. `.socket(_:)` is the real one.
@@ -149,6 +151,19 @@ public final class ShareUploader {
             return Self.outcome(of: error)
         }
         if item.size > settings.maxBytes { return .refused(Self.tooLarge(host: hostName, limit: settings.maxBytes), final: true) }
+        if let pending = item.committing {
+            do {
+                try await request.commit(pending)
+                try? inbox.committing(item.id, uploadId: nil)
+                progress(1)
+                return .done
+            } catch {
+                if error is CancellationError || Self.isUnreachable(error) { return .queued }
+                try? inbox.committing(item.id, uploadId: nil)
+                // The host no longer knows the upload, so it made nothing under it: begin again below.
+                if !Self.isExpired(error) { return Self.outcome(of: error) }
+            }
+        }
         let step = AttachmentUpload.chunkBytes(answered: settings.chunkBytes)
         var attempts = item.attempts ?? 0
         var begunAgain = false
@@ -168,10 +183,14 @@ public final class ShareUploader {
             do {
                 try await chunks(item, uploadId: uploadId, step: step, progress: progress)
                 try Task.checkCancellation()
+                try? inbox.committing(item.id, uploadId: uploadId)
                 try await request.commit(uploadId)
+                try? inbox.committing(item.id, uploadId: nil)
                 progress(1)
                 return .done
             } catch {
+                // Answered: the commit is no longer on its way. Unanswered, it is asked again at the next send.
+                if !(error is CancellationError || Self.isUnreachable(error)) { try? inbox.committing(item.id, uploadId: nil) }
                 // The host forgot the upload (idle past its time): begin once more, from the first byte.
                 if Self.isExpired(error) && !begunAgain {
                     begunAgain = true

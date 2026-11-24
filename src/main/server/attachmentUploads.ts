@@ -158,8 +158,18 @@ export function freeName(dir: string, name: string): string {
   }
 }
 
+/** How long a commit's answer is kept for a commit sent again: a phone's queue drains at its next launch or foreground. */
+export const COMMITTED_KEEP_MS = 24 * 60 * 60_000
+const COMMITTED_MAX = 1000
+
 export class AttachmentUploads {
   private readonly uploads = new Map<string, Upload>()
+  /**
+   * Each commit's answer by upload id, kept a day: a commit sent again because its answer was lost on the way
+   * (Save to TempCode, ShareUploader) is answered as the first was, and makes no second file. A commit that
+   * failed is not kept: nothing was made, and the id is unknown again.
+   */
+  private readonly committed = new Map<string, { owner: string; at: number; answer: Promise<CommittedAttachment> }>()
   private readonly timer: NodeJS.Timeout | null
   private readonly now: () => number
   private readonly ttlMs: number
@@ -295,10 +305,26 @@ export class AttachmentUploads {
     return { received: upload.received }
   }
 
-  async commit(owner: string, uploadId: string): Promise<CommittedAttachment> {
-    const upload = this.take(owner, uploadId)
-    if (upload.busy) throw new UploadError('out-of-order', 'a chunk is still being written')
+  commit(owner: string, uploadId: string): Promise<CommittedAttachment> {
+    const now = this.now()
+    for (const [id, kept] of this.committed) if (now - kept.at > COMMITTED_KEEP_MS || this.committed.size > COMMITTED_MAX) this.committed.delete(id)
+    const kept = this.committed.get(uploadId)
+    if (kept && kept.owner === owner) return kept.answer
+    let upload: Upload
+    try {
+      upload = this.take(owner, uploadId)
+    } catch (err) {
+      return Promise.reject(err)
+    }
+    if (upload.busy) return Promise.reject(new UploadError('out-of-order', 'a chunk is still being written'))
     this.uploads.delete(upload.id)
+    const answer = this.land(upload)
+    this.committed.set(uploadId, { owner, at: now, answer })
+    answer.catch(() => this.committed.delete(uploadId))
+    return answer
+  }
+
+  private async land(upload: Upload): Promise<CommittedAttachment> {
     const fail = async (code: UploadErrorCode, message: string): Promise<never> => {
       await this.clear(upload)
       throw new UploadError(code, message)

@@ -14,6 +14,8 @@ final class ShareHost: @unchecked Sendable {
     /// Thrown by the chunk call with this number (counted from 1 over the whole run), once.
     var chunkFailures: [Int: any Error] = [:]
     var commitError: (any Error)?
+    /// Thrown by the commit of this upload id, once.
+    var commitFailures: [String: any Error] = [:]
     /// Cancels the sending task when the chunk with this index arrives.
     var cancelAtIndex: Int?
     private var chunkCount = 0
@@ -51,6 +53,7 @@ final class ShareHost: @unchecked Sendable {
             commit: { uploadId in
                 self.note("commit \(uploadId)")
                 if let error = self.commitError { throw error }
+                if let failure = self.lock.withLock({ self.commitFailures.removeValue(forKey: uploadId) }) { throw failure }
             },
             abort: { uploadId in self.note("abort \(uploadId)") }
         )
@@ -189,6 +192,35 @@ final class ShareHost: @unchecked Sendable {
         #expect(rig.inbox.item(item.id)?.attempts == 1)
         #expect(await uploader.send(item).state == .done)
         #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"])
+    }
+
+    @Test func `a commit whose answer was lost is asked again on its upload, and nothing is begun twice`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.commitError = TransportError.closed(CloseReason(kind: .network, message: "connection lost"))
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        #expect(rig.inbox.item(item.id)?.committing == "u1")
+        // The host made the file and keeps its answer for the upload: the next send asks that commit, and only it.
+        host.commitError = nil
+        let after = await sender(rig, host, as: "app").send(item)
+        #expect(after.state == .done)
+        #expect(host.begun.count == 1)
+        #expect(host.calls.suffix(2) == ["settings", "commit u1"])
+    }
+
+    @Test func `a lost commit the host no longer knows begins again`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.commitError = TransportError.notConnected
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        // The host made nothing under it (it never had the commit, and the upload ran out): the file goes again from begin.
+        host.commitError = nil
+        host.commitFailures = ["u1": TransportError.server(method: "attachment.commit", message: "unknown upload (expired, aborted or never begun)")]
+        let after = await uploader.send(item)
+        #expect(after.state == .done)
+        #expect(host.calls.contains("commit u2"))
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"])
+        #expect(rig.inbox.item(item.id)?.committing == nil)
     }
 
     @Test func `cancel aborts the upload on the host and the item goes back to the queue`() async throws {

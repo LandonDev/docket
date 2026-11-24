@@ -232,11 +232,13 @@ pictures and three movies.
   (`runOp`, upload.ts), so a begin whose answer was lost is sent again
   unchanged and starts no second save. Once the host answers an op it is
   spent and the next begin sends a fresh one: after an upload the host
-  forgot, a connection lost mid-upload, or a refusal. Not covered: a commit
-  the host made whose answer was lost. The next try finds the upload id gone,
-  which the phone cannot tell from an expired upload, and saves a second
-  copy under a free name. Closing that needs the host to keep a commit's
-  answer against the op.
+  forgot, a connection lost mid-upload, or a refusal. A commit whose answer
+  was lost is kept on the manifest (`committing`, the upload id) and asked
+  again before anything else: the host keeps each commit's answer by upload
+  id for a day (`AttachmentUploads.committed`, attachmentUploads.ts) and
+  answers it again, so the file is not saved twice. Only an upload the host
+  no longer knows (it never had the commit and the upload ran out, or a day
+  went by, or the host restarted) begins again.
 - **Final refusals.** What no retry can change is marked `isFinal` on the
   manifest (absent in an older one: retryable): the phone's "<host> takes
   files up to …", "The file is no longer on this phone." and "The file

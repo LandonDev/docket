@@ -281,6 +281,18 @@ describe('an upload with a target of its own (beginInto)', () => {
     expect(uploads.size).toBe(0)
   })
 
+  it('answers a commit sent again as the first was, and lands nothing twice (its answer was lost on the way)', async () => {
+    const bytes = Buffer.from('hello')
+    const seen: string[] = []
+    const { uploadId } = await uploads.beginInto('key:k1', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), seen))
+    await send('key:k1', uploadId, bytes)
+    const first = await uploads.commit('key:k1', uploadId)
+    expect(await uploads.commit('key:k1', uploadId)).toEqual(first)
+    expect(seen).toEqual(['hello'])
+    // Another owner hears nothing of it.
+    await expect(uploads.commit('key:k2', uploadId)).rejects.toMatchObject({ code: 'unknown-upload' })
+  })
+
   it('never calls land for a wrong hash or size, and leaves no staging', async () => {
     const seen: string[] = []
     const bytes = Buffer.from('hello')

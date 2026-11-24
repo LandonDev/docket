@@ -72,6 +72,9 @@ public struct ShareItem: Codable, Identifiable, Equatable, Sendable {
     public var isFinal: Bool?
     /// How many of this item's `work.files.upload` ops the host has answered; the next is `<id>-<attempts>`.
     public var attempts: Int?
+    /// The upload whose commit was sent and not answered: the next send asks that commit again before any new
+    /// begin, and the host answers it as it did the first time, so a file it made is not made twice.
+    public var committing: String?
     /// The process that holds the claim, while one does.
     var holder: String?
     /// Wall-clock milliseconds of the share.
@@ -250,6 +253,13 @@ public final class ShareInbox: Sendable {
     func spent(_ id: String, attempts: Int) throws {
         guard var item = held(id) else { throw CocoaError(.fileNoSuchFile) }
         item.attempts = attempts
+        try write(item, to: claimed(id))
+    }
+
+    /// Notes the upload whose commit is on its way, or nil once the host answered it.
+    func committing(_ id: String, uploadId: String?) throws {
+        guard var item = held(id) else { throw CocoaError(.fileNoSuchFile) }
+        item.committing = uploadId
         try write(item, to: claimed(id))
     }
 
