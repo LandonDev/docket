@@ -22,7 +22,7 @@ import { googleEdit, googleShare } from './held'
 import { google as module, setOpenBrowser } from './index'
 import { pickerUrl } from './picker'
 import { pollOnce } from './poll'
-import { boxesOf } from './slides'
+import { boxesOf, pagesOf } from './slides'
 import { GOOGLE_TOOLS } from './tools'
 import { registerUploadBytes } from './uploads'
 
@@ -385,6 +385,13 @@ describe('the google tools', () => {
     fake.files.get('deck7')!.deck!.rev++
     await expect(googleEdit.execute(googleEdit.payload.parse(older), { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: expect.stringMatching(/^Made the change in Plan/) })
     expect(fake.files.get('deck7')!.deck!.slides[0]!.texts[0]!.text).toBe('Q2 goals')
+  })
+
+  it('never sends an empty page list, which Google reads as every page', () => {
+    expect(pagesOf([2], ['s1', 's2'])).toEqual(['s2'])
+    expect(pagesOf(undefined, ['s1', 's2'])).toEqual(['s1', 's2'])
+    const cases: [number[] | undefined, string[]][] = [[[3], ['s1', 's2']], [undefined, []], [[], ['s1']]]
+    for (const [on, pages] of cases) expect(() => pagesOf(on, pages)).toThrow('is not in the deck now')
   })
 
   it('leaves a deck stale when its only match moved to another bullet of the same box', async () => {

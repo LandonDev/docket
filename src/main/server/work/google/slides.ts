@@ -99,10 +99,20 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
  * every page, a slide's speaker notes, its layout and its master included, which the card never counted. The slides are
  * the ones the card named (`on`), by the ids of the deck just read; a hold from before `on` was kept names every slide.
  */
+/**
+ * The slides a replace-all may change, by their ids in the deck just read. Never an empty list, which Google reads as
+ * every page: a slide the card named that the deck no longer has, or a deck with no slides, is refused instead.
+ */
+export function pagesOf(on: readonly number[] | undefined, pages: readonly string[]): string[] {
+  const ids = on ? on.map((n) => pages[n - 1]) : [...pages]
+  if (!ids.length || ids.some((id) => !id)) throw new Error('A slide this change was shown on is not in the deck now.')
+  return ids as string[]
+}
+
 const requestsOf = (edits: readonly HeldDeckEdit[], pages: readonly string[]): Record<string, unknown>[] =>
   edits.flatMap((e): Record<string, unknown>[] =>
     'find' in e
-      ? [{ replaceAllText: { containsText: { text: e.find, matchCase: true }, replaceText: e.replace, pageObjectIds: e.on ? e.on.map((n) => pages[n - 1]!).filter(Boolean) : [...pages] } }]
+      ? [{ replaceAllText: { containsText: { text: e.find, matchCase: true }, replaceText: e.replace, pageObjectIds: pagesOf(e.on, pages) } }]
       : [{ deleteText: { objectId: e.shape, textRange: { type: 'ALL' } } }, ...(e.text ? [{ insertText: { objectId: e.shape, text: e.text, insertionIndex: 0 } }] : [])]
   )
 
@@ -154,6 +164,12 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
     if (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) return { stale: elsewhereWords(e.find, 'slides') }
     return { stale: elsewhereWords(e.find, 'boxes') }
   }
-  await api.deckUpdate(fileId, requestsOf(edits, pages), { requiredRevisionId: d.revisionId })
+  let requests: Record<string, unknown>[]
+  try {
+    requests = requestsOf(edits, pages)
+  } catch (err) {
+    return { stale: (err as Error).message.replace(/\.$/, '').replace(/^A/, 'a') }
+  }
+  await api.deckUpdate(fileId, requests, { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }
 }

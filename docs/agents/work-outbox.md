@@ -110,8 +110,9 @@ idea on a file others can open is kept on his host and shown only to him.
   `EDITABLE_KINDS`. Send N on a workspace's group approves every one there;
   Discard refuses one, and nothing was ever in the file.
 - **What still writes at once**: his words found in the thread (`because:
-  "asked"` with the quote, Office tools only; a Google change always waits),
-  and a file only he can open.
+  "asked"` with the quote: the Office tools, `doc_write`, `doc_format`,
+  `sheet_write` and `slides_edit` alike; a Google change always waits), and a
+  file only he can open.
 - **Where the other builds stand** (the audit is
   `.temp-code/plans/landed/F-private-suggestions.md`): an agent's `.tcdoc`
   branch is kept under this host's data (history/privateBranches.ts) and a
