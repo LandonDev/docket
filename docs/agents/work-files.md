@@ -1834,9 +1834,10 @@ over a colleague's Word file but his own press.
   library place that carries `make` (a Mac's, the VM's, a PC's): named in place, it opens as the Word-backed document
   and saves by itself with no notice, since it holds only what the editor makes (`offersIn`). In the workspace's own
   folder New → Document still makes a `.tcdoc`.
-- **A document he only looked at** goes with its tab: one whose change time is still the one it was made with is
-  deleted with its record (`wordsLeft`); one he changed is kept, in the workspace's folder, for the Word file's next
-  open.
+- **A document he only looked at** goes with its tab: only one the host saw at the live revision it was made at,
+  never saved, with its file's time unchanged, is deleted with its record (`wordsLeft`). Anything else is kept, in the
+  workspace's folder, for the Word file's next open: one he typed into (his words live in the Work service before the
+  `.tcdoc` file is written), and one the host never looked at.
 
 ## What a pane owner changes for every kind
 

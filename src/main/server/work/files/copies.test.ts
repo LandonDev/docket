@@ -598,11 +598,27 @@ describe('a Word file of another computer', () => {
     expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(reads)
   })
 
-  it('drops a document he only looked at when its tab closes', async () => {
-    const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
-    await closeAndHear(tabId)
-    expect(existsSync(doc)).toBe(false)
-    expect(wordRow(box.ctx, WS, MAC, path)).toBeNull()
+  it('drops a document only once it is seen unchanged, never one whose words live only in the service', async () => {
+    let rev = 'r0'
+    ;(box.ctx as { service: unknown }).service = { internal: async () => ({ rev }) }
+    // Typed into, the .tcdoc file not yet written: kept, his words with it.
+    const typed = await imported('Typed.docx', 'word bytes')
+    await autosaveWords(box.ctx, 1_000_000)
+    rev = 'r1'
+    await autosaveWords(box.ctx, 1_001_000)
+    await closeAndHear(typed.tabId)
+    expect(existsSync(typed.doc)).toBe(true)
+    // Never looked at by the host: kept, since nothing says it is unchanged.
+    const unseen = await imported('Unseen.docx', 'word bytes')
+    await closeAndHear(unseen.tabId)
+    expect(existsSync(unseen.doc)).toBe(true)
+    // Seen at the revision it was made at, never typed into: it goes with its record.
+    rev = 'r9'
+    const looked = await imported('Plan.docx', 'word bytes')
+    await autosaveWords(box.ctx, 2_000_000)
+    await closeAndHear(looked.tabId)
+    expect(existsSync(looked.doc)).toBe(false)
+    expect(wordRow(box.ctx, WS, MAC, looked.path)).toBeNull()
   })
 
   it('never writes over a Word file that changed there: the conflict, then Keep Both beside it', async () => {

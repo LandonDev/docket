@@ -219,6 +219,10 @@ export function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas'>, items: readonly C
     if (!r || ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && open.source.path === r.doc)) continue
     const now = mtime(r.doc!)
     if (now !== null && now !== r.doc_at) continue
+    // Only a document seen unchanged is let go: its live revision (the Work service's, where his words are as he types)
+    // still the one it was made at, and never saved. The file's time alone does not say he typed nothing.
+    const seen = seenRevs.get(keyOf(r))?.rev
+    if (r.saved_rev !== null || r.base_rev === null || seen === undefined || seen !== r.base_rev) continue
     ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
     if (now !== null) rmSync(r.doc!, { force: true })
   }
