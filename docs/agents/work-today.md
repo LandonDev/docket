@@ -68,6 +68,7 @@ place's label. With Work off the rail is what it was
 | Due | `today/due.ts` | LifeOS `tasks:list {}`, kept by work-kit's `isTodayTask` | LifeOS, once |
 | Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, 20 a page, following `continueCursor` for up to five pages; while a page is out the section is still to answer, and past the fifth it never says it is empty (`away`) | LifeOS, once |
 | Changed by others | `today/files.ts` | `work.files.changed {workspaceId}` per job | each host |
+| Responses | `msforms/today.ts` | `work.msforms.list {workspaceId}` per job, live on the `work.msforms` push: one row a Microsoft form with unseen answers ("3 new responses"), section order 70, folded past five, drawn only while it has a row; a press opens the form in its Files tab (`openInFiles`, the `msform` source) | each host |
 
 The Files source is written and tested against a fake wire and is **not**
 in `TODAY_SOURCES`: Files has not built `work.files.changed`. Registering it

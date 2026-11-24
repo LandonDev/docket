@@ -139,6 +139,14 @@ describe('person_page', () => {
     expect(tools.map((t) => [t.name, t.readOnly])).toEqual([['person_page', true]])
   })
 
+  it('lists the Microsoft forms they answered, and nothing else when that is all', () => {
+    const quiet = { ...page, mail: [], coming: [], recent: [], tasks: [], shared: [], person: { ...page.person, notes: '', phones: [] }, lastAt: undefined }
+    const text = pageText(quiet, [], 'purdue', 'America/Chicago', [{ formId: 'f1', title: 'Spring LAN sign-up', at: null }])
+    expect(text).toContain('## Answered\n- Spring LAN sign-up (Microsoft form f1)')
+    expect(text).not.toContain('Nothing live')
+    expect(pageText(quiet, [], 'purdue', 'America/Chicago', [])).not.toContain('Answered')
+  })
+
   it('says when nothing is live with them', () => {
     const quiet = { ...page, mail: [], coming: [], tasks: [], shared: [], person: { ...page.person, notes: '', phones: [] }, lastAt: undefined }
     expect(pageText(quiet, [], 'purdue', 'America/Chicago')).toBe('# Maya Chen (person p_maya, purdue)\nAddresses: maya@school.edu\n\nNothing live with them in purdue.')

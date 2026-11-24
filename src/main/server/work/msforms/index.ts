@@ -15,6 +15,9 @@ import { ensureWorkbookIndex } from './workbook'
 import { refuseWithheld } from './withhold'
 import { MSFORMS_PREAMBLE, msformsTools } from './tools'
 import { msformMentions, msformSearch } from './search'
+import { onNewAnswers } from './events'
+import { byPerson } from './people'
+import { RESPONSES_TELL, tellKey, tellNewAnswers } from './tell'
 
 // A form opens in a Files tab by its own source, after the one reach check (files/hooks.ts `registerRefSeat`).
 registerRefSeat('msform', async (ctx, by, ask) => {
@@ -97,8 +100,14 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       const carrier = carrierOrRefuse()
       return handled(await carrier.prefill(authFor(ctx, at.row, 'prefill', 'owner', p.values), at.row.formId, p.values))
     }
-    case 'work.msforms.seen':
-      return handled(markSeen(ctx, formReach(ctx, by, paramsOf('work.msforms.seen', req))))
+    case 'work.msforms.seen': {
+      const view = markSeen(ctx, formReach(ctx, by, paramsOf('work.msforms.seen', req)))
+      // he opened its Responses: what was new is seen, and the tell of it is done
+      ctx.tell.done(tellKey(view.formId))
+      return handled(view)
+    }
+    case 'work.msforms.byPerson':
+      return handled(await byPerson(ctx, by, paramsOf('work.msforms.byPerson', req)))
   }
   return NOT_HANDLED
 }
@@ -124,17 +133,20 @@ export const msforms: WorkModule = {
   preamble: () => MSFORMS_PREAMBLE,
   // "When someone answers <form>" (routine.ts): armed by the routines engine on the answers read's event
   triggers: [msformTrigger],
+  tells: [RESPONSES_TELL],
   jobs: [msformTasksJob],
   start(ctx) {
     const off = ctx.held.onDecided((item) => settled(ctx, item))
     const poller = startAnswersPoller(ctx)
+    const told = onNewAnswers((e) => tellNewAnswers(ctx, e))
     return () => {
       off()
       poller()
+      told()
     }
   },
   workspaceRemoved(workspaceId, ctx) {
-    new MsformsStore(ctx.db).removeWorkspace(workspaceId)
+    for (const row of new MsformsStore(ctx.db).removeWorkspace(workspaceId)) ctx.tell.done(tellKey(row.formId))
     forgetWorkspaceAnswers(workspaceId)
     removeMsformJobs(ctx.db, workspaceId)
   }

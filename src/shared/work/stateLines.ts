@@ -49,6 +49,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/formats/PreviewFrame.tsx`]: [
     ["`Saved ${made.name} to ${made.where}`", "answer"],
   ],
+  [`${R}/msforms/NotAnswered.tsx`]: [["Copied", "local"]],
   [`${R}/forms/FormCanvas.tsx`]: [
     ["Copied", "local"],
     ["Copied", "local"],

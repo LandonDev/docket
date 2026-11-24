@@ -23,6 +23,7 @@ export const TODAY_SOURCES: {
   { id: "money", what: "what is owed", load: () => import("../money/today") },
   { id: "review", what: "the weekly review", load: () => import("../review/today") },
   { id: "prep", what: "meeting prep", load: () => import("../prep/today") },
+  { id: "msforms", what: "new form responses", load: () => import("../msforms/today") },
   // What only the digest is told (a routine's result, a sign-in about to end, a guest's edit): rows in `also`.
   { id: "digest", what: "the digest", load: () => import("../digest/today") },
   // one line per pillar that adds to Today, after Today's own

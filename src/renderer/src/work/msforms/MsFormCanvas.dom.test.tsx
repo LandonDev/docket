@@ -14,6 +14,9 @@ import type { MsFormHost } from "./host";
 import { answerBarsOf, chartOf, timeColumnOf } from "./model";
 import { Bar, Body, type MsFormState } from "./MsFormCanvas";
 
+// No workspace with a sector stands in: Who hasn't answered offers pasting alone, and never opens a LifeOS session.
+vi.mock("../../lib/tcserver/workspaces", async (original) => ({ ...(await original<object>()), useWorkspaces: () => [] }));
+
 const FORM = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrFVrNURDVET1gyWlpLNkJXOUsyWEJXNFlKMzMxVC4u";
 const BASE: MsFormView = {
   workspaceId: "w1",
@@ -124,6 +127,35 @@ describe("Responses", () => {
     expect(host.seen).toHaveBeenCalled();
     expect(screen.getByRole("img").getAttribute("aria-label")).toBe("Which night works?: Monday 1, Tuesday 2");
     expect(screen.getByText(/^3 responses/)).toBeTruthy();
+  });
+
+  it("is quiet about who hasn't answered where the answers carry no address", async () => {
+    const view = { ...BASE, state: "collecting" as const, link: LINK, count: 3 };
+    await bar(view, hostOf(view), "responses");
+    await screen.findByText("Marcus Lee");
+    expect(screen.queryByRole("button", { name: "Who hasn't answered" })).toBeNull();
+  });
+
+  it("says who on a pasted list hasn't answered, matched by address whatever its case, and copies their addresses", async () => {
+    const withEmail: MsFormResponses = {
+      ...RESPONSES,
+      columns: [{ id: "email", label: "Email" }, ...RESPONSES.columns],
+      rows: RESPONSES.rows.map((r, i) => [["ava@purdue.example", "marcus@purdue.example", "jordan@purdue.example"][i]!, ...r]),
+    };
+    const view = { ...BASE, state: "collecting" as const, link: LINK, count: 3 };
+    await bar(view, hostOf(view, { responses: vi.fn(async () => withEmail) }), "responses");
+    fireEvent.click(await screen.findByRole("button", { name: "Who hasn't answered" }));
+    const check = await screen.findByRole("button", { name: "Check" });
+    expect((check as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Paste addresses"), { target: { value: "Ava <AVA@purdue.example>, sam@purdue.example\nriley@purdue.example" } });
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Check" })));
+    expect(screen.getByText("2 of 3 haven't answered")).toBeTruthy();
+    expect(screen.getAllByRole("listitem").map((r) => r.textContent).slice(-2)).toEqual(["sam@purdue.example", "riley@purdue.example"]);
+    const wrote: string[] = [];
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t: string) => void wrote.push(t) } });
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Copy addresses" })));
+    expect(wrote).toEqual(["sam@purdue.example, riley@purdue.example"]);
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
   it("says as of when the read is old", async () => {

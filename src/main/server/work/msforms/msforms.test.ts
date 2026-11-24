@@ -49,6 +49,7 @@ const { WORK_MODULES } = await import('../modules')
 const { MOVED, pollAnswers, READ_FAILED, resetAnswerReads, signInNeeded } = await import('./answers/read')
 const { CarrierBusy, CarrierSignIn, CarrierStop } = await import('./carrier/types')
 const { onNewAnswers } = await import('./events')
+const { ensureDigestTables } = await import('../digest/store')
 WORK_MODULES.push(msforms)
 afterAll(() => void WORK_MODULES.splice(WORK_MODULES.indexOf(msforms), 1))
 
@@ -446,5 +447,52 @@ describe('the answers read', () => {
     } finally {
       off()
     }
+  })
+
+  const tellRows = (formId: string) => (ensureDigestTables(db), tellRowsOf(formId))
+  const tellRowsOf = (formId: string) => db.prepare('SELECT title, open FROM work_digest_tells WHERE key = ?').all(`msforms:${formId}`) as { title: string; open: string }[]
+
+  it('tells new answers once a form, with the unseen count, in place, with no name; his look at Responses ends it', async () => {
+    ensureDigestTables(db)
+    const view = await collecting(2)
+    await call('work.msforms.refresh', ask(view.formId))
+    expect(tellRows(view.formId)).toEqual([{ title: '2 new responses to Spring LAN sign-up', open: expect.stringContaining('"view":"forms"') }])
+    answers(3)
+    await call('work.msforms.refresh', ask(view.formId))
+    const [row] = tellRows(view.formId)
+    expect(tellRows(view.formId)).toHaveLength(1)
+    expect(row!.title).toBe('3 new responses to Spring LAN sign-up')
+    for (const w of ['Dummy Person', 'example.test', ...SECRET]) expect(JSON.stringify(row)).not.toContain(w)
+    await call('work.msforms.seen', ask(view.formId))
+    expect(tellRows(view.formId)).toEqual([])
+    // only what came after his look is new
+    answers(4)
+    await call('work.msforms.refresh', ask(view.formId))
+    expect(tellRows(view.formId).map((r) => r.title)).toEqual(['1 new response to Spring LAN sign-up'])
+  })
+
+  it('says the forms each address answered, matched lower-cased, reading first what is not in memory; never another sector’s', async () => {
+    const view = await collecting(2)
+    const other = await collecting(1)
+    new MsformsStore(db).update('w1', other.formId, { sector: 'cosmic', count: 1 })
+    new MsformsStore(db).update('w1', view.formId, { count: 2 })
+    resetAnswerReads()
+    carrier.calls.length = 0
+    const got = await call<{ email: string; forms: { formId: string; title: string; at: number | null }[] }[]>('work.msforms.byPerson', { workspaceId: 'w1', emails: ['DUMMY1@Example.Test', 'nobody@example.test'] })
+    expect(got).toEqual([
+      { email: 'dummy1@example.test', forms: [{ formId: view.formId, title: 'Spring LAN sign-up', tenant: 'purdue0', at: new Date(2026, 10, 24, 9, 0).getTime() }] },
+      { email: 'nobody@example.test', forms: [] }
+    ])
+    expect(carrier.calls.filter((c) => c.op === 'pull').map((c) => c.formId)).toEqual([view.formId])
+  })
+
+  it("a routine's thread in Purdue is told no one answered anything", async () => {
+    const view = await collecting(1)
+    await call('work.msforms.refresh', ask(view.formId))
+    scopes.set('r1', { workspaceId: 'w1', sector: 'purdue', routineRunId: 'run1' })
+    const withheld = (await asThread('r1', 'work.msforms.byPerson', { workspaceId: 'w1', emails: ['dummy1@example.test'] })) as { result: { forms: unknown[] }[] }
+    expect(withheld.result).toEqual([{ email: 'dummy1@example.test', forms: [] }])
+    const own = (await asThread('t1', 'work.msforms.byPerson', { workspaceId: 'w1', emails: ['dummy1@example.test'] })) as { result: { forms: unknown[] }[] }
+    expect(own.result[0]!.forms).toHaveLength(1)
   })
 })

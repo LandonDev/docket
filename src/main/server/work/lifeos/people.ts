@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { workText, type SectorKey, type WorkToolResult } from '@shared/work'
 import { dayOf, hisZone, timeIn } from '../clock'
-import type { WorkCtx, WorkTool } from '../modules'
+import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { GUEST_LINKS_TABLE } from '../guests/store'
 
 /**
@@ -77,8 +77,11 @@ function heldLinks(ctx: WorkCtx): HeldLink[] {
 
 const NOUN = { docs: 'document', sheets: 'sheet', projects: 'project' } as const
 
+/** A Microsoft form of the job the person answered (msforms/people.ts `byPerson`). */
+export type AnsweredForm = { formId: string; title: string; at: number | null; tenant?: string }
+
 /** The page as words, each thing with the id LifeOS's own tools take. */
-export function pageText(page: Page, links: readonly HeldLink[], sector: string, zone: string): string {
+export function pageText(page: Page, links: readonly HeldLink[], sector: string, zone: string, answered: readonly AnsweredForm[] = []): string {
   // LifeOS all-day events carry the calendar date as UTC midnight.
   const when = (at: number, allDay?: boolean): string => allDay ? dayOf('UTC', at) : `${dayOf(zone, at)} ${timeIn(zone, at, 'named')}`
   const { person } = page
@@ -101,10 +104,28 @@ export function pageText(page: Page, links: readonly HeldLink[], sector: string,
       return `- ${s.title || 'Untitled'} (${NOUN[s.table]} ${s.id})${l ? `, can ${l.role} until ${dayOf(zone, l.expiresAt)}` : ''}`
     })
   )
+  section('Answered', answered.map((f) => `- ${f.title}${f.at !== null ? `, ${when(f.at)}` : ''} (Microsoft form ${f.formId})`))
   section('Earlier events', page.recent.map((e) => `- ${e.title}, ${when(e.startsAt, e.allDay)} (event ${e._id})`))
   // No "last heard from": read as the owner, its time may be a message of another sector.
-  if (!page.mail.length && !page.coming.length && !page.recent.length && !page.tasks.length && !page.shared.length) out.push('', `Nothing live with them in ${sector}.`)
+  if (!page.mail.length && !page.coming.length && !page.recent.length && !page.tasks.length && !page.shared.length && !answered.length) out.push('', `Nothing live with them in ${sector}.`)
   return out.join('\n')
+}
+
+/**
+ * The job's Microsoft forms the person answered, through msforms' own reach and withhold (a routine's thread in
+ * Purdue gets none). A Work Chat has no job, and a form it cannot reach is simply not listed.
+ */
+async function answeredBy(ctx: ToolCtx, emails: readonly string[]): Promise<AnsweredForm[]> {
+  if (!ctx.scope.workspaceId || !emails.length) return []
+  try {
+    const { byPerson } = await import('../msforms/people')
+    const got = await byPerson(ctx, { kind: 'model', caps: [], sessionId: ctx.sessionId }, { workspaceId: ctx.scope.workspaceId, emails: emails.slice(0, 50) })
+    const seen = new Map<string, AnsweredForm>()
+    for (const e of got) for (const f of e.forms) if (!seen.has(f.formId) || (f.at ?? 0) > (seen.get(f.formId)!.at ?? 0)) seen.set(f.formId, f)
+    return [...seen.values()].sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+  } catch {
+    return []
+  }
 }
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
@@ -135,7 +156,7 @@ export const personPageTool: WorkTool = {
       const links = linksNamed(heldLinks(ctx), found.person.name, Date.now())
       const page = await owner.query<Page | null>('people:page', { id: found.person._id, sector, shared: links.slice(0, 50).map((l) => ({ table: l.table, id: l.id })) })
       if (!page) return fail(`No one in ${sector}'s people is ${a.person}. Check the name, or find them with work_search, and ask again.`)
-      return workText(pageText(page, links, sector, hisZone(ctx)))
+      return workText(pageText(page, links, sector, hisZone(ctx), await answeredBy(ctx, page.person.emails)))
     } catch (err) {
       return fail(`LifeOS did not answer: ${err instanceof Error ? err.message : String(err)}`)
     }

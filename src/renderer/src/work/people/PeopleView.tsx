@@ -12,7 +12,9 @@ import { chordKey } from "../../lib/keys";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { guestsCall, type GuestLinkRow } from "../guests/api";
-import { openDocInFiles } from "../files/openFrom";
+import { openDocInFiles, openInFiles } from "../files/openFrom";
+import { sayError } from "../canvas/frame";
+import { readAnswered, type AnsweredForm } from "../msforms/answered";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
@@ -290,6 +292,25 @@ function useGuestLinks(env: string, person: string): GuestLinkRow[] | null {
   return links?.person === person ? links.rows : null;
 }
 
+const NO_ANSWERS: AnsweredForm[] = [];
+
+/** The job's Microsoft forms they answered, by their addresses. It may take a while (a form not read yet is read first): the section joins the page when it comes. */
+function useAnswered(env: string, workspaceId: string, emails: readonly string[] | undefined): AnsweredForm[] {
+  const key = emails?.join("\n") ?? "";
+  const [got, setGot] = useState<{ key: string; rows: AnsweredForm[] } | null>(null);
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    void readAnswered(env, workspaceId, key.split("\n")).then((rows) => {
+      if (live) setGot({ key, rows });
+    });
+    return () => {
+      live = false;
+    };
+  }, [env, workspaceId, key]);
+  return got?.key === key ? got.rows : NO_ANSWERS;
+}
+
 function GoneToList({ workspaceId }: { workspaceId: string }) {
   useEffect(() => setPlace(workspaceId, { person: null }), [workspaceId]);
   return <PageSkeleton />;
@@ -304,6 +325,7 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   // LifeOS takes at most 50.
   const shared = useMemo(() => mine.slice(0, 50).map((l) => ({ table: l.source.table, id: l.source.id })), [mine]);
   const page = useLifeosQuery<PersonPage | null>(props.lifeos, "people:page", { id: props.person, sector: props.sector, shared });
+  const answered = useAnswered(props.env, props.workspace.id, page.status === "ready" ? page.value?.person.emails : undefined);
   if (page.status === "failed") return <EmptyState title="This page did not load" line={page.error} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
   if (page.status === "loading" || links === null || (directory.status === "loading" && !name)) return <PageSkeleton />;
@@ -311,7 +333,7 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   if (!page.value && keptPerson.get(props.workspace.id) === props.person) return <GoneToList workspaceId={props.workspace.id} />;
   if (!page.value)
     return <EmptyState title="Not in People here" action={{ label: "Back to People", onClick: () => setPlace(props.workspace.id, { person: null }) }} />;
-  return <PersonPageBody {...props} page={page.value} links={mine} />;
+  return <PersonPageBody {...props} page={page.value} links={mine} answered={answered} />;
 }
 
 function PageSkeleton() {
@@ -341,9 +363,10 @@ export function PersonPageBody({
   faces,
   page,
   links,
+  answered = NO_ANSWERS,
   startThread,
   now = Date.now(),
-}: Pick<WorkViewProps, "workspace" | "startThread"> & { faces: ReadonlyMap<string, string>; page: PersonPage; links: readonly GuestLinkRow[]; now?: number }) {
+}: Pick<WorkViewProps, "workspace" | "startThread"> & { faces: ReadonlyMap<string, string>; page: PersonPage; links: readonly GuestLinkRow[]; answered?: readonly AnsweredForm[]; now?: number }) {
   const { person } = page;
   const workspaceId = workspace.id;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
@@ -354,6 +377,8 @@ export function PersonPageBody({
     // A sheet opens in a thread about it.
     else startThread({ kind: "selection", label: title, ref: { at: "lifeos", table: "sheets", id } });
   };
+  const openForm = (f: AnsweredForm) =>
+    void openInFiles(workspace, { ref: { at: "msform", host: workspace.environmentId, workspaceId, formId: f.formId, tenant: f.tenant }, name: f.title }).catch((err: unknown) => sayError(err, "Couldn't open the form"));
   const asked = page.tasks.filter((t) => t.relation === "asked");
   const waiting = page.tasks.filter((t) => t.relation === "waiting");
   const contact = [...person.emails, ...person.phones];
@@ -376,7 +401,7 @@ export function PersonPageBody({
         </div>
       </header>
       {person.notes.trim() ? <p className="mt-4 max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text">{person.notes.trim()}</p> : null}
-      {pageIsQuiet(page) ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing live with them here.</p> : null}
+      {pageIsQuiet(page) && !answered.length ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing live with them here.</p> : null}
 
       <Section label="Mail" show={page.mail.length > 0}>
         {page.mail.map((m) => (
@@ -407,6 +432,12 @@ export function PersonPageBody({
       <Section label="Past meetings" show={page.recent.length > 0}>
         {page.recent.map((e) => (
           <PageRow key={e._id} title={e.title} line={e.location} trail={eventWhen(e, now)} onOpen={() => go("agenda", { event: e._id })} />
+        ))}
+      </Section>
+      {/* Last: it may come after the page has landed, and grows nothing above it. */}
+      <Section label="Answered" show={answered.length > 0}>
+        {answered.map((f) => (
+          <PageRow key={f.formId} title={f.title} trail={f.at !== null ? formatStamp(f.at, now) : undefined} onOpen={() => openForm(f)} />
         ))}
       </Section>
     </div>

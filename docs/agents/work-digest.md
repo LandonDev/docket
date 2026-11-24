@@ -502,6 +502,16 @@ banner naming one item and opening it; a LifeOS item has no press here and
 keeps one key. Nothing held or failed is withdrawn from a list as long as
 the read allows (`WAITING_MAX`, 500): it may be cut short.
 
+## What Microsoft forms tell
+
+`msforms.responses` (group `results`, msforms/tell.ts): on the answers
+read's new-answer event, one row a form keyed `msforms:<formId>`, "3 new
+responses to <form>", its count the answers he has not seen
+(`count − seenCount`), told again in place as more come, opening the Forms
+view on the form. His look at its Responses (`work.msforms.seen`) ends it,
+and a removed job's rows end with it. Counts and the form's title only: no
+answer, name or address.
+
 ## Tonight's builds
 
 As found on master on 2026-11-23. Clashes (`clashes.new`, `by` the later

@@ -44,9 +44,11 @@ export interface ResponseTableProps {
   whole: string;
   /** one muted clause after the count ("as of 2:14 PM"), when the read is old */
   asOf?: string | null;
+  /** a quiet verb at the summary line's end (a Microsoft form's Who hasn't answered) */
+  aside?: ReactNode;
 }
 
-export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, whole, asOf }: ResponseTableProps) {
+export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, whole, asOf, aside }: ResponseTableProps) {
   const lastAt = timeColumn === null ? null : submittedTime(got.rows[0]?.[timeColumn] ?? "");
   const bars = chart?.bars ?? [];
   const max = Math.max(1, ...bars.map((b) => b.count));
@@ -78,12 +80,15 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
   const all = got.rows.length > 0 && picked.size === keys.length;
   return (
     <div data-form-responses className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-      <p className="px-4 pt-3 text-[13px] leading-5 text-muted-foreground">
-        {plural(got.count, "response")}
-        {got.cut ? ` shown, the newest; ${whole}` : ""}
-        {lastAt ? `, the last ${dayTime(lastAt)}` : ""}
-        {asOf ? `, ${asOf}` : ""}
-      </p>
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <p className="min-w-0 flex-1 text-[13px] leading-5 text-muted-foreground">
+          {plural(got.count, "response")}
+          {got.cut ? ` shown, the newest; ${whole}` : ""}
+          {lastAt ? `, the last ${dayTime(lastAt)}` : ""}
+          {asOf ? `, ${asOf}` : ""}
+        </p>
+        {aside}
+      </div>
       {chart && bars.length ? (
         <div role="img" aria-label={`${chart.label}: ${bars.map((b) => `${b.label} ${b.count}`).join(", ")}`} className="grid max-w-[560px] grid-cols-[minmax(0,max-content)_minmax(40px,1fr)_24px] items-center gap-x-3 gap-y-1.5 px-4 pt-3 pb-4 text-[13px] leading-5">
           <span className="col-span-full mb-0.5 font-medium">{chart.label}</span>

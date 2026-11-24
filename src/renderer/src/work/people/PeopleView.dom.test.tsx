@@ -32,8 +32,10 @@ const host = vi.hoisted(() => ({ links: [] as unknown[] }));
 vi.mock("../guests/api", async (original) => ({ ...(await original<object>()), guestsCall: async () => ({ env: "box", value: host.links }) }));
 const mail = vi.hoisted(() => ({ drafts: [] as unknown[] }));
 vi.mock("../mail/mailto", async (original) => ({ ...(await original<object>()), writeMail: (d: unknown) => void mail.drafts.push(d) }));
-const files = vi.hoisted(() => ({ docs: [] as unknown[][] }));
-vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args) }));
+const files = vi.hoisted(() => ({ docs: [] as unknown[][], opened: [] as unknown[][] }));
+vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args), openInFiles: async (...args: unknown[]) => void files.opened.push(args) }));
+const forms = vi.hoisted(() => ({ asked: [] as unknown[][], answered: [] as unknown[] }));
+vi.mock("../msforms/answered", () => ({ readAnswered: async (...args: unknown[]) => (forms.asked.push(args), forms.answered) }));
 
 const { View, Head, Title, placeOf, setPlace } = await import("./PeopleView");
 const { openerOf } = await import("../canvas/SentChips");
@@ -78,6 +80,9 @@ beforeEach(() => {
   lifeos.directoryFails = false;
   host.links = [];
   mail.drafts = [];
+  forms.asked = [];
+  forms.answered = [];
+  files.opened = [];
   setPlace("ws", { person: null, query: "" });
 });
 afterEach(() => {
@@ -125,6 +130,17 @@ describe("a person's page", () => {
     expect([...screen.getByTestId("head").querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Write", "New thread"]);
     fireEvent.click(screen.getByRole("button", { name: "Back to People" }));
     expect(placeOf("ws").person).toBeNull();
+  });
+
+  it("lists the job's Microsoft forms they answered, last, each opening the form in its Files tab", async () => {
+    forms.answered = [{ formId: "f1", title: "Spring LAN sign-up", tenant: "purdue0", at: NOW - 3_600_000 }];
+    setPlace("ws", { person: "p_maya" });
+    mount();
+    await act(async () => {});
+    expect(forms.asked).toEqual([["box", "ws", ["maya@school.edu"]]]);
+    expect(screen.getAllByRole("region").map((s) => s.getAttribute("aria-label")).at(-1)).toBe("Answered");
+    fireEvent.click(screen.getByText("Spring LAN sign-up"));
+    expect(files.opened).toEqual([[{ id: "ws", environmentId: "box" }, { ref: { at: "msform", host: "box", workspaceId: "ws", formId: "f1", tenant: "purdue0" }, name: "Spring LAN sign-up" }]]);
   });
 
   it("opens each row where that thing lives", async () => {

@@ -22,6 +22,7 @@ import { Mail, QrCode } from "../icons";
 import { writeMail } from "../mail/mailto";
 import { openWorkView } from "../../lib/workSwitch";
 import { answerBarsOf, chartOf, timeColumnOf } from "./model";
+import { NotAnsweredDialog } from "./NotAnswered";
 
 /**
  * The Microsoft form kind (docs/agents/work-msforms.md "The fenced page";
@@ -355,6 +356,7 @@ const OLD_MS = 2 * 60_000;
 function Responses({ view, host, item, shell }: { view: MsFormView; host: MsFormHost; item: CanvasItem; shell: CanvasShell }) {
   const [got, setGot] = useState<MsFormResponses | null | "failed">(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [asking, setAsking] = useState(false);
   const count = view.count;
   useEffect(() => {
     let on = true;
@@ -369,6 +371,12 @@ function Responses({ view, host, item, shell }: { view: MsFormView; host: MsForm
     };
   }, [host, count]);
   const chart = useMemo(() => (got && got !== "failed" ? chartOf(view.questions, got) : null), [got, view.questions]);
+  // The addresses the answers carry (Record name on): who hasn't answered is read against them.
+  const answered = useMemo(() => {
+    if (!got || got === "failed") return null;
+    const at = got.columns.findIndex((c) => c.id === "email");
+    return at < 0 ? null : got.rows.map((r) => r[at] ?? "").filter(Boolean);
+  }, [got]);
   const refresh = (): void => {
     setRefreshing(true);
     void host
@@ -396,7 +404,15 @@ function Responses({ view, host, item, shell }: { view: MsFormView; host: MsForm
         timeColumn={timeColumnOf(got)}
         whole="the workbook has them all"
         asOf={got.stale || old ? `as of ${dayTime(got.at ?? Date.now())}` : null}
+        aside={
+          answered ? (
+            <Button data-msform-not-answered variant="ghost" size="xs" className="-my-0.5 shrink-0 text-muted-foreground" onClick={() => setAsking(true)}>
+              Who hasn't answered
+            </Button>
+          ) : null
+        }
       />
+      {asking && answered ? <NotAnsweredDialog env={item.source.at === "msform" ? item.source.host : ""} workspaceId={view.workspaceId} answered={answered} onClose={() => setAsking(false)} /> : null}
     </div>
   );
 }

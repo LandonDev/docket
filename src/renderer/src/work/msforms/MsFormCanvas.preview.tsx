@@ -46,15 +46,16 @@ const BASE: MsFormView = {
 const RESPONSES: MsFormResponses = {
   rev: 3,
   columns: [
+    { id: "email", label: "Email" },
     { id: "name", label: "Name" },
     { id: "q1", label: "Which night works?" },
     { id: "q2", label: "Anything we should know?" },
     { id: "done", label: "Completion time" },
   ],
   rows: [
-    ["Ava Thompson", "Tuesday", "", "2026-11-24 14:02"],
-    ["Marcus Lee", "Monday", "Late after 8", "2026-11-24 13:40"],
-    ["Jordan Kim", "Tuesday", "", "2026-11-24 12:18"],
+    ["athompson@purdue.example", "Ava Thompson", "Tuesday", "", "2026-11-24 14:02"],
+    ["mlee@purdue.example", "Marcus Lee", "Monday", "Late after 8", "2026-11-24 13:40"],
+    ["jkim@purdue.example", "Jordan Kim", "Tuesday", "", "2026-11-24 12:18"],
   ],
   count: 3,
   cut: false,
