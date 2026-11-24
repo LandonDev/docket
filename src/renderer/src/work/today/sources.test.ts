@@ -163,6 +163,21 @@ describe("due", () => {
     row.open();
     expect(w.open).toHaveBeenCalledWith(JOBS[0], TASKS[0]);
   });
+
+  it("a row's tick and press look up the job when pressed: one built for a workspace since removed acts on the sector's job now", async () => {
+    // Two workspaces hold Purdue; the row was built while the box's routed it.
+    const mac = job("purdue", "mac");
+    let routed = JOBS[0]!;
+    const w = { ...ways(), workspaceOf: (sector: string) => (sector === "purdue" ? routed : workspaceOf(sector)) };
+    const row = dueRows(TASKS, at(23, 12), w).find((r) => r.key === "task:t3")!;
+    expect(row.workspace).toEqual({ environmentId: "box", workspaceId: "box-purdue" });
+    // The box's workspace is removed; the Mac's routes Purdue now.
+    routed = mac;
+    if (row.lead?.kind === "tick") await row.lead.run();
+    expect(w.done).toHaveBeenCalledWith(mac, TASKS[0]);
+    row.open();
+    expect(w.open).toHaveBeenCalledWith(mac, TASKS[0]);
+  });
 });
 
 describe("waiting on others", () => {

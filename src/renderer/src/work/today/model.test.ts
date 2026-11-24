@@ -220,6 +220,14 @@ describe("page", () => {
     expect(own.kind === "day" && own.keys).toEqual(["task:2"]);
   });
 
+  it("leaves out a kept row built for a workspace that is no longer a job, though another holds its sector", () => {
+    const built = (key: string, environmentId: string) => row(key, "due", { workspace: { environmentId, workspaceId: `${environmentId}-purdue` } });
+    // The box's Purdue went while Today was closed; the Mac's holds Purdue now.
+    const kept = { source: { id: "due", section: DUE }, answer: { rows: [built("task:1", "box"), built("task:2", "mac")], loading: true }, kept: true };
+    const day = page([kept], { jobs: [job("mac", "purdue")], lifeos: "ok" });
+    expect(day.kind === "day" && day.keys).toEqual(["task:2"]);
+  });
+
   it("draws one line where two sources say the same of one host", () => {
     const same = { environmentId: "box", error: "x", said: "LifeOS could not read clashes" };
     const [also] = merge([fed("clashes", undefined, { failed: [same] }), fed("other", undefined, { failed: [{ ...same }] })]);

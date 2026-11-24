@@ -59,6 +59,8 @@ export type TodayRow = {
   past?: boolean;
   /** The 16px slot before the title: a task's tick, or the thing's kind. */
   lead?: { kind: "tick"; label: string; run(): Promise<void> } | { kind: "glyph"; glyph: ComponentType<{ className?: string }> };
+  /** The workspace the row's presses act on, where it was built for one: a row the store kept whose workspace is no longer a job is not shown (model.ts `jobsOnly`). */
+  workspace?: Pick<TodayWorkspace, "environmentId" | "workspaceId">;
   /** The row's press: its thing in its own view. */
   open(): void;
   /** At most two verbs. */

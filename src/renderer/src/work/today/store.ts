@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import { DUR } from "../../lib/ease";
 import { NO_FOLDS, type Fed, type Folds } from "./model";
 import { TODAY_SOURCES } from "./sources";
-import type { TodayAnswer, TodaySource } from "./types";
+import type { SectorKey } from "@shared/work";
+import type { TodayAnswer, TodaySource, TodayWorkspace } from "./types";
 
 /**
  * What Today keeps for the life of the window (docs/agents/work-today.md
@@ -263,6 +264,18 @@ export function advanceHeld(next: string | null): void {
   set(next === null ? { held: null } : { held: next, heldDone: state.heldDone + 1 });
 }
 
+/**
+ * The job a sector's row acts on now, as the page or its keeper routes it
+ * (warm.tsx `SourceRuns` keeps it): a row's press reads it when pressed, so a
+ * row kept from before a reopen acts on the job its column names. Null where
+ * no page or keeper runs (a source tested alone), or no job holds the sector.
+ */
+let route: ((sector: SectorKey) => TodayWorkspace | null) | null = null;
+export const routeOf = (sector: SectorKey): TodayWorkspace | null => route?.(sector) ?? null;
+export function keepRoute(next: ((sector: SectorKey) => TodayWorkspace | null) | null): void {
+  route = next;
+}
+
 export const scrollOfToday = (): number => scrollTop;
 export function keepScroll(top: number): void {
   scrollTop = top;
@@ -283,6 +296,7 @@ export function resetToday(sources?: readonly TodaySource[]): void {
   loading = sources ? Promise.resolve() : null;
   scrollTop = 0;
   focusKey = null;
+  route = null;
   handed.clear();
   for (const timer of timers.values()) clearTimeout(timer);
   timers.clear();

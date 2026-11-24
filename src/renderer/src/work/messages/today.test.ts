@@ -103,6 +103,21 @@ describe("Messages on Today", () => {
     }
   });
 
+  it("a chat he marked read stays off though an offline host still holds an older copy; a newer message shows; a failed write keeps nothing", async () => {
+    resetToday([source]);
+    const fresh = { workspace: job("ws-a", "cosmic", "mac"), value: { rows: [chat("c1", { at: now - 60_000 })] } };
+    const old = { workspace: job("ws-a2", "cosmic", "box"), value: { rows: [chat("c1", { at: now - 120_000 })] } };
+    await markChatRead({ mutation: async () => null } as never, "c1", now - 60_000);
+    // The Mac's refresh comes back empty; the box, offline, still has its older copy.
+    expect(waitingRows([{ ...fresh, value: { rows: [] } }, old], now, () => {})).toEqual([]);
+    // Someone writes again: the newer message is waiting on him.
+    expect(waitingRows([{ ...fresh, value: { rows: [chat("c1", { at: now })] } }, old], now, () => {}).map((r) => r.key)).toEqual([chatKey("c1", now)]);
+    // A Mark read that did not go through keeps nothing.
+    resetToday([source]);
+    await markChatRead({ mutation: async () => Promise.reject(new Error("no")) } as never, "c1", now - 60_000);
+    expect(waitingRows([old], now, () => {}).map((r) => r.key)).toEqual([chatKey("c1", now - 120_000)]);
+  });
+
   it("names the very workspace its host answered for", () => {
     const [row] = waitingRows([{ workspace: { ...job("ws-a", "cosmic", "mac"), name: "Cosmic (Mac)" }, value: { rows: [chat("c1")] } }], now, () => {});
     expect(row!.job).toBe("Cosmic (Mac)");

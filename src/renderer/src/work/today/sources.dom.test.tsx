@@ -302,11 +302,41 @@ describe("the waiting source", () => {
     convex.answer("mailWaits:list", { page: WAITS, isDone: true, continueCursor: "" });
     const env = envNow();
     const { result } = renderHook(() => waiting.use(env));
-    expect(convex.reads.filter((r) => r.name === "mailWaits:list").map((r) => r.args)).toEqual([{ paginationOpts: { numItems: 20, cursor: null } }]);
+    // One page: the same live query twice on one client is one subscription, and LifeOS said there is no more.
+    expect([...new Set(convex.reads.filter((r) => r.name === "mailWaits:list").map((r) => JSON.stringify(r.args)))]).toEqual([JSON.stringify({ paginationOpts: { numItems: 20, cursor: null } })]);
     expect(result.current.rows!.map((r) => [r.title, r.when])).toEqual([
       ["Marcus Bell", "6 days"],
       ["crew@example.com", "3 days"],
     ]);
+  });
+
+  it("follows LifeOS's cursor while the first pages hold waits of sectors with no job, and never says no one owes him while a page is out", async () => {
+    const elsewhere = Array.from({ length: 20 }, (_, i) => ({ ...WAITS[0]!, _id: `u${i}`, sector: "unify" }));
+    let second: unknown = undefined;
+    convex.answer("mailWaits:list", (args: Record<string, unknown>) => ((args.paginationOpts as { cursor: string | null }).cursor === null ? { page: elsewhere, isDone: false, continueCursor: "c1" } : second));
+    const env = envNow();
+    const { result } = renderHook(() => waiting.use(env));
+    await vi.waitFor(() => expect(convex.reads.some((r) => r.name === "mailWaits:list" && (r.args.paginationOpts as { cursor: string | null }).cursor === "c1")).toBe(true));
+    // The second page is out: no row yet, and the section is still to answer, not empty.
+    expect(result.current.rows ?? []).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    act(() => void convex.answer("mailWaits:list", (args: Record<string, unknown>) => ((args.paginationOpts as { cursor: string | null }).cursor === null ? { page: elsewhere, isDone: false, continueCursor: "c1" } : (second = { page: [WAITS[0]], isDone: true, continueCursor: "" }))));
+    await vi.waitFor(() => expect(result.current.rows?.map((r) => r.key)).toEqual(["mail:m1"]));
+    expect(result.current.loading).toBeFalsy();
+  });
+
+  it("reads five pages at most; past them the section never says no one owes him", async () => {
+    const elsewhere = (n: number) => Array.from({ length: 20 }, (_, i) => ({ ...WAITS[0]!, _id: `u${n}-${i}`, sector: "unify" }));
+    convex.answer("mailWaits:list", (args: Record<string, unknown>) => {
+      const cursor = (args.paginationOpts as { cursor: string | null }).cursor;
+      const n = cursor === null ? 0 : Number(cursor.slice(1));
+      return { page: elsewhere(n), isDone: false, continueCursor: `c${n + 1}` };
+    });
+    const env = envNow();
+    const { result } = renderHook(() => waiting.use(env));
+    await vi.waitFor(() => expect(result.current.loading).toBeFalsy());
+    expect([...new Set(convex.reads.filter((r) => r.name === "mailWaits:list").map((r) => (r.args.paginationOpts as { cursor: string | null }).cursor))]).toEqual([null, "c1", "c2", "c3", "c4"]);
+    expect(result.current).toMatchObject({ rows: [], away: true });
   });
 
   it("Nudge asks the job's host to start the drafting thread, then opens it", async () => {

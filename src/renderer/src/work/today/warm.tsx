@@ -1,7 +1,7 @@
 import { Component, memo, useLayoutEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useTodayEnv } from "./env";
-import { dropSource, putAnswer, resetHooks, useTodayState } from "./store";
+import { dropSource, keepRoute, putAnswer, resetHooks, useTodayState } from "./store";
 import type { TodayEnv, TodaySource } from "./types";
 
 /**
@@ -42,6 +42,11 @@ class SourceBoundary extends Component<{ id: string; children: ReactNode }, { fa
 /** Every loaded source, each run on its own against `env`. */
 export function SourceRuns({ env }: { env: TodayEnv }) {
   const { sources } = useTodayState();
+  // The route a row's press reads when pressed (store.ts `routeOf`).
+  useLayoutEffect(() => {
+    keepRoute(env.workspaceOf);
+    return () => keepRoute(null);
+  }, [env.workspaceOf]);
   return sources.map(({ id, source }) => (
     <SourceBoundary key={id} id={id}>
       <SourceRun source={source} env={env} />

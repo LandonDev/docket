@@ -66,7 +66,7 @@ place's label. With Work off the rail is what it was
 | Waiting on you | `today/held.ts` | the Outbox's own store (`work.outbox.list` per host, live on the `work.outbox` push) | each host |
 | Meetings | `today/meetings.ts` | LifeOS `events:range {from, to}` over two local days; `people:directory {sector}` for each sector a job holds | LifeOS, once |
 | Due | `today/due.ts` | LifeOS `tasks:list {}`, kept by work-kit's `isTodayTask` | LifeOS, once |
-| Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, the first page of 20 | LifeOS, once |
+| Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, 20 a page, following `continueCursor` for up to five pages; while a page is out the section is still to answer, and past the fifth it never says it is empty (`away`) | LifeOS, once |
 | Changed by others | `today/files.ts` | `work.files.changed {workspaceId}` per job | each host |
 
 The Files source is written and tested against a fake wire and is **not**
@@ -268,8 +268,10 @@ Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
 Messages' `chat:<chatId>:<at>`, by the last message, so one he marked read
 stays off and a newer one shows; where two hosts answer one chat at two
 last messages, the newest makes its one row, and is the one Mark read
-marks. A key his act took off is kept off only
-while some source still gives it.
+marks. A Mark read that went through keeps the time read up to for that
+chat, for the window's life (`readTo`): a copy at or before it, as an
+offline host keeps, makes no row, and a newer message still does. A key
+his act took off is kept off only while some source still gives it.
 
 ## The page
 
@@ -327,8 +329,11 @@ is open the anchor stands down.
   for the life of the window, and a source that is reading again with no
   rows at all (`loading` alone, as a LifeOS read before its session
   answers) keeps the rows it had, so a reopen paints them and the live read
-  corrects them. A kept row of a sector no job holds now is left out
-  (model.ts `jobsOnly`). A host read answers its own rows from its first
+  corrects them. A kept row of a sector no job holds now, or built for a
+  workspace that is no longer a job (`TodayRow.workspace`), is left out
+  (model.ts `jobsOnly`). A Due row's tick and press look up the job when
+  pressed, through the route the page or its keeper keeps (store.ts
+  `routeOf`), so a row acts on the job its column names. A host read answers its own rows from its first
   frame (`prime`), so nothing is kept for it.
 - **Kept warm** (`today/warm.tsx`). The sources are hooks, so something must
   be mounted for them to run: the page runs them while it is open, and a

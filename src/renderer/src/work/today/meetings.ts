@@ -89,6 +89,7 @@ export function meetingRows(events: readonly MeetingEvent[], day: { from: number
       when: event.allDay ? "All day" : clockTime(event.startsAt),
       ...(line ? { whenLine: line } : {}),
       ...(past ? { past: true } : {}),
+      workspace: { environmentId: workspace.environmentId, workspaceId: workspace.workspaceId },
       open: () => ways.open(workspace, event),
       ...(past ? {} : { acts: [{ label: "Prepare", run: () => ways.prepare(workspace, event) }] }),
     };

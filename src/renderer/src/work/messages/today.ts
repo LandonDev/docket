@@ -7,7 +7,7 @@ import { Chat } from "../icons";
 import type { LifeosSession } from "../shell/lifeos";
 import { shown } from "../today/lifeos";
 import { goTo } from "../today/open";
-import { comeBack, leave } from "../today/store";
+import { comeBack, leave, resetHooks } from "../today/store";
 import { readState, useEachWorkspace } from "../today/read";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "../today/types";
 import { rowTime } from "./model";
@@ -32,6 +32,14 @@ export const chatKey = (chatId: string, at: number): string => `chat:${chatId}:$
 
 const LEAD: NonNullable<TodayRow["lead"]> = { kind: "glyph", glyph: Chat };
 
+/**
+ * How far he read each chat from Today, by a Mark read that went through,
+ * for the life of the window: a host that is offline keeps an older copy of
+ * the chat, and that copy is not waiting on him. A newer message is.
+ */
+const readTo = new Map<string, number>();
+resetHooks.add(() => readTo.clear());
+
 /** The waiting conversations as rows, newest first: who wrote and where, their words, when. */
 export function waitingRows(answers: readonly { workspace: TodayWorkspace; value: MessagesUnansweredAnswer }[], now: number, markRead: (chatId: string, at: number) => Promise<void> | void): TodayRow[] {
   // One row a conversation: two hosts that hold its sector may answer it at two last messages (one has not caught
@@ -39,6 +47,7 @@ export function waitingRows(answers: readonly { workspace: TodayWorkspace; value
   const newest = new Map<string, { workspace: TodayWorkspace; chat: ChatWaiting }>();
   for (const { workspace, value } of answers) {
     for (const chat of value.rows) {
+      if (chat.at <= (readTo.get(chat.chatId) ?? -Infinity)) continue;
       const had = newest.get(chat.chatId);
       if (!had || chat.at > had.chat.at) newest.set(chat.chatId, { workspace, chat });
     }
@@ -79,6 +88,7 @@ export async function markChatRead(client: LifeosSession["client"], chatId: stri
   try {
     if (!client) throw new Error("LifeOS is not connected");
     await client.mutation(makeFunctionReference<"mutation">("chats:markRead"), { id: chatId });
+    readTo.set(chatId, Math.max(at, readTo.get(chatId) ?? -Infinity));
   } catch {
     comeBack(key);
     (await loadToast()).error("Couldn't mark it read", shown().options);

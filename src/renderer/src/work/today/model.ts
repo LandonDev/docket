@@ -243,13 +243,15 @@ function apart(fed: readonly Fed[], open: ReadonlySet<string>): { fed: Fed[]; aw
 
 /**
  * Rows the store kept from before a source read again (a reopen) were made
- * for the jobs there were then: one of a sector no job holds now (its
- * workspace removed while Today was closed) would open a place that is gone,
- * so it is left out until the source answers for the jobs there are.
+ * for the jobs there were then: one of a sector no job holds now, or built
+ * for a workspace that is no longer a job (removed while Today was closed,
+ * though another holds its sector), would act on a place that is gone, so it
+ * is left out until the source answers for the jobs there are.
  */
 function jobsOnly(fed: readonly Fed[], jobs: readonly TodayWorkspace[]): readonly Fed[] {
   const held = new Set(jobs.map((job) => job.sector));
-  const left = (row: TodayRow): boolean => !!row.sector && !held.has(row.sector);
+  const gone = (w: NonNullable<TodayRow["workspace"]>): boolean => !jobs.some((job) => job.environmentId === w.environmentId && job.workspaceId === w.workspaceId);
+  const left = (row: TodayRow): boolean => (!!row.sector && !held.has(row.sector)) || (!!row.workspace && gone(row.workspace));
   return fed.map((one) => (one.kept && one.answer.rows?.some(left) ? { ...one, answer: { ...one.answer, rows: one.answer.rows.filter((row) => !left(row)) } } : one));
 }
 

@@ -8,7 +8,7 @@ import { useMinute } from "../tasks/minute";
 import { act, answerOf, mutate, useLifeosRows } from "./lifeos";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
-import { comeBack, leave } from "./store";
+import { comeBack, leave, routeOf } from "./store";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "./types";
 
 /**
@@ -50,8 +50,21 @@ export function dueRows(tasks: readonly DueTask[], now: number, ways: Ways, time
         sector: task.sector,
         title: task.title,
         ...(task.dueAt !== undefined ? { at: task.dueAt, when: formatDue(task.dueAt, now), ...(task.dueAt < now ? { late: true } : {}) } : {}),
-        lead: { kind: "tick", label: `Mark ${task.title} done`, run: () => ways.done(workspace, task) },
-        open: () => ways.open(workspace, task),
+        workspace: { environmentId: workspace.environmentId, workspaceId: workspace.workspaceId },
+        // The job is looked up when he presses, not when the row was built: a row kept from before a reopen acts on the
+        // job its column names now.
+        lead: {
+          kind: "tick",
+          label: `Mark ${task.title} done`,
+          run: () => {
+            const now = ways.workspaceOf(task.sector);
+            return now ? ways.done(now, task) : Promise.reject(new Error("No job holds this task's sector"));
+          },
+        },
+        open: () => {
+          const now = ways.workspaceOf(task.sector);
+          if (now) ways.open(now, task);
+        },
         acts: [{ label: "Tomorrow", run: () => ways.tomorrow(task) }],
       };
     });
@@ -79,11 +92,13 @@ function useDue(env: TodayEnv): TodayAnswer {
   const lifeos = env.lifeos;
   // A task is written through the session it was read through: its sector's own, where the first session lacks it.
   const sessionOf = read.sessionOf;
+  // The page's route as it is when he presses (store.ts `routeOf`), where a page or its keeper runs; else this env's.
+  const workspaceOf = useMemo(() => (sector: SectorKey): TodayWorkspace | null => routeOf(sector) ?? env.workspaceOf(sector), [env.workspaceOf]);
   const built = useMemo(
     () =>
       read.rows &&
       dueRows(read.rows, now, {
-        workspaceOf: env.workspaceOf,
+        workspaceOf,
         open: (workspace, task) => goTo(workspace, { view: "tasks", task: task._id }),
         done: (workspace, task) =>
           away(taskKey(task._id), () =>
@@ -104,10 +119,10 @@ function useDue(env: TodayEnv): TodayAnswer {
             }),
           ).then(() => undefined),
       }),
-    [read.rows, now, env.workspaceOf, sessionOf],
+    [read.rows, now, workspaceOf, sessionOf],
   );
   // What a row's presses close over: the jobs they open in and the sessions they write through.
-  const ways = useMemo(() => ({}), [env.workspaceOf, sessionOf]);
+  const ways = useMemo(() => ({}), [workspaceOf, sessionOf]);
   const rows = useStableRows(built ?? NONE, ways);
   const jobName = env.workspaceOf;
   return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "tasks", undefined, (sector) => jobName(sector)?.name), [read, built, rows, lifeos, jobName]);
