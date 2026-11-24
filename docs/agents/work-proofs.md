@@ -179,7 +179,7 @@ sessions, pairings and keys before stopping the instances.
 
 | Journey | Shape | What the walk checks |
 | --- | --- | --- |
-| J43 | A | A dummy recording reaches the transcript and the Notes tab. The walk asks for Keep as document and reports where it stops. |
+| J43 | A | A dummy recording reaches the transcript and the Notes tab, with a note tied to a turn. Export transcript’s file holds that turn. |
 | J45 | A | A receipt waits for Review. Save puts its figures and receipt ref in one row of `Money/Ledger.tcsheet`. |
 | J46 | A | Create prints an invoice PDF to the job's folder. Export writes the year's CSV, Excel file and PDF. |
 | J47 | A | A weekday morning routine uses America/New_York. Run now creates a Work thread on box with the chosen Thread defaults. Pause turns the routine off. |

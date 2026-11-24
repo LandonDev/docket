@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from 'node:fs'
+import { copyFileSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileAt } from './lib/place'
 import { journey, step, type Context } from './lib/record'
@@ -6,6 +6,7 @@ import { createThread, hostRows, workTool } from './lib/thread'
 import { json, shown } from './lib/tierThree'
 
 const NAME = 'Practice meeting.ogg'
+const TRANSCRIPT = 'Practice meeting.txt'
 const NOTE = 'The speakers discussed the practice session.'
 type Meeting = { item_id: string; session_id: string; status: string; origin: string; audio: string | null; error: string | null; doc: string }
 const meeting = async ({ pair, workspace }: Context) => (await hostRows<Meeting>(pair,
@@ -13,7 +14,7 @@ const meeting = async ({ pair, workspace }: Context) => (await hostRows<Meeting>
 
 export default journey({
   id: 'J43',
-  title: 'Bring in a recording, read the transcript and keep the notes',
+  title: 'Bring in a recording, read the transcript and notes, and export the transcript',
   tier: 3,
   shapes: ['A'],
   steps: [
@@ -56,13 +57,39 @@ export default journey({
       await pair.page.until('the note in the canvas and meeting row', 15_000, async () =>
         await shown(pair.page, '[data-meeting-notes]', NOTE) && !!(await meeting(context))?.doc.includes(NOTE))
     }),
-    step('end: keep the notes as a document and read the saved file', async (context) => {
+    // docs/agents/work-meetings.md promises no "Keep as document" for a meeting's notes: its More holds Export transcript
+    // and Download recording. The walk ends on what is promised, Export transcript's file holding the stored turn.
+    step('end: export the transcript and read the turn in its file', async (context) => {
       const { page } = context.pair
-      await page.press('button', 'More')
-      await page.press('menuitem', 'Keep as document')
-      const target = fileAt(context, 'Practice meeting.tcdoc')
-      await page.until('the kept document and its notes', 15_000, async () =>
-        existsSync(target) && await shown(page, '[data-canvas-pane]', NOTE))
+      const row = (await meeting(context))!
+      const { segments } = JSON.parse(row.doc) as { segments: { id: string; text: string }[] }
+      await page.catchExports()
+      // The meeting pane's own More, at the end of its title row: the chat's row in the column has a More of its own.
+      const markMore = () => page.eval<boolean>(`(() => {
+        const title = [...document.querySelectorAll('[data-canvas-title], [data-view-title]')].find((el) => el.textContent.trim() === 'Practice meeting')?.getBoundingClientRect();
+        document.querySelector('[data-journey-more]')?.removeAttribute('data-journey-more');
+        const more = title && [...document.querySelectorAll('button[aria-label="More"]')].find((button) => {
+          const at = button.getBoundingClientRect();
+          return at.x > title.right && Math.abs(at.y + at.height / 2 - (title.y + title.height / 2)) < 16;
+        });
+        more?.setAttribute('data-journey-more', '');
+        return !!more;
+      })()`)
+      const opened = () => page.eval<boolean>('!!document.querySelector("[role=menuitem]")')
+      await page.until('the meeting pane’s More', 12_000, markMore)
+      await page.clickOn('[data-journey-more]')
+      if (!await page.until('the pane’s menu', 5000, opened).then(() => true, () => false)) {
+        // Evidence for the owner: the first press on the pane's cold More (chrome/menuRows.tsx RowsMenu) opened nothing.
+        json(context, 'more-first-press', { opened: false })
+        await page.until('the meeting pane’s More again', 12_000, markMore)
+        await page.clickOn('[data-journey-more]')
+        await page.until('the pane’s menu on a second press', 5000, opened)
+      }
+      json(context, 'more-menu', await page.eval(`[...document.querySelectorAll('[role="menuitem"]')].map((item) => item.innerText.trim())`))
+      await page.press('menuitem', 'Export transcript')
+      const text = (await page.downloaded(TRANSCRIPT)).toString('utf8')
+      writeFileSync(join(context.folder, TRANSCRIPT), text)
+      if (!text.includes(segments[0]!.text)) throw new Error('The exported transcript lacks the first stored turn')
     })
   ]
 })
