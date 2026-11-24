@@ -8,6 +8,8 @@ const NOW = new Date(2026, 10, 23, 12);
 const { resetAgendaPlace } = await import("./place");
 const { Head, Title, View, holdsToday, shortMonth, shortWeek } = await import("./AgendaView");
 const { keepPlace } = await import("../shell/place");
+/** A session that reads: the header offers its every press. */
+const READS = { environmentId: "box", sector: "purdue", client: {}, state: "connected" };
 
 beforeEach(() => {
   vi.setSystemTime(NOW);
@@ -21,7 +23,7 @@ afterEach(() => {
 
 describe("the Agenda's header", () => {
   it("keeps a short period in the Week and Month views under a 640px header, beside the full period wider", () => {
-    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     // The list has no period to name.
     expect(container.querySelector("[data-agenda-short-period]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Month" }));
@@ -39,7 +41,7 @@ describe("the Agenda's header", () => {
   });
 
   it("keeps a way back to today when narrow: an icon press with its tip, only off today's period", () => {
-    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     // On this week there is nowhere to go back to.
     expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
@@ -59,7 +61,7 @@ describe("the Agenda's header", () => {
     const end = viewRange("week", NOW.getTime(), localeWeekStart()).to;
     vi.useRealTimers();
     vi.useFakeTimers({ now: end - 30_000 });
-    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
     // The week turns: the header's own minute tick sees it.
@@ -77,7 +79,7 @@ describe("the Agenda's header", () => {
   });
 
   it("lets the view's name give way whole in a narrow Week or Month, never cut to a stub; the List keeps it", () => {
-    render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     const { container } = render(<Title {...({ workspace: { id: "ws" } } as never)} />);
     const name = (): HTMLElement => container.querySelector("span")!;
     expect(name().textContent).toBe("Agenda");
@@ -87,7 +89,7 @@ describe("the Agenda's header", () => {
   });
 
   it("gives way at narrow widths: Today under 26rem of header, the three views as one select under 40rem", () => {
-    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     expect(screen.getAllByRole("button", { name: "Today" })[0]!.className).toContain("@max-[26rem]/viewhead:hidden");
     // The short period is never cut: the view's name gives way before it.

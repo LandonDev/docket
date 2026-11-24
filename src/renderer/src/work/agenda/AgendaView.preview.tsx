@@ -2,14 +2,15 @@
 // the Agenda view under its header, over a LifeOS that answers from made-up events. States: `list` (the next days),
 // `week`, `month`, `new` (New event over the list), `new-none` (New event where no calendar of the job takes events),
 // `empty`, `loading`, `loading-week` (the Week kept, its grid's bones) and `week-ahead` (the Week two weeks on: off today's
-// period, the narrow header keeps its Today press). Rendered by nothing in the app.
+// period, the narrow header keeps its Today press) and `unanswered` (the box's LifeOS status went unanswered: the
+// frame's line with Retry, no New event over a page that cannot hold its dialog). Rendered by nothing in the app.
 import { useEffect } from "react";
 import { startOfDay } from "work-kit/views/lib/agenda";
 import { keepPlace } from "../shell/place";
-import { JOB, standUpView, ViewAt } from "../kit.preview";
+import { boxSilent, JOB, standUpView, ViewAt } from "../kit.preview";
 import { agendaPlace, type AgendaShow } from "./place";
 
-type State = AgendaShow | "new" | "new-none" | "empty" | "loading" | "loading-week" | "week-ahead";
+type State = AgendaShow | "new" | "new-none" | "empty" | "loading" | "loading-week" | "week-ahead" | "unanswered";
 
 const TODAY = startOfDay(Date.now());
 const HOUR = 3_600_000;
@@ -36,6 +37,7 @@ export function AgendaPreview({ state = "list" }: { state?: State }) {
     // The visit opens on the view the workspace kept: the state's own, on today.
     keepPlace(JOB.id, "agenda", { view: state === "week" || state === "month" ? state : state === "loading-week" || state === "week-ahead" ? "week" : "list", day: state === "week-ahead" ? TODAY + 14 * DAY : TODAY, on: TODAY });
     standUpView("agenda", { "events:range": state === "loading" || state === "loading-week" ? undefined : state === "empty" ? [] : EVENTS, "people:directory": [], "sources:list": state === "new-none" ? [] : [{ _id: "s1", kind: "gcal", account: "landon@purdue.edu", label: "landon@purdue.edu", sector: "purdue", enabled: true }] });
+    if (state === "unanswered") boxSilent();
   }
   // New event is the header's own press: here the place it sets, once the visit has opened.
   useEffect(() => {

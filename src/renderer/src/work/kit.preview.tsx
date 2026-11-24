@@ -13,6 +13,7 @@ import { registry, type Link } from "../lib/connection";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { setWorkOn } from "../lib/workSwitch";
 import { ViewFrame } from "./shell/WorkViewPage";
+import { resetLifeos, setLifeosUnanswered } from "./shell/lifeos";
 import { FakeConvex, fakeSession } from "./today/fakeLifeos";
 import { WORK_VIEWS, type WorkViewId } from "./views/registry";
 
@@ -177,6 +178,18 @@ export function standUpView(view: WorkViewId, lifeos: Record<string, unknown | (
   for (const [name, value] of Object.entries(lifeos)) convex.answer(name, value);
   fakeSession("local", convex, JOB.sector);
   return convex;
+}
+
+/**
+ * The box's link open but its LifeOS status ask unanswered (`setLifeosUnanswered`), the box named as the app names it:
+ * the frame's red line with Retry, and nothing under it. Call after `standUpView`.
+ */
+export function boxSilent(): void {
+  resetLifeos();
+  setLifeosUnanswered(JOB.environmentId);
+  const open = { ...registry.statusOf(JOB.environmentId), transport: "open" } as ReturnType<typeof registry.statusOf>;
+  const statusOf = registry.statusOf.bind(registry);
+  Object.assign(registry, { statusOf: (id: string) => (id === JOB.environmentId ? open : statusOf(id)), environment: (id: string) => ({ id, name: "The box" }) });
 }
 
 /** The page `standUpView` stood up, in a frame as wide as the page up to `maxWidth`, with any dialog copied over it. */

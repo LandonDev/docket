@@ -23,6 +23,7 @@ import { Lifeos } from "../icons";
 import { Face } from "../mail/face";
 import { faceMap, pictureOf, type FaceRow } from "../people/model";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
 import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
@@ -188,6 +189,8 @@ export function Head(props: WorkViewProps) {
     <PageVerbs
       verb={verb}
       busy={busy}
+      // Add people and the notes open dialogs the page's body holds, which reads LifeOS: none while the session is down.
+      dialogs={!downOf(props.lifeos)}
       thread={pageThread(page) !== null}
       // Before the end, More always offers a brief the header does not: notes kept early take the header's place (Follow up), never the brief's.
       // Not while a brief is being written, whatever the header holds: Open thread opens it.
@@ -223,6 +226,8 @@ export interface PageVerbsProps {
   busy?: "brief" | "followUp" | null;
   /** the page has a thread to open */
   thread: boolean;
+  /** the body that holds Add people's and the notes' dialogs can draw them (the LifeOS session reads or is on its way); false drops both presses */
+  dialogs?: boolean;
   /** the meeting is still ahead and the header holds no brief verb: More offers Brief me, or Prepare again once a brief stands */
   brief: "brief" | "again" | null;
   notes: boolean;
@@ -245,12 +250,13 @@ export interface PageVerbsProps {
 
 /** The header's end: the page's one verb for where the meeting stands, then More. */
 export function PageVerbs(p: PageVerbsProps) {
+  const opens = p.dialogs !== false;
   const rows: MenuRow[] = [
     ...(p.thread ? [{ kind: "item" as const, id: "open", label: "Open thread" }] : []),
     ...(p.brief ? [{ kind: "item" as const, id: "again", label: p.brief === "again" ? "Prepare again" : "Brief me" }] : []),
-    { kind: "item", id: "people", label: "Add people…" },
+    ...(opens ? [{ kind: "item" as const, id: "people", label: "Add people…" }] : []),
     // The header already holds Add notes once the meeting is over.
-    ...(p.verb === "addNotes" ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
+    ...(p.verb === "addNotes" || !opens ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
     ...(p.rest > 0 ? [{ kind: "item" as const, id: "rest", label: "Dismiss the rest" }] : []),
     { kind: "item", id: "thread", label: "New thread about this" },
     ...(p.survey ? [{ kind: "item" as const, id: "survey", label: "Make a follow-up survey" }] : []),
@@ -268,7 +274,7 @@ export function PageVerbs(p: PageVerbsProps) {
         <Button variant="ghost" size="sm" className="font-normal text-muted-foreground" onClick={p.onOpenThread}>
           <BusyLabel busy label={p.verb === "preparing" ? "Preparing" : "Following up"} />
         </Button>
-      ) : p.verb === "addNotes" ? (
+      ) : p.verb === "addNotes" && opens ? (
         <Button variant="ghost" size="sm" onClick={p.onNotes} {...dialogs.intent}>
           Add notes
         </Button>
@@ -315,6 +321,12 @@ export function View(props: WorkViewProps) {
   const failedPage = useRef<HTMLDivElement>(null);
   // A dialog is its own meeting's: one opened on another meeting's page is not drawn here, and it goes with the page.
   const dialog = open.eventId === eventId ? open.dialog : null;
+  // Add people reads LifeOS: asked for while the session was on its way, which then went down, it is dropped, never
+  // opened by itself later. The notes are the host's: a Notes dialog he had open comes back with the page.
+  const down = !!downOf(props.lifeos);
+  useEffect(() => {
+    if (down && ui.get().dialog === "people") closeDialog();
+  }, [down]);
   useEffect(() => closeDialog, [eventId]);
   // Agenda keeps its day and view through a visit here (its own unmount leaves them be); leaving for anywhere but
   // Agenda or another meeting's page ends that visit, so the next opens on today's list.

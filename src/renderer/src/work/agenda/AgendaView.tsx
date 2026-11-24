@@ -26,6 +26,7 @@ import { NewEventDialog } from "./NewEventDialog";
 import { playRunner } from "../routines/plays/runOn";
 import { openWorkView, useWorkView, workViewNow } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
 import { clashTime, type Clash } from "@shared/work/clashes";
 import { ClashLines, useClashes } from "../clashes/mark";
@@ -87,7 +88,7 @@ export function Title(_props: WorkViewProps) {
   return <span className={cn("truncate font-medium text-foreground", view !== "list" && "@max-[26rem]/viewhead:sr-only")}>Agenda</span>;
 }
 
-export function Head({ workspace }: WorkViewProps) {
+export function Head({ workspace, lifeos }: WorkViewProps) {
   // The header mounts before the view's chunk lands: the visit's place is the workspace's from its first frame.
   useLayoutEffect(() => restoreAgendaPlace(workspace.id), [workspace.id]);
   const { view, day } = useShared(state);
@@ -130,10 +131,13 @@ export function Head({ workspace }: WorkViewProps) {
       <span data-agenda-views="select" className="flex @min-[40rem]/viewhead:hidden">
         <ChoiceSelect label="Show as" size="sm" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
       </span>
-      <Button variant="ghost" size="sm" aria-label="New event" className="@max-[40rem]/viewhead:px-1.5" onClick={() => go({ adding: "now" })}>
-        <Plus />
-        <span className="@max-[40rem]/viewhead:hidden">New event</span>
-      </Button>
+      {/* The dialog is the body's, which reads LifeOS: while the session is down there is none to open. */}
+      {downOf(lifeos) ? null : (
+        <Button variant="ghost" size="sm" aria-label="New event" className="@max-[40rem]/viewhead:px-1.5" onClick={() => go({ adding: "now" })}>
+          <Plus />
+          <span className="@max-[40rem]/viewhead:hidden">New event</span>
+        </Button>
+      )}
     </>
   );
 }
@@ -155,6 +159,11 @@ function OpenEvent({ workspaceId, id, lifeos }: { workspaceId: string; id: strin
 export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const { adding, view } = useShared(state);
+  // A New event asked for while the session was on its way, which then went down, is dropped: it never opens by itself later.
+  const down = !!downOf(lifeos);
+  useEffect(() => {
+    if (down && state.get().adding !== null) go({ adding: null });
+  }, [down]);
   // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
   const wanted = useWorkView();
   const event = wanted?.workspaceId === workspace.id && wanted.view === "agenda" ? wanted.event : undefined;

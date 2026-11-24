@@ -21,6 +21,7 @@ import { useMinute } from "./minute";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { shared, useShared } from "./store";
 import { sessionWaits } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
 import { StatusMark } from "../../components/ui/status";
 import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
@@ -51,7 +52,9 @@ const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 /** The header's New task asks the view for its dialog. */
 const newTask = shared(false);
 
-export function Head(_props: WorkViewProps) {
+/** New task, while its dialog can open: the body that holds it reads LifeOS, so a session that is down offers none. */
+export function Head({ lifeos }: WorkViewProps) {
+  if (downOf(lifeos)) return null;
   return (
     <Button variant="ghost" size="sm" onClick={() => newTask.set(true)}>
       <Plus />
@@ -64,6 +67,11 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const adding = useShared(newTask);
   useEffect(() => () => newTask.set(false), []);
+  // A press made while the session was on its way, which then went down, is dropped: it never opens by itself later.
+  const down = !!downOf(lifeos);
+  useEffect(() => {
+    if (down) newTask.set(false);
+  }, [down]);
   // A task asked for from elsewhere (a person's page) opens in its sheet: taken once, then cleared.
   const wanted = useWorkView();
   const asked = wanted?.workspaceId === workspace.id && wanted.view === "tasks" ? wanted.task : undefined;
