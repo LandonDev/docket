@@ -32,7 +32,7 @@ with its six views, linking a workspace to a sector, and Settings → Work
   references of code repos and git"). The window asks one rule,
   src/renderer/src/lib/workRow.ts (`isWorkThread`, `isWorkWorkspace`,
   `isWorkSession`, which counts a draft in a Work workspace before the host
-  stamps it; hooks in lib/useWorkSession.ts). By it: the right panel lists
+  stamps it, and its hooks `useWorkSession`, `useWorkSessionId`). By it: the right panel lists
   only `WORK_SECTIONS` (Agents, Activity, Computer, Results, Notes; never
   `CODE_SECTIONS`: Changes, Files, Build, Debug), even in a project with a
   folder or a folder inside a repo; the composer's draft row has no branch
