@@ -378,6 +378,16 @@ describe("a thread's change", () => {
     expect(await outbox.send({ at: 'host', id: rows[3]!.id })).toMatchObject({ state: 'sent' })
   })
 
+  it("makes a held New under the name its card showed or not at all: one taken there since is stale, never 'Agenda 2'", async () => {
+    const held = await tool('files_make', { place: PLACE_ID, path: 'Staff', kind: 'document', name: 'Agenda' })
+    expect(held.text).toMatch(/^Held as item 1\./)
+    // A co-author makes "agenda" in Staff before his press.
+    fake.addItem(ME, 'dTheirs', 'agenda', GOOGLE_MIME.doc, { parents: ['fStaff'] })
+    const [row] = outbox.store.list({})
+    expect(await outbox.send({ at: 'host', id: row!.id })).toMatchObject({ state: 'stale', error: expect.stringContaining('Something named Agenda is there now') })
+    expect([...fake.files.values()].filter((f) => /^agenda/i.test(f.name)).map((f) => f.name)).toEqual(['agenda'])
+  })
+
   it('goes stale when the folder it goes to was moved under another folder, its id, name and sharing alike', async () => {
     fake.addFolder(ME, 'fOther', 'Other team', { shared: true })
     const into = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Staff' } })

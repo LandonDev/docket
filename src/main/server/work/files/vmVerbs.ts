@@ -15,7 +15,7 @@ import { closeTabsOn } from './trash'
 import { dropName } from './names'
 import { workspaceHere, type DoorPlace } from './policy'
 import type { Caller } from '../modules'
-import { fileLocked, FileRefused, OpLost, withFileLocks } from './write'
+import { fileLocked, FileRefused, NAME_TAKEN, OpLost, withFileLocks } from './write'
 
 /**
  * New, rename, move, edit and delete in a library OneDrive syncs in the Windows VM this host keeps
@@ -95,15 +95,19 @@ function said(ctx: WorkCtx, workspaceId: string, at: LibraryPlace, dirs: Iterabl
 /**
  * New in a VM folder: a folder, a text file, or an Office file a maker writes, named as on this host, never over
  * anything. `data`: the new file's bytes made elsewhere (Save as Word to…, saveAsWord.ts) in place of a blank.
+ * `exact`: a held act's press, which makes the name its card showed or nothing.
  */
-export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string; data?: Buffer }): Promise<FileDone> {
+export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string; data?: Buffer; exact?: boolean }): Promise<FileDone> {
   const form = formIn(folder.place, p.kind)
   const ext = form ? `.${form}` : ''
   const named = p.name?.trim()
   const wanted = named ? (ext && !named.toLowerCase().endsWith(ext) ? `${named}${ext}` : named) : `${UNTITLED[p.kind]}${ext}`
   // NTFS and OneDrive read names case-blind: the free name is found so.
   const names = new Set((await vmList(folder.library.library, folder.path)).map((e) => e.name.normalize('NFC').toLowerCase()))
-  const name = freeName(wanted, (n) => names.has(n.normalize('NFC').toLowerCase()))
+  const taken = (n: string) => names.has(n.normalize('NFC').toLowerCase())
+  // A held act's press makes the name its card showed, or nothing (as verbs.ts `exactIn` does on a disk).
+  if (p.exact && named && taken(wanted)) throw new Error(NAME_TAKEN(wanted))
+  const name = freeName(wanted, taken)
   const made = await withFileLocks([libraryKey(folder.library, inDir(folder.path, name))], async () => {
     if (p.kind === 'folder') return (await guestChange<{ entry: GuestEntry }>('files.mkdir', { dir: folder.path, name, op: guestOp(p.op) })).entry
     const data = p.data ?? (p.kind === 'text' || !form ? Buffer.alloc(0) : await makerBytes(ctx, p.kind, form, name.slice(0, name.length - ext.length)))

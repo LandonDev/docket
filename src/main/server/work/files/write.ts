@@ -71,6 +71,10 @@ async function realRoots(fence: WriteFence): Promise<string[]> {
   return roots.filter((r): r is string => r !== null)
 }
 
+/** A held act's press makes the name its card showed, or nothing: another free name is no change he saw (verbs, driveVerbs, vmVerbs). */
+export const NAME_TAKEN = (name: string): string => `Something named ${name} is there now, so nothing was made: the press makes only the name it showed.`
+export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
+
 /** Throws FileRefused('name') with nameProblem's sentence when `name` is not one path component a place takes. */
 export function checkName(name: string): void {
   const problem = nameProblem(name)

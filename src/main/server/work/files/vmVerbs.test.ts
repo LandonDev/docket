@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { NAME_TAKEN } from './write'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
@@ -211,6 +212,15 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(text.entries[0]).toMatchObject({ name: 'notes 2.txt', kind: 'text', ref: at(`${GENERAL}\\notes 2.txt`) })
       // The changed folder is said to every window that may read it.
       expect(rig.pushes.filter((p) => (p.p as { at?: string }).at === 'lib:esportsstaffgeneral:')).toHaveLength(2)
+    })
+
+    it("makes a held act's New under the name its card showed or not at all, read case-blind as the guest names", async () => {
+      const before = changes().length
+      await expect(call('work.files.make', { at: at(GENERAL), kind: 'text', name: 'Notes', op: op(), origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64) } })).rejects.toThrow(NAME_TAKEN('Notes.txt'))
+      expect(changes()).toHaveLength(before)
+      // His own New takes the next free name, as before.
+      await call('work.files.make', { at: at(GENERAL), kind: 'text', name: 'Notes', op: op() })
+      expect(changes().at(-1)).toMatchObject({ args: { name: 'Notes 2.txt' } })
     })
 
     it("makes a Word file from Files' own blank where no maker writes one (New → Document in a Teams library in the VM)", async () => {

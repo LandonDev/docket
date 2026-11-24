@@ -1073,7 +1073,8 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   folder is refused then, since the card names one folder. A press makes
   exactly the names it showed (round 2): the verb, told the change began as a
   held act (`origin.from: 'act'`), refuses a taken name at the write, read
-  case-blind as the write reads it (`exactIn`, verbs.ts), where it would have
+  case-blind as the write reads it (`exactIn`, verbs.ts; in a Drive
+  `driveMake`, in the Windows VM `vmMake`, round 3), where it would have
   taken the next free one, so a named New and a Copy land under their names
   or are stale or not sent; a Drive destination is bound to the folders above
   it (`into.parents`), so one Drive moved under another folder, its id, name

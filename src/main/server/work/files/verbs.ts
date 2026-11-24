@@ -16,7 +16,7 @@ import { admitCaller, ASK_FIRST, locate, NO_WORKSPACE, workspaceHere, type DoorP
 import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmWhere } from './vmVerbs'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
-import { checkName, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
+import { checkName, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
 
 /**
  * New, rename, move and copy (docs/agents/work-files.md "New, rename, move and copy"), for the workspace's folder
@@ -124,8 +124,7 @@ function freeIn(dir: string, name: string): string {
 
 /** A held act's press (`origin.from: 'act'`) makes the name its card showed, or nothing: another free name is no change he saw. */
 const pressedAct = (p: { origin?: FileOrigin }): boolean => p.origin?.from === 'act'
-export const NAME_TAKEN = (name: string): string => `Something named ${name} is there now, so nothing was made: the press makes only the name it showed.`
-export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
+export { isNameTaken, NAME_TAKEN }
 /** `name` in `dir`, read case-blind as `freeIn` reads it, or the refusal that it is taken. */
 function exactIn(dir: string, name: string): string {
   if (freeIn(dir, name) !== name) throw new Error(NAME_TAKEN(name))
@@ -197,7 +196,7 @@ export async function makeVerb(ctx: WorkCtx, by: Caller, p: MakeAsk, method: str
     if (p.from && p.kind !== 'folder') throw new Error(VM_NO_TEMPLATE)
     const named = p.name?.trim()
     if (named) checkName(named)
-    return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'make', refs: journalled('make', p) }, () => vmMake(ctx, p.workspaceId, vmOf(folder), { kind: p.kind, name: named, op: p.op }))
+    return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'make', refs: journalled('make', p) }, () => vmMake(ctx, p.workspaceId, vmOf(folder), { kind: p.kind, name: named, op: p.op, exact: pressedAct(p) }))
   }
   asFolder(folder)
   if (!offersIn(folder.place, (kind, form) => fileMakerFor(kind, form) !== null, excelHere()).includes(p.kind)) throw new Error(notOffered(folder.place, p.kind))

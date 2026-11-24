@@ -5,7 +5,7 @@ import { DRIVE_ROOT, driveOf, type DriveItem, type DriveMakeKind } from '../goog
 import { accountOfPlace, DRIVE_NEW, driveChanged, driveEntry, driveFacts, drivePlace, driveTop, folderShared, itemShared, kindOfItem } from './places/drive'
 import { admitWrite, changeDigest, locate, type Located, type WorkspaceRow } from './policy'
 import { trashInDrive } from './trash'
-import { checkName, fileLocked, runOp, withFileLocks } from './write'
+import { checkName, fileLocked, NAME_TAKEN, runOp, withFileLocks } from './write'
 
 /**
  * New, rename, move and delete in a Google Drive (docs/agents/work-files.md "Google Drive"), each one Drive call
@@ -122,7 +122,7 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 const keyOfItem = (account: string, item: DriveItem): string => refKey(item.folder ? { at: 'drive', account, folderId: item.id } : { at: 'google', account, fileId: item.id, mime: item.mimeType })
 
 /** New in a Drive folder: an empty Google Doc, Sheet, deck or a folder, under a name nothing there that TempCode sees has. */
-export async function driveMake(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; at: FolderRef; kind: FileMakeKind; name?: string; from?: unknown }, method: string): Promise<FileDone> {
+export async function driveMake(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; at: FolderRef; kind: FileMakeKind; name?: string; from?: unknown; origin?: FileOrigin }, method: string): Promise<FileDone> {
   const at = located(ctx, by, p.workspaceId, p.at, method)
   if (at.mime) throw new Error(NOT_A_FOLDER)
   if (!(DRIVE_NEW as readonly string[]).includes(p.kind)) throw new Error(`A text file cannot be made in ${at.account}. Make a Google Doc instead.`)
@@ -132,7 +132,10 @@ export async function driveMake(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'make', refs: journal('make', p) }, async () => {
     const drive = driveOf(ctx, at.account)
     const names = new Set((await drive.children(at.id)).items.map((i) => i.name.normalize('NFC').toLowerCase()))
-    const name = freeName(named ?? UNTITLED[p.kind], (n) => names.has(n.normalize('NFC').toLowerCase()))
+    const taken = (n: string) => names.has(n.normalize('NFC').toLowerCase())
+    // A held act's press makes the name its card showed, or nothing (as verbs.ts `exactIn` does on a disk).
+    if (named && p.origin?.from === 'act' && taken(named)) throw new Error(NAME_TAKEN(named))
+    const name = freeName(named ?? UNTITLED[p.kind], taken)
     const made = await drive.make(p.kind as DriveMakeKind, name, at.id)
     driveChanged(ctx, p.workspaceId, at.account, [at.id])
     return { entries: [driveEntry(at.account, made, made.shared || (await folderShared(ctx, at.account, at.id)))], refused: [], op: p.op } satisfies FileDone
