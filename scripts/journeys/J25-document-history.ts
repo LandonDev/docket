@@ -92,7 +92,13 @@ export default journey({
         return r?.width ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
       })()`)
       if (!older) throw new Error('The older version offers no Restore')
-      await page.click(older)
+      // Restore is revealed on the row's hover and takes the pointer only partway into its fade (reveal.ts): a press
+      // sent with the move lands on the row behind it, as on 2026-11-24 tPHGt3. The pointer rests first, as his does.
+      const at: { x: number; y: number } = older
+      await page.hover(at)
+      await page.until('Restore to take the pointer', 5000, () => page.eval<boolean>(
+        `document.elementFromPoint(${at.x}, ${at.y})?.closest('button')?.textContent.trim() === 'Restore'`))
+      await page.click(at)
     }),
     step('end: the live document reads as before and History still keeps the newer edit', async (context) => {
       const { second } = JSON.parse(readFileSync(join(context.folder, 'versions.json'), 'utf8')) as { second: string }

@@ -79,6 +79,12 @@ export class Window {
     this.cdp.close()
   }
 
+  /** The pointer over a point, pressing nothing: a control revealed on hover takes the pointer only after its delay. */
+  async hover({ x, y }: Point): Promise<void> {
+    this.signal.throwIfAborted()
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+  }
+
   async click({ x, y }: Point, count = 1, button: 'left' | 'right' = 'left', modifiers?: number): Promise<void> {
     this.signal.throwIfAborted()
     await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })

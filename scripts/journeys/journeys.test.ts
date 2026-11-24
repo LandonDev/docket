@@ -415,6 +415,8 @@ it('drives the context menu and selection with mouse events, and reloads the pag
   await page.drag({ x: 9, y: 10 }, { x: 17, y: 10 })
   expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 13, y: 10, buttons: 1 }])
   expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 17, y: 10, button: 'left', clickCount: 1 }])
+  await page.hover({ x: 3, y: 2 })
+  expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 2 }])
   await page.reload()
   expect(send.mock.calls.at(-1)).toEqual(['Page.reload'])
 })
