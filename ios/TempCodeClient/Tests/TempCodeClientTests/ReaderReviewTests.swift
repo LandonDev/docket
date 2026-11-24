@@ -109,6 +109,14 @@ private let branches = #"{"branches":["#
     + #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}}],"lines":[]}}"#
     + #"],"names":{"agent:h1:s1":"Budget thread"}}"#
 
+/// `branches` after the host took k1: b1 is rewritten, so its `editedAt` moves (history/privateBranches.ts).
+private let branchesAfterK1 = branches
+    .replacingOccurrences(of: #"{"kind":"changed","id":"k1","left":{"text":"Old words"},"right":{"text":"New words"}},"#, with: "")
+    .replacingOccurrences(of: #""editedAt":110"#, with: #""editedAt":111"#)
+
+/// Only b2's block added since, as the host lists it after Accept All took the rest.
+private let branchesOnlyK4 = #"{"branches":[{"id":"b2","authors":["agent:h1:s2"],"label":"","at":200,"editedAt":201,"diff":{"rows":[{"kind":"added","id":"k4","right":{"text":"Added since"}}]}}],"names":{}}"#
+
 /// `branches` after the agent added a block to b2.
 private let branchesGrown = branches.replacingOccurrences(of: #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}}"#, with: #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}},{"kind":"added","id":"k4","right":{"text":"Added since"}}"#)
 
@@ -241,17 +249,24 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         let decide = try #require(await rig.next(fake, "work.history.decide"))
         #expect(decide.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1")]), "accept": .bool(true), "editedAt": .number(110)]))
         fake.answer(id: decide.id, result: #"{"left":1}"#)
+        // Taking k1 rewrote b1 (its `editedAt` moved, as the host does): the branches are read again before he goes on.
+        let again = try #require(await rig.next(fake, "work.history.branches"))
+        fake.answer(id: again.id, result: branchesAfterK1)
         #expect(await one.value)
         #expect(review.rows.map(\.id) == ["b1/k2", "b2/k3"])
+        #expect(review.rows.map(\.revision) == [111, 200])
 
         let all = Task { await review.decideAll(accept: false) }
         let first = try #require(await rig.next(fake, "work.history.decide"))
-        // Every row he sees, by its own id: never the host's "all", which would take a block added since.
-        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k2")]), "accept": .bool(false), "editedAt": .number(110)]))
+        // Every row he sees, by its own id: never the host's "all", which would take a block added since; with the
+        // branch as the host now has it.
+        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k2")]), "accept": .bool(false), "editedAt": .number(111)]))
         fake.answer(id: first.id, result: #"{"left":0}"#)
         let second = try #require(await rig.next(fake, "work.history.decide"))
         #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(false), "editedAt": .number(200)]))
         fake.refuse(id: second.id, error: "LifeOS is not signed in on this host")
+        // b1 was taken: read again, and the refusal stays on b2's row.
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branchesAfterK1.replacingOccurrences(of: #"{"kind":"added","id":"k2","right":{"text":"A new line"}}"#, with: ""))
         #expect(await all.value == false)
         #expect(review.rows.map(\.id) == ["b2/k3"])
         #expect(review.rows.first?.refusal == "LifeOS is not signed in on this host")
@@ -278,6 +293,7 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         let second = try #require(await rig.next(fake, "work.history.decide"))
         #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(true), "editedAt": .number(200)]))
         fake.answer(id: second.id, result: #"{"left":1}"#)
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branchesOnlyK4)
         #expect(await all.value)
         #expect(review.rows.map(\.id) == ["b2/k4"], "the block added since waits for him")
     }
@@ -300,6 +316,7 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.deciding, "the second press does not end the first's")
         #expect(review.rows.allSatisfy { $0.refusal == nil })
         fake.answer(id: sent.id, result: #"{"left":1}"#)
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branchesAfterK1)
         #expect(await one.value)
         #expect(!review.deciding)
         #expect(review.rows.map(\.id) == ["b1/k2", "b2/k3"])

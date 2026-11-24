@@ -142,6 +142,7 @@ public final class WorkReview {
                 guard let branch = row.branch else { return false }
                 _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: branch, which: .array([row.target]), accept: accept, editedAt: row.revision))
                 rows.removeAll { $0.id == row.id }
+                await reread()
             case .sheet(let itemId):
                 take(try await work.socket.request(Methods.WorkSheetsReview.self, .init(itemId: itemId, which: .object(.init(ids: [row.target])), verdict: accept ? .accept : .reject)))
             }
@@ -165,15 +166,18 @@ public final class WorkReview {
         switch subject {
         case .document(let source):
             var all = true
+            var taken = false
             for batch in ReviewBatch.of(rows) {
                 do {
                     _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: batch.branch, which: .array(batch.targets), accept: accept, editedAt: batch.editedAt))
                     rows.removeAll { batch.ids.contains($0.id) }
+                    taken = true
                 } catch {
                     refuse(batch.ids, ActionError.wrap(error).message)
                     all = false
                 }
             }
+            if taken { await reread() }
             return all
         case .sheet(let itemId):
             let seen = accept ? rows.filter(\.accepts) : rows
@@ -189,6 +193,14 @@ public final class WorkReview {
                 return false
             }
         }
+    }
+
+    /// After the host took a document decision: taking part of a branch rewrites it (its `editedAt` moves, and no push
+    /// says so), so the rows are read again before the next decision, each refusal kept on its row while it is there.
+    private func reread() async {
+        let refusals = Dictionary(rows.compactMap { row in row.refusal.map { (row.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        await load()
+        for index in rows.indices where rows[index].refusal == nil { rows[index].refusal = refusals[rows[index].id] }
     }
 
     /// The sheet as the review left it: its open suggestions, a refusal kept on a row still there.
