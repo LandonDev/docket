@@ -65,9 +65,10 @@ describe('a move while an editor saves', () => {
     rig.put(letter(), docx('{{To}}'))
     hooks.links = false
     hooks.afterCopy = (from) => void (from === letter() && saveAnew(from, '{{To}} with his edit'))
-    await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(MOVED_UNDER)
+    // With no link to bind the new name to the copy, nothing proves what it holds: it is left, and the error says where.
+    await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(`${MOVED_UNDER} A copy may be left at Letter.docx.`)
     expect(readFileSync(letter()).equals(Buffer.from(docx('{{To}} with his edit')))).toBe(true)
-    expect(shared()).toEqual([])
+    expect(shared()).toEqual(['Letter.docx'])
   })
 
   it('keeps the edit saved just after the link, and takes the link back', async () => {
@@ -191,8 +192,8 @@ describe('a move taken back', () => {
   })
 })
 
-describe('a delete of a pair whose second name cannot be taken', () => {
-  it('gives the first its name back: both files stay where they were, as they were', async () => {
+describe('a delete whose name cannot be taken', () => {
+  it('leaves the document and the Word file beside it where they were, as they were', async () => {
     const doc = rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited {{Home}}', 'Game report.docx'))
     const word = rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
     // The Word file is written before the import, as Edit leaves it.
@@ -200,12 +201,30 @@ describe('a delete of a pair whose second name cannot be taken', () => {
     utimesSync(word, old, old)
     const before = [readFileSync(doc), readFileSync(word)]
     const asked = await removeTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', null, { pillars: () => [] })
-    // Word holds the file open: its name cannot be taken.
+    // The editor holds the document open: its name cannot be taken.
     hooks.beforeRename = (from, to) => {
-      if (from === word && to.endsWith('.claimed')) throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' })
+      if (from === doc && to.endsWith('.claimed')) throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' })
     }
     await expect(removeTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', asked.version!, { pillars: () => [] })).rejects.toThrow('busy')
     expect(readdirSync(join(rig.folder, 'Templates')).sort()).toEqual(['Game report.docx', 'Game report.tcdoc'])
     expect([readFileSync(doc), readFileSync(word)].every((b, i) => b.equals(before[i]!))).toBe(true)
+  })
+})
+
+describe('a move on a disk with no hard links, taken back', () => {
+  it('never removes a file put at the new name before the move could know what it wrote', async () => {
+    rig.put(letter(), docx('{{To}}'))
+    const there = join(sharedDir(rig.ctx), 'Letter.docx')
+    hooks.links = false
+    // Once the copy has landed under the new name: another window saves the new name, and the editor the old one.
+    hooks.afterCopy = (from) => {
+      if (!from.endsWith('.moving')) return
+      hooks.afterCopy = () => {}
+      saveAnew(there, 'theirs')
+      saveAnew(letter(), '{{To}} with his edit')
+    }
+    await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(MOVED_UNDER)
+    expect(readFileSync(there).equals(Buffer.from(docx('theirs')))).toBe(true)
+    expect(readFileSync(letter()).equals(Buffer.from(docx('{{To}} with his edit')))).toBe(true)
   })
 })

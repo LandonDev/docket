@@ -276,8 +276,15 @@ function withTwins(entries: ShelfEntry[], store: TemplatesStore): ShelfEntry[] {
   return out
 }
 
+/**
+ * A document's key in the pair record: its real path. The document kind saves a `.tcdoc` by writing a new file and
+ * renaming it over the old one, so its identity changes at every save; its path changes only by this pillar's rename
+ * and move, which record the pair again. The Word file's key is its identity (`fileIdentity`): no editor writes it.
+ */
+export const docKey = (path: string): string | null => (existsSync(path) ? (realOr(path) ?? path) : null)
+
 function isPair(store: TemplatesStore, doc: string, word: string): boolean {
-  const d = fileIdentity(doc)
+  const d = docKey(doc)
   const w = fileIdentity(word)
   if (!d || !w) return false
   const known = store.paired(d, w)

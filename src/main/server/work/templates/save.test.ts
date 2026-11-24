@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -342,19 +342,34 @@ describe('a Word template and the document made of it', () => {
     expect(readdirSync(sharedDir(rig.ctx)).sort()).toEqual(['Game report 2.docx', 'Game report 2.tcdoc', 'Game report.docx'])
   })
 
-  it("go to Files' Trash together", async () => {
+  it("send only the document to Files' Trash: nothing proves the Word file is its own", async () => {
     pair()
     const seen: ClientRequest[] = []
     const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : (seen.push(req), handled({ entries: [], refused: [], trashed: ['t1', 't2'], op: 'op' }))) }
     await removeTemplate(rig.ctx, window, WS, 'Game report', null, { pillars: () => [files] })
-    expect((seen[0] as { params: { refs: unknown[] } }).params.refs).toEqual([file(join(rig.folder, 'Templates', 'Game report.tcdoc')), file(join(rig.folder, 'Templates', 'Game report.docx'))])
+    expect((seen[0] as { params: { refs: unknown[] } }).params.refs).toEqual([file(join(rig.folder, 'Templates', 'Game report.tcdoc'))])
   })
 
-  it('are deleted together once he said yes', async () => {
+  it('delete only the document once he said yes, and the Word file stands as its own tile', async () => {
     pair()
     const asked = await removeTemplate(rig.ctx, window, WS, 'Game report', null, { pillars: none })
     expect(await removeTemplate(rig.ctx, window, WS, 'Game report', asked.version!, { pillars: none })).toEqual({})
-    expect(shelfFiles()).toEqual([])
+    expect(shelfFiles()).toEqual(['Game report.docx'])
+    expect(listTemplates(rig.ctx, WS).templates.filter((t) => t.name === 'Game report').map((t) => t.id)).toEqual(['job:Game report.docx'])
+  })
+
+  it('never delete an older Word file the shelf joined to a document by name and time alone, the first time it saw them', async () => {
+    // A document read from another job's Letter.docx, put beside this job's own, older Letter.docx by hand.
+    const theirs = rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('Dear {{To}}'))
+    const old = new Date(Date.now() - 86_400_000)
+    utimesSync(theirs, old, old)
+    const bytes = readFileSync(theirs)
+    rig.put(join(rig.folder, 'Templates', 'Letter.tcdoc'), imported('His own {{Client}}', 'Letter.docx'))
+    expect(listTemplates(rig.ctx, WS).templates.filter((t) => t.name === 'Letter').map((t) => t.id)).toEqual(['job:Letter.tcdoc'])
+    const asked = await removeTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', null, { pillars: none })
+    await removeTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', asked.version!, { pillars: none })
+    expect(shelfFiles()).toEqual(['Letter.docx'])
+    expect(readFileSync(theirs).equals(bytes)).toBe(true)
   })
 })
 

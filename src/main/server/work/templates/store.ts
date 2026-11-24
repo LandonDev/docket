@@ -6,8 +6,9 @@ import type { DatabaseSync } from 'node:sqlite'
  * (docs/agents/work-templates.md "The shelf"): each template file's fields
  * by its path, size and time, so a file is opened only when it changed, the
  * starters he hid in each workspace, and which document and Word file are
- * one template (a pair, by each file's identity, so it holds through a
- * rename or a move). The files themselves are the shelf; the index rows can
+ * one template (a pair: the document by its real path, which its editor's
+ * saves keep, the Word file by its identity, which a rename or move by link
+ * keeps; this pillar records the pair again after its own rename or move). The files themselves are the shelf; the index rows can
  * be dropped and are made again.
  */
 
@@ -58,7 +59,7 @@ export class TemplatesStore {
     else this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ? AND starter = ?').run(workspaceId, starter)
   }
 
-  /** What is known of a document and a Word file, by their identities: one template, not one, or nothing yet (undefined). */
+  /** What is known of a document (by its real path) and a Word file (by its identity): one template, not one, or nothing yet (undefined). */
   paired(doc: string, word: string): boolean | undefined {
     const row = this.db.prepare('SELECT paired FROM work_templates_pairs WHERE doc = ? AND word = ?').get(doc, word) as { paired: number } | undefined
     return row ? row.paired === 1 : undefined
@@ -68,7 +69,7 @@ export class TemplatesStore {
     this.db.prepare('INSERT INTO work_templates_pairs (doc, word, paired) VALUES (?, ?, ?) ON CONFLICT(doc, word) DO UPDATE SET paired = excluded.paired').run(doc, word, paired ? 1 : 0)
   }
 
-  /** A file is gone: what was known of it goes. */
+  /** A file is gone: what was known of it goes (a document by its path, a Word file by its identity). */
   forget(id: string): void {
     this.db.prepare('DELETE FROM work_templates_pairs WHERE doc = ? OR word = ?').run(id, id)
   }

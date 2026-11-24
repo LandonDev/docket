@@ -13,7 +13,7 @@ import { sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { isOfficeForm, scanOffice } from './ooxml'
 import { admitDirect, askFilesVerb, copyNoReplace, folderCan, FOLDER_MOVED, OUT_OF_REACH, reachesDir, real, resolveDir, unchanged, type Pillars } from './place'
-import { fileIdentity, jobDir, jobShelfReads, reachesFile, reachWorkspace, resolveTemplate, sharedDir, shelfOf, tcdocEveryField, tcdocFields, toTemplate, type ShelfEntry, type WorkspaceRow } from './shelf'
+import { docKey, fileIdentity, jobDir, jobShelfReads, reachesFile, reachWorkspace, resolveTemplate, sharedDir, shelfOf, tcdocEveryField, tcdocFields, toTemplate, type ShelfEntry, type WorkspaceRow } from './shelf'
 import { TemplatesStore } from './store'
 
 /**
@@ -320,6 +320,7 @@ async function moveNoReplace(from: string, to: string, was?: Stats): Promise<Sta
   if (was && !same(before, was, false)) throw new Error(MOVED_UNDER)
   let linked = true
   let published = before
+  let unproven = false
   try {
     await link(from, to)
   } catch (err) {
@@ -351,26 +352,30 @@ async function moveNoReplace(from: string, to: string, was?: Stats): Promise<Sta
           if ((last as NodeJS.ErrnoException).code === 'EEXIST') throw taken()
           throw last
         }
-        published = await stat(to)
+        // No link to bind the new name to the copy made: what it holds now may already be another file. Nothing
+        // proves which, so a take-back leaves it.
+        unproven = true
       }
     } finally {
       await rm(staged, { force: true })
     }
   }
-  // By size and time too: a freed inode's number is soon given to a new file.
-  const ours = (now: Stats): boolean => same(now, published, false)
+  // By size and time too: a freed inode's number is soon given to a new file. A new name this move cannot prove it
+  // wrote is never taken back: it stays, and the move says where.
+  const ours = (now: Stats): boolean => !unproven && same(now, published, false)
+  const left = (): Error => (unproven ? new Error(`${MOVED_UNDER} A copy may be left at ${basename(to)}.`) : new Error(MOVED_UNDER))
   let gone: boolean
   try {
     gone = await removeIfSame(from, (now) => same(now, before, linked))
   } catch (err) {
     // The old name could not be taken (a file held open): the new one is taken back, and the file stays where it was.
-    await removeIfSame(to, ours).catch(() => undefined)
+    if (!unproven) await removeIfSame(to, ours).catch(() => undefined)
     throw err
   }
-  if (gone) return published
+  if (gone) return unproven ? await stat(to) : published
   // The old name holds a newer file, or none: it stays as it is, and so does anything that took the new name since.
-  await removeIfSame(to, ours)
-  throw new Error(MOVED_UNDER)
+  if (!unproven) await removeIfSame(to, ours)
+  throw left()
 }
 
 /** A step of a change of several files, done: where the file was, where it is, and what is there. */
@@ -392,9 +397,10 @@ async function takeBack(done: readonly Moved[]): Promise<void> {
  */
 function recordMoved(ctx: WorkCtx, entry: ShelfEntry, done: readonly Moved[]): void {
   const store = new TemplatesStore(ctx.db)
+  // The Word file by the identity this move published there, never by what its new name holds when read again.
+  const identityOf = (p: Stats): string => `${p.dev}:${p.ino}:${Math.floor(p.birthtimeMs)}`
   if (done.length === 2) {
-    const [doc, word] = done.map((d) => fileIdentity(d.to))
-    if (doc && word) store.pair(doc, word, true)
+    store.pair(done[0]!.to, identityOf(done[1]!.published), true)
     return
   }
   const moved = done[0]
@@ -409,9 +415,14 @@ function recordMoved(ctx: WorkCtx, entry: ShelfEntry, done: readonly Moved[]): v
   }
   for (const n of names) {
     if (splitName(n).stem !== stem || templateFormOf(n)?.form !== other) continue
-    const mine = fileIdentity(moved.to)
-    const theirs = fileIdentity(join(dirname(moved.to), n))
-    if (mine && theirs) store.pair(entry.form === 'tcdoc' ? mine : theirs, entry.form === 'tcdoc' ? theirs : mine, false)
+    const theirs = join(dirname(moved.to), n)
+    if (entry.form === 'tcdoc') {
+      const word = fileIdentity(theirs)
+      if (word) store.pair(moved.to, word, false)
+    } else {
+      const doc = docKey(theirs)
+      if (doc) store.pair(doc, identityOf(moved.published), false)
+    }
   }
 }
 
@@ -488,7 +499,10 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   }
   const { files: checked } = ownOf(ctx, by, workspaceId, ref)
   const everyone = entry.where === 'all'
-  const refs: CanvasSource[] = filesOf(entry).map((path) => ({ at: 'file', host: ctx.host, path }))
+  // The file he pressed on alone. The Word file beside a document is paired by the import's record of a name and a
+  // time, which an unrelated older Word file of that name can pass; nothing proves the two are one, so the Word file
+  // is never deleted with it and stays on the shelf as its own tile.
+  const refs: CanvasSource[] = [{ at: 'file', host: ctx.host, path: entry.path }]
   // Trash is the workspace folder's: a template for all jobs lies in the app's own data, which Files does not list.
   if (!everyone && by.kind !== 'model' && !by.peer && (await folderCan(ctx, by, workspaceId, 'trash', deps.pillars, deps.signal))) {
     const done = await askFilesVerb<FileDone>(ctx, by, 'trash', { workspaceId, refs }, deps.pillars, deps.signal)
@@ -500,7 +514,7 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   }
   if (by.peer) throw new Error(PEER_CONFIRM)
   // What he was asked about is the file as it was then: its version rides the question, and a file that is not that one any more is left.
-  const files = checked.map((f) => f.path)
+  const files = [checked[0]!.path]
   const version = versionOf(files)
   if (confirmed === null) return { confirm: true, version }
   if (confirmed !== version) throw new Error(CHANGED)
@@ -534,7 +548,8 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
       throw err
     }
     const gone = looks[i]!
-    store.forget(`${gone.dev}:${gone.ino}:${Math.floor(gone.birthtimeMs)}`)
+    // What was known of it goes: a document by its path, a Word file by its identity (`docKey`, `fileIdentity`).
+    store.forget(entry.form === 'tcdoc' ? h.path : `${gone.dev}:${gone.ino}:${Math.floor(gone.birthtimeMs)}`)
   }
   ctx.push({ push: 'work.templates', workspaceId: everyone ? null : shelf.workspace.id })
   return {}

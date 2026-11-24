@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, utimesSync } from 'node:fs'
+import { readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { handled } from '@shared/work'
@@ -22,6 +22,12 @@ const templates = () => join(rig.folder, 'Templates')
 const pair = () => {
   rig.put(join(templates(), 'Game report.docx'), docx('Old {{Home}}'))
   rig.put(join(templates(), 'Game report.tcdoc'), imported('Edited {{Home}} v {{Away}}', 'Game report.docx'))
+}
+/** His save in the document kind: a new file written beside and renamed over the old (work-kit's `FileDocStore`), so the `.tcdoc` is another file after it. */
+const editorSaves = (path: string, bytes: Uint8Array): void => {
+  const writing = `${path}.${process.pid}.writing`
+  writeFileSync(writing, bytes)
+  renameSync(writing, path)
 }
 const named = (name: string, workspaceId = WS) => listTemplates(rig.ctx, workspaceId).templates.filter((t) => t.name === name)
 /** The formats pillar's export, standing in: it names the document it was asked for. */
@@ -82,6 +88,31 @@ describe('a lone document this pillar moved beside an older Word file of its nam
     const old = new Date(Date.now() - 86_400_000)
     utimesSync(join(templates(), 'Draft.docx'), old, old)
     await renameTemplate(rig.ctx, window, WS, 'job:Draft.docx', 'Memo')
+    expect(named('Memo').map((t) => t.id).sort()).toEqual(['job:Memo.docx', 'job:Memo.tcdoc'])
+  })
+})
+
+describe('a pair this pillar renamed, then saved in the document kind', () => {
+  it('stays one tile, and a make by its name takes his edits, not the old Word text', async () => {
+    pair()
+    expect(named('Game report')).toHaveLength(1)
+    await renameTemplate(rig.ctx, window, WS, 'Game report', 'Ref report')
+    // The sidecar is kept by the save, and still names the Word file as it was called at the import.
+    editorSaves(join(templates(), 'Ref report.tcdoc'), imported('Edited again {{Home}} v {{Away}}', 'Game report.docx'))
+    expect(named('Ref report')).toEqual([expect.objectContaining({ id: 'job:Ref report.tcdoc' })])
+    exports.length = 0
+    await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Ref report', fields: { Home: 'Central' }, today: '2026-11-23' }, { pillars: () => [formats] })
+    expect(exports).toEqual([join(templates(), 'Ref report.tcdoc')])
+  })
+
+  it('and two files this pillar kept apart stay apart after the document is saved', async () => {
+    rig.put(join(templates(), 'Memo.tcdoc'), imported('{{To}}', 'Memo.docx'))
+    rig.put(join(templates(), 'Draft.docx'), docx('{{To}}'))
+    const old = new Date(Date.now() - 86_400_000)
+    utimesSync(join(templates(), 'Draft.docx'), old, old)
+    await renameTemplate(rig.ctx, window, WS, 'job:Draft.docx', 'Memo')
+    // The import's record names Memo.docx and the Word file is older: by name and time alone the two would be joined.
+    editorSaves(join(templates(), 'Memo.tcdoc'), imported('{{To}} edited', 'Memo.docx'))
     expect(named('Memo').map((t) => t.id).sort()).toEqual(['job:Memo.docx', 'job:Memo.tcdoc'])
   })
 })
