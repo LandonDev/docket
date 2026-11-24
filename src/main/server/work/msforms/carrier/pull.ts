@@ -12,8 +12,11 @@ import { CarrierStop, type PullAsk, type PulledWorkbook } from './types'
  * folder's own site page asks SharePoint for the file by its id: its parent
  * must still be the recorded folder, its Modified must have moved and stood
  * still, then its bytes come into the host's memory. Both windows close, and
- * what Chromium stored for the Excel and SharePoint origins is cleared. No
- * picture of either page is taken.
+ * every other page the carrier owns (a popup either opened) closes with them
+ * (box/service.ts `carrierClear`); the profile's storage for those origins is
+ * his too and is left as it is. The whole pull runs on one carrier session,
+ * one admission lease: once he takes the browser, no read of it goes on
+ * (box/index.ts `carrierComputer`). No picture of either page is taken.
  */
 
 /** How long a pull waits for the workbook to settle: still this long after it moved, or this long with no move at all. */

@@ -8,7 +8,7 @@ import { parseObservation } from '@shared/computer/observation'
 import { COMPUTER_PROTOCOL, ComputerNotificationSchema, resultFrameSchema, type ComputerNotification, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
 import { type BoxChromium, findChromium } from './chromium'
 import { FORMS_HOSTS } from '@shared/work/msforms'
-import { BoxComputerService, CARRIER_ONLY_HOSTS, carrierOnly, carrierSession, endCarrierSession, inProcessSpawn, isCarrierSession, setCarrierOnlyHostsForTest } from './service'
+import { BoxComputerService, CARRIER_ONLY_HOSTS, CARRIER_TARGETS, carrierOnly, carrierSession, endCarrierSession, inProcessSpawn, isCarrierSession, setCarrierOnlyHostsForTest } from './service'
 import { serveTestSite, type TestSite } from './testSite'
 import { testBrowser } from './testTools'
 
@@ -324,14 +324,60 @@ d('the box computer service speaks the wire', () => {
         // the carrier takes no picture of what it drives, asked or not (review 21), and follows no redirect (review 24)
         expect((await no('capture.screenshot', { session: carrier, app, window: { id: read.window.id } })).data?.kind).toBe('capture_failed')
         expect((await ok('state.get', { session: carrier, app, screenshot: 'always' })).shot).toBeUndefined()
-        expect(await svc.carrierFetch(read.window.id, `${site.url.replace('127.0.0.1', 'localhost')}/hop`)).toMatchObject({ status: 0 })
-        // the carrier's window is no thread's, by id or as its last page
-        expect((await no('state.get', { session: 's1', app, window: { id: read.window.id } })).data?.kind).toBe('open_refused')
+        expect(await svc.carrierFetch(read.window.id, `${site.url.replace('127.0.0.1', 'localhost')}/hop`, {}, carrier)).toMatchObject({ status: 0 })
+        // the carrier's window is no thread's, by id or as its last page: to a thread it is not there at all (review 2)
+        expect((await no('state.get', { session: 's1', app, window: { id: read.window.id } })).data?.kind).toBe('window_not_found')
       } finally {
+        await svc.carrierRelease(carrier)
         endCarrierSession(carrier)
       }
     } finally {
       setCarrierOnlyHostsForTest(null)
+    }
+  })
+
+  it('keeps every page the carrier opens, and the popups they open, from every other session, and closes them all at its release (review 2)', async () => {
+    const carrier = carrierSession()
+    try {
+      const opened = await ok('apps.launch', { app: 'Chromium', open: [site.url + '/'], session: carrier })
+      const mine = opened.window!.id
+      // the carrier's page opens a popup (Excel for the web's workbook, in a pull): it is the carrier's from the first list
+      const service = svc as unknown as { pages(): Promise<{ targetId: string; window: number }[]>; on(p: unknown): Promise<{ cdp: { send(m: string, p: unknown, s: string): Promise<unknown> }; sid: string }> }
+      const page = (await service.pages()).find((p) => p.window === mine)!
+      const { cdp, sid } = await service.on(page)
+      await cdp.send('Runtime.evaluate', { expression: `window.open(${JSON.stringify(site.url + '/')}, '_blank'); 1`, userGesture: true }, sid)
+      const owned = () => [...CARRIER_TARGETS].filter(([, s]) => s === carrier).map(([t]) => t)
+      for (let i = 0; i < 50 && owned().length < 2; i++) {
+        await service.pages()
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      expect(owned()).toHaveLength(2)
+      const windows = (await service.pages()).filter((p) => owned().includes(p.targetId)).map((p) => p.window)
+      // no thread lists either, reads either by its id, or takes either as its page
+      const listed = (await ok('apps.list', { windows: true })).apps[0]!.windows!.map((w) => w.id)
+      for (const w of windows) {
+        expect(listed).not.toContain(w)
+        expect((await no('state.get', { session: 's1', app, window: { id: w } })).data?.kind).toBe('window_not_found')
+        expect((await no('capture.screenshot', { session: 's1', app, window: { id: w } })).data?.kind).toBe('window_not_found')
+      }
+      expect((await ok('state.get', { session: 's1', app })).window.id).not.toBe(mine)
+      // nor does another carrier
+      const other = carrierSession()
+      expect((await svc.carrierPages(other)).map((p) => p.window).filter((w) => windows.includes(w))).toEqual([])
+      endCarrierSession(other)
+      // its own list holds both, and its release closes both
+      expect((await svc.carrierPages(carrier)).map((p) => p.window)).toEqual(expect.arrayContaining(windows))
+      expect(await svc.carrierRelease(carrier)).toEqual({ closed: 2, kept: 0 })
+      // a closed page is never shown to another while Chromium still lists it, and is gone soon after
+      const left = async () => (await service.pages()).map((p) => p.window).filter((w) => windows.includes(w))
+      for (let i = 0; i < 30 && (await left()).length; i++) {
+        expect((await ok('apps.list', { windows: true })).apps[0]!.windows!.map((w) => w.id).filter((w) => windows.includes(w))).toEqual([])
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      expect(await left()).toEqual([])
+      expect(owned()).toEqual([])
+    } finally {
+      endCarrierSession(carrier)
     }
   })
 
@@ -371,7 +417,7 @@ d('the box computer service speaks the wire', () => {
       await new Promise((r) => setTimeout(r, 100))
       after = await svc.carrierPages()
     }
-    expect(after).toEqual([{ window: last!.window, url: 'about:blank' }])
+    expect(after).toEqual([{ window: last!.window, url: 'about:blank', target: last!.target }])
     await ok('shutdown')
   })
 })

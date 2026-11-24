@@ -18,7 +18,7 @@ import type { VideoRpc } from '../../../video/rpc'
 import { BoxChromium } from './chromium'
 import { BoxEngines } from './engine'
 import { takeImports } from './logins'
-import { BOX_BROWSER_APP, BoxComputerService, carrierSession, closedToAgents, endCarrierSession, inProcessSpawn, isCarrierSession } from './service'
+import { BOX_BROWSER_APP, BoxComputerService, carrierOnly, carrierSession, closedToAgents, endCarrierSession, FORMS_OPEN, inProcessSpawn, isCarrierSession } from './service'
 import { BoxStage } from './stage'
 import { BoxVideo } from './video'
 import { videoToolsAt } from './videoSetting'
@@ -400,26 +400,53 @@ export function carrierComputer(): CarrierComputer | null {
   if (!h) return null
   const session = carrierSession()
   const release = useBoxBrowser()
+  /**
+   * One admission lease for the carrier's whole operation (review 24): taken with the session, and lost for good the
+   * first time a read finds him driving the browser. A read after that (a page read, an act, the page list, an in-page
+   * request) is refused, even once he hands the browser back; only the carrier's own cleanup still runs.
+   */
+  let revoked = false
+  const admitted = (): boolean => {
+    if (!revoked && started && ownerDrives(started.db)) revoked = true
+    return !revoked
+  }
+  /** Closes every page the session owns; says so in the log when one stayed (fixed words, never the page's). */
+  const cleanUp = async (): Promise<void> => {
+    const status = liveService ? await liveService.carrierClear(session) : 'gone'
+    if (status !== 'closed') started?.log(`box browser: the carrier's pages were not all closed (${status})`)
+  }
   return {
     session,
     run: (tool, args, signal) => {
-      if (started && ownerDrives(started.db)) return Promise.resolve(refusal(BOX_OWNER_DRIVES))
+      if (!admitted()) return Promise.resolve(refusal(BOX_OWNER_DRIVES))
       return h.sessions.run({ threadId: session, permission: () => 'auto', approve: async () => false, ...(signal ? { signal } : {}) }, tool, args)
     },
     window: () => h.sessions.previewTarget(session)?.window ?? null,
-    pages: async () => (liveService ? liveService.carrierPages() : []),
+    pages: async () => {
+      if (!admitted()) throw new Error(BOX_OWNER_DRIVES)
+      return liveService ? liveService.carrierPages(session) : []
+    },
     close: async (window) => void (await liveService?.carrierClose(window)),
     fetch: async (window, url, o) => {
+      if (!admitted()) throw new Error(BOX_OWNER_DRIVES)
       if (!liveService) throw new Error('the box browser is not running')
-      return liveService.carrierFetch(window, url, o)
+      return liveService.carrierFetch(window, url, o, session)
     },
-    clear: async (origins) => void (await liveService?.carrierClear(origins)),
+    // the named origins are not cleared (service.ts `carrierClear`): its own pages are closed instead
+    clear: async () => cleanUp(),
     end: async () => {
+      // every exit path ends here: whatever pages the operation left open, and their popups, close
+      await cleanUp()
       await h.sessions.end([session])
       endCarrierSession(session)
       release()
     }
   }
+}
+
+/** A test's own service in place of the live one; null drops it. */
+export const setCarrierServiceForTest = (s: BoxComputerService | null): void => {
+  liveService = s
 }
 
 export const BOX_OWNER_DRIVES = 'He is driving the browser now. Do not use the box browser until he hands it back; end your turn and say where you will pick up.'
@@ -449,6 +476,10 @@ export function boxBrowserTools(): WorkTool[] {
     async run(args, ctx): Promise<WorkToolResult> {
       const h = host
       if (!h) return { ...workText('refused: the box browser is not on this host'), isError: true }
+      // A Forms address is refused here in its own words, before anything is asked of the service (which refuses it
+      // too, as an open refused for its scheme, in words that name no Forms rule)
+      const opens = (args as { open?: unknown } | null)?.open
+      if (spec.name === 'computer_apps' && Array.isArray(opens) && opens.some((u) => typeof u === 'string' && carrierOnly(u))) return { ...workText(FORMS_OPEN), isError: true }
       const pane = ctx.canvas.paneOf(ctx.sessionId)
       // One browser for every thread: while he drives any page of it, no thread acts in it.
       if (spec.name !== 'computer_observe' && (new DriveStore(ctx.db).get(pane).driver === 'owner' || ownerDrives(ctx.db))) return { ...workText(BOX_OWNER_DRIVES), isError: true }

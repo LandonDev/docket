@@ -51,6 +51,24 @@ to do in the page.
 
 - **Operations, not steps** (ops.ts): `make`, `write`, `settings`, `collect`, `audience`, `close`, `count`, `pull`,
   each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
+- **Its pages are its own** (review 2; service.ts `CARRIER_TARGETS`): a carrier session's page is made blank and
+  reserved before it loads anything, and every page opened from one (a popup, by Chromium's `openerId`, at any depth:
+  `inheritCarrierTargets` on each page list) is that session's too, so Excel for the web's workbook tab and the
+  SharePoint page are never listed, read, pictured, watched or acted on by a thread, by no session (`apps.list`), or by
+  another carrier: to them a carrier's window is not there (`window_not_found`). Every exit ends the session, and the
+  end closes all of its pages (`carrierRelease`); a closed page stays reserved until Chromium no longer lists it, and
+  one that would not close stays reserved.
+- **One lease an operation** (review 24; box/index.ts `carrierComputer`): taken with the session, lost for good the
+  first time a read finds him driving the browser. After that no read runs, the page list, a page read, an act or an
+  in-page request, even once he hands the browser back; only its own cleanup does. The in-page request
+  (`carrierFetchExpression`) runs only while the page's live origin is the one the host checked, with
+  `redirect: 'error'`, and a redirected answer or one from another origin reads as status 0 with none of its body.
+- **Cleanup** (`carrierClear`) closes the carrier's own pages and answers a fixed word, `closed`, `kept` or `gone`,
+  which a stop logs. It clears no origin's storage: in the shared profile `Storage.clearDataForOrigin` would clear it
+  for his own SharePoint and Excel pages too, and no call limits it to the carrier's, so Excel's and SharePoint's
+  stored data for those origins stays as his own opening of the file would leave it.
+- A thread's `box_browser_open` of a Forms address is refused in Forms' own words, "refused: Microsoft Forms pages are
+  reached only through the msform tools; nothing was opened.", before anything is asked of the service.
 - **Each runs under an authorization** (types.ts `authorize`, `checkAuth`) bound to the host, workspace, form (or
   folder), operation, a digest of its payload and the form's `rev`, from a grantor allowed it (`OPS_BY`): his press
   (`owner`), a claimed held act's execute (`act`), the pillar under Agent writes on a draft, a closing end date and a
@@ -113,7 +131,7 @@ SharePoint REST checks that id, the form's site and the place, before the first 
 move, another file or no Excel window stops the read and nothing is stored). The place is the form's folder, or, for
 a form made in a Team library, that library's root: Forms makes a Team form's workbook there, named after the form,
 where every member of the team can open it (P1). Then it waits for Modified to move and stand still (or 90 s with
-none), and the bytes come into memory. The windows close and what the browser stored for those origins is cleared. `answersOf` (parse.ts) finds
+none), and the bytes come into memory. The windows close, and so does every other page the carrier opened (above). `answersOf` (parse.ts) finds
 `OfficeForms.Table` and reads it by header name: `Id`, `Start time`, `Completion time`, `Email`, `Name`, then each
 question by title. Past 5,000 rows the newest are kept and the summary line says so. A timeout keeps the last rows,
 marked stale ("as of").
@@ -124,7 +142,8 @@ or only when he looks), skips while he drives the box browser, and never reads a
 **The data rule.** Answers live in memory alone (answers/cache.ts: one entry a form, dropped after 30 minutes unshown,
 at the form's removal and at restart). Work's database, logs, tells, pushes, task titles and the computer journal hold
 no answer, respondent name or address; only fixed sentences reach `stopped` and errors. What remains on the box is
-what opening any Teams file leaves: the box browser's own HTTP cache. An answer a thread reads stays in that thread's
+what opening any Teams file leaves: the box browser's own HTTP cache, and what Excel and SharePoint store for their
+origins in the profile, which is shared with his pages and not cleared (above). An answer a thread reads stays in that thread's
 transcript, as anything a thread reads does. The answers workbook itself is never read to a thread through the generic
 readers: `sheet_read` and the sheets tools, `office_range_read`, `office_files`' sheet sizes and the sheet maker refuse
 it ("read them with msform_answers"; the read-only judge's `readRefused`, workbook.ts); his own window reads it as before.

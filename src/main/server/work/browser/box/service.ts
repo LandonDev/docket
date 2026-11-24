@@ -134,7 +134,7 @@ export function carrierOnly(url: string): boolean {
   if (!host) return false
   return carrierHostsForTest ? carrierHostsForTest.some((h) => host === h || host.endsWith(`.${h}`)) : isFormsHost(host)
 }
-const FORMS_OPEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
+export const FORMS_OPEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
 /** What a picture asked on a carrier session answers (review 21): no image of a page the carrier drives is made. */
 const CARRIER_NO_PICTURE = 'the carrier takes no pictures of the pages it drives'
 const FORMS_SEEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing on that page was read or done.'
@@ -154,6 +154,61 @@ export function endCarrierSession(id: string): void {
   CARRIER_SESSIONS.delete(id)
 }
 export const isCarrierSession = (session: string | undefined): boolean => session !== undefined && CARRIER_SESSIONS.has(session)
+
+/** What the carrier's cleanup answers: a fixed word, so a failure shows without the page's own words. */
+export type CarrierClearStatus = 'closed' | 'kept' | 'gone'
+
+/**
+ * The in-page request the carrier makes (review 24): it runs only while the page's live origin is still the one the
+ * host checked, follows no redirect (`redirect: 'error'`, and a response that says it was redirected answers 0), and
+ * answers a fixed shape. Status -1: the page is somewhere else now; 0: the request failed or was redirected.
+ */
+export function carrierFetchExpression(url: string, origin: string, o: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> } = {}): string {
+  return `(async () => {
+    if (location.origin !== ${JSON.stringify(origin)}) return { status: -1 }
+    const r = await fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(o.method ?? 'GET')}, credentials: 'include', redirect: 'error', headers: ${JSON.stringify(o.headers ?? {})} })
+    if (r.redirected || r.type === 'opaqueredirect' || new URL(r.url).origin !== ${JSON.stringify(origin)}) return { status: 0 }
+    if (!${o.bytes ? 'true' : 'false'}) return { status: r.status, text: await r.text() }
+    const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000))
+    return { status: r.status, base64: btoa(s) }
+  })()`
+}
+
+/**
+ * Pages a carrier session owns, by Chromium's target id (review 2): every page it opens, reserved before it loads
+ * anything, and every page opened from one of them (a popup, by its `openerId`, at any depth). No other session lists,
+ * reads, pictures, watches or acts on one; the carrier closes them all at its end (`carrierRelease`). An entry outlives
+ * its session until its page is gone: a page that could not be closed stays reserved.
+ */
+export const CARRIER_TARGETS = new Map<string, string>()
+
+/** The carrier session that owns a page, if one does. */
+export const carrierOwnerOf = (targetId: string): string | undefined => CARRIER_TARGETS.get(targetId)
+
+/**
+ * Takes every page opened from an owned one for its opener's carrier, through any depth of openers, and forgets the
+ * owners of pages that are gone. `targets` is Chromium's whole list (`Target.getTargets`).
+ */
+export function inheritCarrierTargets(targets: readonly { targetId: string; openerId?: string }[], owned: Map<string, string> = CARRIER_TARGETS): void {
+  const live = new Set(targets.map((t) => t.targetId))
+  for (const id of [...owned.keys()]) if (!live.has(id)) owned.delete(id)
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const t of targets) {
+      const owner = t.openerId ? owned.get(t.openerId) : undefined
+      if (owner && !owned.has(t.targetId)) {
+        owned.set(t.targetId, owner)
+        changed = true
+      }
+    }
+  }
+}
+
+/** Whether a session may see a page: one no carrier owns, or one its own carrier session owns. */
+export const carrierLets = (targetId: string, session: string | undefined, owned: ReadonlyMap<string, string> = CARRIER_TARGETS): boolean => {
+  const owner = owned.get(targetId)
+  return owner === undefined || owner === session
+}
 
 export const MODIFIER_BITS: Record<Modifier, number> = { alt: 1, ctrl: 2, super: 4, shift: 8 }
 
@@ -476,9 +531,44 @@ export class BoxComputerService {
 
   // ── the msforms carrier's own page calls (no tool reaches these; carrier.ts in msforms) ──────────
 
-  /** Every page, with its window id and address: the carrier follows the window a press opened by its id. */
-  async carrierPages(): Promise<{ window: number; url: string; target: string }[]> {
-    return (await this.pages()).map((p) => ({ window: p.window, url: p.url, target: p.targetId }))
+  /**
+   * Every page this carrier session may see, with its window id and address: its own, the popups they opened, and the
+   * pages no carrier owns. The carrier follows the window a press opened by its id.
+   */
+  async carrierPages(session?: string): Promise<{ window: number; url: string; target: string }[]> {
+    return (await this.pages()).filter((p) => carrierLets(p.targetId, session)).map((p) => ({ window: p.window, url: p.url, target: p.targetId }))
+  }
+
+  /**
+   * A carrier session's end (review 2): every page it owns, and every page opened from one, closed. The browser's last
+   * page is emptied instead and let go, as `carrierClose` does. A page that would not close stays reserved, so it is
+   * never shown to another session; the answer says how many did not.
+   */
+  async carrierRelease(session: string): Promise<{ closed: number; kept: number }> {
+    let closed = 0
+    let kept = 0
+    let pages: Page[]
+    try {
+      pages = await this.pages()
+    } catch {
+      return { closed, kept: [...CARRIER_TARGETS.values()].filter((s) => s === session).length }
+    }
+    for (const page of pages.filter((p) => CARRIER_TARGETS.get(p.targetId) === session)) {
+      try {
+        const emptied = (await this.pages()).length <= 1
+        await this.carrierClose(page.window)
+        // A closed page stays reserved until Chromium no longer lists it (a close answers before the page is gone):
+        // its entry goes in the next list (`inheritCarrierTargets`). An emptied last page holds nothing of the carrier's.
+        if (emptied) CARRIER_TARGETS.delete(page.targetId)
+        closed++
+      } catch {
+        kept++
+      }
+    }
+    // entries whose pages are already gone
+    const live = new Set(pages.map((p) => p.targetId))
+    for (const [id, s] of [...CARRIER_TARGETS]) if (s === session && !live.has(id)) CARRIER_TARGETS.delete(id)
+    return { closed, kept }
   }
 
   /**
@@ -498,17 +588,14 @@ export class BoxComputerService {
    * A request from inside one page, as the signed-in page itself would make it: only to the page's own origin and never
    * to a Forms host (the carrier reads SharePoint from the folder's site page). The body comes back as bytes or JSON.
    */
-  async carrierFetch(window: number, url: string, o: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> } = {}): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }> {
-    const page = (await this.pages()).find((p) => p.window === window)
+  async carrierFetch(window: number, url: string, o: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> } = {}, session?: string): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }> {
+    // only a page this carrier session may see: its own, or one no carrier owns
+    const page = (await this.pages()).find((p) => p.window === window && carrierLets(p.targetId, session))
     if (!page) throw new Error('no such window in the box browser')
     const target = new URL(url)
     if (isFormsHost(target.hostname) || new URL(page.url).origin !== target.origin) throw new Error('the carrier asks only the page\'s own origin')
     const { cdp, sid } = await this.on(page)
-    const expression = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(o.method ?? 'GET')}, credentials: 'include', redirect: 'error', headers: ${JSON.stringify(o.headers ?? {})} }).then(async (r) => {
-      if (!${o.bytes ? 'true' : 'false'}) return { status: r.status, text: await r.text() }
-      const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000))
-      return { status: r.status, base64: btoa(s) }
-    })`
+    const expression = carrierFetchExpression(url, target.origin, o)
     const { result, exceptionDetails } = await cdp.send<{ result: { value?: { status: number; text?: string; base64?: string } }; exceptionDetails?: unknown }>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sid)
     // a fetch that failed (a refused redirect, the network) answers status 0, never the error's own words
     const v = !exceptionDetails && typeof result.value?.status === 'number' ? result.value : { status: 0 }
@@ -522,11 +609,19 @@ export class BoxComputerService {
     return { status: v.status, json }
   }
 
-  /** Clears what the browser stored for these origins, every kind but cookies (his sign-in stays). */
-  async carrierClear(origins: readonly string[]): Promise<void> {
-    const cdp = await this.browser()
-    const storageTypes = 'appcache,file_systems,indexeddb,local_storage,shader_cache,websql,service_workers,cache_storage'
-    for (const origin of origins) await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes }).catch(() => {})
+  /**
+   * The carrier's cleanup (review 24): its own pages closed (`carrierRelease`), and nothing else. The storage of a named
+   * origin is not cleared: in the shared profile `Storage.clearDataForOrigin` would clear it for his own pages of that
+   * origin too (his SharePoint and Excel tabs), and no call limits it to the carrier's pages. A fixed status, never the
+   * browser's words: `closed`, `kept` (a page would not close and stays reserved), or `gone` (no browser to ask).
+   */
+  async carrierClear(session: string): Promise<CarrierClearStatus> {
+    try {
+      const { kept } = await this.carrierRelease(session)
+      return kept ? 'kept' : 'closed'
+    } catch {
+      return 'gone'
+    }
   }
 
   /** One new page: the stage's window when the browser is headed, else a tab. */
@@ -557,14 +652,17 @@ export class BoxComputerService {
     if (!isCarrierSession(session) && carrierOnly(url)) refuse('open_refused', line)
   }
 
-  /** The pages a session sees: a carrier-only page is the carrier's alone. */
+  /** The pages a session sees: a carrier-only page is the carrier's alone, and a page a carrier owns is that carrier's alone. */
   private seenBy(pages: Page[], session: string | undefined): Page[] {
-    return isCarrierSession(session) ? pages : pages.filter((p) => !carrierOnly(p.url))
+    const own = pages.filter((p) => carrierLets(p.targetId, session))
+    return isCarrierSession(session) ? own : own.filter((p) => !carrierOnly(p.url))
   }
 
   private async pages(): Promise<Page[]> {
     const cdp = await this.browser()
-    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets')
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string; openerId?: string }[] }>('Target.getTargets')
+    // a page opened from a carrier's page is that carrier's, before anyone is shown it
+    inheritCarrierTargets(targetInfos)
     const pages = targetInfos.filter((t) => t.type === 'page' && !RESERVED_TARGETS.has(t.targetId) && t.url !== RESERVED_URL)
     for (const id of [...this.windows.keys()]) if (!pages.some((t) => t.targetId === id)) this.forgetPage(id)
     return pages.map((t) => {
@@ -639,7 +737,8 @@ export class BoxComputerService {
     if (id !== undefined) page = all.find((p) => p.window === id)
     else if (ref?.title !== undefined) page = pages.find((p) => p.title === ref.title) ?? pages.find((p) => p.title.includes(ref.title!))
     else page = this.mainOf(all, session)
-    if (!page) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
+    // a carrier's page is, to every other session, a window that is not there
+    if (!page || !carrierLets(page.targetId, session)) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
     this.fence(page.url, session, FORMS_SEEN)
     // the carrier's page is no one else's "last used"
     if (!isCarrierSession(session)) this.mainTarget = page.targetId
@@ -746,12 +845,24 @@ export class BoxComputerService {
     for (const url of open) this.fence(url, q.session)
     await this.browser()
     let window: { id: number; title: string } | undefined
+    const carrier = isCarrierSession(q.session) ? q.session! : null
     for (const url of open) {
-      const blank = before.find((p) => p.url === 'about:blank')
+      // a carrier takes only a blank page it owns: another session's blank page is that session's
+      const blank = before.find((p) => p.url === 'about:blank' && (!carrier || carrierOwnerOf(p.targetId) === carrier))
       if (blank && !window) {
         const { cdp: c, sid } = await this.on(blank)
         await c.send('Page.navigate', { url }, sid)
         window = { id: blank.window, title: blank.title }
+      } else if (carrier) {
+        // A carrier's page is made blank and reserved before it loads anything: nothing it shows is ever another's to list.
+        const targetId = await this.newPage('about:blank')
+        CARRIER_TARGETS.set(targetId, carrier)
+        const p = (await this.pages()).find((x) => x.targetId === targetId)
+        if (p) {
+          const { cdp: c, sid } = await this.on(p)
+          await c.send('Page.navigate', { url }, sid)
+          if (!window) window = { id: p.window, title: p.title }
+        }
       } else {
         const targetId = await this.newPage(url)
         const pages = await this.pages()
