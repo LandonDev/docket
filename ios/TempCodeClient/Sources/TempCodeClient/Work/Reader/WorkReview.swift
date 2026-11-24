@@ -192,7 +192,8 @@ public final class WorkReview {
         let refusals = Dictionary(rows.compactMap { row in row.refusal.map { (row.id, $0) } }, uniquingKeysWith: { first, _ in first })
         rows = Self.rows(view).map { row in
             var row = row
-            row.refusal = refusals[row.id] ?? row.refusal
+            // A row the host now holds in conflict says why in its own words; an earlier refusal stays on the rest.
+            row.refusal = row.accepts ? refusals[row.id] : (row.refusal ?? refusals[row.id])
             return row
         }
     }
