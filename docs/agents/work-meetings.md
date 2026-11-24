@@ -177,10 +177,14 @@ write for Undo.
   ('meetings', 'work_meetings')`, registered in `ensure`) and a history
   import carry its meetings.
 - A meeting still transcribing when its host stops says so at the next start
-  of Work: "It stopped when <host> restarted. The recording is fine." with
-  Try again (`recover`); `<host>` is the computer as it calls itself
-  (`hostLabel`), never its id, and the window says the line through
-  `workErrorWords`.
+  of Work: "It stopped when the computer restarted. The recording is fine."
+  with Try again (`recover`). No line the host writes names a computer: it
+  knows only its own id and hostname, never the name the window gives it. A
+  file gone says "<name> was moved or removed. Open it again from where it is
+  now." (`movedWords`), a host without the transcriber "The transcriber is not
+  installed on the computer that holds the recording.", and Work turned off
+  "It stopped when Work was turned off. The recording is fine." The window
+  says each through `workErrorWords`.
 - No file of the meeting is written apart from the player's copy: there is no
   export of the transcript yet.
 
@@ -271,7 +275,7 @@ the host and only ever suggest a name (voices.ts).
 | `work.meetings.undoNotes {itemId}` | operate | puts back the notes before the last write |
 | `work.meetings.voices` | read | the names with a kept voice, never the voice |
 | `work.meetings.forgetVoice {name}` | operate | |
-| `work.meetings.recording {itemId, offset, length}` | read | `{ name, size, dataBase64 }`: the original recording, read in ranges of at most 2 MB for Download recording. A remote key reads it only where the path fence lets it name the file (`ctx.reaches`, else `FenceError`); a transcript says "This meeting has no recording.", a file gone "<name> is not on <host> any more." |
+| `work.meetings.recording {itemId, offset, length}` | read | `{ name, size, dataBase64 }`: the original recording, read in ranges of at most 2 MB for Download recording. A remote key reads it only where the path fence lets it name the file (`ctx.reaches`, else `FenceError`); a transcript says "This meeting has no recording.", a file gone "<name> was moved or removed. Open it again from where it is now." |
 
 Every method runs on the host that holds the thread (`MEETINGS_RELAY` is
 empty). The path fence reads the file a `source` names. The push

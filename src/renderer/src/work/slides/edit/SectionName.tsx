@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Field } from "../../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../../chrome/Modal";
 import { Input } from "../../../components/ui/input";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import type { HandSession } from "./session";
 import type { NameAsk } from "./slides";
 
@@ -39,7 +40,7 @@ function Body({ ask, session, onClose, pending, setPending }: { ask: NameAsk; se
       },
       (e: unknown) => {
         setPending(false);
-        setError(errorText(e) || "The host did not answer");
+        setError(workErrorWords(e, { write: true }) || "The section did not save.");
       },
     );
   };

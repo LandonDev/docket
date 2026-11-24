@@ -5,7 +5,6 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { Meeting, MeetingVoice } from '@shared/contract-work-meetings'
 import { errorText, type CanvasItem, type CanvasSource } from '@shared/work'
 import { attachmentDir } from '../../attachmentDir'
-import { hostLabel } from '../../../hostLabel'
 import type { WorkCtx } from '../modules'
 import { onPipelineEvents } from './events'
 import { fileTask, taskExists } from './filing'
@@ -110,7 +109,7 @@ export class Meetings {
   recordingPath(ctx: WorkCtx, itemId: string): string {
     const row = this.need(itemId)
     if (row.origin !== 'recording' || !row.source) throw new Error('This meeting has no recording.')
-    if (row.source.host !== ctx.host) throw new Error(`The recording is on ${row.source.host}.`)
+    if (row.source.host !== ctx.host) throw new Error('The recording is on another computer.')
     return row.source.path
   }
 
@@ -161,7 +160,7 @@ export class Meetings {
       /* not there */
     }
     const file: FileSource = { at: 'file', host: ctx.host, path }
-    if (!isFile) return this.failed(ctx, itemId, `${name} is not on ${ctx.host} any more.`, { source: file })
+    if (!isFile) return this.failed(ctx, itemId, movedWords(name), { source: file })
     if (isTranscript(path)) return this.readTranscript(ctx, itemId, file)
     if (isRecording(path)) return this.transcribe(ctx, itemId, file)
     return this.failed(ctx, itemId, `${name} is not a recording or a transcript this reads. It takes audio, video, a Teams or Zoom transcript, or an .srt file.`, { source: file })
@@ -259,7 +258,7 @@ export class Meetings {
         if (abort.signal.aborted) throw new Error('cancelled')
         this.finish(ctx, itemId, raw, audio)
       } catch (err) {
-        const why = job.why ?? (abort.signal.aborted ? 'It was stopped before it finished. The recording is fine.' : sentenceOf(err, ctx.host))
+        const why = job.why ?? (abort.signal.aborted ? 'It was stopped before it finished. The recording is fine.' : sentenceOf(err))
         // A recording that fails keeps its player, when the copy was already made.
         if (this.store.get(itemId)) this.failed(ctx, itemId, why, audio && existsSync(audio.path) ? { audio: audio.name } : {})
       } finally {
@@ -347,10 +346,10 @@ export class Meetings {
     }
   }
 
-  /** Meetings a process that is gone left mid-transcription: each says so, with Try again, naming the computer as it calls itself (never its id). */
+  /** Meetings a process that is gone left mid-transcription: each says so, with Try again. No computer is named: the host knows no name the window gives it. */
   recover(ctx: WorkCtx): void {
     for (const row of this.store.transcribing()) {
-      if (!this.jobs.has(row.itemId)) this.failed(ctx, row.itemId, `It stopped when ${hostLabel()} restarted. The recording is fine.`)
+      if (!this.jobs.has(row.itemId)) this.failed(ctx, row.itemId, 'It stopped when the computer restarted. The recording is fine.')
     }
   }
 
@@ -517,12 +516,15 @@ function filedOnly(notes: StoredNotes | null): StoredNotes | null {
   return actions.length ? { summary: [], decisions: [], questions: [], actions, writtenAt: notes!.writtenAt } : null
 }
 
-/** A failure as a sentence a person reads under "Could not transcribe". */
-function sentenceOf(err: unknown, host: string): string {
+/** A recording or transcript no longer where it was: what to do, never the computer's id. */
+export const movedWords = (name: string): string => `${name} was moved or removed. Open it again from where it is now.`
+
+/** A failure as a sentence a person reads under "Could not transcribe". No computer is named: the host knows no name the window gives it, only its id. */
+function sentenceOf(err: unknown): string {
   const text = errorText(err)
-  if ((err as { code?: string })?.code === 'no-converter') return `The transcriber is not installed on ${host}.`
+  if ((err as { code?: string })?.code === 'no-converter') return 'The transcriber is not installed on the computer that holds the recording.'
   if (text === 'cancelled') return 'It was stopped before it finished. The recording is fine.'
-  if (text === 'Work is off on this host' || text === 'Work turned off') return `It stopped when Work was turned off on ${host}. The recording is fine.`
+  if (text === 'Work is off on this host' || text === 'Work turned off') return 'It stopped when Work was turned off. The recording is fine.'
   return /[.!?]$/.test(text) ? text : `${text}.`
 }
 

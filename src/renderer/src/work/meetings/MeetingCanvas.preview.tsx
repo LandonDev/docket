@@ -61,7 +61,7 @@ function meetingFor(moment: PreviewMoment): Meeting | null {
     case "busy":
       return sampleMeeting({ status: "transcribing", segments: SAMPLE_SEGMENTS.slice(0, 4), progress: { phase: "words", done: T(14, 0), total: T(42, 10) } });
     case "error":
-      return sampleMeeting({ status: "failed", segments: [], error: "It stopped at 9 of 42 minutes when tempcode-box restarted. The recording is fine." });
+      return sampleMeeting({ status: "failed", segments: [], error: "It stopped at 9 of 42 minutes when the computer restarted. The recording is fine." });
     case "long":
       return summit();
     default:

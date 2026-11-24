@@ -6,7 +6,7 @@ import { FenceError } from '../../remote/fence'
 import { registerMoveModule, tableMoveModule } from '../../sessionMove'
 import type { WorkModule } from '../modules'
 import { meetingConverters } from './pipeline'
-import { meetingsOf } from './service'
+import { meetingsOf, movedWords } from './service'
 import { ensureMeetingTables } from './store'
 import { MEETINGS_PREAMBLE, meetingTools } from './tools'
 import { ensureVoiceTables } from './voices'
@@ -50,7 +50,7 @@ export const meetings: WorkModule = {
         const path = meetings.recordingPath(ctx, itemId)
         if (!ctx.reaches(by, path)) throw new FenceError(req.method)
         const range = await readRange(path, offset, length).catch(() => {
-          throw new Error(`${basename(path)} is not on ${ctx.host} any more.`)
+          throw new Error(movedWords(basename(path)))
         })
         return handled({ name: basename(path), ...range } satisfies MeetingRecordingRange)
       }
@@ -64,7 +64,7 @@ export const meetings: WorkModule = {
     const meetings = meetingsOf(ctx)
     // What a process that is gone left mid-transcription says so, with Try again.
     meetings.recover(ctx)
-    return () => meetings.stopAll(`It stopped when Work was turned off on ${ctx.host}. The recording is fine.`)
+    return () => meetings.stopAll('It stopped when Work was turned off. The recording is fine.')
   },
   sessionsRemoved(ids, ctx) {
     meetingsOf(ctx).removeSessions(ids)

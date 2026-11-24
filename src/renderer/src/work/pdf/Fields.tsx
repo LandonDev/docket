@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import type { PdfField, PdfFieldValue, PdfSignature } from "@shared/contract-work-pdf";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { Check, PenLine } from "../../chrome/icons";
 import { Modal, useModalClose } from "../../chrome/Modal";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -243,7 +244,7 @@ function Pad({ onClose, onSave, pending, setPending }: { onClose(): void; onSave
       },
       (err: unknown) => {
         setPending(false);
-        setError(errorText(err));
+        setError(workErrorWords(err, { write: true }) || "The signature did not save.");
       },
     );
   };

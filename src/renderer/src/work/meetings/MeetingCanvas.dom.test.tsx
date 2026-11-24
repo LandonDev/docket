@@ -243,9 +243,9 @@ describe("the meeting canvas", () => {
   it("an item opened on a file starts it once; could not transcribe says why, keeps the player and tries again", async () => {
     const { container } = await seat(null);
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(1));
-    await act(async () => push(sampleMeeting({ status: "failed", rev: 9, segments: [], error: "It stopped when tempcode-box restarted. The recording is fine." })));
+    await act(async () => push(sampleMeeting({ status: "failed", rev: 9, segments: [], error: "It stopped when the computer restarted. The recording is fine." })));
     await waitFor(() => expect(container.querySelector("[data-meeting-failed]")).toBeTruthy());
-    expect(container.querySelector("[data-meeting-failed]")!.textContent).toContain("Could not transcribeIt stopped when tempcode-box restarted. The recording is fine.");
+    expect(container.querySelector("[data-meeting-failed]")!.textContent).toContain("Could not transcribeIt stopped when the computer restarted. The recording is fine.");
     expect(container.querySelector("[data-meeting-player]")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(2));

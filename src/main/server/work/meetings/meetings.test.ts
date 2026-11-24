@@ -9,7 +9,6 @@ import type { Meeting, MeetingRecordingRange } from '@shared/contract-work-meeti
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, SectorKey, WorkScope } from '@shared/work'
 import { setAttachmentDirContext } from '../../attachmentDir'
-import { hostLabel } from '../../../hostLabel'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
 import type { ConvertJob, ConvertResult } from '../formats/jobs'
@@ -58,7 +57,7 @@ interface Plan {
   /** stop after the first words until this settles (or the job aborts) */
   hold?: Promise<void>
   /** throw this once the playback copy is written */
-  fail?: string
+  fail?: string | Error
 }
 let plan: Plan
 const jobs: ConvertJob[] = []
@@ -83,7 +82,7 @@ async function fakeConvert(job: ConvertJob): Promise<ConvertResult> {
     await Promise.race([plan.hold, new Promise((r) => job.signal?.addEventListener('abort', r, { once: true }))])
   }
   if (job.signal?.aborted) throw new Error('cancelled')
-  if (plan.fail) throw new Error(plan.fail)
+  if (plan.fail) throw typeof plan.fail === 'string' ? new Error(plan.fail) : plan.fail
   say({ event: 'words', uptoSec: raw.durationSec, words: raw.words.slice(half) })
   const output = join(dir, `out-${jobs.length}.tcmeeting`)
   writeFileSync(output, JSON.stringify(raw))
@@ -242,6 +241,15 @@ describe('a meeting from a recording', () => {
     expect((await get(item.id)).status).toBe('ready')
   })
 
+  it('a host without the transcriber says what it lacks, never its id', async () => {
+    const { NoConverterError } = await import('../formats/jobs')
+    plan = { raw: rawOf(), fail: new NoConverterError('no converter from m4a to tcmeeting on env_test') }
+    const item = openMeeting(drop('Staff sync.m4a'))
+    await call('work.meetings.start', { itemId: item.id })
+    await idle(item.id)
+    expect(await get(item.id)).toMatchObject({ status: 'failed', error: 'The transcriber is not installed on the computer that holds the recording.' })
+  })
+
   it('cancel stops it and says the recording is fine', async () => {
     plan = { raw: rawOf(), hold: new Promise(() => {}) }
     const item = openMeeting(drop('Staff sync.m4a'))
@@ -261,13 +269,13 @@ describe('a meeting from a recording', () => {
     boot()
     await call('work.set', { enabled: true })
     // The computer as it calls itself, never its id.
-    expect(await get(item.id)).toMatchObject({ status: 'failed', error: `It stopped when ${hostLabel()} restarted. The recording is fine.` })
+    expect(await get(item.id)).toMatchObject({ status: 'failed', error: 'It stopped when the computer restarted. The recording is fine.' })
     expect((await get(item.id)).error).not.toContain('env_test')
   })
 
   it('a file that is gone, or is neither a recording nor a transcript, fails with a sentence', async () => {
     const gone = openMeeting(join(dir, 'files', 'nope.m4a'))
-    expect((await call<{ meeting: Meeting }>('work.meetings.start', { itemId: gone.id })).meeting).toMatchObject({ status: 'failed', error: 'nope.m4a is not on env_test any more.' })
+    expect((await call<{ meeting: Meeting }>('work.meetings.start', { itemId: gone.id })).meeting).toMatchObject({ status: 'failed', error: 'nope.m4a was moved or removed. Open it again from where it is now.' })
     const odd = openMeeting(drop('notes.pdf'))
     expect((await call<{ meeting: Meeting }>('work.meetings.start', { itemId: odd.id })).meeting.error).toMatch(/^notes.pdf is not a recording or a transcript/)
   })
@@ -536,7 +544,7 @@ describe('Download recording', () => {
     const key = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read'] } as Principal
     await expect(range(item.id, 0, 1024, key)).rejects.toThrow(/work\.meetings\.recording/)
     rmSync(join(dir, 'files', 'Staff sync.m4a'))
-    await expect(range(item.id, 0, 1024)).rejects.toThrow('Staff sync.m4a is not on env_test any more.')
+    await expect(range(item.id, 0, 1024)).rejects.toThrow('Staff sync.m4a was moved or removed. Open it again from where it is now.')
     const vtt = openMeeting(drop('Notes.vtt', 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Dana>Hi.</v>\n'), 'Notes')
     await call('work.meetings.start', { itemId: vtt.id })
     await expect(range(vtt.id, 0, 1024)).rejects.toThrow('This meeting has no recording.')
