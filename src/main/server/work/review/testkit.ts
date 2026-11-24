@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import type { WorkPush } from '@shared/contract-work'
+import type { LifeosStateName } from '@shared/contract-work-lifeos'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { CanvasItem, WorkScope } from '@shared/work'
 import { weekOf } from '@shared/work/review'
@@ -52,6 +53,8 @@ export interface Rig {
   told: { kind: string; key?: string; title: string; detail?: string; workspaceId: string | null; open?: unknown }[]
   toldDone: string[]
   connected: boolean
+  /** the session's state by name while not connected; signed out unless a test says otherwise */
+  lifeosState?: LifeosStateName
   session(id: string, o?: Partial<{ parent: string; workspace: string | null; cold: boolean; routineRunId: string; masterId: string; startedBy: string; status: string; created: number; updated: number; scope: string }>): void
   event(sessionId: string, ts: number, payload: Record<string, unknown>): void
   said(sessionId: string, ts: number, by?: Record<string, unknown> | null): void
@@ -159,6 +162,7 @@ export function makeRig(): Rig {
     scopeOf: (id: string) => ({ sessionId: id, workspaceId: id === 't-chat' ? null : id === 't-cosmic' ? 'w-cosmic' : id === 't-side' ? 'w-side' : 'w-purdue', sector: id === 't-cosmic' ? 'cosmic' : id === 't-side' || id === 't-chat' ? null : 'purdue', host: 'box', away: false, routineRunId: null }) as unknown as WorkScope,
     lifeos: {
       connected: () => rig.connected,
+      state: (): LifeosStateName => (rig.connected ? 'connected' : (rig.lifeosState ?? 'signed-out')),
       owner: () => ({ query: answer, mutation: answer, action: answer })
     },
     canvas: { forWorkspace: (workspaceId: string) => rig.items.get(workspaceId) ?? [] },

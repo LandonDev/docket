@@ -288,6 +288,17 @@ mail pillar reaches routines.
   said as not read: a Friday whose calendar failed, looked back on with
   LifeOS down, says "LifeOS did not answer, so what it said when last read is
   shown." and "The calendar did not answer."
+- A host that leaves `LEFT.lifeos` says why in `ReviewBody.lifeosState`
+  (optional): its session's state when it is not connected, `unreachable`
+  when it is and no list answered. The merge lists each host whose line
+  stands (`MergedReview.lifeosDown`), and the page words it a host at a time
+  by the rule (review/lifeosLine.tsx): silence red with a Retry that asks
+  that host alone (`loadHostWeek`), a sign-in muted with Sign in or Show the
+  code, Work off with Open Settings, connecting with none. A host a build
+  behind keeps the plain line; a part from before whose host did not answer
+  this time says nothing of LifeOS. The line goes by itself: that host's
+  LifeOS status heard connected again asks its week afresh. An empty
+  section then says "Not counted".
 
 A host whose week did not come is one red line over the sections, a whole
 sentence through `workErrorWords` (`hostLine` in review/store.ts): "The Mac

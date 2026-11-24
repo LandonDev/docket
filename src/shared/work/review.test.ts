@@ -787,6 +787,29 @@ describe('one review from every host’s part', () => {
     expect(r.slippedAt).toBe(MON + 4 * 24 * HOUR)
   })
 
+  /** Council round 9 (Opus rest 1): the line said silence for every state, naming no computer. */
+  it('names each host that left LifeOS out, with why, while its line stands', () => {
+    const dark = (host: string, over: Partial<ReviewBody> = {}): ReviewBody => ({ ...box, host, lifeos: null, left: [LEFT.lifeos], ...over })
+    const both = mergeReview(
+      [
+        { environmentId: 'env-box', body: dark('box', { lifeosState: 'signed-out' }) },
+        { environmentId: 'env-mac', body: dark('mac', { lifeosState: 'unreachable' }), stale: true }
+      ],
+      now
+    )!
+    expect(both.lifeosDown).toEqual([
+      { environmentId: 'env-box', state: 'signed-out', kept: false, stale: false },
+      { environmentId: 'env-mac', state: 'unreachable', kept: false, stale: true }
+    ])
+    // A host a build behind names no state; a kept read standing in is its own line.
+    const older = mergeReview([{ environmentId: 'env-box', body: dark('box', { left: [LEFT.lifeosKept] }) }], now)!
+    expect(older.lifeosDown).toEqual([{ environmentId: 'env-box', state: null, kept: true, stale: false }])
+    // Another host read LifeOS: the line goes, and no host is named.
+    const read = mergeReview([{ environmentId: 'env-box', body: dark('box', { lifeosState: 'signed-out' }) }, { environmentId: 'env-mac', body: mac }], now)!
+    expect(read.left).not.toContain(LEFT.lifeos)
+    expect(read.lifeosDown).toBeUndefined()
+  })
+
   it('takes LifeOS from a part that answered this time before one kept from an earlier answer', () => {
     const old = { ...box, lifeos: { ...lifeos, done: [] }, slipped: { at: MON + 5 * 24 * HOUR, rows: [slip('task:k9'), slip('task:gone')] } }
     const r = mergeReview(

@@ -78,12 +78,19 @@ describe('a week’s body', () => {
 
   it('says one line when LifeOS answers nothing at all, or is not signed in', async () => {
     for (const fn of Object.keys(rig.lifeos)) rig.lifeos[fn] = new Error('unreachable')
-    expect((await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)).left).toEqual([LEFT.lifeos])
+    const silent = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
+    expect(silent.left).toEqual([LEFT.lifeos])
+    // Connected, and none of its lists answered: LifeOS did not answer this host (council round 9).
+    expect(silent.lifeosState).toBe('unreachable')
     rig.connected = false
     const calls = rig.calls.length
     const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
     expect(body.lifeos).toBeNull()
     expect(body.left).toEqual([LEFT.lifeos])
+    // The window words the line by the session's own state, never as silence.
+    expect(body.lifeosState).toBe('signed-out')
+    rig.lifeosState = 'pairing'
+    expect((await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)).lifeosState).toBe('pairing')
     expect(rig.calls).toHaveLength(calls)
     // His messages on this host are still counted.
     expect(body.points).toHaveLength(1)

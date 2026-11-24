@@ -16,7 +16,8 @@ import { Hours, HoursSkeleton } from "./Hours";
 import { RowsSkeleton, Shipped } from "./Shipped";
 import { showWeekNamed, shownWeek, useShownFrom, useWeekTurn } from "./shown";
 import { Slipped } from "./Slipped";
-import { loadWeek, loadZone, markSeen, settleRow, undoSettle, useReview, type ReviewView } from "./store";
+import { LifeosDownLine, lifeosLinesOf } from "./lifeosLine";
+import { loadHostWeek, loadWeek, loadZone, markSeen, settleRow, undoSettle, useReview, type ReviewView } from "./store";
 
 /**
  * Review: one page above the workspaces that shows a week across every job
@@ -130,7 +131,17 @@ export function View(_props: WorkPlaceProps) {
 
   // The named week is on its way: the bones, not another week's rows.
   const shown: ReviewView = naming ? { ...view, review: null, settled: false, making: false, off: [], errors: [] } : view;
-  return <ReviewPageView view={shown} gone={gone} canOpen={canOpen} onOpen={openTarget} onPress={onPress} onRetry={() => loadWeek({ from: week.from, to: week.to })} />;
+  return (
+    <ReviewPageView
+      view={shown}
+      gone={gone}
+      canOpen={canOpen}
+      onOpen={openTarget}
+      onPress={onPress}
+      onRetry={() => loadWeek({ from: week.from, to: week.to })}
+      onRetryHost={(environmentId) => loadHostWeek(environmentId, { from: week.from, to: week.to })}
+    />
+  );
 }
 
 /** The page as the hosts' answers leave it: what the preview and the tests draw. */
@@ -142,6 +153,7 @@ export function ReviewPageView({
   onOpen,
   onPress,
   onRetry,
+  onRetryHost = () => onRetry(),
   peek,
 }: {
   view: ReviewView;
@@ -154,9 +166,14 @@ export function ReviewPageView({
   onPress: (job: MergedJob, row: Placed<SlippedRow>, how: SettleHow) => Promise<void> | void;
   /** every host is asked again: one Retry answers every red line on the page */
   onRetry: () => Promise<void> | void;
+  /** one host is asked again: the Retry of a line that names it (LifeOS did not answer that host) */
+  onRetryHost?: (environmentId: string) => Promise<void> | void;
 }) {
   const { review } = view;
-  const left = useMemo(() => new Set(review?.left ?? []), [review]);
+  // A host that left LifeOS out says why, by the rule, a computer at a time; a host a build behind keeps today's line.
+  const silent = useMemo(() => new Set(view.errors.map((e) => e.environmentId)), [view.errors]);
+  const lifeos = useMemo(() => lifeosLinesOf(review, silent), [review, silent]);
+  const left = useMemo(() => new Set((review?.left ?? []).filter((line) => !((line === LEFT.lifeos || line === LEFT.lifeosKept) && !lifeos.plain.has(line)))), [review, lifeos]);
   const of = (...lines: string[]): string[] => lines.filter((line) => left.has(line));
   const [retrying, setRetrying] = useState(false);
   const page = useRef<HTMLDivElement>(null);
@@ -232,6 +249,10 @@ export function ReviewPageView({
             <p key={line} data-review-part className="text-xs text-muted-foreground">
               {line}
             </p>
+          ))}
+          {/* Why a host left LifeOS out, once a host: silence red with a Retry that asks that host alone, else muted with the press that can help. */}
+          {lifeos.lines.map((line) => (
+            <LifeosDownLine key={line.environmentId} line={line} onRetry={onRetryHost} />
           ))}
           {/* A host that did not answer, and each source that feeds several sections: red lines in the same stack, the Retry on the first. */}
           {over.map((line, i) => (

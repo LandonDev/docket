@@ -97,6 +97,7 @@ export const ReviewBodySchema = z.object({
     })
     .nullable(),
   left: z.array(z.string().max(400)),
+  lifeosState: z.enum(['off', 'signed-out', 'pairing', 'connecting', 'connected', 'unreachable', 'refused']).optional(),
   prepped: z.array(id).max(2_000).optional(),
   read: z.object({ events: at.optional(), sent: at.optional(), answered: at.optional(), done: at.optional(), due: at.optional(), waits: at.optional(), meetings: at.optional() }).optional()
 }) satisfies z.ZodType<ReviewBody>

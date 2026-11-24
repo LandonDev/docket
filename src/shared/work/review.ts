@@ -1,3 +1,4 @@
+import type { LifeosStateName } from '../contract-work-lifeos'
 import type { HeldRef } from './acts'
 import type { SectorKey } from './ids'
 import { durationOf } from './duration'
@@ -238,6 +239,12 @@ export type ReviewBody = {
   before: ReviewBefore | null
   /** the sources that did not answer, in plain words */
   left: string[]
+  /**
+   * Why this host left LifeOS out (`LEFT.lifeos`): its session's state by name ("signed-out", "pairing", …), or
+   * `unreachable` when it was connected and none of LifeOS's lists answered. The window words the line by it, the
+   * computer named (docs/DESIGN.md "Loading and empty states"); a host a build behind sends none, and its line stands.
+   */
+  lifeosState?: LifeosStateName
   /** the events whose page in this host's Prep holds notes or an outcome: a meeting any host names is followed up */
   prepped?: string[]
   /**
@@ -697,6 +704,12 @@ export type MergedReview = {
   lifeosFrom: string | null
   left: string[]
   /**
+   * Each host whose part left LifeOS out while its line stands (`LEFT.lifeos`, or `LEFT.lifeosKept` where a kept read
+   * stands in), with why (`ReviewBody.lifeosState`; null from a host a build behind) and whether the part is from
+   * before (`stale`): the window words the line by it, a computer at a time. Absent when none did.
+   */
+  lifeosDown?: { environmentId: string; state: LifeosStateName | null; kept: boolean; stale: boolean }[]
+  /**
    * What an empty list means: true only where every source of it answered, so "nothing" is known. `calendar`:
    * calendar time was read; `desk`: every host answered with its threads, held items and document history, and
    * LifeOS with the mail he sent; `shipped`: mail, tasks and every host's held items were; `slipped`: tasks, mail, the
@@ -887,6 +900,11 @@ export function mergeReview(
   // why, one does.
   if (rowsFrom.meeting && !rowsFrom.meeting.stale && !readFor('meetings') && !rowsFrom.meeting.body.left.some((l) => left.includes(l) && LINE_MEETS.has(l))) left.push(LEFT.meetings)
   const missing = (...lines: string[]): boolean => lines.some((l) => left.includes(l))
+  // Who left LifeOS out, and why, while the line stands: the window names each computer in its own words.
+  const lifeosDown = parts.flatMap((p) => {
+    const line = p.body.left.find((l) => (l === LEFT.lifeos || l === LEFT.lifeosKept) && left.includes(l))
+    return line ? [{ environmentId: p.environmentId, state: p.body.lifeosState ?? null, kept: line === LEFT.lifeosKept, stale: !!p.stale }] : []
+  })
 
   const fresh = opts.fresh !== false
   const whole = fresh && opts.whole !== false
@@ -986,6 +1004,7 @@ export function mergeReview(
     answersKept,
     lifeosFrom: source?.environmentId ?? null,
     left,
+    ...(lifeosDown.length ? { lifeosDown } : {}),
     // An answer kept from before is no read of now: "nothing" stands only on LifeOS's facts read this time.
     known: {
       // "Nothing" on the calendar stands only on a calendar read this time to the end of the span counted: a kept

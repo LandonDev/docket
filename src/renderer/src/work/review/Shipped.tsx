@@ -32,11 +32,11 @@ export const targetOf = (row: Pick<ShippedRow, "open">): Target | null => row.op
 
 /**
  * What an empty section says, always one muted line. "Nothing" only where every source of it answered; with LifeOS
- * out, that it is not known; else that some of it could not be read (the line over the sections says what).
+ * out, that it is not counted (the line over the sections says why, once); else that some of it could not be read.
  */
 export function emptyWords(review: Pick<MergedReview, "lifeosFrom">, known: boolean, nothing: string): string {
   if (known) return nothing;
-  return review.lifeosFrom ? "Some of it could not be read" : "Not known while LifeOS does not answer";
+  return review.lifeosFrom ? "Some of it could not be read" : "Not counted";
 }
 
 /**

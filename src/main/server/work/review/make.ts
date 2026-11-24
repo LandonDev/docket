@@ -1,5 +1,6 @@
 import { countedSpan, LEFT, stepWeek, type HostPoint, type Reads, type ReviewBefore, type ReviewBody, type ReviewEvent, type ReviewLifeos, type ReviewSent, type SlippedRow } from '@shared/work/review'
 import type { SectorKey } from '@shared/work'
+import type { LifeosStateName } from '@shared/contract-work-lifeos'
 import { errorText } from '@shared/work/ids'
 import { PREP_UPCOMING_MAX_MS } from '@shared/contract-work-prep'
 import type { WorkCtx } from '../modules'
@@ -65,6 +66,8 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   const left: string[] = []
 
   let lifeos: ReviewLifeos | null = null
+  /** why LifeOS was left out, by its state's name: the window words its line by it */
+  let lifeosState: LifeosStateName | null = null
   let beforeLifeos: ReviewBefore['lifeos'] = null
   let prepped: string[] = []
   const slipped: SlippedRow[] = []
@@ -72,6 +75,9 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   const read: Reads = {}
   if (!ctx.lifeos.connected()) {
     left.push(LEFT.lifeos)
+    // A session that says connected while it is not is LifeOS not answering it.
+    const state = ctx.lifeos.state?.()
+    if (state) lifeosState = state === 'connected' ? 'unreachable' : state
     // Prep reads LifeOS too: on a host that has Prep and a job, a meeting followed up here cannot be told apart from
     // one that was not, so the meetings every host lists stand as last known.
     if (prepHere() && jobs.list.length > 0) left.push(LEFT.prep)
@@ -101,8 +107,10 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     const inPrep = await preppedAfter(ctx, cut - PREP_UPCOMING_MAX_MS, cut)
     if (inPrep === null) left.push(LEFT.prep)
     else prepped = [...inPrep]
-    if (!events && !sent && !done && !answered && !due && !waits) left.push(LEFT.lifeos)
-    else {
+    if (!events && !sent && !done && !answered && !due && !waits) {
+      left.push(LEFT.lifeos)
+      lifeosState = 'unreachable'
+    } else {
       if (events) read.events = a.now
       if (sent) read.sent = a.now
       if (answered) read.answered = a.now
@@ -163,6 +171,7 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     shipped: held?.shipped ?? [],
     before: asked.before.to > asked.before.from ? { from: asked.before.from, to: asked.before.to, lifeos: beforeLifeos, points: before } : null,
     left,
+    ...(lifeosState ? { lifeosState } : {}),
     read,
     // The meetings this host's Prep calls dealt with: the window drops them whoever's rows it lists, since a job's
     // Prep pages live on the host that holds its workspace.

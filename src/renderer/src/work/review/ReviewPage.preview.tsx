@@ -1,7 +1,8 @@
 import { weekWords } from "@shared/work/review";
 import { ChartBar, MoreHorizontal } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
-import { fixtureView, WEEK, type FixtureState } from "./fixtures";
+import { registry } from "../../lib/connection";
+import { fixtureView, HOST_NAMES, WEEK, type FixtureState } from "./fixtures";
 import { HeadView, NARROW_ICON } from "./Head";
 import { PlaceFrame } from "../places/WorkPlacePage";
 import { ReviewPageView } from "./ReviewPage";
@@ -11,11 +12,16 @@ import { ReviewPageView } from "./ReviewPage";
  * src/renderer/src/work/review/ReviewPage.preview.tsx#ReviewPreview --props '{"state":"full"}'`:
  * `full` (the Monday after, made by the routine on Friday), `sofar` (Thursday
  * afternoon), `back` (a kept week with rows dealt with since), `clear`
- * (nothing slipped), `off` (a host off), `lifeos` (LifeOS not answering),
+ * (nothing slipped), `off` (a host off), `lifeos` (LifeOS not answering, from a host a build behind),
+ * `lifeos-silent`, `lifeos-signed-out` and `lifeos-two` (a host that says why, named),
  * `failed` (a host and two sources did not answer), `loading`; `peek` shows
  * what a press or a hover would (an Hours row open, a row's three presses, the folds open). The header is
  * the frame's, drawn here as the frame draws it. Rendered by nothing in the app.
  */
+// The LifeOS lines name their computer as the registry knows it: the made-up hosts are given their names.
+const known = registry.environment.bind(registry);
+Object.assign(registry, { environment: (id: string) => (HOST_NAMES[id] ? { id, name: HOST_NAMES[id] } : known(id)) });
+
 export function ReviewPreview({ state = "full", peek, gone = [] }: { state?: FixtureState; /** a still picture of what a press or a hover shows: an Hours row open, a slipped row's presses, the folds open */ peek?: { job?: string; verbs?: string; folds?: boolean }; gone?: string[] }) {
   const { view, now } = fixtureView(state);
   return (

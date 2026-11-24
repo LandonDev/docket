@@ -2,7 +2,10 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DESK_NOTE, HOURS_NOTE, LEFT, NOT_KNOWN } from "@shared/work/review";
-import { fixtureView, type FixtureState } from "./fixtures";
+import { registry } from "../../lib/connection";
+import { setLifeosStatus } from "../shell/lifeos";
+import { fixtureView, HOST_NAMES, type FixtureState } from "./fixtures";
+import { reviewLifeosWords } from "./lifeosLine";
 import { HeadView } from "./Head";
 import { ReviewPageView, stillAway } from "./ReviewPage";
 
@@ -502,14 +505,88 @@ describe("the other states", () => {
     const { view, now } = fixtureView("lifeos");
     const bare = { ...view, review: { ...view.review!, shipped: [], slipped: [] } };
     render(<ReviewPageView view={bare} now={now} gone={new Set()} canOpen={() => true} onOpen={vi.fn()} onPress={vi.fn()} onRetry={vi.fn()} />);
-    expect(text(section("Shipped"))).toBe("Shipped Not known while LifeOS does not answer");
-    expect(text(section("Slipped"))).toBe("Slipped Not known while LifeOS does not answer");
+    // The line over the sections says why, once: an empty section says only that it is not counted (council round 9).
+    expect(text(section("Shipped"))).toBe("Shipped Not counted");
+    expect(text(section("Slipped"))).toBe("Slipped Not counted");
   });
 
   it("makes a row plain where its job has no workspace this window can open", () => {
     draw("full", { canOpen: () => false });
     expect(section("Slipped").querySelector("[data-row-open]")).toBeNull();
     expect(section("Shipped").querySelector('[data-review-shipped="cosmic"] button[data-slot="item"]')).toBeNull();
+  });
+});
+
+/** Council round 9 (Opus rest 1): every LifeOS state was said as silence, with Retry, naming no computer. */
+describe("LifeOS left out, the host saying why", () => {
+  const names = (): void => void vi.spyOn(registry, "environment").mockImplementation((id: string) => (HOST_NAMES[id] ? ({ id, name: HOST_NAMES[id] } as ReturnType<typeof registry.environment>) : undefined));
+  afterEach(() => vi.restoreAllMocks());
+  const lines = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>("[data-review-lifeos]")];
+
+  it("says LifeOS's silence once, red, naming the computer, with a Retry that asks that computer alone", () => {
+    names();
+    const onRetryHost = vi.fn();
+    const { container, props } = draw("lifeos-silent", { onRetryHost });
+    const [line, ...more] = lines(container);
+    expect(more).toEqual([]);
+    expect(text(line!)).toBe("LifeOS did not answer the box, so the calendar, tasks and mail are not counted. Retry");
+    expect(line!.querySelector('[data-slot="page-error"]')).not.toBeNull();
+    // Said once a screen: not the host's old line beside it, nor again in a section.
+    expect(container.textContent!.match(/LifeOS/g)).toHaveLength(1);
+    fireEvent.click(within(line!).getByRole("button", { name: "Retry" }));
+    expect(onRetryHost).toHaveBeenCalledWith("env-box");
+    expect(props.onRetry).not.toHaveBeenCalled();
+  });
+
+  it("says a sign-in that is missing muted, with Sign in and no Retry", () => {
+    names();
+    const { container } = draw("lifeos-signed-out");
+    const [line] = lines(container);
+    expect(text(line!)).toBe("Not signed in to LifeOS on the box, so the calendar, tasks and mail are not counted. Sign in");
+    expect(line!.querySelector('[data-slot="page-error"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(container.textContent!.match(/LifeOS/g)).toHaveLength(1);
+  });
+
+  it("names each computer that cannot read LifeOS in its own state, once each", () => {
+    names();
+    const { container } = draw("lifeos-two");
+    expect(lines(container).map(text)).toEqual([
+      "Not signed in to LifeOS on the box, so the calendar, tasks and mail are not counted. Sign in",
+      "The LifeOS sign-in on Mac waits for your approval, so the calendar, tasks and mail are not counted. Show the code",
+    ]);
+  });
+
+  it("keeps today's line for a host a build behind, which says no state", () => {
+    const { container } = draw("lifeos");
+    expect(lines(container)).toEqual([]);
+    expect(container.textContent).toContain(LEFT.lifeos);
+  });
+
+  it("says nothing of LifeOS for a part from before whose host did not answer this time: its silence is the newest cause", () => {
+    names();
+    const { view, now } = fixtureView("lifeos-silent");
+    const review = { ...view.review!, lifeosDown: view.review!.lifeosDown!.map((d) => ({ ...d, stale: true })) };
+    const { container } = draw("lifeos-silent", { now, view: { ...view, review, errors: [{ environmentId: "env-box", name: "The box", error: "The box did not answer.", kept: true }] } });
+    expect(lines(container)).toEqual([]);
+    expect(container.textContent).not.toContain("LifeOS");
+    expect(container.textContent).toContain("The box did not answer. Its last answer is shown.");
+  });
+
+  it("asks that computer for the week again once its LifeOS status says connected, with no press", () => {
+    names();
+    setLifeosStatus("env-box", { lifeos: { state: "signed-out" }, keys: [] });
+    const onRetryHost = vi.fn();
+    draw("lifeos-signed-out", { onRetryHost });
+    expect(onRetryHost).not.toHaveBeenCalled();
+    act(() => setLifeosStatus("env-box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] }));
+    expect(onRetryHost).toHaveBeenCalledWith("env-box");
+  });
+
+  it("words each state by the rule, a kept read and LifeOS on its way too", () => {
+    expect(reviewLifeosWords("refused", "The box", false)).toBe("LifeOS refused the box's sign-in, so the calendar, tasks and mail are not counted.");
+    expect(reviewLifeosWords("off", "Mac", true)).toBe("Work is off on Mac, so what it said when last read is shown.");
+    expect(reviewLifeosWords("connecting", "The box", false)).toBe("The box is still connecting to LifeOS, so the calendar, tasks and mail are not counted.");
   });
 });
 

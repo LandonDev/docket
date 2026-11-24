@@ -6,6 +6,9 @@ export default [
   { name: "clear", props: { state: "clear" } },
   { name: "off", props: { state: "off" } },
   { name: "lifeos", props: { state: "lifeos" } },
+  { name: "LifeOS did not answer the box", props: { state: "lifeos-silent" } },
+  { name: "Not signed in to LifeOS on the box", props: { state: "lifeos-signed-out" } },
+  { name: "Neither computer can read LifeOS", props: { state: "lifeos-two" } },
   { name: "failed", props: { state: "failed" } },
   { name: "loading", props: { state: "loading" } },
 ];

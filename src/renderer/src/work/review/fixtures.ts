@@ -175,7 +175,10 @@ function mac(now: number): ReviewBody {
   return { ...box(now), host: "mac", jobs: [{ workspaceId: "m-cosmic", sector: "cosmic", name: "Cosmic" }], points: sit("cosmic", 4, 13, 1.5).map(([t, , kind]) => [t, 0, kind] as HostPoint), ran: [[0, 3 * HOUR]], slipped: { at: now, rows: [] }, shipped: [], before: null };
 }
 
-export type FixtureState = "full" | "sofar" | "back" | "clear" | "off" | "lifeos" | "loading" | "failed";
+export type FixtureState = "full" | "sofar" | "back" | "clear" | "off" | "lifeos" | "lifeos-silent" | "lifeos-signed-out" | "lifeos-two" | "loading" | "failed";
+
+/** The hosts' names the LifeOS lines say, as the registry would hold them. */
+export const HOST_NAMES: Record<string, string> = { "env-box": "The box", "env-mac": "Mac" };
 
 /** The page's view in one of its states, and the moment it is looked at. */
 export function fixtureView(state: FixtureState): { view: ReviewView; now: number } {
@@ -185,7 +188,9 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
     ["cosmic", { in: 240_000, out: 31_250 }],
     ["ref", { in: 19_000, out: 0 }],
   ]);
-  const base = { week: WEEK, tz: TZ, settled: true, making: false, off: [] as string[], errors: [] as ReviewView["errors"], money: state === "lifeos" ? new Map() : money };
+  const base = { week: WEEK, tz: TZ, settled: true, making: false, off: [] as string[], errors: [] as ReviewView["errors"], money: state.startsWith("lifeos") ? new Map() : money };
+  // A host that left LifeOS out, saying why (`lifeosState`): the page words its line by it, the host named.
+  const dark = (b: ReviewBody, lifeosState: NonNullable<ReviewBody["lifeosState"]>): ReviewBody => ({ ...b, lifeos: null, slipped: { at: FRIDAY, rows: [HELD] }, before: null, left: [LEFT.lifeos], lifeosState });
   // `gap`: a host is off, or did not answer this time, as the store tells the merge.
   const merged = (parts: { environmentId: string; body: ReviewBody }[], gap: { fresh?: boolean; whole?: boolean } = {}) => mergeReview(parts, now, { home: "env-box", ...gap });
   // The routine made it on Friday; looked at the Monday after, what slipped is as it stood then.
@@ -211,6 +216,13 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
       return { now, view: { ...base, off: [hostOffWords("The Mac")], review: merged([{ environmentId: "env-box", body: friday() }], { whole: false }) } };
     case "lifeos":
       return { now, view: { ...base, review: merged(both({ ...friday(), lifeos: null, slipped: { at: FRIDAY, rows: [HELD] }, before: null, left: [LEFT.lifeos] }).map((p) => ({ ...p, body: { ...p.body, lifeos: null, left: [LEFT.lifeos] } }))) } };
+    case "lifeos-silent":
+      return { now, view: { ...base, review: merged([{ environmentId: "env-box", body: dark(friday(), "unreachable") }]) } };
+    case "lifeos-signed-out":
+      return { now, view: { ...base, review: merged([{ environmentId: "env-box", body: dark(friday(), "signed-out") }]) } };
+    case "lifeos-two":
+      // Neither host could read LifeOS, each for its own reason: one line a computer.
+      return { now, view: { ...base, review: merged([{ environmentId: "env-box", body: dark(friday(), "signed-out") }, { environmentId: "env-mac", body: { ...dark(mac(now), "pairing"), slipped: { at: FRIDAY, rows: [] } } }]) } };
     case "failed": {
       // The box could read neither its threads nor its held items: no message is counted, and nothing held shows.
       const b = friday();
