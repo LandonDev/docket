@@ -365,11 +365,14 @@ place for a LifeOS document). What it tells the pane:
   nothing). The service compares it with the live document and restores in
   one turn of the document (`/internal/docs/undo`, `history.inTurn`), so no
   other window's edit lands between the check and the restore. `after` is
-  given only for the write's own state: a direct rewrite takes its post-edit
-  state in the tick of the edit and the version cut after it must still be
-  it (`undoable`); a direct format's after-version must hold formatting
-  alone over its before-version (`formattingAlone`). Else the line has no
-  Undo. Changed since by
+  given only when both versions are the states on either side of the
+  write: a direct rewrite takes the live state across the cut of its
+  before-version and again, with its post-edit state, in the tick of the
+  edit, and the version cut after it must still be that state (`undoable`);
+  a change of his anywhere in between (a word, his margins) withholds it. A
+  direct format has no Undo on the bar: work-kit makes its edit and both
+  cuts with no point at which the host can take the state, so History
+  alone goes back. Else the line has no Undo. Changed since by
   anyone, nothing is restored (his words would go too): the line goes and a
   toast says "Not undone: the document has changed since. Restore an
   earlier version from History." (`undoWritten`). A line with no `after` (an

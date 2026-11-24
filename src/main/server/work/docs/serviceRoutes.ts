@@ -3,7 +3,6 @@ import { isAbsolute } from 'node:path'
 import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
 import { fileDocName, readDocument, writeMarkdown, type CollabContext, type CollabFile } from 'work-kit/collab-server'
-import type { BlockDiff } from 'work-kit/formats/diff'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 import { documentStyleLines } from './formatDescription'
@@ -65,16 +64,6 @@ async function liveRev(ctx: RouteCtx, t: Target): Promise<string> {
   let rev = ''
   await ctx.collab.edit(t.name, 'owner', (doc) => void (rev = stateRev(doc)), t.file)
   return rev
-}
-
-/**
- * Whether a direct format's after-version holds formatting alone over its before-version: no words put in, taken out
- * or moved, in a block or a table's cell. Anything else in it is someone's edit landed between the format and its
- * cut, which an Undo of the format would take back too.
- */
-function formattingAlone(diff: BlockDiff): boolean {
-  const words = (ops: readonly { op: string }[] | null | undefined): boolean => !!ops?.some((op) => op.op !== '=')
-  return diff.stats.added + diff.stats.removed + diff.stats.moved === 0 && diff.rows.every((row) => !words(row.inline) && !row.cells?.some((cells) => cells.some((cell) => words(cell))))
 }
 
 export const docsRoutes: InternalRoute[] = [
@@ -140,13 +129,17 @@ export const docsRoutes: InternalRoute[] = [
           return { ...(await raw.write(t.name, principal, markdown, { because: verdict, shared, ...file })), shared: t.shared }
         }
         // A write that goes straight in: the version just before it is what its Undo goes back to. Nothing changed
-        // since the last version: that one.
+        // since the last version: that one. The live state on each side of the cut says whether the version is it.
+        const ahead = await liveRev(ctx, t)
         const before = await raw.cut(t.name, 'before-agent', file)
+        const cutAt = await liveRev(ctx, t)
         // The revision is checked on the live text in the very tick the rewrite is made of it (collab.edit's copy):
         // a word he typed after the agent read is never written over.
         let stale = false
         let changed = 0
-        // The state the rewrite left, taken in the same tick it is made: the version its Undo is offered for must be it.
+        // The states just before and just after the rewrite, taken in the same tick it is made: the two versions its
+        // Undo goes between must be them.
+        let prior = ''
         let left = ''
         await ctx.collab.edit(
           t.name,
@@ -154,6 +147,7 @@ export const docsRoutes: InternalRoute[] = [
           (doc) => {
             const fragment = doc.getXmlFragment(DOCUMENT_FRAGMENT)
             if (revision !== undefined && revisionOf(readDocument(fragment).markdown) !== revision) return void (stale = true)
+            prior = stateRev(doc)
             changed = writeMarkdown(fragment, markdown).changed
             left = stateRev(doc)
           },
@@ -162,9 +156,10 @@ export const docsRoutes: InternalRoute[] = [
         if (stale) return { stale: true }
         if (changed === 0) return { mode: 'direct', versionId: null, shared: t.shared }
         const row = await raw.cut(t.name, 'agent-turn', file)
-        // Unchanged since the rewrite, the version just cut is the rewrite's own state; changed (his word between the
-        // two), it may hold that word, and an Undo to the version before would take it back: none is offered.
-        const undoable = (await liveRev(ctx, t)) === left
+        // The version before is the state the rewrite was made on only if nothing changed across its cut or between it
+        // and the edit (his margins, a word); the version after is the rewrite's own state only if nothing changed since.
+        // Else an Undo between them would take his change back too: none is offered.
+        const undoable = ahead === cutAt && prior === cutAt && (await liveRev(ctx, t)) === left
         return { mode: 'direct', versionId: row.id, beforeVersionId: before.id, shared: t.shared, undoable }
       })
     }
@@ -184,10 +179,10 @@ export const docsRoutes: InternalRoute[] = [
           ...(t.file ? { file: t.file } : {}),
           ...(paper ? { paper } : {})
         })
-        // Its Undo is offered only while its after-version holds the format alone (`formattingAlone`).
-        const direct = done.mode === 'direct' && done.versionId && done.beforeVersionId
-        const undoable = direct ? formattingAlone(await raw.compare(t.name, done.beforeVersionId!, done.versionId!, t.file)) : false
-        return { ...done, shared: t.shared, undoable }
+        // No Undo is offered for a direct format: work-kit cuts its two versions and makes its edit with no point at
+        // which the host can take the state on either side, so either version may hold a change of his (his margins, a
+        // word) that an Undo between them would take back. History keeps both versions for his own choice.
+        return { ...done, shared: t.shared, undoable: false }
       })
     }
   },

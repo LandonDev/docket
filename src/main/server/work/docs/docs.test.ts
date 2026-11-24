@@ -223,6 +223,25 @@ describe('an agent writing a document', () => {
     expect(await r.text()).toContain('Bring the keys')
   })
 
+  it("a change of his between the version before the rewrite and the rewrite itself (his margins) leaves it with no Undo", async () => {
+    const r = await rig()
+    const collab = r.service.collab as { edit: (...a: unknown[]) => Promise<void> }
+    const edit = collab.edit
+    // Just before the agent's own edit, after the version before it was cut: a change of his that leaves the words as
+    // they are (a page setting), so the rewrite's revision still holds.
+    collab.edit = async (...a: unknown[]) => {
+      if (a[1] !== 'owner') {
+        collab.edit = edit
+        await edit.call(r.service.collab, r.name, 'owner', (doc: Y.Doc) => void doc.getMap('page').set('margin-test', 36), { path: r.path })
+      }
+      return edit.apply(r.service.collab, a)
+    }
+    const said = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    collab.edit = edit
+    expect(said.text).toBe('Wrote 1 section.')
+    expect(docsPushes(r.pushes).find((p) => p.written)!.written!.after).toBeUndefined()
+  })
+
   it('set to suggest, its own idea waits as a branch and the text stays; asked in his own words, it is written', async () => {
     const r = await rig({ ownerSaid: ['Please change the meeting to 10:00 AM for everyone'] })
     expect((await r.ask<DocOpen>('work.docs.mode', { source: r.source, mode: 'suggests' })).mode).toBe('suggests')
@@ -387,17 +406,18 @@ describe('an agent formatting a document', () => {
     }
   }
 
-  it('formats his own document with an Undo version, which restores the text formatting and margins', async () => {
+  it('formats his own document, with no Undo on the bar; History restores the text formatting and margins', async () => {
     const r = await rig()
     expect(await r.tool('doc_format', { item: 'i1', ...blue, ...margins, because: 'own' })).toMatchObject({
       error: false, text: expect.stringMatching(/^Applied 3 formatting changes:.*Text colour set to #0F4761.*Margins become/)
     })
     const written = docsPushes(r.pushes).find((p) => p.written)?.written
     expect(written?.versionId).toBeTruthy()
-    // Its after-version holds the format alone: Undo is offered for it.
-    expect(written?.after).toBeTruthy()
+    // No Undo on the bar for a direct format: either version may hold a change of his made while it formatted.
+    expect(written?.after).toBeUndefined()
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 36, right: 36 })
-    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: written!.after })).toEqual({ ok: true, undone: true })
+    // History still goes back to the version before it, on his own choice.
+    await r.post('/internal/history/restore', { file: r.path, versionId: written!.versionId, fence: { sectors: 'all' } })
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 72, right: 72 })
     expect((await r.tool('doc_read', { item: 'i1', with: 'styles' })).text).not.toContain('#0F4761')
   })
