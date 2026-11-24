@@ -26,6 +26,7 @@ export type GoToRow =
 
 /** How long a lookup may take before the panel says it is still loading. */
 export const SLOW_MS = 250;
+const NO_ENTRIES: readonly FileEntry[] = [];
 
 const rowKey = (row: GoToRow): string => (row.is === "tab" ? `tab:${row.tab.id}` : row.is === "entry" ? `entry:${row.entry.key}` : `new:${row.what}`);
 
@@ -54,7 +55,8 @@ export function GoToField({
   onClose(): void;
 }) {
   const [text, setText] = useState("");
-  // The names the host answered, and the words they answer: the rows stay drawn while newer words are asked.
+  // The names the host answered, and the words they answer: the rows stay drawn, inert, while newer words are asked,
+  // and give way to Loading… once the lookup is slow, so no row of older words is taken or read as his.
   // A lookup that failed says so, with Retry, rather than reading as no match.
   const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[]; failed?: boolean }>({ text: null, entries: [] });
   const [tries, setTries] = useState(0);
@@ -77,8 +79,6 @@ export function GoToField({
       );
   }, [link, workspaceId, text, tries]);
   const fresh = names.text === text || parseGoTo(text).kind === "new";
-  const rows = useMemo(() => goToRows(text, tabs, names.entries), [text, tabs, names.entries]);
-  const on = Math.min(at, Math.max(0, rows.length - 1));
   // One muted row under the list says where the lookup stands: still asked, refused (with Retry), or no match for his words.
   // A lookup still out after a beat says so; a quick one never flashes the row as he types.
   const [slow, setSlow] = useState(false);
@@ -88,13 +88,19 @@ export function GoToField({
     const timer = setTimeout(() => setSlow(true), SLOW_MS);
     return () => clearTimeout(timer);
   }, [fresh, text, tries]);
+  const kept = fresh || !slow ? names.entries : NO_ENTRIES;
+  const rows = useMemo(() => goToRows(text, tabs, kept), [text, tabs, kept]);
+  const on = Math.min(at, Math.max(0, rows.length - 1));
   const status: "loading" | "failed" | "none" | null = !fresh ? (slow ? "loading" : null) : names.failed ? "failed" : !rows.length && text.trim() ? "none" : null;
   const retry = (): void => {
     setNames({ text: null, entries: [] });
     setTries((n) => n + 1);
+    // Retry goes as the lookup starts again: the field takes the keys back.
+    field.current?.focus();
   };
   const take = (row: GoToRow | undefined): void => {
-    if (!row) return;
+    // A name of older words is not his to take; Return waits for the names of his own.
+    if (!row || (row.is === "entry" && !fresh)) return;
     onPick(row);
     onClose();
   };
@@ -120,7 +126,19 @@ export function GoToField({
     return { glyph: <KindGlyph kind={row.entry.kind} />, name: row.entry.name, fact: row.entry.where ? whereWords(row.entry.where) : "" };
   };
   return (
-    <div data-files-goto className="relative flex min-w-0 flex-1 items-center">
+    // Go to closes when the focus leaves the field and its panel together: Tab from the field to Retry keeps it open.
+    <div
+      data-files-goto
+      className="relative flex min-w-0 flex-1 items-center"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onClose();
+      }}
+      onKeyDown={(event) => {
+        // The page's keys are Go to's while it is open; Escape from Retry closes it as from the field.
+        event.stopPropagation();
+        if (event.key === "Escape" && event.target !== field.current) return void (event.preventDefault(), onClose());
+      }}
+    >
       <Input
         ref={field}
         role="combobox"
@@ -137,33 +155,37 @@ export function GoToField({
           setAt(0);
         }}
         onKeyDown={onKeyDown}
-        onBlur={onClose}
       />
       {rows.length || status ? (
-        // At least 360px where the bar has room, so a name is not cut to a word beside where it lives.
-        <div id="files-goto-list" role="listbox" aria-label="Go to" className="absolute start-0 top-9 z-30 flex max-h-80 w-full min-w-[min(22.5rem,calc(100cqw-5rem))] flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">
-          {rows.map((row, index) => {
-            const { glyph, name, fact } = line(row);
-            return (
-              <div
-                key={rowKey(row)}
-                id={`files-goto-${index}`}
-                role="option"
-                aria-selected={index === on}
-                className={`flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${index === on ? "bg-muted" : ""}`}
-                // The press is taken before the field's blur closes the panel.
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  take(row);
-                }}
-                onMouseEnter={() => setAt(index)}
-              >
-                {glyph}
-                <span className="min-w-0 flex-1 truncate text-foreground">{name}</span>
-                {fact ? <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">{fact}</span> : null}
-              </div>
-            );
-          })}
+        // At least 360px where the bar has room, so a name is not cut to a word beside where it lives. The rows are the
+        // listbox; the lookup's line and its Retry stand under it, in the panel but outside the list.
+        <div className="absolute start-0 top-9 z-30 flex max-h-80 w-full min-w-[min(22.5rem,calc(100cqw-5rem))] flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">
+          <div id="files-goto-list" role="listbox" aria-label="Go to" className="flex flex-col">
+            {rows.map((row, index) => {
+              const { glyph, name, fact } = line(row);
+              const inert = row.is === "entry" && !fresh;
+              return (
+                <div
+                  key={rowKey(row)}
+                  id={`files-goto-${index}`}
+                  role="option"
+                  aria-selected={index === on}
+                  {...(inert ? { "aria-disabled": true } : {})}
+                  className={`flex h-8 shrink-0 cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${index === on ? "bg-muted" : ""}`}
+                  // The press is taken before the field's blur closes the panel.
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    take(row);
+                  }}
+                  onMouseEnter={() => setAt(index)}
+                >
+                  {glyph}
+                  <span className="min-w-0 flex-1 truncate text-foreground">{name}</span>
+                  {fact ? <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">{fact}</span> : null}
+                </div>
+              );
+            })}
+          </div>
           {status === "loading" ? (
             <div className="flex h-8 shrink-0 items-center gap-2 px-2 text-[13px] text-muted-foreground">
               <Spinner className="size-3.5" />
@@ -172,7 +194,7 @@ export function GoToField({
           ) : status === "failed" ? (
             <div role="alert" className="flex h-8 shrink-0 items-center gap-2 ps-2 text-[13px]">
               <span className="min-w-0 flex-1 truncate text-destructive">Couldn't load names</span>
-              {/* Pressed before the field's blur would close the panel. */}
+              {/* A press keeps the focus in the field; Tab from the field reaches it too. */}
               <Button variant="ghost" size="xs" onMouseDown={(event) => event.preventDefault()} onClick={retry}>
                 Retry
               </Button>

@@ -15,7 +15,9 @@ vi.mock("../../lib/connection", async (original) => ({
 const { GoToField, SLOW_MS } = await import("./GoTo");
 
 const field = (): HTMLInputElement => screen.getByRole("combobox", { name: "Go to" }) as HTMLInputElement;
-const draw = () => render(<GoToField link="box" workspaceId="w1" tabs={[]} onPick={() => undefined} onClose={() => undefined} />);
+const draw = (on: { onPick?: (row: unknown) => void; onClose?: () => void } = {}) =>
+  render(<GoToField link="box" workspaceId="w1" tabs={[]} onPick={on.onPick ?? (() => undefined)} onClose={on.onClose ?? (() => undefined)} />);
+const entry = (name: string) => ({ key: name, ref: { at: "file", host: "box", path: `/w/${name}` }, folder: null, name, kind: "document", changed: 0 });
 const settle = () => act(async () => void (await Promise.resolve()));
 
 beforeEach(() => vi.useFakeTimers());
@@ -60,5 +62,60 @@ describe("Go to's states", () => {
     await settle();
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(field().getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+describe("Go to by keyboard", () => {
+  it("stays open while Tab takes the focus from the field to Retry, and Retry gives it back to the field", async () => {
+    const onClose = vi.fn();
+    host.answer = () => Promise.reject(new Error("refused"));
+    draw({ onClose });
+    fireEvent.change(field(), { target: { value: "run" } });
+    await settle();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    // Tab: the field's blur names Retry as where the focus goes.
+    fireEvent.blur(field(), { relatedTarget: retry });
+    retry.focus();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("listbox").contains(retry)).toBe(false);
+    host.answer = () => Promise.resolve({ entries: [] });
+    fireEvent.click(retry);
+    await settle();
+    expect(document.activeElement).toBe(field());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closes when the focus leaves the field and its panel, and on Escape from Retry", async () => {
+    const onClose = vi.fn();
+    host.answer = () => Promise.reject(new Error("refused"));
+    draw({ onClose });
+    fireEvent.change(field(), { target: { value: "run" } });
+    await settle();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Retry" }), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.blur(field(), { relatedTarget: document.body });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an older lookup's names inert under new words, and drops them once the new lookup is slow", async () => {
+    const onPick = vi.fn();
+    const answers: Record<string, (v: { entries: unknown[] }) => void> = {};
+    host.answer = (text) => new Promise((resolve) => (answers[text] = resolve));
+    draw({ onPick });
+    fireEvent.change(field(), { target: { value: "run" } });
+    await act(async () => answers.run!({ entries: [entry("Run of show.docx")] }));
+    const old = screen.getByRole("option", { name: /Run of show/ });
+    expect(old.hasAttribute("aria-disabled")).toBe(false);
+    fireEvent.change(field(), { target: { value: "budget" } });
+    // The older words' row stays drawn but cannot be taken, by a press or by Return.
+    expect(screen.getByRole("option", { name: /Run of show/ }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Run of show/ }));
+    expect(onPick).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(SLOW_MS));
+    expect(screen.queryByRole("option", { name: /Run of show/ })).toBeNull();
+    expect(screen.getByText("Loading…")).toBeTruthy();
+    await act(async () => answers.budget!({ entries: [entry("Budget.xlsx")] }));
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Budget/ }));
+    expect(onPick).toHaveBeenCalledWith({ is: "entry", entry: expect.objectContaining({ name: "Budget.xlsx" }) });
   });
 });

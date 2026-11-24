@@ -1725,10 +1725,14 @@ Around the canvas:
   360px wide where the bar has room) lists the
   open tabs and recent files first, then names from every place, then
   "New sheet called …" when his words start with new; Return takes the
-  first row, the arrows walk, Escape puts the trail back. One muted row
-  under the list says where the names stand: "Loading…" with a spinner once
+  first row, the arrows walk, Escape or the focus leaving the field and
+  its panel puts the trail back. One muted row under the list, outside the
+  list itself, says where the names stand: "Loading…" with a spinner once
   a lookup takes past 250ms, "No matches" for words that match nothing,
-  "Couldn't load names" in `destructive` with Retry when the host refused.
+  "Couldn't load names" in `destructive` with Retry when the host refused
+  (Tab from the field reaches Retry; Retry gives the field the keys back).
+  The names of older words stay drawn but cannot be taken while his new
+  words are asked, and give way to "Loading…" once that is slow.
   **Search** (`/`
   or ⌘F) is a field in the trail's place that filters the folder shown as
   he types (a filter that leaves nothing says "Nothing here by that name"
