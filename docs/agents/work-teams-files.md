@@ -632,11 +632,11 @@ minutes. A failure is one toast.
 
 ## Settings
 
-Settings → Work, "Where it runs": **Teams files** for each Mac or Windows host
+Settings → Work, "Where it runs": **Folders** for each Mac or Windows host
 with Work on (`TeamsFilesRow`): each library found or added, by team, with its
 folder; a found one has a switch, an added one Remove. Add web link… stores
-the address. Live Office uses a direct web folder address. Add folder… adds
-a folder it missed. Only this computer's own window edits its list; another host's rows
+the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
+Windows) or picked with Browse…, the system's folder picker. Only this computer's own window edits its list; another host's rows
 are read only. A Work workspace's page has **Copy Teams files to <host>**
 (`TeamsCopyRow`) once it may use a desktop other than its own host.
 

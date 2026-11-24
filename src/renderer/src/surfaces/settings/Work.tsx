@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironments } from "../../lib/connection";
 import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
 import { workShellChunk } from "../chunks";
@@ -26,10 +27,14 @@ export function WorkPage() {
   const environments = useEnvironments();
   const on = useWorkHosts();
   const [refused, setRefused] = useState<string[]>([]);
-  const flip = async (next: boolean): Promise<boolean> => {
+  const [joining, setJoining] = useState(false);
+  // On somewhere and off on another host (a PC just paired): the switch already reads on, so the hosts left off get their own press,
+  // which asks those hosts alone: a host already on is never written, and the switch is never turned off to turn one on.
+  const off = on.size > 0 ? environments.filter((e) => !on.has(e.id)) : [];
+  const flip = async (next: boolean, only: readonly { id: string; name: string }[] = environments): Promise<boolean> => {
     const failed: string[] = [];
     await Promise.all(
-      environments.map(async (env) => {
+      only.map(async (env) => {
         try {
           const answer = await registry.linkOf(env.id).request<{ enabled: boolean }>("work.set", { enabled: next });
           setWorkOn(env.id, !!answer.enabled);
@@ -39,13 +44,25 @@ export function WorkPage() {
       }),
     );
     setRefused(failed);
-    return failed.length < environments.length;
+    return failed.length < only.length;
+  };
+  const joinOff = async (): Promise<void> => {
+    setJoining(true);
+    await flip(true, off);
+    setJoining(false);
   };
   return (
     <>
       <PageSection>
         <PageRow title="Work" description={switchLine(environments, on)}>
-          <SettingSwitch label="Work" on={on.size > 0} onChange={(next) => flip(next)} />
+          <div className="flex items-center gap-2">
+            {off.length ? (
+              <Button variant="secondary" size="sm" disabled={joining} onClick={() => void joinOff()}>
+                <BusyLabel busy={joining} label={`Turn on for ${off.map((e) => e.name).join(", ")}`} />
+              </Button>
+            ) : null}
+            <SettingSwitch label="Work" on={on.size > 0} onChange={(next) => flip(next)} />
+          </div>
         </PageRow>
         {refused.map((line) => (
           <PageError key={line}>{line}</PageError>

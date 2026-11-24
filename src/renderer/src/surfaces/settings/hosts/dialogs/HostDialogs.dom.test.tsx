@@ -181,6 +181,14 @@ describe("PairDialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(calls.map((c) => c.method)).toContain("remote.pairings.revoke");
   });
+
+  it("says in one line when the link is this computer's own address, which no other device opens", async () => {
+    render(<PairDialog onClose={() => {}} onChanged={noop} />);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Laptop" } });
+    answers.set("remote.pairings.create", { pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 600_000 }, code: "ABCDE-12345", url: "http://127.0.0.1:7677/pair#ABCDE-12345" });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create code" })));
+    expect(await screen.findByText("This computer has no public address, so this link opens only there.")).toBeTruthy();
+  });
 });
 
 describe("AddHostDialog", () => {

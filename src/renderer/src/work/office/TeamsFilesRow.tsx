@@ -12,12 +12,15 @@ import { Input } from "../../components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
+import { pickFolder } from "../../lib/fs";
+import { nativePlatform } from "../../lib/native";
+import { isWebMode } from "../../lib/nativeWeb";
 
 /**
- * Settings → Work, "Where it runs": which folders on one host count as Teams files
+ * Settings → Work, "Where it runs": the folders on one host that Files lists as shared places
  * (docs/agents/work-teams-files.md "Settings"). Each library OneDrive syncs there is found and on by
- * default; he turns one off, adds a folder it missed, or gives one its web address (a channel's
- * Files → Copy link) for Open on the web. Only this computer's own window edits its list.
+ * default; he turns one off, adds any folder (a network drive's too), or gives one its web address (a
+ * channel's Files → Copy link) for Open on the web. Only this computer's own window edits its list.
  */
 
 type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[]; places?: TeamsPlace[] };
@@ -49,7 +52,7 @@ export function withRoot(roots: readonly TeamsRoot[], folder: string, change: Pa
 export function TeamsFilesRow({ link, title, editable }: { link: Link | null | undefined; title: string; editable: boolean }) {
   const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
   const [busy, setBusy] = useState<string | null>(null);
-  // A row's own save (a switch, Remove) says its failure on the Teams files row; a dialog's, in the dialog alone.
+  // A row's own save (a switch, Remove) says its failure on the list's top row; a dialog's, in the dialog alone.
   const [error, setError] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
@@ -176,6 +179,9 @@ function OpensIn({ link, libraryId, title }: { link: Link; libraryId: string; ti
   );
 }
 
+/** The Add folder field's hint, in this machine's own spelling: a mapped drive on Windows, a home folder elsewhere. */
+export const folderHint = (platform: string = nativePlatform()): string => (platform === "win32" ? "J:\\Shared" : "~/Documents/…");
+
 function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" | "web"; initial: string; onSave: (text: string) => Promise<boolean>; onClose: (saved: boolean) => void; error: string | null }) {
   const [text, setText] = useState(initial);
   const [pending, setPending] = useState(false);
@@ -190,18 +196,25 @@ function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" |
   };
   return (
     <Dialog {...root}>
-      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a Teams folder" : "Web link"} description={add ? "A folder OneDrive syncs that was not found." : "The library folder's address, from the browser's address bar in SharePoint."} size="sm">
+      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a folder" : "Web link"} description={add ? undefined : "The library folder's address, from the browser's address bar in SharePoint."} size="sm">
         <ModalBody>
-          <Field label={add ? "Folder" : "Link"}>
-            <Input
-              autoFocus
-              value={text}
-              placeholder={add ? "~/Library/CloudStorage/…" : "https://…sharepoint.com/…"}
-              spellCheck={false}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && (add ? text.trim() : true) && void confirm()}
-            />
-          </Field>
+          <div className="flex items-end gap-2">
+            <Field label={add ? "Folder" : "Link"} className="flex-1">
+              <Input
+                autoFocus
+                value={text}
+                placeholder={add ? folderHint() : "https://…sharepoint.com/…"}
+                spellCheck={false}
+                onChange={(event) => setText(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && (add ? text.trim() : true) && void confirm()}
+              />
+            </Field>
+            {add && !isWebMode() ? (
+              <Button type="button" variant="secondary" onClick={() => void pickFolder("Add a folder").then((picked) => picked && setText(picked))}>
+                Browse…
+              </Button>
+            ) : null}
+          </div>
           <ErrorLine error={error} />
         </ModalBody>
         <DialogFooter onCancel={() => closeThen(cancel)} confirmLabel={add ? "Add" : "Save"} pending={pending} disabled={add && !text.trim()} onConfirm={() => void confirm()} />

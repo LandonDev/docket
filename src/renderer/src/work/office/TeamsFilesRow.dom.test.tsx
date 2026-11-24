@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TeamsLibrary, TeamsRoot } from "@shared/contract-work-office";
 import type { Link } from "../../lib/connection/link";
-import { libraryTitle, TeamsFilesRow, withRoot } from "./TeamsFilesRow";
+const picked = vi.hoisted(() => ({ path: "J:\\Shared\\Esports" as string | null }));
+vi.mock("../../lib/fs", () => ({ pickFolder: async () => picked.path }));
+import { folderHint, libraryTitle, TeamsFilesRow, withRoot } from "./TeamsFilesRow";
 
 afterEach(cleanup);
 
@@ -38,11 +40,11 @@ function fakeHost() {
   return { link, calls, host };
 }
 
-describe("Teams files in Settings", () => {
+describe("Folders in Settings", () => {
   it("says where each library's Office files open, TempCode until he picks Office on the web", async () => {
     const { link, calls, host } = fakeHost();
     host.opensIn = "live";
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     const select = await screen.findByLabelText("Where Purdue Esports's Office files open");
     expect(select.textContent).toContain("Office on the web");
     expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
@@ -50,13 +52,13 @@ describe("Teams files in Settings", () => {
 
   it("offers no choice where this window cannot edit the host's list", async () => {
     const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable={false} />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable={false} />));
     expect(screen.queryByLabelText("Where Purdue Esports's Office files open")).toBeNull();
   });
 
   it("names a found library by its team, its folder in the row's tip; a folder he added shows its path", async () => {
     const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     const tip = screen.getByText("Purdue Esports").closest("[data-library-path]")!;
     expect(tip.getAttribute("data-library-path")).toBe(FOUND.path);
     // The keyboard reaches the path too: focus opens the tip as hover does.
@@ -71,7 +73,7 @@ describe("Teams files in Settings", () => {
 
   it("keeps what is shown when a dialog closes: no skeleton, a fresh read after Cancel, none after a save", async () => {
     const { link, calls } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     const reads = () => calls.filter((c) => c.method === "work.office.filesLibraries").length;
     const before = reads();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
@@ -88,7 +90,7 @@ describe("Teams files in Settings", () => {
 
   it("says a dialog's failed save in the dialog alone, and forgets it when the dialog closes", async () => {
     const { link, host } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     host.refuse = "That folder is not on this Mac";
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/nowhere" } });
@@ -107,7 +109,7 @@ describe("Teams files in Settings", () => {
 
   it("turns a found folder off and on again", async () => {
     const { link, calls } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Purdue Esports" })));
     expect(calls.at(-1)).toEqual({ method: "work.office.filesSetRoots", params: { roots: [{ folder: FOUND.path, off: true }] } });
     await act(async () => fireEvent.click(screen.getByRole("switch")));
@@ -116,7 +118,7 @@ describe("Teams files in Settings", () => {
 
   it("gives a folder its web link through a dialog", async () => {
     const { link, calls } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
     fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://p.sharepoint.com/sites/e/Shared Documents" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
@@ -126,7 +128,7 @@ describe("Teams files in Settings", () => {
 
   it("is read only from another computer's window", async () => {
     const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files on The box" editable={false} />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders on The box" editable={false} />));
     expect(screen.queryByRole("button", { name: "Add folder…" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
   });
@@ -144,5 +146,22 @@ describe("a host's row with nothing synced", () => {
     expect(noneLine([{ kind: "folders", state: "no-onedrive", account: null }])).toBe("OneDrive is not signed in here");
     expect(noneLine([{ kind: "folders", state: "no-libraries", account: "a@b" }])).toBe("None synced");
     expect(noneLine(undefined)).toBe("None synced");
+  });
+});
+
+describe("Add a folder", () => {
+  it("hints a mapped drive on Windows and a home folder elsewhere", () => {
+    expect(folderHint("win32")).toBe("J:\\Shared");
+    expect(folderHint("darwin")).toBe("~/Documents/…");
+  });
+
+  it("fills the field from the system's folder picker, and adds that folder", async () => {
+    const { link, calls } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Browse…" })));
+    expect((screen.getByLabelText("Folder") as HTMLInputElement).value).toBe("J:\\Shared\\Esports");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+    expect(calls.some((c) => c.method === "work.office.filesSetRoots" && JSON.stringify(c.params).includes("Esports"))).toBe(true);
   });
 });

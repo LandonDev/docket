@@ -48,7 +48,7 @@ const POLL_MS = 5000;
 
 type Dialog =
   | { kind: "key" }
-  | { kind: "pair" }
+  | { kind: "pair"; env?: SavedEnvironment }
   | { kind: "add"; repair?: SavedEnvironment }
   | { kind: "rename"; env: SavedEnvironment }
   | { kind: "routes"; env: SavedEnvironment }
@@ -264,7 +264,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
       )}
 
       {dialog?.kind === "key" ? <NewKeyDialog onClose={close} onChanged={remote.refresh} /> : null}
-      {dialog?.kind === "pair" ? <PairDialog onClose={close} onChanged={remote.refresh} /> : null}
+      {dialog?.kind === "pair" ? <PairDialog host={dialog.env} onClose={close} onChanged={remote.refresh} /> : null}
       {dialog?.kind === "add" ? <AddHostDialog repair={dialog.repair} onClose={close} onChanged={hosts.refresh} /> : null}
       {dialog?.kind === "rename" ? <RenameHostDialog env={dialog.env} onClose={close} onChanged={hosts.refresh} /> : null}
       {dialog?.kind === "routes" ? <RoutesDialog env={dialog.env} onClose={close} onChanged={hosts.refresh} /> : null}

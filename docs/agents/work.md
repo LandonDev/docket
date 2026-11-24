@@ -111,7 +111,12 @@ Settings → Work.
   (chrome/WorkRail.dom.test.tsx compares the rows with and without a Work
   workspace) and Settings → Work is the switch alone. The switch writes
   `work.set` to every host the window is linked to and its line names the
-  hosts that differ.
+  hosts that differ; while it is on somewhere and off on another, **Turn on
+  for <hosts>** (the line's one press, secondary) writes `work.set` to the
+  hosts left off alone: a host already on is never written, and turning one
+  on never needs the switch off. Environment zero carries this machine's
+  platform (`localEnvironment`), so a PC's own window draws its workspace row
+  "Computer use on This PC".
 - **The rail** (chrome/ProjectRail.tsx): `splitWorkRows` (lib/linkedRail.ts)
   keeps a Work workspace out of the code list, pinned or not, always; with
   Work on it sits under the **Work** heading, led by its sector's dot

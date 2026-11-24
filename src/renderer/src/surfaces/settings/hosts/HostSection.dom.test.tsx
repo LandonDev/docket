@@ -38,6 +38,14 @@ vi.mock("../../../lib/connection", () => ({
         return method in answers ? Promise.resolve(answers[method]) : Promise.reject(new Error(`no ${method}`));
       },
     }),
+    linkOf: (id: string) => ({
+      request: (method: string, params: unknown) => {
+        calls.push({ method: `${id}:${method}`, params });
+        return method === "remote.pairings.create"
+          ? Promise.resolve({ pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 600_000 }, code: "ABCDE-12345", url: "https://tempcode.landonhale.com/pair#ABCDE-12345" })
+          : Promise.resolve(null);
+      },
+    }),
     environment: () => undefined,
     link: () => undefined,
     retry: (id: string) => retried.push(id),
@@ -57,6 +65,7 @@ vi.mock("../../../lib/tcserver/link", () => ({ loadSavedEnvironments: async () =
 vi.mock("../../../lib/macBridge", () => ({ useMacBridgeHosts: () => [] }));
 vi.mock("../../../lib/hostDevices", () => ({ useHostDevicesHosts: () => null }));
 vi.mock("../../../lib/nativeWeb", () => ({ isWebMode: () => false }));
+vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,AA==" } }));
 vi.mock("../../../chrome/HostGlyph", () => ({ HostGlyph: () => null }));
 vi.mock("../../../chrome/DeployDrift", () => ({
   DeployDriftMark: ({ environmentId }: { environmentId: string }) => <span data-deploy-drift={environmentId}>+3</span>,
@@ -144,6 +153,38 @@ describe("a paired host's section", () => {
     fireEvent.click(await screen.findByText("Routes…"));
     await flush();
     expect(screen.getByText("Routes to box")).toBeTruthy();
+  });
+
+  it("makes a pairing link for the box itself from its menu, over the box's own link", async () => {
+    render(<HostsPage />);
+    await flush();
+    fireEvent.click(screen.getByLabelText("box actions"));
+    await flush();
+    fireEvent.click(await screen.findByText("Pair a device…"));
+    await flush();
+    expect(screen.getByText("Pair a device with box")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Purdue laptop" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create code" })));
+    await flush();
+    expect(calls).toContainEqual({ method: "env_box:remote.pairings.create", params: { name: "Purdue laptop", audience: "client", caps: ["operate"] } });
+    expect(calls.some((c) => c.method === "remote.pairings.create")).toBe(false);
+    expect((screen.getByLabelText("Link") as HTMLInputElement).value).toBe("https://tempcode.landonhale.com/pair#ABCDE-12345");
+    expect(screen.queryByText(/has no public address/)).toBeNull();
+  });
+
+  it("offers no pairing for a host whose key here is not admin", async () => {
+    const caps = box.caps;
+    box.caps = ["read", "operate"];
+    try {
+      render(<HostsPage />);
+      await flush();
+      fireEvent.click(screen.getByLabelText("box actions"));
+      await flush();
+      expect(await screen.findByText("Rename…")).toBeTruthy();
+      expect(screen.queryByText("Pair a device…")).toBeNull();
+    } finally {
+      box.caps = caps;
+    }
   });
 
   it("removes the host only after the confirm", async () => {

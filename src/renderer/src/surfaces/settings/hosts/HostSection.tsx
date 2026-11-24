@@ -21,7 +21,7 @@ import { ago } from "../../harnessLine";
 import { Facts } from "./Facts";
 import { Group } from "./Group";
 
-export type HostMenuAction = "rename" | "routes" | "remove" | "repair";
+export type HostMenuAction = "rename" | "routes" | "remove" | "repair" | "pair";
 
 /** The link's state as a mark ("Connected", "Reconnecting", "Sign in needed"), and the retry countdown when there is one. */
 export function connectionMark(status: EnvironmentStatus, now: number): { state: ReturnType<typeof linkMarkOf>["state"]; word: string; detail: string | null } {
@@ -145,7 +145,7 @@ function PairedSection({
               Retry
             </Button>
           ) : null}
-          {onMenu ? <HostMenu name={name} onMenu={onMenu} /> : null}
+          {onMenu ? <HostMenu name={name} onMenu={onMenu} canPair={caps.includes("admin")} /> : null}
         </div>
       }
     >
@@ -162,11 +162,13 @@ function MenuTrigger({ name }: { name: string }) {
   );
 }
 
-function HostMenu({ name, onMenu }: { name: string; onMenu: (action: HostMenuAction) => void }) {
+/** `canPair`: this window holds an admin key there, so it may make that host's own pairing links. */
+function HostMenu({ name, onMenu, canPair }: { name: string; onMenu: (action: HostMenuAction) => void; canPair: boolean }) {
   return (
     <DropdownMenu>
       <MenuTrigger name={name} />
       <DropdownMenuContent align="end">
+        {canPair ? <DropdownMenuItem onClick={() => onMenu("pair")}>Pair a device…</DropdownMenuItem> : null}
         <DropdownMenuItem onClick={() => onMenu("rename")}>Rename…</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onMenu("routes")}>Routes…</DropdownMenuItem>
         <DropdownMenuSeparator />

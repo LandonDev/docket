@@ -97,7 +97,7 @@ export function WorkSettingsBody() {
         {hosts
           .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
           .map((host) => (
-            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Teams files on ${host.name}` : "Teams files"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
+            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Folders on ${host.name}` : "Folders"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
           ))}
       </PageSection>
       {home ? <StartPlacesSection environmentId={home} /> : null}

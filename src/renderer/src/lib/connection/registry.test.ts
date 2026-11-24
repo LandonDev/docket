@@ -291,3 +291,11 @@ describe("ConnectionRegistry", () => {
     expect([...h.registry.slowEnvironments()]).toEqual([]);
   });
 });
+
+describe("environment zero", () => {
+  it("carries this machine's platform, so its desktop rows are drawn; none where the page has no native side", () => {
+    expect(localEnvironment(4000, "win32")).toMatchObject({ id: "local", platform: "win32" });
+    expect(localEnvironment(4000, "darwin").platform).toBe("darwin");
+    expect("platform" in localEnvironment(4000, "")).toBe(false);
+  });
+});

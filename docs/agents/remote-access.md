@@ -73,6 +73,12 @@
   lines); `fsMedia` and project search leave it out for every caller.
 - Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
   the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
+  `<origin>` is the host's public origin, else the one it learned, else
+  `http://127.0.0.1:<port>`; the dialog says in one line when the link is on
+  a loopback address and opens only on that computer. Settings → Hosts makes
+  a pairing for this machine under Clients, and for a paired host whose key
+  here holds `admin` (the box) from that host's ⋯ menu, **Pair a device…**,
+  asked over its own link (`PairDialog`'s `host`).
   Redemption claims the row in one conditional UPDATE before minting, so
   concurrent redeems answer one key (R2 M1). The link's origin is learned
   only from an admin's own authenticated request, never from the Host of an
