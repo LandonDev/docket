@@ -26,12 +26,22 @@ export async function outboxCall<T>(ctx: WorkCtx, method: string, params: unknow
 
 export const heldKey = (ref: OutboxItem['ref']): string => (ref.at === 'host' ? `held:host:${ref.id}` : `held:lifeos:${ref.table}:${ref.id}`)
 
-export type HeldFacts = { slipped: SlippedRow[]; shipped: ShippedRow[]; points: HostPoint[]; before: HostPoint[] }
+/**
+ * `part`: a list came back full at its cap, so it may not hold everything: the waiting list past its 500th item, or
+ * the decided list (newest first) whose oldest item was decided after the span began. What was read counts; a kept
+ * row past the cut is not called dealt with, and no "nothing" stands on it.
+ */
+export type HeldFacts = { slipped: SlippedRow[]; shipped: ShippedRow[]; points: HostPoint[]; before: HostPoint[]; part: boolean }
 
 export async function heldFacts(ctx: WorkCtx, asked: Asked, jobs: Jobs, hidden: ReadonlySet<string>): Promise<HeldFacts> {
   const waiting = (await outboxCall<{ items: OutboxItem[] }>(ctx, 'work.outbox.list', { show: 'waiting', limit: MOST })).items
   const decided = (await outboxCall<{ items: OutboxItem[] }>(ctx, 'work.outbox.list', { show: 'decided', limit: MOST })).items
-  const out: HeldFacts = { slipped: [], shipped: [], points: [], before: [] }
+  const since = Math.min(asked.from, asked.before.from)
+  // The Outbox's list has no cursor for decided items: a full one that does not reach back past the span's start may
+  // have left some of the span's out.
+  const reaches = decided.some((i) => Math.min(i.updatedAt, i.decidedAt ?? i.updatedAt) < since)
+  const part = waiting.length >= MOST || (decided.length >= MOST && !reaches)
+  const out: HeldFacts = { slipped: [], shipped: [], points: [], before: [], part }
   const jobOf = (i: OutboxItem): number | null => jobIndex(jobs, i.workspaceId, i.sector)
   for (const i of waiting) {
     const key = heldKey(i.ref)

@@ -22,7 +22,10 @@ import {
   standsWords,
   stepWeek,
   totalWords,
+  waitKey,
+  weekNamed,
   weekOf,
+  weekOfDay,
   weekWords,
   type HourFacts,
   type JobHours,
@@ -235,7 +238,7 @@ describe('what is kept', () => {
   it('a week that is not over is made again: the fresh body stands', () => {
     const kept = body({ slipped: { at: WEEK.from + HOUR, rows: [slip('task:old')] } })
     const fresh = body({ madeAt: WEEK.from + 5 * 24 * HOUR, slipped: { at: WEEK.from + 5 * 24 * HOUR, rows: [slip('task:new')] } })
-    expect(mergeKept(kept, fresh, WEEK.to - 1)).toBe(fresh)
+    expect(mergeKept(kept, fresh, WEEK.to - 1)).toEqual(fresh)
   })
 
   it('once over, what slipped stays as it stood at the last make inside the week; the rest is fresh', () => {
@@ -267,7 +270,7 @@ describe('what is kept', () => {
     expect(got.slipped.rows.map((r) => r.key)).toEqual(['held:host:h1', 'task:a', 'mail:t1'])
     // A whole read stands as it is: what it no longer lists is gone.
     const whole = body({ madeAt: sunday, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, slipped: { at: sunday, rows: [heldRow] } })
-    expect(mergeKept(kept, whole, sunday)).toBe(whole)
+    expect(mergeKept(kept, whole, sunday)).toEqual(whole)
     // Only the source that failed is carried: with tasks unread, the mail's row is the fresh read's to say.
     const noTasks = body({ madeAt: sunday, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, slipped: { at: sunday, rows: [] }, left: [LEFT.tasks] })
     expect(mergeKept(kept, noTasks, sunday).slipped.rows.map((r) => r.key)).toEqual(['task:a'])
@@ -292,6 +295,79 @@ describe('what is kept', () => {
     expect(open([LEFT.held]).filter(([, o]) => o).map(([k]) => k)).toEqual(['held:host:h1'])
     // LifeOS out: only the held item, which the host itself read, is known.
     expect(open([LEFT.lifeos], { lifeos: null }).filter(([, o]) => o).map(([k]) => k)).toEqual(['task:a', 'mail:t1', 'meeting:e1'])
+  })
+
+  it('a look back that reads less never lowers what Friday counted', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const later = WEEK.to + 30 * 24 * HOUR
+    const jobs = [{ workspaceId: 'w-purdue', sector: 'purdue' as const, name: 'Purdue' }]
+    const shippedRow = { key: 'held:host:h7', kind: 'approved' as const, sector: 'purdue' as const, workspaceId: 'w-purdue', title: 'Post the bracket', who: null, at: MON + 3 * HOUR, open: null }
+    const sent = { id: 'm1', threadId: 't1', subject: 'Roster', to: [], addresses: [], at: MON + 5 * HOUR, sector: 'purdue' as const }
+    const kept = body({
+      by: 'routine',
+      madeAt: friday,
+      jobs,
+      lifeos: { events: [], sent: [sent], done: [], answered: [], answeredSince: MON },
+      points: [
+        [MON + 3 * HOUR, 0, 'pressed'],
+        [MON + 4 * HOUR, 0, 'edited']
+      ],
+      ran: [[0, 2 * HOUR]],
+      shipped: [shippedRow],
+      slipped: { at: friday, rows: [slip('held:host:h1', { ref: { kind: 'held', ref: { at: 'host', id: 'h1' } } })] }
+    })
+    // A month on: the Outbox's newest 500 no longer reach the week, a document was closed, a thread deleted. The jobs
+    // come back in another order, and the read says what it could not read whole.
+    const fresh = body({
+      over: true,
+      madeAt: later,
+      jobs: [{ workspaceId: 'w-new', sector: 'cosmic', name: 'Cosmic' }, ...jobs],
+      lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON },
+      points: [[MON + 4 * HOUR, 1, 'edited']],
+      ran: [[1, HOUR]],
+      slipped: { at: later, rows: [] },
+      left: [LEFT.heldPart]
+    })
+    const got = mergeKept(kept, fresh, later)
+    expect(got.points).toEqual([
+      [MON + 3 * HOUR, 1, 'pressed'],
+      [MON + 4 * HOUR, 1, 'edited']
+    ])
+    expect(got.ran).toEqual([[1, 2 * HOUR]])
+    expect(got.shipped.map((r) => r.key)).toEqual(['held:host:h7'])
+    expect(got.lifeos!.sent.map((m) => m.id)).toEqual(['m1'])
+    // The held list was cut: its kept row is not called dealt with, and the line still says the read was partial.
+    expect(got.slipped.rows.map((r) => [r.key, r.open])).toEqual([['held:host:h1', true]])
+    expect(got.left).toEqual([LEFT.heldPart])
+  })
+
+  it('a kept calendar stands in for one that failed, cut to the moment it was read', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const event = (id: string, startsAt: number, endsAt: number) => ({ id, sector: 'purdue' as const, title: id, startsAt, endsAt, allDay: false, declined: false, hidden: false, people: [], others: 0, addresses: [] })
+    const kept = body({ madeAt: friday, lifeos: { events: [event('thu', MON + 3 * 24 * HOUR, MON + 3 * 24 * HOUR + HOUR), event('fri', friday - HOUR, friday + HOUR), event('sat', friday + 20 * HOUR, friday + 22 * HOUR)], sent: [], done: [], answered: [], answeredSince: MON } })
+    const fresh = body({ over: true, madeAt: WEEK.to + HOUR, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, left: [LEFT.calendar] })
+    const events = mergeKept(kept, fresh, WEEK.to + HOUR).lifeos!.events
+    expect(events.map((e) => [e.id, e.endsAt])).toEqual([
+      ['thu', MON + 3 * 24 * HOUR + HOUR],
+      ['fri', friday]
+    ])
+  })
+
+  it('matches a kept waiting mail to its own wait alone, a week kept before waits had their own key too', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const later = WEEK.to + 3 * 24 * HOUR
+    const lifeos = { events: [], sent: [], done: [], answered: [], answeredSince: MON }
+    const ref = { kind: 'mail' as const, threadId: 't1', since: MON }
+    const kept = body({ madeAt: friday, slipped: { at: friday, rows: [slip('mail:t1', { ref })] } })
+    const still = slip(waitKey('t1', MON), { ref })
+    const newer = slip(waitKey('t1', MON + 2 * 24 * HOUR), { ref: { ...ref, since: MON + 2 * 24 * HOUR } })
+    const open = (rows: SlippedRow[]) => mergeKept(kept, body({ over: true, madeAt: later, lifeos, slipped: { at: later, rows } }), later).slipped.rows[0]!.open
+    expect(open([still])).toBe(true)
+    // He wrote again: the old wait was dealt with, whatever the newer one does.
+    expect(open([newer])).toBe(false)
+    expect(open([])).toBe(false)
+    // A cut read of the waits says nothing of it.
+    expect(mergeKept(kept, body({ over: true, madeAt: later, lifeos, slipped: { at: later, rows: [] }, left: [LEFT.mailPart] }), later).slipped.rows[0]!.open).toBe(true)
   })
 
   it('a week first asked for after it ended shows what is still open from it, as of now', () => {
@@ -380,6 +456,40 @@ describe('one review from every host’s part', () => {
     expect(r.hours[0]!.calendarMs).toBe(HOUR)
   })
 
+  it('takes LifeOS from the host whose read failed least, and calls nothing empty on an answer from before', () => {
+    // The box's calendar failed; the Mac read everything. The box is home.
+    const half = { environmentId: 'env-box', body: { ...box, lifeos: { ...lifeos, events: [] }, left: [LEFT.calendar] } }
+    const r = mergeReview([half, parts[1]!], now, { home: 'env-box' })!
+    expect(r.lifeosFrom).toBe('env-mac')
+    expect(r.hours[0]!.calendarMs).toBe(HOUR)
+    expect(r.left).toEqual([])
+    expect(r.known.calendar).toBe(true)
+    // Only the box has LifeOS, from an answer before this one timed out: its empty calendar is not "nothing".
+    const old = mergeReview([{ environmentId: 'env-box', body: { ...box, lifeos: { ...lifeos, events: [] } }, stale: true }, { environmentId: 'env-mac', body: { ...mac, lifeos: null, left: [LEFT.lifeos] } }], now, { home: 'env-box', fresh: false })!
+    expect(old.lifeosFrom).toBe('env-box')
+    expect(old.known.calendar).toBe(false)
+  })
+
+  it('files a held row by its own sector when its workspace is another job’s', () => {
+    const cosmicJob = { workspaceId: 'w-cosmic', sector: 'cosmic' as const, name: 'Cosmic' }
+    const moved = slip('held:host:h3', { ref: { kind: 'held', ref: { at: 'host', id: 'h3' } }, workspaceId: 'w-purdue', sector: 'cosmic', title: 'Post the patch notes' })
+    const shippedMoved = { key: 'held:host:h4', kind: 'approved' as const, sector: 'cosmic' as const, workspaceId: 'w-purdue', title: 'Post the trailer', who: null, at: MON + HOUR, open: null }
+    const r = mergeReview([{ environmentId: 'env-box', body: { ...box, jobs: [...box.jobs, cosmicJob], slipped: { at: MON, rows: [moved] }, shipped: [shippedMoved] } }], now)!
+    expect(r.slipped.map((x) => [x.key, x.job])).toEqual([['env-box:held:host:h3', 'cosmic']])
+    expect(r.shipped.filter((x) => x.kind === 'approved').map((x) => x.job)).toEqual(['cosmic'])
+  })
+
+  it('takes a meeting followed up in Prep on any host off what slipped', () => {
+    const meeting = slip('meeting:e1', { ref: { kind: 'meeting', eventId: 'e1' } })
+    const box2 = { ...box, slipped: { at: MON + 4 * 24 * HOUR, rows: [meeting] } }
+    // The job's Prep page is on the Mac; the box's rows are the ones listed.
+    const mac2 = { ...mac, prepped: ['e1'] }
+    const running = mergeReview([{ environmentId: 'env-box', body: box2 }, { environmentId: 'env-mac', body: mac2 }], MON + 4 * 24 * HOUR, { home: 'env-box' })!
+    expect(running.slipped.filter((x) => x.ref.kind === 'meeting')).toEqual([])
+    const looked = mergeReview([{ environmentId: 'env-box', body: box2 }, { environmentId: 'env-mac', body: mac2 }], now, { home: 'env-box' })!
+    expect(looked.slipped.filter((x) => x.ref.kind === 'meeting').map((x) => x.open)).toEqual([false])
+  })
+
   it('stands with one host off, and with LifeOS answering nobody', () => {
     const alone = mergeReview([parts[1]!], now)!
     expect(alone.jobs.map((j) => j.key)).toEqual(['purdue'])
@@ -408,15 +518,18 @@ describe('one review from every host’s part', () => {
       lifeos: { events: [{ sector: 'purdue', from: MON - 7 * 24 * HOUR + 9 * HOUR, to: MON - 7 * 24 * HOUR + 17 * HOUR }], sent: [] },
       points: []
     }
-    const r = mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now)!
+    const done = { ...box, over: true }
+    const r = mergeReview([{ environmentId: 'env-box', body: { ...done, before } }], now)!
     expect(r.compare).toEqual([{ job: 'purdue', words: 'down from 8 h' }])
     // With anything unread, in either week, a comparison would describe the failure: none is drawn. Sent mail, held
-    // decisions and document edits feed desk time as threads do.
-    for (const left of [LEFT.threads, LEFT.calendar, LEFT.mail, LEFT.held, LEFT.files]) expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before, left: [left] } }], now)!.compare).toEqual([])
-    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before: { ...before, lifeos: null } } }], now)!.compare).toEqual([])
+    // decisions and document edits feed desk time as threads do, and a list read in part is unread past its cut.
+    for (const left of [LEFT.threads, LEFT.calendar, LEFT.mail, LEFT.held, LEFT.files, LEFT.heldPart, LEFT.filesPart, LEFT.mailPart]) expect(mergeReview([{ environmentId: 'env-box', body: { ...done, before, left: [left] } }], now)!.compare).toEqual([])
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...done, before: { ...before, lifeos: null } } }], now)!.compare).toEqual([])
     // Nor on a host's answer from before. A host that is off is out of both weeks alike, so the comparison holds.
-    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now, { fresh: false })!.compare).toEqual([])
-    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now, { whole: false })!.compare).toHaveLength(1)
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...done, before } }], now, { fresh: false })!.compare).toEqual([])
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...done, before } }], now, { whole: false })!.compare).toHaveLength(1)
+    // A part made while the week ran is compared as of its own read, though the clock has passed the week's end.
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now)!.compare[0]!.words).toMatch(/by this point last week$/)
   })
 
   it('keeps a kept week\'s LifeOS rows as they last stood while LifeOS answers nobody', () => {
@@ -467,8 +580,11 @@ describe('one review from every host’s part', () => {
     // The page's "So far, made" names that same moment, though another host's part was read later.
     const later = { environmentId: 'env-mac', body: { ...mac, lifeos: null, madeAt: MON + 14 * HOUR + 8 * MIN } }
     expect(mergeReview([part, later], MON + 15 * HOUR, { home: 'env-box' })!.madeAt).toBe(MON + 14 * HOUR + 2 * MIN)
-    // Once the week is over the whole meeting counts, whenever it was read.
-    expect(at(WEEK.to + HOUR)).toBe(1.5 * HOUR)
+    // Read back on Monday, before Monday's answer lands, the week's end is no new read: the meeting still counts
+    // to 2:02 PM, and the weekend's plans are not measured time.
+    expect(at(WEEK.to + HOUR)).toBe(2 * MIN)
+    // A part made once the week was over counts the whole meeting, whenever it was read.
+    expect(mergeReview([{ ...part, body: { ...part.body, over: true, madeAt: WEEK.to + HOUR } }], WEEK.to + 2 * HOUR)!.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(1.5 * HOUR)
   })
 
   it('marks a row that stands as last known: its source did not answer, or its host answered from before', () => {
@@ -550,6 +666,20 @@ describe('the words for rows', () => {
     expect(madeWords({ ...made, madeAt: friday4 + 3 * 24 * HOUR, over: true }, TZ, friday4 + 3 * 24 * HOUR)).toBe('Made Fri 4:00 PM')
     expect(madeWords({ ...made, over: true }, TZ, friday4 + 20 * 24 * HOUR)).toBe('Made Nov 20, 4:00 PM')
     expect(madeWords({ ...made, slippedAt: WEEK.to + HOUR, over: true }, TZ, WEEK.to + HOUR)).toBe('Not made in its week. What slipped is as of today.')
+  })
+
+  it('reads a named day in the zone weeks are cut in, and finds a week another zone named', () => {
+    // Sunday Nov 22 at noon in UTC is Monday in Auckland in November: the day asked for is still Sunday there.
+    const auckland = 'Pacific/Auckland'
+    expect(weekOfDay('2026-11-22', auckland)).toEqual(weekOf(Date.parse('2026-11-22T00:00:00+13:00'), auckland))
+    expect(weekOfDay('2026-11-23', auckland)!.from).toBeGreaterThan(weekOfDay('2026-11-22', auckland)!.from)
+    expect(weekOfDay('2026-02-30', TZ)).toBeNull()
+    // A Tokyo host's Monday midnight is Sunday in New York: the week it names is still found.
+    const tokyo = weekOf(Date.parse('2026-11-18T12:00:00Z'), 'Asia/Tokyo')
+    const ny = 'America/New_York'
+    expect(weekOf(tokyo.from, ny).from).toBeLessThan(weekNamed(tokyo.from, ny).from)
+    expect(weekNamed(tokyo.from, ny)).toEqual(weekOf(Date.parse('2026-11-18T12:00:00Z'), ny))
+    expect(weekNamed(WEEK.from, TZ)).toEqual(WEEK)
   })
 
   it('folds tasks due before the week behind the rest', () => {

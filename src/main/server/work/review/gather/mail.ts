@@ -1,4 +1,4 @@
-import type { ReviewAnswer, ReviewSent, SlippedRow } from '@shared/work/review'
+import { waitKey, type ReviewAnswer, type ReviewSent, type SlippedRow } from '@shared/work/review'
 import type { LifeosClient } from '../../lifeos/ctx'
 import { personName, text, type Asked } from './common'
 
@@ -41,8 +41,11 @@ export async function answeredBetween(owner: LifeosClient, from: number, to: num
   return { rows, answeredSince: got?.answeredSince ?? null }
 }
 
-/** The mails that had waited past their time by `cut` and still wait. */
-export async function waitingPast(owner: LifeosClient, cut: number, asked: Pick<Asked, 'only'>): Promise<SlippedRow[]> {
+/**
+ * The mails that had waited past their time by `cut` and still wait. `part`: the last page read was not the end, so
+ * a wait past it is not known; what was read is listed and the caller says the rest was not read.
+ */
+export async function waitingPast(owner: LifeosClient, cut: number, asked: Pick<Asked, 'only'>): Promise<{ rows: SlippedRow[]; part: boolean }> {
   const out: SlippedRow[] = []
   let cursor: string | null = null
   for (let page = 0; page < WAIT_PAGES; page++) {
@@ -50,10 +53,10 @@ export async function waitingPast(owner: LifeosClient, cut: number, asked: Pick<
     for (const w of got?.page ?? []) {
       if (w.waiting.dueAt > cut || (asked.only !== undefined && (w.sector ?? null) !== asked.only)) continue
       const to = w.waiting.to ?? []
-      out.push({ key: `mail:${w._id}`, ref: { kind: 'mail', threadId: w._id, since: w.waiting.since }, sector: w.sector ?? null, workspaceId: null, title: text(w.subject) || '(no subject)', at: w.waiting.since, people: to.slice(0, NAMED).map(personName), others: to.length, open: true })
+      out.push({ key: waitKey(w._id, w.waiting.since), ref: { kind: 'mail', threadId: w._id, since: w.waiting.since }, sector: w.sector ?? null, workspaceId: null, title: text(w.subject) || '(no subject)', at: w.waiting.since, people: to.slice(0, NAMED).map(personName), others: to.length, open: true })
     }
-    if (!got || got.isDone) break
+    if (!got || got.isDone) return { rows: out, part: false }
     cursor = got.continueCursor
   }
-  return out
+  return { rows: out, part: true }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReviewReady } from "@shared/contract-work-review";
-import { weekOf, weekWords } from "@shared/work/review";
+import { weekNamed, weekOf, weekWords } from "@shared/work/review";
 import { registry } from "../../lib/connection";
 import type { TodayRow, TodaySource } from "../today/types";
 import { openReview } from "./open";
@@ -27,8 +27,9 @@ export const readyRow = (ready: NonNullable<ReviewReady>, now: number, tz: strin
   key: `review:${ready.from}`,
   section: "also",
   sector: null,
-  title: readyTitle(ready.from, now, tz),
-  detail: weekWords({ from: ready.from }, tz),
+  // The host names the week by its first moment in its own zone: said as the week it is here.
+  title: readyTitle(weekNamed(ready.from, tz).from, now, tz),
+  detail: weekWords(weekNamed(ready.from, tz), tz),
   at: ready.madeAt,
   open: () => openReview({ week: ready.from }),
 });

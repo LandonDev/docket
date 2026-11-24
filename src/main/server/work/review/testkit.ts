@@ -86,7 +86,7 @@ export const held = (id: string, o: Partial<OutboxItem> = {}): OutboxItem => ({
 export function makeRig(): Rig {
   const db = new DatabaseSync(':memory:')
   db.exec(`ATTACH DATABASE ':memory:' AS cold`)
-  db.exec(`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'code', sector TEXT, created_at INTEGER NOT NULL)`)
+  db.exec(`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'code', sector TEXT, created_at INTEGER NOT NULL, path TEXT NOT NULL DEFAULT '')`)
   db.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, parent_id TEXT, workspace_id TEXT, cold INTEGER NOT NULL DEFAULT 0, routine_run_id TEXT, master_id TEXT, started_by TEXT,
     status TEXT NOT NULL DEFAULT 'idle', scope TEXT NOT NULL DEFAULT 'code', title TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
   const EVENTS = `(session_id TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (session_id, seq))`

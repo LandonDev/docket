@@ -74,6 +74,11 @@ describe('the routine is seeded once a host', () => {
     await seedRoutine(rig.ctx)
     expect(rig.routines).toEqual([])
     expect(setupOf(rig.db).seededAt).toBeNull()
+    // He links one later: the next try makes it, once, and does not reuse the try that found none.
+    rig.db.exec(`UPDATE workspaces SET sector = 'purdue' WHERE id = 'w-purdue'`)
+    await seedRoutine(rig.ctx)
+    await seedRoutine(rig.ctx)
+    expect(rig.routines.map((r) => r.workspaceId)).toEqual(['w-purdue'])
   })
 
   it('only a person reads which routine it is', async () => {
@@ -109,6 +114,15 @@ describe('the job', () => {
     // The week after is told again.
     await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + 7 * 24 * HOUR })
     expect(rig.told.map((t) => t.key)).toEqual([`review:${WEEK.from}`, `review:${WEEK.to}`])
+  })
+
+  it('a second run of a week he opened tells nobody and leaves it seen', async () => {
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
+    await call('work.review.seen', { from: WEEK.from })
+    // Run now, the same Friday evening.
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + 2 * HOUR })
+    expect(rig.told.map((t) => t.key)).toEqual([`review:${WEEK.from}`])
+    expect(await call('work.review.ready', {})).toEqual({ handled: true, result: null })
   })
 
   it('ready answers null once he has seen it', async () => {

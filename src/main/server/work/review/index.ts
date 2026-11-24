@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { REVIEW_CAPS, type ReviewKept, type ReviewReady } from '@shared/contract-work-review'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
-import { isWeek, knownZone, localDay, mergeKept, weekOf, type ReviewBody } from '@shared/work/review'
+import { isWeek, knownZone, localDay, mergeKept, weekOf, weekOfDay, type ReviewBody } from '@shared/work/review'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
 import { HOST } from './gather/held'
 import { hostZone, makeJob, READY_TELL, readyKey, routineOf, seedRoutine } from './friday'
@@ -78,10 +78,9 @@ const weekReview: WorkTool = {
     if (!ctx.scope.workspaceId) return workText('This thread is in no job, and a review is of a job. Open Review in the rail to see every job.')
     const tz = await hostZone(ctx)
     const now = Date.now()
-    // Noon keeps the day asked for inside its own week in every zone.
-    const at = week ? Date.parse(`${week}T12:00:00Z`) : now
-    if (Number.isNaN(at)) return workText('That is not a day: write it as YYYY-MM-DD.')
-    const span = weekOf(at, tz)
+    // The day is read in the zone weeks are cut in: Sunday noon in UTC is already Monday in Auckland.
+    const span = week ? weekOfDay(week, tz) : weekOf(now, tz)
+    if (!span) return workText('That is not a day: write it as YYYY-MM-DD.')
     // Nothing is kept: a thread's read leaves no mark on what he sees.
     const mount = home ?? ctx
     const { body } = await makeWeek(mount, { ...span, tz, now, by: 'owner', only: { workspaceId: ctx.scope.workspaceId, sector: ctx.scope.sector }, signal: ctx.signal })
@@ -95,8 +94,9 @@ async function jobMoney(ctx: WorkCtx, workspaceId: string, from: string, to: str
   if (!money?.handle) return null
   try {
     const answer = await money.handle({ id: 'review', method: 'work.money.sums', params: { from, to, workspaceId } } as never, ctx, HOST)
-    const row = answer.handled ? (answer.result as { rows?: { workspaceId: string; in: number; out: number }[] }).rows?.find((r) => r.workspaceId === workspaceId) : undefined
-    return row ? { in: row.in, out: row.out } : null
+    const row = answer.handled ? (answer.result as { rows?: { workspaceId: string; in: number; out: number; problem?: true }[] }).rows?.find((r) => r.workspaceId === workspaceId) : undefined
+    // Books Money could not read whole are not the job's money: no sum is said (contract-work-money.ts `problem`).
+    return row && !row.problem ? { in: row.in, out: row.out } : null
   } catch {
     return null
   }

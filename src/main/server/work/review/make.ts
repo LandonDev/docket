@@ -1,6 +1,7 @@
 import { countedSpan, LEFT, stepWeek, type HostPoint, type ReviewBefore, type ReviewBody, type ReviewEvent, type ReviewLifeos, type ReviewSent, type SlippedRow } from '@shared/work/review'
 import type { SectorKey } from '@shared/work'
 import { errorText } from '@shared/work/ids'
+import { PREP_UPCOMING_MAX_MS } from '@shared/contract-work-prep'
 import type { WorkCtx } from '../modules'
 import { meetingsSlipped, preppedAfter } from './followup'
 import { eventById, eventsBetween, ownAddresses } from './gather/calendar'
@@ -65,12 +66,15 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
 
   let lifeos: ReviewLifeos | null = null
   let beforeLifeos: ReviewBefore['lifeos'] = null
+  let prepped: string[] = []
   const slipped: SlippedRow[] = []
   if (!ctx.lifeos.connected()) left.push(LEFT.lifeos)
   else {
     const owner = ctx.lifeos.owner()
     const lifeosLeft: string[] = []
-    const self = (await ask(ctx, [], '', 'his mail addresses', () => ownAddresses(owner))) ?? new Set<string>()
+    // Without his own addresses he would be "someone else" on every event: no meeting is judged on that read.
+    const own = await ask(ctx, lifeosLeft, LEFT.mail, 'his mail addresses', () => ownAddresses(owner))
+    const self = own ?? new Set<string>()
     const [events, eventsBefore, sent, sentAfter, sentBefore, done, answered, due, waits] = await Promise.all([
       ask(ctx, lifeosLeft, LEFT.calendar, 'the calendar', () => eventsBetween(owner, a.from, a.to, self, asked)),
       ask(ctx, [], '', 'last week’s calendar', () => eventsBetween(owner, asked.before.from, asked.before.to, self, asked)),
@@ -86,11 +90,12 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     ])
     if (!events && !sent && !done && !answered && !due && !waits) left.push(LEFT.lifeos)
     else {
+      if (waits?.part) lifeosLeft.push(LEFT.mailPart)
       left.push(...lifeosLeft)
       lifeos = { events: events ?? [], sent: sent ?? [], done: done ?? [], answered: answered?.rows ?? [], answeredSince: answered?.answeredSince ?? null }
-      slipped.push(...(due ?? []), ...(waits ?? []))
-      // Without the sent mail nobody can say a meeting was not followed up, so none is listed.
-      if (events && sent && sentAfter) {
+      slipped.push(...(due ?? []), ...(waits?.rows ?? []))
+      // Without the sent mail, or his own addresses, nobody can say a meeting was not followed up, so none is listed.
+      if (events && sent && sentAfter && own) {
         // A meeting he put off to "next week" ended in a week that is over: the week that holds now lists it again,
         // judged by the mail sent since it ended.
         // Looked back on, the kept week's own meetings are asked for the same way: its calendar no longer holds one
@@ -98,9 +103,16 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
         const carried = (a.now >= a.from && a.now < a.to ? carriedMeetings(ctx.db, a.now) : (a.carry ?? [])).filter((id) => !events.some((e) => e.id === id))
         const back = (await Promise.all(carried.map((id) => ask(ctx, left, LEFT.calendar, 'a put-off meeting', () => eventById(owner, id, self, asked, true))))).filter((e): e is ReviewEvent => e !== null)
         const earliest = Math.min(a.from, ...back.map((e) => e.endsAt ?? a.from))
-        const sentEarlier = back.length ? ((await ask(ctx, [], '', 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked))) ?? []) : []
-        const prepped = await preppedAfter(ctx, earliest, cut)
-        slipped.push(...meetingsSlipped([...events, ...back], [...sentEarlier, ...sent, ...sentAfter], { from: a.from, cut }, hidden, prepped, new Set(back.map((e) => e.id))))
+        // A read that fails here is the mail of the carried meetings: none of them can be judged, and the line it
+        // leaves keeps a kept one as it last stood.
+        const sentEarlier = back.length ? await ask(ctx, left, LEFT.mail, 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked)) : []
+        const judged = sentEarlier ? [...events, ...back] : events
+        // Prep lists meetings by when they start: it is asked from the first start judged (a meeting that began
+        // before the week, or a put-off one), within the span it answers at most, which ends at the cut.
+        const starts = Math.max(Math.min(a.from, ...judged.map((e) => e.startsAt)), cut - PREP_UPCOMING_MAX_MS)
+        const inPrep = await preppedAfter(ctx, starts, cut)
+        prepped = [...inPrep]
+        slipped.push(...meetingsSlipped(judged, [...(sentEarlier ?? []), ...sent, ...sentAfter], { from: a.from, cut }, hidden, inPrep, new Set(back.map((e) => e.id))))
       }
       // Both or neither: half of last week's facts would turn a failed read into a change in his hours.
       if (eventsBefore && sentBefore) beforeLifeos = { events: spansOf(eventsBefore, asked.before), sent: sentBefore.map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }
@@ -110,6 +122,9 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   const held = await ask(ctx, left, LEFT.held, 'the Outbox', () => heldFacts(ctx, asked, jobs, hidden))
   const threads = await ask(ctx, left, LEFT.threads, 'the threads', () => scanThreads(ctx.db, { from: a.from, to: cut }, asked.before.to > asked.before.from ? asked.before : null, jobs, a.signal))
   const files = await ask(ctx, left, LEFT.files, 'document history', () => fileFacts(ctx, asked, jobs))
+  // A list read in part counts what it read and says the rest: nothing past it is settled or called empty.
+  if (held?.part) left.push(LEFT.heldPart)
+  if (files?.part) left.push(LEFT.filesPart)
   slipped.push(...(held?.slipped ?? []))
 
   const points: HostPoint[] = [...(threads?.points ?? []), ...(held?.points ?? []), ...(files?.points ?? [])].sort((x, y) => x[0] - y[0])
@@ -129,7 +144,10 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     slipped: { at: a.now, rows: slipped },
     shipped: held?.shipped ?? [],
     before: asked.before.to > asked.before.from ? { from: asked.before.from, to: asked.before.to, lifeos: beforeLifeos, points: before } : null,
-    left
+    left,
+    // The meetings this host's Prep calls dealt with: the window drops them whoever's rows it lists, since a job's
+    // Prep pages live on the host that holds its workspace.
+    ...(prepped.length ? { prepped } : {})
   }
   return { body, cost: threads?.cost ?? null }
 }

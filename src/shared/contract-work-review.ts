@@ -96,7 +96,8 @@ export const ReviewBodySchema = z.object({
       points: z.array(PointSchema)
     })
     .nullable(),
-  left: z.array(z.string().max(400))
+  left: z.array(z.string().max(400)),
+  prepped: z.array(id).max(2_000).optional()
 }) satisfies z.ZodType<ReviewBody>
 
 /** A week this host kept, for looking back. */

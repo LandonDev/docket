@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { REVIEW_CAPS } from '@shared/contract-work-review'
 import { LEFT, type ReviewBody } from '@shared/work/review'
-import type { ToolCtx } from '../modules'
+import { WORK_MODULES, type ToolCtx } from '../modules'
 import { NOT_A_WEEK, review, UNKNOWN_ZONE, weekFor } from '.'
 import { NOT_A_PERSON } from './settle'
-import { keptWeek, readyWeek } from './store'
+import { keptWeek, readyWeek, setMark } from './store'
 import { approver, DAY, FRIDAY, held, HOUR, makeRig, MIN, MON, reader, thread, TZ, WEEK, window, type Rig } from './testkit'
 
 /**
@@ -92,6 +92,41 @@ describe('a week’s body', () => {
     const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
     expect(body.left).toEqual([LEFT.mail])
     expect(body.slipped.rows.map((r) => r.key)).toEqual(['task:k2'])
+  })
+})
+
+describe('the meetings judged', () => {
+  it('judges none while his own addresses are unread: he would be "someone else" on every event', async () => {
+    rig.lifeos['mail:accounts'] = new Error('down')
+    rig.lifeos['events:range'] = [{ _id: 'solo', sector: 'purdue', title: 'Focus block', startsAt: MON + 8 * HOUR, endsAt: MON + 9 * HOUR, attendees: [{ address: 'him@example.edu' }] }]
+    const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
+    expect(body.left).toEqual([LEFT.mail])
+    expect(body.slipped.rows.filter((r) => r.ref.kind === 'meeting')).toEqual([])
+  })
+
+  it('asks Prep from the first start judged, and carries what Prep calls done for the window', async () => {
+    // Sunday 11:00 PM to Monday 1:00 AM: it ends in the week and began before it.
+    rig.lifeos['events:range'] = [{ _id: 'late', sector: 'purdue', title: 'Overnight stream', startsAt: WEEK.from - HOUR, endsAt: WEEK.from + HOUR, attendees: [{ address: 'dana@example.edu' }] }]
+    const asked: unknown[] = []
+    WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle(req) { asked.push((req as { params?: unknown }).params); return { handled: true, result: { meetings: [{ eventId: 'late', state: 'after' }] } } } })
+    const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
+    expect(asked).toEqual([{ from: WEEK.from - HOUR, to: FRIDAY }])
+    expect(body.slipped.rows.filter((r) => r.ref.kind === 'meeting')).toEqual([])
+    expect(body.prepped).toEqual(['late'])
+  })
+
+  it('judges no put-off meeting when the mail sent since it ended could not be read', async () => {
+    // Put off last Thursday to this week; it ended before the week began.
+    setMark(rig.db, { key: 'meeting:old', how: 'later', until: WEEK.from }, WEEK.from - 3 * DAY)
+    rig.lifeos['events:get'] = { _id: 'old', sector: 'purdue', title: 'Budget review', startsAt: WEEK.from - 4 * DAY, endsAt: WEEK.from - 4 * DAY + HOUR, attendees: [{ address: 'dana@example.edu' }] }
+    const sent = rig.lifeos['review:sentBetween'] as (a: { from: number }) => unknown
+    rig.lifeos['review:sentBetween'] = (a: { from: number }) => {
+      if (a.from < WEEK.from) throw new Error('timed out')
+      return sent(a)
+    }
+    const body = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
+    expect(body.left).toEqual([LEFT.mail])
+    expect(body.slipped.rows.map((r) => r.key)).not.toContain('meeting:old')
   })
 })
 

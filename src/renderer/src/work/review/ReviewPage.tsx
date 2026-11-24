@@ -183,14 +183,14 @@ export function ReviewPageView({
   // and Slipped's meetings, a held item Shipped's approvals, Slipped's rows and desk time. Threads and document
   // history feed Hours alone and are said there. The first red line on the page carries the one Retry.
   // A host that did not answer says whether what it answered before still stands in the numbers.
-  const over = [...view.errors.map((e) => `${e.name} did not answer: ${e.error.replace(/\.$/, "")}.${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.calendar, LEFT.tasks, LEFT.mail, LEFT.held)];
+  const over = [...view.errors.map((e) => `${e.name} did not answer: ${e.error.replace(/\.$/, "")}.${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.calendar, LEFT.tasks, LEFT.mail, LEFT.mailPart, LEFT.held, LEFT.heldPart)];
   // A row whose source did not answer stands as last known, with its presses waiting: said once, under the red
   // lines, unless a host's own line already says its last answer is shown.
   const keptHosts = new Set(view.errors.filter((e) => e.kept).map((e) => e.environmentId));
   const lastKnown = !!review?.slipped.some((r) => r.unchecked && !keptHosts.has(r.environmentId));
   // A linked host has not answered yet: "nothing" is not known, and nothing has failed.
   const pending = !view.settled;
-  const hours = of(LEFT.threads, LEFT.files);
+  const hours = of(LEFT.threads, LEFT.files, LEFT.filesPart);
   return (
     <div ref={page} data-review-page className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto w-full max-w-2xl p-6">

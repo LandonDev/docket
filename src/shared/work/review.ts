@@ -91,6 +91,22 @@ export function stepWeek(week: ReviewWeek, by: number, tz: string): ReviewWeek {
   return { from: instant(tz, first), to: instant(tz, first + 7 * DAY) }
 }
 
+/**
+ * The week a host names by its first moment, in `tz`. A host cuts weeks in its own zone: Monday midnight in Tokyo is
+ * still Sunday in New York, so the week is found from the middle of the one named, which lies in the same week in
+ * every zone.
+ */
+export const weekNamed = (from: number, tz: string): ReviewWeek => weekOf(from + 3.5 * DAY, tz)
+
+/** The week that holds a civil day ("2026-11-22") in `tz`, read as that day in `tz` and not as UTC's; null for no such day. */
+export function weekOfDay(day: string, tz: string): ReviewWeek | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (!m) return null
+  const local = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)
+  if (Number.isNaN(local) || new Date(local).toISOString().slice(0, 10) !== day) return null
+  return weekOf(instant(tz, local), tz)
+}
+
 /** Whether `[from, to)` is a whole week of `tz`: the only span a host keeps. */
 export const isWeek = (from: number, to: number, tz: string): boolean => {
   const w = weekOf(from, tz)
@@ -157,7 +173,7 @@ export type SlippedRef =
   | { kind: 'meeting'; eventId: string }
 
 export type SlippedRow = {
-  /** `task:<id>`, `mail:<thread>`, `held:<at>:<id>`, `meeting:<event>`: one thing, one key */
+  /** `task:<id>`, `mail:<thread>:<since>`, `held:<at>:<id>`, `meeting:<event>`: one thing, one key */
   key: string
   ref: SlippedRef
   sector: SectorKey | null
@@ -221,6 +237,8 @@ export type ReviewBody = {
   before: ReviewBefore | null
   /** the sources that did not answer, in plain words */
   left: string[]
+  /** the events whose page in this host's Prep holds notes or an outcome: a meeting any host names is followed up */
+  prepped?: string[]
 }
 
 // --- hours ----------------------------------------------------------------------------------
@@ -465,11 +483,91 @@ export function compareWeeks(now: readonly JobHours[], before: readonly JobHours
 /** Whether a body's read could say anything of a slipped row: false when the row's own source did not answer in it. */
 export function uncheckedIn(body: Pick<ReviewBody, 'left' | 'lifeos'>, r: Pick<SlippedRow, 'ref'>): boolean {
   const left = (line: string): boolean => body.left.includes(line)
-  if (r.ref.kind === 'held') return left(LEFT.held)
-  if (!body.lifeos) return true
+  // A list cut at its cap says nothing of a row past the cut: a part read is a read that failed for every row it missed.
+  if (r.ref.kind === 'held') return left(LEFT.held) || left(LEFT.heldPart)
+  if (!body.lifeos || left(LEFT.lifeos)) return true
   if (r.ref.kind === 'task') return left(LEFT.tasks)
-  if (r.ref.kind === 'mail') return left(LEFT.mail)
+  if (r.ref.kind === 'mail') return left(LEFT.mail) || left(LEFT.mailPart)
   return left(LEFT.calendar) || left(LEFT.mail)
+}
+
+/**
+ * A waiting mail's key: its thread and the moment the wait began. A new wait on the same thread (he wrote again) is
+ * another thing, so a kept row never looks open, or is pressed, on the strength of a newer wait.
+ */
+export const waitKey = (threadId: string, since: number): string => `mail:${threadId}:${since}`
+/** A slipped row's one identity across makes: a week kept before mail keys named the wait is matched by its ref. */
+const rowId = (r: Pick<SlippedRow, 'key' | 'ref'>): string => (r.ref.kind === 'mail' ? waitKey(r.ref.threadId, r.ref.since) : r.key)
+
+/** A kept event cut to the moment it was read: what lay past that was a plan then, never measured time. */
+const readTo = (events: readonly ReviewEvent[], at: number): ReviewEvent[] =>
+  events.flatMap((e) => (e.startsAt >= at ? [] : [{ ...e, endsAt: e.endsAt === null ? null : Math.min(e.endsAt, at) }]))
+
+/** `fresh`'s rows with `kept`'s added where `fresh` has none of the same key. */
+function union<T>(fresh: readonly T[], kept: readonly T[], key: (x: T) => string): T[] {
+  const have = new Set(fresh.map(key))
+  return [...fresh, ...kept.filter((x) => !have.has(key(x)))]
+}
+
+/** `fresh`'s points with each of `kept`'s that it lacks, the job found again by workspace (the two may list jobs apart). */
+function unionPoints(fresh: ReviewBody, kept: ReviewBody, f: readonly HostPoint[], k: readonly HostPoint[]): HostPoint[] {
+  const index = new Map(fresh.jobs.map((j, i) => [j.workspaceId, i]))
+  const counts = new Map<string, number>()
+  const id = (p: HostPoint): string => `${p[0]}:${p[1]}:${p[2]}`
+  for (const p of f) counts.set(id(p), (counts.get(id(p)) ?? 0) + 1)
+  const out = [...f]
+  for (const [at, job, kind] of k) {
+    const i = index.get(kept.jobs[job]?.workspaceId ?? '')
+    if (i === undefined) continue
+    const p: HostPoint = [at, i, kind]
+    const n = counts.get(id(p)) ?? 0
+    // Each kept point is matched to one fresh point of the same value at most, so two edits in one moment stay two.
+    if (n > 0) counts.set(id(p), n - 1)
+    else out.push(p)
+  }
+  return out.sort((a, b) => a[0] - b[0])
+}
+
+/**
+ * The facts of `kept` that a later read of the same week lost. Every fact carries a time already past when it was
+ * kept, so a read that failed, came back cut at its cap, or no longer finds a thing (a decided item past the
+ * Outbox's newest 500, a document closed) must not lower what was counted: desk points, run time and what shipped on
+ * this host are joined, never replaced. LifeOS's facts are taken from the fresh read where its source answered, and
+ * from the kept one where it did not: a calendar may change after a read (a meeting cancelled), so it is the one
+ * list replaced and not joined, and a kept calendar is cut to the moment it was read.
+ */
+function keepFacts(kept: ReviewBody, fresh: ReviewBody): ReviewBody {
+  const failed = (line: string): boolean => fresh.left.includes(line)
+  const was = kept.lifeos ? { ...kept.lifeos, events: kept.over ? kept.lifeos.events : readTo(kept.lifeos.events, kept.madeAt) } : null
+  let lifeos = fresh.lifeos
+  if (!lifeos) lifeos = was
+  else if (was) {
+    lifeos = {
+      events: failed(LEFT.calendar) ? was.events : lifeos.events,
+      sent: union(lifeos.sent, was.sent, (m) => m.id),
+      done: union(lifeos.done, was.done, (t) => t.id),
+      answered: union(lifeos.answered, was.answered, (a) => `${a.threadId}:${a.at}`),
+      answeredSince: lifeos.answeredSince ?? was.answeredSince
+    }
+  }
+  const ran = new Map(fresh.ran)
+  const index = new Map(fresh.jobs.map((j, i) => [j.workspaceId, i]))
+  for (const [job, ms] of kept.ran) {
+    const i = index.get(kept.jobs[job]?.workspaceId ?? '')
+    if (i !== undefined) ran.set(i, Math.max(ran.get(i) ?? 0, ms))
+  }
+  const before =
+    fresh.before && kept.before && kept.before.from === fresh.before.from
+      ? { ...fresh.before, points: unionPoints(fresh, kept, fresh.before.points, kept.before.points.filter((p) => p[0] < fresh.before!.to)) }
+      : fresh.before
+  return {
+    ...fresh,
+    lifeos,
+    points: unionPoints(fresh, kept, fresh.points, kept.points),
+    ran: [...ran].sort((a, b) => a[0] - b[0]),
+    shipped: union(fresh.shipped, kept.shipped.filter((r) => !r.workspaceId || index.has(r.workspaceId)), (r) => r.key),
+    before
+  }
 }
 
 /**
@@ -484,24 +582,30 @@ export function uncheckedIn(body: Pick<ReviewBody, 'left' | 'lifeos'>, r: Pick<S
  *    make: it shows what is still open from it, as of now.
  * 3. Each kept slipped row is checked against what is open now: one dealt
  *    with since reads `open: false`. A row whose source did not answer this
- *    time (`left`) is not checked: it keeps what was last known of it, so a
- *    read that failed never makes a thing look dealt with.
+ *    time, or came back cut at its cap (`left`), is not checked: it keeps what
+ *    was last known of it, so a read that failed never makes a thing look
+ *    dealt with.
+ * 4. Facts already kept are never lowered by a later read (`keepFacts`): a
+ *    read that failed or was cut is said in `left`, and the figures stand on
+ *    what was counted before as well as what was read now.
  *
  * `fresh.slipped.rows` is what had slipped by the week's end and is open now.
  */
 export function mergeKept(kept: ReviewBody | null, fresh: ReviewBody, now: number): ReviewBody {
+  if (!kept || kept.from !== fresh.from) return fresh
   const unknown = (r: SlippedRow): boolean => uncheckedIn(fresh, r)
+  const facts = keepFacts(kept, fresh)
   if (now < fresh.to) {
     // Made again inside the week: the fresh body stands, but a read that failed must not wipe what the last make
     // knew, or Monday has nothing to look back on. The rows it could not check ride along as they last stood.
-    if (!kept || fresh.left.length === 0) return fresh
-    const have = new Set(fresh.slipped.rows.map((r) => r.key))
-    const carried = kept.slipped.rows.filter((r) => unknown(r) && !have.has(r.key))
-    return carried.length === 0 ? fresh : { ...fresh, slipped: { at: fresh.slipped.at, rows: [...fresh.slipped.rows, ...carried] } }
+    if (fresh.left.length === 0) return facts
+    const have = new Set(fresh.slipped.rows.map(rowId))
+    const carried = kept.slipped.rows.filter((r) => unknown(r) && !have.has(rowId(r)))
+    return carried.length === 0 ? facts : { ...facts, slipped: { at: fresh.slipped.at, rows: [...fresh.slipped.rows, ...carried] } }
   }
-  if (!kept || kept.slipped.at >= kept.to) return fresh
-  const open = new Set(fresh.slipped.rows.map((r) => r.key))
-  return { ...fresh, by: kept.by, slipped: { at: kept.slipped.at, rows: kept.slipped.rows.map((r) => (unknown(r) ? r : { ...r, open: open.has(r.key) })) } }
+  if (kept.slipped.at >= kept.to) return facts
+  const open = new Set(fresh.slipped.rows.map(rowId))
+  return { ...facts, by: kept.by, slipped: { at: kept.slipped.at, rows: kept.slipped.rows.map((r) => (unknown(r) ? r : { ...r, open: open.has(rowId(r)) })) } }
 }
 
 // --- one review from every host's part ------------------------------------------------------
@@ -547,6 +651,16 @@ export type MergedReview = {
 /** The name a sector's job goes by when no workspace of it is on a host that answered. */
 export type SectorNames = (sector: SectorKey) => string
 
+/**
+ * The job a host's row is filed under: its workspace's, when that workspace is of the row's own sector, else its
+ * sector's. A held item can name the workspace it was made in and a sector it has since been moved to: the sector is
+ * the item's own, so it wins, and one job's thing is never shown under another.
+ */
+export function rowJob(body: Pick<ReviewBody, 'host' | 'jobs'>, r: { workspaceId: string | null; sector: SectorKey | null }): JobKey | null {
+  const j = r.workspaceId ? body.jobs.find((x) => x.workspaceId === r.workspaceId && (!r.sector || x.sector === r.sector)) : undefined
+  return j ? jobKey(body.host, j) : r.sector
+}
+
 const placePoints = (part: ReviewPart, points: readonly HostPoint[]): Point[] =>
   points.flatMap(([at, job, kind]) => {
     const j = part.body.jobs[job]
@@ -575,14 +689,12 @@ export function mergeReview(
 ): MergedReview | null {
   const first = parts[0]
   if (!first) return null
-  // LifeOS's facts from a part that answered this time before one kept from an earlier answer, the home first in each.
+  // LifeOS's facts from a part that answered this time before one kept from an earlier answer; among those, the one
+  // whose own LifeOS reads failed least (a box whose calendar failed does not hide the Mac's whole read); the home
+  // first in each.
   const holds = (p: ReviewPart): boolean => !!p.body.lifeos
-  const source =
-    parts.find((p) => !p.stale && p.environmentId === opts.home && holds(p)) ??
-    parts.find((p) => !p.stale && holds(p)) ??
-    parts.find((p) => p.environmentId === opts.home && holds(p)) ??
-    parts.find(holds) ??
-    null
+  const rank = (p: ReviewPart): number => (p.stale ? 100 : 0) + lifeosLines(p) * 2 + (p.environmentId === opts.home ? 0 : 1)
+  const source = parts.filter(holds).reduce<ReviewPart | null>((best, p) => (!best || rank(p) < rank(best) ? p : best), null)
   const lifeos = source?.body.lifeos ?? null
 
   const jobs = new Map<JobKey, MergedJob>()
@@ -622,8 +734,11 @@ export function mergeReview(
   // A week still running is counted to the moment its facts were read, not to the window's own clock: the page
   // says "So far, made 2:02 PM", the span of the week before was cut there, and a later re-merge of the same
   // answers must not count a meeting on past it.
-  const read = (source ?? first).body.madeAt
-  const span: Span = { from: first.body.from, to: now >= first.body.to ? first.body.to : Math.max(Math.min(now, read), first.body.from) }
+  // A part made while its week ran is counted to its own read even once the week is over by the clock: Friday's
+  // part read on Monday, before Monday's answer lands, must not count the weekend's plans as measured time.
+  const asOf = (source ?? first).body
+  const read = asOf.madeAt
+  const span: Span = { from: first.body.from, to: asOf.over ? first.body.to : Math.max(Math.min(now, read, first.body.to), first.body.from) }
   const events = (lifeos?.events ?? []).flatMap((e) => {
     const s = countedSpan(e)
     return s ? [{ ...s, job: e.sector }] : []
@@ -659,7 +774,7 @@ export function mergeReview(
       points: past,
       ran: []
     })
-    compare = compareWeeks(hours, was, now < first.body.to)
+    compare = compareWeeks(hours, was, !asOf.over)
   }
 
   const answersKept = !!lifeos && lifeos.answeredSince !== null && lifeos.answeredSince <= first.body.from
@@ -675,19 +790,23 @@ export function mergeReview(
   }
   const slipped: Placed<SlippedRow>[] = []
   const has = new Set<string>()
+  // A meeting followed up in Prep on any host: its page lives with the job's workspace, which may not be on the host
+  // whose rows are listed. In a week still running it is gone; in one that is over it reads as dealt with since.
+  const prepped = new Set(parts.flatMap((p) => p.body.prepped ?? []))
+  const over = now >= first.body.to
   for (const part of parts) {
     for (const r of part.body.shipped) {
-      const j = part.body.jobs.find((x) => x.workspaceId === r.workspaceId)
-      const job = j ? jobKey(part.body.host, j) : r.sector
+      const job = rowJob(part.body, r)
       if (job && jobs.has(job)) shipped.push({ ...r, key: `${part.environmentId}:${r.key}`, job, environmentId: part.environmentId })
     }
     for (const r of slippedFrom(part)) {
-      const j = r.workspaceId ? part.body.jobs.find((x) => x.workspaceId === r.workspaceId) : null
-      const job = j ? jobKey(part.body.host, j) : r.sector
+      const job = rowJob(part.body, r)
       const key = r.ref.kind === 'held' && r.ref.ref.at === 'host' ? `${part.environmentId}:${r.key}` : r.key
       if (!job || !jobs.has(job) || has.has(key)) continue
       has.add(key)
-      slipped.push({ ...r, key, job, environmentId: part.environmentId, ...(part.stale || uncheckedIn(part.body, r) ? { unchecked: true } : {}) })
+      const followed = r.ref.kind === 'meeting' && prepped.has(r.ref.eventId)
+      if (followed && !over) continue
+      slipped.push({ ...r, key, job, environmentId: part.environmentId, ...(followed ? { open: false } : part.stale || uncheckedIn(part.body, r) ? { unchecked: true } : {}) })
     }
   }
   shipped.sort((a, b) => b.at - a.at)
@@ -711,11 +830,12 @@ export function mergeReview(
     answersKept,
     lifeosFrom: source?.environmentId ?? null,
     left,
+    // An answer kept from before is no read of now: "nothing" stands only on LifeOS's facts read this time.
     known: {
-      calendar: !!lifeos && !missing(LEFT.calendar),
-      desk: whole && !!lifeos && !missing(LEFT.threads, LEFT.held, LEFT.files, LEFT.mail),
-      shipped: whole && !!lifeos && !missing(LEFT.mail, LEFT.tasks, LEFT.held),
-      slipped: whole && !!lifeos && !missing(LEFT.tasks, LEFT.mail, LEFT.calendar, LEFT.held)
+      calendar: !!lifeos && !source?.stale && !missing(LEFT.lifeos, LEFT.calendar),
+      desk: whole && !!lifeos && !missing(LEFT.lifeos, LEFT.threads, LEFT.held, LEFT.heldPart, LEFT.files, LEFT.filesPart, LEFT.mail),
+      shipped: whole && !!lifeos && !missing(LEFT.lifeos, LEFT.mail, LEFT.tasks, LEFT.held, LEFT.heldPart),
+      slipped: whole && !!lifeos && !missing(LEFT.lifeos, LEFT.tasks, LEFT.mail, LEFT.mailPart, LEFT.calendar, LEFT.held, LEFT.heldPart)
     }
   }
 }
@@ -728,9 +848,16 @@ export const LEFT = {
   mail: 'Mail did not answer.',
   held: 'Held items could not be read.',
   threads: 'Threads could not be read, so desk time may be short.',
-  files: 'Document history did not answer, so document edits are not counted.'
+  files: 'Document history did not answer, so document edits are not counted.',
+  // A list that came back cut at its cap, or a source that answered for some of its things and not the rest: what was
+  // read counts, and nothing past it is called settled or empty.
+  mailPart: 'Not every waiting mail could be read.',
+  heldPart: 'Not every held item could be read, so desk time may be short.',
+  filesPart: 'Not every document’s history could be read, so document edits may be short.'
 } as const
-const LIFEOS_LEFT = new Set<string>([LEFT.lifeos, LEFT.calendar, LEFT.tasks, LEFT.mail])
+const LIFEOS_LEFT = new Set<string>([LEFT.lifeos, LEFT.calendar, LEFT.tasks, LEFT.mail, LEFT.mailPart])
+/** The lines LifeOS's own reads leave, each of which a host whose read answered it does not repeat. */
+const lifeosLines = (p: ReviewPart): number => p.body.left.filter((l) => LIFEOS_LEFT.has(l)).length
 
 /** A host that did not answer: "The Mac is off. Its threads and held items are not counted." */
 export const hostOffWords = (name: string): string => `${name} is off. Its threads and held items are not counted.`

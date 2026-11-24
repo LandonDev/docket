@@ -4,7 +4,7 @@ import { errorText } from '@shared/work/ids'
 import { knownZone, weekOf, weekWords, type ReviewBody } from '@shared/work/review'
 import { WORK_MODULES, type RoutineJob, type WorkCtx } from '../modules'
 import { HOST } from './gather/held'
-import { readyWeek, setSeeded, setupOf } from './store'
+import { routineMade, setSeeded, setupOf } from './store'
 
 /**
  * Friday (docs/agents/work-review.md "Friday"): the review is made by a routine that runs a host job, with no model
@@ -55,7 +55,10 @@ let seeding: Promise<void> | null = null
  */
 export function seedRoutine(ctx: WorkCtx, tz?: string, now = Date.now()): Promise<void> {
   if (setupOf(ctx.db).seededAt !== null) return Promise.resolve()
-  seeding ??= (async () => {
+  if (seeding) return seeding
+  // Kept and let go in two steps: a make that returns before its first wait (no linked workspace yet) would clear a
+  // shared promise in its own `finally` before it was stored, and every later try would reuse the finished one.
+  const run = (async () => {
     try {
       const rows = ctx.db.prepare(`SELECT id, sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL AND sector != '' ORDER BY created_at, id`).all() as { id: string; sector: string }[]
       const home = rows.find((r) => r.sector === LIFE) ?? rows[0]
@@ -66,11 +69,13 @@ export function seedRoutine(ctx: WorkCtx, tz?: string, now = Date.now()): Promis
       setSeeded(ctx.db, now, made.id, home.id)
     } catch (err) {
       ctx.log(`review: the weekly routine was not made: ${errorText(err)}`)
-    } finally {
-      seeding = null
     }
   })()
-  return seeding
+  seeding = run
+  void run.finally(() => {
+    if (seeding === run) seeding = null
+  })
+  return run
 }
 
 /** The routine as the page's menu names it; null once he removed it, or before one was made. */
@@ -108,10 +113,11 @@ export function makeJob(make: (ctx: WorkCtx, ask: { from: number; to: number; tz
     async run(ctx, { firedAt }) {
       const tz = await hostZone(ctx)
       const week = weekOf(firedAt, tz)
-      const told = readyWeek(ctx.db)?.from === week.from
+      // Told once a week: the routine made this week before, whether or not he has opened it since.
+      const told = routineMade(ctx.db, week.from)
       const body = await make(ctx, { ...week, tz, by: 'routine' }, firedAt)
       ctx.push({ push: 'work.review', from: week.from, madeAt: body.madeAt, seen: false })
-      // Told once a week: a second run of the same week (Run now) makes it again and tells nobody.
+      // A second run of the same week (Run now) makes it again and tells nobody, and a week he opened stays seen.
       if (!told) ctx.tell({ kind: READY_TELL, workspaceId: null, title: 'Your week is ready to review', detail: weekWords(week, tz), key: readyKey(week.from), open: { place: 'review', at: String(week.from) } })
       return { words: `${weekWords(week, tz)}: ${slippedWords(body).toLowerCase()}`, open: { place: 'review', at: week.from } }
     }

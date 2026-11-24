@@ -14,6 +14,8 @@ import { doneBetween, pastDue } from './tasks'
 let rig: Rig
 beforeEach(() => {
   rig = makeRig()
+  // Each made-up LifeOS document is of the sector of the workspace it is open in.
+  rig.lifeos['docs:get'] = (a: { id: string }) => ({ sector: a.id === 'd2' ? 'cosmic' : 'purdue' })
 })
 afterEach(() => rig.close())
 
@@ -30,11 +32,18 @@ describe('the calendar', () => {
     expect(e).toMatchObject({ id: 'e1', people: ['Dana Reyes', 'sam@example.edu'], others: 2, addresses: ['dana@example.edu', 'sam@example.edu'], declined: true, hidden: true, endsAt: MON + 15 * HOUR })
   })
 
-  it('asks a day early and keeps what still ran into the span', async () => {
-    rig.lifeos['events:range'] = [event('ended', { startsAt: WEEK.from - 3 * HOUR, endsAt: WEEK.from - HOUR }), event('ran-in', { startsAt: WEEK.from - HOUR, endsAt: WEEK.from + HOUR }), event('in'), event('cosmic', { sector: 'cosmic' })]
+  it('asks a week early and keeps what still ran into the span, a timed event of days included', async () => {
+    rig.lifeos['events:range'] = [
+      event('ended', { startsAt: WEEK.from - 3 * HOUR, endsAt: WEEK.from - HOUR }),
+      event('ran-in', { startsAt: WEEK.from - HOUR, endsAt: WEEK.from + HOUR }),
+      // Saturday to Monday noon: begun more than a day before the week, and still its Monday morning.
+      event('trip', { startsAt: WEEK.from - 2 * DAY, endsAt: WEEK.from + 12 * HOUR }),
+      event('in'),
+      event('cosmic', { sector: 'cosmic' })
+    ]
     const got = await eventsBetween(owner(), WEEK.from, WEEK.to, new Set(), asked())
-    expect(rig.calls.at(-1)).toEqual({ fn: 'events:range', args: { from: WEEK.from - DAY, to: WEEK.to } })
-    expect(got.map((e) => e.id)).toEqual(['ran-in', 'in', 'cosmic'])
+    expect(rig.calls.at(-1)).toEqual({ fn: 'events:range', args: { from: WEEK.from - 7 * DAY, to: WEEK.to } })
+    expect(got.map((e) => e.id)).toEqual(['ran-in', 'trip', 'in', 'cosmic'])
     // A thread's tool reads its own sector alone.
     expect((await eventsBetween(owner(), WEEK.from, WEEK.to, new Set(), asked({ only: 'cosmic' }))).map((e) => e.id)).toEqual(['cosmic'])
     expect(await eventsBetween(owner(), WEEK.from, WEEK.to, new Set(), asked({ only: null }))).toEqual([])
@@ -73,9 +82,26 @@ describe('mail', () => {
     const wait = (id: string, dueAt: number, sector = 'hypixel') => ({ _id: id, subject: 'Winter video schedule', sector, waiting: { since: MON - 4 * DAY, dueAt, to: [{ name: 'Sam Lindqvist', address: 'sam@example.com' }] } })
     rig.lifeos['mailWaits:list'] = (args: { paginationOpts: { cursor: string | null } }) => (args.paginationOpts.cursor === null ? { page: [wait('t1', MON + DAY), wait('late', WEEK.to + DAY)], isDone: false, continueCursor: 'c2' } : { page: [wait('t2', MON + 2 * DAY, 'purdue')], isDone: true, continueCursor: '' })
     const got = await waitingPast(owner(), WEEK.to, asked())
-    expect(got.map((r) => r.key)).toEqual(['mail:t1', 'mail:t2'])
-    expect(got[0]).toEqual({ key: 'mail:t1', ref: { kind: 'mail', threadId: 't1', since: MON - 4 * DAY }, sector: 'hypixel', workspaceId: null, title: 'Winter video schedule', at: MON - 4 * DAY, people: ['Sam Lindqvist'], others: 1, open: true })
-    expect((await waitingPast(owner(), WEEK.to, asked({ only: 'purdue' }))).map((r) => r.key)).toEqual(['mail:t2'])
+    const since = MON - 4 * DAY
+    expect(got.part).toBe(false)
+    expect(got.rows.map((r) => r.key)).toEqual([`mail:t1:${since}`, `mail:t2:${since}`])
+    expect(got.rows[0]).toEqual({ key: `mail:t1:${since}`, ref: { kind: 'mail', threadId: 't1', since }, sector: 'hypixel', workspaceId: null, title: 'Winter video schedule', at: since, people: ['Sam Lindqvist'], others: 1, open: true })
+    expect((await waitingPast(owner(), WEEK.to, asked({ only: 'purdue' }))).rows.map((r) => r.key)).toEqual([`mail:t2:${since}`])
+  })
+
+  it('says it read in part when the last page it reads is not the end', async () => {
+    rig.lifeos['mailWaits:list'] = (args: { paginationOpts: { cursor: string | null } }) => ({ page: [{ _id: `t-${args.paginationOpts.cursor ?? 0}`, sector: 'purdue', waiting: { since: MON, dueAt: MON + DAY } }], isDone: false, continueCursor: `${Number(args.paginationOpts.cursor ?? 0) + 1}` })
+    const got = await waitingPast(owner(), WEEK.to, asked())
+    expect(got.rows).toHaveLength(3)
+    expect(got.part).toBe(true)
+  })
+
+  it('keys a wait by its thread and when it began: a newer wait on the thread is another row', async () => {
+    const wait = (since: number) => ({ _id: 't1', sector: 'purdue', waiting: { since, dueAt: since + DAY } })
+    rig.lifeos['mailWaits:list'] = { page: [wait(MON)], isDone: true, continueCursor: '' }
+    const first = (await waitingPast(owner(), WEEK.to, asked())).rows[0]!.key
+    rig.lifeos['mailWaits:list'] = { page: [wait(MON + 2 * DAY)], isDone: true, continueCursor: '' }
+    expect((await waitingPast(owner(), WEEK.to, asked())).rows[0]!.key).not.toBe(first)
   })
 })
 
@@ -121,6 +147,32 @@ describe('held items', () => {
     const got = await heldFacts(rig.ctx, asked({ only: 'cosmic' }), jobsOf(rig.db, { workspaceId: 'w-cosmic' }), new Set())
     expect(got.slipped.map((r) => r.key)).toEqual(['held:host:c'])
   })
+
+  it('files an item by its own sector when it names another job’s workspace, so Purdue’s tool never sees a Cosmic item', async () => {
+    // Made in Purdue's workspace, its LifeOS item since moved to Cosmic.
+    const moved = { workspaceId: 'w-purdue', sector: 'cosmic' as const, summary: 'Post the patch notes' }
+    rig.outbox.waiting = [held('moved', { createdAt: MON, ...moved })]
+    rig.outbox.decided = [held('pressed', { state: 'sent', decidedBy: 'owner', decidedAt: MON + HOUR, ...moved })]
+    const purdue = await heldFacts(rig.ctx, asked({ only: 'purdue' }), jobsOf(rig.db, { workspaceId: 'w-purdue' }), new Set())
+    expect(purdue).toMatchObject({ slipped: [], shipped: [], points: [] })
+    // On the page it is Cosmic's: its point counts for Cosmic's job.
+    const all = await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())
+    expect(all.points).toEqual([[MON + HOUR, 1, 'pressed']])
+  })
+
+  it('says it read in part when a list comes back full at its cap', async () => {
+    const many = (n: number, o: Record<string, unknown>) => Array.from({ length: n }, (_, i) => held(`h${i}`, o))
+    expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(false)
+    rig.outbox.waiting = many(500, { createdAt: MON })
+    expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(true)
+    rig.outbox.waiting = []
+    // The newest 500 decided, all after the span began: older ones of the span may be past the cut.
+    rig.outbox.decided = many(500, { state: 'sent', decidedBy: 'owner', decidedAt: MON + HOUR, updatedAt: MON + HOUR })
+    expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(true)
+    // One of them reaches back before the span: the list holds the whole span.
+    rig.outbox.decided.push(held('old', { state: 'sent', decidedBy: 'owner', decidedAt: MON - 30 * DAY, updatedAt: MON - 30 * DAY }))
+    expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(false)
+  })
 })
 
 describe('documents he changed', () => {
@@ -133,8 +185,9 @@ describe('documents he changed', () => {
     const got = await fileFacts(rig.ctx, asked(), jobsOf(rig.db))
     expect(got.points).toEqual([[MON + HOUR, 0, 'edited']])
     expect(got.before).toEqual([[MON - 6 * DAY, 0, 'edited']])
-    // The stale document was never asked about; the one that failed cost only its own edits.
+    // The stale document was never asked about; the one that failed cost only its own edits, and says edits may be short.
     expect(rig.moduleCalls.map((c) => (c.params as { source: { id: string } }).source.id).sort()).toEqual(['d1', 'd2'])
+    expect(got.part).toBe(true)
   })
 
   it('asks about 200 documents at most, the newest first, and says so when history answers for none', async () => {
@@ -142,8 +195,28 @@ describe('documents he changed', () => {
     await expect(fileFacts(rig.ctx, asked(), jobsOf(rig.db))).rejects.toThrow('Document history did not answer')
     expect(rig.moduleCalls).toHaveLength(DOCS_MOST)
     expect((rig.moduleCalls[0]!.params as { source: { id: string } }).source.id).toBe(`d${DOCS_MOST + 29}`)
+    // Past the cap with every one read: what was read counts, and the rest is said.
+    for (let i = 0; i < DOCS_MOST + 30; i++) rig.versions.set(JSON.stringify({ at: 'lifeos', table: 'docs', id: `d${i}` }), [])
+    expect((await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).part).toBe(true)
     rig.items.clear()
-    expect(await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).toEqual({ points: [], before: [] })
+    expect(await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).toEqual({ points: [], before: [], part: false })
+  })
+
+  it('files a document by its own sector, never by the tab it was open in', async () => {
+    rig.lifeos['docs:get'] = (a: { id: string }) => ({ sector: a.id === 'cosmic-doc' ? 'cosmic' : 'purdue' })
+    rig.db.prepare(`UPDATE workspaces SET path = ? WHERE id = ?`).run('/work/cosmic', 'w-cosmic')
+    const file = { at: 'file', host: 'box', path: '/work/cosmic/Notes/patch.tcdoc' } as const
+    // A Cosmic LifeOS document and a .tcdoc in Cosmic's folder, both open in a Purdue thread's canvas.
+    rig.items.set('w-purdue', [docItem('cosmic-doc', 'w-purdue', MON + HOUR), { ...docItem('f', 'w-purdue', MON + HOUR), source: file }])
+    rig.versions.set(JSON.stringify({ at: 'lifeos', table: 'docs', id: 'cosmic-doc' }), [{ at: MON + HOUR, by: ['owner'] }])
+    rig.versions.set(JSON.stringify(file), [{ at: MON + 2 * HOUR, by: ['owner'] }])
+    // Purdue's tool counts neither.
+    expect((await fileFacts(rig.ctx, asked({ only: 'purdue' }), jobsOf(rig.db, { workspaceId: 'w-purdue' }))).points).toEqual([])
+    // The page counts both under Cosmic.
+    expect((await fileFacts(rig.ctx, asked(), jobsOf(rig.db))).points.sort((a, b) => a[0] - b[0])).toEqual([
+      [MON + HOUR, 1, 'edited'],
+      [MON + 2 * HOUR, 1, 'edited']
+    ])
   })
 })
 

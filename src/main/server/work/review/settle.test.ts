@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SlippedRef } from '@shared/work/review'
 import { review } from '.'
 import { LEFT } from '@shared/work/review'
-import { NO_JOB_HERE, NOT_A_PERSON, OPEN_IN_OUTBOX, settle, undo, UNDO_GONE, undoCount } from './settle'
+import { NO_JOB_HERE, NOT_A_PERSON, OPEN_IN_OUTBOX, settle, undo, UNDO_GONE, UNDO_MOVED, undoCount, WAIT_CHANGED } from './settle'
 import { hiddenKeys } from './store'
 import { approver, DAY, HOUR, makeRig, MON, reader, thread, TZ, WEEK, window, type Rig } from './testkit'
 
@@ -14,7 +14,19 @@ beforeEach(() => {
   for (const fn of ['tasks:complete', 'tasks:update', 'tasks:drop', 'tasks:reopen', 'mailWaits:putBack']) rig.lifeos[fn] = null
   rig.lifeos['mailWaits:putOff'] = { state: 'due', dueAt: MON + DAY, since: MON - DAY }
   rig.lifeos['mailWaits:dismiss'] = { state: 'due', dueAt: MON + DAY, since: MON - DAY }
+  rig.lifeos['mailWaits:get'] = { since: MON - DAY, dueAt: MON + DAY }
 })
+
+/** A task LifeOS holds, its due date moved by each update as LifeOS would. */
+const liveTask = (dueAt: number): { set: (at: number) => void } => {
+  let due = dueAt
+  rig.lifeos['tasks:get'] = () => ({ task: { dueAt: due } })
+  rig.lifeos['tasks:update'] = (a: { patch: { dueAt: number } }) => {
+    due = a.patch.dueAt
+    return null
+  }
+  return { set: (at) => void (due = at) }
+}
 afterEach(() => rig.close())
 
 /** Friday afternoon of the week: next week begins the Monday after. */
@@ -36,6 +48,7 @@ describe('a task', () => {
   })
 
   it('Next week moves its due date to Monday at nine, and Undo puts the old date back', async () => {
+    liveTask(MON + DAY)
     const { undo: token } = await press(task, 'later')
     expect(everything().filter(([fn]) => fn !== 'tasks:get')).toEqual([['tasks:update', { id: 'k1', patch: { dueAt: NEXT_MONDAY_9 } }]])
     await undo(window, token!, NOW)
@@ -44,10 +57,25 @@ describe('a task', () => {
 
   it('Undo puts back the date the press replaced, not the one a kept week remembers', async () => {
     // The kept row says Tuesday; he has since moved the task to Saturday in Tasks.
-    rig.lifeos['tasks:get'] = { task: { dueAt: MON + 5 * DAY } }
+    liveTask(MON + 5 * DAY)
     const { undo: token } = await press(task, 'later')
     await undo(window, token!, NOW)
     expect(everything().at(-1)).toEqual(['tasks:update', { id: 'k1', patch: { dueAt: MON + 5 * DAY } }])
+  })
+
+  it('Undo never writes over a date he set after the press', async () => {
+    const live = liveTask(MON + DAY)
+    const { undo: token } = await press(task, 'later')
+    // He moves it again in Tasks, then presses Undo on the toast.
+    live.set(WEEK.to + 3 * DAY)
+    await expect(undo(window, token!, NOW)).rejects.toThrow(UNDO_MOVED)
+    expect(everything().filter(([fn]) => fn === 'tasks:update')).toEqual([['tasks:update', { id: 'k1', patch: { dueAt: NEXT_MONDAY_9 } }]])
+  })
+
+  it('Next week with the task unread offers no Undo: nothing is known to put back', async () => {
+    rig.lifeos['tasks:get'] = new Error('down')
+    expect(await press(task, 'later')).toEqual({ undo: null })
+    expect(everything().filter(([fn]) => fn === 'tasks:update')).toEqual([['tasks:update', { id: 'k1', patch: { dueAt: NEXT_MONDAY_9 } }]])
   })
 
   it('Drop drops it with the reason, and Undo reopens it', async () => {
@@ -61,11 +89,23 @@ describe('a task', () => {
 describe('a waiting mail', () => {
   it('Nudge starts the mail pillar’s own nudge in the job’s workspace on this host: a draft, with nothing to take back', async () => {
     expect(await press(mail, 'now', window, 'cosmic')).toEqual({ undo: null, sessionId: 'nudge-thread' })
-    expect(everything()).toEqual([['work.mail.nudge', { workspaceId: 'w-cosmic', threadId: 't1' }]])
+    expect(everything()).toEqual([
+      ['mailWaits:get', { threadId: 't1' }],
+      ['work.mail.nudge', { workspaceId: 'w-cosmic', threadId: 't1' }]
+    ])
     // The call is his own, as he pressed it: the mail pillar checks the caller again.
     expect(rig.moduleCalls[0]!.by).toBe(window)
     await expect(press(mail, 'now', window, 'hypixel')).rejects.toThrow(NO_JOB_HERE)
     await expect(press(mail, 'now')).rejects.toThrow(NO_JOB_HERE)
+  })
+
+  it('a row of an older wait drafts nothing, and the press says the wait changed', async () => {
+    // He wrote again on the thread: the wait that stands began after the row's.
+    rig.lifeos['mailWaits:get'] = { since: MON + 2 * DAY, dueAt: MON + 4 * DAY }
+    await expect(press(mail, 'now', window, 'cosmic')).rejects.toThrow(WAIT_CHANGED)
+    rig.lifeos['mailWaits:get'] = null
+    await expect(press(mail, 'now', window, 'cosmic')).rejects.toThrow(WAIT_CHANGED)
+    expect(rig.moduleCalls.map((c) => c.method)).not.toContain('work.mail.nudge')
   })
 
   it('Next week puts the wait off to Monday at nine, and Undo puts it back as it was', async () => {
@@ -75,12 +115,14 @@ describe('a waiting mail', () => {
     expect(everything().at(-1)).toEqual(['mailWaits:putBack', { threadId: 't1', state: 'due', dueAt: MON + DAY, since: MON - DAY }])
   })
 
-  it('Stop waiting dismisses the wait; a wait that had moved on answers with nothing to take back', async () => {
+  it('Stop waiting dismisses the wait; a wait that had moved on is said, never toasted as done', async () => {
     const { undo: token } = await press(mail, 'drop')
     expect(everything()).toEqual([['mailWaits:dismiss', { threadId: 't1', since: MON - DAY }]])
     expect(token).not.toBeNull()
     rig.lifeos['mailWaits:dismiss'] = null
-    expect(await press(mail, 'drop')).toEqual({ undo: null })
+    await expect(press(mail, 'drop')).rejects.toThrow(WAIT_CHANGED)
+    rig.lifeos['mailWaits:putOff'] = null
+    await expect(press(mail, 'later')).rejects.toThrow(WAIT_CHANGED)
   })
 })
 

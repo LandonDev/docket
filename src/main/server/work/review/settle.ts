@@ -20,6 +20,10 @@ export const NOT_A_PERSON = 'Only you can settle what slipped: a thread cannot.'
 export const OPEN_IN_OUTBOX = 'Open it in the Outbox: the review never sends a held item.'
 export const NO_JOB_HERE = 'No workspace of that job is on this host'
 export const UNDO_GONE = 'That can no longer be taken back here.'
+/** A task moved again since the press: Undo would write over his newer date. */
+export const UNDO_MOVED = 'It has changed since, so nothing was put back.'
+/** A waiting mail whose wait is no longer the one on the row: he wrote again, or it was settled elsewhere. */
+export const WAIT_CHANGED = 'That mail’s wait has changed since the review was read. Look at it again.'
 const DROP_REASON = 'Dropped in the weekly review'
 
 const HOUR = 60 * 60_000
@@ -89,28 +93,42 @@ export async function settle(ctx: WorkCtx, by: Caller, p: { row: SlippedRef; how
     }
     if (how === 'later') {
       // Undo puts back the date this press replaced, read now: a kept week's row carries the date the task had when
-      // the week was made, and he may have moved it since.
-      const live = await owner.query<{ task?: { dueAt?: number | null } } | null>('tasks:get', { id: row.id }).catch(() => null)
-      const was = live?.task?.dueAt ?? row.dueAt
-      await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: monday + MONDAY_AT } })
-      return kept(async () => void (await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: was } })))
+      // the week was made, and he may have moved it since. A read that fails leaves nothing known to put back, so the
+      // press lands with no Undo.
+      const due = (got: { task?: { dueAt?: number | null } } | null): number | null | undefined => (got?.task ? (got.task.dueAt ?? null) : undefined)
+      const was = due(await owner.query<{ task?: { dueAt?: number | null } } | null>('tasks:get', { id: row.id }).catch(() => null))
+      const wrote = monday + MONDAY_AT
+      await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: wrote } })
+      if (was === undefined) return { undo: null }
+      return kept(async () => {
+        // Only over the date this press wrote: one he set since, in Tasks or another window, stands.
+        const now = due(await owner.query<{ task?: { dueAt?: number | null } } | null>('tasks:get', { id: row.id }))
+        if (now !== wrote) throw new Error(UNDO_MOVED)
+        await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: was } })
+      })
     }
     await owner.mutation('tasks:drop', { id: row.id, reason: DROP_REASON })
     return kept(async () => void (await owner.mutation('tasks:reopen', { id: row.id })))
   }
 
   if (row.kind === 'mail') {
+    const owner = ctx.lifeos.owner()
     if (how === 'now') {
+      // The nudge drafts for the thread's wait as it stands, so the row's own wait must be the one that stands: a
+      // newer wait (he wrote again) is another thing, which this row never asked about.
+      const workspaceId = workspaceOf(ctx, p.sector)
+      const wait = await owner.query<{ since?: number } | null>('mailWaits:get', { threadId: row.threadId })
+      if (wait?.since !== row.since) throw new Error(WAIT_CHANGED)
       // A draft, held like every draft: nothing is sent here, and there is nothing to take back.
-      const { sessionId } = await mailCall<{ sessionId: string }>(ctx, by, 'work.mail.nudge', { workspaceId: workspaceOf(ctx, p.sector), threadId: row.threadId })
+      const { sessionId } = await mailCall<{ sessionId: string }>(ctx, by, 'work.mail.nudge', { workspaceId, threadId: row.threadId })
       return { undo: null, sessionId }
     }
-    const owner = ctx.lifeos.owner()
     const was =
       how === 'later'
         ? await owner.mutation<{ state: string; dueAt: number } | null>('mailWaits:putOff', { threadId: row.threadId, until: monday + MONDAY_AT, since: row.since })
         : await owner.mutation<{ state: string; dueAt: number } | null>('mailWaits:dismiss', { threadId: row.threadId, since: row.since })
-    if (!was) return { undo: null }
+    // LifeOS changed nothing: the wait it holds is not this row's. Said, never toasted as done.
+    if (!was) throw new Error(WAIT_CHANGED)
     return kept(async () => void (await owner.mutation('mailWaits:putBack', { threadId: row.threadId, state: was.state, dueAt: was.dueAt, since: row.since })))
   }
 

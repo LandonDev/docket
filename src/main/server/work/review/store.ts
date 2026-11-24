@@ -43,13 +43,21 @@ export function keptWeek(db: DatabaseSync, from: number): ReviewBody | null {
   }
 }
 
-/** Keeps a week, over the one it had. `routine`: the Friday routine made it, so it is ready and not yet seen. */
+/**
+ * Keeps a week, over the one it had. `routine`: the Friday routine made it, so it is ready until he opens it. A week
+ * he opened stays seen when the routine makes it again (Run now): it is not news twice.
+ */
 export function keepWeek(db: DatabaseSync, body: ReviewBody, routine = false): void {
   db.prepare(
     `INSERT INTO work_review_weeks (from_at, to_at, tz, made_at, made_by, body, routine_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT (from_at) DO UPDATE SET to_at = excluded.to_at, tz = excluded.tz, made_at = excluded.made_at, made_by = excluded.made_by, body = excluded.body,
-       routine_at = COALESCE(excluded.routine_at, routine_at), seen_at = CASE WHEN excluded.routine_at IS NULL THEN seen_at ELSE NULL END`
+       routine_at = COALESCE(excluded.routine_at, routine_at)`
   ).run(body.from, body.to, body.tz, body.madeAt, body.by, JSON.stringify(body), routine ? body.madeAt : null)
+}
+
+/** Whether the routine has made this week before: its tell went then. */
+export function routineMade(db: DatabaseSync, from: number): boolean {
+  return !!db.prepare('SELECT 1 FROM work_review_weeks WHERE from_at = ? AND routine_at IS NOT NULL').get(from)
 }
 
 export function keptWeeks(db: DatabaseSync): ReviewKept[] {

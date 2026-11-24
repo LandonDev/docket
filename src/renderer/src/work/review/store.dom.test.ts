@@ -148,6 +148,11 @@ describe("the week across hosts", () => {
     act(() => saveProjectRailOrder(["/env-box/hypixel", "/env-box/cosmic", "/env-box/purdue", "/env-mac/cosmic"]));
     expect(order()).toEqual(["hypixel", "cosmic", "purdue"]);
     page.unmount();
+    // A drag while the page is closed: it reopens in the new order before any host answers again.
+    saveProjectRailOrder(["/env-box/purdue", "/env-box/hypixel", "/env-box/cosmic", "/env-mac/cosmic"]);
+    const again = renderHook(() => useReview(WEEK));
+    expect(again.result.current.review!.jobs.map((j) => j.key).slice(0, 3)).toEqual(["purdue", "hypixel", "cosmic"]);
+    again.unmount();
   });
 
   it("holds a host that links again as from before until its new answer lands, with no page open too", async () => {
@@ -408,6 +413,27 @@ describe("money", () => {
     // A host that is off adds no sums either: every number is of the hosts the page counts.
     links["env-mac"]!.status = offline;
     await loadWeek(WEEK);
+    expect([...reviewNow(WEEK).money]).toEqual([]);
+  });
+
+  it("shows no sum for a job one of whose ledgers Money could not read whole, and drops old sums a failed read leaves", async () => {
+    const answer = links["env-box"]!.answer;
+    links["env-box"]!.answer = (method, params) => (method === "work.money.sums" ? { rows: [{ workspaceId: "w-cosmic", sector: "cosmic", in: 0, out: 0, owedToHim: 0, heOwes: 0, miles: 0, currency: "USD", problem: true }] } : answer(method, params));
+    const mac = links["env-mac"]!.answer;
+    links["env-mac"]!.answer = (method, params) => (method === "work.money.sums" ? { rows: [{ workspaceId: "m-cosmic", sector: "cosmic", in: 50_00, out: 0, owedToHim: 0, heOwes: 0, miles: 0, currency: "USD" }] } : mac(method, params));
+    await loadZone();
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
+    // The Mac's ledger alone is not Cosmic's money.
+    expect([...reviewNow(WEEK).money]).toEqual([]);
+    // The box reads whole now; then the Mac's next read fails: its old 50 is not shown as current.
+    links["env-box"]!.answer = answer;
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
+    expect([...reviewNow(WEEK).money]).toEqual([["cosmic", { in: 50_00, out: 0 }]]);
+    links["env-mac"]!.answer = (method, params) => (method === "work.money.sums" ? new Error("timed out") : mac(method, params));
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
     expect([...reviewNow(WEEK).money]).toEqual([]);
   });
 });

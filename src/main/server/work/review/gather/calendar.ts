@@ -4,8 +4,10 @@ import { personName, text, type Asked } from './common'
 
 /**
  * The calendar, from LifeOS `events:range`: every sector's events that touch the span. LifeOS lists by when an event
- * starts, so the read begins a day early and keeps what still ran into the span. Whether an event counts is the
- * shared rule's (`countedSpan`); this only says what LifeOS holds.
+ * starts, so the read begins a week early and keeps what still ran into the span: a timed event of a few days (a
+ * tournament, a trip) that began before Monday still counts for its part of the week. One longer than a week that
+ * began before the read is not seen. Whether an event counts is the shared rule's (`countedSpan`); this only says
+ * what LifeOS holds.
  */
 
 type EventDoc = {
@@ -21,6 +23,8 @@ type EventDoc = {
 }
 
 const DAY = 24 * 60 * 60_000
+/** How far before the span the read begins: an event that started that long ago may still run into it. */
+const LEAD = 7 * DAY
 const NAMED = 8
 const ADDRESSES = 20
 
@@ -65,7 +69,7 @@ export async function eventById(owner: LifeosClient, id: string, self: ReadonlyS
 
 /** The events that touch `[from, to)`, soonest first. */
 export async function eventsBetween(owner: LifeosClient, from: number, to: number, self: ReadonlySet<string>, asked: Pick<Asked, 'only'>): Promise<ReviewEvent[]> {
-  const docs = await owner.query<EventDoc[]>('events:range', { from: from - DAY, to })
+  const docs = await owner.query<EventDoc[]>('events:range', { from: from - LEAD, to })
   return (docs ?? [])
     .filter((d) => (d.endsAt ?? d.startsAt) > from && (asked.only === undefined || d.sector === asked.only))
     .map((d) => toEvent(d, self))

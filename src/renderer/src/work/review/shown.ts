@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
-import type { ReviewWeek } from "@shared/work/review";
-import { loadZone, reviewClock, thisWeek, weekAt, weekBy } from "./store";
+import { weekNamed, type ReviewWeek } from "@shared/work/review";
+import { loadZone, reviewClock, reviewZone, thisWeek, weekAt, weekBy } from "./store";
 
 /**
  * Which week the page shows: one small store, since the frame draws the
@@ -71,9 +71,10 @@ export function showWeekAt(at: number | null): void {
 
 /**
  * Shows the week a moment names (a routine run's row, Today's row), once the zone weeks are cut in is known: the
- * moment is a host's Monday midnight, which is still Sunday in a window to its west.
+ * moment is a host's Monday midnight, which is still Sunday in a window to its west, and the host may cut weeks in a
+ * zone of its own (`weekNamed`).
  */
-export const showWeekNamed = (at: number): Promise<void> => loadZone().then(() => showWeekAt(at));
+export const showWeekNamed = (at: number): Promise<void> => loadZone().then(() => showWeekAt(weekNamed(at, reviewZone()).from));
 
 /** One week back or on; never past this week. */
 export function stepShown(by: number): void {

@@ -176,7 +176,10 @@ function loadHostMoney(environmentId: string, week: ReviewWeek): void {
         hosts.set(environmentId, got?.rows ?? []);
         changed();
       },
-      () => {},
+      // A read that failed says nothing of now: the sums it answered before are dropped, never shown as current.
+      () => {
+        if (money.get(week.from)?.delete(environmentId)) changed();
+      },
     );
 }
 
@@ -234,20 +237,26 @@ function knownJobs(parts: readonly ReviewPart[]): { key: JobKey; sector: string 
     .map((w) => ({ key: jobKey(hostOf.get(w.environmentId) ?? w.environmentId, { workspaceId: w.id, sector: w.sector ?? null }), sector: w.sector ?? null, name: w.name }));
 }
 
-/** Money's rows placed on the review's jobs: a job on two hosts is the two ledgers added. */
+/**
+ * Money's rows placed on the review's jobs: a job on two hosts is the two ledgers added. A job one of whose ledgers
+ * Money could not read whole (`problem`) shows no sum: the other ledger's figure is not the job's money.
+ */
 function moneyOf(from: number, parts: readonly ReviewPart[]): Map<JobKey, JobMoney> {
   const out = new Map<JobKey, JobMoney>();
+  const broken = new Set<JobKey>();
   const hostOf = new Map(parts.map((p) => [p.environmentId, p.body.host]));
   for (const [environmentId, rows] of money.get(from) ?? []) {
     // The same hosts the review counts: one that is off adds no sums either.
     if (!workSwitch.hosts().has(environmentId) || !linked(environmentId)) continue;
     for (const row of rows) {
-      if (row.in === 0 && row.out === 0) continue;
       const key = jobKey(hostOf.get(environmentId) ?? environmentId, row);
+      if (row.problem) broken.add(key);
+      if (row.in === 0 && row.out === 0) continue;
       const have = out.get(key) ?? { in: 0, out: 0 };
       out.set(key, { in: have.in + row.in, out: have.out + row.out });
     }
   }
+  for (const key of broken) out.delete(key);
   return out;
 }
 
@@ -286,6 +295,8 @@ function view(week: ReviewWeek): ReviewView {
 export const reviewNow = (week: ReviewWeek): ReviewView => view(week);
 
 function subscribe(listener: () => void): () => void {
+  // A view read outside React while nothing listened (`reviewNow`) may be from before a change: the first to listen reads anew.
+  if (listeners.size === 0) snapshots.clear();
   listeners.add(listener);
   const offRegistry = registry.subscribe(changed);
   const offSwitch = workSwitch.subscribe(changed);
@@ -298,6 +309,9 @@ function subscribe(listener: () => void): () => void {
     offSwitch();
     offWorkspaces();
     offRail();
+    // Nothing hears the rail, the hosts or the workspaces while the page is closed: a view kept now would reopen in
+    // the old order (a pin or a drag made meanwhile) until a host answered.
+    if (listeners.size === 0) snapshots.clear();
   };
 }
 

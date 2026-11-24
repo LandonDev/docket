@@ -41,9 +41,17 @@ export function jobsOf(db: DatabaseSync, only?: { workspaceId: string | null }):
   return { list, byWorkspace, bySector }
 }
 
-/** The job of a row that names a workspace, a sector, or both: the workspace first. */
-export const jobIndex = (jobs: Jobs, workspaceId: string | null | undefined, sector: SectorKey | null | undefined): number | null =>
-  (workspaceId ? jobs.byWorkspace.get(workspaceId) : undefined) ?? (sector ? jobs.bySector.get(sector) : undefined) ?? null
+/**
+ * The job of a row that names a workspace, a sector, or both: the workspace first, while it is of the row's own
+ * sector. A held item keeps the workspace it was made in and may have been moved to another sector since: its sector
+ * is its own, so a Cosmic item stamped with Purdue's workspace is Cosmic's, and a thread's tool narrowed to Purdue
+ * never sees it (`rowJob` in src/shared/work/review.ts is the window's same rule).
+ */
+export function jobIndex(jobs: Jobs, workspaceId: string | null | undefined, sector: SectorKey | null | undefined): number | null {
+  const at = workspaceId ? jobs.byWorkspace.get(workspaceId) : undefined
+  if (at !== undefined && (!sector || jobs.list[at]!.sector === sector)) return at
+  return (sector ? jobs.bySector.get(sector) : undefined) ?? null
+}
 
 /** Hands the loop back between two pieces of work, so a long read never holds the host. */
 export const breathe = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
