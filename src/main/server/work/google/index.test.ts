@@ -371,20 +371,28 @@ describe('the google tools', () => {
     ])
   })
 
-  it("decides a hold made in round 1's form of spots: on the deck as he was shown it, and on one changed elsewhere", async () => {
-    fake.addDeck(ME, 'deck7', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }, { objectId: 't2', text: 'Budget' }] }])
+  it("decides a hold made before round 2's form of spots on the deck as he was shown it, and asks again for one on a deck that changed", async () => {
+    fake.addDeck(ME, 'deck7', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals\nBudget' }, { objectId: 't2', text: 'Budget' }] }])
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck7' })
     await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
     const payload = held[0].payload as { edits: Record<string, unknown>[] }
     expect(payload.edits[0]).toMatchObject({ spotsForm: 2 })
-    // The same hold as round 1 wrote it: its spots in that form, and no form named.
+    // The same hold as an earlier round wrote it: its spots in that form, no form named.
     const v1 = createHash('sha256').update('t1:1').digest('hex').slice(0, 16)
     const older = { ...payload, edits: [{ ...payload.edits[0], spots: v1, spotsForm: undefined }] }
-    // Another box changed: the deck moved on, the words stand where they did.
-    fake.files.get('deck7')!.deck!.slides[0]!.texts[1]!.text = 'Budget, final'
+    // The match moved to another bullet of its box, the counts and the box alike: the old form cannot tell, so it is asked for again.
+    fake.files.get('deck7')!.deck!.slides[0]!.texts[0]!.text = 'Goals\nQ1 budget'
     fake.files.get('deck7')!.deck!.rev++
-    await expect(googleEdit.execute(googleEdit.payload.parse(older), { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: expect.stringMatching(/^Made the change in Plan/) })
-    expect(fake.files.get('deck7')!.deck!.slides[0]!.texts[0]!.text).toBe('Q2 goals')
+    await expect(googleEdit.execute(googleEdit.payload.parse(older), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('was held before its place in the deck was kept, and the deck changed since: ask the thread again')
+    expect(fake.files.get('deck7')!.deck!.slides[0]!.texts[0]!.text).toBe('Goals\nQ1 budget')
+    // At the revision it was held on, an older hold is decided as it was made.
+    fake.addDeck(ME, 'deck6', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }] }])
+    const opened = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck6' })
+    await run('google_slides_revise', { item: opened.itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    const six = held[1].payload as { edits: Record<string, unknown>[] }
+    const sixOlder = { ...six, edits: [{ ...six.edits[0], spots: v1, spotsForm: undefined }] }
+    await expect(googleEdit.execute(googleEdit.payload.parse(sixOlder), { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: expect.stringMatching(/^Made the change in Plan/) })
+    expect(fake.files.get('deck6')!.deck!.slides[0]!.texts[0]!.text).toBe('Q2 goals')
   })
 
   it('never sends an empty page list, which Google reads as every page', () => {

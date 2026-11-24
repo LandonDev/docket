@@ -110,11 +110,13 @@ describe('a Google Doc in the document canvas', () => {
   })
 
   it('refuses an agent edit whose words stand twice or not at all, and at the press says the Doc moved or the words went', async () => {
-    const judged = await checkEdits(googleOf(ctx), src, [{ find: 'March', replace: 'May' }])
+    const judged = await checkEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }])
     await expect(checkEdits(googleOf(ctx), src, [{ find: 'a', replace: 'o' }])).rejects.toThrow(/stands \d+ times/)
     await expect(checkEdits(googleOf(ctx), src, [{ find: 'June', replace: 'May' }])).rejects.toThrow('not in the Doc')
+    // A line typed at the top: the paragraph keeps its words and its place in the Doc.
     fake.editDoc('doc1', 1, 'Note: ')
-    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ moved: true })
+    const placed = [{ find: 'tight', replace: 'fine', within: judged.within[0], tab: judged.tabs[0], at: judged.at[0] }]
+    await expect(writeEdits(googleOf(ctx), src, placed, judged.revisionId)).resolves.toEqual({ moved: true })
     const now = fake.docText('doc1')
     await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ stale: '"tight" is no longer in the Doc' })
     expect(fake.docText('doc1')).toBe(now)
@@ -139,7 +141,7 @@ describe('a Google Doc in the document canvas', () => {
     // Held on the paragraph of another tab: the same words in this one are not the passage he approved.
     await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: 't.1' })), judged.revisionId)).resolves.toEqual({ stale: '"tight" now stands in another passage than the one shown' })
     expect(fake.docText('doc1')).toBe(now)
-    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i] })), judged.revisionId)).resolves.toEqual({ moved: true })
+    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i], at: judged.at[i] })), judged.revisionId)).resolves.toEqual({ moved: true })
   })
 
   it('goes stale when the paragraph he was shown was moved within its tab, its words alike', async () => {
@@ -158,13 +160,22 @@ describe('a Google Doc in the document canvas', () => {
     expect(fake.docText('doc1')).toBe(now)
   })
 
-  it('asks for a fresh hold where one made before its tab was kept meets a Doc of several tabs that changed', async () => {
+  it('asks for a fresh hold where one made before its place was kept meets a Doc that changed, and decides it on one that did not', async () => {
     const edits = [{ find: 'tight', replace: 'fine' }]
     const judged = await checkEdits(googleOf(ctx), src, edits)
-    const older = edits.map((e, i) => ({ ...e, within: judged.within[i] }))
+    // As round 1 held it (its paragraph's words and tab), and as before that (its words alone).
+    const holds = [edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i] })), edits.map((e, i) => ({ ...e, within: judged.within[i] }))]
+    // At the revision it was held on, the Doc is as he was shown it: written.
+    const unchanged = await writeEdits(googleOf(ctx), src, holds[0]!, judged.revisionId)
+    expect(unchanged).toEqual({ moved: false })
+    // A co-author moves the paragraph into another tab and deletes the first: one tab again, the words alike. Where it
+    // stood cannot be told from what was kept, so it is asked for again.
+    const later = await checkEdits(googleOf(ctx), src, [{ find: 'fine', replace: 'tight' }])
     fake.editDoc('doc1', 1, 'Note: ')
-    // One tab: decided as before.
-    await expect(writeEdits(googleOf(ctx), src, older, judged.revisionId)).resolves.toEqual({ moved: true })
+    for (const older of holds.map((h) => h.map((e) => ({ ...e, find: 'fine', replace: 'tight', within: later.within[0] })))) {
+      await expect(writeEdits(googleOf(ctx), src, older, later.revisionId)).resolves.toEqual({ stale: '"fine" was held before its place in the Doc was kept, and the Doc changed since: ask the thread again' })
+    }
+    expect(fake.docText('doc1')).toContain('Budget is fine.')
   })
 
   it('keeps his unwritten edits when the Doc moved, and marks it behind', async () => {

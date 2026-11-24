@@ -222,8 +222,9 @@ export function writeEdits(g: Google, source: GoogleSource, edits: readonly { fi
             return (e.within !== undefined && p?.text !== e.within) || (e.tab !== undefined && p?.tabId !== e.tab) || (e.at !== undefined && (p ? paragraphs.indexOf(p) : -1) !== e.at)
           })
     if (strayed) return { stale: `${quoted(strayed.find)} now stands in another passage than the one shown` }
-    // Held before its tab was kept, on a Doc of several tabs that moved since: where it stood cannot be told now.
-    const unplaced = fresh.revisionId === judgedOn || new Set(paragraphs.map((p) => p.tabId)).size < 2 ? undefined : edits.find((e) => e.tab === undefined)
+    // Held before its place in the Doc was kept (its tab and its paragraph's place, round 2), on a Doc that changed
+    // since: where it stood cannot be told now, so it is asked for again rather than written where the words are now.
+    const unplaced = fresh.revisionId === judgedOn ? undefined : edits.find((e) => e.tab === undefined || e.at === undefined)
     if (unplaced) return { stale: `${quoted(unplaced.find)} was held before its place in the Doc was kept, and the Doc changed since: ask the thread again` }
     await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
     return { moved: fresh.revisionId !== judgedOn }

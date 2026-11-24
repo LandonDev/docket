@@ -50,8 +50,6 @@ export function deckText(d: { title: string; slides: TextShape[][] }): string {
 export type DeckEdit = { find: string; replace: string } | { shape: string; text: string }
 /** An edit as it waits: a replace with how many boxes held the words, a shape's with its slide and the words it held, so the press can tell it moved. */
 export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[]; count?: number; spots?: string; spotsForm?: 2 } | { shape: string; text: string; slide: number; was: string }
-/** A replace as judged now: its spots in both forms, so a hold made in round 1's form is read in its own. */
-type Judged = HeldDeckEdit & { spotsV1?: string }
 
 /**
  * Where a deck stands for these edits, run in order on a copy of its words as Google runs a batch: each replace-all
@@ -59,8 +57,8 @@ type Judged = HeldDeckEdit & { spotsV1?: string }
  * names exactly what the press changes. An edit that does not fit answers why twice: for the agent when held (`error`),
  * and in his words at the press (`owner`).
  */
-function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held: Judged[] } | { error: string; owner: string } {
-  const held: Judged[] = []
+function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held: HeldDeckEdit[] } | { error: string; owner: string } {
+  const held: HeldDeckEdit[] = []
   // A replace-all over words another edit of the batch writes would change more than either shows: refused, to be sent as two.
   for (const e of edits) {
     if (!('find' in e)) continue
@@ -78,9 +76,7 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
       // which boxes hold the words, with each one's words whole, as one short digest: totals alike but moved, to
       // another box or to another bullet of the same box, are told apart
       const spots = createHash('sha256').update(JSON.stringify(state.flat().filter((x) => x.text.includes(e.find)).map((x) => [x.objectId, x.text]))).digest('hex').slice(0, 16)
-      // round 1's form: each box that held the words and how often, which a same-box move did not change
-      const spotsV1 = createHash('sha256').update(state.flat().map((x) => `${x.objectId}:${x.text.split(e.find).length - 1}`).filter((t) => !t.endsWith(':0')).join(',')).digest('hex').slice(0, 16)
-      held.push({ find: e.find, replace: e.replace, boxes, on, count, spots, spotsForm: 2, spotsV1 })
+      held.push({ find: e.find, replace: e.replace, boxes, on, count, spots, spotsForm: 2 })
       for (const x of state.flat()) x.text = x.text.split(e.find).join(e.replace)
       continue
     }
@@ -123,7 +119,7 @@ export async function checkDeckEdits(g: Google, account: string, fileId: string,
   if (!d.revisionId) throw new Error('Google lets this account read the deck but not change it.')
   const got = judge(d, edits)
   if ('error' in got) throw new Error(got.error)
-  return { held: got.held.map(({ spotsV1: _old, ...e }: Judged) => e), revisionId: d.revisionId }
+  return { held: got.held, revisionId: d.revisionId }
 }
 
 /**
@@ -147,9 +143,10 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
   if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now` }
   // Replace-all reaches every box with the words: more or fewer, or other slides, than he was shown is not what he approved.
-  type Reach = { boxes?: number; on?: number[]; count?: number; spots?: string; spotsForm?: 2; spotsV1?: string }
-  // A hold's spots in the form it was made: round 2's, else either (round 1 wrote its own form under the same name).
-  const spotsMoved = (e: Reach, n: Reach): boolean => e.spots !== undefined && n.spots !== e.spots && (e.spotsForm === 2 || n.spotsV1 !== e.spots)
+  type Reach = { boxes?: number; on?: number[]; count?: number; spots?: string; spotsForm?: 2 }
+  // A hold's spots in round 2's form (each box's words whole). One made before (no form named) tells a match moved
+  // to another bullet of its box from one that stayed only by luck: on a deck that changed it is asked for again.
+  const spotsMoved = (e: Reach, n: Reach): boolean => e.spotsForm !== 2 || n.spots !== e.spots
   // A deck at the revision he was shown is the deck he was shown: nothing in it moved.
   const spread = d.revisionId === judgedOn ? -1 : edits.findIndex((e, i) => {
     if (!('find' in e)) return false
@@ -162,6 +159,7 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
     // places first, as the card counts them; then slides; then boxes, for words that moved with the totals alike
     if (e.count !== undefined && n.count !== e.count) return { stale: reachWords(e.find, n.count ?? 0, e.count, 'place') }
     if (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) return { stale: elsewhereWords(e.find, 'slides') }
+    if (e.spotsForm !== 2) return { stale: `${quoted(e.find)} was held before its place in the deck was kept, and the deck changed since: ask the thread again` }
     return { stale: elsewhereWords(e.find, 'boxes') }
   }
   let requests: Record<string, unknown>[]
