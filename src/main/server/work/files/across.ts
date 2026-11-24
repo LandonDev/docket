@@ -4,6 +4,7 @@ import { canvasSourcePath, filesPaneOf } from '@shared/work'
 import type { Caller, WorkCtx } from '../modules'
 import { hostReadOf } from '../peer'
 import { noteRequest } from '../../stalls'
+import { WORK_OFF } from '../scope'
 import { NEEDS_PRESS, NO_WORKSPACE, PEER_LIBRARIES, pressesFor, workspaceHere } from './policy'
 
 /**
@@ -41,6 +42,34 @@ const CHANGES = new Set<string>(['work.files.trash', 'work.files.restore', 'work
 /** What a desktop's places offer through this host: the changes above, and nothing else. */
 const CHANGES_OFFERED = new Set<string>(['trash', 'rename', 'move'])
 
+/**
+ * How long a listing of another desktop is kept on this host (places, a folder's page, the rows on screen), per
+ * workspace, host, method and params: asks inside it share the one answer, and asks while one is in flight join it.
+ * The gates run on every ask before a kept answer (Work on, the binding live, "May use this computer"). A change sent
+ * there drops what was kept of that host. Names, sizes and times only, in memory, `ACROSS_KEEP_MOST` asks at most.
+ */
+export const ACROSS_FRESH_MS = 5_000
+const ACROSS_KEEP_MOST = 64
+const acrossKept = new Map<string, { at: number; answer: unknown }>()
+const acrossAsking = new Map<string, Promise<unknown>>()
+/** A test, or Work off: nothing kept. */
+export function forgetAcross(): void {
+  acrossKept.clear()
+  acrossAsking.clear()
+}
+/** One answer's key: the same ask spelled with its fields in any order is the same ask. */
+const askKey = (workspaceId: string, host: string, method: string, params: unknown): string => `${workspaceId}\u0000${host}\u0000${method}\u0000${JSON.stringify(params, (_, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v))}`
+const raced = <T,>(p: Promise<T>, signal?: AbortSignal): Promise<T> =>
+  !signal
+    ? p
+    : signal.aborted
+      ? Promise.reject(new Error('cancelled'))
+      : new Promise<T>((resolve, reject) => {
+          const off = (): void => reject(new Error('cancelled'))
+          signal.addEventListener('abort', off, { once: true })
+          p.then(resolve, reject).finally(() => signal.removeEventListener('abort', off))
+        })
+
 /** One listing call of a desktop the window cannot reach, run there for it. Places come back read only, named as he names that desktop. */
 export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: string; host: string; method: FilesAcross; params: Record<string, unknown> }, signal?: AbortSignal): Promise<unknown> {
   noteRequest('place', 'across')
@@ -57,10 +86,17 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   // A desktop away has no registration to name it by: the name it last had here stands.
   const name = hostReadOf(ctx)?.name?.(p.host) ?? lastName.get(p.host) ?? null
   if (name) lastName.set(p.host, name)
-  const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(workspace.id), workspaceId: workspace.id }, signal } as never, p.host)
+  const ask = (s?: AbortSignal): Promise<unknown> =>
+    ctx.peer
+      .call({ scope: { sessionId: filesPaneOf(workspace.id), workspaceId: workspace.id }, signal: s } as never, p.host)
+      .call('files', p.method.slice('work.files.'.length), { ...p.params, workspaceId: workspace.id, ...(change ? { origin: { from: 'window' } } : {}) })
   let answer: unknown
   try {
-    answer = await far.call('files', p.method.slice('work.files.'.length), { ...p.params, workspaceId: workspace.id, ...(change ? { origin: { from: 'window' } } : {}) })
+    if (change) {
+      // A change there: what was kept of that host's lists may be wrong now.
+      for (const key of [...acrossKept.keys()]) if (key.split('\u0000')[1] === p.host) acrossKept.delete(key)
+      answer = await ask(signal)
+    } else answer = await keptOrAsked(ctx, workspace.id, p, ask, signal)
   } catch (err) {
     // Asleep, off its VPN or TempCode closed: it is not linked now. Said so, in words a window reads as away.
     if (AWAY.test(err instanceof Error ? err.message : String(err))) throw new Error(`${name ?? 'That computer'} is not reachable now.`)
@@ -70,6 +106,36 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   const got = answer as FilesPlaces
   // A file there opens as a copy made on this host; of the changes, only a delete (and its Put back) goes there.
   return { ...got, places: got.places.map(({ makes: _, ...place }) => ({ ...place, can: place.can.filter((verb) => CHANGES_OFFERED.has(verb)) })), ...(name ? { name } : {}) }
+}
+
+/**
+ * A listing of another desktop, kept `ACROSS_FRESH_MS` or joined with the same ask in flight. The box's own gates run
+ * here first, as `ctx.peer` runs them before any call: a kept answer is never served where the call would be refused.
+ */
+async function keptOrAsked(ctx: WorkCtx, workspaceId: string, p: { host: string; method: string; params: Record<string, unknown> }, ask: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal): Promise<unknown> {
+  if (!ctx.enabled()) throw new Error(WORK_OFF)
+  if (!ctx.settings.workspace(workspaceId).mayUseDesktop.includes(p.host)) return ask(signal)
+  const key = askKey(workspaceId, p.host, p.method, p.params)
+  const now = Date.now()
+  const kept = acrossKept.get(key)
+  if (kept && now - kept.at <= ACROSS_FRESH_MS) return kept.answer
+  let asking = acrossAsking.get(key)
+  if (!asking) {
+    // No caller's signal on the shared call: one window gone does not cancel another's answer.
+    asking = ask().then((answer) => {
+      acrossKept.delete(key)
+      acrossKept.set(key, { at: Date.now(), answer })
+      for (const [k, v] of acrossKept) if (acrossKept.size > ACROSS_KEEP_MOST || Date.now() - v.at > ACROSS_FRESH_MS) acrossKept.delete(k)
+      return answer
+    })
+    const mine = asking
+    acrossAsking.set(key, mine)
+    void mine.then(
+      () => acrossAsking.get(key) === mine && acrossAsking.delete(key),
+      () => acrossAsking.get(key) === mine && acrossAsking.delete(key)
+    )
+  }
+  return raced(asking, signal)
 }
 
 /** A Trash row another host keeps, as this host answers it: Put back finds that host by it (`farIdsOf`). */

@@ -17,6 +17,7 @@ import { pruneOps, settleOps } from './write'
 import { setStandsFor } from '../canvas/fileKey'
 import { copyOriginal } from './tabs'
 import { forgetVmLists } from './places/teams'
+import { forgetAcross } from './across'
 
 // A tab's copy of another computer's file keeps its marks by the original, so the next copy of it finds them.
 setStandsFor(copyOriginal)
@@ -129,6 +130,8 @@ export const files: WorkModule = {
       closeFilesState(ctx.db)
       // Work off: the VM's folder lists kept in memory go with it.
       forgetVmLists()
+      // and the other desktops' listings kept on this host.
+      forgetAcross()
     }
   },
   // An item of a Files pane closed by another way than its tab (the pane's own Close): its tab goes too.
