@@ -4,6 +4,8 @@ import { giveComposerFiles } from "../../lib/composerDrafts";
 import { pickFiles } from "../../lib/fs";
 import type { FilePlace } from "../../lib/openFilePlace";
 import { registry } from "../../lib/connection";
+import { hostName } from "../../lib/threadResources";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { ensureCreated } from "../../lib/tcserver/commands";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
@@ -39,7 +41,7 @@ async function openInFilesTabs(files: readonly OutsideFile[]): Promise<void> {
       await openInFiles(workspace, { ref: { at: "file", host: workspace.environmentId, path }, name: file.name });
       toast.dismiss(id);
     } catch (error) {
-      toast.error(`Couldn't open ${file.name}`, { id, description: errorText(error) });
+      toast.error(`Couldn't open ${file.name}`, { id, description: failWords(error, workspace.environmentId) });
     }
   }
 }
@@ -77,7 +79,7 @@ export async function openOutside(place: FilePlace, files: readonly OutsideFile[
   const { shows, unknown } = sortFiles(files);
   const id = place.sessionId;
   if (unknown.length > 0) {
-    const add = (): void => void addAsFiles(id, unknown).catch((error: unknown) => toast.error(errorText(error)));
+    const add = (): void => void addAsFiles(id, unknown).catch((error: unknown) => toast.error(unknown.length === 1 ? `Couldn't add ${unknown[0]!.name}` : "Couldn't add the files", { description: failWords(error) }));
     toast(noViewerLine(unknown), { action: { label: "Add to the thread as a file", onClick: add } });
   }
   if (shows.length === 0) return;
@@ -86,8 +88,10 @@ export async function openOutside(place: FilePlace, files: readonly OutsideFile[
   const cancel = (): void => controller.abort();
   const token = {};
   setOpening(id, token, { name: shows[0]!.file.name, sent: 0, total: 0, cancel });
+  let host: string | undefined;
   try {
     const { env, folder } = await threadOf(id);
+    host = env;
     await openFiles({
       env,
       sessionId: id,
@@ -97,7 +101,7 @@ export async function openOutside(place: FilePlace, files: readonly OutsideFile[
       onProgress: (file, progress) => setOpening(id, token, { name: file.name, ...progress, cancel }),
     });
   } catch (error) {
-    if (!controller.signal.aborted) toast.error(shows.length === 1 ? `Couldn't open ${shows[0]!.file.name}` : "Couldn't open the files", { description: errorText(error) });
+    if (!controller.signal.aborted) toast.error(shows.length === 1 ? `Couldn't open ${shows[0]!.file.name}` : "Couldn't open the files", { description: failWords(error, host) });
   } finally {
     setOpening(id, token, null);
   }
@@ -114,4 +118,6 @@ export async function pickAndOpen(place: FilePlace): Promise<void> {
   );
 }
 
-const errorText = (error: unknown): string => (error instanceof Error && error.message ? error.message : String(error));
+/** Why, in his words and naming the computer asked (`workErrorWords`); a raw line says nothing and the title stands alone. */
+const failWords = (error: unknown, env?: string): string | undefined =>
+  workErrorWords(error, env && registry.environment(env) ? { host: hostName(env) } : {}) || undefined;

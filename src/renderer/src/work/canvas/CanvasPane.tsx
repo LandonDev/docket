@@ -16,34 +16,58 @@ import { CutDetail, QuietLine } from "./QuietLine";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
+/** The seats whose kind's code did not load, by chunk: Retry on the body wakes them to load it again (`loadAgain`). */
+const asleep = new Map<Chunk<CanvasKindModule>, Set<() => void>>();
+function loadAgain(chunk: Chunk<CanvasKindModule>): void {
+  for (const wake of [...(asleep.get(chunk) ?? [])]) wake();
+}
+
 /**
- * The kind's module once its chunk has landed, else null: its optional parts (`Bar`, `TabEnd`) are read from it.
- * The module is kept in state, never read from the chunk while drawing: the React Compiler holds a call's answer
- * for as long as its argument is the same, so `chunk.loaded()` read in the hook's body stayed null after the chunk
- * landed, and a kind first opened in a window kept the bar's bone and never drew its tools.
+ * The kind's module once its chunk has landed, else null, and whether its load failed: its optional parts (`Bar`,
+ * `TabEnd`) are read from it. The module is kept in state, never read from the chunk while drawing: the React Compiler
+ * holds a call's answer for as long as its argument is the same, so `chunk.loaded()` read in the hook's body stayed
+ * null after the chunk landed, and a kind first opened in a window kept the bar's bone and never drew its tools.
+ * A load that failed is not loading: the bar drops its bone, and the body's Retry starts it again (`loadAgain`), so a
+ * retry that lands puts the kind's tools in the bar.
  */
-export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule | null {
-  const [held, setHeld] = useState<{ chunk: Chunk<CanvasKindModule>; module: CanvasKindModule | null }>(() => ({ chunk, module: chunk.loaded() }));
+export function useKindLoad(chunk: Chunk<CanvasKindModule>): { module: CanvasKindModule | null; failed: boolean } {
+  const [held, setHeld] = useState<{ chunk: Chunk<CanvasKindModule>; module: CanvasKindModule | null; failed: boolean }>(() => ({ chunk, module: chunk.loaded(), failed: false }));
   // Another kind's chunk under the same seat: what that chunk has now, taken in this render, so a kind already
   // loaded never draws the bone for a frame.
   let now = held;
   if (held.chunk !== chunk) {
-    now = { chunk, module: chunk.loaded() };
+    now = { chunk, module: chunk.loaded(), failed: false };
     setHeld(now);
   }
-  const waiting = now.module === null;
+  const waiting = now.module === null && !now.failed;
   useEffect(() => {
     if (!waiting) return;
     let live = true;
     chunk.load().then(
-      (module) => live && setHeld((was) => (was.chunk === chunk ? { chunk, module } : was)),
-      () => undefined,
+      (module) => live && setHeld((was) => (was.chunk === chunk ? { chunk, module, failed: false } : was)),
+      () => live && setHeld((was) => (was.chunk === chunk ? { chunk, module: null, failed: true } : was)),
     );
     return () => {
       live = false;
     };
   }, [chunk, waiting]);
-  return now.module;
+  const failed = now.failed;
+  useEffect(() => {
+    if (!failed) return;
+    const wake = () => setHeld((was) => (was.chunk === chunk ? { chunk, module: chunk.loaded(), failed: false } : was));
+    let seats = asleep.get(chunk);
+    if (!seats) asleep.set(chunk, (seats = new Set()));
+    seats.add(wake);
+    return () => {
+      seats.delete(wake);
+    };
+  }, [chunk, failed]);
+  return { module: now.module, failed };
+}
+
+/** The kind's module once its chunk has landed, else null (`useKindLoad`). */
+export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule | null {
+  return useKindLoad(chunk).module;
 }
 
 /** A transport's own words, said as a person would read them on the state line. */
@@ -107,7 +131,7 @@ export function bodyFailureWords(error: unknown): string {
 const PaneShell = createContext<CanvasShell | null>(null);
 
 /** A body that threw, or whose code did not load: what it fed the frame goes, and the centred failure says why, with Retry. */
-function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; retry: () => void }) {
+function BodyFailed({ kind, chunk, error, retry }: { kind: CanvasKind; chunk: Chunk<CanvasKindModule>; error: unknown; retry: () => void }) {
   const shell = useContext(PaneShell);
   useLayoutEffect(() => {
     if (!shell) return;
@@ -120,12 +144,17 @@ function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; 
     shell.saved?.(null);
     shell.ready?.(false);
   }, [shell]);
-  return <OpenFailed kind={kind} why={bodyFailureWords(error)} onRetry={retry} />;
+  // The body's lazy loads the code again, and every seat that saw it fail waits on that same load.
+  const again = () => {
+    retry();
+    loadAgain(chunk);
+  };
+  return <OpenFailed kind={kind} why={bodyFailureWords(error)} onRetry={again} />;
 }
 
 const bodyFailed =
-  (kind: CanvasKind) =>
-  (retry: () => void, error: unknown): ReactNode => <BodyFailed kind={kind} error={error} retry={retry} />;
+  (kind: CanvasKind, chunk: Chunk<CanvasKindModule>) =>
+  (retry: () => void, error: unknown): ReactNode => <BodyFailed kind={kind} chunk={chunk} error={error} retry={retry} />;
 
 /**
  * The shown item under the tab row: the kind's bar, the one state line, the
@@ -160,15 +189,15 @@ export function CanvasPane({
   barEnd?: ReactNode;
 }) {
   const def = kindDefOf(kinds, item.kind);
-  const module = useKindModule(def.chunk);
+  const { module, failed } = useKindLoad(def.chunk);
   const [state, setState] = useKeptState(item.id);
-  const Body = def.chunk.surface("Body", <ItemSkeleton />, bodyFailed(def.kind));
+  const Body = def.chunk.surface("Body", <ItemSkeleton />, bodyFailed(def.kind, def.chunk));
   const props: CanvasBodyProps = { item, source: item.source, env: environmentId, state, setState, shell };
   const Bar = module?.Bar;
   // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
   const fetched = useItemFetch(environmentId, item);
   const waiting = fetched && fetched.fetch.phase !== "ready" ? fetched.fetch : null;
-  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
+  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
   return (
     <div
       data-canvas-pane
@@ -178,7 +207,7 @@ export function CanvasPane({
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
       {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open. */}
-      {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands. */}
+      {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands; a load that failed holds none. */}
       <KindBar
         feeds={feeds}
         tools={tools}

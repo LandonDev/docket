@@ -329,6 +329,11 @@ What a kind should know:
 - While a kind's code loads, the bar holds a 12px bone in its tools slot
   (`data-bar-bone`), the document's own, so the body does not drop 32px
   when the code lands.
+  A load that failed holds no bone (nothing is loading): the body says
+  "Couldn't open this document" with Retry, and Retry loads the code again
+  for the body and for every seat that saw it fail (`useKindLoad`,
+  `loadAgain` in CanvasPane.tsx), so the kind's tools come once it lands.
+  lib/lazyChunk.tsx is unchanged.
 - The bar is drawn only while the kind has something in it. Its order is
   fixed: people, the mode, the kind's `Bar`, History (drawn by the pane for
   a def with `history: true`), then the stepper or the written line.

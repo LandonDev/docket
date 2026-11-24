@@ -47,7 +47,7 @@ describe("a kind's module under its seat", () => {
   // argument is the same, so a chunk's `loaded()` read in the hook's body would stay null after the chunk landed.
   it("never reads the chunk's module in the hook's body, where the compiler would hold the first answer", () => {
     const source = readFileSync(join(process.cwd(), "src/renderer/src/work/canvas/CanvasPane.tsx"), "utf8");
-    const hook = source.slice(source.indexOf("export function useKindModule"), source.indexOf("\n}\n", source.indexOf("export function useKindModule")));
+    const hook = source.slice(source.indexOf("export function useKindLoad"), source.indexOf("\n}\n", source.indexOf("export function useKindLoad")));
     expect(hook).toContain("useState");
     expect(hook).not.toMatch(/^\s*const \w+ = chunk\.loaded\(\);$/m);
   });

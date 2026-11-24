@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const seen = vi.hoisted(() => ({
   toasts: [] as { line: string; action?: { label: string; onClick: () => void } }[],
   errors: [] as string[],
+  said: [] as (string | undefined)[],
   started: 0,
   opened: [] as unknown[],
   openingStates: [] as (string | null)[],
@@ -14,7 +15,7 @@ const seen = vi.hoisted(() => ({
 
 vi.mock("../../components/ui/toaster", () => {
   const toast = Object.assign((line: string, opts?: { action?: { label: string; onClick: () => void } }) => void seen.toasts.push({ line, action: opts?.action }), {
-    error: (line: string) => void seen.errors.push(line),
+    error: (line: string, opts?: { description?: string }) => void (seen.errors.push(line), seen.said.push(opts?.description)),
     loading: () => "t1",
     dismiss: () => undefined,
   });
@@ -24,7 +25,8 @@ vi.mock("../../lib/attachments", () => ({
   attachmentsFromFiles: async (files: File[]) => files.map((f) => ({ id: f.name, name: f.name, kind: "file", size: f.size })),
   attachmentsFromPaths: async () => [],
 }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "mac" }), onLink: () => () => undefined } }));
+vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "mac" }), onLink: () => () => undefined, environment: (id: string) => (id === "box" ? { name: "The box" } : undefined) } }));
+vi.mock("../../lib/threadResources", () => ({ hostName: (id: string) => (id === "box" ? "the box" : "a host not linked here") }));
 vi.mock("../../lib/fs", () => ({ pickFiles: async () => null }));
 vi.mock("../../lib/tcserver/commands", () => ({ ensureCreated: async () => ({ id: "s1", environmentId: "box", workspaceId: "w1" }) }));
 vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { get: () => undefined, metaOf: () => ({ id: "s1", environmentId: "box", workspaceId: "w1" }) } }));
@@ -56,6 +58,7 @@ const file = (name: string): { name: string; file: File } => ({ name, file: new 
 beforeEach(() => {
   seen.toasts = [];
   seen.errors = [];
+  seen.said = [];
   seen.started = 0;
   seen.opened = [];
   seen.openingStates = [];
@@ -92,7 +95,15 @@ describe("opening", () => {
     seen.failOpen = new Error("not connected");
     await openOutside({ at: "thread", sessionId: "s1" }, [file("Brief.pdf")]);
     expect(seen.errors).toEqual(["Couldn't open Brief.pdf"]);
+    // The host's reason in his words, naming the computer: never the link's bare word or a path on its disk.
+    expect(seen.said).toEqual(["The box is not connected. Try again once it is back."]);
     expect(seen.openingStates.at(-1)).toBeNull();
+    seen.failOpen = new Error("ENOENT: no such file or directory, open '/srv/work/Purdue/Brief.pdf'");
+    await openOutside({ at: "thread", sessionId: "s1" }, [file("Brief.pdf")]);
+    expect(seen.said.at(-1)).toBe("The file or folder was moved or removed. Refresh Files and open it from where it is now.");
+    seen.failOpen = new Error("work.canvas.open failed at /srv/agents/x");
+    await openOutside({ at: "thread", sessionId: "s1" }, [file("Brief.pdf")]);
+    expect(seen.said.at(-1)).toBeUndefined();
   });
 });
 
