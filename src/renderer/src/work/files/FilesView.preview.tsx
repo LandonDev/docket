@@ -1,17 +1,22 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
-// #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile): the Files place's window with stand-in places and rows, and its states. Rendered by nothing in the app.
-import type { FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
+// #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
+// #FilesNewLibrary, #FilesTrash, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames): the Files place's window with
+// stand-in places and rows, and its states. Rendered by nothing in the app.
+import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
 import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { SavedLine } from "../canvas/kind";
 import { Facts } from "./FileKind";
+import { answerAs, OverFrame, usePress, useTyped } from "../kit.preview";
+import { copyLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { FileHeader } from "./FileTabView";
 import { FileTextEditor } from "./FileTextEditor";
 import { SidebarView } from "./FilesView";
 import { HomePage, SearchFilters } from "./Home";
-import { sidebarOf, type FilesNote, type HostRead } from "./model";
+import { MoveDialog } from "./MoveDialog";
+import { sidebarOf, type FilesNote, type HostRead, type Sidebar } from "./model";
 import { ListBones, NoteEmpty, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { previewSeams } from "./previews";
 import { listingSeams, type Listing } from "./store";
@@ -89,10 +94,10 @@ const tabs: FileTab[] = [
 const eventsCopy = sidebar.rows.find((r) => r.name === "Events")!.copies[0]!;
 const trail = [{ name: "Esports Staff", at: { at: "place" as const, id: "team:Esports Staff" } }, { name: "Events", at: { at: "file" as const, host: "env_box", path: "/cloud/Esports Staff/Events" } }];
 
-function Window({ width, height = 560, children, sidebarOpen = true }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean }) {
+function Window({ width, height = 560, children, sidebarOpen = true, model = sidebar, job = workspace }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean; model?: Sidebar; job?: WorkspaceMeta }) {
   return (
     <div data-files-view style={{ maxWidth: width, height }} className="@container/files flex w-full overflow-hidden rounded-lg border border-border bg-background">
-      {sidebarOpen ? <SidebarView model={sidebar} workspace={workspace} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null}
+      {sidebarOpen ? <SidebarView model={model} workspace={job} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null}
       <div className="flex min-w-0 flex-1 flex-col">
         <TabRow tabs={tabs} selected="t1" sidebarOpen={sidebarOpen} onSidebar={noop} onSelect={noop} onClose={noop} onReorder={noop} onNew={noop} />
         {children}
@@ -404,6 +409,176 @@ export function FilesFile() {
       <div style={{ maxWidth: 720 }} className="flex h-72 w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
         <FileHeader name="Assets.zip" line={null} where="Events" running={null} onRun={noop} rows={menu} onPick={noop} ask={idle} />
         <Facts name="Assets.zip" entry={file("Assets.zip", "archive", 30 * day, { size: 2_400_000 })} env="box" workspaceId="w" itemId="i" source={{ at: "file", host: "env_box", path: "/w/Events/Assets.zip" }} />
+      </div>
+    </div>
+  );
+}
+
+// ── states with a dialog, a menu or a field open ──────────────────────
+
+// The one host the dialogs and Go to ask: the names Go to finds, and nothing else.
+answerAs((method) => {
+  if (method === "work.files.names") return { entries: [file("Spring LAN budget request.docx", "document", 7 * day, { where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }), file("Sponsor list 2026.xlsx", "sheet", 5 * day, { where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }), file("Spring LAN poster.png", "picture", 9 * day, { where: { place: "folder", name: "Dummy Esports", trail: ["Marketing"] } })] };
+  throw new Error(`no ${method}`);
+}, "box");
+
+const eventsFolder = { at: { at: "file" as const, host: "env_box", path: TOP }, name: "Events" };
+
+/** Move to…: the folder the file is in, its folders to go into, Move here at the foot. */
+export function FilesMove() {
+  return (
+    <div className="p-6">
+      <OverFrame maxWidth={900} height={620}>
+        <Window width={900} height={620}>
+          <PageView {...common} listing={listing()} drawn={{ picked: ["Sponsor deck.pptx"] }} />
+        </Window>
+        <MoveDialog verb="move" entries={[entries[1]!]} from={eventsCopy} start={eventsFolder} sidebar={sidebar} workspace={workspace} onPick={async () => false} onClose={noop} />
+      </OverFrame>
+    </div>
+  );
+}
+
+/** Save as Word to…: a document of LifeOS made a .docx in a folder he picks, opened on the places. */
+export function FilesSaveAsWord() {
+  return (
+    <div className="p-6">
+      <OverFrame maxWidth={900} height={620}>
+        <Window width={900} height={620}>
+          <PageView {...common} listing={listing()} />
+        </Window>
+        <MoveDialog verb="word" entries={[]} what="Spring LAN run of show" start={null} sidebar={sidebar} workspace={workspace} onPick={async () => false} onClose={noop} />
+      </OverFrame>
+    </div>
+  );
+}
+
+/** Go to: the field in the trail's place with "spring" typed, an open tab and the names the host found under it. */
+export function FilesGoTo() {
+  useTyped("[data-files-goto] input", "spring");
+  return (
+    <div className="p-6">
+      <Window width={900} height={520}>
+        <PageView {...common} find={{ ...find, mode: "goto" }} listing={listing()} />
+      </Window>
+    </div>
+  );
+}
+
+const MENU_AT = { top: 92, right: 12 };
+const folderCopy = sidebar.folder!;
+
+/** New in the workspace's own folder: every kind it makes, From a Template…, Upload Files…, and where it is kept. */
+export function FilesNew() {
+  usePress("[data-files-new]");
+  return (
+    <div className="p-6">
+      <OverFrame maxWidth={900} height={520} place={MENU_AT}>
+        <Window width={900} height={520} sidebarOpen={false}>
+          <PageView {...common} copy={folderCopy} acts={{ ...acts, place: folderCopy.place, from: folderCopy, fromTemplate: noop }} page={{ at: folderCopy.place.root, name: "Dummy Esports" }} trail={[{ name: "Dummy Esports", at: folderCopy.place.root }]} listing={listing()} />
+        </Window>
+      </OverFrame>
+    </div>
+  );
+}
+
+/** New in a Teams library: only what a library takes from here, a text file and a folder. */
+export function FilesNewLibrary() {
+  usePress("[data-files-new]");
+  return (
+    <div className="p-6">
+      <OverFrame maxWidth={900} height={420} place={MENU_AT}>
+        <Window width={900} height={420} sidebarOpen={false}>
+          <PageView {...common} listing={listing()} />
+        </Window>
+      </OverFrame>
+    </div>
+  );
+}
+
+const trashCopy = sidebar.lenses.find((c) => c.place.kind === "trash")!;
+const trashed: FileEntry[] = [
+  file("Old sponsor deck.pptx", "deck", 2 * day, { where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }),
+  file("Site policy draft.docx", "document", 4 * day, { ref: { at: "file", host: "env_box", path: "/vm/Site Policies/Site policy draft.docx" }, where: { place: "b2", name: "Site Policies", trail: [] } }),
+  file("Notes.md", "text", 9 * day, { shared: false, where: { place: "folder", name: "Dummy Esports", trail: ["Events"] } }),
+];
+
+/** Trash: a row from a Teams library, one from the Windows VM's, one from the folder; Empty Trash in the bar. */
+export function FilesTrash() {
+  const page: FilePage = { at: trashCopy.place.root, name: "Trash" };
+  return (
+    <div className="p-6">
+      <Window width={900} height={420}>
+        <PageView {...common} page={page} copy={trashCopy} acts={{ ...acts, place: trashCopy.place, from: trashCopy }} trail={[{ name: "Trash", at: page.at }]} listing={listing({ entries: trashed, trail: [] })} onReveal={noop} drawn={{ picked: ["Site policy draft.docx"] }} />
+      </Window>
+    </div>
+  );
+}
+
+/** A search's results from the box and from his Mac, and the note that the PC's folders were not searched. */
+export function FilesSearchAcross() {
+  const found: FileEntry[] = [
+    { ...entries[1]!, where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } },
+    { ...entries[2]!, where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } },
+    file("Sponsor thank-you letter.docx", "document", 2 * day, { ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Sponsors/Sponsor thank-you letter.docx" }, where: { place: "m1", name: "Esports on MacBook", trail: ["Sponsors"] } }),
+    file("Sponsor logos.zip", "archive", 11 * day, { ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Sponsors/Sponsor logos.zip" }, where: { place: "m1", name: "Esports on MacBook", trail: ["Sponsors"] } }),
+  ];
+  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Search: sponsor", query: "sponsor" };
+  return (
+    <div className="p-6">
+      <Window width={900} height={460}>
+        <PageView {...common} acts={null} page={searchPage} copy={null} trail={[{ name: searchPage.name, at: searchPage.at }]} listing={listing({ entries: found, trail: [], unsearched: ["Purdue laptop"] })} results onReveal={noop} />
+      </Window>
+    </div>
+  );
+}
+
+// A copy of a file on another computer that saves back: each line its header can say, with the presses the tab adds.
+const back = (b: CopyBack): CopyBack => b;
+const copyLines: { name: string; line: HeaderLine }[] = (
+  [
+    [back({ is: "ok", at: NOW - 4 * 60_000 }), {}, []],
+    [back({ is: "sending" }), {}, []],
+    [back({ is: "ok" }), { failed: "the disk is full." }, ["Retry"]],
+    [back({ is: "changed" }), {}, ["Reload", "Keep Both"]],
+    [back({ is: "gone" }), {}, ["Keep Both"]],
+    [back({ is: "away" }), {}, ["Retry"]],
+    [back({ is: "refused", detail: "the file is open in Word there." }), {}, ["Retry"]],
+  ] as [CopyBack, CopyAsk, string[]][]
+).map(([b, ask, presses]) => ({ name: "Vendor contacts.xlsx", line: { ...copyLine({ state: "saved", at: NOW - 4 * 60_000 }, b, "MacBook Pro", NOW, ask), actions: presses.map((label) => ({ id: label, label, run: noop })) } }));
+
+/** A copy's header in each of its lines: saved to the computer, saving, not saved, changed there, gone, away, refused. */
+export function FilesCopyLines() {
+  return (
+    <div className="p-6">
+      <div style={{ maxWidth: 720 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+        {copyLines.map((s, i) => (
+          <FileHeader key={i} name={s.name} line={s.line} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A job and a file with long names: the trail, the rows, the sidebar and the header each have to cut them.
+const LONG_JOB = "Purdue Esports Club Operations";
+const LONG_FILE = "Spring LAN 2027 sponsor and vendor budget request (final, signed by Dana Lee).docx";
+const longSidebar = sidebarOf([{ ...reads[0]!, answer: { ...reads[0]!.answer!, places: reads[0]!.answer!.places.map((p) => (p.kind === "folder" ? { ...p, name: LONG_JOB } : p)) } }], "box");
+const longEntries = [file(LONG_FILE, "document", 2 * day, { by: "Dana Lee" }), file("Volunteer schedule for the North and South Ballrooms, Saturday and Sunday.xlsx", "sheet", 3 * day), ...entries.slice(1, 4)];
+const longTrail = [{ name: LONG_JOB, at: { at: "place" as const, id: "folder" } }, { name: "Spring LAN 2027 planning and sponsor paperwork", at: { at: "file" as const, host: "env_box", path: "/w/Spring LAN 2027 planning and sponsor paperwork" } }];
+
+/** Long names at 400px: the page with its sidebar folded, the sidebar itself, and a file's header. */
+export function FilesLongNames() {
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={400} height={360} sidebarOpen={false}>
+        <PageView {...common} trail={longTrail} page={{ at: longTrail[1]!.at, name: longTrail[1]!.name }} listing={listing({ entries: longEntries })} />
+      </Window>
+      <Window width={400} height={420} model={longSidebar} job={{ ...workspace, name: LONG_JOB }}>
+        <div />
+      </Window>
+      <div style={{ maxWidth: 400 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+        <FileHeader name={LONG_FILE} line={{ state: "saved", at: NOW - 13 * 60_000 }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
+        <FileHeader name={LONG_FILE} line={{ ...copyLine(null, { is: "changed" }, "MacBook Pro", NOW), actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
       </div>
     </div>
   );
