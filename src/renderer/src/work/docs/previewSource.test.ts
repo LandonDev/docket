@@ -352,8 +352,10 @@ describe("the document's Preview source", () => {
     await s.draw("pdf", { signal: signal() });
     // He goes back to the words and changes them, opens Preview again and presses Export before the new picture lands.
     h.state.text = "v2";
+    const drawing = s.draw("pdf", { signal: signal() });
     await s.export("md");
     await s.export("pdf");
+    await drawing;
     await flush();
     expect(new TextDecoder().decode(saved[0]!.bytes)).toBe("# Plan v2");
     expect(new TextDecoder().decode(saved[1]!.bytes)).toContain("%PDF-1.7 v2");
@@ -417,10 +419,13 @@ describe("the document's Preview source", () => {
     expect(printed[0]!.name).toBe("Plan.pdf");
     expect(new TextDecoder().decode(printed[0]!.bytes)).toContain("%PDF-1.7 v1");
     expect(saved).toEqual([]);
-    // What he printed is the document as it stands at the press.
+    // What he prints is the picture he checked: a change made since (another window) waits for the next draw.
     h.state.text = "v2";
     await s.export("print");
-    expect(new TextDecoder().decode(printed[1]!.bytes)).toContain("%PDF-1.7 v2");
+    expect(new TextDecoder().decode(printed[1]!.bytes)).toContain("%PDF-1.7 v1");
+    await s.draw("print", { signal: signal() });
+    await s.export("print");
+    expect(new TextDecoder().decode(printed[2]!.bytes)).toContain("%PDF-1.7 v2");
   });
 
   it("says why when this computer could not print it", async () => {

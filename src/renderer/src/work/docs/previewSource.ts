@@ -355,8 +355,14 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
     });
   };
 
+  /** The last PDF Preview drew: what PDF and Print show, so what they save and print (the text may have moved on since). */
+  let shown: { env: string; home: boolean; answer: PreviewAnswer } | null = null;
+
   const drawPaged = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<Drawn> => {
+    // A new draw takes the picture's place: until it lands nothing is shown, and a press makes the print anew.
+    if (format === "pdf" && !by) shown = null;
     const made = await render(format, signal, by);
+    if (format === "pdf" && !by && !signal.aborted) shown = made;
     return {
       picture: { kind: "paged", pdf: bytesOf(made.env, made.home, made.answer), pages: made.answer.pages, drawnBy: made.answer.drawnBy },
       drops: unique([...docDrops(format, { ...facts(), held: made.answer.heldSuggestions ?? 0 }), ...made.drops, ...made.answer.warnings.map(asLine)]),
@@ -429,13 +435,14 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         return { name: made.name };
       }
       if (id !== "pdf" && id !== "print") throw new Error(`A document does not go out as ${format}`);
-      // The print the preview makes: an unchanged document is answered from the render the host keeps, the bytes he saw.
-      let made = await render("pdf", new AbortController().signal);
+      // The pages he checked: the render Preview shows, read from the host that keeps it, even when another window has
+      // changed the text since. With none shown, or its render gone, the print is made now.
+      let made = shown ?? (await render("pdf", new AbortController().signal));
       let bytes: Uint8Array<ArrayBuffer>;
       try {
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       } catch {
-        // The render went between the two calls (drawn again in another window): once more.
+        // The render went (drawn again in another window): once more, from the text as it stands.
         made = await render("pdf", new AbortController().signal);
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       }
