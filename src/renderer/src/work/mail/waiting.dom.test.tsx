@@ -109,13 +109,26 @@ describe("the workspace's Waiting on", () => {
     state.waiting = { days: null, routine: false, error: "LifeOS did not answer: This host is not signed in to LifeOS" };
     const first = render(<WaitingSection workspace={WORKSPACE} />);
     await settle();
-    expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
     expect(screen.queryByText(/did not answer/)).toBeNull();
     first.unmount();
     state.waiting = { days: null, routine: false, error: "LifeOS did not answer: no answer in 15 s" };
     render(<WaitingSection workspace={WORKSPACE} />);
     await settle();
-    expect(screen.getByText("LifeOS did not answer")).toBeTruthy();
+    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+  });
+
+  /** Council round 7 (Sol, Settings 3): a signed-out host's days offered Retry, which reads the same missing session again. */
+  it("says a signed-out host as a state with the rule's press, Sign in, never Retry, and keeps the switch usable", async () => {
+    state.waiting = { days: null, routine: false, error: "LifeOS did not answer: This host is not signed in to LifeOS" };
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "Draft nudges by themselves" }));
+    await settle();
+    expect(calls.some((c) => c.method === "work.mail.setWaiting" && c.params.routine === true)).toBe(true);
   });
 
   it("gives the failed days' read its own Retry, and the switch stays usable while it is out", async () => {

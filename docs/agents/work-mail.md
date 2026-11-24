@@ -466,9 +466,12 @@ writes is held ([work-routines.md](work-routines.md)). Both are
 When LifeOS cannot read the days the host still answers, with the switch and
 `error` ("LifeOS did not answer: <reason>" whatever the cause); the window
 words the row from the reason (`daysFailure`, through `lifeosStateOf` and
-`sessionFailure`): "Not signed in to LifeOS" for a sign-out, "LifeOS did not
-answer" only for a wait, else "LifeOS could not read the waiting time", with
-Retry at the row's end. The host reads the routine before it waits on the
+`sessionFailure`, the host named): a state ("Not signed in to LifeOS on the
+box", refused, a sign-in that waits, Work off) muted, with the rule's press
+at the row's end (`useDownPress`: Sign in, Show the code, Open Settings) and
+never Retry, which would read the same missing session; "LifeOS did not
+answer the box" only for a wait, else "LifeOS could not read the waiting
+time", each in red with Retry at the row's end. The host reads the routine before it waits on the
 days, so every ask is numbered as it starts and an answer replaces only the
 half (the days with their error, or the routine) no newer ask set
 (`laidOver`): a Retry that answers after he flipped the switch brings the

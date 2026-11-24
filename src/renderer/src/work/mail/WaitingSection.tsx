@@ -10,7 +10,10 @@ import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { lifeosHostName, lifeosStateOf, sessionFailure } from "../shell/lifeos";
+import { downIsSilence, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { useDownAction } from "../shell/DownSignIn";
 
 /**
  * A Work workspace's Waiting on (docs/agents/work-mail.md "Waiting on"), on its
@@ -28,16 +31,22 @@ const DAY_CHOICES = WAIT_DAYS.map((d) => ({ value: d, label: d === "1" ? "1 work
 /** `failed`: the request itself failed after a value was known; the value stays, and the failure is said on the days' row. */
 type Load = { status: "loading" } | { status: "ready"; value: MailWaiting; failed?: string } | { status: "error"; error: string };
 
+/** The LifeOS state the host's reason for a failed days' read names, after its own "LifeOS did not answer:" whatever the cause; null for any other cause. */
+export const daysState = (error: string): LifeosStateName | null => lifeosStateOf(error.replace(/^LifeOS did not answer:\s*/i, ""));
+
 /**
- * The days' read failed while the switch's did not: the host sends LifeOS's reason inside the answer, after its own
- * "LifeOS did not answer:" whatever the cause. Said from the true cause in the shared LifeOS line's words
- * (`sessionFailure`): signed out reads as signed out, and "did not answer" is kept for an answer that never came.
+ * The days' read failed while the switch's did not. Said from the true cause in the shared LifeOS line's words
+ * (`sessionFailure`, `host` named): signed out reads as signed out, and "did not answer" is kept for an answer that
+ * never came.
  */
-export function daysFailure(error: string): string {
-  const state = lifeosStateOf(error.replace(/^LifeOS did not answer:\s*/i, ""));
+export function daysFailure(error: string, host?: string | null): string {
+  const state = daysState(error);
   if (state === "connecting") return "LifeOS is still connecting";
-  return state ? sessionFailure(state) : "LifeOS could not read the waiting time";
+  return state ? sessionFailure(state, false, host) : "LifeOS could not read the waiting time";
 }
+
+/** The rule's down state of a failed days' read (`lifeosDown.ts`), or null for one that is on its way or has no state. */
+const downOfDays = (state: LifeosStateName | null): LifeosDown | null => (state && state !== "connecting" && state !== "connected" ? state : null);
 
 const ask = (env: string, method: string, params: Record<string, unknown>): Promise<MailWaiting> => registry.linkOf(env).request<MailWaiting>(method, params);
 
@@ -128,6 +137,15 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
 
   const value = load.status === "ready" ? load.value : null;
   const failed = load.status === "ready" ? load.failed : undefined;
+  const host = lifeosHostName(env);
+  // A LifeOS that is signed out, refused, waiting for a sign-in or off is a state, said muted with the rule's press
+  // (`useDownPress`: Sign in, Show the code, Open Settings, else who can); only silence, or a cause with no state, is
+  // the red line with Retry. The switch below keeps its own way.
+  const down = failed ? null : downOfDays(value?.error ? daysState(value.error) : null);
+  const stated = !!down && !downIsSilence(down);
+  const { press, elsewhere } = useDownPress(stated ? down : null, env);
+  const { action, dialog } = useDownAction(press, env);
+  const daysWords = failed ?? (value?.error ? daysFailure(value.error, host) : undefined);
   const retry = (
     <Button
       variant="ghost"
@@ -149,8 +167,25 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       ) : null}
       {value ? (
         <>
-          <PageRow title="Count as waiting after" error={failed ?? (value.error ? daysFailure(value.error) : undefined)}>
-            {value.days === null && (value.error || failed) ? (
+          <PageRow
+            title="Count as waiting after"
+            description={
+              stated ? (
+                <>
+                  {daysWords}
+                  {elsewhere ? <span className="block">{elsewhere}</span> : null}
+                </>
+              ) : undefined
+            }
+            error={stated ? undefined : daysWords}
+          >
+            {value.days === null && stated ? (
+              action ? (
+                <Button variant="ghost" size="sm" onClick={action.run}>
+                  {action.label}
+                </Button>
+              ) : null
+            ) : value.days === null && (value.error || failed) ? (
               // Asks the whole section again; the switch below stays as it was while it is out.
               retry
             ) : value.days !== null ? (
@@ -166,6 +201,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
           <PageRow title="Draft nudges by themselves" description="Starts a thread each time a mail comes due">
             <SettingSwitch label="Draft nudges by themselves" on={value.routine} onChange={(routine) => change({ routine }, "The nudge routine did not change")} />
           </PageRow>
+          {dialog}
         </>
       ) : null}
     </PageSection>
