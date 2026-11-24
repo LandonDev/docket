@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
 import { vmCanOf } from '@shared/work/filePlaces'
@@ -14,6 +14,9 @@ import { forgetVmLists } from './places/teams'
 import { setThreadsMayWrite } from './policy'
 import { settleTrash } from './trash'
 import { approver, at, HOST, peer, phone, thread, window, WS, type Rig, makeRig } from './testkit'
+
+// Save as Word to… writes the Work service's Word export; here a stand-in's bytes.
+vi.mock('../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Minutes.docx', data: Buffer.from('word export').toString('base64'), warnings: [] }) }))
 
 /**
  * New, rename, move, edit and delete in a library OneDrive syncs in the Windows VM (vmVerbs.ts), with the guest's
@@ -217,6 +220,19 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(made.entries[0]).toMatchObject({ name: 'Minutes.docx', kind: 'document' })
     })
 
+    it('saves a document as Word into a VM folder through files.write, under a free name, never over a file there', async () => {
+      put(`${GENERAL}\\Minutes.docx`, false, 'theirs')
+      const id = op()
+      const got = await call<{ name: string; ref: { path: string } }>('work.files.saveAsWord', { source: { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }, at: at(GENERAL), op: id })
+      expect(changes()).toEqual([{ verb: 'files.write', args: { dir: GENERAL, name: 'Minutes 2.docx', data: Buffer.from('word export').toString('base64'), op: `tc-files:${id}:0` } }])
+      expect(got).toMatchObject({ name: 'Minutes 2.docx', ref: at(`${GENERAL}\\Minutes 2.docx`) })
+      expect(Buffer.from(disk.get(`${GENERAL}\\Minutes.docx`.toLowerCase())!.data, 'base64').toString()).toBe('theirs')
+      // A key that may not approve, and a thread, write nothing there.
+      await expect(call('work.files.saveAsWord', { source: { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }, at: at(GENERAL), op: op() }, phone)).rejects.toThrow('this key may not change it')
+      await expect(call('work.files.saveAsWord', { source: { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }, at: at(GENERAL), op: op() }, thread('t1'))).rejects.toThrow('files_* tools')
+      expect(changes()).toHaveLength(1)
+    })
+
     it('refuses a template and a name NTFS would not take, before the guest is asked', async () => {
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'text', from: at(`${GENERAL}\\Plan.txt`), op: op() })).rejects.toThrow('made blank')
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'folder', name: 'CON', op: op() })).rejects.toThrow('Windows keeps that name for itself.')
@@ -389,6 +405,13 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(fenced('work.files.read', { ref: file, offset: 0, length: 10 })).toThrow(FenceError)
       expect(fenced('work.files.write', { ref: file, text: 'x', version: 'v' })).toThrow(FenceError)
       expect(fenced('work.files.copy', { refs: [file], to: at(GENERAL), op: 'op-00001' })).toThrow(FenceError)
+      // Save as Word to… names the VM folder by its guest path and the document by a path in the roots; a document
+      // outside them, or claimed for another host, is still refused.
+      const doc = at(join(rig.folder, 'Run of show.tcdoc'))
+      expect(fenced('work.files.saveAsWord', { source: doc, at: at(GENERAL), op: 'op-00001' })).not.toThrow()
+      expect(fenced('work.files.saveAsWord', { source: doc, at: at('/Users/him/OneDrive', 'env_mac0000000000000000000'), op: 'op-00001' })).not.toThrow()
+      expect(fenced('work.files.saveAsWord', { source: at('/etc/secret.tcdoc'), at: at(GENERAL), op: 'op-00001' })).toThrow(FenceError)
+      expect(fenced('work.files.saveAsWord', { source: doc, at: at('/etc'), op: 'op-00001' })).toThrow(FenceError)
     })
   })
 })

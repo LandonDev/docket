@@ -1735,7 +1735,9 @@ Around the canvas:
   Delete. With two or more selected one bar floats 12px over the list's
   foot (40px, radius 12, the popover's depth): "3 selected", Move, Copy,
   Delete, Clear; while it shows the list keeps 56px under its last row.
-  **Move to… and Copy to…** are one small dialog that drills down in one
+  **Move to… and Copy to…** (and **Save as Word to…**, a document's, which
+  opens on the places and saves a new Word file there, said in one toast
+  with Show) are one small dialog that drills down in one
   column: it opens in the folder the things are in, a trail over it leads
   back up and to Places, a press walks into a folder (folders alone,
   more as the list nears its end), and the place's own sentence stands

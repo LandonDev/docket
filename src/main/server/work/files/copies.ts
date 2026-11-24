@@ -15,6 +15,7 @@ import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
 import { admitCaller, admitWrite, locate, type DoorPlace } from './policy'
 import { saveCopy, saveFile, versionWord, workDone } from './save'
+import { makeBytes } from './verbs'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, versionOf } from './write'
 
@@ -434,14 +435,27 @@ export function reopened(ctx: Pick<WorkCtx, 'db'>, r: CopyRow): void {
  * `work.files.writeBack`, run where the file lies, for the workspace's host sending a copy back. Admitted exactly as
  * his own save of that library file here would be (`admitChange` as `edit`, a peer's change only with its origin),
  * then written by `saveFile` over the file only while it is still `version`, or with `copy` beside it under the
- * keep-both name, never over anything.
+ * keep-both name, never over anything. `into`: Save as Word to… a library folder here: `ref` names the new file,
+ * made in its folder under a free name through New's door (`make`), never over anything.
  */
-export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; version: string; copy?: boolean; origin: FileOrigin }, method: string): Promise<WrittenBack> {
+export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; version: string; copy?: boolean; into?: boolean; origin: FileOrigin }, method: string): Promise<WrittenBack> {
   if (by.kind !== 'remote' || !by.peer) throw new Error(ONLY_HOST)
   const data = Buffer.from(p.data, 'base64')
   if (data.length > COPY_ACROSS_MAX) throw new Error(TOO_BIG(basename(p.ref.at === 'file' ? p.ref.path : 'This file')))
   if (p.ref.at !== 'file') throw new Error('A copy goes back to a file on a disk.')
   const path = p.ref.path
+  if (p.into) {
+    // Save as Word to… a folder of this host's (saveAsWord.ts): a new file in it under a free name, through New's door.
+    const folder = { at: 'file' as const, host: p.ref.host, path: dirname(path) }
+    admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [folder], origin: p.origin }, method)
+    const at = locate(ctx, by, p.workspaceId, folder, method)
+    if (at.in !== 'library' || at.library.vm) throw new Error("Another host reaches only this host's libraries.")
+    const done = await makeBytes(ctx, by, { workspaceId: p.workspaceId, at: folder, name: basename(path), data, op: randomUUID() }, method)
+    const made = done.entries[0]?.ref
+    if (made?.at !== 'file') throw new Error('The file was not made.')
+    const v = await versionOf(made.path)
+    return { copy: { path: made.path, name: basename(made.path), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+  }
   if (p.copy) {
     const folder = { at: 'file' as const, host: p.ref.host, path: dirname(path) }
     admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [folder], origin: p.origin }, method)

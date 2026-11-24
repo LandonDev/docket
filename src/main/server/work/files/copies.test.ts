@@ -812,3 +812,50 @@ describe('a Word file an older build opened, its document beside the copy with h
     expect(readFileSync(opened.path, 'utf8')).toBe('a colleague saved')
   })
 })
+
+describe('Save as Word to a folder he picks', () => {
+  const doc = () => ({ at: 'file' as const, host: HOST, path: join(box.folder, 'Run of show.tcdoc') })
+  let n = 0
+  const op = () => `op-word-${++n}-0000`
+
+  it('writes the export as a new .docx into a library folder here under a free name, never over the file there', async () => {
+    const general = join(box.team, 'General')
+    const got = await call<{ name: string; ref: { path: string } }>('work.files.saveAsWord', { source: doc(), at: { at: 'file', host: HOST, path: general }, op: op() })
+    // Plan.docx is there already: the export lands beside it, and that file is untouched.
+    expect(got.name).toBe('Plan 2.docx')
+    expect(readFileSync(join(general, 'Plan 2.docx'), 'utf8')).toBe('word export')
+    expect(readFileSync(join(general, 'Plan.docx'), 'utf8')).toBe('word')
+    // His own name, with the form's extension added.
+    const named = await call<{ name: string }>('work.files.saveAsWord', { source: doc(), at: { at: 'file', host: HOST, path: general }, name: 'Run of show', op: op() })
+    expect(named.name).toBe('Run of show.docx')
+    // The same press again (its operation id) answers what it did, and makes nothing twice.
+    const id = op()
+    await call('work.files.saveAsWord', { source: doc(), at: { at: 'place', id: 'folder' }, op: id })
+    await call('work.files.saveAsWord', { source: doc(), at: { at: 'place', id: 'folder' }, op: id })
+    expect(readdirSync(box.folder).filter((f) => f.endsWith('.docx'))).toEqual(['Plan.docx'])
+  })
+
+  it("writes into a library on his Mac through the Mac's own door, never over a file there", async () => {
+    const general = join(mac.team, 'General')
+    const got = await call<{ name: string; ref: { host: string; path: string } }>('work.files.saveAsWord', { source: doc(), at: { at: 'file', host: MAC, path: general }, op: op() })
+    expect(far.map((c) => `${c.verb}:${c.args.into}`)).toEqual(['writeBack:true'])
+    expect(got).toMatchObject({ name: 'Plan 2.docx', ref: { host: MAC, path: join(general, 'Plan 2.docx') } })
+    expect(readFileSync(join(general, 'Plan 2.docx'), 'utf8')).toBe('word export')
+    expect(readFileSync(join(general, 'Plan.docx'), 'utf8')).toBe('word')
+  })
+
+  it('refuses a thread, a read key and a key that may not approve, and writes nothing', async () => {
+    const here = { at: 'file' as const, host: HOST, path: join(box.team, 'General') }
+    const there = { at: 'file' as const, host: MAC, path: join(mac.team, 'General') }
+    await expect(call('work.files.saveAsWord', { source: doc(), at: here, op: op() }, thread('t1'))).rejects.toThrow('files_* tools')
+    await expect(call('work.files.saveAsWord', { source: doc(), at: { at: 'place', id: 'folder' }, op: op() }, reader)).rejects.toThrow('This key may not change files.')
+    // A key whose roots reach the library is still not his hand there without approve.
+    box.roots.push(box.team)
+    await expect(call('work.files.saveAsWord', { source: doc(), at: here, op: op() }, phone)).rejects.toThrow('this key may not change it')
+    await expect(call('work.files.saveAsWord', { source: doc(), at: there, op: op() }, phone)).rejects.toThrow('this key may not change it')
+    expect(far).toEqual([])
+    expect(readdirSync(join(box.team, 'General')).filter((f) => f.endsWith('.docx'))).toEqual(['Plan.docx'])
+    // A key that may approve is his own hand.
+    expect((await call<{ name: string }>('work.files.saveAsWord', { source: doc(), at: here, op: op() }, approver)).name).toBe('Plan 2.docx')
+  })
+})

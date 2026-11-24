@@ -115,6 +115,7 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('export', 'Export…', 'CmdOrCtrl+Shift+E'),
       { ...cmd('print', 'Print…'), whileEditing: { accelerator: 'CmdOrCtrl+P', from: 'go_to_file' } },
+      cmd('save_word', 'Save as Word to…', undefined, { workOnly: true }),
       sep,
       { ...cmd('close_tab', 'Close Tab', 'CmdOrCtrl+W'), toggle: { show: 'Close Tab', hide: 'Close Pane' } },
       role('close', 'Close Window', 'CmdOrCtrl+Shift+W')

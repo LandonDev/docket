@@ -48,6 +48,8 @@ export type MenuFacts = {
   /** A Work editor on screen answers Print… and Export… (lib/appCommands.ts `workCommands`). */
   print?: boolean;
   export?: boolean;
+  /** A document of a Work workspace on screen answers Save as Word to… (work/docs/DocumentCanvas.tsx). */
+  saveWord?: boolean;
   /** The rows whose keys the editor holding the caret owns (`editorHeld`). */
   editing?: string[];
   /** A live Office file's guest has the focus: Word owns its keys (src/shared/menuState.ts `LIVE_KEY_IDS`). */
@@ -77,6 +79,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (!f.workOn) disabled.push("open_digest");
   if (!f.print) disabled.push("print");
   if (!f.export) disabled.push("export");
+  if (!f.saveWord) disabled.push("save_word");
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
@@ -118,6 +121,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     today: shellStore.getState().workPlace === "today",
     print: workCommands.has("print"),
     export: workCommands.has("export"),
+    saveWord: workCommands.has("save_word"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),
     live: liveFocused(caret !== undefined ? caret : typeof document === "undefined" ? null : document.activeElement),
   };

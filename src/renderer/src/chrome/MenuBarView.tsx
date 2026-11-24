@@ -56,9 +56,9 @@ type Props = {
 export function MenuBar({ onCommand, disabled }: Props) {
   const menus = useMemo(() => inAppMenus(MENU_TREE), []);
   // Print… and Export… are live only while a Work editor on screen answers them (lib/appCommands.ts).
-  const answered = useSyncExternalStore(workCommands.subscribe, () => `${workCommands.has("print")}${workCommands.has("export")}`);
+  const answered = useSyncExternalStore(workCommands.subscribe, () => `${workCommands.has("print")}${workCommands.has("export")}${workCommands.has("save_word")}`);
   const off = useMemo(
-    () => new Set([...(disabled ?? []), ...(["print", "export"] as const).filter((id) => !workCommands.has(id))]),
+    () => new Set([...(disabled ?? []), ...(["print", "export", "save_word"] as const).filter((id) => !workCommands.has(id))]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [disabled, answered],
   );

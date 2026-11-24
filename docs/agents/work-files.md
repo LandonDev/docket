@@ -1304,7 +1304,8 @@ while its screen is unlocked.
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
 | `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent |
-| `writeBack {ref, data, version, copy?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name (`WrittenBack`) |
+| `writeBack {ref, data, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
+| `saveAsWord {source, at, name?, op}` | operate, and `approve` where others can open the folder | screen | a document exported as Word and made a new .docx in the folder ("Save as Word to a folder"): `SavedAsWord {name, ref}` |
 | `make {at, kind, name?, from?}`, `rename {ref, name}`, `move {refs, to}`, `copy {refs, to}` | operate, and `approve` where others can open the place | screen | `FileDone`: the things as they are now, and a `refused` row with its sentence for each one that could not be done ("New, rename, move and copy") |
 | `trash`, `upload` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
@@ -1753,6 +1754,39 @@ over a file that changed there.
 - **The header never reads as saved before the file holds it.** While his window's own ask is unanswered the line
   says "Saving to MacBook…"; an ask the host refused says "Not saved to MacBook." and the reason, with Retry
   (`copyLine`'s `CopyAsk`). What the host says of the file (not answering, changed there, refused) wins over it.
+
+## Save as Word to a folder
+
+`files/saveAsWord.ts`, the owner's ask of 2026-11-24 ("There's no option for me to save a doc as a type (docx) to a
+teams file area."). Any document he has open (a `.tcdoc`, the document kept for a library Word file, a LifeOS
+document, a Google Doc) goes as a NEW Word file into a folder he picks.
+
+- **Where he finds it.** File → Save as Word to… (`save_word`, a Work-only row under Print…, live while a document of a
+  Work workspace is on screen: `useWorkCommands`), the document's More beside a thread ("Save as Word to…", after
+  Export…), and the ⋯ of a Files tab showing a document (after Download). Each opens `SaveAsWordDialog`, the Move to…
+  dialog (`MoveDialog` with `verb: 'word'`) on his places: the workspace's folder and every Teams and OneDrive library
+  of each computer the workspace may use, the VM's among them. A folder whose place makes nothing is off with the
+  grammar's sentence (`refusal(place, 'make')`). Save Here, then one toast: "Saved as Word in General" with Show, which
+  opens that folder in a Files tab.
+- **The host** (`work.files.saveAsWord {workspaceId, source, at, name?, op}`, asked of the workspace's own host, where
+  the document lives). The door first, before anything is exported: a folder of this host as New there (`admitChange`
+  as `make`, so a key needs `approve` where others can open it); a folder of another host of his as his own edit
+  there (`admitOwner`). A thread is refused at the wire (`CHANGES`), a read key by its capability (and again here).
+  Then `exportDoc` writes Word from the live text (the Work service's), named for the document unless `name` says, and
+  the file is made under a free name read case-blind ("Plan 2.docx"), never over anything, under the operation id
+  (`runOp`: the same press again makes nothing twice):
+  - the workspace's folder or a library on this host: `makeBytes` (verbs.ts), `makeFile` by exclusive create;
+  - a library in this host's Windows VM: `vmMake` with the bytes, the guest's `files.write {dir, name, data, op}`;
+  - a library on another computer of his: that host's `writeBack` with `into: true` (`ref` the wanted file, its folder
+    a library there, never its VM), which passes its own door as `make` with the window's origin and runs
+    `makeBytes` there. The writeBack verb was kept rather than a new peer verb: one route across hosts for a file's
+    bytes, one flag.
+  Each changed folder is pushed as for New. The answer is the file made (`SavedAsWord`).
+- **The fence.** `saveAsWord` is in `GUEST_METHODS` (a VM folder named by its guest path) and `ELSEWHERE_METHODS`
+  (another host's folder, which is sent to that host and never opened here); the document's own path is still held
+  to the roots.
+
+Not yet: a folder of Google Drive or a LifeOS project (refused in a sentence), and a VM library on another host.
 
 ## A Word file from another computer
 

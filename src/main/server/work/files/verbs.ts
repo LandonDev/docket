@@ -251,6 +251,23 @@ export async function makeVerb(ctx: WorkCtx, by: Caller, p: MakeAsk, method: str
   })
 }
 
+/**
+ * A new file of bytes made elsewhere (Save as Word to…: a document's Word export, saveAsWord.ts) in the folder,
+ * under a free name, never over anything: a lens means the workspace's folder, as for New. The door has been passed
+ * by the caller (`admitChange` as `make`); the Windows VM's file is written by its helper (`vmMake` with the bytes).
+ */
+export async function makeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; name: string; data: Buffer; op: string }, method: string): Promise<FileDone> {
+  const folder = where(ctx, by, p.workspaceId, makeFolderRef(ctx, by, p.at), method)
+  checkName(p.name)
+  if (folder.vm) return vmMake(ctx, p.workspaceId, vmOf(folder), { kind: 'document', name: p.name, op: p.op, data: p.data })
+  asFolder(folder)
+  const name = freeIn(folder.path, p.name)
+  const made = await withFileLocks([keyIn(ctx, folder, join(folder.path, name))], () => makeFile(fenceOf(folder.root), folder.path, name, p.data))
+  said(ctx, by, p.workspaceId, [folder.path], method)
+  const entry = await entryOf(ctx, by, p.workspaceId, made, method)
+  return { entries: entry ? [entry] : [], refused: [], op: p.op }
+}
+
 /** Moves one thing to `dir`/`name` in its own place and carries what hangs on it; a fault in the carrying moves it back. */
 async function moveInside(ctx: WorkCtx, w: Where, fence: WriteFence, dir: string, name: string, key: string): Promise<string> {
   const moved = await moveNoReplace(fence, w.path, dir, name)

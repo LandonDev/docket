@@ -36,6 +36,8 @@ import { NameField, useSideOver } from "./rowParts";
 import { copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
+import { SaveAsWordDialog } from "./SaveAsWordDialog";
+import { useWorkspaceOf } from "./workspaceOf";
 
 /**
  * A file open as itself in a Files tab (docs/DESIGN.md "The Files place"): its own header, then its kind's bar and
@@ -370,12 +372,18 @@ export function FileTabView({
   const [full, setFull] = useState(false);
   // The file's menu: the verbs its row has, less Open (it is open), then Download, Full Window and Close Tab.
   const verbs = (manage?.rows ?? []).filter((row) => row.act !== "open" && row.act !== "open-tab");
+  // Save as Word to…: any document, a new .docx in a folder of his places (SaveAsWordDialog.tsx).
+  const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
+  const wordable = !!meta && item?.kind === "document";
+  const [wordTo, setWordTo] = useState(false);
   const rows: MenuRow[] = [
     ...verbs.flatMap((row): MenuRow[] => [
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
       { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}) },
     ]),
-    ...(manage?.download ? ([{ kind: "sep" }, { kind: "item", id: "download", label: "Download" }] satisfies MenuRow[]) : []),
+    ...(manage?.download || wordable ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
+    ...(manage?.download ? ([{ kind: "item", id: "download", label: "Download" }] satisfies MenuRow[]) : []),
+    ...(wordable ? ([{ kind: "item", id: "save-word", label: "Save as Word to…" }] satisfies MenuRow[]) : []),
     { kind: "sep" },
     { kind: "item", id: "full", label: full ? "Leave Full Window" : "Full Window", icon: full ? Minimize2 : Maximize2 },
     { kind: "item", id: "close", label: "Close Tab", icon: X, shortcut: shortcutFor("Files (Work)", "Close Tab") },
@@ -453,6 +461,7 @@ export function FileTabView({
           if (id === "word-auto") return void setWordAuto(workspace.environmentId, workspace.id, tab.id, !tab.word?.auto).catch((err: unknown) => sayError(err, "The choice was not kept"));
           if (id === "full") return setFull(!full);
           if (id === "download") return manage?.download?.();
+          if (id === "save-word") return setWordTo(true);
           if (id === "rename") return setRenaming(true);
           manage?.run(id as EntryAct);
         }}
@@ -542,6 +551,7 @@ export function FileTabView({
           </div>
         ) : null}
       </div>
+      {wordTo && meta && item ? <SaveAsWordDialog workspace={meta} source={item.source} name={item.title || name} onClose={() => setWordTo(false)} /> : null}
     </div>
   );
 }

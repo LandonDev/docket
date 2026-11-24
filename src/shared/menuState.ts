@@ -27,7 +27,7 @@ export const LIVE_KEY_IDS = ['find', 'go_to_file', 'print', 'save_all', 'export'
 export const LIVE_OFF_IDS = ['find', 'print', 'save_all', 'export'] as const
 
 /** The rows that are Work's alone (the tree's `workOnly` rows; menuTree.test.ts holds the two equal): a window hides them while no host has Work on. */
-export const WORK_ONLY_IDS = ['search_work', 'open_today'] as const
+export const WORK_ONLY_IDS = ['save_word', 'search_work', 'open_today'] as const
 
 export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [], checked: {} }
 

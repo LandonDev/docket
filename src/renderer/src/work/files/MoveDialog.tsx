@@ -12,10 +12,11 @@ import { placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./m
 import { useListing, type ListFrom } from "./store";
 
 /**
- * Move to… and Copy to… (docs/DESIGN.md "The Files place"): one dialog that walks to a folder. It starts in the
- * folder the things are in; the places are one press away, each with its folders under it. The verb is off, with
- * the place's own sentence beside it, where the grammar refuses it (`refusal`, the rule the host holds), so
- * nothing is offered that would be refused.
+ * Move to…, Copy to… and Save as Word to… (docs/DESIGN.md "The Files place"): one dialog that walks to a folder. It
+ * starts in the folder the things are in (Save as Word: on the places); the places are one press away, each with its
+ * folders under it. The verb is off, with the place's own sentence beside it, where the grammar refuses it
+ * (`refusal`, the rule the host holds; for Save as Word, New's in that folder), so nothing is offered that would be
+ * refused.
  */
 
 export interface MoveTarget {
@@ -24,24 +25,33 @@ export interface MoveTarget {
   name: string;
 }
 
+const VERB = { move: "Move", copy: "Copy", word: "Save" } as const;
+
 const ROW = "flex h-8 w-full min-w-0 cursor-default items-center gap-2 rounded-md px-2 text-start text-[13px] select-none";
 
 export function MoveDialog({
   verb,
   entries,
+  what: named,
   from,
   start,
+  waiting = false,
   sidebar,
   workspace,
   onPick,
   onClose,
 }: {
-  verb: "move" | "copy";
+  /** `word`: Save as Word to…, a new file made in the folder; `entries` is empty and `what` names the document */
+  verb: "move" | "copy" | "word";
   entries: readonly FileEntry[];
-  /** the place the things are in */
-  from: PlaceCopy;
-  /** the folder the dialog opens in: the one the things are in */
-  start: { at: FolderRef; name: string };
+  /** the name the title gives what goes, where no entry names it */
+  what?: string;
+  /** the place the things are in; absent for Save as Word */
+  from?: PlaceCopy;
+  /** the folder the dialog opens in: the one the things are in; null opens on the places */
+  start: { at: FolderRef; name: string } | null;
+  /** the places are still being read: their rows are drawn as they come */
+  waiting?: boolean;
   sidebar: Sidebar;
   workspace: { id: string; name: string };
   /** he chose a folder: the caller carries the things there; the dialog waits for it */
@@ -49,9 +59,9 @@ export function MoveDialog({
   onClose(): void;
 }) {
   // Where the dialog stands: a place's copy and a folder in it; null is the list of places.
-  const [at, setAt] = useState<MoveTarget | null>({ copy: from, at: start.at, name: start.name });
+  const [at, setAt] = useState<MoveTarget | null>(start && from ? { copy: from, at: start.at, name: start.name } : null);
   const [pending, setPending] = useState(false);
-  const what = entries.length === 1 ? entries[0]!.name : `${entries.length} things`;
+  const what = named ?? (entries.length === 1 ? entries[0]!.name : `${entries.length} things`);
   const places: MoveTarget[] = [
     ...(sidebar.folder ? [{ copy: sidebar.folder, at: placePage(sidebar.folder, workspace.name).at, name: workspace.name }] : []),
     ...sidebar.rows.map((row) => {
@@ -59,19 +69,19 @@ export function MoveDialog({
       return { copy, at: placePage(copy, row.name).at, name: row.group && row.group !== row.name ? `${row.group}, ${row.name}` : row.name };
     }),
   ];
-  // The grammar's refusal for the folder shown, for any of the things.
-  const no = at ? (entries.map((entry) => refusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null) : null;
+  // The grammar's refusal for the folder shown, for any of the things; a Word file is a new thing made there.
+  const no = !at ? null : verb === "word" || !from ? refusal(at.copy.place, "make") : (entries.map((entry) => refusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
   // A thing cannot go into itself or stay where it is.
-  const same = !!at && (samePage(at.at, start.at) && verb === "move" ? "It is in this folder already." : entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null);
+  const same = !!at && (start && samePage(at.at, start.at) && verb === "move" ? "It is in this folder already." : entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null);
   const why = no?.text ?? same ?? null;
   return (
-    <Modal onClose={onClose} title={`${verb === "move" ? "Move" : "Copy"} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
+    <Modal onClose={onClose} title={verb === "word" ? `Save ${what} as Word` : `${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-3">
-        {at ? <Folders key={`${at.copy.link}:${JSON.stringify(at.at)}`} workspaceId={workspace.id} target={at} entries={entries} onInto={setAt} onPlaces={() => setAt(null)} /> : <Places places={places} onInto={setAt} />}
+        {at ? <Folders key={`${at.copy.link}:${JSON.stringify(at.at)}`} workspaceId={workspace.id} target={at} entries={entries} onInto={setAt} onPlaces={() => setAt(null)} /> : <Places places={places} waiting={waiting} onInto={setAt} />}
       </div>
       <DialogFooter
         onCancel={onClose}
-        confirmLabel={at ? `${verb === "move" ? "Move" : "Copy"} Here` : verb === "move" ? "Move" : "Copy"}
+        confirmLabel={at ? `${VERB[verb]} Here` : VERB[verb]}
         pending={pending}
         disabled={!at || why !== null}
         note={why ? <span className="text-xs text-muted-foreground">{why}</span> : undefined}
@@ -88,10 +98,11 @@ export function MoveDialog({
 }
 
 /** The places a thing can go to. */
-function Places({ places, onInto }: { places: readonly MoveTarget[]; onInto(to: MoveTarget): void }) {
+function Places({ places, waiting, onInto }: { places: readonly MoveTarget[]; waiting: boolean; onInto(to: MoveTarget): void }) {
   return (
     <div role="listbox" aria-label="Places" className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
       <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
+      {waiting && !places.length ? <RowBones /> : null}
       {places.map((place) => (
         <Button key={`${place.copy.link}:${place.copy.place.id}`} variant="ghost" role="option" aria-selected={false} className={`${ROW} justify-start font-normal`} onClick={() => onInto(place)}>
           <KindGlyph kind="folder" />
@@ -146,14 +157,7 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
       </nav>
       <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {!listing.loaded ? (
-          <div role="status" aria-label="Loading" aria-busy className="flex flex-col">
-            {["w-[46%]", "w-[60%]", "w-[38%]"].map((w, i) => (
-              <div key={i} className="flex h-8 items-center gap-2 px-2">
-                <Skeleton className="size-4 shrink-0 rounded-sm" />
-                <Skeleton className={`h-3 ${w}`} />
-              </div>
-            ))}
-          </div>
+          <RowBones />
         ) : listing.error && !folders.length ? (
           <div className="flex flex-col items-start gap-2 p-2 text-xs text-muted-foreground">
             <span>This folder did not load.</span>
@@ -196,5 +200,19 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
         ) : null}
       </div>
     </>
+  );
+}
+
+/** Rows still being read: three bones in the rows' own shape. */
+function RowBones() {
+  return (
+    <div role="status" aria-label="Loading" aria-busy className="flex flex-col">
+      {["w-[46%]", "w-[60%]", "w-[38%]"].map((w, i) => (
+        <div key={i} className="flex h-8 items-center gap-2 px-2">
+          <Skeleton className="size-4 shrink-0 rounded-sm" />
+          <Skeleton className={`h-3 ${w}`} />
+        </div>
+      ))}
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
 import type { HistoryCompare } from "@shared/contract-work-history";
@@ -44,6 +44,10 @@ import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
+import { useWorkspaceOf } from "../files/workspaceOf";
+
+// Save as Word to…: the Files place's folder picker, loaded on his press.
+const SaveAsWordDialog = lazy(() => import("../files/SaveAsWordDialog").then((m) => ({ default: m.SaveAsWordDialog })));
 
 /**
  * The document kind's body (docs/agents/work-docs.md; the approved
@@ -355,6 +359,10 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const reopen = useCallback(() => setAttempt((n) => n + 1), []);
   const googleMore = useGoogleDoc(env, item, reopen);
   const google = useMemo(() => (own.length ? [...own, ...googleMore] : googleMore), [own, googleMore]);
+  // Save as Word to… a folder of his places: a document of a Work workspace, from the pane's More and File → Save as Word to….
+  const workspace = useWorkspaceOf(env, item.workspaceId);
+  const [wordTo, setWordTo] = useState(false);
+  const saveWord = useCallback(() => setWordTo(true), []);
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
@@ -423,11 +431,17 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   preview={{ slot, on: previewing, asked, set: showPreview }}
                   rowSlot={rowSlot}
                   pages={pages}
+                  {...(workspace ? { onSaveWord: saveWord } : {})}
                 />
               ) : null
             }
           </Scroller>
         </div>
+        {wordTo && workspace ? (
+          <Suspense fallback={null}>
+            <SaveAsWordDialog workspace={workspace} source={source} name={item.title} onClose={() => setWordTo(false)} />
+          </Suspense>
+        ) : null}
       </div>
     </DropImport>
   );
@@ -544,6 +558,7 @@ function Opened({
   preview,
   rowSlot,
   pages,
+  onSaveWord,
 }: {
   host: DocHost;
   open: DocOpen;
@@ -555,6 +570,8 @@ function Opened({
   preview: PreviewSlot;
   rowSlot: HTMLElement | null;
   pages?: PagesWiring;
+  /** Save as Word to…: opens the folder picker; absent outside a Work workspace */
+  onSaveWord?(): void;
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
@@ -589,13 +606,13 @@ function Opened({
   // ⌘P open it on Print (work/formats/PreviewFrame.tsx).
   const showPreview = preview.set;
   useEffect(() => {
-    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }]);
+    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }, ...(onSaveWord ? [{ id: "save-word", label: "Save as Word to…", icon: Doc, run: onSaveWord }] : [])]);
     return () => shell.more?.(null);
-  }, [shell, more, showPreview]);
+  }, [shell, more, showPreview, onSaveWord]);
   // Edit → Find… and ⌘F with the caret in the text open the editor's own find; Replace is in its bar where he may edit.
   const finder = useRef<FindHandle | null>(null);
   const onFind = useCallback((handle: FindHandle | null) => void (finder.current = handle), []);
-  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open() });
+  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open(), ...(onSaveWord ? { save_word: onSaveWord } : {}) });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
   // Under Preview the editor draws the document and nothing else: find's tints go here, and the changes in review below.

@@ -251,7 +251,7 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
  * can open it) before the guest's helper is asked. An editor's `read` and `write` are not here: a file in the VM
  * goes to his own window alone.
  */
-const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen|make|rename|move|trash)$/
+const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen|make|rename|move|trash|saveAsWord)$/
 
 /**
  * A file in the Windows VM a host keeps (docs/agents/work-teams-files.md "The Windows VM"), named by the guest's own
@@ -277,7 +277,7 @@ export function guestPath(method: string, path: string, platform: NodeJS.Platfor
  * host's own id. Listed one verb at a time, never a pillar whole; a verb that reads or changes a file here is never
  * among them. docs/agents/work-teams-files.md "Another host's file, from a remote key".
  */
-const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(threads|open|tabOpen|tabSet|star|seen)$/
+const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(threads|open|tabOpen|tabSet|star|seen|saveAsWord)$/
 
 /**
  * A file another host holds (his Mac's OneDrive, named by the Mac's own path), in a verb `ELSEWHERE_METHODS` lists:

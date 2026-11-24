@@ -221,7 +221,14 @@ export const FilesRequestSchemas = [
    * window's or a key's): written over the file by `version` alone, through the same door as his own save there,
    * or with `copy` beside it under the keep-both name. `origin` is his window's press on the workspace's host.
    */
-  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), origin: FileOriginSchema })),
+  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), origin: FileOriginSchema })),
+  /**
+   * → SavedAsWord: Save as Word to…: the document `source` (a .tcdoc, a LifeOS document, a Google Doc) exported as
+   * Word from its live text and written as a NEW file into the folder `at` (the workspace's folder, a library here or
+   * in its Windows VM, or a library on another host of his), under a free name, never over anything. Through Files'
+   * door as New there; his own press: his window, or a key that may approve where others can open the folder.
+   */
+  request('work.files.saveAsWord', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, at: FolderRefSchema, name: Name.optional(), op: Op })),
   /** → FilesTabs: moves a tab before `before` (last when null). */
   request('work.files.tabMove', z.object({ workspaceId: Workspace, tabId: z.string().max(100), before: z.string().max(100).nullable() })),
   /** → FilesTabs: where a page tab stands now. */
@@ -369,6 +376,11 @@ export interface WordBack {
 /** What Save as Word answers: written over the file, the file changed there or went (nothing written), or kept beside it. */
 export type WordSaved = { at: number } | { conflict: { changed: number } | { gone: true } } | { copy: { name: string } }
 /** What a copy's own host answers a send back: the file's version after it, the conflict, or the keep-both file it made. */
+/** Save as Word to…: the Word file made, by its name and where it lies. */
+export interface SavedAsWord {
+  name: string
+  ref: CanvasSource
+}
 export type WrittenBack = { version: string; changed: number } | { conflict: { version: string; changed: number } | { gone: true } } | { copy: { path: string; name: string; version: string; changed: number } }
 
 export interface FilesTabs {
@@ -481,6 +493,7 @@ export const FILES_CAPS = {
   'work.files.wordAuto': 'operate',
   // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
   'work.files.writeBack': 'operate',
+  'work.files.saveAsWord': 'operate',
   'work.files.tabMove': 'operate',
   'work.files.tabSet': 'operate',
   'work.files.star': 'operate',
@@ -521,6 +534,7 @@ export const FILES_RELAY = {
   'work.files.wordSave': 'screen',
   'work.files.wordAuto': 'screen',
   'work.files.writeBack': 'screen',
+  'work.files.saveAsWord': 'screen',
   'work.files.project': 'screen',
   'work.files.purge': 'never'
 } satisfies RelayOf<typeof FilesRequestSchemas>

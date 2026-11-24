@@ -92,8 +92,11 @@ function said(ctx: WorkCtx, workspaceId: string, at: LibraryPlace, dirs: Iterabl
   }
 }
 
-/** New in a VM folder: a folder, a text file, or an Office file a maker writes, named as on this host, never over anything. */
-export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string }): Promise<FileDone> {
+/**
+ * New in a VM folder: a folder, a text file, or an Office file a maker writes, named as on this host, never over
+ * anything. `data`: the new file's bytes made elsewhere (Save as Word to…, saveAsWord.ts) in place of a blank.
+ */
+export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string; data?: Buffer }): Promise<FileDone> {
   const form = formIn(folder.place, p.kind)
   const ext = form ? `.${form}` : ''
   const named = p.name?.trim()
@@ -103,7 +106,7 @@ export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere,
   const name = freeName(wanted, (n) => names.has(n.normalize('NFC').toLowerCase()))
   const made = await withFileLocks([libraryKey(folder.library, inDir(folder.path, name))], async () => {
     if (p.kind === 'folder') return (await guestChange<{ entry: GuestEntry }>('files.mkdir', { dir: folder.path, name, op: guestOp(p.op) })).entry
-    const data = p.kind === 'text' || !form ? Buffer.alloc(0) : await makerBytes(ctx, p.kind, form, name.slice(0, name.length - ext.length))
+    const data = p.data ?? (p.kind === 'text' || !form ? Buffer.alloc(0) : await makerBytes(ctx, p.kind, form, name.slice(0, name.length - ext.length)))
     return (await guestChange<{ entry: GuestEntry }>('files.write', { dir: folder.path, name, data: data.toString('base64'), op: guestOp(p.op) })).entry
   })
   said(ctx, workspaceId, folder.library, [folder.path])

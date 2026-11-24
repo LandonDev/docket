@@ -1,5 +1,5 @@
 import { ATTACHMENT_CHUNK_BYTES } from "@shared/contract-attachments";
-import type { FileDone, FileRef, FileTab } from "@shared/contract-work-files";
+import type { FileDone, FileRef, FileTab, SavedAsWord } from "@shared/contract-work-files";
 import type { CanvasSource } from "@shared/work";
 import { deleteAsk, questionFor, refusal, type FileEntry, type FolderRef, type MakeKind } from "@shared/work/files";
 import { confirmAction } from "../../chrome/ConfirmDialog";
@@ -89,6 +89,21 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
     return done.entries.length > 0;
   } catch (err) {
     failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", err);
+    return false;
+  }
+}
+
+/**
+ * Save as Word to…: the document written as a new .docx into the folder he picked, under a free name, never over
+ * anything (files/saveAsWord.ts on the workspace's host, which exports it from the live text). One toast with Show.
+ */
+export async function saveAsWordTo(of: ActsOf, source: CanvasSource, to: { at: FolderRef; name: string }, show: () => void): Promise<boolean> {
+  try {
+    await registry.linkOf(of.home).request<SavedAsWord>("work.files.saveAsWord", { workspaceId: of.workspaceId, source, at: to.at, op: opId() }, { timeoutMs: 180_000 });
+    void loadToast().then((toast) => toast.message(`Saved as Word in ${to.name}`, { action: { label: "Show", onClick: show } }));
+    return true;
+  } catch (err) {
+    failed("Not saved as Word", err);
     return false;
   }
 }
