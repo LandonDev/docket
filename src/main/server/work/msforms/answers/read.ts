@@ -11,6 +11,7 @@ import { LIBRARY_GONE, librariesFor, MsformsError, NO_FORM, type Reached } from 
 import { MsformsStore, type MsFormRow } from '../store'
 import { cachedAnswers, clearAnswers, keepAnswers, markAnswersStale, shownAnswers, sweepAnswers, type CachedAnswers } from './cache'
 import { AnswersUnreadable, answersOf, type ParsedAnswers } from './parse'
+import { libraryRootOf } from '../carrier/pull'
 
 /**
  * The answers read (docs/agents/work-msforms.md "Reading answers"), one at a
@@ -70,9 +71,22 @@ const samePath = (a: string, b: string): boolean => {
 
 /** The workbook lies in the form's folder, and is the one the row recorded: else it is not read and not stored. */
 function placeChecked(row: MsFormRow, wb: PulledWorkbook, folderPath: string): void {
-  if (!samePath(dirOf(wb.serverPath), folderPath)) throw new MsformsError(MOVED)
+  // the form's folder, or for a form made in a Team library that library's root, where Forms puts it (P1, 2026-11-24)
+  if (!samePath(dirOf(wb.serverPath), folderPath) && !samePath(dirOf(wb.serverPath), libraryRootOf(folderPath))) throw new MsformsError(MOVED)
   const was = row.workbook
   if (was && (was.uniqueId.toLowerCase() !== wb.uniqueId.toLowerCase() || (was.parentId && wb.parentId && was.parentId !== wb.parentId))) throw new MsformsError(MOVED)
+}
+
+/** The workbook's path inside its library, as Files names a library's file: its server path less the library's root. */
+function libraryPathOf(serverPath: string, folderPath: string): string {
+  const root = libraryRootOf(folderPath)
+  let path = serverPath
+  try {
+    path = decodeURIComponent(serverPath)
+  } catch {
+    // kept as it came
+  }
+  return path.toLowerCase().startsWith(`${root.toLowerCase()}/`) ? path.slice(root.length + 1) : path.replace(/^.*\//, '')
 }
 
 const kindOf = (err: unknown): string =>
@@ -114,7 +128,7 @@ async function readOnce(ctx: MsCtx, at: Reached, o: { by: ReadBy; rows: boolean 
     keepAnswers(row.workspaceId, row.formId, answers, got.modified, now)
     const workbook: MsFormWorkbook | undefined = row.workbook
       ? undefined
-      : { libraryId: row.folder.libraryId, path: [row.folder.path, got.workbook.name].filter(Boolean).join('/'), siteUrl: row.folder.siteUrl, uniqueId: got.workbook.uniqueId, parentId: got.workbook.parentId, name: got.workbook.name }
+      : { libraryId: row.folder.libraryId, path: libraryPathOf(got.workbook.serverPath, folderPath), siteUrl: row.folder.siteUrl, uniqueId: got.workbook.uniqueId, parentId: got.workbook.parentId, name: got.workbook.name }
     const before = row
     row = store.update(row.workspaceId, row.formId, {
       count: answers.count,

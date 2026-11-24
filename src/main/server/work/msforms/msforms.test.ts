@@ -357,6 +357,13 @@ describe('the answers read', () => {
     await expect(call('work.msforms.responses', ask(view.formId))).rejects.toThrow(MOVED)
   })
 
+  it("keeps a Team form's workbook at its library's root, where Forms puts it (P1), by its path in the library", async () => {
+    const view = await collecting(1)
+    carrier.pullPath = '/sites/RecWell/Shared Documents/Spring LAN sign-up.xlsx'
+    await call('work.msforms.refresh', ask(view.formId))
+    expect(new MsformsStore(db).get('w1', view.formId)!.workbook).toMatchObject({ libraryId: TEST_LIBRARY.id, path: 'Spring LAN sign-up.xlsx', name: 'Spring LAN sign-up.xlsx' })
+  })
+
   it('a sign-in marks Connections "Needs you" until a read gets through', async () => {
     const view = await collecting(1)
     carrier.pullThrows = new CarrierSignIn()

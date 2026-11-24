@@ -96,6 +96,13 @@ describe('the guard', () => {
     await expect(elsewhere.carrier.close(elsewhere.auth('close', { open: false }), 'FakeFormId00000000000001', false)).rejects.toThrow('authorized for another job')
   })
 
+  it("lets a pull press Continue only in the dialog that says it opens Excel for the web (P1)", () => {
+    const dialog = screen('[1] dialog\n  [2] heading "View your responses in Excel for the web"\n  [3] button "Close"\n  [4] button "Continue"')
+    expect(() => guardStep('pull', dialog, click(4))).not.toThrow()
+    refuses('pull', screen('[1] dialog\n  [2] heading "Share this form"\n  [4] button "Continue"'), 4)
+    refuses('pull', screen('[4] button "Continue"'), 4)
+  })
+
   it("words a refusal without the page's own words (review 21)", () => {
     const err = (() => {
       try {

@@ -18,6 +18,8 @@ export interface Control {
   name: RegExp
   /** an ancestor's name must match (a menu item under its menu, a button in a dialog) */
   under?: RegExp
+  /** the dialog the control is in holds a heading of these words (a dialog with no name of its own) */
+  inDialog?: RegExp
   /** a toggle that may only be turned this way: 'off' presses it only while it is on */
   only?: 'on' | 'off'
 }
@@ -98,7 +100,8 @@ const RESPONSES: Control[] = [
 ]
 const PULL: Control[] = [
   { roles: BUTTON, name: /^Open results in Excel$/i },
-  { roles: BUTTON, name: /^Continue$/i, under: /Excel/i }
+  // the first press's dialog has no name: its heading says "View your responses in Excel for the web" (P1)
+  { roles: BUTTON, name: /^Continue$/i, inDialog: /in Excel for the web/i }
 ]
 const MAKE: Control[] = [
   { roles: BUTTON, name: /^(Create or upload|New)$/i },
@@ -139,9 +142,22 @@ function ancestors(screen: Screen, e: ScreenElement): string[] {
   return out
 }
 
+/** Whether the dialog `e` sits in holds a heading matching `words`. */
+function dialogSays(screen: Screen, e: ScreenElement, words: RegExp): boolean {
+  let dialog: ScreenElement | undefined
+  for (let p = e.parent; p !== null && !dialog; p = screen.elements.get(p)?.parent ?? null) if (screen.elements.get(p)?.role === 'dialog') dialog = screen.elements.get(p)
+  if (!dialog) return false
+  const inside = (x: ScreenElement): boolean => {
+    for (let p = x.parent; p !== null; p = screen.elements.get(p)?.parent ?? null) if (p === dialog!.index) return true
+    return false
+  }
+  return [...screen.elements.values()].some((x) => x.role === 'heading' && words.test(x.name ?? '') && inside(x))
+}
+
 function matches(screen: Screen, e: ScreenElement, c: Control): boolean {
   if (!c.roles.includes(e.role) || !c.name.test(e.name ?? '')) return false
   if (c.under && !ancestors(screen, e).some((n) => c.under!.test(n))) return false
+  if (c.inDialog && !dialogSays(screen, e, c.inDialog)) return false
   if (c.only === 'off' && !isOn(e)) return false
   if (c.only === 'on' && isOn(e)) return false
   return true

@@ -35,6 +35,20 @@ export async function dismissTip(page: Page): Promise<void> {
 const JSON_HEADERS = { Accept: 'application/json;odata=nometadata' }
 const q = (s: string): string => s.replace(/'/g, "''")
 const dirOf = (path: string): string => path.replace(/\/[^/]*$/, '')
+/** The library a folder's server path lies in: `/sites/<site>/<library>`. */
+export const libraryRootOf = (path: string): string => /^(\/(?:sites|teams|personal)\/[^/]+\/[^/]+)/i.exec(decodeURIComponent(path))?.[1] ?? path
+/** The document id in Excel for the web's address (`sourcedoc={GUID}`), lower case; null when it names none. */
+export function docIdOf(url: string): string | null {
+  let text = url
+  try {
+    text = decodeURIComponent(url)
+  } catch {
+    // an address that does not decode is read as it is
+  }
+  return /[?&]sourcedoc=\{?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\}?/i.exec(text)?.[1]?.toLowerCase() ?? null
+}
+const MOVED_WORDS = "The workbook is not where Forms keeps this form's answers: it was moved or is another file. The answers were not read."
+
 const same = (a: string, b: string): boolean => decodeURIComponent(a).replace(/\/+$/, '').toLowerCase() === decodeURIComponent(b).replace(/\/+$/, '').toLowerCase()
 
 export interface PullDeps {
@@ -78,37 +92,50 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
         return c ? [click(c)] : []
       }, 'Continue')
     }
-    for (let waited = 0; waited <= deps.mount; waited += 1_000) {
-      const excel = (await computer.windows()).find((w) => !before.has(w.id) && /\/_layouts\/15\/Doc\.aspx|excel/i.test(w.url))
+    // The workbook is the one Excel for the web opened for this form: its document id binds it (review 3), never a name.
+    let docId: string | null = null
+    for (let waited = 0; waited <= Math.max(deps.mount, RESPONSES_VIEW_MS) && !docId; waited += 1_000) {
+      const excel = (await computer.windows()).find((w) => !before.has(w.id) && /\/_layouts\/15\/Doc\.aspx/i.test(w.url))
       if (excel) {
         opened.push(excel.id)
         origins.add(new URL(excel.url).origin)
+        docId = docIdOf(excel.url)
+        if (!docId) results.stop('the workbook\'s window named no document')
         break
       }
       await computer.wait(1_000)
     }
+    if (!docId) results.stop('Excel for the web did not open the workbook')
+    if (ask.uniqueId && ask.uniqueId.toLowerCase() !== docId) throw new CarrierStop('The workbook Forms opened is not the one this form keeps. The answers were not read.', null, formId)
 
-    // 2. From the folder's own site page, the file by its id (or, the first time, by its name in the folder).
+    // 2. From the folder's own site page, the file by that id.
     const site = await computer.open(ask.siteUrl)
     opened.push(site)
     const api = `${ask.siteUrl}/_api/web`
+    const sitePath = new URL(ask.siteUrl).pathname.replace(/\/+$/, '')
     const facts = async (): Promise<FileFacts | null> => {
-      const select = '$select=UniqueId,Name,ServerRelativeUrl,TimeLastModified'
-      const url = ask.uniqueId ? `${api}/GetFileById('${q(ask.uniqueId)}')?${select}` : ask.name ? `${api}/GetFileByServerRelativeUrl('${q(`${ask.folderServerPath}/${ask.name}`)}')?${select}` : null
-      if (!url) return null
-      const r = await computer.fetch(site, url, { headers: JSON_HEADERS })
+      const r = await computer.fetch(site, `${api}/GetFileById('${q(docId!)}')?$select=UniqueId,Name,ServerRelativeUrl,TimeLastModified`, { headers: JSON_HEADERS })
       return r.status === 200 && r.json ? (r.json as FileFacts) : null
     }
+    /**
+     * The place check, before the first byte and again after the wait: the file is this id, on the form's site, in the
+     * folder the form was made in or (a form made in a Team library: P1, 2026-11-24) that library's root.
+     */
+    const placed = (f: FileFacts | null): f is FileFacts =>
+      !!f &&
+      f.UniqueId.toLowerCase() === docId &&
+      same(f.ServerRelativeUrl.slice(0, sitePath.length), sitePath) &&
+      (same(dirOf(f.ServerRelativeUrl), ask.folderServerPath) || same(dirOf(f.ServerRelativeUrl), libraryRootOf(ask.folderServerPath)))
     let file: FileFacts | null = null
     for (let waited = 0; waited <= t.noMove && !file; waited += t.every) {
       file = await facts()
       if (!file) await computer.wait(t.every)
     }
-    if (!file) throw new CarrierStop('The workbook did not show in the form\'s folder. The answers were not read.', null, formId)
-    // The place check: the workbook must lie in the folder the form was made in.
-    if (!same(dirOf(file.ServerRelativeUrl), ask.folderServerPath)) throw new CarrierStop('The workbook is no longer in the form\'s folder: it was moved. The answers were not read.', null, formId)
-    const folder = await computer.fetch(site, `${api}/GetFolderByServerRelativeUrl('${q(ask.folderServerPath)}')?$select=UniqueId`, { headers: JSON_HEADERS })
+    if (!file) throw new CarrierStop('The workbook did not show where Forms keeps it. The answers were not read.', null, formId)
+    if (!placed(file)) throw new CarrierStop(MOVED_WORDS, null, formId)
+    const folder = await computer.fetch(site, `${api}/GetFolderByServerRelativeUrl('${q(dirOf(file.ServerRelativeUrl))}')?$select=UniqueId`, { headers: JSON_HEADERS })
     const parentId = folder.status === 200 ? String((folder.json as { UniqueId?: string })?.UniqueId ?? '') : ''
+    if (!parentId) throw new CarrierStop('SharePoint did not say which folder holds the workbook. The answers were not read.', null, formId)
 
     // 3. Wait for Excel for the web to save what Forms wrote: moved and then still, or no move for a while.
     let modified = file.TimeLastModified
@@ -119,7 +146,8 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
       if (!moved && waited >= t.noMove) break
       await computer.wait(t.every)
       const now = await facts()
-      if (!now) break
+      // a move or another file while the sync was waited for stops the read
+      if (!placed(now)) throw new CarrierStop(MOVED_WORDS, null, formId)
       if (now.TimeLastModified !== modified) {
         modified = now.TimeLastModified
         moved = true
@@ -127,7 +155,8 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
       }
       if (t.every === 0 && waited > t.noMove) break
     }
-    const body = await computer.fetch(site, `${api}/GetFileById('${q(file.UniqueId)}')/$value`, { bytes: true })
+    if (!placed(await facts())) throw new CarrierStop(MOVED_WORDS, null, formId)
+    const body = await computer.fetch(site, `${api}/GetFileById('${q(docId)}')/$value`, { bytes: true })
     if (body.status !== 200 || !body.bytes) throw new CarrierStop('SharePoint did not give the workbook. The answers were not read.', null, formId)
     return { workbook: { uniqueId: file.UniqueId, parentId, serverPath: file.ServerRelativeUrl, name: file.Name }, bytes: body.bytes, modified }
   } finally {
