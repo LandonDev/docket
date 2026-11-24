@@ -99,7 +99,7 @@ struct SlidesItemView: View {
     private var cacheKey: String { ReaderCache.key(host: host, file: file) }
 
     private var remembered: Loaded? {
-        guard let kept = ReaderCache.shared.latest(cacheKey), let about = kept.note as? Kept else { return nil }
+        guard let kept = ReaderCache.shared.latest(cacheKey), let about = kept.note as? Kept, DeckRender.paintsFromMemory(about.render) else { return nil }
         return Loaded(deck: about.deck, data: kept.data, render: about.render, rev: kept.rev, pages: about.pages, live: false)
     }
 

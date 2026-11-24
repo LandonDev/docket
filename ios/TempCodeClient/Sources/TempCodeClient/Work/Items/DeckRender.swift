@@ -19,6 +19,13 @@ public enum DeckRender: Sendable, Hashable {
         (pageCount ?? 0) > 0
     }
 
+    /// Whether a render kept in memory may paint a second open's first frame, before the host answers. The file's
+    /// own render is his older bytes; a proposed one is an agent's slides that are not in the file, and painted with
+    /// no review row (that waits for the host) they would read as the deck itself.
+    public static func paintsFromMemory(_ render: DeckRender) -> Bool {
+        render == .file
+    }
+
     public static let unreadable = "The slides did not open."
 
     /// Why nothing shows, when the host gave no reason of its own.

@@ -53,7 +53,9 @@ The native clicker is built and has no way in yet: "The clicker" below.
 - **Renders in memory**: `ReaderCache` keeps the last three by file and
   `rev`, so a second open in the same run paints at once and then asks the
   host; bytes of another `rev` are swapped in. A render painted from memory
-  shows no review row until the host has answered. Everything is dropped on
+  shows no review row until the host has answered, and a deck's proposed
+  render is never painted from memory (`DeckRender.paintsFromMemory`): an
+  agent's slides with no row over them would read as the file. Everything is dropped on
   a memory warning. Nothing of a file is kept on the phone's disk
   (`ReaderCache.keepsOnDisk` is false: the owner's ruling). A video is the
   one thing the player must read from a file: its copy (`MediaFiles`, under

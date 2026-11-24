@@ -17,6 +17,11 @@ struct DeckRenderTests {
         #expect(!DeckRender.opens(pageCount: nil))
     }
 
+    @Test func `a proposed render is never painted from memory, the file's own render may be`() {
+        #expect(DeckRender.paintsFromMemory(.file))
+        #expect(!DeckRender.paintsFromMemory(.proposed))
+    }
+
     @Test func `with nothing waiting the file's render shows when there is one`() {
         #expect(DeckRender.pick(changesWaiting: false, hasProposed: true, hasFile: true) == .file)
         #expect(DeckRender.pick(changesWaiting: false, hasProposed: false, hasFile: false) == nil)
