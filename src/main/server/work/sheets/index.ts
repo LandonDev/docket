@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson, type SheetSuggestion } from '@shared/contract-work-sheets'
@@ -485,10 +486,16 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
     if (back && shared && by?.kind === 'remote' && !pressesFor(by)) throw new Error(NEEDS_APPROVE)
     if (back && shared) {
       const { saveFile, versionWord } = await import('../files/save')
-      const { versionOf } = await import('../files/write')
       const { fileKey } = await import('./held')
-      const got = await saveFile({ roots: [dirname(back)] }, await fileKey(s.ctx, back), back, new TextEncoder().encode(text), versionWord(await versionOf(back)))
+      const { keepLegacyCsvBase, legacyCsvAgrees } = await import('./formatsInCsv')
+      const sheetPath = (held.ref as { tcsheet: string }).tcsheet
+      // Only over the file his sheet last agreed with: a co-author's newer file is not written over with older fields.
+      const bytes = readFileSync(back)
+      const sha256 = createHash('sha256').update(bytes).digest('hex')
+      if (!legacyCsvAgrees(back, sheetPath, new TextDecoder().decode(bytes), sha256)) throw new Error(`${basename(back)} changed in its folder since this sheet read it, so it is not written over. Export it as Excel to keep your edits.`)
+      const got = await saveFile({ roots: [dirname(back)] }, await fileKey(s.ctx, back), back, new TextEncoder().encode(text), versionWord({ size: bytes.length, mtimeMs: statSync(back).mtimeMs, sha256 }))
       if ('conflict' in got) throw new Error('The file changed as it was saved: try again.')
+      keepLegacyCsvBase(sheetPath, createHash('sha256').update(text).digest('hex'))
     } else writeFileSync(path, text)
     return { path }
   }

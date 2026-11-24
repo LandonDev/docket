@@ -264,7 +264,7 @@ export function tcsheetRev(path: string): number | null {
   }
 }
 
-function readTcsheet(path: string): Tcsheet {
+export function readTcsheet(path: string): Tcsheet {
   const z = readZip(new Uint8Array(readFileSync(path)))
   const json = <T>(name: string): T => JSON.parse(readText(z, name)) as T
   const snapshots = new Map<number, Uint8Array>()

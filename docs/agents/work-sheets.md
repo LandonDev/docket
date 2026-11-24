@@ -138,15 +138,17 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   **A `.csv` others can open** is read into a cache in the same scratch
   (`sharedCsvDir`), and since that cache does not last no edit is left in
   it alone: every change to it (`apply`, `cells`, `review`, `restore`,
-  whoever asks) runs through `formatsInCsv.ts` `throughCsv`, which makes
-  the change and then writes the file through Files' door (`saveFile`: its
-  lock, one whole replace, and only while the file is still the bytes that
-  were just read). The file is patched, not written again (`patchCsv`): a
+  whoever asks; not a suggestion, which changes no cell) runs through
+  `formatsInCsv.ts` `throughCsv`, which reads the file the cache agrees
+  with, makes the change and then writes the file through Files' door
+  (`saveFile`: its lock, one whole replace, and only while the file is still
+  the bytes read before the change, so a co-author's save during the
+  service's wait refuses it, never patched over). The file is patched, not written again (`patchCsv`): a
   field nobody changed keeps its own bytes (`1.50`, a quoted name), each
   row its own line break and count of fields, and the byte-order mark, the
   blank lines at the end and the last line's break stay as they were, so
   one edit is one field in a co-author's diff. A change that leaves the
-  cells as they were (a suggestion that waits) writes nothing. The cache is
+  cells as they were (a format) writes nothing. The cache is
   named for the file as it stood when read, so a co-author's newer file is
   read into a new one; a file that changed because this host saved an edit
   keeps its cache and its revisions (`sharedCsvCache`), so the grid goes on
@@ -162,7 +164,9 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   files, editable as before (`csvEdited`; a sheet that cannot be read just
   now counts as edited, so only a read that says revision 0 lets one go),
   saved back through Files' door (a remote key needs `approve` for it,
-  `exportSheet`), and that sheet follows the file when it
+  `exportSheet`) only over the file it last agreed with (the contents kept
+  beside the sheet at each save back, `.base`, or else its first snapshot:
+  `legacyCsvAgrees`), and that sheet follows the file when it
   is renamed or moved. An open tab is not told when a co-author changes the
   file: its next edit meets the newer file's sheet at an earlier revision
   (a conflict), so the grid reads the newer file, and the edit is not sent

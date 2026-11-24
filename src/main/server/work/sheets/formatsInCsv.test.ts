@@ -177,6 +177,31 @@ describe('a shared .csv saved through to its file', () => {
     expect(readFileSync(csv, 'utf8')).toBe('name,hours\r\nTheirs,9,and more\r\n')
   })
 
+  it('a co-author\'s save while the change is made is not patched over with the cache\'s older fields', async () => {
+    // Council r2 (Sol 1): the file was read after the service's wait, and the cache's 1.5 put back over the co-author's 9.50.
+    const sheet = open()
+    const theirs = 'name,hours\r\n"Ada",9.50\r\nBo,007\r\n'
+    const made = throughCsv(rig.ctx, sheet, async () => {
+      const got = await host.apply({ tcsheet: sheet }, 0, [typedAt(2, 1, 8)] as never, 'owner')
+      writeFileSync(csv, theirs)
+      return got
+    })
+    await expect(made).rejects.toThrow('changed in its folder')
+    expect(readFileSync(csv, 'utf8')).toBe(theirs)
+  })
+
+  it('a suggestion changes no cell, so it never goes through to the file, even on a cache the file has moved past', async () => {
+    const sheet = open()
+    writeFileSync(csv, 'name,hours\r\nTheirs,9\r\n')
+    utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    const asked: string[] = []
+    Object.assign(rig.ctx.service, { internal: async (route: string) => (asked.push(route), { rev: 0, count: 1 }) })
+    const { host: hostCall } = await import('./held')
+    expect(await hostCall(rig.ctx, 'cells', { sheet: { tcsheet: sheet }, cells: [{ at: 'A2', v: 'x' }], by: 'agent:h:t1', label: 'Suggested', suggest: true } as never)).toEqual({ rev: 0, count: 1 })
+    expect(asked).toEqual(['/internal/sheet/cells'])
+    expect(readFileSync(csv, 'utf8')).toBe('name,hours\r\nTheirs,9\r\n')
+  })
+
   it('an edit the sheet refuses as stale is answered as it is, with nothing written', async () => {
     const sheet = open()
     await apply(sheet, 0, [typedAt(2, 0, 'Bob')])

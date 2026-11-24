@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
-import { accessSync, constants, existsSync, readFileSync, statSync } from 'node:fs'
+import { accessSync, constants, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_LOAD_MAX } from '@shared/contract-work-sheets'
 import { saveFile, versionWord } from '../files/save'
 import type { WorkCtx } from '../modules'
 import { fileKey } from './held'
+import { readTcsheet, ungz } from './host/backends'
 import { readCsv, writeCsv } from './writer'
 
 /**
@@ -118,12 +119,13 @@ export function throughCsv<T>(ctx: ServiceCtx, sheet: string, write: () => Promi
     const why = sharedCsvReadOnly(csv)
     if (why) throw new Error(why)
     const held = caches.get(csv)
-    if (!held || held.sheet !== sheet || held.stamp !== stampOf(csv) || !existsSync(csv)) throw new Error(changed(csv))
+    // The file as the cache agrees with it is read before the change is made, and is the version the save must find: a
+    // co-author's save while the change is made (the service's wait) is not patched over with the cache's older fields.
+    const bytes = existsSync(csv) ? readFileSync(csv) : null
+    const before = bytes ? statSync(csv) : null
+    if (!held || held.sheet !== sheet || held.stamp !== stampOf(csv) || !bytes || !before) throw new Error(changed(csv))
     const out = await write()
     if (out && typeof out === 'object' && 'conflict' in out) return out
-    // The file as it is read now is the version the save must find: whoever wrote between this read and the save wins.
-    const bytes = readFileSync(csv)
-    const before = statSync(csv)
     const original = decode(bytes)
     const expect = versionWord({ size: bytes.length, mtimeMs: before.mtimeMs, sha256: createHash('sha256').update(bytes).digest('hex') })
     const title = basename(csv)
@@ -264,3 +266,21 @@ export function delimitedAsCsv(text: string, delimiter: string): string {
 
 /** A file's text with its byte-order mark kept; throws on bytes that are not UTF-8. */
 export const utf8Text = (bytes: Uint8Array): string => decode(bytes)
+
+/**
+ * A sheet of his made among the app's files from a .csv that others can open now (made before that rule): the file's
+ * contents it last agreed with, kept beside it at each save back from here. Its Save as CSV writes only over a file
+ * that still holds them, or, never saved back, over one that still reads as the sheet's first snapshot.
+ */
+const baseOf = (sheet: string): string => `${sheet}.base`
+export function legacyCsvAgrees(csv: string, sheet: string, text: string, sha256: string): boolean {
+  try {
+    return readFileSync(baseOf(sheet), 'utf8') === sha256
+  } catch {
+    const first = readTcsheet(sheet).snapshots.get(0)
+    return !!first && writeCsv(ungz(first)) === writeCsv(readCsv(text, 'workbook', basename(csv)))
+  }
+}
+export function keepLegacyCsvBase(sheet: string, sha256: string): void {
+  writeFileSync(baseOf(sheet), sha256, { mode: 0o600 })
+}

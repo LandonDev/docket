@@ -808,6 +808,12 @@ describe('a .csv and an export in a folder others can open', () => {
     const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })
     expect(out.path).toBe(csv)
     expect(readFileSync(csv, 'utf8')).toContain('his edit')
+    // saved back again over the file it last wrote
+    expect((await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })).path).toBe(csv)
+    // A co-author's newer file is never written over with the sheet's older fields (council r2, Sol 1).
+    writeFileSync(csv, 'a,b\ntheirs,2\n')
+    await expect(call('work.sheets.export', { itemId, format: 'csv' })).rejects.toThrow('Edited.csv changed in its folder since this sheet read it, so it is not written over. Export it as Excel to keep your edits.')
+    expect(readFileSync(csv, 'utf8')).toBe('a,b\ntheirs,2\n')
   })
 
   it('a sheet of his that cannot be read just now is never taken for an unedited cache and removed', async () => {

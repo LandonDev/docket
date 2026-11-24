@@ -267,7 +267,9 @@ export async function host<A extends HostAsk['op']>(ctx: WorkCtx, op: A, body: O
   const ask = async (): Promise<HostAnswer<A>> => (await ctx.service.internal(`/internal/sheet/${op}`, body)) as HostAnswer<A>
   // The cache of a .csv others can open does not last: a change to it, whoever makes it, is saved through to the file (or refused).
   const sheet = (body as { sheet?: unknown }).sheet
-  if (WRITES.has(op) && isSharedCsvSheet(ctx.dataDir, sheet)) return throughCsv(ctx, (sheet as { tcsheet: string }).tcsheet, ask)
+  // (a suggestion changes no cell: it waits in the service, and its accept is the write that goes through)
+  const suggests = op === 'cells' && (body as { suggest?: unknown }).suggest === true
+  if (WRITES.has(op) && !suggests && isSharedCsvSheet(ctx.dataDir, sheet)) return throughCsv(ctx, (sheet as { tcsheet: string }).tcsheet, ask)
   return ask()
 }
 const WRITES: ReadonlySet<string> = new Set(['apply', 'cells', 'review', 'restore'])
