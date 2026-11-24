@@ -145,8 +145,9 @@ export function CanvasTabs({
                   onAuxClick={(event) => {
                     if (event.button === 1) onClose(item.id);
                   }}
-                  // The close control lies over the tab's end: the name stops short of it on the tab that shows one.
-                  className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 ${active ? "pe-7" : "pe-2 group-hover/dock-tab:pe-7"}`}
+                  // The close control lies over the tab's end: every tab keeps its room, so a name is cut at one
+                  // point and nothing moves under the pointer when the close appears.
+                  className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                 >
                   <Glyph className="size-3.5" />
                   <span ref={titleRef} className="min-w-0 truncate">

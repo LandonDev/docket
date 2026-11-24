@@ -503,6 +503,8 @@ describe("tabs", () => {
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
     fireEvent.doubleClick(row("Budget.xlsx"));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
+    // Every tab keeps its close's room, selected or not, so a name is cut at one point and nothing moves on hover.
+    for (const tab of document.querySelectorAll("[data-files-tab]")) expect(tab.className.split(" ")).toContain("pe-7");
     expect(calls(host, "work.files.open")).toMatchObject([{ params: { workspaceId: "w1", name: "Budget.xlsx", key: "file:env_box:/w/Budget.xlsx" } }]);
     await waitFor(() => expect(screen.getByTestId("pane").textContent).toBe("sheet: Budget.xlsx"));
     const header = document.querySelector("[data-files-header]")!;

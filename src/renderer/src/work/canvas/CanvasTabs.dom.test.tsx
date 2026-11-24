@@ -29,6 +29,23 @@ async function tabs(cut: boolean) {
   return { view, restore: () => (Object.defineProperty(Element.prototype, "scrollWidth", widths.scroll), Object.defineProperty(Element.prototype, "clientWidth", widths.client)) };
 }
 
+describe("a canvas tab", () => {
+  it("keeps its close's room selected or not, and wears the sidebar's own selected fill", async () => {
+    const { restore } = await tabs(false);
+    try {
+      const all = screen.getAllByRole("tab");
+      expect(all.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+      // A name is cut at one point, so nothing moves under the pointer when the close appears.
+      for (const tab of all) expect(tab.className.split(" ")).toContain("pe-7");
+      for (const tab of all) expect(tab.className.split(" ")).not.toContain("group-hover/dock-tab:pe-7");
+      // `muted` on `sidebar` can barely be seen in light; the Files row's selected fill is plain in both themes.
+      expect(all[1]!.className).toContain("aria-selected:bg-sidebar-group-selected");
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("a canvas tab's title", () => {
   it("shows the whole cut title when the tab itself takes the keyboard's focus", async () => {
     const { restore } = await tabs(true);
