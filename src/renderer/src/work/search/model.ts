@@ -1,4 +1,5 @@
 import { mentionMatches } from "@shared/work/mentions";
+import { nameInLine } from "../../lib/hostWords";
 import {
   RECENT_KIND,
   SEARCH_ALL,
@@ -155,13 +156,16 @@ export function paramsFor(model: SearchModel, host: SearchHost, o: { workspaceId
 const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], model: SearchModel): Slot => ({ host, source: group.source, kind: group.kind, label: group.label, tier, hits: group.hits, more: group.more, gen: model.gen, text: model.text });
 
 /** LifeOS's and a host's own words, as the list's foot says them. */
-export function quietLine(cause: string, line: string, host: SearchHost, hosts: number): { key: string; line: string } {
+export function quietLine(cause: string, line: string, at: SearchHost, hosts: number): { key: string; line: string } {
+  // "the box" mid-line, as every Work line names it (lib/hostWords.ts).
+  const host = { ...at, name: nameInLine(at.name) };
+  const Host = host.name.charAt(0).toUpperCase() + host.name.slice(1);
   if (cause === "lifeos") {
     const words: Record<string, string> = {
       "This host is not signed in to LifeOS": `Not signed in to LifeOS on ${host.name}.`,
       "This host's LifeOS sign-in waits for approval": `LifeOS sign-in on ${host.name} waits for approval.`,
       "LifeOS is still connecting": `LifeOS is still connecting on ${host.name}.`,
-      "LifeOS is unreachable": `${host.name} cannot reach LifeOS.`,
+      "LifeOS is unreachable": `${Host} cannot reach LifeOS.`,
       "LifeOS refused this host's sign-in; sign in again": `LifeOS refused the sign-in on ${host.name}.`,
     };
     return { key: "lifeos", line: words[line] ?? `${line.replace(/\.$/, "")}.` };

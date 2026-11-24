@@ -375,12 +375,12 @@ export class Keeper {
         if (!token) this.d.token.set((token = randomBytes(32).toString('hex')))
         this.set('setting-up', 'Setting Windows up')
         this.d.log(`winvm: setup: ${(await this.setupScript(token)).split('\n').filter((l) => l.startsWith('step:')).join(', ')}`)
-        this.set('setting-up', 'Copying the service in')
+        this.set('setting-up', "Copying TempCode's helper into Windows")
         await this.serviceUp()
         this.set('setting-up', 'Restarting Windows')
         await this.d.guest.reboot()
         await this.d.guest.ready(this.t.setupReady)
-        this.set('setting-up', 'Opening the door')
+        this.set('setting-up', 'Connecting to Windows')
         await this.d.guest.startService()
         await this.openDoor()
         this.touch()
@@ -457,7 +457,7 @@ export class Keeper {
     if (!exe) throw new Error(NO_SERVICE)
     const want = this.d.hashFile(exe)
     if ((await this.d.guest.serviceHash()) !== want) {
-      if (this.name === 'waking') this.set('waking', 'Copying the service in')
+      if (this.name === 'waking') this.set('waking', "Copying TempCode's helper into Windows")
       this.d.log(`winvm: copied the service in (version ${await this.d.guest.installService(exe)})`)
     }
     await this.d.guest.startService()

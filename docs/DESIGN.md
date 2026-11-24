@@ -1007,8 +1007,9 @@ skill…"), with no icon and nothing else beside the title; any page fills it
 from inside through `PageActions`, and the 28px button overhangs the title's
 24px line by 2px each side. A row that opens something (its edit dialog)
 takes `onOpen`: an open control named `openLabel` lies over the row, its box
-hovering 8px past the words, and the switch and ⋯ at its end sit above it,
-so pressing them never opens the row. A row's
+hovering 8px past the words (7px and the item's 1px border, so its words and
+its control start and end on a plain row's edges), and the switch and ⋯ at
+its end sit above it, so pressing them never opens the row. A row's
 control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
 a row whose control is a wide field (`PageRow wide`, Hosts' Public origin)
 lays it on a full-width line 8px under its words once the page's content is
@@ -1406,7 +1407,9 @@ The kinds, each a hand-made body built from components/ui:
 - **Dashboard.** Figures, one chart and flat tables. A figure opens its
   source (sheet, range, the formula in words). "As of" is said once, in
   the bar. A new block is a suggestion even on the person's own
-  dashboard.
+  dashboard. An empty one says "No numbers yet" and "Ask for one in the
+  thread."; a dashboard, a form or a live page whose first read fails is
+  the pane's centred failure with its reason and Retry (`OpenFailed`).
 
 Around the canvas:
 
@@ -2345,7 +2348,11 @@ Around the canvas:
   Entries' Amount column, Owed's and To confirm's amounts all end 120px
   inside the column, and what follows an amount (the paperclip, Paid,
   Review and a row's menu) sits in those 120px, ending on the column's
-  edge (layout.ts). To confirm leads the column while anything waits: a
+  edge (layout.ts). Under 520px the least fact gives way first: Entries'
+  Category becomes a 12px muted line under Who, By category and Entries
+  end their amounts 48px in (the paperclip's room), Owed and To confirm
+  keep their 120px for their presses, and Month or Year moves to two
+  ticked rows at the head of More, so Add and More stay in the header. To confirm leads the column while anything waits: a
   row each, a 32px picture (6px corners on the image outline, the receipt
   glyph where there is none), who or the file's name in foreground with
   the date 4px after it in 12px muted (the year only when it is not this

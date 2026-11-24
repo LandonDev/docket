@@ -25,8 +25,8 @@ export function columnProjects(rows: readonly LifeosProject[]): LifeosProjectRow
 
 /**
  * A linked Work workspace's column head (prototype workspace.html, "Four
- * rows"): Mail, Tasks, Agenda and Docs, each with its one muted fact, 16px
- * over the project cards; a row opens its view in the main pane under the
+ * rows", since grown): one row a view, in `workViewRows()`'s order, a row with
+ * a fact showing its one muted fact, 16px over the project cards; a row opens its view in the main pane under the
  * thread strip. It also keeps the column's LifeOS projects live, so the
  * cards under it are LifeOS's, and makes a card's project on its first
  * thread. An unlinked Work workspace has no rows and no LifeOS projects.

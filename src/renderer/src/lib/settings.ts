@@ -97,7 +97,7 @@ export const SETTINGS_SECTIONS: {
   // With Work off on every host the page holds the switch alone (docs/agents/work.md "The switch").
   { id: "work", group: "work", label: "Work", description: "Threads for your jobs, and what they may do without you." },
   // docs/agents/work-connections.md: every sign-in and helper Work leans on, per host.
-  { id: "connections", group: "work", label: "Connections", description: "The sign-ins and helpers Work leans on, on each host.", workOnly: true },
+  { id: "connections", group: "work", label: "Connections", description: "Each host's sign-ins and helpers.", workOnly: true },
 ];
 
 export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";

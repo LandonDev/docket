@@ -309,10 +309,10 @@ describe("Work search", () => {
     await type("budget");
     await land(asks.length - 1, answer([group("thread", "Threads", [hit("thread:t1", "thread")])], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
     const notes = [...document.querySelectorAll("[data-picker-note]")].map((el) => el.textContent);
-    expect(notes).toEqual(["Not signed in to LifeOS on The box."]);
+    expect(notes).toEqual(["Not signed in to LifeOS on the box."]);
     // under the list and outside its scroller: a list that fills its box never hides it
     const causes = document.querySelector("[data-work-search-causes]")!;
-    expect(causes.textContent).toBe("Not signed in to LifeOS on The box.");
+    expect(causes.textContent).toBe("Not signed in to LifeOS on the box.");
     expect(list().contains(causes)).toBe(false);
     expect(list().nextElementSibling).toBe(causes);
     expect(list().querySelector("[data-picker-note]")).toBeNull();
@@ -524,12 +524,12 @@ describe("Work search", () => {
     await type("zebra");
     expect(told()).toBe("");
     await land(asks.length - 1, answer([], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
-    expect(told()).toBe("Nothing for “zebra”. Not signed in to LifeOS on The box.");
+    expect(told()).toBe("Nothing for “zebra”. Not signed in to LifeOS on the box.");
     // a search that found things still says what it could not search
     await type("budget");
     expect(told()).toBe("");
     await land(asks.length - 1, answer([group("thread", "Threads", [hit("thread:t1", "thread")])], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
-    expect(told()).toBe("Not signed in to LifeOS on The box.");
+    expect(told()).toBe("Not signed in to LifeOS on the box.");
   });
 
   it("takes no more words than a host will be asked, and shows no hint beside a kind", async () => {

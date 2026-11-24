@@ -19,7 +19,7 @@ const BOX: HealthRow[] = [
   r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "working", line: "Signed in as Landon Hale", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }),
   r({ id: "lifeos.source:1", group: "Mail and calendar", title: "Purdue mail", state: "working", line: "Synced 3 min ago", sector: "purdue" }),
   r({ id: "lifeos.source:2", group: "Mail and calendar", title: "Cosmic calendar", state: "broken", line: "Google refused the token: sign in again in LifeOS", sector: "cosmic" }),
-  r({ id: "google.client", pillar: "google", group: "Google", title: "Client id", state: "working", line: "Set" }),
+  r({ id: "google.client", pillar: "google", group: "Google", title: "Google Picker", state: "working", line: "Set" }),
   r({ id: "google.consent:hypixel", pillar: "google", group: "Google", title: "landon@hypixel.net", state: "needs-you", line: "Drive access not granted", fix: { kind: "open", label: "Grant…", url: "https://accounts.google.com/" } }),
   r({ id: "browser.running", pillar: "browser", group: "Browser", title: "The box's browser", state: "working", line: "Running, headed" }),
   r({ id: "browser.site:owa", pillar: "browser", group: "Browser", title: "Outlook on the web", state: "needs-you", line: "Not signed in. Sign in from the live browser" }),
@@ -60,7 +60,7 @@ export function ConnectionsPreview({ hosts = "both" }: { hosts?: keyof typeof HO
   return (
     <Page
       title="Connections"
-      description="The sign-ins and helpers Work leans on, on each host."
+      description="Each host's sign-ins and helpers."
       actions={
         <Button variant="ghost" size="sm" disabled={checking}>
           Check again

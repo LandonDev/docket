@@ -162,7 +162,8 @@ function PageRow({
         data-opens=""
         className={cn("border-t border-transparent py-1 [[data-slot=page-row]+&]:border-border", className)}
       >
-        <Item className={cn("-mx-2 w-[calc(100%+1rem)] flex-nowrap rounded-md px-2 py-2", openDisabled ? "relative" : ROW_HOLDS)}>
+        {/* 7px and the item's 1px border: the words start on the column's edge, as a plain row's do. */}
+        <Item className={cn("-mx-2 w-[calc(100%+1rem)] flex-nowrap rounded-md px-[7px] py-2", openDisabled ? "relative" : ROW_HOLDS)}>
           {openTip ? (
             <Tooltip>
               <TooltipTrigger render={open} />

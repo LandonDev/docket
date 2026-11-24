@@ -11,7 +11,7 @@ const signedIn: VmOfficeStatus = { office: { installed: true, version: "16.0", a
 const signedOut: VmOfficeStatus = { office: { installed: true, version: "16.0", apps: ["excel", "word", "powerpoint"], account: null, licensed: null }, onedrive: { kind: "vm", state: "signed-out", account: null }, at: DAY };
 const states: { name: string; state: WinvmState; points: { id: string; name: string; at: number; by: "owner" | "keeper" }[] | null; error?: string; screen?: WinvmScreen; office?: { status: VmOfficeStatus; libraries: number | null } }[] = [
   { name: "Not set up", state: at({ state: "none" }), points: [] },
-  { name: "Setting up", state: at({ state: "setting-up", step: "Copying the service in" }), points: [] },
+  { name: "Setting up", state: at({ state: "setting-up", step: "Copying TempCode's helper into Windows" }), points: [] },
   { name: "Asleep, with points", state: at({ state: "asleep" }), points: [{ id: "p1", name: "Before setup", at: DAY, by: "keeper" }] },
   { name: "Awake, the larger screen picked", state: at({ state: "awake", sleepAfter: "2h" }), points: [], screen: "1920x1200" },
   { name: "Office and OneDrive signed in", state: at({ state: "asleep" }), points: [], office: { status: signedIn, libraries: 1 } },

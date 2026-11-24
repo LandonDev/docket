@@ -1,5 +1,6 @@
 import { fixAllowed, HEALTH_OWN_COMPUTER, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
 import type { ThreadState } from "../../components/ui/status";
+import { nameInLine } from "../../lib/hostWords";
 
 /**
  * Connections, as the page lays it out (docs/agents/work-connections.md):
@@ -58,7 +59,7 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
   for (const one of placed) {
     const shared = placed.some((p) => p !== one && p.row.group === one.row.group && p.row.title === one.row.title && p.hostId !== one.hostId);
     const list = byGroup.get(one.row.group) ?? [];
-    list.push({ key: one.key, hostId: one.hostId, title: shared ? `${one.row.title} on ${one.hostName}` : one.row.title, row: one.row });
+    list.push({ key: one.key, hostId: one.hostId, title: shared ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, row: one.row });
     byGroup.set(one.row.group, list);
   }
   return [...byGroup.entries()].map(([group, rows], order) => ({ group, rows, order })).sort((a, b) => rank(a.group) - rank(b.group) || a.order - b.order).map(({ group, rows }) => ({ group, rows }));

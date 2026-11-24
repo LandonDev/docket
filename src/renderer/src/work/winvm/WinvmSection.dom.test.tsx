@@ -61,7 +61,7 @@ describe("the Windows VM in Settings → Work", () => {
     expect(winvmRow(at({ state: "none" }))).toEqual({ words: "Not set up", press: "setup", busy: false });
     expect(winvmRow(at({ state: "asleep" }))).toMatchObject({ words: "Asleep", press: "wake" });
     expect(winvmRow(at({ state: "awake" }))).toMatchObject({ words: "Awake", press: "sleep" });
-    expect(winvmRow(at({ state: "setting-up", step: "Copying the service in" }))).toEqual({ words: "Copying the service in", press: null, busy: true });
+    expect(winvmRow(at({ state: "setting-up", step: "Copying TempCode's helper into Windows" }))).toEqual({ words: "Copying TempCode's helper into Windows", press: null, busy: true });
     expect(winvmRow(at({ state: "waking", step: "Waking the Windows VM" }))).toMatchObject({ press: null, busy: true });
     expect(evaluationLine("2027-02-17")).toMatch(/^Windows 11 Enterprise evaluation, ends about .*2027$/);
   });

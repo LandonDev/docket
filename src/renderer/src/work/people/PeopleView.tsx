@@ -226,7 +226,7 @@ export function View(props: WorkViewProps) {
 function ListSkeleton() {
   return (
     // At the list's own insets, so the names do not step sideways when the list lands.
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col gap-2 ps-7 pe-6 py-5">
+    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col gap-2 px-6 py-5">
       {[44, 32, 52, 38, 46].map((w, i) => (
         <div key={i} className="flex h-8 items-center gap-2">
           <Skeleton className="size-6 rounded-full" />
@@ -255,7 +255,7 @@ export function PeopleList({ workspaceId, rows, faces, now = Date.now() }: { wor
   if (!rows.length) return <EmptyState title="No people" />;
   if (!shown.length) return <EmptyState title="No matches" action={{ label: "Clear search", onClick: () => setPlace(workspaceId, { query: "" }) }} />;
   return (
-    <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-5">
+    <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] px-6 py-5">
       {shown.map((p) => (
         <div key={p._id} role="listitem">
           <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
@@ -316,7 +316,7 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
 
 function PageSkeleton() {
   return (
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col ps-7 pe-6 py-6">
+    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
       <div className="flex items-center gap-3">
         <Skeleton className="size-10 rounded-full" />
         <div className="flex flex-1 flex-col gap-2">
@@ -358,7 +358,7 @@ export function PersonPageBody({
   const waiting = page.tasks.filter((t) => t.relation === "waiting");
   const contact = [...person.emails, ...person.phones];
   return (
-    <div onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
+    <div onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] px-6 py-6">
       <header className="flex items-center gap-3">
         <Face name={person.name} picture={pictureOf(person.emails, faces)} size="page" />
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -404,7 +404,7 @@ export function PersonPageBody({
           return <PageRow key={`${s.table}:${s.id}`} title={s.title || "Untitled"} line={link ? linkWords(link.role, link.expiresAt) : undefined} onOpen={() => openShared(s.table, s.id, s.title)} />;
         })}
       </Section>
-      <Section label="Earlier" show={page.recent.length > 0}>
+      <Section label="Past meetings" show={page.recent.length > 0}>
         {page.recent.map((e) => (
           <PageRow key={e._id} title={e.title} line={e.location} trail={eventWhen(e, now)} onOpen={() => go("agenda", { event: e._id })} />
         ))}
