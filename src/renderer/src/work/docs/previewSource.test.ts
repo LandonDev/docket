@@ -7,7 +7,7 @@ import type { DocumentPage } from "work-kit/editor/page";
 import { paraText } from "work-kit/editor/para";
 import { NotInReach } from "../formats/preview";
 import { previewProblems } from "../formats/previewContract";
-import { blockFacts, DOC_FORMATS, DOC_PAPERS, docDrops, docPreviewSource, pageDrops, PRINT_UNMARKED, withoutEditorMarks, type DocFacts, type DocPreviewDeps } from "./previewSource";
+import { blockFacts, DOC_FORMATS, DOC_PAPERS, docDrops, docPreviewSource, PAGES_GONE, pageDrops, PRINT_UNMARKED, withoutEditorMarks, type DocFacts, type DocPreviewDeps } from "./previewSource";
 
 /**
  * The document's side of Preview (docs/agents/work-docs.md "Preview"): what
@@ -389,6 +389,26 @@ describe("the document's Preview source", () => {
     await flush();
     expect(h.calls.slice(2).map((c) => c.method)).toEqual(["work.formats.preview", "work.formats.previewRead", "work.formats.preview", "work.formats.previewRead"]);
     expect(saved.map((f) => f.name)).toEqual(["Plan.pdf", "Plan.pdf"]);
+  });
+
+  it("pages he was shown and the host no longer keeps go out never: no newer print in their place until he draws again", async () => {
+    const h = host();
+    const { source: s, printed, saved } = source(h);
+    await s.draw("print", { signal: signal() });
+    // Another window drew over them, after someone changed the text.
+    h.state.text = "v2";
+    h.state.gone = true;
+    await expect(s.export("print")).rejects.toThrow(PAGES_GONE);
+    await expect(s.export("pdf")).rejects.toThrow(PAGES_GONE);
+    await flush();
+    expect(printed).toEqual([]);
+    expect(saved).toEqual([]);
+    expect(h.calls.filter((c) => c.method === "work.formats.preview")).toHaveLength(1);
+    // Drawn again, he sees the new pages; those are what print.
+    await s.draw("print", { signal: signal() });
+    await s.export("print");
+    await flush();
+    expect(new TextDecoder().decode(printed[0]!.bytes)).toContain("%PDF-1.7 v2");
   });
 
   it("saves the web page under the document's name with nothing a path could make of it", async () => {

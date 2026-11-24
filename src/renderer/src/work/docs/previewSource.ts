@@ -273,6 +273,9 @@ export const PRINT_UNMARKED =
 /** The sheets' page with the editor's marks drawn out of it. */
 export const withoutEditorMarks = (html: string): string => (html.includes("</head>") ? html.replace("</head>", `${PRINT_UNMARKED}</head>`) : html.replace("<body>", `<body>${PRINT_UNMARKED}`));
 
+/** Print or Export as PDF once the pages Preview shows are no longer kept on the host. */
+export const PAGES_GONE = "These pages are no longer kept. Open Preview again to check the current ones.";
+
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
 const unique = (lines: readonly string[]): string[] => [...new Set(lines.filter((line) => line.trim()))];
 /** A host's warning as a line of the column: no closing full stop, as the document's own lines have none. */
@@ -357,10 +360,15 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
 
   /** The last PDF Preview drew: what PDF and Print show, so what they save and print (the text may have moved on since). */
   let shown: { env: string; home: boolean; answer: PreviewAnswer } | null = null;
+  /** The pages shown are no longer kept on the host: nothing goes out until Preview draws again and he looks. */
+  let gone = false;
 
   const drawPaged = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<Drawn> => {
     // A new draw takes the picture's place: until it lands nothing is shown, and a press makes the print anew.
-    if (format === "pdf" && !by) shown = null;
+    if (format === "pdf" && !by) {
+      shown = null;
+      gone = false;
+    }
     const made = await render(format, signal, by);
     if (format === "pdf" && !by && !signal.aborted) shown = made;
     return {
@@ -436,13 +444,19 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
       }
       if (id !== "pdf" && id !== "print") throw new Error(`A document does not go out as ${format}`);
       // The pages he checked: the render Preview shows, read from the host that keeps it, even when another window has
-      // changed the text since. With none shown, or its render gone, the print is made now.
+      // changed the text since. With none shown the print is made now. Its render gone (drawn over in other windows),
+      // nothing goes out unseen: he opens Preview again and looks at the new pages first.
+      if (gone) throw new Error(PAGES_GONE);
       let made = shown ?? (await render("pdf", new AbortController().signal));
       let bytes: Uint8Array<ArrayBuffer>;
       try {
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       } catch {
-        // The render went (drawn again in another window): once more, from the text as it stands.
+        if (made === shown) {
+          gone = true;
+          throw new Error(PAGES_GONE);
+        }
+        // A print made for this very press, gone between the two calls: once more.
         made = await render("pdf", new AbortController().signal);
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       }

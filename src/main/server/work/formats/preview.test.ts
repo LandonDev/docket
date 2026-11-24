@@ -162,7 +162,7 @@ describe('a PDF preview', () => {
     await expect(r.ask('work.formats.preview', { source, itemId: 'i0', format: 'pdf' })).rejects.toThrow('a PDF preview needs its print page')
   })
 
-  it('the same page answers the same render without printing again; a changed one makes a new render and the old is gone', async () => {
+  it('the same page answers the same render without printing again; a changed one makes a new render, the one before it is kept for a window that shows it, and older ones go', async () => {
     const r = await rig()
     const source: CanvasSource = { at: 'file', host: 'env_box', path: join(r.work, 'Plan.tcdoc') }
     const first = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'pdf', html: '<p>one</p>' })
@@ -176,7 +176,11 @@ describe('a PDF preview', () => {
     expect(changed.rev).not.toBe(first.rev)
     expect(r.prints).toHaveLength(3)
     await expect(r.read({ source, itemId: 'i0', rev: first.rev, offset: 0, length: 10 })).rejects.toThrow(/^that preview is gone: draw it again$/)
-    expect(readdirSync(join(previewsRoot(r.data), 't1', 'i0', sourceKey(source))).sort()).toEqual([`pdf.${changed.rev}.json`, `pdf.${changed.rev}.pdf`])
+    // Another window may still show the Letter pages: it prints those, not the new draw it never saw.
+    expect((await r.read({ source, itemId: 'i0', rev: letter.rev, offset: 0, length: 5 })).length).toBe(5)
+    expect(readdirSync(join(previewsRoot(r.data), 't1', 'i0', sourceKey(source))).sort()).toEqual(
+      [`pdf.${changed.rev}.json`, `pdf.${changed.rev}.pdf`, `pdf.${letter.rev}.json`, `pdf.${letter.rev}.pdf`].sort()
+    )
   })
 })
 

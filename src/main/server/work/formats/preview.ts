@@ -143,16 +143,24 @@ function keptRender(dir: string, format: string, rev: string): PreviewAnswer | n
   }
 }
 
-/** The render lands, then the format's older ones go. */
+/**
+ * The render lands, then the format's older ones go, all but the newest of them: another window of the item may still
+ * show that one, and its Print and Export send the pages it shows (docs/previewSource.ts), never a newer draw unseen.
+ */
 async function keep(dir: string, format: string, rev: string, picture: Uint8Array, name: string, drawnBy: PreviewAnswer['drawnBy'], warnings: string[]): Promise<PreviewAnswer> {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const answer: PreviewAnswer = { rev, size: picture.byteLength, pages: await pagesOf(picture), drawnBy, name, warnings }
+  const before = readdirSync(dir)
+    .map((f) => f.split('.'))
+    .filter(([fmt, r, ext]) => fmt === format && r !== rev && ext === 'json')
+    .map(([, r]) => ({ r: r!, at: statSync(join(dir, `${format}.${r}.json`)).mtimeMs }))
+    .sort((a, b) => b.at - a.at)[0]?.r
   land(join(dir, `${format}.${rev}.pdf`), picture)
   // The answer last: a render with its answer is a whole one.
   land(join(dir, `${format}.${rev}.json`), JSON.stringify(answer))
   for (const f of readdirSync(dir)) {
     const [fmt, r] = f.split('.')
-    if (fmt === format && r !== rev) rmSync(join(dir, f), { force: true })
+    if (fmt === format && r !== rev && r !== before) rmSync(join(dir, f), { force: true })
   }
   return answer
 }
