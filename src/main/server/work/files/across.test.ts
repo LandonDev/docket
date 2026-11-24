@@ -6,6 +6,7 @@ import { filesPaneOf } from '@shared/work'
 import type { Caller } from '../modules'
 import { setCloudDir } from '../office/files/library'
 import { NOT_BOUND, setLiveBinding } from './across'
+import { setHostRead } from '../peer'
 import { closeFilesState, filesHandle } from './handle'
 import { forgetLibraries } from './places/libraries'
 import { HOST, makeRig, peer, thread, window, WS, type Rig } from './testkit'
@@ -80,6 +81,11 @@ describe('work.files.across', () => {
   it('says a desktop with no live link (asleep, off its VPN, TempCode closed) is not reachable now, in words a window reads as away', async () => {
     Object.assign(box.ctx, { peer: { call: () => ({ call: async () => { throw new Error(`host offline: ${PC} has no live link to this host`) } }) } })
     await expect(across(macKey, 'work.files.places')).rejects.toThrow(/^That computer is not reachable now\.$/)
+    // One named while linked keeps its name here once it is away.
+    setHostRead(box.ctx, { hosts: () => [], read: async () => null as never, name: () => 'Purdue laptop' })
+    await expect(across(macKey, 'work.files.places')).rejects.toThrow('Purdue laptop is not reachable now.')
+    setHostRead(box.ctx, { hosts: () => [], read: async () => null as never, name: () => null })
+    await expect(across(macKey, 'work.files.places')).rejects.toThrow('Purdue laptop is not reachable now.')
     // Any other refusal there passes as it was said.
     Object.assign(box.ctx, { peer: { call: () => ({ call: async () => { throw new Error("this host's bridge is off for that host") } }) } })
     await expect(across(macKey, 'work.files.places')).rejects.toThrow("this host's bridge is off for that host")

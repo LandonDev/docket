@@ -21,6 +21,9 @@ let liveBinding: (envId: string) => boolean = () => true
 export const setLiveBinding = (fn?: (envId: string) => boolean): void => void (liveBinding = fn ?? (() => true))
 
 export const NOT_BOUND = "That computer's link to this host is stopped or removed."
+/** The name each desktop last had here, for the line that says it is away. */
+const lastName = new Map<string, string>()
+
 /** What the host link says of a desktop it cannot reach now. */
 const AWAY = /offline|no live link|not connected|connection closed|timed out/i
 
@@ -36,7 +39,9 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   if (p.host === ctx.host) throw new Error('That is this host: ask it directly.')
   if (!liveBinding(p.host)) throw new Error(NOT_BOUND)
   // `ctx.peer` itself holds the call to a desktop the workspace may use ("May use this computer").
-  const name = hostReadOf(ctx)?.name?.(p.host) ?? null
+  // A desktop away has no registration to name it by: the name it last had here stands.
+  const name = hostReadOf(ctx)?.name?.(p.host) ?? lastName.get(p.host) ?? null
+  if (name) lastName.set(p.host, name)
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(workspace.id), workspaceId: workspace.id }, signal } as never, p.host)
   let answer: unknown
   try {

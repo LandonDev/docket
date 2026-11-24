@@ -1669,9 +1669,21 @@ read as not reachable with one line. No push crosses: the desktop's places
 are asked again with the workspace's own.
 
 A thread on the box reaches the same folders with its own tools: `files_*`
-(files/tools.ts `hostsOf`) ask each desktop in `mayUseDesktop` over
-`ctx.peer`, and a change in a folder there is held as `file.act`. The phone
-lists the box's own places alone; it does not yet list a desktop's.
+(files/tools.ts `hostsOf`) list them over `ctx.peer`, `teams_read` (office
+pillar, by the library's id from `teams_libraries`) reads a file's text, and
+a change in a folder there is held as `file.act`. All of it needs the PC's
+Access for the box at **Read** alone: with it Off, the PC refuses ("this
+host's bridge is off for that host"). Opening a file in its app there
+(`teams_open` on that host) is a press the PC asks for, as any action beyond
+a read. A desktop asleep, off its VPN or with TempCode closed reads in a
+window as "<name> did not answer" with Retry: the box says "<name> is not
+reachable now.", naming it as it last saw it. The phone lists the box's own
+places alone; it does not yet list a desktop's.
+
+Proven 2026-11-24 in the Windows rig (.temp-code/plans/landed/pc-setup/files-across/):
+a stand-in Mac window listed and opened `J:\Esports` on the rig PC through a
+stand-in box; a box thread's `files_places`, `files_list` and `teams_read`
+reached it and its `files_move` was held.
 
 ## A tab
 

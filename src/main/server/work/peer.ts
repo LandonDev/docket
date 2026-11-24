@@ -117,6 +117,8 @@ export interface HostRead {
 }
 const hostReads = new WeakMap<WorkCtx, HostRead>()
 export const hostReadOf = (ctx: WorkCtx): HostRead | undefined => hostReads.get(ctx)
+/** A test's stand-in for a host's own reads. */
+export const setHostRead = (ctx: WorkCtx, read: HostRead): void => void hostReads.set(ctx, read)
 
 export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
   const facts = scopeFactsOf(deps.registry)
