@@ -68,13 +68,16 @@ describe('with the real files module', () => {
     expect(readdirSync(join(rig.folder, 'Events')).filter((n) => n.startsWith('Crew report - Central')).length).toBe(2)
   })
 
-  it("a make in a library others can open is Files' to refuse or to ask about, in its own words, and nothing is written there", async () => {
+  it("a make in a library others can open is Files' to judge: his window's Word file is made there as New's document is, a thread's never", async () => {
     const before = readdirSync(join(rig.team, 'General')).sort()
     const into = { at: 'file' as const, host: 'env_box', path: join(rig.team, 'General') }
-    await expect(makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Crew report', into, fields: { Client: 'Central' } }, { pillars: real })).rejects.toThrow()
     // A thread never reaches Files' door at all: the workspace's own folder only.
     await expect(makeFromShelf(rig.ctx, thread(), { workspaceId: WS, template: 'Crew report', into }, { pillars: real })).rejects.toThrow("made in this workspace's own folder")
     expect(readdirSync(join(rig.team, 'General')).sort()).toEqual(before)
+    // Files offers a document in every library (New makes its own blank .docx there), so his press makes a new file beside the others.
+    const made = await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Crew report', into, fields: { Client: 'Central' } }, { pillars: real })
+    expect(made.source).toEqual({ at: 'file', host: 'env_box', path: join(rig.team, 'General', 'Crew report - Central.docx') })
+    expect(readdirSync(join(rig.team, 'General')).sort()).toEqual([...before, 'Crew report - Central.docx'].sort())
   })
 
   it('a remove of his own is never a delete he was not asked about: Trash, or the confirm', async () => {
