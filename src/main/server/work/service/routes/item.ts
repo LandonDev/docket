@@ -35,7 +35,7 @@ function passes(ctx: RouteCtx): Pass[] {
 function answer(res: ServerResponse, p: Pass, extra: Record<string, unknown> = {}): void {
   json(res, 200, {
     kind: 'doc' in p.item ? 'doc' : 'sheet',
-    role: 'edit',
+    role: p.role,
     title: p.pass.title,
     me: 'owner',
     token: p.pass.token,
