@@ -401,7 +401,7 @@ written, a folder he added himself included (`office/tools.ts` `judged`).
 
 | Method | Needs | What |
 |---|---|---|
-| `filesLibraries {}` | read | this host's libraries, his rows, the folders he turned off |
+| `filesLibraries {cached?}` | read | this host's libraries, his rows, the folders he turned off. With `cached: true`, uses the VM's last mounts without refreshing them |
 | `filesList {source}` | read | one folder: folders first, then files, each `TeamsEntry` (name, path, kind, size, modified, local, by) |
 | `filesSearch {query, library?, kind?}` | read | names holding every word, newest first, 200 at most, `more` past 20,000 folders |
 | `filesFetch {source}` | read | downloads a cloud-only file; answers it as it is now |
@@ -415,12 +415,33 @@ written, a folder he added himself included (`office/tools.ts` `judged`).
 | `vmSignIn {account?}` | operate | his sign-in walked to his phone's number ("Signing in"); a person's |
 | `vmSync {libraries}` | admin | the libraries OneDrive in the VM should sync; a person's |
 
-`teamsKindOf`, `teamsAppOf`, `teamsCanvasOf` and `teamsWebOf` in
+`teamsKindOf`, `teamsAppOf` and `teamsCanvasOf` in
 `src/shared/contract-work-office.ts` are shared by both sides: a workbook
 opens as a sheet with Excel behind it (`{at: 'microsoft', app: 'excel'}`), a
 Word file as a document (imported first, as every Word file is), a deck as
 slides, a PDF as a pdf, a picture or video as media; a CSV, text or other file
 opens in its app.
+
+### Live Office addresses and memory
+
+The host supports Word (.docx), Excel (.xlsx and .xlsm), and PowerPoint (.pptx) in shared Files tabs.
+`office/live/address.ts` builds a file's web address from its OneDrive mount namespace, the synced namespace
+of the same Files place on another machine, or the folder address saved in Settings, in that order.
+It encodes each file path segment and adds `?web=1`. A sharing link or a library view page cannot serve as
+a folder address. `cloudKey` matches direct paths with SharePoint's `/:w:/r`, `/:x:/r` and `/:p:/r` paths.
+A `Doc.aspx?sourcedoc=…` redirect carries a GUID in place of the file path.
+
+| Method | Needs | What |
+|---|---|---|
+| `work.office.live.of {workspaceId, tabId}` | operate | `{mode, address, why?, app, tenant, desktops}` for the tab's original file. Each desktop gives a source to pass to `filesOpen` and carries `vm: true` for a VM. |
+| `work.office.live.libraryDefault {libraryId}` | operate | `{mode}` from the host that holds the library. The workspace's host can read it over the bridge for a copied file. |
+| `work.office.live.setLibraryDefault {libraryId, mode}` | operate | Writes and returns `{mode}` on the host that holds the library. |
+
+The workspace's host stores each file's choice in `work_office_live` by workspace and stable Files key.
+That choice wins over the library's `live:<libraryId>` row in `work_office_files`. Libraries start in
+`here` mode. Desktop choices use the Office apps reported on each machine, including the VM's last
+status. The live address and mode are metadata for the Files control. This milestone leaves opening
+and switching to the Files tab integration.
 
 ## Host ids
 
@@ -465,8 +486,7 @@ workspace's host and each desktop it may use (`filesLibraries`) and shows:
 - a folder with crumbs (Files, the team, each folder), one 32px row per entry:
   its kind's glyph, name, a cloud mark while it is not downloaded, who last
   saved it (once the column is 560px wide), when it changed; on hover its
-  menu: Open, Open in Excel (or Word, PowerPoint, the app), Open on the web
-  where the folder has its link;
+  menu: Open and Open in Excel (or Word, PowerPoint, the file's app);
 - the header's search over every library, each hit with its place.
 
 **One place, once.** A row is a place (a team's channel, a library, his own
@@ -557,9 +577,9 @@ minutes. A failure is one toast.
 
 Settings → Work, "Where it runs": **Teams files** for each Mac or Windows host
 with Work on (`TeamsFilesRow`): each library found or added, by team, with its
-folder; a found one has a switch, an added one Remove; Add web link… takes the
-channel's Files → Copy link for Open on the web; Add folder… adds one it
-missed. Only this computer's own window edits its list; another host's rows
+folder; a found one has a switch, an added one Remove. Add web link… stores
+the address. Live Office uses a direct web folder address. Add folder… adds
+a folder it missed. Only this computer's own window edits its list; another host's rows
 are read only. A Work workspace's page has **Copy Teams files to <host>**
 (`TeamsCopyRow`) once it may use a desktop other than its own host.
 

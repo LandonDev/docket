@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { deflateRawSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
-import { teamsCanvasOf, teamsKindOf, teamsWebOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
+import { teamsCanvasOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { FenceError, fenceRequest } from '../../../remote/fence'
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { FakeOffice } from '../fake'
@@ -131,7 +131,7 @@ describe('finding the libraries', () => {
     ])
     expect(got.off).toEqual([join(cloud, 'OneDrive-Purdue University')])
     const esports = got.libraries.find((l) => l.team === 'Purdue Esports')!
-    expect(teamsWebOf(esports, join(team, 'General', 'Budget 2026.xlsx'))).toBe('https://purdue.sharepoint.com/sites/esports/Shared Documents/General/Budget%202026.xlsx')
+    expect(esports).toMatchObject({ web: roots[2]!.web, webSource: 'settings' })
   })
 
   it("sets the list from this computer's window only", async () => {

@@ -63,7 +63,8 @@ const contractRequest = (method: string, params: unknown): ClientRequest | strin
 /** A Work call from another host, run here: this host's own module, under this host's bridge policy for the caller. */
 export async function servePeerWork(deps: ServePeerDeps, from: string, call: Extract<ThreadWork, { kind: 'call' }>): Promise<unknown> {
   if (!deps.ctx.enabled()) throw new Error(WORK_OFF)
-  if (!isPillarId(call.module) || !/^[A-Za-z][A-Za-z0-9]*$/.test(call.verb)) throw new Error(`unknown Work method: ${call.module}.${call.verb}`)
+  const liveDefault = call.module === 'office' && call.verb === 'live.libraryDefault'
+  if (!isPillarId(call.module) || (!liveDefault && !/^[A-Za-z][A-Za-z0-9]*$/.test(call.verb))) throw new Error(`unknown Work method: ${call.module}.${call.verb}`)
   const method = `work.${call.module}.${call.verb}`
   const need = (deps.capabilityOf ?? ((m: string) => (METHOD_CAPABILITY as Record<string, Capability | 'local' | undefined>)[m]))(method)
   if (!need) throw new Error(`unknown Work method: ${method}`)

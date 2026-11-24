@@ -85,7 +85,7 @@ const THREADS_NO_TABS = 'A thread opens a file beside itself with canvas_open; t
 const NOT_BUILT_PLACE = 'That place is not read by this build yet.'
 
 /** The workspace's own rows (tabs, marks) are kept only where it lives, and are no thread's and no other host's to change. */
-function ownRows(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, workspaceId: string, o: { threads?: boolean } = {}): WorkspaceRow {
+export function ownRows(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, workspaceId: string, o: { threads?: boolean } = {}): WorkspaceRow {
   if (by.kind === 'model' && !o.threads) throw new Error(THREADS_NO_TABS)
   admitCaller(ctx, by, workspaceId)
   if (by.peer) throw new Error(PEER_LIBRARIES)

@@ -151,7 +151,13 @@ export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
     const { team, library } = splitLibraryName(basename(r.folder))
     libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false })
   }
-  for (const l of libs) l.web = edit.get(l.path)?.web ?? null
+  for (const l of libs) {
+    const web = edit.get(l.path)?.web
+    if (web) {
+      l.web = web
+      l.webSource = 'settings'
+    }
+  }
   return libs.sort((a, b) => a.team.localeCompare(b.team) || (a.library ?? '').localeCompare(b.library ?? ''))
 }
 

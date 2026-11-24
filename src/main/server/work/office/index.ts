@@ -24,6 +24,8 @@ import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './fil
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
 import { officeConverters, type RenderDeps, type RenderPlace } from './render'
+import { liveHandle } from './live/handle'
+import { ensureLiveTables } from './live/memory'
 import { canPresent, presentDeck, type PresentDeps } from './present'
 
 /**
@@ -164,10 +166,12 @@ export const office: WorkModule = {
     ensureRouteTables(db)
     ensureAddinTables(db)
     ensureFilesTables(db)
+    ensureLiveTables(db)
   },
   async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.office.')) return NOT_HANDLED
     if (req.method.startsWith('work.office.addin.')) return addinHandle(req, ctx, by)
+    if (req.method.startsWith('work.office.live.')) return liveHandle(req, ctx, by, desktopOnce, signal)
     if (req.method.startsWith('work.office.files') || req.method.startsWith('work.office.vm')) return filesHandle(req, ctx, by, filesDeps(ctx), signal)
     const here = hereOf(ctx)
     switch (req.method) {
@@ -226,9 +230,10 @@ export const office: WorkModule = {
   itemsRemoved(items, ctx) {
     dropItemCopies(ctx, items)
   },
-  // A removed workspace's copies go: its threads' and its Files pane's.
+  // A removed workspace's copies and remembered file modes go with it.
   workspaceRemoved(id, ctx) {
     dropCopies(ctx, { workspaceId: id })
+    ctx.db.prepare('DELETE FROM work_office_live WHERE workspace_id = ?').run(id)
   },
   tools: () => [
     ...addinTools(hereOf, { offered: (ctx) => vmAllowed(ctx, ctx.scope) && vmHasOffice(ctx), awake: vmAwake, here: vmHereOf }),

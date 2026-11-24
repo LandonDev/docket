@@ -48,7 +48,7 @@ export const OfficeCellSchema = z.union([z.string().max(32_000), z.number(), z.b
 export const TEAMS_FILE_KINDS = ['folder', 'workbook', 'document', 'deck', 'pdf', 'picture', 'video', 'audio', 'text', 'other'] as const
 export type TeamsFileKind = (typeof TEAMS_FILE_KINDS)[number]
 
-/** His edit to one folder of the list: one he added, a found one turned off, or its web address (a channel's Files → Copy link). */
+/** His edit to one folder of the list: one he added, a found one turned off, or its web folder address. */
 export interface TeamsRoot {
   folder: string
   off?: boolean
@@ -77,6 +77,8 @@ export interface TeamsLibrary {
   kind: 'mine' | 'channels' | 'library' | 'folder'
   channels: string[]
   web: string | null
+  /** When set, web came from Settings. Otherwise a non-null web is OneDrive's namespace. */
+  webSource?: 'settings'
   /** found under ~/Library/CloudStorage, not added by him */
   found: boolean
   /** it lies in the Windows VM this host keeps (docs/agents/work-teams-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
@@ -194,11 +196,28 @@ export function teamsCanvasOf(entry: Pick<TeamsEntry, 'name' | 'path' | 'kind'>,
 }
 const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const
 
-/** A file's address on the web: the library's address (his paste) and the file's place in it. */
-export function teamsWebOf(library: Pick<TeamsLibrary, 'path' | 'web'>, path: string): string | null {
-  if (!library.web) return null
-  const rel = path.slice(library.path.length).split(/[\\/]/).filter(Boolean)
-  return [library.web.replace(/\/+$/, ''), ...rel.map(encodeURIComponent)].join('/')
+export const OfficeLiveModeSchema = z.enum(['here', 'live'])
+export type OfficeLiveMode = z.infer<typeof OfficeLiveModeSchema>
+export type OfficeLiveApp = Extract<OfficeApp, 'word' | 'excel' | 'powerpoint'>
+
+/** The source to pass to work.office.filesOpen on the host it names. */
+export interface OfficeLiveDesktop {
+  source: { at: 'file'; host: string; path: string }
+  vm?: true
+}
+
+export interface OfficeLiveOf {
+  mode: OfficeLiveMode
+  address: string | null
+  why?: string
+  app: OfficeLiveApp | null
+  tenant: string | null
+  desktops: OfficeLiveDesktop[]
+}
+
+const LiveLibrary = z.object({ libraryId: z.string().min(1).max(200) })
+export interface OfficeLiveLibraryDefault {
+  mode: OfficeLiveMode
 }
 
 const ToolCall = z.object({ tool: z.string().regex(/^office_[a-z_]+$/), args: z.unknown() })
@@ -224,7 +243,7 @@ export const OfficeRequestSchemas = [
   /** forgets an add-in's key and closes it */
   request('work.office.addin.remove', z.object({ id: z.string().max(64) })),
   /** the Teams and SharePoint libraries synced on this host, and his edits to that list (Teams files, docs/agents/work-teams-files.md) */
-  request('work.office.filesLibraries', z.object({})),
+  request('work.office.filesLibraries', z.object({ cached: z.boolean().optional() })),
   /** one folder of a library: `source` is `{at: 'file'}` on this host */
   request('work.office.filesList', z.object({ source: CanvasSourceSchema })),
   /** files and folders whose names hold every word of `query`, in one library or all */
@@ -235,6 +254,10 @@ export const OfficeRequestSchemas = [
   request('work.office.filesRead', z.object({ source: CanvasSourceSchema, as: z.enum(['text', 'bytes']).default('text') })),
   /** opens a file in its own app on this host (Excel, Word, PowerPoint, Preview) */
   request('work.office.filesOpen', z.object({ source: CanvasSourceSchema })),
+  /** A Files tab's remembered mode and where its shared Office file can open. */
+  request('work.office.live.of', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100) })),
+  request('work.office.live.libraryDefault', LiveLibrary),
+  request('work.office.live.setLibraryDefault', LiveLibrary.extend({ mode: OfficeLiveModeSchema })),
   /** his edits to the list, from this computer's own window only: a folder added, a found one turned off, a folder's web address */
   request('work.office.filesSetRoots', z.object({ roots: z.array(TeamsRootSchema).max(100) })),
   /** whether a Work workspace on this host may copy Teams files from another host to here (off by default) */
@@ -293,6 +316,9 @@ export const OFFICE_CAPS = {
   'work.office.filesFetch': 'read',
   'work.office.filesRead': 'read',
   'work.office.filesOpen': 'operate',
+  'work.office.live.of': 'operate',
+  'work.office.live.libraryDefault': 'operate',
+  'work.office.live.setLibraryDefault': 'operate',
   'work.office.filesSetRoots': 'local',
   'work.office.filesCopyGet': 'read',
   'work.office.filesCopySet': 'admin',

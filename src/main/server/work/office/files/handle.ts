@@ -7,6 +7,7 @@ import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED
 import type { ClientRequest } from '@shared/contract'
 import { FenceError } from '../../../remote/fence'
 import { macBridgeLandingRoot } from '../../../macBridgeLanding'
+import { forgetLibraries } from '../../files/places/libraries'
 import type { Caller, WorkCtx } from '../../modules'
 import { copyKeptIn, dropCopyRecords } from '../../files/copyKept'
 import { importFolderOf } from '../../files/imports'
@@ -94,9 +95,13 @@ const vmFor = (ctx: WorkCtx, by: Caller): boolean => {
   return !!scope && vmAllowed(ctx, scope)
 }
 
-async function librariesAnswer(ctx: WorkCtx, by: Caller): Promise<TeamsLibrariesAnswer> {
+async function librariesAnswer(ctx: WorkCtx, by: Caller, cached = false): Promise<TeamsLibrariesAnswer> {
   const own = librariesOf(ctx.db, ctx.host)
-  const vm = vmFor(ctx, by) ? await vmListing(ctx, by) : { libraries: [], place: null }
+  const vm = !vmFor(ctx, by)
+    ? { libraries: [], place: null }
+    : cached
+      ? { libraries: cachedVmLibraries(ctx), place: vmPlace(ctx.db, vmState()) }
+      : await vmListing(ctx, by)
   const folders = foldersPlace(ctx.host)
   // A folder he added himself is a library too: the place then has something to show.
   const places = [...(folders ? [own.some((l) => l.kind !== 'mine') && folders.state !== 'ok' ? { ...folders, state: 'ok' as const } : folders] : []), ...(vm.place ? [vm.place] : [])]
@@ -259,6 +264,12 @@ export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>
   return [...out].map(([sessionId, held]) => ({ sessionId, ...held }))
 }
 
+/** The VM's existing mounts, without reading or waking it. */
+export function cachedVmLibraries(ctx: Pick<WorkCtx, 'db' | 'host'>): TeamsLibrary[] {
+  const state = vmState()
+  return state && !state.cannot && state.state !== 'none' && state.state !== 'setting-up' ? vmLibraries(ctx.db, ctx.host) : []
+}
+
 /** Whether this host's Windows VM is set up: a Files pane is his own window, which needs nothing more of it. */
 const vmSetUp = (): boolean => {
   const s = vmState()
@@ -362,7 +373,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
   const p = (req as { params?: Record<string, unknown> }).params ?? {}
   switch (m) {
     case 'work.office.filesLibraries':
-      return handled(await librariesAnswer(ctx, by))
+      return handled(await librariesAnswer(ctx, by, p.cached === true))
     case 'work.office.filesList': {
       const { library, path } = admitted(ctx, by, m, p.source as CanvasSource)
       if (library.vm) return handled({ entries: await vmList(library, path, signal) })
@@ -417,6 +428,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
     case 'work.office.filesSetRoots':
       setRoots(ctx.db, p.roots as never)
+      forgetLibraries(ctx.db)
       return handled(await librariesAnswer(ctx, by))
     case 'work.office.vmStatus':
       return handled(vmOfficeStatus(ctx.db, vmState()))
