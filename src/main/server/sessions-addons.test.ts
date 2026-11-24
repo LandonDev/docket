@@ -170,3 +170,15 @@ it('a thread the frame refuses to run (a mail chat whose Mail did not load) star
   expect(spawnsOf(session.id)).toBe(0)
   expect(registry.eventsAfter(session.id, 0).some((row) => row.event.type === 'user-text')).toBe(false)
 })
+
+it('endOnAccount ends every handle on a dropped account now, mid-turn too, and leaves the others (F13)', async () => {
+  const a = await atRest('muse', 'muse-spark')
+  const b = await atRest('muse', 'muse-spark')
+  db.prepare(`UPDATE sessions SET account_current = 'given@x' WHERE id = ?`).run(a)
+  db.prepare(`UPDATE sessions SET account_current = 'mine@x' WHERE id = ?`).run(b)
+  emits.get(a)!({ type: 'status', status: 'running' })
+  expect(await registry.endOnAccount('muse', 'given@x')).toBe(1)
+  expect(disposed).toEqual([a])
+  expect(registry.rebootAtNextTurn(a)).toBe(false)
+  expect(registry.rebootAtNextTurn(b)).toBe(true)
+})

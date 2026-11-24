@@ -14,13 +14,17 @@ import { DEVICES_CAPS } from './contract-devices'
  *   allowlist `DEVICE_METHODS` (its peer link, the sync followers' reads,
  *   its own letters), never more, and `DEVICE_REFUSED` is refused whatever
  *   else the key holds.
+ * - `pending`: a key a setup link's claim minted (devices/setupPairings.ts),
+ *   before the giver's Allow. It reaches `/api/setup/*` alone over HTTP, and
+ *   on a socket only `devices.mail` and `devices.challenge`; it ends with the
+ *   link unless `devices.activate` makes it a device key.
  * A method marked `local` never runs for a remote connection at all: the
  * loopback socket the desktop renderer uses is the only caller that gets it
  * (src/main/server/index.ts `LOCAL_PRINCIPAL`).
  */
-export type Capability = 'read' | 'operate' | 'approve' | 'admin' | 'give' | 'device'
-export const CAPABILITIES: readonly Capability[] = ['read', 'operate', 'approve', 'admin', 'give', 'device']
-/** What the loopback socket holds: everything but `device`, which only narrows. */
+export type Capability = 'read' | 'operate' | 'approve' | 'admin' | 'give' | 'device' | 'pending'
+export const CAPABILITIES: readonly Capability[] = ['read', 'operate', 'approve', 'admin', 'give', 'device', 'pending']
+/** What the loopback socket holds: everything but `device` and `pending`, which only narrow. */
 export const LOCAL_CAPS: readonly Capability[] = ['read', 'operate', 'approve', 'admin', 'give']
 export type MethodCapability = Capability | 'local'
 
@@ -552,13 +556,15 @@ export function requiredCapability(req: { method: ClientRequest['method']; param
   }
   // A pull that takes the grant over moves its refresher: the giver's alone.
   if (req.method === 'accounts.pull' && (req.params as { takeOver?: unknown } | undefined)?.takeOver) return 'give'
+  // A setup link's pairing hands a computer its way in: the giver's alone.
+  if (req.method === 'remote.pairings.create' && (req.params as { setup?: unknown } | undefined)?.setup) return 'give'
   return METHOD_CAPABILITY[req.method]
 }
 
-/** `read` is implied; `admin` covers everything but `give` and `device`. */
+/** `read` is implied; `admin` covers everything but `give`, `device` and `pending`. */
 export function allows(caps: Iterable<Capability>, need: Capability): boolean {
   if (need === 'read') return true
-  for (const cap of caps) if (cap === need || (cap === 'admin' && need !== 'give' && need !== 'device')) return true
+  for (const cap of caps) if (cap === need || (cap === 'admin' && need !== 'give' && need !== 'device' && need !== 'pending')) return true
   return false
 }
 
@@ -592,8 +598,12 @@ export const DEVICE_METHODS: ReadonlySet<string> = new Set([
   'catalog.exchange',
   'devices.challenge',
   'devices.mail',
-  'devices.ack'
+  'devices.ack',
+  'devices.ticket'
 ])
+
+/** All a pending key's socket may call (it reaches `/api/setup/*` over HTTP). */
+export const PENDING_METHODS: ReadonlySet<string> = new Set(['devices.mail', 'devices.challenge'])
 
 /** Refused to a given computer's key whatever else it holds: LifeOS tokens and the methods that carry a credential. */
 export const DEVICE_REFUSED: ReadonlySet<string> = new Set([
@@ -618,6 +628,7 @@ export const DEVICE_REFUSED: ReadonlySet<string> = new Set([
 export function capabilityRefusal(caps: readonly Capability[], req: { method: ClientRequest['method']; params?: unknown }): string | null {
   const need = requiredCapability(req)
   if (need === 'local') return `forbidden: ${req.method} is local-only`
+  if (caps.includes('pending')) return PENDING_METHODS.has(req.method) ? null : `forbidden: ${req.method} waits for Allow on the giver`
   if (caps.includes('device')) {
     if (DEVICE_REFUSED.has(req.method)) return `forbidden: ${req.method} is not for a given computer`
     if (need === 'admin') return DEVICE_METHODS.has(req.method) ? null : `forbidden: ${req.method} needs admin`
@@ -665,6 +676,8 @@ export type Principal =
       sessionId?: string
       /** A relayed lane's carrier (the box's env id): its caps are the carrier's word, so this host checks the method against RELAY_METHODS itself. */
       via?: string
+      /** A ticket a device key's proved socket minted (`devices.ticket`): the env id that proof bound, carried to the socket the ticket opens. */
+      provedEnv?: string
     }
 
 export const LOCAL_PRINCIPAL: Principal = { kind: 'local' }

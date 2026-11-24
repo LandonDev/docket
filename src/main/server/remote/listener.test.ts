@@ -883,6 +883,11 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
     expect(Array.isArray((await call('GET', '/api/hello', { headers: bearer(token) })).body.hosts)).toBe(true)
   })
 
+  it("refuses a device key's relayed lane unless its ticket came from a proved socket", async () => {
+    const { token } = await server.remoteAuth.createKey({ name: 'pc-relay-0', audience: 'client', caps: ['approve', 'device', 'operate', 'read'], createdBy: 'local' })
+    expect(await upgradeStatus(`${wsBase()}/ws?ticket=${await ticketFor(token)}&host=${MAC}`)).toBe(403)
+  })
+
   it('carries a phone to a registered host: the hello under its id, frames both ways, presence, revoke and the drop', async () => {
     // The "Mac": an admin link that registers with the relay offer and serves relay.* peer calls.
     const mac = await open(`${wsBase()}/ws?ticket=${await ticketFor(await adminKey())}`)
@@ -955,5 +960,31 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
     await until(() => server.relay.presenceOf(MAC)?.link === 'down')
     expect((await call('GET', '/api/hello', { headers: bearer(again) })).body.hosts[0]).toMatchObject({ environmentId: MAC, link: 'down' })
     expect(await upgradeStatus(`${wsBase()}/ws?ticket=${await ticketFor(again)}&host=${MAC}`)).toBe(503)
+  })
+})
+
+describe('the setup link (devices/setupPairings.ts)', () => {
+  it('GET /setup is a static page that runs no script and is never cached', async () => {
+    const page = await call('GET', '/setup')
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-security-policy')).toContain("script-src 'none'")
+    expect(page.headers.get('cache-control')).toBe('no-store')
+    expect(String(page.body)).not.toContain('<script')
+  })
+
+  it('an unknown code is a 404; a setup pairing is refused over /api/pairings', async () => {
+    expect((await call('POST', '/api/setup/peek', { body: { code: 'ZZZZZ-ZZZZZ' } })).status).toBe(404)
+    const made = await call('POST', '/api/pairings', { headers: bearer(await adminKey()), body: { name: 'PC', audience: 'client', caps: ['read'], setup: { verifier: 'v', bundle: 'b', name: 'PC' } } })
+    expect(made.status).toBe(400)
+  })
+
+  it('a pending key reaches /api/setup/* alone: no ticket, no socket, a public hello', async () => {
+    const { token } = await server.remoteAuth.createKey({ name: 'pending', audience: 'client', caps: ['pending'], createdBy: 'local' })
+    expect((await call('POST', '/api/ticket', { headers: bearer(token) })).status).toBe(403)
+    expect((await call('GET', '/api/keys', { headers: bearer(token) })).status).toBe(403)
+    const hello = await call('GET', '/api/hello', { headers: bearer(token) })
+    expect(hello.body.key).toBeUndefined()
+    // Bound to nothing, its setup has ended.
+    expect((await call('POST', '/api/setup/status', { headers: bearer(token), body: {} })).status).toBe(410)
   })
 })

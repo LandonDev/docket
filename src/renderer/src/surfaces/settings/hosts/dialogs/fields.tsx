@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Capability } from "@server/shared/capabilities";
 import type { RemoteAudience } from "@server/shared/contract-remote";
 import { Input } from "@renderer/components/ui/input";
@@ -81,7 +81,7 @@ export function CapsPicker({
 /** A value shown once (a key, a link): a labelled field, read-only in the
  *  mono face, the copy button beside it. */
 /** `hint`: one line under the value, Field's own (the pairing link that opens only on this computer). */
-export function Secret({ label, value, hint }: { label: string; value: string; hint?: string }) {
+export function Secret({ label, value, hint }: { label: string; value: string; hint?: ReactNode }) {
   return (
     <Field label={label} hint={hint}>
       <SecretValue label={label} value={value} />

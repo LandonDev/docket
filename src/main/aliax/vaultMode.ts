@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, renameSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { KeyWrap, SecretsMode } from 'aliax-core'
 
@@ -43,17 +44,61 @@ export function secretsModeFor(platform: NodeJS.Platform, isolated: boolean, sto
   return { mode: 'fileKey' }
 }
 
+/** The vault's files, a migration's half-made set included: all of them go aside, or the next open finishes the migration into the new vault (F23). */
+const VAULT_PARTS = ['vault.key', 'vault.key.next', 'secrets', 'secrets.next', 'secrets.old', 'profiles.json']
+
+const pidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
 /**
  * Start fresh on a vault that will not open: move what is there aside, whole,
  * into `locked-<time>` beside it, so a new vault is made on the next read and
  * nothing is deleted (a restored profile could still open the old one).
- * Returns the folder it moved them to, or null when there was nothing.
+ * Under aliax-core's lock file (`vault.key.lock`, the same {pid, at, id}): a
+ * process that holds it (Aliax open on the same vault) makes Start fresh
+ * refuse, and one that died leaves a lock that is cleared. Returns the folder
+ * it moved them to, or null when there was nothing.
  */
 export function setVaultAside(dataDir: string, now: number): string | null {
-  const parts = ['vault.key', 'secrets', 'profiles.json'].filter((p) => existsSync(join(dataDir, p)))
-  if (parts.length === 0) return null
-  const aside = join(dataDir, `locked-${new Date(now).toISOString().replace(/[:.]/g, '-')}`)
-  mkdirSync(aside, { recursive: true, mode: 0o700 })
-  for (const p of parts) renameSync(join(dataDir, p), join(aside, p))
-  return aside
+  const lock = join(dataDir, 'vault.key.lock')
+  const mine = JSON.stringify({ pid: process.pid, at: Date.now(), id: randomBytes(8).toString('hex') })
+  for (let tries = 0; ; tries++) {
+    try {
+      writeFileSync(lock, mine, { flag: 'wx', mode: 0o600 })
+      break
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+      let held: { pid?: unknown } = {}
+      try {
+        held = JSON.parse(readFileSync(lock, 'utf8')) as { pid?: unknown }
+      } catch {
+        // half written: a live writer
+      }
+      if (tries === 0 && typeof held.pid === 'number' && !pidAlive(held.pid)) {
+        rmSync(lock, { force: true })
+        continue
+      }
+      throw new Error('Another app is using the vault. Quit it and press Start fresh again.')
+    }
+  }
+  try {
+    const parts = VAULT_PARTS.filter((p) => existsSync(join(dataDir, p)))
+    if (parts.length === 0) return null
+    const aside = join(dataDir, `locked-${new Date(now).toISOString().replace(/[:.]/g, '-')}`)
+    mkdirSync(aside, { recursive: true, mode: 0o700 })
+    for (const p of parts) renameSync(join(dataDir, p), join(aside, p))
+    return aside
+  } finally {
+    try {
+      if (readFileSync(lock, 'utf8') === mine) rmSync(lock, { force: true })
+    } catch {
+      // gone already
+    }
+  }
 }

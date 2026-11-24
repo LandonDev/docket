@@ -172,6 +172,24 @@ describe('AccountsPage', () => {
     expect(aliax.startFresh).toHaveBeenCalledTimes(1)
   })
 
+  it("a given computer past its lease says so in one line, and nothing while it is current", async () => {
+    const link = registry.primary() as unknown as FakeLink
+    render(<AccountsPage />)
+    await act(flush)
+    const since = new Date(2026, 10, 3, 9).getTime()
+    const current = snapshot()
+    current.updatedAt = 2
+    current.given = { paused: false, giver: "Landon's MacBook", since }
+    await act(async () => { link.push({ push: 'accounts', snapshot: current }) })
+    expect(screen.queryByText(/^Paused:/)).toBeNull()
+    const paused = snapshot()
+    paused.updatedAt = 3
+    paused.given = { paused: true, giver: "Landon's MacBook", since }
+    await act(async () => { link.push({ push: 'accounts', snapshot: paused }) })
+    const day = new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    expect(screen.getByText(`Paused: Landon's MacBook has not been in touch since ${day}.`)).toBeTruthy()
+  })
+
   it('the existing refresh reports each failed host once and leaves the control usable', async () => {
     const refresh = vi.spyOn(accountsStore, 'refresh').mockRejectedValue(new Error('Box: key revoked\nMac: timeout\nBox: key revoked'))
     render(<AccountsPage />)

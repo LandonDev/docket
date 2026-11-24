@@ -49,6 +49,9 @@ export const notesChunk = defineChunk("notes", () => import("./NotesView"));
  *  permission, thread type and model setting pickers (components/select-body.ts, components/lazy-select.tsx). */
 export const selectChunk = defineChunk("select", () => import("../components/select-body"));
 
+/** A setup link pasted on a computer: the paste, the confirm, the steps and Ready (surfaces/setup/UseSetupLink.tsx). */
+export const setupChunk = defineChunk("setup", () => import("./setup/UseSetupLink"));
+
 /** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
 export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));
 

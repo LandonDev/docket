@@ -150,6 +150,8 @@ export interface AccountsSnapshot {
   peers?: Record<string, PeerState>
   /** Why this host's key-file vault does not open (aliax-core VaultLocked), when it does not; a Keychain lock is the providers' note. */
   vaultLock?: VaultLockReason
+  /** On a computer set up from the giver (devices/given.ts): whether its given accounts are paused, past the lease, and since when the giver has not been in touch. */
+  given?: { paused: boolean; giver: string; since: number }
 }
 
 /** aliax-core's VaultLocked reasons: no key beside sealed secrets, a key that is not one, sealed for someone else, or held by another process. */
@@ -200,6 +202,8 @@ export interface AccountRemoval {
   name: string
   static: boolean
   at: number
+  /** The host that refreshes the account, when the giver withdraws it there too (F12; contract-m3a.ts). */
+  withdraw?: string
 }
 
 /** The main process's own link to a host that shares accounts (server/remote/peers.ts). */

@@ -12,6 +12,7 @@ import type { Grant } from '@shared/devices/envelope'
  *   aliax-core would also match a row by email; a transfer whose id is
  *   unknown here but whose email names another row is refused, so no copy
  *   lands on another account's row (or onto an own sign-in) by its address.
+ * - A new account never takes a storage name a row on file has, in any case.
  * - Under the peer policy (everything but the giver's push) only a row
  *   already on file takes it.
  * - A holder never receives a refresh token: only a handoff carries one,
@@ -33,12 +34,13 @@ export interface AdmissionContext {
   admitted?: readonly Grant[]
 }
 
-export type AdmissionRefusal = 'email-match' | 'unknown-account' | 'refresh-token' | 'not-admitted' | 'kind' | 'owner'
+export type AdmissionRefusal = 'email-match' | 'name-taken' | 'unknown-account' | 'refresh-token' | 'not-admitted' | 'kind' | 'owner'
 export type Admission = { ok: true } | { ok: false; reason: AdmissionRefusal }
 
 export interface RowOnFile {
   accountId: string
   email?: string
+  name?: string
 }
 
 const HANDOFF_PATHS: ReadonlySet<ReceivePath> = new Set(['push', 'takeover'])
@@ -48,6 +50,9 @@ export function admit(t: Pick<Transfer, 'service' | 'mode' | 'blob' | 'profile'>
   if (!exact && ctx.path !== 'export') {
     const email = t.profile.email?.toLowerCase()
     if (email && onFile.some((p) => p.email?.toLowerCase() === email)) return { ok: false, reason: 'email-match' }
+    // A new account under a storage name a row already has, in any case (one vault file on Windows), would land on that row (F25).
+    const name = t.profile.name.toLowerCase()
+    if (onFile.some((p) => p.name?.toLowerCase() === name)) return { ok: false, reason: 'name-taken' }
     if (ctx.policy === 'peer') return { ok: false, reason: 'unknown-account' }
   }
   const refresh = hasRefresh(t.service as ServiceId, t.blob)

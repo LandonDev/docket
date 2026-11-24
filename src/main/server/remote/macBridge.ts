@@ -174,6 +174,11 @@ export interface MacBridgeDeps {
   away?: () => boolean
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
+  /**
+   * A device key's proof for peer.register (devices/given.ts proofFor): on a given computer's link to its box,
+   * the nonce from devices.challenge signed by its device key; null on every other link.
+   */
+  proof?: (envId: string, request: <T>(method: string, params?: unknown) => Promise<T>) => Promise<string | null> | null
   /** This Mac's computer host (computer/mcp.ts computerHooks), or null where computer use is unavailable. */
   computerHost?: () => MacComputerHost | null
   /** Why computer use is unavailable here (computer/binary.ts computerUnavailable), or null; absent means it never is available. */
@@ -643,7 +648,11 @@ export class MacBridge {
     const request = this.deps.link(envId)
     if (!request) return
     try {
+      // Null at once on every link but a given computer's to its box, so peer.register goes out as before there.
+      const proving = this.deps.proof?.(envId, <T>(method: string, params?: unknown) => request(method, params) as Promise<T>) ?? null
+      const proof = proving ? await proving : null
       await request('peer.register', {
+        ...(proof ? { proof } : {}),
         from: this.deps.environmentId,
         offers: [
           MAC_BRIDGE_OFFER,

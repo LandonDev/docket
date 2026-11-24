@@ -149,6 +149,16 @@ export class LifeosSession {
     this.set({ state: 'off' })
   }
 
+  /**
+   * The proof LifeOS asks of this host's own session before it mints anything lasting (`auth:enrollCreate`,
+   * `bots:mint`): the device token, which never leaves this process. A JWT, which a remote window may hold,
+   * mints nothing then. Only those two calls in main read it; it is never returned to a caller or logged.
+   */
+  localProof(): { token: string } | null {
+    const device = this.device()
+    return device ? { token: device.token } : null
+  }
+
   /** The stored token, if it was issued by the deployment this host talks to now. */
   private device(): { token: string } | null {
     const stored = this.deps.tokens.read()

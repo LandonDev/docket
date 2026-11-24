@@ -5574,6 +5574,7 @@ public struct LifeosStatus: Codable, Hashable, Sendable {
             case waiting
             case elsewhere
             case failed
+            case enrolled
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -5583,6 +5584,7 @@ public struct LifeosStatus: Codable, Hashable, Sendable {
                 case "waiting": self = .waiting
                 case "elsewhere": self = .elsewhere
                 case "failed": self = .failed
+                case "enrolled": self = .enrolled
                 default: self = .unknown(rawValue)
                 }
             }
@@ -5593,6 +5595,7 @@ public struct LifeosStatus: Codable, Hashable, Sendable {
                 case .waiting: "waiting"
                 case .elsewhere: "elsewhere"
                 case .failed: "failed"
+                case .enrolled: "enrolled"
                 case .unknown(let value): value
                 }
             }

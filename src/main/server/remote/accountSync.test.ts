@@ -222,9 +222,28 @@ describe('AccountSync as a host', () => {
     expect(vault.profiles('claude-code').find((p) => p.name === 'mine')).toMatchObject({ owner: 'env_mac' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(false)
     expect(vault.profiles('claude-code').find((p) => p.name === 'mine')?.releasedAt).toBeUndefined()
-    // The same confirm again (its answer was lost) is still ok; nothing to take over twice.
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: true })
+    // The same confirm again (its answer was lost) is still ok by the commit record; one naming no handoff is not.
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])!, handoffId })).toEqual({ ok: true })
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: false, reason: 'stale' })
     expect((await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers).toEqual([])
+  })
+
+  it('a takeover whose commit a crash cut short (the record written, the strip or the owner not) is finished by the taker\'s confirm, never answered "kept" (F08)', async () => {
+    const { sync, store } = host('env_box', [], { releaseTimeoutMs: 60_000 })
+    const later = Date.now() + 2 * HOUR
+    vault.upsertProfile('claude-code', { name: 'mine', accountId: 'u1', createdAt: 1, owner: 'env_box' })
+    vault.saveSecret('claude-code', 'mine', claudeBlob(later))
+    const fp = refreshFingerprint('claude-code', vault.readSecret('claude-code', 'mine')!)!
+    // The record went to disk and the process died before the strip.
+    store.setSetting('accounts.released.claude-code:u1', JSON.stringify({ id: 'h1', peer: 'env_mac', fingerprint: fp }))
+    expect(sync.handleConfirm('env_other', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fp, handoffId: 'h1' })).toEqual({ ok: false, reason: 'stale' })
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fp, handoffId: 'h1' })).toEqual({ ok: true })
+    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(false)
+    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac' })
+    // Died after the strip, before the owner moved: the confirm moves it, and says ok, not "kept".
+    vault.upsertProfile('claude-code', { ...vault.profiles('claude-code')[0], owner: 'env_box' })
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fp, handoffId: 'h1' })).toEqual({ ok: true })
+    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac' })
   })
 
   it('the live-CLI guard holds for a takeover too: the grant the CLI here is signed in with is never handed out', async () => {
@@ -236,6 +255,19 @@ describe('AccountSync as a host', () => {
     const answer = await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })
     expect(answer.transfers).toEqual([])
     expect(answer.handoffId).toBeUndefined()
+    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
+  })
+
+  it('the lineage is asked again under the handoff lock, on the grant that would leave (F26)', async () => {
+    const blob = claudeBlob(Date.now() + 2 * HOUR)
+    let asks = 0
+    // The CLI signs in with this grant between the first look and the lock.
+    const { sync } = host('env_box', [], { releaseTimeoutMs: 60_000, liveFingerprint: async () => (++asks === 1 ? null : adapter('claude-code').fingerprintOf!(blob)) })
+    vault.upsertProfile('claude-code', { name: 'mine', accountId: 'u1', createdAt: 1, owner: 'env_box' })
+    vault.saveSecret('claude-code', 'mine', blob)
+    const answer = await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })
+    expect(asks).toBe(2)
+    expect(answer.transfers).toEqual([])
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
   })
 
@@ -269,6 +301,17 @@ describe('AccountSync as a host', () => {
 })
 
 describe('AccountSync as a client', () => {
+  it("a given computer's link to its box (a device key) pulls but never pushes its own sign-ins", async () => {
+    const box = fakeLink('env_box', 'box')
+    ;(box.env as { caps?: string[] }).caps = ['approve', 'device', 'operate', 'read']
+    const { sync } = host('env_pc', [box])
+    vault.upsertProfile('claude-code', { name: 'mine', accountId: 'u1', createdAt: 1 })
+    vault.saveSecret('claude-code', 'mine', claudeBlob(Date.now() + 2 * HOUR))
+    await sync.syncWith('env_box')
+    expect(box.request.mock.calls.map((c) => c[0])).toEqual(['accounts.pull'])
+    expect(box.lastError).toBeNull()
+  })
+
   it('syncWith pulls what the peer shares, pushes access copies of its own, and hands a grant off in two phases when the peer is the home', async () => {
     const box = fakeLink('env_box', 'box')
     const { sync, store } = host('env_mac', [box])
@@ -725,6 +768,42 @@ describe('removals', () => {
     seed('other', 'u8', { owner: 'env_other' })
     expect(await sync.handleRemoved('env_mac', { removed: [tomb('u8')] })).toEqual({ dropped: 0 })
     expect(names()).toEqual(['live', 'mine', 'other'])
+  })
+
+  it('the giver deleting a copy the box refreshes withdraws it there too, until the box answers (F12)', async () => {
+    const box = fakeLink('env_box', 'box')
+    let answer: 'down' | 'ok' = 'down'
+    box.request.mockImplementation(async (method: string) => {
+      if (method === 'accounts.removed' && answer === 'down') throw new Error('socket closed')
+      return method === 'accounts.pull' ? { transfers: [], listed: [], tombstones: [] } : { dropped: 1 }
+    })
+    const mac = host('env_mac', [box])
+    seed('copy', 'u9', { owner: 'env_box' })
+    const out = await mac.sync.deleteProfile('claude-code', 'copy')
+    expect(out).toMatchObject({ ok: true, removal: { accountId: 'u9', withdraw: 'env_box' } })
+    await vi.waitFor(() => expect(box.request.mock.calls.filter(([m]) => m === 'accounts.removed')).toHaveLength(2))
+    // The box did not answer: the withdrawal is owed, and goes first at the next sync.
+    answer = 'ok'
+    await mac.sync.syncWith('env_box')
+    expect(box.request.mock.calls.filter(([m]) => m === 'accounts.removed')).toHaveLength(3)
+    expect(box.request.mock.calls.findIndex(([m]) => m === 'accounts.removed', 2)).toBeLessThan(box.request.mock.calls.findIndex(([m]) => m === 'accounts.pull'))
+    await mac.sync.syncWith('env_box')
+    expect(box.request.mock.calls.filter(([m]) => m === 'accounts.removed')).toHaveLength(3)
+
+    // On the box: the giver's withdrawal drops the grant it refreshes, and leaves a tombstone for every copy.
+    const onBox = host('env_box', [])
+    seed('grant', 'u9', { refresh: true })
+    seed('other', 'u10', { refresh: true })
+    const removal = { service: 'claude-code' as const, accountId: 'u9', name: 'copy', static: false, at: Date.now() }
+    // A plain removal, or one naming another host, never touches what this host refreshes.
+    expect(await onBox.sync.handleRemoved('env_mac', { removed: [removal] })).toEqual({ dropped: 0 })
+    expect(await onBox.sync.handleRemoved('env_mac', { removed: [{ ...removal, withdraw: 'env_other' }] })).toEqual({ dropped: 0 })
+    expect(await onBox.sync.handleRemoved('env_mac', { removed: [{ ...removal, withdraw: 'env_box' }] })).toEqual({ dropped: 1 })
+    expect(names()).toEqual(['other'])
+    expect(onBox.sync.tombstones().map((t) => t.accountId)).toEqual(['u9'])
+    // A pull answer's tombstones never withdraw.
+    seed('grant', 'u9', { refresh: true })
+    expect(await onBox.sync.prune('env_mac', undefined, [{ ...removal, withdraw: 'env_box' }])).toBe(0)
   })
 
   it('deleteProfile here drops the row, rebuilds the snapshot at once, tells every link and subscriber, and keeps a tombstone for what this host refreshed or held statically (not a copy) until the account is on file again', async () => {

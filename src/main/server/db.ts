@@ -207,6 +207,50 @@ export function openDb(path: string): DatabaseSync {
       last_user_seq INTEGER,
       shutdown_at   INTEGER
     );
+    -- Given computers on the box (devices/binding.ts, mailbox.ts, farewell.ts;
+    -- docs/agents/pc-setup.md): one binding per computer, the queue of letters
+    -- to it, the newest verified letter (never swept), and the removals,
+    -- which outlive the mail.
+    CREATE TABLE IF NOT EXISTS device_bindings (
+      env_id       TEXT PRIMARY KEY,
+      key_id       TEXT NOT NULL,
+      sign_public  TEXT NOT NULL,
+      seal_public  TEXT NOT NULL,
+      generation   INTEGER NOT NULL,
+      name         TEXT NOT NULL,
+      state        TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      seq          INTEGER,
+      kind         TEXT,
+      ack          TEXT,
+      last_seen_at INTEGER,
+      removal_id   TEXT,
+      retired_at   INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS device_mail (
+      env_id TEXT NOT NULL,
+      seq    INTEGER NOT NULL,
+      kind   TEXT NOT NULL,
+      letter TEXT NOT NULL,
+      at     INTEGER NOT NULL,
+      PRIMARY KEY (env_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS device_state (
+      env_id TEXT PRIMARY KEY,
+      seq    INTEGER NOT NULL,
+      kind   TEXT NOT NULL,
+      header TEXT NOT NULL,
+      letter TEXT NOT NULL,
+      at     INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS device_removals (
+      removal_id TEXT PRIMARY KEY,
+      env_id     TEXT NOT NULL,
+      key_id     TEXT NOT NULL,
+      at         INTEGER NOT NULL,
+      receipt_at INTEGER,
+      revoked_at INTEGER
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
@@ -238,6 +282,9 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE remote_keys ADD COLUMN webhook_url TEXT`,
     `ALTER TABLE remote_keys ADD COLUMN webhook_secret TEXT`,
     `ALTER TABLE remote_keys ADD COLUMN events TEXT`,
+    // A setup link's pairing (devices/setupPairings.ts): its verifier and sealed bundle, then the claim made with it.
+    `ALTER TABLE remote_pairings ADD COLUMN setup TEXT`,
+    `ALTER TABLE remote_pairings ADD COLUMN claim TEXT`,
     // Moving a thread between hosts (sessionMove.ts): frozen here while it
     // crosses (moving_to), landed here provisionally (moving_from), or left
     // as a tombstone after it moved (moved_to); move_id names the attempt.

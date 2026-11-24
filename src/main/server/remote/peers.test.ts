@@ -89,7 +89,7 @@ describe('PeerLink', () => {
     // …and the platform is remembered on the saved row, for the next launch's host glyph.
     expect(JSON.parse(store.getSetting(`${ENVIRONMENTS_PREFIX}env_a`)!).platform).toBe('linux')
     hostA.dropAll()
-    await vi.waitFor(() => expect(events.onClose).toHaveBeenCalledWith('env_a'))
+    await vi.waitFor(() => expect(events.onClose).toHaveBeenCalledWith('env_a', expect.any(Number)))
     expect(link.connected).toBe(false)
     await expect(link.request('x')).rejects.toThrow('not connected')
     // Backoff is armed; an explicit retry connects again with a fresh ticket.
@@ -111,6 +111,21 @@ describe('PeerLink', () => {
     // the fake host's ws server agrees to no extension by default
     expect(lines).toEqual(['C: connected over loopback, extensions none'])
     expect(connectedLine('box', 'tunnel', 'permessage-deflate; client_max_window_bits')).toBe('box: connected over tunnel, extensions permessage-deflate; client_max_window_bits')
+  })
+
+  it("tells its owner when the host refuses the saved key at /api/ticket (a computer removed while away)", async () => {
+    const env = { id: 'env_f', name: 'F', routes: [{ url: 'ws://127.0.0.1:9/ws', kind: 'loopback' as const }], addedAt: 1, caps: ['device' as const], keyName: 'k' }
+    const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_f`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+    const refused = vi.fn()
+    const forbidden = (async () => new Response('farewell', { status: 403 })) as unknown as typeof fetch
+    const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: forbidden }, { onRefused: refused })
+    cleanup.push(async () => link.close())
+    await link.connect()
+    expect(refused).toHaveBeenCalledWith('env_f')
+    const busy = new PeerLink(env, { store, environmentId: 'env_me', fetch: (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch }, { onRefused: refused })
+    cleanup.push(async () => busy.close())
+    await busy.connect()
+    expect(refused).toHaveBeenCalledTimes(1)
   })
 
   it('refuses a host that answers under another environment id', async () => {

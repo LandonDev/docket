@@ -46,17 +46,33 @@ export function rootsOf(db: DatabaseSync): TeamsRoot[] {
     return []
   }
 }
-/** His edits, one row per folder; a row that says nothing is dropped. */
+/** A folder as the list keeps it: `~` read as home, then absolute. */
+export const rootFolder = (folder: string): string => resolve(folder.replace(/^~(?=\/|$)/, homedir()))
+
+/** His edits, one row per folder; a row that says nothing is dropped. A folder setup added that is no longer listed leaves the setup ledger. */
 export function setRoots(db: DatabaseSync, roots: readonly TeamsRoot[]): TeamsRoot[] {
   const byFolder = new Map<string, TeamsRoot>()
   for (const r of roots) {
-    const folder = resolve(r.folder.replace(/^~(?=\/|$)/, homedir()))
+    const folder = rootFolder(r.folder)
     byFolder.set(folder, { folder, ...(r.off ? { off: true } : {}), ...(r.web ? { web: r.web } : {}) })
   }
   const kept = [...byFolder.values()]
   setValue(db, 'roots', JSON.stringify(kept))
+  const ledger = setupLedger(db)
+  if (ledger.some((f) => !byFolder.has(f))) setSetupLedger(db, ledger.filter((f) => byFolder.has(f)))
   return kept
 }
+
+/** The folders of the list that a computer's setup added (files/setupFolders.ts), so that its Remove takes those away and nothing else. */
+export function setupLedger(db: DatabaseSync): string[] {
+  try {
+    const v = JSON.parse(getValue(db, 'setup') ?? '[]') as unknown
+    return Array.isArray(v) ? v.filter((f): f is string => typeof f === 'string') : []
+  } catch {
+    return []
+  }
+}
+export const setSetupLedger = (db: DatabaseSync, folders: readonly string[]): void => setValue(db, 'setup', folders.length ? JSON.stringify([...new Set(folders)]) : null)
 
 /** Whether a workspace here may copy Teams files from another host: off unless he turned it on. */
 export const copyAllowed = (db: DatabaseSync, workspaceId: string): boolean => getValue(db, `copy:${workspaceId}`) === '1'

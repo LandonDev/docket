@@ -17,12 +17,15 @@ import { MacBridgeRememberedSection } from "../../../chrome/MacBridgeRemember";
 import { HostAdmission } from "./Admission";
 import { Clients } from "./Clients";
 import { HostDeploy, LocalRelease, useJobPolling } from "./Deploy";
+import { ComputersGroup } from "./Computers";
 import { DevicesGroup, useDevicesPolling } from "./Devices";
 import { AddHostDialog } from "./dialogs/AddHostDialog";
 import { NewKeyDialog } from "./dialogs/NewKeyDialog";
 import { PairDialog } from "./dialogs/PairDialog";
 import { RenameHostDialog } from "./dialogs/RenameHostDialog";
 import { RoutesDialog } from "./dialogs/RoutesDialog";
+import { SetupComputerDialog } from "./dialogs/SetupComputerDialog";
+import { UseSetupLinkDialog } from "../../setup/UseSetupLink";
 import { hostSections } from "./hostSections";
 import { LoadLimitRow, MacBridgeGroup, useMacBridgePolling } from "./MacBridgeGroup";
 import { HostSection, type HostMenuAction } from "./HostSection";
@@ -52,7 +55,9 @@ type Dialog =
   | { kind: "add"; repair?: SavedEnvironment }
   | { kind: "rename"; env: SavedEnvironment }
   | { kind: "routes"; env: SavedEnvironment }
-  | { kind: "remove"; env: SavedEnvironment };
+  | { kind: "remove"; env: SavedEnvironment }
+  | { kind: "setup" }
+  | { kind: "use-link" };
 
 type RemoteData = {
   status: RemoteStatus;
@@ -246,6 +251,9 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                   <CodeUpdatesRow settings={code} notice={codeNotice} onSet={(host) => remote.act("code.settings.set", { host })} />
                 </LocalRelease>
               )}
+              {web ? null : (
+                <ComputersGroup saved={hosts.saved} onSetUp={() => setDialog({ kind: "setup" })} onUseLink={() => setDialog({ kind: "use-link" })} />
+              )}
               {harness ? <LocalSync harness={harness} memory={memory} onAct={remote.act} /> : null}
               {web ? null : <MacBridgeRememberedSection />}
             </>
@@ -263,6 +271,8 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
         </div>
       )}
 
+      {dialog?.kind === "setup" ? <SetupComputerDialog onClose={close} /> : null}
+      {dialog?.kind === "use-link" ? <UseSetupLinkDialog onClose={close} /> : null}
       {dialog?.kind === "key" ? <NewKeyDialog onClose={close} onChanged={remote.refresh} /> : null}
       {dialog?.kind === "pair" ? <PairDialog host={dialog.env} onClose={close} onChanged={remote.refresh} /> : null}
       {dialog?.kind === "add" ? <AddHostDialog repair={dialog.repair} onClose={close} onChanged={hosts.refresh} /> : null}

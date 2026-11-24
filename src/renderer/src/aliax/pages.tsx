@@ -171,6 +171,14 @@ export function AccountsPage(): React.JSX.Element {
           </AlertAction>
         </Alert>
       ) : null}
+      {snapshot.given?.paused ? (
+        <Alert variant="warning" className="mb-6">
+          <AlertDescription>
+            Paused: {snapshot.given.giver} has not been in touch since{" "}
+            {new Date(snapshot.given.since).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {freshing ? (
         <ConfirmDialog
           title="Start fresh?"

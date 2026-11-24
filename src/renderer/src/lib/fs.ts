@@ -293,6 +293,13 @@ export async function pickFolder(title = "Open project"): Promise<string | null>
   return typeof selected === "string" && selected ? selected : null;
 }
 
+/** The native picker for several folders at once (the setup's Folders in Files). */
+export async function pickFolders(title: string): Promise<string[] | null> {
+  const selected = await open({ directory: true, multiple: true, title });
+  const paths = (Array.isArray(selected) ? selected : [selected]).filter((path): path is string => typeof path === "string" && !!path);
+  return paths.length > 0 ? paths : null;
+}
+
 export async function pickFiles(title = "Attach files"): Promise<string[] | null> {
   const selected = await open({
     multiple: true,

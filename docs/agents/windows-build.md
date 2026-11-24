@@ -126,6 +126,13 @@ check failing quietly until the next one that has it.
 
 ## Install
 
+**The first screen.** A fresh install (no saved hosts, no workspaces, no accounts) opens on one
+screen, "Paste the link from your Mac" (surfaces/setup/SetupFirstRun.tsx, its own lazy chunk), with
+Continue and Skip; Settings → Hosts → **Use a setup link…** opens the same later. The steps that follow,
+LifeOS's install among them, are docs/agents/pc-setup.md "The setup link". TempCode's own `setup.exe`
+stays the one installer: LifeOS is a step of that screen, never a part of the NSIS bundle, and it never
+runs again on an `--updated` reinstall.
+
 One click, per user: the installer writes `%LOCALAPPDATA%\Programs\TempCode` and asks for no
 admin. `build/installer.nsh` names the folder after the product (electron-builder's default for
 this mode is the package name, `temp-code`); an update keeps the folder the first install chose.
@@ -160,7 +167,10 @@ are unchanged.
   NEW password: every secret re-sealed into `secrets.next`, read back, the sealed key written to
   `vault.key.next`, then both moved into place. A crash at any step leaves the old set or the new
   one whole, and the next open finishes or undoes it. A plain copy of the old key, in a roaming
-  profile or a backup, opens nothing afterwards;
+  profile or a backup, opens nothing afterwards. A blob the old key cannot open (sealed under a key
+  an older build lost) is carried across unchanged and named in a warning, a folder inside
+  `secrets/` moves whole, and any other failure of the move is a `VaultLocked`, so Start fresh
+  shows instead of an error on every read;
 - an exact wrapped key: opened;
 - anything else, or no key beside sealed secrets: `VaultLocked`, nothing made or rewritten (the old
   reader made a new key in silence, which stranded every secret). The Accounts page shows one line,

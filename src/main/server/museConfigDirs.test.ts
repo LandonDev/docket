@@ -18,7 +18,8 @@ import {
   museWorkRefusal,
   museWorkRoot,
   MUSE_WORK_SETTINGS,
-  recaptureMuseDir
+  recaptureMuseDir,
+  removeGivenMuseDirs
 } from './museConfigDirs'
 import { execFileSync } from 'node:child_process'
 
@@ -325,5 +326,45 @@ describe('the Work fence', () => {
     configureMuseDirs(null)
     expect(museWorkRefusal()).toMatch(/no data folder/)
     expect(() => museWorkDirs('t1', null)).toThrow(/no data folder/)
+  })
+})
+
+describe('a given account (devices/given.ts)', () => {
+  const GIVEN = 'given@example.com'
+  const withTag = (tag: string | null) =>
+    configureMuseDirs({ root, readBlob: (a) => blobs[a] ?? null, saveBlob: (a, b) => void (blobs[a] = b), userConfigDir: userDir, givenTag: (a) => (a === GIVEN ? tag : null) })
+
+  it("keeps its dirs under its generation's tag, apart from the computer's own, and never recaptures one", () => {
+    blobs[GIVEN] = blobOf(GIVEN)
+    withTag('g3')
+    const dir = museConfigDirFor(GIVEN, 'global', pointer)!
+    expect(dir).toBe(join(root, 'given', 'g3', museAccountRoot(root, GIVEN).split('/').at(-1)!, 'global'))
+    expect(museDirKind(dir)).toBe('account')
+    expect(readFileSync(join(dir, 'muse', 'auth.json'), 'utf8')).toBe(blobOf(GIVEN))
+    const work = museWorkDirs('t1', GIVEN, 'global', pointer)
+    expect(work.configDir.startsWith(join(museWorkRoot(root), 'config', 'given', 'g3'))).toBe(true)
+    // The CLI rewrote the copy: a given account is the giver's to renew, so nothing goes back.
+    writeFileSync(join(dir, 'muse', 'auth.json'), blobOf(GIVEN, 'dca:rotated'))
+    expect(recaptureMuseDir(GIVEN)).toBe(false)
+    expect(blobs[GIVEN]).toBe(blobOf(GIVEN))
+    // An own account stays where it was.
+    expect(museConfigDirFor(ME, 'global', pointer)).toBe(join(museAccountRoot(root, ME), 'global'))
+  })
+
+  it('deletes one account under every tag, or every given dir', () => {
+    blobs[GIVEN] = blobOf(GIVEN)
+    withTag('g1')
+    museConfigDirFor(GIVEN, 'global', pointer)
+    withTag('g2')
+    museConfigDirFor(GIVEN, 'global', pointer)
+    museWorkDirs('t1', GIVEN, 'global', pointer)
+    museConfigDirFor(ME, 'global', pointer)
+    expect(removeGivenMuseDirs(GIVEN)).toBe(3)
+    expect(readdirSync(join(root, 'given', 'g1'))).toEqual([])
+    expect(existsSync(join(museAccountRoot(root, ME), 'global', 'muse', 'auth.json'))).toBe(true)
+    museConfigDirFor(GIVEN, 'global', pointer)
+    expect(removeGivenMuseDirs(null)).toBeGreaterThan(0)
+    expect(existsSync(join(root, 'given'))).toBe(false)
+    expect(existsSync(join(museAccountRoot(root, ME), 'global', 'muse', 'auth.json'))).toBe(true)
   })
 })

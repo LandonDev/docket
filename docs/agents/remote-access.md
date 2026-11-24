@@ -40,6 +40,14 @@
   it holds (LifeOS tokens, add-on grant writes, `linear.setToken`), and the
   rest follow its other caps (operate, approve), so its window still runs
   box threads. `peers.ts` opens a link for an admin or a device key.
+- **Setup links** (docs/agents/pc-setup.md): `<box origin>/setup#v1.<code>.<secret>`. The box holds
+  the pairing code, the link verifier's public key and the sealed bundle, never the secret; `/setup` is
+  a static page with `script-src 'none'`; `/api/setup/peek`, `/challenge`, `/claim` are their own
+  exchange (the legacy `/api/pair` refuses setup rows), rate-limited by address and by code, and the
+  claim is checked against the verifier before it is made. A claim mints a `pending` key, good only
+  for `/api/setup/*` and its own letters for 15 minutes, which the giver's Allow turns into a `device`
+  key. **Farewell**: a removed computer's key gets close code 4010 (not 4001, so it retries) and from
+  then reaches only `POST /api/farewell`, for its last letter and its signed receipt.
 - **The destination decides.** A relayed lane's principal carries `via`
   (relayServe.ts); its host runs a request only when RELAY_METHODS carries
   the method, whatever caps the box named (devices/hostRules.ts

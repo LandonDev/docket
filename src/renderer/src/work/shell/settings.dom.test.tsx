@@ -32,7 +32,7 @@ vi.mock("./actions", async (original) => ({
   localHostId: async () => "env_mac",
 }));
 
-const { WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
+const { SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
 
 afterEach(() => {
   cleanup();
@@ -72,5 +72,31 @@ describe("Settings → Work", () => {
     render(<WorkWorkspacePage workspaceId="ws" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.getByRole("switch", { name: "Computer use on PURDUE-LT" })).toBeTruthy();
+  });
+});
+
+describe("Sign in to LifeOS", () => {
+  const host = (id: string) =>
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: id,
+      connected: true,
+      request: vi.fn(() => Promise.resolve({ code: "ABCD-1234", expiresAt: Date.now() + 60_000 })),
+      onPush: () => () => {},
+      onOpen: () => () => {},
+    } as never);
+
+  it("takes a device token for this window's own host, and offers only the code for another host, which never takes a token from afar", async () => {
+    host(registry.primaryEnvironmentId);
+    const own = render(<SignInDialog environmentId={registry.primaryEnvironmentId} state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    expect(screen.queryByPlaceholderText("lo_…")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeNull();
+    own.unmount();
+    host("env_box");
+    render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByText("ABCD-1234")).not.toBeNull();
   });
 });

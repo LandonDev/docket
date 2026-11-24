@@ -127,6 +127,8 @@ interface PairingRow {
   expires_at: number
   consumed_at: number | null
   consumed_by: string | null
+  /** A setup link's pairing (devices/setupPairings.ts): redeemed only by /api/setup/claim. */
+  setup?: string | null
 }
 interface SessionRow {
   id: string
@@ -167,6 +169,8 @@ const pairingOf = (r: PairingRow): RemotePairing => ({
 interface Ticket {
   keyId: string
   expiresAt: number
+  /** Minted on a device key's proved socket: the env id its socket inherits (devices.ticket). */
+  provedEnv?: string
 }
 
 /** What a stream ticket lets its socket do: watch, send his pointer and keys too, or publish a stream from another host. */
@@ -181,6 +185,14 @@ export interface StreamClaim {
 }
 interface StreamTicket extends StreamClaim {
   expiresAt: number
+}
+
+/** A bearer key made ahead of its row (RemoteAuth.prepareBearer). */
+export interface PreparedBearer {
+  id: string
+  salt: string
+  hash: string
+  token: string
 }
 
 export interface Verified {
@@ -234,6 +246,8 @@ export class RemoteAuth {
   private readonly streamTickets = new Map<string, StreamTicket>()
   private readonly failures = new Map<string, number[]>()
   private readonly revokeListeners = new Set<(keyId: string) => void>()
+  private readonly farewellListeners = new Set<(keyId: string) => void>()
+  private farewellOf: (keyId: string) => boolean = () => false
   /** last_used_at is written at most once a minute per key. */
   private readonly touched = new Map<string, number>()
 
@@ -268,6 +282,30 @@ export class RemoteAuth {
       const id = crockfordId()
       if (!this.keyRow(id)) return id
     }
+  }
+
+  /**
+   * A bearer secret made ahead of its row (scrypt is async), so a caller can
+   * insert the key inside its own transaction (devices/setupPairings.ts).
+   */
+  async prepareBearer(): Promise<PreparedBearer> {
+    const id = this.freshKeyId()
+    const secret = randomBytes(32).toString('base64url')
+    const salt = randomBytes(16).toString('hex')
+    const hash = (await scryptHash(secret, salt)).toString('hex')
+    return { id, salt, hash, token: `${KEY_PREFIX}${id}.${secret}` }
+  }
+
+  /** The row of a prepared bearer key; no checks of its caps, which the caller owns. Synchronous, for a transaction. */
+  insertPrepared(prepared: PreparedBearer, input: { name: string; caps: Capability[]; createdBy: string }): void {
+    this.insertKey({ id: prepared.id, name: input.name, audience: 'client', caps: capsToText(input.caps), hash: prepared.hash, salt: prepared.salt, created_at: this.now(), created_by: input.createdBy })
+  }
+
+  /** The same key id under a new secret (a lost claim reply retried): the old token stops working. */
+  rekey(id: string, prepared: Pick<PreparedBearer, 'salt' | 'hash'>): boolean {
+    const changed = this.db.prepare(`UPDATE remote_keys SET hash = ?, salt = ? WHERE id = ? AND revoked_at IS NULL`).run(prepared.hash, prepared.salt, id).changes === 1
+    if (changed) for (const [digest, keyId] of this.memo) if (keyId === id) this.memo.delete(digest)
+    return changed
   }
 
   /** A bearer key. The returned token is the only time the secret exists in the clear. */
@@ -337,10 +375,67 @@ export class RemoteAuth {
     this.db.prepare(`UPDATE remote_keys SET revoked_at = ? WHERE id = ?`).run(now, id)
     this.db.prepare(`UPDATE remote_sessions SET revoked_at = ? WHERE key_id = ? AND revoked_at IS NULL`).run(now, id)
     for (const [digest, keyId] of this.memo) if (keyId === id) this.memo.delete(digest)
-    for (const [digest, ticket] of this.tickets) if (ticket.keyId === id) this.tickets.delete(digest)
-    for (const [digest, ticket] of this.streamTickets) if ('keyId' in ticket.holder && ticket.holder.keyId === id) this.streamTickets.delete(digest)
+    this.dropTickets(id)
     for (const listener of this.revokeListeners) listener(id)
     return true
+  }
+
+  /** Every upgrade and stream ticket minted for the key, gone. */
+  dropTickets(id: string): void {
+    for (const [digest, ticket] of this.tickets) if (ticket.keyId === id) this.tickets.delete(digest)
+    for (const [digest, ticket] of this.streamTickets) if ('keyId' in ticket.holder && ticket.holder.keyId === id) this.streamTickets.delete(digest)
+  }
+
+  /**
+   * A live key's caps, replaced (devices.activate turns a pending key into a
+   * given computer's: devices/mailbox.ts). Tickets minted under the old set
+   * go; a socket already open keeps the principal it attached with.
+   */
+  setCaps(id: string, caps: Capability[]): RemoteKey {
+    const row = this.keyRow(id)
+    if (!row || row.revoked_at) throw new RemoteAuthError(404, `unknown key: ${id}`)
+    this.db.prepare(`UPDATE remote_keys SET caps = ? WHERE id = ?`).run(capsToText(caps), id)
+    this.dropTickets(id)
+    return keyOf(this.keyRow(id)!)
+  }
+
+  /** Whether a key is in farewell (devices/farewell.ts): it reaches only `POST /api/farewell` until it is revoked. */
+  inFarewell(id: string): boolean {
+    return this.farewellOf(id)
+  }
+
+  /** Who is in farewell is the removals' to say (devices/farewell.ts); unset, no key is. */
+  /** Whether a key may be revoked by hand; the refusal's words, or null (devices/binding.ts: a given computer's key ends by Remove). */
+  private revokeGuard: (keyId: string) => string | null = () => null
+
+  setRevokeGuard(guard: (keyId: string) => string | null): void {
+    this.revokeGuard = guard
+  }
+
+  /**
+   * A revoke he asked for, by HTTP or a socket (Clients' Revoke): refused for a key the guard holds,
+   * so a given computer's key ends only by Remove, which wipes it and revokes LifeOS (F07). The
+   * box's own ends (a receipt, the sweep) call `revokeKey`.
+   */
+  revokeByOwner(id: string): boolean {
+    const refused = this.revokeGuard(id)
+    if (refused) throw new RemoteAuthError(409, refused)
+    return this.revokeKey(id)
+  }
+
+  setFarewellCheck(check: (keyId: string) => boolean): void {
+    this.farewellOf = check
+  }
+
+  /** The key went into farewell: its tickets go, and listeners close its sockets with FAREWELL_CLOSE. */
+  farewell(id: string): void {
+    this.dropTickets(id)
+    for (const listener of this.farewellListeners) listener(id)
+  }
+
+  onFarewell(listener: (keyId: string) => void): () => void {
+    this.farewellListeners.add(listener)
+    return () => this.farewellListeners.delete(listener)
   }
 
   onRevoke(listener: (keyId: string) => void): () => void {
@@ -423,7 +518,15 @@ export class RemoteAuth {
     return Number(this.db.prepare(`DELETE FROM remote_pairings WHERE consumed_at IS NULL`).run().changes)
   }
 
+  /** Setup links answer their own revoke (Cancel ends the claim and the pending key too) and expire on the sweep. */
+  setSetupHooks(hooks: { revoke(id: string): boolean | null; sweep(): void }): void {
+    this.setupHooks = hooks
+  }
+  private setupHooks: { revoke(id: string): boolean | null; sweep(): void } | null = null
+
   revokePairing(id: string): boolean {
+    const setup = this.setupHooks?.revoke(id)
+    if (setup !== null && setup !== undefined) return setup
     return (
       this.db.prepare(`DELETE FROM remote_pairings WHERE id = ? AND consumed_at IS NULL`).run(id).changes > 0
     )
@@ -431,6 +534,7 @@ export class RemoteAuth {
 
   /** Drop expired and consumed rows older than a day; the listener runs it on a timer. */
   sweep(): void {
+    this.setupHooks?.sweep()
     const now = this.now()
     this.db.prepare(`DELETE FROM remote_pairings WHERE expires_at < ? OR consumed_at < ?`).run(now - 24 * 60 * 60_000, now - 24 * 60 * 60_000)
     this.db.prepare(`DELETE FROM remote_sessions WHERE expires_at < ? OR revoked_at < ?`).run(now, now - 24 * 60 * 60_000)
@@ -468,7 +572,8 @@ export class RemoteAuth {
     | { kind: 'session'; key: RemoteKey; session: RemoteSession; cookie: string }
   > {
     const row = this.openPairing(code)
-    if (!row) throw new RemoteAuthError(401, 'invalid or expired pairing code')
+    // A setup link's code is redeemed only by /api/setup/claim, with the verifier's proof.
+    if (!row || row.setup) throw new RemoteAuthError(401, 'invalid or expired pairing code')
     const ceiling = capsFromText(row.caps)
     const caps = request.caps ? checkCeiling(row.audience, normalizeCaps(request.caps), ceiling) : ceiling
     const name = request.name?.trim() || row.name
@@ -591,9 +696,9 @@ export class RemoteAuth {
   // ── tickets ───────────────────────────────────────────────────────────
 
   /** A 30-second single-use ticket for one WebSocket upgrade; only tickets ever ride in a URL. */
-  mintTicket(principal: Principal & { kind: 'remote' }): { ticket: string; expiresIn: number } {
+  mintTicket(principal: Principal & { kind: 'remote' }, provedEnv?: string): { ticket: string; expiresIn: number } {
     const ticket = randomBytes(32).toString('base64url')
-    this.tickets.set(sha256(ticket), { keyId: principal.keyId, expiresAt: this.now() + TICKET_TTL_MS })
+    this.tickets.set(sha256(ticket), { keyId: principal.keyId, expiresAt: this.now() + TICKET_TTL_MS, ...(provedEnv ? { provedEnv } : {}) })
     return { ticket, expiresIn: TICKET_TTL_MS / 1000 }
   }
 
@@ -606,7 +711,8 @@ export class RemoteAuth {
     const row = this.keyRow(entry.keyId)
     if (!row || row.revoked_at) return null
     this.touchKey(row.id)
-    return this.principalOf(row)
+    const principal = this.principalOf(row)
+    return entry.provedEnv ? { ...principal, provedEnv: entry.provedEnv } : principal
   }
 
   /**

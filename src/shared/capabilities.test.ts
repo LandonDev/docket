@@ -40,6 +40,12 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.sync',
         // The giver moves only by the box's own say (contract-devices.ts).
         'devices.setGiver',
+        'devices.computers',
+        'devices.computer',
+        // The setup link's windows: the giver's dialog and notice, the new computer's steps (docs/agents/pc-setup.md).
+        ...methods.filter((m) => m.startsWith('devices.setup.')),
+        // A proof's seam (isolated instances only): a computer given without the setup link.
+        'devices.proof',
         'accounts.setHome',
         'accounts.delete',
         // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
@@ -140,6 +146,7 @@ describe('METHOD_CAPABILITY', () => {
         'devices.challenge',
         'devices.mail',
         'devices.ack',
+        'devices.ticket',
         'devices.list',
         // A peer asks this host to refresh its own accounts' usage, for the quota cooldowns across hosts.
         'accounts.refreshLocal',
@@ -283,8 +290,16 @@ describe('the giver and given computers (pc-setup.md)', () => {
   const GIVER = ['admin', 'give', 'read'] as const
   const DEVICE = ['device', 'operate', 'approve', 'read'] as const
 
+  it('a setup link\'s pairing is the giver\'s; a pending key reaches only its own setup', () => {
+    expect(requiredCapability({ method: 'remote.pairings.create', params: { name: 'PC', audience: 'client', caps: ['pending'], setup: { verifier: 'v', bundle: 'b', name: 'PC' } } } as never)).toBe('give')
+    expect(requiredCapability({ method: 'remote.pairings.create', params: { name: 'PC', audience: 'client', caps: ['read'] } } as never)).toBe('admin')
+    expect(allows(['admin'], 'pending')).toBe(false)
+    expect(capabilityRefusal(['pending', 'read'], req('devices.mail'))).toBeNull()
+    expect(capabilityRefusal(['pending', 'read'], req('accounts.pull'))).toMatch(/waits for Allow/)
+  })
+
   it('introducing, handing off and withdrawing an account is the giver\'s alone', () => {
-    expect(withCap('give')).toEqual(['accounts.confirm', 'accounts.push', 'accounts.released', 'accounts.removed', 'devices.activate', 'devices.post', 'devices.remove'])
+    expect(withCap('give')).toEqual(['accounts.confirm', 'accounts.push', 'accounts.released', 'accounts.removed', 'devices.activate', 'devices.post', 'devices.remove', 'devices.setupProof'])
     for (const m of withCap('give')) {
       expect(capabilityRefusal([...ADMIN], req(m))).toMatch(/needs give/)
       expect(capabilityRefusal([...GIVER], req(m))).toBeNull()

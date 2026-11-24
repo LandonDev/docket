@@ -39,11 +39,12 @@ export type LifeosStateName = LifeosState['state']
  *  - `waiting`: LifeOS is not connected here, so nothing is minted yet.
  *  - `elsewhere`: the workspace's add-ons live on another host (a linked workspace), which mints its key.
  *  - `failed`: the last try failed; `error` says why, and the next pass tries again.
+ *  - `enrolled`: this host's LifeOS session came from a setup link, which LifeOS lets mint no key; asked once per session, not again.
  */
 export const LifeosKeyStateSchema = z.object({
   workspaceId: z.string(),
   sectors: z.array(SectorKeySchema),
-  state: z.enum(['ready', 'waiting', 'elsewhere', 'failed']),
+  state: z.enum(['ready', 'waiting', 'elsewhere', 'failed', 'enrolled']),
   /** the add-on row that holds the key, once there is one */
   addonId: z.string().optional(),
   error: z.string().optional()

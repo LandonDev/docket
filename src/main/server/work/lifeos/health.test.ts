@@ -4,6 +4,7 @@ import { WORK_HOME } from '@shared/work'
 import type { LifeosClient } from './ctx'
 import { lifeosRows, signInRow, SOURCE_SILENT_MS, sourceRow, sourceTitle, type LifeosSource } from './health'
 import { lifeos } from './index'
+import { ENROLLED_WORDS } from './keys'
 
 const NOW = new Date('2026-11-20T15:00:00').getTime()
 const JWT = 'eyJhbGciOiJIUzI1.eyJzdWIiOiJsYW5kb24.c2lnbmF0dXJlc2ln'
@@ -122,6 +123,23 @@ describe('the rows of a host', () => {
     expect(calls.sort()).toEqual(['health:ping', 'sources:list'])
     // No token reaches a row, even one an error carried.
     expect(JSON.stringify(rows)).not.toContain(JWT)
+  })
+
+  it('a session from a setup link: one row says its agents get no key, not one a scope', async () => {
+    const rows = await lifeosRows({
+      status: status({ state: 'connected', ownerId: 'landon', since: NOW }, [
+        { workspaceId: 'w1', sectors: ['purdue'], state: 'enrolled', error: ENROLLED_WORDS },
+        { workspaceId: WORK_HOME, sectors: ['cosmic', 'purdue'], state: 'enrolled', error: ENROLLED_WORDS }
+      ]),
+      owner: owner({ 'health:ping': { ok: true }, 'sources:list': [] }),
+      workspaceName: () => undefined,
+      now: NOW
+    })
+    expect(rows.map((r) => [r.id, r.state])).toEqual([
+      ['lifeos.signin', 'working'],
+      ['lifeos.keys:enrolled', 'broken']
+    ])
+    expect(rows[1]).toMatchObject({ title: "Agents' LifeOS keys", line: ENROLLED_WORDS })
   })
 
   it('LifeOS not answering: one broken row, and no source rows that hang on it', async () => {

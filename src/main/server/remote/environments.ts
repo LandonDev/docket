@@ -48,15 +48,25 @@ export class HostError extends Error {
   }
 }
 
-type Row = SavedEnvironment & { key: string }
+/** `sealed`: the key is not in the row but in the vault (a given computer's box key, devices/given.ts), read through `sealedEnvironmentKeys`. */
+type Row = SavedEnvironment & { key: string; sealed?: true }
 
 const rowKey = (id: string): string => `${ENVIRONMENTS_PREFIX}${id}`
+
+/**
+ * Where a sealed row's key is read: a given computer keeps its box key in its
+ * vault with the giver's pins (devices/given.ts sets this), never in a plain
+ * settings row. Null while unreadable (a locked vault): the row is listed but
+ * mints no ticket.
+ */
+export const sealedEnvironmentKeys: { read: (id: string) => string | null } = { read: () => null }
 
 function parseRow(id: string, raw: string | null): Row | null {
   if (!raw) return null
   try {
     const value = JSON.parse(raw) as Partial<Row>
-    if (typeof value.key !== 'string' || !Array.isArray(value.routes)) return null
+    const sealed = value.sealed === true
+    if ((!sealed && typeof value.key !== 'string') || !Array.isArray(value.routes)) return null
     return {
       id,
       name: typeof value.name === 'string' ? value.name : id,
@@ -65,8 +75,17 @@ function parseRow(id: string, raw: string | null): Row | null {
       caps: Array.isArray(value.caps) ? (value.caps as Capability[]) : [],
       keyName: typeof value.keyName === 'string' ? value.keyName : '',
       ...(typeof value.platform === 'string' && value.platform ? { platform: value.platform } : {}),
-      key: value.key
+      key: sealed ? (sealedKeyOf(id) ?? '') : (value.key as string),
+      ...(sealed ? { sealed: true as const } : {})
     }
+  } catch {
+    return null
+  }
+}
+
+function sealedKeyOf(id: string): string | null {
+  try {
+    return sealedEnvironmentKeys.read(id)
   } catch {
     return null
   }
@@ -74,15 +93,37 @@ function parseRow(id: string, raw: string | null): Row | null {
 
 const readRow = (store: EnvironmentsStore, id: string): Row | null => parseRow(id, store.getSetting(rowKey(id)))
 
+/** A sealed row is written without its key. */
 function writeRow(store: EnvironmentsStore, row: Row): void {
-  const { id, ...rest } = row
-  store.setSetting(rowKey(id), JSON.stringify(rest))
+  const { id, key, ...rest } = row
+  store.setSetting(rowKey(id), JSON.stringify(row.sealed ? rest : { ...rest, key }))
 }
 
-const withoutKey = ({ key, ...env }: Row): SavedEnvironment => ({
+const withoutKey = ({ key, sealed: _sealed, ...env }: Row): SavedEnvironment => ({
   ...env,
   keyId: /^tc_([A-Za-z0-9_-]+)\./.exec(key)?.[1]
 })
+
+/** The bearer key of a saved environment, from its row or the vault; null when there is none or it cannot be read. */
+export function environmentKey(store: Pick<EnvironmentsStore, 'getSetting'>, id: string): string | null {
+  return parseRow(id, store.getSetting(rowKey(id)))?.key || null
+}
+
+/** A key's id, `tc_<id>.<secret>` → `<id>`. */
+export const keyIdOf = (key: string): string | undefined => /^tc_([A-Za-z0-9_-]+)\./.exec(key)?.[1]
+
+/**
+ * Take a saved row's plain key out of settings (a given computer's box key,
+ * once its vault holds it): the row keeps its routes and reads the key back
+ * through `sealedEnvironmentKeys`. False for an unknown or already sealed row.
+ */
+export function sealEnvironmentKey(store: EnvironmentsStore, id: string): boolean {
+  const raw = store.getSetting(rowKey(id))
+  const row = parseRow(id, raw)
+  if (!row || row.sealed) return false
+  writeRow(store, { ...row, sealed: true })
+  return true
+}
 
 /** Every saved environment without its key, oldest first. */
 export function listEnvironments(store: EnvironmentsStore): SavedEnvironment[] {
@@ -225,13 +266,16 @@ export async function fetchHello(ctx: HostContext, route: SavedRoute, key: strin
 /** Validate the key against the host, then save (or extend) the environment. */
 export async function addEnvironment(
   ctx: HostContext,
-  input: { url: string; key: string; name?: string; kind?: RouteKind }
+  input: { url: string; key: string; name?: string; kind?: RouteKind; sealed?: boolean; expectId?: string }
 ): Promise<SavedEnvironment> {
   const route = normalizeRoute(input.url, input.kind)
   const key = input.key.trim()
   const hello = await fetchHello(ctx, route, key)
   if (hello.environmentId === ctx.environmentId) throw new HostError('self', `${originOf(route)} is this machine`)
+  // A setup link's box is saved only under the id the giver's bundle pinned, never one its hello names (F22).
+  if (input.expectId !== undefined && hello.environmentId !== input.expectId) throw new HostError('unauthorized', `${originOf(route)} answered as ${hello.environmentId}, not the box the link named`)
   const existing = readRow(ctx.store, hello.environmentId)
+  if (input.expectId !== undefined && existing && !existing.sealed) throw new HostError('unauthorized', `${existing.name} is saved here with a key of its own`)
   const routes = existing ? existing.routes.filter((r) => r.url !== route.url) : []
   routes.push(route)
   const row: Row = {
@@ -242,7 +286,9 @@ export async function addEnvironment(
     caps: hello.key?.caps ?? [],
     keyName: hello.key?.name ?? '',
     ...(hello.build?.platform ? { platform: hello.build.platform } : existing?.platform ? { platform: existing.platform } : {}),
-    key
+    key,
+    // A given computer's box key: the vault already holds it (devices/given.ts pinGiver), so settings never do.
+    ...(input.sealed || existing?.sealed ? { sealed: true as const } : {})
   }
   writeRow(ctx.store, row)
   return withoutKey(row)
@@ -257,7 +303,8 @@ export function parsePairingLink(link: string): { origin: string; code: string }
     throw new HostError('bad-link', 'paste the whole pairing link, https://host/pair#code')
   }
   const code = (url.hash.replace(/^#/, '') || url.pathname.replace(/^\/pair\/?/, '')).trim()
-  if (!/^[A-Z0-9]{5}-[A-Z0-9]{5}$/i.test(code)) throw new HostError('bad-link', `${link.trim()} carries no pairing code`)
+  // The words never hold the link: it carries a one-time code.
+  if (!/^[A-Z0-9]{5}-[A-Z0-9]{5}$/i.test(code)) throw new HostError('bad-link', 'this link carries no pairing code')
   return { origin: url.origin, code: code.toUpperCase() }
 }
 
@@ -296,6 +343,7 @@ export async function mintTicket(ctx: HostContext, id: string, url: string): Pro
   if (!row) throw new HostError('unknown-environment', id)
   const route = row.routes.find((r) => r.url === url)
   if (!route) throw new HostError('unknown-route', `${url} is not a route of ${id}`)
+  if (!row.key) throw new HostError('unauthorized', `the key for ${row.name} cannot be read from the vault`)
   const origin = originOf(route)
   const response = await hostFetch(ctx, `${origin}/api/ticket`, {
     method: 'POST',

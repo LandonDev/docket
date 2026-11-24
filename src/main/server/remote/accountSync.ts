@@ -9,6 +9,7 @@ import {
   beginHandoff,
   claimHandoff,
   clearReleased,
+  confirmHandoff,
   exportAccount,
   hasRefresh,
   markSynced,
@@ -98,6 +99,8 @@ const HEADROOM_DEBOUNCE_MS = 1_000
 export const RELEASE_TIMEOUT_MS = 30_000
 /** Settings row holding this host's tombstones (AccountRemoval[]). */
 export const TOMBSTONES_KEY = 'accounts.tombstones'
+/** Withdrawals of accounts another host refreshes, owed until it answers (F12). */
+const WITHDRAWALS_KEY = 'accounts.withdrawals'
 /**
  * Every handoff has an id, and its release or confirm names it with the
  * grant's refresh fingerprint; anything else is refused as stale
@@ -139,12 +142,28 @@ export interface AccountSyncDeps {
   liveAccountId?: (service: ServiceId) => Promise<string | null>
   liveExpiry?: (service: ServiceId) => Promise<number | null>
   activate?: (service: ServiceId, name: string, blob: string) => Promise<void>
-  /** On a given computer, the grants its manifest admits (devices/); undefined on the giver and the box. */
+  /** On a given computer, the grants its manifest admits (devices/given.ts admitted); undefined on the giver and the box. */
   admitted?: () => readonly Grant[] | undefined
   /** Whether a handoff must name its id: false only in the box's legacy stretch (devices/giver.ts), for a Mac one release behind. */
   handoffIdRequired?: () => boolean
+  /** The vault's accounts changed here (a save of any origin, a delete, a home moved): the giver re-sends its manifests (devices/giverDevices.ts). */
+  onVaultChanged?: () => void
   /** Proof seam (TEMP_CODE_E2E_OLD_WIRE, isolated only): speak the wire of a Mac one release behind, with no handoff ids. */
   omitHandoffIds?: boolean
+  /**
+   * On the box, what a given computer may be handed (devices/mailbox.ts
+   * `admittedFor`, keyed by the puller's env id): undefined for a host that is
+   * no given computer here; null for one that may hold nothing (stopped,
+   * being removed, no manifest); else the grants of its newest verified
+   * manifest. A pull answer, a rotation push and a removal push to it carry
+   * only the access copies (owner: this host) and the accounts those name.
+   */
+  admittedFor?: (envId: string) => readonly Grant[] | null | undefined
+  /**
+   * On a given computer, whether a row is one the giver gave (devices/given.ts isGivenRow): it is never
+   * pushed, handed off, made the CLI's live sign-in or deleted here; the giver's manifest is its whole truth.
+   */
+  givenRow?: (service: ServiceId, name: string) => boolean
   /** Test seam: the fingerprint of the grant the CLI here is signed in with (the adapter's liveFingerprint). */
   liveFingerprint?: (service: ServiceId) => Promise<string | null>
   /** Test seam: the release timeout. */
@@ -277,6 +296,7 @@ export class AccountSync {
     const next = environmentId && environmentId !== this.me ? environmentId : null
     this.deps.store.setSetting(`${HOME_PREFIX}${provider}`, next)
     this.deps.nudge()
+    this.deps.onVaultChanged?.()
     if (!next && was) {
       const service = SERVICE_OF[provider]
       for (const p of vault.profiles(service)) {
@@ -375,12 +395,16 @@ export class AccountSync {
     return failures
   }
 
-  /** One manual refresh reaches every connected host over its existing admin link. */
+  /**
+   * One manual refresh reaches every connected host over its existing admin link. Not over a device
+   * key's (a given computer's link to its box): the box refuses `accounts.refreshLocal` to it, and the
+   * copies it holds come from the box's own sweep.
+   */
   async refreshUsage(provider: AccountProvider): Promise<void> {
     const failures: string[] = []
     await Promise.all([
       this.deps.refreshUsage?.(provider).catch(err => { failures.push(`This host: ${(err as Error).message}`) }),
-      ...this.deps.peers.all().filter(link => link.connected).map(async link => {
+      ...this.deps.peers.all().filter(link => link.connected && !link.env.caps?.includes('device')).map(async link => {
         try {
           await link.request('accounts.refreshLocal', { provider })
         } catch (err) {
@@ -395,11 +419,15 @@ export class AccountSync {
   }
 
   async handlePull(from: string, params: { service?: ServiceId; name?: string; takeOver?: boolean }): Promise<PullAnswer> {
+    const gate = this.deps.admittedFor?.(from)
+    if (gate === null) return { transfers: [], listed: [], tombstones: [] }
+    if (gate) return this.pullFor(from, gate, params)
     const transfers: Transfer[] = []
     let handoffId: string | undefined
     for (const service of params.service ? [params.service] : SERVICES) {
       for (const p of vault.profiles(service)) {
         if (params.name && p.name !== params.name) continue
+        if (this.deps.givenRow?.(service, p.name)) continue
         try {
           if (params.takeOver && params.name) {
             if (p.static || !ownsProfile(p)) continue
@@ -417,6 +445,50 @@ export class AccountSync {
       }
     }
     return { transfers, ...(handoffId ? { handoffId } : {}), listed: this.listed(params.service ? [params.service] : SERVICES), tombstones: this.tombstones() }
+  }
+
+  /** A given computer's pull (handlePull's gate): only the access copies its manifest admits from this host, and only those accounts listed. */
+  private pullFor(from: string, grants: readonly Grant[], params: { service?: ServiceId; name?: string }): PullAnswer {
+    const services = params.service ? [params.service] : SERVICES
+    const transfers: Transfer[] = []
+    for (const service of services) {
+      for (const p of vault.profiles(service)) {
+        if ((params.name && p.name !== params.name) || p.static || !ownsProfile(p) || !this.mayReceive(service, p.name, from)) continue
+        try {
+          const t = exportAccount(service, p.name, 'access')
+          if (this.grantedAccess(grants, t) && this.admits(t, 'export', from)) transfers.push(t)
+        } catch (err) {
+          this.log(`${service} ${p.name}: not shared (${(err as Error).message})`)
+        }
+      }
+    }
+    const named = (service: string, accountId: string): boolean => grants.some((g) => g.service === service && g.account === accountId)
+    return {
+      transfers,
+      listed: this.listed(services).filter((l) => named(l.service, l.accountId)),
+      tombstones: this.tombstones().filter((t) => services.includes(t.service) && named(t.service, t.accountId))
+    }
+  }
+
+  /** Whether a grant admits this transfer as an access copy this host owns. */
+  private grantedAccess(grants: readonly Grant[], t: Transfer): boolean {
+    return !t.profile.static && grants.some((g) => g.service === t.service && g.account === t.profile.accountId && g.kind === 'access' && g.owner === this.me)
+  }
+
+  /** Whether a socket that pulled as `to` may hear this transfer: any host but a given computer, which hears only what it is admitted to. */
+  private subscriberAdmits(to: string | null, t: Transfer): boolean {
+    if (to === null) return true
+    const gate = this.deps.admittedFor?.(to)
+    return gate === undefined || (gate !== null && this.grantedAccess(gate, t))
+  }
+
+  /** The removals a socket that pulled as `to` may hear: a given computer only its admitted accounts'. */
+  private removalsFor(to: string | null, removed: AccountRemoval[]): AccountRemoval[] {
+    if (to === null) return removed
+    const gate = this.deps.admittedFor?.(to)
+    if (gate === undefined) return removed
+    if (gate === null) return []
+    return removed.filter((r) => gate.some((g) => g.service === r.service && g.account === r.accountId))
   }
 
   /** Every profile on file here for the services, with its owner: what a peer prunes against. */
@@ -467,17 +539,52 @@ export class AccountSync {
    * token, leaves a tombstone for the hosts that are not connected now.
    */
   async deleteProfile(service: ServiceId, name: string): Promise<DeleteAnswer> {
+    this.deps.onVaultChanged?.()
     const p = vault.profiles(service).find((x) => x.name === name)
     if (!p) return { ok: false, error: `no ${service} profile named ${name}` }
-    const removal: AccountRemoval = { service, accountId: p.accountId, name, static: p.static === true, at: this.now() }
+    if (this.deps.givenRow?.(service, name)) return { ok: false, error: `${name} was given to this computer; remove it on the computer that gave it` }
+    // A copy another host refreshes: that host is asked to drop the grant too, until it answers (F12).
+    const withdrawFrom = !p.static && !ownsProfile(p) && p.owner && this.deps.peers.get(p.owner) ? p.owner : null
+    const removal: AccountRemoval = { service, accountId: p.accountId, name, static: p.static === true, at: this.now(), ...(withdrawFrom ? { withdraw: withdrawFrom } : {}) }
+    if (withdrawFrom) this.saveWithdrawals([...this.withdrawals().filter((w) => !(w.to === withdrawFrom && w.removal.service === service && w.removal.accountId === p.accountId)), { to: withdrawFrom, removal }])
     vault.deleteProfile(service, name)
     coreAccounts.clearUsageCache(service)
     this.deps.onRemoved?.(service, name)
     if (p.static || ownsProfile(p)) this.recordTombstone(removal)
     this.log(`${service} ${name}: deleted here${p.static ? ' (static token)' : ownsProfile(p) ? '' : ` (a copy refreshed by ${p.owner})`}`)
     await this.refreshNow()
-    void this.broadcastRemoved([removal])
+    void this.broadcastRemoved([removal]).then(() => (withdrawFrom ? this.sendWithdrawals(withdrawFrom) : undefined))
     return { ok: true, removal }
+  }
+
+  /** Withdrawals owed to the hosts that refresh them, kept until each answers (F12). */
+  private withdrawals(): { to: string; removal: AccountRemoval }[] {
+    try {
+      const raw = this.deps.store.getSetting(WITHDRAWALS_KEY)
+      return raw ? (JSON.parse(raw) as { to: string; removal: AccountRemoval }[]) : []
+    } catch {
+      return []
+    }
+  }
+
+  private saveWithdrawals(rows: { to: string; removal: AccountRemoval }[]): void {
+    this.deps.store.setSetting(WITHDRAWALS_KEY, rows.length ? JSON.stringify(rows) : null)
+  }
+
+  /**
+   * Each withdrawal owed to `to`, sent again at every sync until it answers. One it refuses as forbidden
+   * (this host is not its giver) is dropped: that host keeps refreshing, as before.
+   */
+  private async sendWithdrawals(to: string): Promise<void> {
+    const link = this.deps.peers.get(to)
+    if (!link?.connected) return
+    for (const w of this.withdrawals().filter((x) => x.to === to)) {
+      const settled = await link.request('accounts.removed', { from: this.me, removed: [w.removal] }).then(
+        () => true,
+        (err: Error) => /forbidden|refused/i.test(err.message)
+      )
+      if (settled) this.saveWithdrawals(this.withdrawals().filter((x) => !(x.to === to && x.removal.service === w.removal.service && x.removal.accountId === w.removal.accountId)))
+    }
   }
 
   private async refreshNow(): Promise<void> {
@@ -491,9 +598,11 @@ export class AccountSync {
   }
 
   private async broadcastRemoved(removed: AccountRemoval[]): Promise<void> {
-    for (const send of this.subscribers.keys()) {
+    for (const [send, to] of this.subscribers) {
+      const heard = this.removalsFor(to, removed)
+      if (heard.length === 0) continue
       try {
-        send({ push: 'accounts-removed', from: this.me, removed })
+        send({ push: 'accounts-removed', from: this.me, removed: heard })
       } catch {
         // a socket on its way out
       }
@@ -506,7 +615,8 @@ export class AccountSync {
 
   /** A peer deleted profiles: prune what its word covers. */
   async handleRemoved(from: string, params: { removed: AccountRemoval[] }): Promise<{ dropped: number }> {
-    const dropped = await this.prune(from, undefined, params.removed)
+    // Only the giver reaches this method (it needs `give`): its withdrawal reaches what this host refreshes (F12).
+    const dropped = await this.prune(from, undefined, params.removed, true)
     this.deps.nudge()
     return { dropped }
   }
@@ -518,30 +628,41 @@ export class AccountSync {
    * a profile this host refreshes, its CLI's sign-in, or a provisional copy.
    * Returns how many went; the snapshot rebuilds at once when any did.
    */
-  async prune(from: string, listed: ListedAccount[] | undefined, tombstones: AccountRemoval[] | undefined): Promise<number> {
+  async prune(from: string, listed: ListedAccount[] | undefined, tombstones: AccountRemoval[] | undefined, fromGiver = false): Promise<number> {
     if (!listed && !tombstones) return 0
     // A peer's tombstone is read on the same clock as this host's own.
     const cutoff = this.now() - TOMBSTONE_TTL_MS
     tombstones = tombstones?.filter((t) => typeof t.at === 'number' && t.at > cutoff)
     let dropped = 0
+    // On a given computer the box's word reaches only what was given; its own sign-ins are never pruned.
+    const givenHere = this.deps.admitted?.() !== undefined
     for (const service of SERVICES) {
-      const profiles = vault.profiles(service)
+      const profiles = vault.profiles(service).filter((p) => !givenHere || this.deps.givenRow?.(service, p.name))
       if (profiles.length === 0) continue
       const live = await (this.deps.liveAccountId ?? ((s: ServiceId) => adapter(s).liveAccountId()))(service).catch(() => null)
       for (const p of profiles) {
         const tomb = tombstones?.find((t) => t.service === service && t.accountId === p.accountId)
         let why: string | null = null
+        const withdrawn = fromGiver && tomb?.withdraw === this.me && !p.static && ownsProfile(p)
         if (p.static) {
           if (tomb) why = `its token was removed on ${from}`
+        } else if (withdrawn) {
+          why = `withdrawn by ${from}, which gave it`
         } else if (p.owner === from && !ownsProfile(p)) {
           if (tomb) why = `removed on ${from}, which refreshed it`
           else if (listed && !listed.some((l) => l.service === service && l.accountId === p.accountId)) why = `no longer on ${from}, which refreshed it`
         }
         if (!why) continue
-        const keep = ownsProfile(p) ? 'refreshed here' : live !== null && live === p.accountId ? "the CLI's sign-in here" : isProvisional(service, p) ? 'a handoff in flight' : null
+        const keep = ownsProfile(p) && !withdrawn ? 'refreshed here' : live !== null && live === p.accountId ? "the CLI's sign-in here" : isProvisional(service, p) ? 'a handoff in flight' : null
         if (keep) {
           this.log(`${service} ${p.name}: ${why}; kept (${keep})`)
           continue
+        }
+        if (withdrawn) {
+          // No handoff of it goes on, and every host that holds a copy this one refreshed hears it is gone.
+          this.dropPending(`${service}:${p.accountId}`, 'withdrawn')
+          this.recordTombstone({ service, accountId: p.accountId, name: p.name, static: false, at: this.now() })
+          void this.broadcastRemoved([{ service, accountId: p.accountId, name: p.name, static: false, at: this.now() }])
         }
         vault.deleteProfile(service, p.name)
         coreAccounts.clearUsageCache(service)
@@ -566,6 +687,11 @@ export class AccountSync {
     const stored = vault.readSecret(service, name)
     if (!stored || (await this.liveLineage(service, stored))) throw new Error('the sign-in here, or one that cannot be told apart; it stays here')
     const handoff = await beginHandoff(service, name, to)
+    // Again under the lock, on the grant that would leave: a refresh between the first look and the lock may have made it the CLI's (F26).
+    if (await this.liveLineage(service, handoff.transfer.blob)) {
+      handoff.abort()
+      throw new Error('the sign-in here, or one that cannot be told apart; it stays here')
+    }
     const id = newHandoffId()
     const timer = setTimeout(() => {
       if (this.pending.get(key)?.handoff !== handoff) return
@@ -603,8 +729,10 @@ export class AccountSync {
       }
       clearTimeout(pending.timer)
       this.pending.delete(key)
+      // The commit record goes first: a crash anywhere in the strip is finished by the taker's next confirm (F08).
+      this.setHandoffRecord('released', params.service, params.accountId, { id: pending.id, peer: from, fingerprint: pending.handoff.fingerprint })
       pending.handoff.commit()
-      // The taker told us itself: nothing to tell it.
+      // The taker told us itself: nothing to tell it. The record stays, so a confirm whose answer was lost is answered again.
       clearReleased(params.service, pending.name)
       this.log(`${params.service} ${pending.name}: now refreshed by ${from}, access-only here`)
       this.deps.nudge()
@@ -612,7 +740,22 @@ export class AccountSync {
     }
     const p = vault.profiles(params.service).find((x) => x.accountId === params.accountId)
     if (!p) return { ok: false, reason: 'unknown-account' }
-    if (!p.static && p.owner === from && !this.holdsRefresh(params.service, p.name)) {
+    // A commit this host recorded for this taker and grant: finish what a crash left of it (the strip, the owner), then ok.
+    const record = this.handoffRecord('released', params.service, params.accountId)
+    if (record) {
+      // In the legacy stretch a Mac one release behind names no id we can hold it to.
+      const named = params.handoffId === record.id || !this.idRequired()
+      if (record.peer !== from || record.fingerprint !== params.refreshFingerprint || !named) return { ok: false, reason: 'stale' }
+      if (this.holdsRefresh(params.service, p.name) || p.owner !== from) {
+        confirmHandoff(params.service, p.name, from)
+        this.log(`${params.service} ${p.name}: ${from} confirmed a handoff a restart cut short; now refreshed there`)
+        this.deps.nudge()
+      }
+      clearReleased(params.service, p.name)
+      return { ok: true }
+    }
+    // A Mac one release behind left no record: its access-only copy naming the taker is the only word.
+    if (!this.idRequired() && !p.static && p.owner === from && !this.holdsRefresh(params.service, p.name)) {
       clearReleased(params.service, p.name)
       return { ok: true }
     }
@@ -711,6 +854,8 @@ export class AccountSync {
     const link = this.deps.peers.get(environmentId)
     if (!link?.connected) return
     try {
+      // A withdrawal owed first, so the pull does not bring the account back (F12).
+      await this.sendWithdrawals(link.id)
       // What the host owns or holds statically, for us: only accounts already on file here.
       const { transfers, listed, tombstones } = await link.request<PullAnswer>('accounts.pull', { from: this.me })
       let landed = 0
@@ -805,6 +950,9 @@ export class AccountSync {
    * an access copy. Returns whether anything was sent.
    */
   private async pushOne(link: PeerLink, service: ServiceId, name: string): Promise<boolean> {
+    // A given computer's link to its box (a device key) never sends its own sign-ins: the box refuses them, and they stay here.
+    if (link.env.caps?.includes('device')) return false
+    if (this.deps.givenRow?.(service, name)) return false
     const p = vault.profiles(service).find((x) => x.name === name)
     if (!p || (!p.static && !ownsProfile(p))) return false
     let stored: string | null
@@ -820,8 +968,16 @@ export class AccountSync {
     if (service === 'addon' && home !== link.id) return false
     const wantsHandoff = !p.static && home === link.id && hasRefresh(service, stored)
     if (wantsHandoff && (await this.liveLineage(service, stored))) this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
-    const handoff = wantsHandoff && !(await this.liveLineage(service, stored))
-    if (!handoff) {
+    let handoff = wantsHandoff && !(await this.liveLineage(service, stored))
+    // The lock is held from the export to commit or abort: no refresh rotates the token meanwhile.
+    const h = handoff ? await beginHandoff(service, name, link.id) : null
+    // Again under the lock, on the grant that would leave (F26).
+    if (h && (await this.liveLineage(service, h.transfer.blob))) {
+      h.abort()
+      handoff = false
+      this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
+    }
+    if (!handoff || !h) {
       const transfer = exportAccount(service, name, 'access')
       const out = await link.request<ApplyOutcome>('accounts.push', { from: this.me, transfer })
       if (!out.ok) {
@@ -831,8 +987,6 @@ export class AccountSync {
       markSynced(service, name)
       return true
     }
-    // The lock is held from the export to commit or abort: no refresh rotates the token meanwhile.
-    const h = await beginHandoff(service, name, link.id)
     const handoffId = newHandoffId()
     let out: ApplyOutcome
     try {
@@ -851,8 +1005,9 @@ export class AccountSync {
       this.log(`${service} ${name} → ${link.env.name}: it holds another grant for the account; this one stays here`)
       return false
     }
-    h.commit()
+    // The record before the strip (F08): a crash between them is finished by the receiver's confirm.
     this.setHandoffRecord('released', service, p.accountId, { id: handoffId, peer: link.id, fingerprint: h.fingerprint })
+    h.commit()
     this.log(`${service} ${name}: now refreshed by ${link.env.name}`)
     await this.tellReleased(link, service, name, p.accountId).catch((err) => this.log(`${service} ${name}: ${link.env.name} did not hear the release (${(err as Error).message}); told again on the next sync`))
     return true
@@ -887,6 +1042,7 @@ export class AccountSync {
 
   /** aliax-core's onSecretSaved: a write of this machine's own goes to every peer and every subscriber, debounced per profile. */
   onSecretSaved: NonNullable<Hooks['onSecretSaved']> = (serviceId: ServiceId, name: string, origin: SaveOrigin): void => {
+    if (!name.startsWith('~')) this.deps.onVaultChanged?.()
     if (origin !== 'local') return
     const key = `${serviceId}:${name}`
     const prior = this.timers.get(key)
@@ -900,13 +1056,14 @@ export class AccountSync {
   }
 
   private async broadcast(service: ServiceId, name: string): Promise<void> {
+    if (this.deps.givenRow?.(service, name)) return
     const p = vault.profiles(service).find((x) => x.name === name)
     if (p) this.forgetTombstone(service, p.accountId)
     if (!p || (!p.static && !ownsProfile(p))) return
     if (this.subscribers.size > 0) {
       try {
         const transfer = exportAccount(service, name, 'access')
-        for (const [send, to] of this.subscribers) if (this.mayReceive(service, name, to)) send({ push: 'account', from: this.me, transfer })
+        for (const [send, to] of this.subscribers) if (this.mayReceive(service, name, to) && this.subscriberAdmits(to, transfer)) send({ push: 'account', from: this.me, transfer })
       } catch (err) {
         this.log(`${service} ${name}: not pushed (${(err as Error).message})`)
       }
@@ -1029,8 +1186,8 @@ export class AccountSync {
    * never replaced.
    */
   private async activateIfNothingLive(service: ServiceId, name: string, isStatic: boolean): Promise<void> {
-    // No CLI signs in with an add-on grant, and the pin it would write is noise.
-    if (service === 'addon') return
+    // No CLI signs in with an add-on grant, and the pin it would write is noise; a given row is never the CLI's sign-in.
+    if (service === 'addon' || this.deps.givenRow?.(service, name)) return
     const a = adapter(service)
     if (!a.detect()) return
     const liveId = await (this.deps.liveAccountId ?? ((s: ServiceId) => adapter(s).liveAccountId()))(service).catch(() => null)

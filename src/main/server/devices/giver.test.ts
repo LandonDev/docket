@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Capability } from '@shared/capabilities'
 import { capabilityRefusal } from '@shared/capabilities'
-import { Givers, GIVER_SETTING } from './giver'
+import { generateDeviceKeys, signBytes } from '@shared/devices/keys'
+import { Givers, GIVER_SETTING, claimsGiver, giverMoveBytes } from './giver'
 import { DeviceIdentities, memoryIdentityStore } from './identity'
 
 function rig(keys: Array<{ id: string; caps: Capability[]; createdAt: number; revokedAt?: number | null }>, openPairings = 2) {
@@ -54,6 +55,29 @@ describe('the giver cut-over', () => {
     expect(JSON.parse(r.settings.get(GIVER_SETTING)!)).toMatchObject({ keyId: 'mac', identity, name: 'MacBook' })
   })
 
+  it("after a re-pair the giver's own identity moves the record to its new key, once the old key is revoked; nobody else can", () => {
+    const keys: Array<{ id: string; caps: Capability[]; createdAt: number; revokedAt?: number | null }> = [
+      { id: 'mac', caps: ['admin', 'read'], createdAt: 10 },
+      { id: 'mac2', caps: ['admin', 'read'], createdAt: 5_000 },
+      { id: 'rig', caps: ['admin', 'read'], createdAt: 20 }
+    ]
+    const r = rig(keys)
+    const mac = generateDeviceKeys()
+    const id = { signPublic: mac.signPublic, sealPublic: mac.sealPublic }
+    r.givers.cutOver()
+    r.tick(1_000)
+    expect(r.givers.claim(principal('mac', ['admin', 'read']), id, 'MacBook').ok).toBe(true)
+    const proof = signBytes(mac.signPrivate, giverMoveBytes('mac2'))
+    // While the old key lives the record stays.
+    expect(r.givers.claim(principal('mac2', ['admin', 'read']), id, 'MacBook', proof).ok).toBe(false)
+    keys[0].revokedAt = 2_000
+    // Another key, or one with no proof by the giver's identity, cannot take it.
+    expect(r.givers.claim(principal('rig', ['admin', 'read']), id, 'Rig', proof).ok).toBe(false)
+    expect(r.givers.claim(principal('mac2', ['admin', 'read']), id, 'MacBook').ok).toBe(false)
+    expect(r.givers.claim(principal('mac2', ['admin', 'read']), id, 'MacBook', proof)).toMatchObject({ ok: true, giver: { keyId: 'mac2', identity: id } })
+    expect(r.givers.isGiver('mac2')).toBe(true)
+  })
+
   it('a device key, a client key and a claim before the stamp are refused', () => {
     const r = rig([
       { id: 'pc', caps: ['device', 'operate', 'read'], createdAt: 10 },
@@ -100,6 +124,21 @@ describe('the giver cut-over', () => {
     expect(r.givers.isGiver('mac')).toBe(false)
     expect(r.givers.set(null)).toBeNull()
     expect(r.givers.giver()).toBeNull()
+  })
+
+  it('a key the box named the giver fills in its identity on its first claim, and only that key; then it is fixed', () => {
+    const r = rig([
+      { id: 'mac', caps: ['admin', 'read'], createdAt: 10 },
+      { id: 'mac2', caps: ['admin', 'read'], createdAt: 50_000 }
+    ])
+    r.givers.cutOver()
+    r.givers.set('mac2', undefined, 'New Mac')
+    expect(r.givers.giver()?.identity.signPublic).toBe('')
+    expect(r.givers.claim(principal('mac', ['admin', 'read']), identity, 'MacBook').ok).toBe(false)
+    const claimed = r.givers.claim(principal('mac2', ['admin', 'read']), { signPublic: 'mac2-sign', sealPublic: 'mac2-seal' }, 'New Mac')
+    expect(claimed.ok && claimed.giver.identity.signPublic).toBe('mac2-sign')
+    expect(r.givers.giver()?.identity.signPublic).toBe('mac2-sign')
+    expect(r.givers.claim(principal('mac2', ['admin', 'read']), identity, 'New Mac').ok).toBe(false)
   })
 })
 
@@ -162,5 +201,18 @@ describe('a Mac one release behind (the legacy stretch)', () => {
     expect(r.givers.legacy()).toBe(false)
     expect(r.givers.withGive(principal('rig', ['admin', 'read']))).not.toContain('give')
     expect(r.givers.withGive(principal('mac', ['admin', 'read']))).not.toContain('give')
+  })
+})
+
+describe('who claims the giver', () => {
+  const host = { platform: 'darwin', desktop: true, isolated: false, played: 'darwin', oldWire: false }
+  it("a Mac's desktop, and an isolated instance playing a Mac; never a PC, the box or a Mac one release behind", () => {
+    expect(claimsGiver(host)).toBe(true)
+    expect(claimsGiver({ ...host, desktop: false })).toBe(false)
+    expect(claimsGiver({ ...host, platform: 'win32', played: 'win32' })).toBe(false)
+    expect(claimsGiver({ ...host, platform: 'linux', desktop: false, played: 'linux', isolated: true })).toBe(false)
+    expect(claimsGiver({ ...host, platform: 'linux', desktop: false, played: 'darwin', isolated: true })).toBe(true)
+    expect(claimsGiver({ ...host, platform: 'linux', desktop: false, played: 'darwin', isolated: false })).toBe(false)
+    expect(claimsGiver({ ...host, isolated: true, oldWire: true })).toBe(false)
   })
 })

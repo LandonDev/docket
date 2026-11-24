@@ -1,7 +1,7 @@
 import { homedir, hostname } from 'node:os'
 import { dropAnswers, failAnswers, FAILED_ANSWER } from './answerSeams'
 import { vault } from 'aliax-core'
-import { configureMuseDirs, configureMuseSkills, migrateMuseDirs } from './museConfigDirs'
+import { configureMuseDirs, configureMuseSkills, migrateMuseDirs, removeGivenMuseDirs } from './museConfigDirs'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
@@ -45,9 +45,22 @@ import { MasterReleaseWatcher } from '../deployDrift'
 import { usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
-import { Givers } from './devices/giver'
+import { Givers, claimsGiver, giverMoveBytes } from './devices/giver'
+import { signBytes } from '@shared/devices/keys'
 import { givenHostRefusal, relayedRefusal } from './devices/hostRules'
 import { DeviceIdentities } from './devices/identity'
+import { GiverDevices, boxHolds, type ManifestSource } from './devices/giverDevices'
+import type { DeviceBinding, GiverRecord } from '@shared/contract-devices'
+import { DeviceBindings, deviceBindingsHook } from './devices/binding'
+import { DeviceMailbox } from './devices/mailbox'
+import { Farewell } from './devices/farewell'
+import { SetupPairings } from './devices/setupPairings'
+import { SetupLinks, type LifeosGrant } from './devices/setup/makeLink'
+import { SetupThisPc, CODES_NAME } from './devices/setup/useLink'
+import type { DevicesPush as SetupPush } from '@shared/contract-devices'
+import type { DevicesPush } from '@shared/contract-devices'
+import type { Letter } from '@shared/devices/envelope'
+import { GivenComputer, givenComputerHooks, givenSetupHooks } from './devices/given'
 import { HarnessSync, handleHarness, harnessSyncDefault } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
@@ -130,7 +143,7 @@ import { MAC_APPROVAL_WAIT_MS, MAC_BRIDGE_OFFER, type MacRunResult } from '@shar
 import type { MacHeldPush } from '@shared/contract-macbridge'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
-import { listEnvironments } from './remote/environments'
+import { addEnvironment, environmentKey, listEnvironments, removeEnvironment, sealEnvironmentKey, sealedEnvironmentKeys } from './remote/environments'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isHeadless, personsDesktop } from '../headless'
 import type { SelfUpdateOutcome } from '../updateTrigger'
@@ -678,11 +691,19 @@ export async function startServer(
     },
     log: (line) => console.log(`[headroom] ${line}`)
   })
+  // A computer set up from the giver (devices/given.ts), built below once the device identity is: until then nothing here is given.
+  let given: GivenComputer | null = null
+  // Made later in boot; the peer pushes reach them through these.
+  let setupLinksRef: SetupLinks | null = null
+  let giverDevicesRef: GiverDevices | null = null
   const accounts = new AccountsService({
     load: (provider) => registry.liveLoad(provider),
     homes: () => accountSync.homes(),
     peers: () => peers.states(),
-    headroom: () => headroom
+    headroom: () => headroom,
+    // Its paused or dropping given rows stay out of routing; the Accounts page's one line.
+    held: (provider) => given?.held(provider) ?? [],
+    given: () => given?.snapshotLine()
   })
   registry.limits = accounts
   // A Muse thread's `muse serve` reads its config from a dir of its own under
@@ -693,7 +714,8 @@ export async function startServer(
     readBlob: (account) => vault.readSecret('muse-code', account),
     saveBlob: (account, blob) => vault.saveSecret('muse-code', account, blob),
     accounts: () => vault.profiles('muse-code').map((p) => p.name),
-    log: (line) => console.log(line)
+    log: (line) => console.log(line),
+    givenTag: (account) => given?.givenTag(account) ?? null
   })
   try {
     migrateMuseDirs()
@@ -739,32 +761,31 @@ export async function startServer(
     { store, environmentId },
     {
       onOpen: (id) => {
-        // The Mac claims the giver before its first sync after the upgrade, so its pushes are the giver's (devices/giver.ts).
-        void claimGiverOn(id).finally(() => void accountSync.syncWith(id))
-        void accountSync.pushHeadroom(id)
-        void harnessSync.syncWith(id, 'link-up')
-        void memorySync.syncWith(id, 'link-up')
-        projectLinker.linkUp(id)
-        projectSettings.linkUp(id)
-        rulesSync.linkUp(id)
-        storeSync.linkUp(id)
-        runSkillImport()
-        void awaySync.linkUp(id)
-        void sessionMover.settleWith(id)
-        relayServer.linkUp(id)
-        void macBridge.linkUp(id)
-        peerDeploy.linkUp(id)
-        codeUpdates.linkUp(id)
-        accounts.nudge()
+        // A given computer's link to its box proves the device key in peer.register (macBridge's, with the proof) before
+        // anything else asks, since the box refuses every other call until then; then it reads its mail (devices/given.ts).
+        if (given?.isBox(id)) {
+          void macBridge
+            .linkUp(id)
+            .then(() => given?.linkUp(id))
+            .finally(() => linkOpened(id, false))
+          return
+        }
+        linkOpened(id, true)
       },
-      onClose: (id) => {
+      onClose: (id, code) => {
         relayServer.linkDown(id)
         macBridge.linkDown(id)
         macPorts.linkDown(id)
         keepAwake.peerDown(id)
+        given?.onClose(id, code)
         accounts.nudge()
       },
+      onRefused: (id) => given?.onRefused(id),
       onPush: (from, push) => {
+        if (given?.onPeerPush(from, push)) return
+        // The giver hears its computers' news from the box: a setup link's claim, an ack (the first manifest after Allow).
+        if (push.push === 'device-joined' && push.pairingId) return void setupLinksRef?.onJoined(push.pairingId).catch((err) => console.log(`[devices] setup claim not checked (${(err as Error).message})`))
+        if (push.push === 'device-acked') void giverDevicesRef?.acked(push.envId)
         projectLinker.onPeerPush(from, push)
         projectSettings.onPeerPush(from, push)
         rulesSync.onPeerPush(from, push)
@@ -789,12 +810,35 @@ export async function startServer(
       }
     }
   )
+  // Everything a link coming up starts; `bridge`: the Mac bridge's peer.register too (a given computer's box link sent it first).
+  function linkOpened(id: string, bridge: boolean): void {
+    // The Mac claims the giver before its first sync after the upgrade, so its pushes are the giver's (devices/giver.ts).
+    void claimGiverOn(id).finally(() => void accountSync.syncWith(id))
+    void accountSync.pushHeadroom(id)
+    void harnessSync.syncWith(id, 'link-up')
+    void memorySync.syncWith(id, 'link-up')
+    projectLinker.linkUp(id)
+    projectSettings.linkUp(id)
+    rulesSync.linkUp(id)
+    storeSync.linkUp(id)
+    runSkillImport()
+    void awaySync.linkUp(id)
+    void sessionMover.settleWith(id)
+    relayServer.linkUp(id)
+    if (bridge) void macBridge.linkUp(id)
+    peerDeploy.linkUp(id)
+    codeUpdates.linkUp(id)
+    accounts.nudge()
+  }
   // Add-on grants (addons/addonGrants.ts) are built with the add-on host below; the sync reaches them through this.
   let addonGrantsRef: AddonGrants | null = null
+  // The box's mailbox for given computers (devices/mailbox.ts), built with the giver below; the sync filters by it.
+  let deviceMailboxRef: DeviceMailbox | null = null
   const accountSync: AccountSync = new AccountSync({
     // A Mac one release behind names no handoff id; the box takes that only until a giver claims (devices/giver.ts).
     handoffIdRequired: () => !givers.legacy(),
     omitHandoffIds: !!process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_E2E_OLD_WIRE === '1',
+    onVaultChanged: () => giverDevices.manifestAllSoon(),
     environmentId,
     store,
     peers,
@@ -822,7 +866,12 @@ export async function startServer(
     },
     onClaimed: (service, name) => {
       if (service === ADDON_SERVICE) addonGrantsRef?.onClaimed(name)
-    }
+    },
+    // A given computer's pull, rotations and removals carry only what its newest verified manifest admits.
+    admittedFor: (envId) => deviceMailboxRef?.admittedFor(envId),
+    // On a given computer: only what its newest manifest admits lands, and a given row is never pushed, handed off or made live.
+    admitted: () => given?.admitted(),
+    givenRow: (service, name) => given?.isGivenRow(service, name) ?? false
   })
   usageSamples.current = (service, account, window) => {
     accounts.observeFreshWindow(service, account, window)
@@ -1085,6 +1134,8 @@ export async function startServer(
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
     // The relay's host row on the carrier: this host's name, presence and build.
     registration: () => relayServer.registration(),
+    // A given computer's box link: peer.register carries the device key's proof (devices/given.ts).
+    proof: (envId, request) => (given?.isBox(envId) ? given.proofFor(envId, request) : null),
     // Computer use for a box thread (remote/macComputer.ts): this Mac's host, built below.
     computerHost: () => computerHooks.current,
     computerUnavailable: () => computerUnavailable(),
@@ -1521,18 +1572,269 @@ export async function startServer(
   const givers = new Givers(store, { getKey: (id) => remoteAuth.getKey(id), endOpenPairings: () => remoteAuth.endOpenPairings() })
   givers.cutOver(process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_DEVICES_UPGRADE_AT ? Number(process.env.TEMP_CODE_DEVICES_UPGRADE_AT) : undefined)
   const deviceIdentity = new DeviceIdentities()
+  // The computers this Mac gave its accounts to (devices/giverDevices.ts): their letters go through the box link.
+  const boxLink = () => peers.all().find((l) => l.connected && l.env.caps.includes('admin') && !l.env.caps.includes('device')) ?? null
+  const giverSource: ManifestSource = { profiles: (s) => vault.profiles(s), readSecret: (s, n) => vault.readSecret(s, n) }
+  const giverDevices = new GiverDevices({
+    store,
+    forgotten: (envId) => dropHostReach(envId),
+    keys: () => deviceIdentity.keys(),
+    source: giverSource,
+    box: () => {
+      const link = boxLink()
+      return link ? { envId: link.id, request: <T,>(method: string, params?: unknown) => link.request<T>(method, params) } : null
+    },
+    changed: () => {
+      for (const l of computersListeners) l()
+    }
+  })
+  /** This host's Work LifeOS session (work/lifeos/ctx.ts), once Work has started; loaded on first need. */
+  const lifeosHost = async () => {
+    const { lifeosHostOf } = await import('./work/lifeos/ctx')
+    const host = lifeosHostOf(work.ctx)
+    if (!host) throw new Error('Work is not running on this computer')
+    return host
+  }
+  /** Remove revokes the LifeOS sessions the setup made (setup/lifeosEnroll.ts) through this Mac's Work session. */
+  const removeEnrollment = async (enrollment: string): Promise<void> => {
+    const { enrollDepsOf, revokeEnrollment } = await import('./devices/setup/lifeosEnroll')
+    const answer = await revokeEnrollment(enrollment, enrollDepsOf(await lifeosHost()))
+    if (!answer.ok) throw new Error('this Mac\'s Work is not signed in to LifeOS')
+  }
+  // A revoke Remove could not make (Work off, LifeOS down, a re-paired session) goes at the next Work sign-in.
+  void import('./work/lifeos/ctx').then(({ lifeosConnectedHooks }) => lifeosConnectedHooks.add(() => void giverDevices.revokeOwed(removeEnrollment)))
+  /** The setup link's pushes to this host's own windows (the Allow notice, a link's state, the PC's steps). */
+  const setupListeners = new Set<(push: SetupPush) => void>()
+  const toSetupWindows = (push: SetupPush): void => {
+    for (const l of setupListeners) l(push)
+  }
+  /** A bare secret in this host's vault (addon/<name>), never a profile row. */
+  const vaultSecret = (name: string) => ({
+    read: () => vault.readSecret(ADDON_SERVICE, name),
+    write: (raw: string) => vault.saveSecret(ADDON_SERVICE, name, raw, 'sync'),
+    clear: () => vault.deleteProfile(ADDON_SERVICE, name)
+  })
+  // The giver's setup links (devices/setup/makeLink.ts): Make link, the proof check, Allow.
+  const setupLinks = new SetupLinks({
+    environmentId,
+    giverName: () => hostLabel(),
+    identity: () => deviceIdentity.publicIdentity(),
+    box: () => {
+      const link = boxLink()
+      return link ? { envId: link.id, request: <T,>(method: string, params?: unknown) => link.request<T>(method, params) } : null
+    },
+    secrets: { read: (n) => vaultSecret(n).read(), write: (n, raw) => vaultSecret(n).write(raw), clear: (n) => vaultSecret(n).clear() },
+    store,
+    computers: giverDevices,
+    lifeos: async (name): Promise<LifeosGrant | null> => {
+      const { enrollDepsOf, mintEnrollment } = await import('./devices/setup/lifeosEnroll')
+      const host = await lifeosHost()
+      const answer = await mintEnrollment({ name, uses: ['desktop', 'tempcode'] }, enrollDepsOf(host))
+      const state = host.session.state()
+      if (!answer.ok || state.state !== 'connected') return null
+      return { enrollment: answer.enrollment, owner: state.ownerId, codes: answer.codes }
+    },
+    workOn: () => work.settings.enabled(),
+    // A workspace here takes the computer in its settings; one on the box, over the box link.
+    addDesktop: async (workspaceId, envId) => {
+      if (registry.listWorkspaces().some((w) => w.id === workspaceId)) {
+        const cur = work.settings.workspace(workspaceId).mayUseDesktop
+        if (!cur.includes(envId)) work.settings.setWorkspace(workspaceId, { mayUseDesktop: [...cur, envId] })
+        return
+      }
+      const link = boxLink()
+      if (!link) throw new Error('the box is not linked')
+      const cur = await link.request<{ mayUseDesktop: string[] }>('work.workspace.get', { workspaceId })
+      if (!cur.mayUseDesktop.includes(envId)) await link.request('work.workspace.set', { workspaceId, patch: { mayUseDesktop: [...cur.mayUseDesktop, envId] } })
+    },
+    push: toSetupWindows
+  })
+  setupLinksRef = setupLinks
+  giverDevicesRef = giverDevices
+  const setupLinksSweep = setInterval(() => {
+    setupLinks.sweep()
+    void setupLinks.rediscover()
+  }, 60_000)
+  setupLinksSweep.unref()
+  /** The giver's window hears its Computers rows change (a post, a state, a computer's ack). */
+  const computersListeners = new Set<() => void>()
+  // Given computers (devices/binding.ts, mailbox.ts, farewell.ts): one durable binding each, the sealed
+  // letters the giver posts them, and Remove's farewell. `deviceSockets` is every remote socket by its
+  // connection, for the device-mail push to a computer's proved sockets and the news to the giver's.
+  const deviceSockets = new Map<number, { keyId: string; send: (push: DevicesPush) => void }>()
+  const deviceBindings = new DeviceBindings(db, { inFarewell: (keyId) => remoteAuth.inFarewell(keyId) })
+  deviceBindingsHook.current = deviceBindings
+  const toGiver = (push: DevicesPush): void => {
+    const keyId = givers.giver()?.keyId
+    if (keyId) for (const s of deviceSockets.values()) if (s.keyId === keyId) s.send(push)
+  }
+  // A claim never binds the box's own id, one it saved, or one a host that is no given computer registers as (the giver's);
+  // Allow asks again, for a host that came back meanwhile (F27).
+  const envTaken = (envId: string): boolean => {
+    if (envId === environmentId || listEnvironments(store).some((e) => e.id === envId)) return true
+    const key = peerCalls.registrantOf(envId)
+    return key === null || (key !== undefined && !remoteAuth.getKey(key)?.caps.includes('device'))
+  }
+  const deviceMailbox = new DeviceMailbox(db, {
+    bindings: deviceBindings,
+    taken: envTaken,
+    giver: () => givers.giver(),
+    auth: remoteAuth,
+    toComputer: (envId, push) => {
+      for (const connection of deviceBindings.connectionsOf(envId)) deviceSockets.get(connection)?.send(push)
+    },
+    toGiver
+  })
+  deviceMailboxRef = deviceMailbox
+  // A retired computer leaves this host's workspaces for good: set up again, it gets only what its new link names (F10).
+  const dropHostReach = (envId: string): void => {
+    try {
+      work.settings.dropHost(envId)
+    } catch (err) {
+      console.log(`[devices] ${envId}: workspace reach not cleared (${(err as Error).message})`)
+    }
+  }
+  const farewell = new Farewell(db, { bindings: deviceBindings, mailbox: deviceMailbox, auth: remoteAuth, dropCalls: (keyId) => peerCalls.dropKey(keyId), toGiver, onRetired: dropHostReach })
+  remoteAuth.setFarewellCheck((keyId) => farewell.inFarewell(keyId))
+  // Clients' Revoke, by socket or HTTP, refuses a given computer's key: only Remove ends it (F07).
+  remoteAuth.setRevokeGuard((keyId) => {
+    const b = deviceBindings.byKey(keyId)
+    return b && b.state !== 'retired' && b.state !== 'pending' ? "refused: this key is a given computer's; Remove it under Computers on the giver" : null
+  })
+  // Setup links (devices/setupPairings.ts): their pairings, the claim's pending key, Cancel and the link's end.
+  const setupPairings = new SetupPairings(db, {
+    auth: remoteAuth,
+    bindings: deviceBindings,
+    toGiver,
+    finishRemoval: (envId) => void farewell.finish(envId),
+    taken: envTaken
+  })
+  remoteAuth.setSetupHooks({ revoke: (id) => setupPairings.revoke(id), sweep: () => setupPairings.expire() })
+  // A removed computer is off the bridge's routes (devices/binding.ts mayRoute).
+  peerCalls.setRoutable((envId) => deviceBindings.mayRoute(envId))
+  const devicesSweep = setInterval(() => {
+    farewell.sweep()
+    deviceMailbox.sweepQueue()
+  }, 60 * 60_000)
+  devicesSweep.unref()
+  given = new GivenComputer({
+    environmentId,
+    store,
+    identity: deviceIdentity,
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params) => link.request(method, params) : null
+    },
+    refreshNow: async () => {
+      await accounts.rebuildNow()
+      await runningGateway()?.flushAccountsChanged()
+    },
+    changed: () => accounts.nudge(),
+    pull: (id) => accountSync.syncWith(id),
+    // Muse's serve holds the credential in memory: its handles end now, before the drop is acked (F13).
+    // A Claude or Codex handle reaches the account through the gateway, whose cache is cleared next.
+    endHandles: async (provider, name) => {
+      if (provider === 'muse') await registry.endOnAccount(provider, name)
+      else registry.rebootOnAccount(provider, name)
+    },
+    clearGatewayCache: (service) => runningGateway()?.credentialsChanged(service),
+    dropFiles: (service, name) => {
+      if (service === 'muse-code') removeGivenMuseDirs(name)
+    },
+    // Only what setup gave (devices/setup/gave.ts): his own Work sign-in and LifeOS reader stay (F16).
+    clearLifeosToken: async () => {
+      // Work's modules load only through the guarded loader or on first need (work/load.test.ts).
+      const [{ clearGivenWork }, { vaultDeviceToken }] = await Promise.all([import('./devices/setup/gave'), import('./work/lifeos/deviceToken')])
+      return clearGivenWork({ store, current: () => vaultDeviceToken.read()?.token ?? null, signOut: async () => (await lifeosHost()).session.signOut() })
+    },
+    removeSetupFolders: () => givenSetupHooks.removeSetupFolders?.(),
+    lifeosReaderOff: async () => {
+      const { gaveOf } = await import('./devices/setup/gave')
+      if (gaveOf(store).reader) await givenSetupHooks.lifeosReaderOff?.()
+    },
+    haltSetup: () => setupThisPc.halt(),
+    forgetSetup: () => setupThisPc.forget(),
+    removeEnvironment: (id) => {
+      removeEnvironment(store, id)
+      peers.refresh()
+    },
+    sealEnvironmentKey: (id) => void sealEnvironmentKey(store, id),
+    onApplied: (kind, extra) => setupThisPc.onApplied(kind, extra),
+    // A proof's fault (isolated only): TEMP_CODE_E2E_APPLY_CRASH=<step> ends the process after that apply step.
+    ...(process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_E2E_APPLY_CRASH
+      ? {
+          crashAfter: (step: string) => {
+            if (step !== process.env.TEMP_CODE_E2E_APPLY_CRASH) return
+            // A real crash: nothing after this step runs (process.exit in Electron's main lets the apply go on).
+            console.log(`[given] e2e: crashing after the ${step} step`)
+            process.kill(process.pid, 'SIGKILL')
+          }
+        }
+      : {})
+  })
+  // This computer set up from a link (devices/setup/useLink.ts): peek, claim, the steps.
+  const setupThisPc = new SetupThisPc({
+    environmentId,
+    allowHttp: !!process.env.TEMP_CODE_USER_DATA,
+    platform: process.platform,
+    fetch: (input, init) => fetch(input, init),
+    identity: deviceIdentity,
+    given,
+    savedHosts: () => listEnvironments(store),
+    saveBox: async (origin, key, envId) => {
+      await addEnvironment({ store, environmentId }, { url: origin, key, sealed: true, expectId: envId })
+      peers.refresh()
+    },
+    store,
+    codes: vaultSecret(CODES_NAME),
+    installLifeos: async (input, onStep) => {
+      const { installLifeos, windowsInstallDeps } = await import('./devices/setup/lifeosInstall')
+      return installLifeos(input, windowsInstallDeps(), onStep)
+    },
+    signInWork: async (input) => {
+      const { signInWork, workSignInDepsOf } = await import('./devices/setup/workSignIn')
+      return signInWork(input, workSignInDepsOf(await lifeosHost()))
+    },
+    setWork: (enabled) => void work.settings.set({ enabled }),
+    addFolders: async (paths) => (await import('./work/files/setupFolders')).addSetupFolders(db, paths),
+    push: toSetupWindows
+  })
+  // The box key of a given computer is read from its sealed pins, never a settings row.
+  sealedEnvironmentKeys.read = (id) => given?.boxKeyFor(id) ?? null
+  givenComputerHooks.current = given
+  // Remove takes back the folders the setup added (work/files/setupFolders.ts); Files from another window reaches only a live binding.
+  givenSetupHooks.removeSetupFolders = async () => void (await import('./work/files/setupFolders')).removeSetupFolders(db)
+  // …and on Windows turns LifeOS's Outlook and Teams reader off (`read: false` in its purdue.json).
+  if (process.platform === 'win32')
+    givenSetupHooks.lifeosReaderOff = async () => {
+      const { lifeosReaderOff, windowsInstallDeps } = await import('./devices/setup/lifeosInstall')
+      await lifeosReaderOff(windowsInstallDeps())
+    }
+  void import('./work/files/across').then(({ setLiveBinding }) => setLiveBinding((envId) => deviceBindings.mayRoute(envId)))
+  given.start()
+  setupThisPc.resume()
   /**
    * The Mac's claim on a box link, before each sync (devices/giver.ts): repeats
    * answer ok, a refusal is logged and the sync runs either way. Only a Mac's
    * desktop claims, so a PC that still holds an old admin key never becomes the giver.
    */
   const claimGiverOn = async (id: string): Promise<void> => {
-    if (process.platform !== 'darwin' || !hasDesktop() || (process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_E2E_OLD_WIRE === '1')) return
+    const isolated = !!process.env.TEMP_CODE_USER_DATA
+    if (!claimsGiver({ platform: process.platform, desktop: hasDesktop(), isolated, played: hostPlatform(), oldWire: process.env.TEMP_CODE_E2E_OLD_WIRE === '1' })) return
     const link = peers.get(id)
     if (!link?.connected || !link.env.caps.includes('admin') || link.env.caps.includes('device')) return
     try {
-      const answer = await link.request<{ ok: boolean; error?: string }>('devices.claimGiver', { identity: deviceIdentity.publicIdentity(), name: hostLabel() })
+      // The proof lets this Mac's identity move the giver record to a new box key after a re-pair (the old key revoked).
+      const keyId = /^tc_([A-Za-z0-9_-]+)\./.exec(environmentKey(store, id) ?? '')?.[1]
+      const proof = keyId ? signBytes(deviceIdentity.keys().signPrivate, giverMoveBytes(keyId)) : undefined
+      const answer = await link.request<{ ok: boolean; error?: string }>('devices.claimGiver', { identity: deviceIdentity.publicIdentity(), name: hostLabel(), ...(proof ? { proof } : {}) })
       if (!answer.ok) console.log(`[devices] ${link.env.name}: not the giver (${answer.error})`)
+      // The box link is up: every computer this Mac gave hears the whole truth again, and once a day after.
+      else {
+        giverDevices.startDaily()
+        // An Allow a crash cut short finishes first (F11), then the whole truth.
+        void setupLinks.resume().then(() => giverDevices.manifestAll())
+      }
     } catch (err) {
       console.log(`[devices] ${link.env.name}: giver claim failed (${(err as Error).message})`)
     }
@@ -1544,6 +1846,7 @@ export async function startServer(
   const videoSockets = new VideoSockets(videoRelay, remoteAuth)
   const videoRpc = new VideoRpc(videoRelay, remoteAuth, hasDesktop)
   remoteAuth.onRevoke((keyId) => videoRelay.revoke(keyId))
+  remoteAuth.onFarewell((keyId) => videoRelay.revoke(keyId))
   computerHooks.current = computer
   // (the box's browser sets its own once it is wired, below)
   let previews = computer ? new ComputerPreviews(computer) : null
@@ -2023,6 +2326,7 @@ export async function startServer(
     dataDir: options.dataDir ?? dirname(dbPath),
     // The listener's own fence, so a module that reaches a file through an id judges a remote key as the listener would.
     remoteFence: { roots: () => managedRoots(), denied: () => [computerHistoryRoot] },
+    hostLive: (envId) => deviceBindings.mayRoute(envId),
     peers,
     peerCalls,
     crossHostThreads,
@@ -2102,6 +2406,8 @@ export async function startServer(
         video: videoSockets,
         videoPublish: videoPublishing,
         hosts: () => hostRelay.hosts(),
+        farewell: (principal, body) => farewell.handle(principal, body),
+        setup: setupPairings,
         mcp: createMcpHandler({
           auth: remoteAuth,
           registry,
@@ -2132,7 +2438,9 @@ export async function startServer(
     store,
     push: pushRegistry,
     status: () => ({ running: remote !== null && remote.port > 0, port: remote?.port ?? 0, error: remote?.error ?? null }),
-    onSettingsChanged: () => void restartRemote()
+    onSettingsChanged: () => void restartRemote(),
+    setup: setupPairings,
+    ticketFor: (id) => given?.windowTicket(id) ?? null
   }
 
   // One loopback listener, two WebSocket servers: an upgrade routes by wire
@@ -2187,6 +2495,9 @@ export async function startServer(
     // The relay's presence push: every remote client socket (a relayed lane's are the relay's own).
     const remoteSink = principal.kind === 'remote' ? (push: ServerPush): void => sendFrame(push) : null
     if (remoteSink) remoteSinks.add(remoteSink)
+    if (principal.kind === 'remote') deviceSockets.set(connection, { keyId: principal.keyId, send: (push) => sendFrame(push) })
+    // A given computer's window: its ticket came from the main process's proved socket, so this one is proved too.
+    if (principal.kind === 'remote') deviceBindings.adoptProof(connection, principal)
     /** The host-log subscriptions this socket asked for (hostJobs.ts). */
     const offHostLogs: (() => void)[] = []
     const offResources = resources.onChange((sessionId, list) => emitPush({ push: 'resources', sessionId, resources: list }))
@@ -2317,6 +2628,10 @@ export async function startServer(
     const offBootResume = bootResumer.onDone((notice) => sendFrame({ push: 'boot-resume', ...notice }))
     // Away from computer: every change of the state or the tally, to every client.
     const offAway = away.onChange((snapshot) => sendFrame({ push: 'away', ...snapshot }))
+    const onComputers = (): void => sendFrame({ push: 'device-acked', envId: '' })
+    if (principal.kind === 'local') computersListeners.add(onComputers)
+    const onSetup = (push: SetupPush): void => sendFrame(push)
+    if (principal.kind === 'local') setupListeners.add(onSetup)
     // Add-ons and skills: every list after a change, and this host's add-on status, to every client.
     const offStores = storePush.onPush(sendFrame)
     // Computer use: the service and the live sessions to every client; the bridge's calls die with this socket.
@@ -2351,7 +2666,11 @@ export async function startServer(
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
       if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
       if (principal.kind !== 'local') {
-        const refused = capabilityRefusal(givers.withGive(principal), req) ?? relayedRefusal(principal, req.method) ?? givenHostRefusal(principal, req.method)
+        const refused =
+          capabilityRefusal(givers.withGive(principal), req) ??
+          relayedRefusal(principal, req.method) ??
+          givenHostRefusal(principal, req.method) ??
+          deviceBindings.socketRefusal(principal, connection, req.method)
         if (refused) return sendFrame({ id: req.id, ok: false, error: refused })
       }
       // An app.* call answers as the thread it names: only with that thread's own bridge token (apptools.ts).
@@ -2430,7 +2749,10 @@ export async function startServer(
         }
         if (req.method === 'accounts.pull') {
           // The puller is the host the socket registered as, when it did; else the one it names. An add-on grant goes only to its scope's home.
-          const puller = peerCalls.environmentOf(connection) ?? req.params.from
+          // A given computer pulls as the env id its socket proved, never one it names (devices/binding.ts).
+          const device = principal.kind === 'remote' && principal.caps.includes('device')
+          const puller = device ? deviceBindings.provedEnv(connection) : (peerCalls.environmentOf(connection) ?? req.params.from)
+          if (!puller) throw new Error('forbidden: accounts.pull needs this socket\'s proof')
           const answer = await accountSync.handlePull(puller, req.params)
           if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame, puller)
           return sendFrame({ id: req.id, ok: true, result: answer })
@@ -2438,6 +2760,10 @@ export async function startServer(
         // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers
         // this socket and answers calls on it; then the bridge's own methods.
         if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk' || req.method === 'peer.progress') {
+          if (req.method === 'peer.register' && principal.kind === 'remote') {
+            const refused = deviceBindings.registerRefusal(connection, principal, req.params)
+            if (refused) throw new Error(refused)
+          }
           const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, keyName: principal.kind === 'remote' ? principal.name : null, remote: principal.kind === 'remote', send: sendFrame, buffered: () => ws.bufferedAmount }
           return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
         }
@@ -2509,10 +2835,113 @@ export async function startServer(
         // The giver (devices/giver.ts): the Mac's claim on its first link after the upgrade, the record, the box's own move.
         if (req.method === 'devices.claimGiver') {
           if (principal.kind !== 'remote') throw new Error('forbidden: devices.claimGiver is for another host\'s main process')
-          return sendFrame({ id: req.id, ok: true, result: givers.claim(principal, req.params.identity, req.params.name) })
+          return sendFrame({ id: req.id, ok: true, result: givers.claim(principal, req.params.identity, req.params.name, req.params.proof) })
         }
         if (req.method === 'devices.giver') return sendFrame({ id: req.id, ok: true, result: { giver: givers.giver(), upgradeAt: givers.upgradeAt() } })
+        // The giver's own window: its Computers group (devices/giverDevices.ts), what the box heard merged in.
+        if (req.method === 'devices.computers') {
+          const link = boxLink()
+          const bindings = link ? await link.request<{ bindings: DeviceBinding[] }>('devices.list').then((a) => a.bindings, () => []) : []
+          const giver = link ? await link.request<{ giver: GiverRecord | null }>('devices.giver').then((a) => a.giver, () => null) : null
+          // The box's own row: what it holds of what this Mac gives (static grants, the ones it refreshes) and the last sync.
+          const box = link ? { envId: link.id, name: link.env.name, holds: boxHolds(giverSource, link.id), syncedAt: link.lastSyncAt ?? null } : null
+          return sendFrame({ id: req.id, ok: true, result: { computers: giverDevices.rows(bindings), giver, box } })
+        }
+        if (req.method === 'devices.computer') {
+          const { envId, action } = req.params
+          const done =
+            action === 'stop' ? await giverDevices.stop(envId)
+            : action === 'start' ? await giverDevices.start(envId)
+            : action === 'retry' ? await giverDevices.retry(envId)
+            : (await giverDevices.remove(envId, removeEnrollment)) !== null
+          return sendFrame({ id: req.id, ok: true, result: { ok: done } })
+        }
+        // The setup link (devices/setup/makeLink.ts on the giver, useLink.ts on the computer being set up): local only.
+        if (req.method.startsWith('devices.setup.')) {
+          const answer = await (async (): Promise<unknown> => {
+            switch (req.method) {
+              case 'devices.setup.make':
+                return setupLinks.make(req.params)
+              case 'devices.setup.cancel':
+              case 'devices.setup.deny':
+                return setupLinks.cancel(req.params.pairingId)
+              case 'devices.setup.allow':
+                return setupLinks.allow(req.params.pairingId)
+              case 'devices.setup.links':
+                return { links: setupLinks.links() }
+              case 'devices.setup.peek':
+                return setupThisPc.peek(req.params.link)
+              case 'devices.setup.start':
+                return setupThisPc.start(req.params.link)
+              case 'devices.setup.state':
+                return setupThisPc.state()
+              case 'devices.setup.retry':
+                return setupThisPc.retry(req.params.step)
+              case 'devices.setup.folders':
+                return setupThisPc.folders(req.params.paths)
+            }
+            throw new Error(`unknown method ${req.method}`)
+          })()
+          return sendFrame({ id: req.id, ok: true, result: answer })
+        }
+        // A proof's seam (contract-devices.ts `devices.proof`): a computer given without the setup link (M4).
+        if (req.method === 'devices.proof') {
+          if (process.env.TEMP_CODE_E2E_DEVICES !== '1' || !process.env.TEMP_CODE_USER_DATA) throw new Error('devices.proof is a proof seam (TEMP_CODE_E2E_DEVICES=1 on an isolated instance)')
+          const a = (req.params.args ?? {}) as Record<string, any>
+          switch (req.params.op) {
+            case 'identity':
+              return sendFrame({ id: req.id, ok: true, result: { envId: environmentId, identity: deviceIdentity.publicIdentity() } })
+            case 'give': {
+              const link = boxLink()
+              if (!link) throw new Error('no box link')
+              await link.request('devices.activate', { envId: a.envId, keyId: a.keyId, identity: a.identity, generation: a.generation, name: a.name })
+              giverDevices.add({ envId: a.envId, name: a.name, identity: a.identity, generation: a.generation, accounts: true })
+              const activated = await giverDevices.activate(a.envId, { box: { envId: link.id, origin: link.env.routes[0]?.url ?? '' }, giver: { envId: environmentId, name: hostLabel() } })
+              const manifested = await giverDevices.manifest(a.envId)
+              return sendFrame({ id: req.id, ok: true, result: { activated, manifested } })
+            }
+            case 'post': {
+              const link = boxLink()
+              if (!link) throw new Error('no box link')
+              const answer = await link.request('devices.post', { letter: a.letter }).then((r) => ({ ok: true, result: r }), (err: Error) => ({ ok: false, error: err.message }))
+              return sendFrame({ id: req.id, ok: true, result: answer })
+            }
+            case 'pin': {
+              await given!.pinGiver({ giver: a.giver, box: a.box, boxKey: a.boxKey, generation: a.generation })
+              const added = await handleRemote({ id: req.id, method: 'remote.environments.add', params: { url: a.box.origin, key: a.boxKey, name: a.name, sealed: true } } as never, remoteContext)
+              peers.refresh()
+              return sendFrame({ id: req.id, ok: true, result: { environment: added.handled ? added.result : null } })
+            }
+            case 'apply':
+              return sendFrame({ id: req.id, ok: true, result: { applied: await given!.apply(a.letter) } })
+            case 'state': {
+              const pins = given!.pins()
+              return sendFrame({ id: req.id, ok: true, result: { pinned: pins ? { giver: pins.giver, box: pins.box, generation: pins.generation } : null, state: given!.state() } })
+            }
+          }
+        }
         if (req.method === 'devices.setGiver') return sendFrame({ id: req.id, ok: true, result: { giver: givers.set(req.params.keyId, undefined, req.params.name) } })
+        // Given computers (devices/binding.ts, mailbox.ts, farewell.ts): the giver binds, posts and removes; a computer's proved socket reads and acks its own.
+        if (req.method === 'devices.challenge') return sendFrame({ id: req.id, ok: true, result: deviceBindings.challenge(connection, principal) })
+        if (req.method === 'devices.activate') {
+          // A link that ended takes its pending key with it before anything binds.
+          setupPairings.expire()
+          return sendFrame({ id: req.id, ok: true, result: deviceMailbox.activate(req.params) })
+        }
+        if (req.method === 'devices.setupProof') return sendFrame({ id: req.id, ok: true, result: setupPairings.proof(req.params.pairingId) })
+        if (req.method === 'devices.post') return sendFrame({ id: req.id, ok: true, result: deviceMailbox.post(req.params.letter as unknown as Letter) })
+        if (req.method === 'devices.list') return sendFrame({ id: req.id, ok: true, result: deviceMailbox.list() })
+        if (req.method === 'devices.remove') return sendFrame({ id: req.id, ok: true, result: farewell.remove(req.params.envId) })
+        if (req.method === 'devices.ticket') {
+          const envId = deviceBindings.provedEnv(connection)
+          if (!envId || principal.kind !== 'remote') throw new Error('forbidden: devices.ticket is a given computer\'s proved socket\'s')
+          return sendFrame({ id: req.id, ok: true, result: remoteAuth.mintTicket(principal, envId) })
+        }
+        if (req.method === 'devices.mail' || req.method === 'devices.ack') {
+          const envId = deviceBindings.provedEnv(connection)
+          if (!envId) throw new Error(`forbidden: ${req.method} is a given computer's proved socket's`)
+          return sendFrame({ id: req.id, ok: true, result: req.method === 'devices.mail' ? deviceMailbox.mail(envId) : deviceMailbox.ack(envId, req.params.ack) })
+        }
         // Work: the switch, the bridge's tool methods and every pillar's own methods, through the one mount.
         if (isWorkMethod(req.method)) {
           const worked = await work.handle(req, principal, workSocket)
@@ -2562,6 +2991,12 @@ export async function startServer(
         if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
         const moved = await handleSessionMove(req, sessionMover)
         if (moved.handled) return sendFrame({ id: req.id, ok: true, result: moved.result })
+        // A given computer's headroom lands under the env id its socket proved, never the giver's or the box's (L1).
+        if (req.method === 'accounts.headroom') {
+          const from = deviceBindings.speakerFor(connection, principal, req.params.from)
+          if (!from) throw new Error('forbidden: accounts.headroom needs this socket\'s proof')
+          req.params.from = from
+        }
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -3864,6 +4299,8 @@ export async function startServer(
       deskFocus.delete(connection)
       offBootResume()
       offAway()
+      computersListeners.delete(onComputers)
+      setupListeners.delete(onSetup)
       offStores()
       offComputer()
       offComputerSettings()
@@ -3893,6 +4330,8 @@ export async function startServer(
       offResources()
       heldListeners.delete(onHeld)
       peerCalls.drop(connection)
+      deviceBindings.dropConnection(connection)
+      deviceSockets.delete(connection)
       hostDevices.dropConnection(connection)
       previews?.dropConnection(previewConnection)
       vmPreviews?.dropConnection(previewConnection)
@@ -4139,6 +4578,8 @@ export async function startServer(
       clearInterval(syncTimer)
       usageSamples.current = null
       accountSync.close()
+      given?.close()
+      givenComputerHooks.current = null
       harnessSync.close()
       hostJobs.deploy.dispose()
       hostJobs.publish.dispose()

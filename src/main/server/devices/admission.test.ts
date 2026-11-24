@@ -19,6 +19,13 @@ describe('admit', () => {
     expect(admit(t({ accountId: 'u2', email: 'a@x.com' }), peer('rotation'), onFile)).toEqual({ ok: true })
   })
 
+  it("a new account never takes a row's storage name, in any case (F25)", () => {
+    const onFile = [{ accountId: 'u2', name: 'N' }]
+    expect(admit(t({ accountId: 'u1' }), { path: 'push', policy: 'admin' }, onFile)).toEqual({ ok: false, reason: 'name-taken' })
+    // The same account on its own row keeps its name.
+    expect(admit(t({ accountId: 'u2' }), { path: 'push', policy: 'admin' }, onFile)).toEqual({ ok: true })
+  })
+
   it('under the peer policy only a row on file takes a copy, on every receive path', () => {
     for (const path of ['pull', 'rotation', 'askOwner'] as const) expect(admit(t(), peer(path), [])).toEqual({ ok: false, reason: 'unknown-account' })
     expect(admit(t(), { path: 'push', policy: 'admin' }, [])).toEqual({ ok: true })

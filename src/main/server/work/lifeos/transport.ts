@@ -41,9 +41,9 @@ export function faultOf(err: unknown): LifeosFault {
 /** Words for a fault that never carry a secret: the error's first line, redacted. */
 export const faultWords = (err: unknown): string => redact((err instanceof Error ? err.message : String(err)).split('\n')[0]!.slice(0, 240))
 
-/** Anything that looks like a LifeOS device token (`lo_`), a key (`lob_`), a pairing poll secret (`lop_`) or a JWT, blanked. Every line this pillar logs goes through it. */
+/** Anything that looks like a LifeOS device token (`lo_`), a key (`lob_`), a pairing poll secret (`lop_`), a one-time sign-in code (`loe_`) or a JWT, blanked. Every line this pillar logs goes through it. */
 export const redact = (line: string): string =>
-  line.replace(/\blo[bp]?_[A-Za-z0-9_-]{8,}/g, '[secret]').replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[jwt]')
+  line.replace(/\blo[bpe]?_[A-Za-z0-9_-]{8,}/g, '[secret]').replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[jwt]')
 
 const TIMEOUT_MS = 15_000
 // redirect 'error': a body that carries the device token never follows a redirect to another address.

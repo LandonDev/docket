@@ -1527,6 +1527,18 @@ public enum Methods {
         public static let name = "remote.pairings.create"
 
         public struct Params: Codable, Hashable, Sendable {
+            public struct Setup: Codable, Hashable, Sendable {
+                public let verifier: String
+                public let bundle: String
+                public let name: String
+
+                public init(verifier: String, bundle: String, name: String) {
+                    self.verifier = verifier
+                    self.bundle = bundle
+                    self.name = name
+                }
+            }
+
             public let name: String
             public let audience: Audience
             public let caps: [Capability]
@@ -1534,8 +1546,9 @@ public enum Methods {
             public let webhookSecret: String?
             public let events: [WebhookEvent]?
             public let ttlMinutes: Int?
+            public let setup: Setup?
 
-            public init(name: String, audience: Audience, caps: [Capability], webhookUrl: String? = nil, webhookSecret: String? = nil, events: [WebhookEvent]? = nil, ttlMinutes: Int? = nil) {
+            public init(name: String, audience: Audience, caps: [Capability], webhookUrl: String? = nil, webhookSecret: String? = nil, events: [WebhookEvent]? = nil, ttlMinutes: Int? = nil, setup: Setup? = nil) {
                 self.name = name
                 self.audience = audience
                 self.caps = caps
@@ -1543,6 +1556,7 @@ public enum Methods {
                 self.webhookSecret = webhookSecret
                 self.events = events
                 self.ttlMinutes = ttlMinutes
+                self.setup = setup
             }
         }
 

@@ -306,13 +306,14 @@ export function desktopsOf(here: HostFacts & { platform: string }, saved: readon
 }
 
 /** What `desktopsOf` reads on this host: its own platform, the saved links' hellos and the registered lenders' own words, each name as said (`work.desktops` shortens them). */
-export function knownDesktops(deps: Pick<WorkDeps, 'environmentId' | 'peers' | 'peerCalls'>): WorkDesktop[] {
+export function knownDesktops(deps: Pick<WorkDeps, 'environmentId' | 'peers' | 'peerCalls'> & Partial<Pick<WorkDeps, 'hostLive'>>): WorkDesktop[] {
   const saved = deps.peers?.all().map((link) => ({ id: link.id, name: link.env.name, platform: link.build?.platform ?? link.env.platform })) ?? []
   const lending = (deps.peerCalls?.registeredIds(LENDING_OFFER) ?? []).map((id) => {
     const info = deps.peerCalls?.info(id)
     return { id, name: info?.name ?? deps.peerCalls?.nameOf(id) ?? id, platform: info?.build?.platform ?? null }
   })
-  return desktopsOf({ id: deps.environmentId, platform: process.platform }, saved, lending)
+  // A given computer is a desktop only while its binding is live (devices/binding.ts `mayRoute`).
+  return desktopsOf({ id: deps.environmentId, platform: process.platform }, saved, lending).filter((d) => deps.hostLive?.(d.id) ?? true)
 }
 
 /**
@@ -320,8 +321,16 @@ export function knownDesktops(deps: Pick<WorkDeps, 'environmentId' | 'peers' | '
  * work by default and he turns them off): every desktop `knownDesktops` lists when it is made. A desktop that
  * pairs later is listed by `work.desktops`, and Settings → Work switches it on as "Computer use on <host>".
  */
-export function ownerDesktops(here: HostFacts & { platform: string }, saved: readonly HostFacts[], lending: readonly HostFacts[]): string[] {
-  return desktopsOf(here, saved, lending).map((desktop) => desktop.id)
+export function ownerDesktops(
+  here: HostFacts & { platform: string },
+  saved: readonly HostFacts[],
+  lending: readonly HostFacts[],
+  /** A given computer is one only while its binding is live (devices/binding.ts `mayRoute`). */
+  live: (envId: string) => boolean = () => true
+): string[] {
+  return desktopsOf(here, saved, lending)
+    .map((desktop) => desktop.id)
+    .filter((id) => live(id))
 }
 
 export const scopePart: ScopePart = (ctx, deps) => {

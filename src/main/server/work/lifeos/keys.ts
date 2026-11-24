@@ -57,6 +57,10 @@ export interface KeysDeps {
   hostName: () => string
   /** the owner's client, or null while LifeOS is not connected */
   owner: () => LifeosClient | null
+  /** the live session's id in LifeOS: a refusal to mint is remembered for this session alone */
+  sessionId?: () => string | null
+  /** this host's own session's proof for `bots:mint` (LifeOSSession.localProof): a JWT alone mints no key */
+  localProof?: () => { token: string } | null
   /** the LifeOS MCP server's address */
   mcpUrl: string
   /** the scopes that should hold a key now */
@@ -88,12 +92,27 @@ export function botNameOf(host: string, hostName: string, scope: string, label: 
   return `${head.length > 32 ? `${head.slice(0, 31).trimEnd()}…` : head} ${tag}`
 }
 
+/**
+ * What a scope reads when this host's LifeOS session came from a setup link
+ * (`auth:enrollRedeem`): LifeOS lets such a session mint no bot key, so
+ * removing the computer leaves nothing of it behind. Said once per session,
+ * never asked again in a loop.
+ */
+export const ENROLLED_WORDS = "This computer signed in to LifeOS by a setup link, which cannot make keys for its agents"
+
+/** LifeOS's refusal of `bots:mint` to a session it may not let mint: an enrolled one. */
+const isForbidden = (err: unknown): boolean => (err as { data?: { code?: unknown } } | null)?.data?.code === 'forbidden'
+
+type BotView = { _id: string; name: string; revokedAt?: number }
+
 const sameSectors = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && [...a].sort().join(',') === [...b].sort().join(',')
 
 export class SectorKeys {
   private states = new Map<string, LifeosKeyState>()
   private running: Promise<void> | null = null
   private again = false
+  /** the session LifeOS refused a mint to; undefined while none was refused */
+  private refusedSession: string | null | undefined = undefined
   private readonly listeners = new Set<() => void>()
 
   constructor(private readonly deps: KeysDeps) {}
@@ -160,6 +179,13 @@ export class SectorKeys {
     const next = new Map<string, LifeosKeyState>()
     const owner = this.deps.owner()
     let everySector: string[] | null = null
+    // A key LifeOS revoked (it dies with the session that minted it) is minted again, so a ready key is checked live, once a pass.
+    let bots: BotView[] | null = null
+    const live = async (name: string): Promise<boolean> => {
+      bots ??= (await owner!.query<BotView[]>('bots:list', {})) ?? []
+      return bots.some((b) => b.name === name && b.revokedAt === undefined)
+    }
+    const session = this.deps.sessionId?.() ?? null
     for (const want of wanted) {
       const known = this.record(want.scope)
       const shown = (sectors: string[], state: LifeosKeyState['state'], extra: Partial<LifeosKeyState> = {}): void =>
@@ -191,13 +217,23 @@ export class SectorKeys {
         if (want.sectors === 'all') everySector ??= ((await owner.query<{ key: string }[]>('sectors:list', {})) ?? []).map((s) => s.key)
         const sectors = want.sectors === 'all' ? everySector! : want.sectors
         // A row someone pointed elsewhere (another address, another header) would carry the key there: it is minted again into a sound row.
-        if (known && row && sameSectors(known.sectors, sectors) && this.sound(row) && this.deps.grants?.has(row.id)) {
+        if (known && row && sameSectors(known.sectors, sectors) && this.sound(row) && this.deps.grants?.has(row.id) && (await live(known.botName))) {
           shown(sectors, 'ready', { addonId: row.id })
+          continue
+        }
+        if (this.refusedSession !== undefined && this.refusedSession === session) {
+          shown(sectors, 'enrolled', { error: ENROLLED_WORDS })
           continue
         }
         const id = await this.mint(want, sectors, known, owner)
         shown(sectors, 'ready', { addonId: id })
       } catch (err) {
+        if (isForbidden(err)) {
+          if (this.refusedSession !== session) this.log(ENROLLED_WORDS)
+          this.refusedSession = session
+          shown(fixed.length ? fixed : want.sectors === 'all' ? (everySector ?? []) : want.sectors, 'enrolled', { error: ENROLLED_WORDS })
+          continue
+        }
         this.log(`${want.label}: ${faultWords(err)}`)
         shown(fixed, 'failed', { error: faultWords(err), ...(row ? { addonId: row.id } : {}) })
       }
@@ -249,7 +285,7 @@ export class SectorKeys {
     // The intent is kept before the mint: if LifeOS makes the key and the answer is lost, a later pass still knows its name and retires it.
     this.save({ scope: want.scope, addonId: named?.id ?? known?.addonId ?? '', botName, sectors, mintedAt: 0 })
     try {
-      const key = await owner.action<string>('bots:mint', { name: botName, sectors, client: 'tempcode', draftOnly: true })
+      const key = await owner.action<string>('bots:mint', { name: botName, sectors, client: 'tempcode', draftOnly: true, ...(this.deps.localProof?.() ?? {}) })
       const row = await this.deps.addons.set({
         ...(named ? { id: named.id } : {}),
         name: LIFEOS_ADDON_NAME,

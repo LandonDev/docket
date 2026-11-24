@@ -21,8 +21,23 @@ export interface FakeBot {
   revokedAt?: number
 }
 
+/** A sign-in prepared for a computer (`auth:enrollCreate`), as the backend keeps it. */
+export interface FakeEnrollment {
+  id: string
+  name: string
+  expiresAt: number
+  codes: Partial<Record<'desktop' | 'tempcode', string>>
+  used: Set<string>
+  cancelled: boolean
+  /** the device tokens its codes were traded for */
+  tokens: string[]
+}
+
 export class FakeLifeos implements LifeosTransport {
   reachable = true
+  /** this host's own session came from a setup link: LifeOS lets it mint no bot key and prepare no sign-in */
+  enrolled = false
+  readonly enrollments: FakeEnrollment[] = []
   /** only the open HTTP calls fail (auth:token and the pairing), the socket stays */
   openDown = false
   /** each open call waits this long first */
@@ -54,7 +69,7 @@ export class FakeLifeos implements LifeosTransport {
 
   /** A device token LifeOS knows, as `auth:mint` makes one. */
   device(): string {
-    const token = secret('lo_')
+    const token = `lo_${randomBytes(32).toString('base64url')}`
     this.sessions.set(token, { id: `sess_${this.sessions.size + 1}`, revoked: false })
     return token
   }
@@ -65,6 +80,12 @@ export class FakeLifeos implements LifeosTransport {
 
   liveBots(): FakeBot[] {
     return this.bots.filter((b) => b.revokedAt === undefined)
+  }
+
+  /** LifeOS's rule for a TempCode session minting anything lasting: it holds its own device token, not a JWT alone. */
+  private ownProof(args: Record<string, unknown>, sessionId: string): boolean {
+    const row = typeof args.token === 'string' ? this.sessions.get(args.token) : undefined
+    return !!row && !row.revoked && row.id === sessionId
   }
 
   private reach(fn: string, args: Record<string, unknown>): void {
@@ -87,6 +108,19 @@ export class FakeLifeos implements LifeosTransport {
       case 'auth:pairStart':
         this.pairing = { code: 'ABCD-EFGH', poll: secret('lop_'), approved: false, claimed: false }
         return { code: this.pairing.code, poll: this.pairing.poll, expiresAt: Date.now() + 600_000 } as T
+      case 'auth:enrollRedeem': {
+        const code = String(args.code)
+        const row = this.enrollments.find((e) => Object.values(e.codes).includes(code))
+        if (!row) throw refusal('enroll-unknown')
+        if (args.owner !== undefined && args.owner !== 'landon') throw refusal('enroll-wrong-owner')
+        if (row.cancelled) throw refusal('enroll-cancelled')
+        if (row.used.has(code)) throw refusal('enroll-used')
+        if (Date.now() > row.expiresAt) throw refusal('enroll-expired')
+        row.used.add(code)
+        const token = this.device()
+        row.tokens.push(token)
+        return { token, owner: 'landon' } as T
+      }
       case 'auth:pairClaim': {
         const p = this.pairing
         if (!p || p.poll !== args.poll || p.claimed) throw refusal('pairing-unknown')
@@ -124,7 +158,25 @@ export class FakeLifeos implements LifeosTransport {
           return [{ address: 'l@example.com', identities: this.identities }] as T
         case 'bots:list':
           return this.bots.map(({ token: _t, ...view }) => view) as T
+        case 'auth:enrollCreate': {
+          if (this.enrolled || !this.ownProof(args, me.id)) throw refusal('forbidden')
+          const uses = [...new Set(args.uses as ('desktop' | 'tempcode')[])]
+          if (!uses.length) throw new Error('a sign-in needs at least one use')
+          const codes: FakeEnrollment['codes'] = {}
+          for (const use of uses) codes[use] = `loe_${randomBytes(32).toString('base64url')}`
+          const row: FakeEnrollment = { id: `enr_${this.enrollments.length + 1}`, name: String(args.name), expiresAt: Date.now() + Math.min(Number(args.ttlMs ?? 900_000), 900_000), codes, used: new Set(), cancelled: false, tokens: [] }
+          this.enrollments.push(row)
+          return { enrollment: row.id, expiresAt: row.expiresAt, codes: { ...codes } } as T
+        }
+        case 'auth:enrollRevoke': {
+          const row = this.enrollments.find((e) => e.id === args.enrollment)
+          if (!row) throw refusal('not-found')
+          row.cancelled = true
+          for (const token of row.tokens) this.sessions.get(token)!.revoked = true
+          return null as T
+        }
         case 'bots:mint': {
+          if (this.enrolled || !this.ownProof(args, me.id)) throw refusal('forbidden')
           if (this.liveBots().some((b) => b.name === args.name)) throw new Error(`a bot named ${String(args.name)} already has a token`)
           if (String(args.name).length > 40) throw new Error('a bot needs a name of 1 to 40 characters')
           const token = secret('lob_')

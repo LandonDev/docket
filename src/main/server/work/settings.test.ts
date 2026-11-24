@@ -60,3 +60,16 @@ it("a workspace's Work settings default, merge a patch, and refuse a workspace t
   settings.setWorkspace('w1', { windowsVm: true })
   expect(settings.workspace('w1')).toMatchObject({ windowsVm: true, mayUseDesktop: ['env_mac'] })
 })
+
+it('a removed computer leaves every workspace for good: a later binding of the same env id regains nothing (F10)', () => {
+  store.insertWorkspace({ id: 'w1', name: 'Purdue', path: '/work/Purdue', git: false, createdAt: 1 })
+  store.insertWorkspace({ id: 'w2', name: 'Cosmic', path: '/work/Cosmic', git: false, createdAt: 1 })
+  let live = false
+  const gated = new WorkSettingsStore(store, () => live)
+  settings.setWorkspace('w1', { mayUseDesktop: ['env_mac', 'env_pc'] })
+  settings.setWorkspace('w2', { mayUseDesktop: ['env_pc'] })
+  expect(gated.dropHost('env_pc')).toBe(2)
+  live = true
+  expect(gated.workspace('w1').mayUseDesktop).toEqual(['env_mac'])
+  expect(gated.workspace('w2').mayUseDesktop).toEqual([])
+})

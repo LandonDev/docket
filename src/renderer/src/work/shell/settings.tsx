@@ -144,12 +144,14 @@ function SectorsRow({ sectors }: { sectors: { key: string; label: string; order:
 }
 
 /**
- * Sign in by pairing (the host polls for its token itself), or with a
- * device token made in LifeOS (`auth:mint`) while LifeOS's approve screen
- * has not shipped. The code is shown only to this window, an admin.
+ * Sign in by pairing (the host polls for its token itself), or, on this
+ * window's own host alone, with a device token made in LifeOS (`auth:mint`):
+ * `work.lifeos.setToken` is local-only. The code is shown only to this window, an admin.
  */
 export function SignInDialog({ environmentId, state, onClose }: { environmentId: string; state: LifeosState; onClose: () => void }) {
   const link = registry.linkOf(environmentId);
+  // A token is pasted only into this window's own host: another host takes it over a remote link never.
+  const local = environmentId === registry.primaryEnvironmentId;
   const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(
     state.state === "pairing" && state.code ? { code: state.code, expiresAt: state.expiresAt } : null,
   );
@@ -215,12 +217,14 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
                 </span>
               ) : null}
             </div>
-            <Field label="Or a device token">
-              <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="lo_…" spellCheck={false} autoComplete="off" />
-            </Field>
+            {local ? (
+              <Field label="Or a device token">
+                <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="lo_…" spellCheck={false} autoComplete="off" />
+              </Field>
+            ) : null}
             <ErrorLine error={error} />
           </ModalBody>
-          <DialogFooter onCancel={cancel} confirmLabel="Sign in" pending={pending} disabled={!token.trim()} />
+          <DialogFooter onCancel={cancel} confirmLabel={local ? "Sign in" : undefined} pending={pending} disabled={!token.trim()} />
         </form>
       </ModalPanel>
     </Dialog>

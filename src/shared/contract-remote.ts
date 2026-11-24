@@ -26,7 +26,7 @@ export interface RemoteStatus {
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
-export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin', 'give', 'device'])
+export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin', 'give', 'device', 'pending'])
 export const AudienceSchema = z.enum(['client', 'mcp'])
 const Id = z.object({ id: z.string().min(1) })
 /** The notices a key's webhook may subscribe to (remote/notifier.ts). */
@@ -45,7 +45,15 @@ export const NewClientSchema = z.object({
   events: z.array(WebhookEventSchema).min(1).optional()
 })
 const NewClient = NewClientSchema
-export const NewPairingSchema = NewClientSchema.extend({ ttlMinutes: z.number().int().min(1).max(1440).optional() })
+export const NewPairingSchema = NewClientSchema.extend({
+  ttlMinutes: z.number().int().min(1).max(1440).optional(),
+  /**
+   * A setup link's pairing (give; devices/setupPairings.ts): the link verifier's Ed25519 public key and the
+   * bundle sealed with the bundle key, both base64url. Its caps are forced to the pending set and it lasts 15
+   * minutes; only /api/setup/claim redeems it.
+   */
+  setup: z.object({ verifier: z.string().min(1).max(64), bundle: z.string().min(1).max(64_000), name: z.string().min(1).max(120) }).optional()
+})
 /** `POST /api/pair`: redeem a code for a key or a browser session. */
 export const PairBodySchema = z.object({
   code: z.string().min(1).max(40),

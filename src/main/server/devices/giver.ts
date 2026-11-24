@@ -1,5 +1,9 @@
 import type { Capability, Principal } from '@shared/capabilities'
 import type { DeviceIdentity, GiverRecord } from '@shared/contract-devices'
+import { canonicalJson, verifyBytes } from '@shared/devices/keys'
+
+/** What the giver's identity signs to move its record to a new key of the box (`devices.claimGiver`'s proof). */
+export const giverMoveBytes = (keyId: string): Buffer => Buffer.from(canonicalJson({ giver: 'move', keyId }))
 
 /**
  * The giver: the one computer whose Accounts page signs in, the only key
@@ -21,10 +25,21 @@ import type { DeviceIdentity, GiverRecord } from '@shared/contract-devices'
  * release behind never claims, so every live admin key keeps today's powers
  * (`give` included) and its handoffs may name no id. That is today's trust
  * exactly: an admin key is minted only by an admin key or the box itself.
- * The first claim ends the stretch for good.
+ * The first giver on file ends the stretch for good, a cleared giver included.
  */
 
 export const GIVER_SETTING = 'devices.giver'
+
+/**
+ * Whether this host claims the giver on its box links: a Mac's desktop, or an
+ * isolated proof's instance playing one (TEMP_CODE_BUILD_PLATFORM=darwin;
+ * scripts/e2e-given-computer.ts). A PC, the box and a Mac one release behind
+ * (the proof's TEMP_CODE_E2E_OLD_WIRE) never claim.
+ */
+export function claimsGiver(h: { platform: string; desktop: boolean; isolated: boolean; played: string; oldWire: boolean }): boolean {
+  if (h.isolated && h.oldWire) return false
+  return (h.platform === 'darwin' && h.desktop) || (h.isolated && h.played === 'darwin')
+}
 export const UPGRADE_SETTING = 'devices.upgradeAt'
 /** Set at the first giver on file: the legacy stretch is over for good. */
 export const CUTOVER_ENDED_SETTING = 'devices.legacyEndedAt'
@@ -94,8 +109,7 @@ export class Givers {
     return !!key && key.revokedAt === null
   }
 
-  /** No giver recorded yet: the stretch where a Mac one release behind still syncs as it did. */
-  /** The stretch ends at the first giver on file and never comes back, a cleared giver included (final review F03). */
+  /** No giver recorded yet: the stretch where a Mac one release behind still syncs as it did. It ends at the first giver on file and never comes back, a cleared giver included (final review F03). */
   legacy(): boolean {
     return this.giver() === null && !this.store.getSetting(CUTOVER_ENDED_SETTING)
   }
@@ -114,10 +128,26 @@ export class Givers {
   }
 
   /** The Mac's first link after the upgrade. Repeats from the giver itself answer ok. */
-  claim(principal: Principal & { kind: 'remote' }, identity: DeviceIdentity, name: string): { ok: true; giver: GiverRecord } | { ok: false; error: string } {
+  claim(principal: Principal & { kind: 'remote' }, identity: DeviceIdentity, name: string, proof?: string): { ok: true; giver: GiverRecord } | { ok: false; error: string } {
     const current = this.giver()
     if (current) {
+      // The Mac re-paired with the box: its old key is revoked, and its own identity signs for the new one.
+      if (current.keyId !== principal.keyId && !this.isGiver(current.keyId) && current.identity.signPublic && current.identity.signPublic === identity.signPublic && !!proof && verifyBytes(identity.signPublic, giverMoveBytes(principal.keyId), proof)) {
+        const key = this.auth.getKey(principal.keyId)
+        if (!key || key.revokedAt !== null || !key.caps.includes('admin') || key.caps.includes('device')) return { ok: false, error: 'only an admin key may claim the giver' }
+        const moved: GiverRecord = { ...current, keyId: principal.keyId, name, at: this.now() }
+        this.write(moved)
+        this.log(`giver moved from revoked key ${current.keyId} to ${principal.keyId} (${name})`)
+        return { ok: true, giver: moved }
+      }
       if (current.keyId !== principal.keyId) return { ok: false, error: 'another computer is the giver; change it on the box with tc-local devices.setGiver' }
+      // The box's own say (setGiver) names a key with no identity: that key's first claim fills it in, or no letter it signs would verify.
+      if (!current.identity.signPublic) {
+        const filled: GiverRecord = { ...current, identity, name, at: this.now() }
+        this.write(filled)
+        this.log(`giver ${current.keyId} named its identity (${name})`)
+        return { ok: true, giver: filled }
+      }
       if (current.identity.signPublic !== identity.signPublic) return { ok: false, error: 'this key is the giver under another identity; change it on the box with tc-local devices.setGiver' }
       return { ok: true, giver: current }
     }

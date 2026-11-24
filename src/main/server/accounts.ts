@@ -72,6 +72,10 @@ export interface AccountsDeps {
   dataDir: () => string
   pollMs: number
   now: () => number
+  /** On a given computer (devices/given.ts): the given rows routing skips now (its lease ran out, or the row is being dropped). */
+  held?: (provider: AccountProvider) => readonly string[]
+  /** On a given computer, the Accounts page's one line (AccountsSnapshot.given). */
+  given?: () => AccountsSnapshot['given']
 }
 
 /** The accounts a failover moved between. */
@@ -477,6 +481,8 @@ export class AccountsService {
       if (!isRoutedProvider(provider)) continue
       const expired = new Set(this.snap.providers[provider].reports.filter((r) => r.expired).map((r) => r.profileName))
       for (const name of expired) marks.push({ serviceId: SERVICE_OF[provider], name, until: null })
+      // A paused or dropping given row (devices/given.ts) stays out until the giver's next manifest.
+      for (const name of this.deps.held?.(provider) ?? []) if (!expired.has(name)) marks.push({ serviceId: SERVICE_OF[provider], name, until: null })
       for (const [name, at] of this.out.get(provider) ?? []) {
         if (!expired.has(name) && this.isOut(provider, name)) marks.push({ serviceId: SERVICE_OF[provider], name, until: at + OUT_RETRY_MS })
       }
@@ -489,6 +495,7 @@ export class AccountsService {
     const names = new Set<string>()
     for (const [name] of this.out.get(provider) ?? []) if (this.isOut(provider, name)) names.add(name)
     for (const r of this.snap.providers[provider].reports) if (r.expired) names.add(r.profileName)
+    for (const name of this.deps.held?.(provider) ?? []) names.add(name)
     return [...names]
   }
 
@@ -708,7 +715,7 @@ export class AccountsService {
           note
         }
       }
-      return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers(), ...(vaultLock ? { vaultLock } : {}) }
+      return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers(), ...(vaultLock ? { vaultLock } : {}), ...this.givenLine() }
     }
     const services = await d.listServices().catch(() => [] as ServiceView[])
     for (const p of ACCOUNT_PROVIDERS) {
@@ -736,6 +743,11 @@ export class AccountsService {
         ...(headroom && profiles.length ? { headroom: headroom.summary(id, profiles.map((x) => x.name), d.now()) } : {})
       }
     }
-    return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }
+    return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers(), ...this.givenLine() }
+  }
+
+  private givenLine(): Pick<AccountsSnapshot, 'given'> {
+    const given = this.deps.given?.()
+    return given ? { given } : {}
   }
 }

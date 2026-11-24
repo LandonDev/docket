@@ -11,9 +11,12 @@ import type { BuildFacts } from '@shared/deployDrift'
 import { RELAY_HOST_QUERY, type HostPresence } from '@shared/contract-relay'
 import { VIDEO_PATH } from '@shared/contract-video'
 import { VIDEO_PUBLISH_PATH } from '@shared/contract-videopublish'
+import { FAREWELL_CLOSE } from '@shared/contract-devices'
 import { refuseVideoUpgrade, type VideoSockets } from '../video/sockets'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
+import { SetupError, type SetupPairings } from '../devices/setupPairings'
+import { SetupClaimBodySchema, SetupCodeBodySchema } from '@shared/devices/setupLink'
 
 /**
  * The fixed loopback port behind the Cloudflare tunnel (plan 5jtfkIC45Cbr).
@@ -77,6 +80,31 @@ export interface RemoteListenerOptions {
   ui?: UiHandler
   /** The MCP endpoint (mcp.ts): answers `/mcp` for bot keys. */
   mcp?: UiHandler
+  /**
+   * `POST /api/farewell` (devices/farewell.ts): the one route a key in
+   * farewell reaches, with its bearer key; the body is the handler's to
+   * check. Absent, the route is a 404.
+   */
+  farewell?: (principal: Principal & { kind: 'remote' }, body: unknown) => unknown
+  /**
+   * The setup link's routes (devices/setupPairings.ts): `/api/setup/peek`,
+   * `/challenge` and `/claim` take the code in the body and no credential;
+   * `/status` takes the pending key's bearer. Absent, they are 404s.
+   */
+  setup?: Pick<SetupPairings, 'peek' | 'challenge' | 'claim' | 'status'>
+}
+
+/**
+ * `GET /setup`: a browser that opens a setup link reads this and runs
+ * nothing, so the fragment (the secret) is never read by a page of ours.
+ */
+export const SETUP_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>TempCode</title><p style="font:16px system-ui;margin:3em auto;max-width:28em">Paste this link into TempCode on the computer you are setting up.</p>'
+const SETUP_PAGE_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Content-Security-Policy': "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'Cache-Control': 'no-store',
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff'
 }
 
 export interface RemoteListener {
@@ -283,7 +311,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         return json(res, 200, created)
       }
       if (id && method === 'DELETE') {
-        const ok = auth.revokeKey(id)
+        const ok = auth.revokeByOwner(id)
         if (ok) log(`key ${id} revoked by ${verified.principal.keyId}`)
         return json(res, ok ? 200 : 404, { ok })
       }
@@ -293,7 +321,8 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       const id = path.slice('/api/pairings/'.length)
       if (path === '/api/pairings' && method === 'GET') return json(res, 200, auth.listPairings())
       if (path === '/api/pairings' && method === 'POST') {
-        const { ttlMinutes, ...body } = NewPairingSchema.parse(await readJson(req))
+        const { ttlMinutes, setup, ...body } = NewPairingSchema.parse(await readJson(req))
+        if (setup) throw new HttpError(400, 'a setup link is made over the giver\'s link')
         const { pairing, code } = auth.createPairing({ ...body, createdBy: verified.principal.keyId, ceiling: verified.principal.caps, ttlMs: ttlMinutes ? ttlMinutes * 60_000 : undefined })
         const origin = pairingOrigin(readRemoteSettings(store), boundPort)
         return json(res, 200, { pairing, code, url: `${origin}/pair#${code}`, expiresAt: pairing.expiresAt })
@@ -305,6 +334,30 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       const id = path.slice('/api/sessions/'.length)
       if (path === '/api/sessions' && method === 'GET') return json(res, 200, auth.listSessions())
       if (id && method === 'DELETE') return json(res, 200, { ok: auth.revokeSession(id) })
+    }
+    if (path === '/api/farewell' && method === 'POST' && options.farewell) {
+      refuseLimited(ctx)
+      const verified = requireClient(await ctx.principal())
+      if (verified.session) throw new HttpError(400, 'farewell is for bearer keys')
+      return json(res, 200, await options.farewell(verified.principal, await readJson(req)))
+    }
+    if (path === '/setup' && method === 'GET') {
+      res.writeHead(200, { ...SETUP_PAGE_HEADERS, 'Content-Length': Buffer.byteLength(SETUP_PAGE) })
+      return void res.end(SETUP_PAGE)
+    }
+    if (path.startsWith('/api/setup/') && method === 'POST' && options.setup) {
+      refuseLimited(ctx)
+      const setup = options.setup
+      const body = await readJson(req)
+      if (path === '/api/setup/peek') return json(res, 200, setup.peek(SetupCodeBodySchema.parse(body), ctx.ip))
+      if (path === '/api/setup/challenge') return json(res, 200, setup.challenge(SetupCodeBodySchema.parse(body), ctx.ip))
+      if (path === '/api/setup/claim') return json(res, 200, await setup.claim(SetupClaimBodySchema.parse(body), ctx.ip))
+      if (path === '/api/setup/status') {
+        const verified = requireClient(await ctx.principal())
+        // The pending key asks until Allow; once activated, the same key (now a device key) reads 'active'.
+        if (!verified.principal.caps.includes('pending') && !verified.principal.caps.includes('device')) throw new HttpError(403, 'status is for a setup link\'s key')
+        return json(res, 200, setup.status(verified.principal))
+      }
     }
     if (path === '/mcp' && options.mcp) return void (await options.mcp(ctx))
     if (options.ui && (await options.ui(ctx))) return
@@ -321,6 +374,10 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         (verified ??= auth
           .principalFor({ authorization: header(req, 'authorization'), cookie: header(req, 'cookie') }, base.ip)
           .then((v) => {
+            // A key in farewell (devices/farewell.ts) reaches only its farewell route.
+            if (v && auth.inFarewell(v.principal.keyId) && base.path !== '/api/farewell') throw new HttpError(403, 'farewell: this key reaches only /api/farewell')
+            // A setup link's pending key (devices/setupPairings.ts) reaches /api/setup/* alone until Allow.
+            if (v && v.principal.caps.includes('pending') && !base.path.startsWith('/api/setup/')) throw new HttpError(403, 'a pending key reaches only /api/setup/*')
             if (v && v.principal.audience === 'client' && allows(v.principal.caps, 'admin')) learnOrigin(ctx)
             return v
           })),
@@ -335,6 +392,10 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       })
       .catch((err: unknown) => {
         if (res.headersSent) return res.end()
+        if (err instanceof SetupError) {
+          if (err.status === 403 || err.status === 404) log(`${err.status} ${req.method} ${base.path} from ${base.ip}: ${err.message}`)
+          return json(res, err.status, { error: err.message, ...err.extra }, err.status === 429 ? { 'Retry-After': String(err.extra.retryAfter ?? 60) } : {})
+        }
         if (err instanceof HttpError) {
           if (err.status === 401 || err.status === 429) log(`${err.status} ${req.method} ${base.path} from ${base.ip}: ${err.message}`)
           return json(res, err.status, { error: err.message }, err.headers)
@@ -402,9 +463,18 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         log(`upgrade refused from ${base.ip}: no valid ticket or session`)
         return refuseUpgrade(socket, 401, 'Unauthorized')
       }
-      if (principal.audience !== 'client') return refuseUpgrade(socket, 403, 'Forbidden')
+      if (principal.audience !== 'client' || principal.caps.includes('pending')) return refuseUpgrade(socket, 403, 'Forbidden')
+      if (auth.inFarewell(principal.keyId)) {
+        log(`upgrade refused from ${base.ip}: key ${principal.keyId} is in farewell`)
+        return refuseUpgrade(socket, 403, 'Forbidden')
+      }
       // A relayed lane (remote/relay.ts): the host must be registered with the relay offer right now.
       const host = base.query.get(RELAY_HOST_QUERY) || undefined
+      // A device key's relayed lane skips the box's per-socket proof: only a ticket its proved socket minted opens one.
+      if (host && principal.caps.includes('device') && !principal.provedEnv) {
+        log(`upgrade refused from ${base.ip}: key ${principal.keyId} opens a relayed lane only with a proved ticket`)
+        return refuseUpgrade(socket, 403, 'Forbidden')
+      }
       if (host && !options.relayOnline?.(host)) {
         log(`upgrade refused from ${base.ip}: host ${host} is not reachable from here`)
         return refuseUpgrade(socket, 503, 'Host Unreachable')
@@ -439,11 +509,16 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
   const offRevoke = auth.onRevoke((keyId) => {
     for (const ws of sockets.get(keyId) ?? []) ws.close(4001, 'key revoked')
   })
+  // Not 4001: a computer in farewell retries, and finds its way to /api/farewell.
+  const offFarewell = auth.onFarewell((keyId) => {
+    for (const ws of sockets.get(keyId) ?? []) ws.close(FAREWELL_CLOSE, 'farewell')
+  })
   const sweep = setInterval(() => auth.sweep(), 60_000)
   sweep.unref()
 
   const close = async (): Promise<void> => {
     offRevoke()
+    offFarewell()
     clearInterval(sweep)
     for (const set of sockets.values()) for (const ws of set) ws.terminate()
     sockets.clear()

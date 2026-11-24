@@ -646,6 +646,14 @@ Work's **Turn on for <host>** turns it on). Opening a file there from a box
 workspace also needs the PC's bridge for the box at **Read** or more (Settings →
 Hosts); while it is Off the open says "This host's bridge is off for that host".
 
+### Folders a computer's setup adds
+
+`files/setupFolders.ts` is the setup flow's way in. `addSetupFolders(db,
+paths)` puts each folder not listed yet on the same list Add folder… writes,
+and marks it in a ledger (`setup` in `work_office_files`). `removeSetupFolders(db)`
+takes off exactly what the ledger marks, so a folder listed before setup
+stays. A folder he removes by hand leaves the ledger (`setRoots`).
+
 ### A network drive
 
 A mapped drive keeps its letter. Windows' own realpath (Node's
@@ -679,7 +687,8 @@ allowed, and the shared-file rule on a folder he added. `office/vm/vm.test.ts`
 proves the list answers at once while the helper never answers, one read
 behind it at a time, the failure as the place, the push only on a change, and
 a thread waiting for the first read; `office/health.test.ts` the same for
-Connections. `remote/fenceDrive.test.ts` proves a mapped drive's letter under
+Connections. `files/setupFolders.test.ts` proves the setup ledger;
+`remote/fenceDrive.test.ts` a mapped drive's letter under
 a stubbed native and JavaScript realpath; `office/files/reach.test.ts` a drive
 that hangs, listed as not reachable within the deadline and never touched.
 The renderer: `files.test.ts`, `FilesView.dom.test.tsx`,

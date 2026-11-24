@@ -60,6 +60,8 @@ export interface LifeosHost {
   session: LifeosSession
   /** LifeOS's Convex address, which a screen's own client opens with the JWT it was given */
   url: string
+  /** An open call, with no identity (`auth:enrollRedeem`: devices/setup/workSignIn.ts) */
+  open: LifeosTransport['open']
   keys: SectorKeys
   links: Links
   /** What a screen draws; the pairing code only for a caller that may see it. */
@@ -77,12 +79,16 @@ const hosts = new WeakMap<WorkCtx, LifeosHost>()
 /** The host's LifeOS, for the module's own methods (work/lifeos/index.ts). */
 export const lifeosHostOf = (ctx: WorkCtx): LifeosHost | undefined => hosts.get(ctx)
 
+/** Each time this host's Work session reaches LifeOS: a Remove's owed enrollment revokes go then (devices/giverDevices.ts `revokeOwed`). */
+export const lifeosConnectedHooks = new Set<() => void>()
+
 export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSeams = {}): LifeosHost {
   const log = (line: string): void => ctx.log(redact(line))
   const address = seams.address ?? lifeosAddress()
   const hostName = (): string => seams.hostName ?? shortHostName(hostname())
+  const transport = seams.transport ?? convexTransport(address.url, log)
   const session = new LifeosSession({
-    transport: seams.transport ?? convexTransport(address.url, log),
+    transport,
     tokens: seams.tokens ?? vaultDeviceToken,
     url: address.url,
     host: deps.environmentId,
@@ -106,6 +112,8 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
     host: deps.environmentId,
     hostName,
     owner,
+    sessionId: () => session.ownSessionId(),
+    localProof: () => session.localProof(),
     mcpUrl: address.mcpUrl,
     wanted,
     homeOf: (scope) => deps.storeSync?.homeFor(scope)?.name ?? null,
@@ -164,6 +172,7 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
   deps.whileOn(() => {
     session.start()
     const offConnected = session.onConnected(() => {
+      for (const fn of lifeosConnectedHooks) fn()
       void reconcile()
       void links.flush()
       void learnOwnerName()
@@ -190,6 +199,7 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
     keys,
     links,
     url: address.url,
+    open: (fn, args) => transport.open(fn, args),
     status(withCode) {
       const state = session.state()
       const lifeos = state.state === 'pairing' && !withCode ? { state: 'pairing' as const, expiresAt: state.expiresAt } : state

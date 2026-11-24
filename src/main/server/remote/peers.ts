@@ -5,7 +5,7 @@ import { opensPeerLink } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
 import type { BuildFacts } from '@shared/deployDrift'
-import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, rememberPlatform, type HostContext } from './environments'
+import { HostError, environmentKey, listEnvironments, mintTicket, rememberPlatform, type HostContext } from './environments'
 
 /**
  * The main process's own sockets to the hosts it shares accounts with
@@ -19,8 +19,11 @@ import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, rememberPlatform, ty
  */
 export interface PeerEvents {
   onOpen?: (id: string) => void
-  onClose?: (id: string) => void
+  /** `code` is the socket's close code (FAREWELL_CLOSE tells a given computer it was removed). */
+  onClose?: (id: string, code: number) => void
   onPush?: (id: string, push: ServerPush) => void
+  /** The host refused the saved key at /api/ticket (401 or 403): a given computer removed while it was away. */
+  onRefused?: (id: string) => void
 }
 
 export const PEER_BACKOFF_MS = [2_000, 5_000, 15_000, 60_000, 300_000]
@@ -33,14 +36,8 @@ type Pending = { resolve: (value: unknown) => void; reject: (err: Error) => void
 
 /** A digest of the environment's saved key, never the key: a re-pair that kept the routes still reads as a change. */
 function keyFingerprint(store: HostContext['store'], id: string): string | null {
-  const raw = store.getSetting(`${ENVIRONMENTS_PREFIX}${id}`)
-  if (!raw) return null
-  try {
-    const key = (JSON.parse(raw) as { key?: unknown }).key
-    return typeof key === 'string' ? createHash('sha256').update(key).digest('hex').slice(0, 16) : null
-  } catch {
-    return null
-  }
+  const key = environmentKey(store, id)
+  return key ? createHash('sha256').update(key).digest('hex').slice(0, 16) : null
 }
 
 /**
@@ -107,6 +104,7 @@ export class PeerLink {
         return
       } catch (err) {
         this.lastError = err instanceof Error ? err.message : String(err)
+        if (err instanceof HostError && err.reason === 'unauthorized') this.events.onRefused?.(this.env.id)
       }
     }
     this.scheduleRetry()
@@ -188,7 +186,7 @@ export class PeerLink {
         this.route = null
         this.failPending(new Error(`${this.env.name} closed the socket`))
         this.log(`${this.env.name}: closed (${code})`)
-        this.events.onClose?.(this.env.id)
+        this.events.onClose?.(this.env.id, code)
         if (code === KEY_REVOKED) this.lastError = 'key revoked'
         else this.scheduleRetry()
       })

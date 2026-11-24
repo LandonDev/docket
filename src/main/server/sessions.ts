@@ -1973,6 +1973,37 @@ export class SessionRegistry {
     return load
   }
 
+  /** An account left this computer (a given grant dropped, devices/given.ts): every thread holding a
+   *  process on it is put down at its next turn start (rebootIfStale), never mid-turn, and re-picks then.
+   *  Answers how many were marked. */
+  rebootOnAccount(provider: AccountProvider, account: string): number {
+    let marked = 0
+    for (const id of this.handles.keys()) {
+      const s = this.store.getSession(id)
+      if (!s || s.account !== account || pickedProviderOf(s.provider, s.model) !== provider) continue
+      if (this.rebootAtNextTurn(id)) marked++
+    }
+    return marked
+  }
+
+  /**
+   * A given account dropped (Stop, Remove, a manifest that leaves it out): every handle on it ends now,
+   * a turn in flight stopped first, so a harness that holds the credential in memory (Muse's serve)
+   * lets go of it before the drop is acked (F13). The thread resumes on another account at its next send.
+   */
+  async endOnAccount(provider: AccountProvider, account: string): Promise<number> {
+    let ended = 0
+    for (const id of [...this.handles.keys()]) {
+      const s = this.store.getSession(id)
+      if (!s || s.account !== account || pickedProviderOf(s.provider, s.model) !== provider) continue
+      if (LIVE_STATUSES.has(s.status) && s.status !== 'watching') await this.interrupt(id).catch(() => {})
+      this.pendingReboot.delete(id)
+      await this.dropHandle(id, { orphan: true })
+      ended++
+    }
+    return ended
+  }
+
   /** Keep a thread's shown account the one its next send will use. With
    *  no live process nothing is warm on its account, so it re-picks fresh:
    *  the best account for its model now. With a process the sticky pick

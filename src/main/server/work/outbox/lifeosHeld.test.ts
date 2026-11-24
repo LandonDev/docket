@@ -61,7 +61,9 @@ describe('a draft a Work thread made in LifeOS', () => {
     // the watcher asked LifeOS only for this host's drafts
     expect(rig.lifeos.watchers.find((w) => w.fn === 'outboxHeld:held')?.args).toEqual({ host: 'env_box' })
     const lifeosTells = () => rig.tells.filter((t) => t.key?.startsWith('held:lifeos:'))
-    expect(lifeosTells()).toEqual([{ kind: 'outbox.held', workspaceId: 'ws-purdue', title: 'Held: Send to dana@purdue.edu: Re: budget', key: `held:lifeos:outbox:${id}`, open: { held: mail.ref, thread: 't-work' } }])
+    // One tell by its key: the sync's re-tell in the same words (TELL_SYNC_MS on, sooner than a loaded box runs these steps) is the same tell.
+    const byKey = () => [...new Map(lifeosTells().map((t) => [`${t.key}|${JSON.stringify(t)}`, t])).values()]
+    expect(byKey()).toEqual([{ kind: 'outbox.held', workspaceId: 'ws-purdue', title: 'Held: Send to dana@purdue.edu: Re: budget', key: `held:lifeos:outbox:${id}`, open: { held: mail.ref, thread: 't-work' } }])
     expect(rig.notices).toEqual([])
     // firing again tells nobody twice: the sync may tell it again (TELL_SYNC_MS after a change, later on a loaded box),
     // but only in the same words under the same key, which the digest's ledger holds already and never rings again

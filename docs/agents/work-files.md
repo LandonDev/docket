@@ -1670,9 +1670,9 @@ Files pane, so `ctx.peer`'s own gate holds: the workspace may use that
 desktop, and the desktop is linked now. The desktop answers under its bridge
 policy for the box and the peer rule (its libraries alone); its own
 always-ask rules stand. The box refuses a thread, another host, itself, and a
-desktop `setLiveBinding` calls not live (the seam the device bindings fill;
-until then every linked host counts, a host link opening only over an admin
-key). Places come back read only (`can` empty) and named as the box names
+desktop whose device binding is not live (`setLiveBinding`, filled in server
+index.ts by devices/binding.ts `mayRoute`: a given computer stopped or removed
+answers "That computer's link to this host is stopped or removed."). Places come back read only (`can` empty) and named as the box names
 that desktop (`name`). Opening a file there is the copy a Mac-held file gets
 from a box workspace (`work.files.open`, `copyIn`), which reads it through
 the bridge: the PC's Access for the box must be **Read** or more. A desktop
@@ -2143,6 +2143,7 @@ system.
 | this host's window | every place of the workspace on this host; for a workspace that lives on another host, this host's libraries |
 | a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks, `open`, or a picture from `preview` or `thumbs`; a change only through the `files_*` tools |
 | another host of his (`peer`) | the libraries alone, under this host's bridge policy; no tab, no mark, no Google Drive; a change only with its origin, a copy sent back (`writeBack`) among them, which needs the policy's read+run |
+| his window or a key, through this host (`work.files.across`) | the listing of a desktop the workspace may use, run there as this host's peer, for a live binding only; never a thread's or a peer's |
 | a remote key | what the listener's fence lets it name (`ctx.reaches`, by the real path): the workspace's folder, and the VM's libraries by the guest-path rule. A Mac's own libraries stay out of a key's reach. A Google Drive of the workspace only for a key that may name the workspace's folder |
 
 The listener passes a guest path (`C:\Users\…`) only to the verbs

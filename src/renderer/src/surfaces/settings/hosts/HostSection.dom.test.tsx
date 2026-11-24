@@ -64,6 +64,8 @@ vi.mock("../../../lib/connection", () => ({
 vi.mock("../../../lib/tcserver/link", () => ({ loadSavedEnvironments: async () => {} }));
 vi.mock("../../../lib/macBridge", () => ({ useMacBridgeHosts: () => [] }));
 vi.mock("../../../lib/hostDevices", () => ({ useHostDevicesHosts: () => null }));
+// The Computers group reads its own host (Computers.dom.test.tsx).
+vi.mock("./Computers", () => ({ ComputersGroup: () => null }));
 vi.mock("../../../lib/nativeWeb", () => ({ isWebMode: () => false }));
 vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,AA==" } }));
 vi.mock("../../../chrome/HostGlyph", () => ({ HostGlyph: () => null }));

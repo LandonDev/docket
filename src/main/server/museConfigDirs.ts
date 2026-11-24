@@ -44,10 +44,18 @@ export interface MuseDirDeps {
   /** The person's own config dir; `~/.config/muse` by default. */
   userConfigDir?: string
   log?: (line: string) => void
+  /**
+   * On a given computer (devices/given.ts givenTag), the generation tag of an account the giver gave
+   * (`g3`), else null: its dirs live under `given/<tag>/`, apart from the computer's own, and go
+   * whole when the grant is dropped (removeGivenMuseDirs).
+   */
+  givenTag?: (account: string) => string | null
 }
 
 export const MUSE_ACCOUNTS = 'accounts'
 export const MUSE_OWN = 'own'
+/** The given accounts' dirs, by generation tag: `<root>/given/<tag>/<account>/<scope>/muse`. */
+export const MUSE_GIVEN = 'given'
 const AUTH = 'auth.json'
 const SEED = '.auth-seed'
 
@@ -68,9 +76,47 @@ export function museAccountDir(root: string, account: string): string {
   return join(root, museAccountDirName(account))
 }
 
-/** Every account's dirs, one per scope, live under this. */
+/** Every account's dirs, one per scope, live under this; a given account's under its generation's tag. */
 export function museAccountRoot(root: string, account: string): string {
-  return join(root, MUSE_ACCOUNTS, museAccountDirName(account))
+  const tag = givenTagOf(account)
+  return tag ? join(root, MUSE_GIVEN, tag, museAccountDirName(account)) : join(root, MUSE_ACCOUNTS, museAccountDirName(account))
+}
+
+function givenTagOf(account: string): string | null {
+  const tag = deps?.givenTag?.(account) ?? null
+  return tag && /^[A-Za-z0-9_-]{1,32}$/.test(tag) ? tag : null
+}
+
+/**
+ * Delete the given accounts' tagged dirs (a drop on a given computer, the last step after its harnesses
+ * ended): one account's under every tag, or every given dir when `account` is null. Links are removed,
+ * never followed. Answers how many dirs went.
+ */
+export function removeGivenMuseDirs(account: string | null): number {
+  if (!deps) return 0
+  let gone = 0
+  for (const base of [join(deps.root, MUSE_GIVEN), join(museWorkRoot(deps.root), 'config', MUSE_GIVEN)]) {
+    if (account === null) {
+      if (lstatOrNull(base)) {
+        rmSync(base, { recursive: true, force: true })
+        gone++
+      }
+      continue
+    }
+    let tags: string[] = []
+    try {
+      tags = readdirSync(base)
+    } catch {
+      continue
+    }
+    for (const tag of tags) {
+      const dir = join(base, tag, museAccountDirName(account))
+      if (!lstatOrNull(dir)) continue
+      rmSync(dir, { recursive: true, force: true })
+      gone++
+    }
+  }
+  return gone
 }
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
@@ -88,7 +134,7 @@ export function museConfigDirFor(account: string | null, scope: ScopeKey = 'glob
   if (skillsPointer === null) {
     // No store: the old account dir, every shared entry linked; nothing for a thread on no account.
     if (!account || !blob) return null
-    const dir = museAccountDir(deps.root, account)
+    const dir = givenTagOf(account) ? museAccountRoot(deps.root, account) : museAccountDir(deps.root, account)
     const museDir = join(dir, 'muse')
     mkdirSync(museDir, { recursive: true, mode: 0o700 })
     writeAuth(museDir, blob)
@@ -109,6 +155,7 @@ export function museDirKind(dir: string | null): 'account' | 'own' | null {
   if (!deps || !dir) return null
   const rel = relative(deps.root, dir).split(sep)
   if (rel[0] === MUSE_ACCOUNTS && rel.length === 3) return 'account'
+  if (rel[0] === MUSE_GIVEN && rel.length === 4) return 'account'
   if (rel[0] === MUSE_OWN && rel.length === 2) return 'own'
   return null
 }
@@ -224,7 +271,8 @@ function readText(path: string): string | null {
  * Every other scope re-seeds from the vault at its next spawn.
  */
 export function recaptureMuseDir(account: string | null): boolean {
-  if (!account || !deps?.saveBlob) return false
+  // A given account is the giver's to renew: a copy the CLI rewrote here never goes back into the vault.
+  if (!account || !deps?.saveBlob || givenTagOf(account)) return false
   const stored = deps.readBlob(account)
   if (!stored) return false
   const candidates: { museDir: string; text: string; mtime: number }[] = []
@@ -343,7 +391,8 @@ export function museWorkDirs(threadId: string, account: string | null, scope: Sc
   if (!deps) throw new Error(museWorkRefusal()!)
   const work = museWorkRoot(deps.root)
   const blob = account ? deps.readBlob(account) : null
-  const owner = account && blob ? [MUSE_ACCOUNTS, museAccountDirName(account)] : [MUSE_OWN]
+  const tag = account ? givenTagOf(account) : null
+  const owner = account && blob ? (tag ? [MUSE_GIVEN, tag, museAccountDirName(account)] : [MUSE_ACCOUNTS, museAccountDirName(account)]) : [MUSE_OWN]
   const museDir = realDir(work, 'config', ...owner, scope, 'muse')
   for (const name of readdirSync(museDir)) if (name !== AUTH) rmSync(join(museDir, name), { recursive: true, force: true })
   if (account && blob) writeAuth(museDir, blob)

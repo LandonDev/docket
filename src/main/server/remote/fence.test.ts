@@ -80,6 +80,8 @@ describe('FENCED_PARAMS', () => {
       if (keys.some((k) => /Id$/.test(k))) continue // relative to a project, workspace or session
       if (!keys.some((k) => PATH_KEYS.has(k))) continue
       if (OWN_FENCE.has(method)) continue
+      // The setup's folder pick runs in this host's own window: no remote caller reaches it, so no fence is asked.
+      if (method === 'devices.setup.folders' && requiredCapability({ method } as ClientRequest) === 'local') continue
       if (!(method in FENCED_PARAMS) && !(method in ATTACHMENT_PARAMS)) missing.push(method)
     }
     expect(missing).toEqual([])

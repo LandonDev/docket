@@ -73,6 +73,13 @@ export interface RemoteContext {
   /** The caller's own caps; a key never widens its creator. Absent for the local socket. */
   ceiling?: Capability[]
   createdBy?: string
+  /** Setup links' pairings (devices/setupPairings.ts): remote.pairings.create with `setup`. */
+  setup?: Pick<import('../devices/setupPairings').SetupPairings, 'create'>
+  /**
+   * A given computer's window ticket for its box (devices/given.ts `windowTicket`): minted on the main
+   * process's proved link, so the window's socket starts proved. Null for any other environment.
+   */
+  ticketFor?: (id: string) => Promise<{ ticket: string; expiresIn: number }> | null
   /** Test seam for the calls to other hosts (hello, ticket). */
   fetch?: typeof fetch
 }
@@ -124,9 +131,16 @@ export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Prom
     case 'remote.keys.create':
       return result(await ctx.auth.createKey({ ...req.params, createdBy, ceiling: ctx.ceiling }))
     case 'remote.keys.revoke':
-      return result(ctx.auth.revokeKey(req.params.id))
+      // A given computer's key ends by Remove, which wipes it and revokes LifeOS (RemoteAuth's guard, HTTP alike).
+      return result(ctx.auth.revokeByOwner(req.params.id))
     case 'remote.pairings.create': {
-      const { ttlMinutes, ...rest } = req.params
+      const { ttlMinutes, setup, ...rest } = req.params
+      if (setup) {
+        if (!ctx.setup) throw new Error('this host makes no setup links')
+        const made = ctx.setup.create({ ...setup, createdBy })
+        const origin = pairingOrigin(readRemoteSettings(ctx.store), ctx.status().port)
+        return result({ ...made, origin })
+      }
       const { pairing, code } = ctx.auth.createPairing({
         ...rest,
         createdBy,
@@ -159,7 +173,7 @@ export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Prom
     case 'remote.environments.pair':
       return result(await pairEnvironment(hostContext(ctx), req.params))
     case 'remote.environments.ticket':
-      return result(await mintTicket(hostContext(ctx), req.params.id, req.params.url))
+      return result(await (ctx.ticketFor?.(req.params.id) ?? mintTicket(hostContext(ctx), req.params.id, req.params.url)))
     default:
       return { handled: false }
   }

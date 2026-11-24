@@ -1,0 +1,53 @@
+import { describe, expect, it, vi } from "vitest";
+import { hostOf, isFreshInstall, writeSeedsOnce } from "./setupFlow";
+import { allDone, givesText, holdsParts, isGiverHere, landStep, computerParts } from "../settings/hosts/computersText";
+
+describe("the setup's rules", () => {
+  it("opens the first screen only on a fresh install, once each count is known", () => {
+    expect(isFreshInstall({ savedHosts: 0, workspaces: 0, accounts: 0 })).toBe(true);
+    expect(isFreshInstall({ savedHosts: 0, workspaces: 0, accounts: null })).toBe(false);
+    expect(isFreshInstall({ savedHosts: 1, workspaces: 0, accounts: 0 })).toBe(false);
+    expect(isFreshInstall({ savedHosts: 0, workspaces: 2, accounts: 0 })).toBe(false);
+    expect(isFreshInstall({ savedHosts: 0, workspaces: 0, accounts: 1 })).toBe(false);
+  });
+
+  it("names the box by its host, and what a link gives in order", () => {
+    expect(hostOf("https://tempcode.landonhale.com")).toBe("tempcode.landonhale.com");
+    expect(hostOf("not a url")).toBe("not a url");
+    expect(givesText({ accounts: true, lifeos: true, reader: true, folders: true })).toBe(
+      "link to the box, your accounts, LifeOS with Outlook and Teams, folders in Files",
+    );
+    expect(givesText({ accounts: false, lifeos: true, reader: false, folders: false })).toBe("link to the box, LifeOS");
+  });
+
+  it("lands a step over its row, a new one at its place in the order, and is Ready only when all are done", () => {
+    const steps = landStep([{ step: "link", state: "done" }, { step: "work", state: "waiting" }], { step: "allow", state: "working" });
+    expect(steps.map((s) => s.step)).toEqual(["link", "allow", "work"]);
+    expect(landStep(steps, { step: "allow", state: "failed", reason: "x" })[1]).toEqual({ step: "allow", state: "failed", reason: "x" });
+    expect(allDone(steps)).toBe(false);
+    expect(allDone([])).toBe(false);
+    expect(allDone(steps.map((s) => ({ ...s, state: "done" as const })))).toBe(true);
+  });
+
+  it("writes only seeds it can read", () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) });
+    expect(writeSeedsOnce({ appearance: { code: "neon", work: "light" }, defaultModels: ["x"] })).toBe(true);
+    expect(localStorage.getItem("monocode.colorScheme")).toBeNull();
+    expect(localStorage.getItem("monocode.colorScheme.work")).toBe("light");
+    expect(localStorage.getItem("monocode.defaultModels")).toBeNull();
+    expect(writeSeedsOnce({ appearance: { code: "dark" } })).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("counts what a computer holds by provider and knows the giver by its key", () => {
+    expect(holdsParts([{ service: "codex" }, { service: "claude-code" }, { service: "codex" }, { service: "cursor-x" }])).toEqual(["1 Claude", "2 Codex"]);
+    expect(holdsParts([])).toEqual(["No accounts"]);
+    const giver = { keyId: "k1", identity: { signPublic: "s", sealPublic: "x" }, name: "Mac", at: 1 };
+    expect(isGiverHere(giver, [{ keyId: "k1" } as never])).toBe(true);
+    expect(isGiverHere(giver, [{ keyId: "k2" } as never])).toBe(false);
+    expect(isGiverHere(null, [{ keyId: "k1" } as never])).toBe(false);
+    const row = { envId: "e", name: "PC", state: "active" as const, holds: [], syncedAt: null, paused: true, waitingForContact: false, lastError: null };
+    expect(computerParts(row)).toEqual(["No accounts", "paused", "not synced yet"]);
+  });
+});

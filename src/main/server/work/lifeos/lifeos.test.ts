@@ -20,7 +20,7 @@ import { lifeosAddress, lifeosHostOf, lifeosSeamsFor, LIFEOS_MCP_URL, LIFEOS_URL
 import { memoryDeviceToken } from './deviceToken'
 import { FakeLifeos } from './fakeLifeos'
 import { lifeos } from './index'
-import { botNameOf, KEYS_TABLE } from './keys'
+import { botNameOf, ENROLLED_WORDS, KEYS_TABLE } from './keys'
 import { Links, PENDING_TABLE } from './links'
 import { LifeosUnavailable } from './session'
 import { faultOf, redact } from './transport'
@@ -378,6 +378,42 @@ describe('sector keys', () => {
     expect(fake.liveBots().some((b) => b.sectors.join() === 'ref' || b.sectors.join() === 'unify')).toBe(false)
   })
 
+  it('a key LifeOS revoked (its session ended) is minted again into the same row, not read as ready', async () => {
+    workspace('ws_purdue', { kind: 'work', sector: 'purdue' })
+    await signedIn()
+    await until(() => grants.size === 2)
+    const old = fake.liveBots().find((b) => b.sectors.length === 1)!
+    old.revokedAt = Date.now()
+    await lifeosHostOf(work.ctx)!.reconcile()
+    const fresh = fake.liveBots().find((b) => b.sectors.length === 1)!
+    expect(fresh.name).toBe(old.name)
+    expect(fresh.token).not.toBe(old.token)
+    const row = [...rows.values()].find((r) => r.workspaceId === 'ws_purdue')!
+    expect(grants.get(row.id)).toEqual({ Authorization: `Bearer ${fresh.token}` })
+    expect((await status()).keys.every((k) => k.state === 'ready')).toBe(true)
+  })
+
+  it('a session from a setup link: every scope reads enrolled, and LifeOS is asked to mint once for that session, not on every pass', async () => {
+    workspace('ws_purdue', { kind: 'work', sector: 'purdue' })
+    fake.enrolled = true
+    await signedIn()
+    const host = lifeosHostOf(work.ctx)!
+    await host.reconcile()
+    await host.reconcile()
+    const keys = (await status()).keys
+    expect(keys.map((k) => k.state)).toEqual(['enrolled', 'enrolled'])
+    expect(keys[0]!.error).toBe(ENROLLED_WORDS)
+    expect(fake.calls.filter((c) => c.fn === 'bots:mint')).toHaveLength(1)
+    expect(fake.bots).toEqual([])
+    // Another session (a full sign-in) is asked again, and mints.
+    fake.enrolled = false
+    await call('work.lifeos.signOut')
+    await call('work.lifeos.setToken', { token: fake.device() })
+    await until(() => fake.liveBots().length === 2)
+    await host.reconcile()
+    expect((await status()).keys.map((k) => k.state)).toEqual(['ready', 'ready'])
+  })
+
   it('a bot name LifeOS takes: at most 40 characters, one per host and scope', () => {
     const a = botNameOf('env_box', 'box', 'ws_1', 'A very long workspace name that goes on and on')
     const b = botNameOf('env_mac', 'box', 'ws_1', 'A very long workspace name that goes on and on')
@@ -548,7 +584,7 @@ describe('subscribe', () => {
 
 describe('the pieces', () => {
   it('redacts every LifeOS secret shape from a line', () => {
-    expect(redact('token lo_abcdefghijklmnop key lob_ABCDEFGHIJKLMNOP poll lop_0123456789ab jwt eyJabcdefghij.klmnopqrstu.vwxyz012345')).toBe('token [secret] key [secret] poll [secret] jwt [jwt]')
+    expect(redact('token lo_abcdefghijklmnop key lob_ABCDEFGHIJKLMNOP poll lop_0123456789ab code loe_0123456789abcdef jwt eyJabcdefghij.klmnopqrstu.vwxyz012345')).toBe('token [secret] key [secret] poll [secret] code [secret] jwt [jwt]')
   })
   it('tells a refusal from an unreachable LifeOS', () => {
     expect(faultOf(Object.assign(new Error('x'), { data: { code: 'invalid-token' } }))).toBe('refused')

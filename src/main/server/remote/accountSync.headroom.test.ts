@@ -144,6 +144,26 @@ it('manual refresh forces every connected host once, exchanges proof, and report
   } finally { sync.close() }
 })
 
+it('a given computer refreshes here and never asks its box over the device key, which the box refuses', async () => {
+  const refresh = vi.fn(async () => {})
+  const called: string[] = []
+  const box = {
+    id: 'box', env: { name: 'box', caps: ['device', 'operate', 'read'] }, connected: true,
+    request: async (method: string) => {
+      called.push(method)
+      if (method === 'accounts.refreshLocal') throw new Error('forbidden: accounts.refreshLocal is not for a given computer')
+      return { snapshot: null }
+    }
+  }
+  const store = new HeadroomStore({ environmentId: 'pc', now: () => NOW + 1000 })
+  const sync = new AccountSync({ environmentId: 'pc', store: memoryStore(), peers: { get: () => undefined, all: () => [box] as never }, nudge: vi.fn(), headroom: store, refreshUsage: refresh, refreshNow: vi.fn(async () => {}), log: () => {} })
+  try {
+    await expect(sync.refreshUsage('claude')).resolves.toBeUndefined()
+    expect(refresh).toHaveBeenCalledExactlyOnceWith('claude')
+    expect(called).not.toContain('accounts.refreshLocal')
+  } finally { sync.close() }
+})
+
 it('an offline host takes the durable recovery evidence at link-up without accepting its own stale copy', async () => {
   const mac = host('mac', [])
   const box = host('box', [])

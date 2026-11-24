@@ -25,6 +25,8 @@ import { Sidebar } from "./chrome/Sidebar";
 import { confirmAction } from "./chrome/ConfirmDialog";
 import { actionFailed } from "./lib/threadActionToast";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
+import { ComputerAllowToasts } from "./chrome/ComputerAllowToasts";
+import { SetupFirstRun } from "./surfaces/setup/SetupFirstRun";
 import { MoveToasts } from "./chrome/ThreadHostChip";
 import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
 import { selectionFor } from "./lib/threadBatchSelection";
@@ -3765,6 +3767,8 @@ export default function App() {
       />
       <MacBridgeToasts />
       <ComputerAskToasts />
+      <ComputerAllowToasts />
+      <SetupFirstRun />
       <HtmlRenderOverlay />
       {whatsNew ? (
         <WhatsNewDialog

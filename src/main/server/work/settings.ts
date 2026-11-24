@@ -17,12 +17,20 @@ import type { Store } from '../db'
  * (`kind === 'work'`, `scope === 'work'`), never on the switch; the switch
  * only decides whether Work things can be made, shown and started.
  */
-export type WorkSettingsStoreDeps = Pick<Store, 'getSetting' | 'setSetting' | 'getWorkspaceWorkSettings' | 'setWorkspaceWorkSettings'>
+export type WorkSettingsStoreDeps = Pick<Store, 'getSetting' | 'setSetting' | 'getWorkspaceWorkSettings' | 'setWorkspaceWorkSettings'> & Partial<Pick<Store, 'listWorkspaces'>>
 
 export class WorkSettingsStore {
   private readonly listeners = new Set<(settings: WorkSettings) => void>()
 
-  constructor(private readonly store: WorkSettingsStoreDeps) {}
+  /**
+   * `hostLive` (devices/binding.ts `mayRoute`): a given computer whose binding
+   * is no longer live is dropped from every workspace's `mayUseDesktop` as it
+   * is read, so no route reaches a removed computer.
+   */
+  constructor(
+    private readonly store: WorkSettingsStoreDeps,
+    private readonly hostLive: (envId: string) => boolean = () => true
+  ) {}
 
   get(): WorkSettings {
     return parseWorkSettings(this.store.getSetting(WORK_SETTING_KEY))
@@ -47,7 +55,23 @@ export class WorkSettingsStore {
 
   /** A workspace's Work settings; the defaults for one that stored none. */
   workspace(id: string): WorkspaceWorkSettings {
-    return parseWorkspaceWorkSettings(this.store.getWorkspaceWorkSettings(id))
+    const settings = parseWorkspaceWorkSettings(this.store.getWorkspaceWorkSettings(id))
+    return settings.mayUseDesktop.every(this.hostLive) ? settings : { ...settings, mayUseDesktop: settings.mayUseDesktop.filter(this.hostLive) }
+  }
+
+  /**
+   * A removed computer leaves every workspace's `mayUseDesktop` for good, not only as it is read: the
+   * same install set up again under its env id gets the reach its new link names and nothing older.
+   */
+  dropHost(envId: string): number {
+    let dropped = 0
+    for (const w of this.store.listWorkspaces?.() ?? []) {
+      const stored = parseWorkspaceWorkSettings(this.store.getWorkspaceWorkSettings(w.id))
+      if (!stored.mayUseDesktop.includes(envId)) continue
+      this.store.setWorkspaceWorkSettings(w.id, JSON.stringify({ ...stored, mayUseDesktop: stored.mayUseDesktop.filter((e) => e !== envId) }))
+      dropped++
+    }
+    return dropped
   }
 
   /** Merges a patch into a workspace's Work settings. Throws for a workspace this host does not have. */

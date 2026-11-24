@@ -180,7 +180,10 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
   (`harnessSyncDefault`); memory sync never runs there, and the box refuses a drive-path home
   (`MEMORY_NO_WINDOWS`): its path map is POSIX only. Moving a thread between a Windows host and the
   box maps no paths (sessionMove.ts and crossHostThreads.ts read POSIX roots), so a moved thread
-  keeps its old paths in its text.
+  keeps its old paths in its text. A PC set up by a setup link (docs/agents/pc-setup.md) gets his
+  accounts by the giver's sealed letters, not by account sync: it pulls only the access copies its
+  manifest admits, and pushes nothing. Appearance, default models and the Work switch are written
+  once from the link; nothing of them syncs afterwards.
 - **Settings follow the box.** A PC is never the settings home of rules, thread
   defaults, project settings, skills, add-ons or link ids while the box holds a
   copy, whichever id sorts first (`settingsHomeOf` reads `build.headless`, not

@@ -66,6 +66,8 @@ export interface PeerRegisterParams {
   name?: string
   build?: BuildFacts
   presence?: MacPresence
+  /** A device key's proof (devices/given.ts makes it; the box checks it before it registers the socket). */
+  proof?: string
 }
 
 interface PendingCall {
@@ -98,6 +100,8 @@ export class PeerCalls {
   private readonly registerListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
   private readonly dropListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
   private readonly offersListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
+  /** Whether calls may route to a host: a given computer's only while its binding is live (devices/binding.ts `mayRoute`). */
+  private routable: (envId: string) => boolean = () => true
 
   constructor(
     readonly environmentId: string,
@@ -151,6 +155,17 @@ export class PeerCalls {
     return () => this.registerListeners.delete(listener)
   }
 
+  /** The box's say on which hosts calls may reach (devices/binding.ts): a retired or removing computer is offline to every caller. */
+  setRoutable(routable: (envId: string) => boolean): void {
+    this.routable = routable
+  }
+
+  /** A key went into farewell or was revoked: every registration on its sockets goes, and their calls fail now. */
+  dropKey(keyId: string): void {
+    const connections = new Set([...this.registered.values()].filter((r) => r.socket.keyId === keyId).map((r) => r.socket.connection))
+    for (const connection of connections) this.drop(connection)
+  }
+
   /** A peer's socket closed and its registration went with it. */
   onDrop(listener: (envId: string, offers: ReadonlySet<string>) => void): () => void {
     this.dropListeners.add(listener)
@@ -172,6 +187,7 @@ export class PeerCalls {
   }
 
   online(envId: string, offer?: string): boolean {
+    if (!this.routable(envId)) return false
     const reg = this.registered.get(envId)
     return !!reg && (!offer || reg.offers.has(offer))
   }
@@ -198,9 +214,15 @@ export class PeerCalls {
     }
   }
 
+  /** The key an env id is registered under now: undefined while it is not registered, null for this host's own socket. */
+  registrantOf(envId: string): string | null | undefined {
+    const reg = this.registered.get(envId)
+    return reg ? reg.socket.keyId : undefined
+  }
+
   registeredIds(offer?: string): string[] {
     return [...this.registered.entries()]
-      .filter(([, r]) => !offer || r.offers.has(offer))
+      .filter(([id, r]) => (!offer || r.offers.has(offer)) && this.routable(id))
       .map(([id]) => id)
   }
 
@@ -233,7 +255,7 @@ export class PeerCalls {
     opts: { onProgress?: (frame: ProgressFrame) => void; callId?: string; onAway?: () => void } = {}
   ): Promise<T> {
     const reg = this.registered.get(envId)
-    if (!reg) return Promise.reject(new PeerOfflineError(envId))
+    if (!reg || !this.routable(envId)) return Promise.reject(new PeerOfflineError(envId))
     const callId = opts.callId ?? PeerCalls.newCallId()
     if (this.calls.has(callId)) return Promise.reject(new Error(`call ${callId} is already out`))
     return new Promise<T>((resolve, reject) => {
@@ -381,7 +403,7 @@ export class PeerCalls {
   /** One frame down a registered peer's socket; false when it is not registered. */
   push(envId: string, frame: ServerFrame): boolean {
     const reg = this.registered.get(envId)
-    if (!reg) return false
+    if (!reg || !this.routable(envId)) return false
     try {
       reg.socket.send(frame)
       return true

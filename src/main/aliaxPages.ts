@@ -15,6 +15,7 @@ import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type KeyProfileVi
 import { ADDON_GRANT_MANAGED } from '@shared/addonGrantWords'
 import { setVaultAside } from './aliax/vaultMode'
 import { ALIAX_DATA_DIR } from './aliax'
+import { givenComputerHooks } from './server/devices/given'
 
 /** Run after Start fresh made a new vault: a given computer retires its identity there (devices). */
 export const vaultStartFreshHooks: Array<() => void> = []
@@ -297,6 +298,8 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   )
   handle('aliax:profiles:activate', (_e, serviceId: ServiceId, name: string) =>
     asResult(async () => {
+      // A given row is the giver's: never this computer's live CLI sign-in (devices/given.ts).
+      if (givenComputerHooks.current?.isGivenRow(serviceId, name)) return { ok: false, error: 'This account was given to this computer; it is not its sign-in' }
       const result = await accounts.activate(serviceId, name)
       notifyAccountsChanged()
       return result

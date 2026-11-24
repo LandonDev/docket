@@ -100,4 +100,24 @@ describe('setVaultAside (Start fresh)', () => {
     expect(vault.vaultLockReason()).toBeNull()
     expect(setVaultAside(temp(), 0)).toBeNull()
   })
+
+  it("takes a migration's half-made set aside too, under the core's lock, and refuses while a live process holds it (F23)", () => {
+    const dataDir = temp()
+    writeFileSync(join(dataDir, 'vault.key'), 'garbage')
+    writeFileSync(join(dataDir, 'vault.key.next'), 'aliax-wrap:v1:half')
+    mkdirSync(join(dataDir, 'secrets.next'))
+    mkdirSync(join(dataDir, 'secrets.old'))
+    // A live holder (this process stands in for Aliax): refused, nothing moved.
+    writeFileSync(join(dataDir, 'vault.key.lock'), JSON.stringify({ pid: process.pid, at: Date.now() }))
+    expect(() => setVaultAside(dataDir, 0)).toThrow(/Another app is using the vault/)
+    expect(existsSync(join(dataDir, 'vault.key'))).toBe(true)
+    // A holder that died: its lock is cleared.
+    writeFileSync(join(dataDir, 'vault.key.lock'), JSON.stringify({ pid: 2 ** 22 + 12345, at: 0 }))
+    const aside = setVaultAside(dataDir, 0)!
+    for (const p of ['vault.key', 'vault.key.next', 'secrets.next', 'secrets.old']) {
+      expect(existsSync(join(dataDir, p))).toBe(false)
+      expect(existsSync(join(aside, p))).toBe(true)
+    }
+    expect(existsSync(join(dataDir, 'vault.key.lock'))).toBe(false)
+  })
 })

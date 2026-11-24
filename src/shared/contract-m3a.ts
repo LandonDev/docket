@@ -44,7 +44,12 @@ export const AccountRemovalSchema = z.object({
   accountId: z.string(),
   name: z.string(),
   static: z.boolean(),
-  at: z.number()
+  at: z.number(),
+  /**
+   * The giver withdrew the account everywhere (F12): the host this names, which refreshes it, drops it
+   * too. Heard only on `accounts.removed`, which only the giver may call.
+   */
+  withdraw: z.string().optional()
 })
 /** One explicit account per gateway provider; a missing key inherits. */
 export const AccountPinsSchema = z.object({

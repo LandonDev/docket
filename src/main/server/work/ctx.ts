@@ -89,6 +89,8 @@ export interface WorkDeps {
   dataDir: string
   /** The listener's path fence for a remote key (index.ts `managedRoots` and the folders it denies): `ctx.reaches` and `PushTo.path` ask it. Absent only in a test, where a remote key then reaches no file. */
   remoteFence?: { roots(): string[]; denied(): string[] }
+  /** Whether a route may reach a host (devices/binding.ts `mayRoute`): a removed given computer is off every Work route. Absent: every host. */
+  hostLive?: (envId: string) => boolean
   /** the links to other hosts, and the calls a registered host answers */
   peers?: Peers
   peerCalls?: PeerCalls
@@ -257,7 +259,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   NARROWING_BROKEN.clear()
   for (const id of broken.keys()) NARROWING_BROKEN.add(id)
   const sound = modules.filter((m) => !broken.has(m.id))
-  const settings = new WorkSettingsStore(deps.store)
+  const settings = new WorkSettingsStore(deps.store, deps.hostLive)
   const sinks = new Map<(p: WorkPush) => void, SocketPrincipal>()
   const reaches = reachesOf(deps.remoteFence)
   /** Whether a remote key could name every path a push names: one answer for every key, since no key has roots of its own. A fence that throws admits none. */

@@ -88,6 +88,16 @@ describe('addEnvironment', () => {
     expect(JSON.stringify(listEnvironments(store))).not.toContain('secret')
     expect(store.rows.get(`remote.environments.${HOST_ID}`)).toContain('tc_k1.secret')
   })
+  it("a setup link's box is saved only under the id its bundle pinned, and never over a row with a key of its own (F22)", async () => {
+    const store = fakeStore()
+    const { ctx } = ctxWith(store, () => json(200, hello({ key: { id: 'k1', name: 'pc', caps: ['read'], audience: 'client' } })))
+    await expect(addEnvironment(ctx, { url: 'https://tempcode.example.com', key: 'tc_k1.secret', sealed: true, expectId: 'env_other' })).rejects.toThrow(/not the box the link named/)
+    expect(store.rows.size).toBe(0)
+    await addEnvironment(ctx, { url: 'https://tempcode.example.com', key: 'tc_k1.own' })
+    await expect(addEnvironment(ctx, { url: 'https://tempcode.example.com', key: 'tc_k1.secret', sealed: true, expectId: HOST_ID })).rejects.toThrow(/key of its own/)
+    expect(store.rows.get(`remote.environments.${HOST_ID}`)).toContain('tc_k1.own')
+  })
+
   it('adding the same host over another URL appends the route and replaces the key', async () => {
     const store = fakeStore()
     const { ctx } = ctxWith(store, () => json(200, hello({ key: { id: 'k1', name: 'p' } })))

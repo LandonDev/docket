@@ -3,6 +3,7 @@ import { errorText, WORK_HOME, type HealthRow, type SectorKey } from '@shared/wo
 import type { HealthSource } from '../modules'
 import type { LifeosClient } from './ctx'
 import { lifeosHostOf } from './ctx'
+import { ENROLLED_WORDS } from './keys'
 import { redact } from './transport'
 
 /**
@@ -109,6 +110,9 @@ export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient;
   if (!signIn) return []
   const rows: HealthRow[] = [signIn]
   if (o.status.lifeos.state !== 'connected') return rows
+  // A session from a setup link mints no key: one row says so, not one a scope.
+  const enrolled = o.status.keys.find((k) => k.state === 'enrolled')
+  if (enrolled) rows.push({ id: 'lifeos.keys:enrolled', pillar: 'lifeos', group: 'LifeOS', title: "Agents' LifeOS keys", state: 'broken', line: enrolled.error ?? ENROLLED_WORDS })
   for (const key of o.status.keys) {
     if (key.state !== 'failed') continue
     const title = key.workspaceId === WORK_HOME ? 'Work Chats' : (o.workspaceName(key.workspaceId) ?? key.workspaceId)

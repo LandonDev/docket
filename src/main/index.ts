@@ -13,7 +13,8 @@ import { appRoot } from './server/appRoot'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
-import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
+import { aliaxCallCounts, registerAliaxPages, vaultStartFreshHooks } from './aliaxPages'
+import { givenComputerHooks } from './server/devices/given'
 import { registerAppshots } from './appshots'
 import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
@@ -292,6 +293,8 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.error('[boot] the accounts pages did not register; the boot goes on:', err)
   }
+  // A given computer's pins and identity went with the old vault: it is no longer given (devices/given.ts).
+  vaultStartFreshHooks.push(() => givenComputerHooks.current?.startFresh())
   registerPty()
   const { store } = server
   const mountedServer = server

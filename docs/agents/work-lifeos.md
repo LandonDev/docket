@@ -16,6 +16,7 @@ draft-only key held to one workspace's sector. All of it is in
 | A sector key (`lob_…`), one per linked scope | the grant of that scope's LifeOS add-on row (`Authorization: Bearer …`), written by `AddonGrants.setFields` straight from `bots:mint` | in the row, the `work_lifeos_keys` table (name and sectors only), a log or a model's context; the add-on host sends it as a header |
 | A JWT (one hour) | memory, per sector set | anywhere but the answer to `work.lifeos.jwt` (approve) |
 | A pairing poll secret (`lop_…`) | memory while a pairing waits | anywhere |
+| A one-time sign-in code (`loe_…`) | the giver's answer from `auth:enrollCreate`, the sealed letter, the PC's enroll file until LifeOS reads it | in a log, a reason, an error |
 
 Every line the pillar logs passes `redact` (transport.ts), which blanks each
 of those shapes. `TEMP_CODE_LIFEOS_URL` and `TEMP_CODE_LIFEOS_MCP_URL` point
@@ -66,6 +67,8 @@ his default mail identity when the setting is empty.
   signed in: sign out first.
 - **Sign-out:** `work.lifeos.signOut` revokes this session in LifeOS
   (`auth:revoke`) and drops the token; the sector keys stay.
+- **By a setup link** (a computer the Mac sets up): below, "A computer set
+  up by link".
 
 ## Sector keys (keys.ts)
 
@@ -94,8 +97,53 @@ row is still the one it wrote (LifeOS's MCP address, the one header, typed
 values, on): a row someone pointed elsewhere has its key revoked and is
 minted again. A mint's name is kept before LifeOS is asked, so a key whose
 answer was lost is still retired later.
+A key LifeOS revoked is not ready: keys die with the session that minted
+them (a `setToken` or a sign-out ends it), so a pass reads `bots:list` once
+and mints again into the same row when a scope's key is no longer live.
+A session made by a setup link (`enrolled` in LifeOS) may mint no key:
+`bots:mint` answers `forbidden`, every scope this host would mint for reads
+`enrolled` with `ENROLLED_WORDS`, Connections shows one row ("Agents' LifeOS
+keys"), and no pass asks again until the host holds another session.
 `work.lifeos.status` lists each scope's key state (`ready`, `waiting`,
-`elsewhere`, `failed`) beside the session's.
+`elsewhere`, `failed`, `enrolled`) beside the session's.
+
+## A computer set up by link (src/main/server/devices/setup/)
+
+Main-process modules with no screens; the setup dialogs call them (plan
+d9AVYMURpw9s §5, §6). LifeOS's side is `auth:enrollCreate`,
+`auth:enrollRedeem`, `auth:enrollRevoke` (lifeos main `0ca9360`) and the
+desktop's enroll file (`5dfb592`; a LifeOS desktop release is still needed).
+
+- **lifeosEnroll.ts, on the giver:** `mintEnrollment({name, uses, ttlMs?},
+  enrollDepsOf(host))` calls `auth:enrollCreate` through this host's own
+  Work session and answers `{ok: true, enrollment, expiresAt, codes}`, or
+  `{ok: false, reason: 'not-signed-in'}` when Work holds no live session
+  (the dialog turns the LifeOS row off). `revokeEnrollment(enrollment, deps)`
+  is Remove's and Cancel's `auth:enrollRevoke`. A minted or enrolled session
+  is refused by LifeOS (`forbidden`): pair again.
+- **workSignIn.ts, on the PC:** `signInWork({code, owner},
+  workSignInDepsOf(host))` checks the session first (a token LifeOS has not
+  refused is his, so `already-signed-in` and the code is not used), trades
+  the `tempcode` code with `auth:enrollRedeem {code, owner}` over the host's
+  open transport (`LifeosHost.open`), checks the owner, checks the state
+  again, and keeps the token with `session.setToken`, the handler's own call.
+- **lifeosInstall.ts, on a Windows PC:** `installLifeos({code, owner, reader,
+  attempt?}, windowsInstallDeps(), onStep)` reads LifeOS's `latest.yml`,
+  follows a redirect only over https to github.com,
+  objects.githubusercontent.com or release-assets.githubusercontent.com,
+  checks the installer's sha512 and runs it `/S`. It finds LifeOS by its
+  HKCU uninstall entry (`reg.exe query`, no PowerShell): name `LifeOS
+  <version>`, publisher `Landon Hale`, a folder under
+  `%LOCALAPPDATA%\Programs` holding `LifeOS.exe`. electron-builder keeps
+  `InstallLocation` under its own `Software\<guid>` key, not the uninstall
+  entry, so the folder is the uninstaller's when the entry names none. One
+  already there skips the download and the install. The enroll file is
+  written as `.enroll-<attempt>.json.tmp` and renamed into place, LifeOS is
+  started (a second launch makes a running one read it), and the step waits
+  two minutes for `enroll-<attempt>.result.json` with its own attempt;
+  "already signed in" is a done sign-in, his reader left as he set it. Each
+  step reports `{step: 'download' | 'install' | 'sign-in' | 'reader', state,
+  reason?}`.
 
 ## Links (links.ts)
 
@@ -157,7 +205,9 @@ subscribed to accounts, whatever its scope.
 
 ## Proofs
 
-`lifeos.test.ts` with `fakeLifeos.ts` (unit). Against the built tree and
+`lifeos.test.ts` with `fakeLifeos.ts` (unit; it also answers the
+enrollment functions and an `enrolled` session); the setup modules'
+`devices/setup/*.test.ts` on the fake and a fake feed. Against the built tree and
 real LifeOS, run with bun from the repo root after `electron-vite build`:
 `proof/firstStep.ts` (two isolated instances: a second host's add-on call
 uses its own vault's key; a linked workspace shares the home's row) and

@@ -250,6 +250,7 @@ public enum Capability: RawRepresentable, Codable, Hashable, Sendable {
     case admin
     case give
     case device
+    case pending
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -261,6 +262,7 @@ public enum Capability: RawRepresentable, Codable, Hashable, Sendable {
         case "admin": self = .admin
         case "give": self = .give
         case "device": self = .device
+        case "pending": self = .pending
         default: self = .unknown(rawValue)
         }
     }
@@ -273,6 +275,7 @@ public enum Capability: RawRepresentable, Codable, Hashable, Sendable {
         case .admin: "admin"
         case .give: "give"
         case .device: "device"
+        case .pending: "pending"
         case .unknown(let value): value
         }
     }
