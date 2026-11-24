@@ -13,6 +13,7 @@ import { eventById, type OfficeCarrier } from './carrier'
 import { cleanMailHtml, fileRead, placedOf, placesOf, spotsOf, textHash, type OfficeEdit } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 import { fileKey, fileShared, sharedKey } from './shared'
+import { readOnlyOf } from '../files/readOnly'
 import { dateIn, hisZone, timeIn } from '../clock'
 
 export { fileKey, sharedKey }
@@ -162,6 +163,9 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       if (a.values.length !== rows || a.values.some((r) => r.length !== cols)) return fail(`${a.range} is ${rows} by ${cols}: pass that many rows of that many cells.`)
       if (rangeCells(range) > EXCEL_MAX_CELLS) return fail(`Write at most ${EXCEL_MAX_CELLS.toLocaleString('en-US')} cells a call.`)
       const { verdict, key: workbook } = await judged(a, 'workbook', a.workbook, env)
+      // A workbook another pillar alone writes (a Microsoft form's answers): no write and no suggestion.
+      const locked = readOnlyOf(env.ctx, { host: env.ctx.host, path: workbook })
+      if (locked) return fail(locked.refused)
       if (verdict === 'suggest') {
         const now = await env.excel.read(workbook, sheet, range)
         if (a.base !== undefined && a.base !== now.hash) return json({ conflict: true, now: now.values })
@@ -193,7 +197,9 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     input: { workbook: z.string().describe('The workbook\'s key from `office_files`.'), writeId: z.string().describe('The `writeId` from that `office_range_write`.'), because: Reason.because.optional(), quote: Reason.quote },
     readOnly: false,
     async run(a, env) {
-      const { verdict } = await judged({ because: a.because ?? 'own', quote: a.quote }, 'workbook', a.workbook, env)
+      const { verdict, key } = await judged({ because: a.because ?? 'own', quote: a.quote }, 'workbook', a.workbook, env)
+      const locked = readOnlyOf(env.ctx, { host: env.ctx.host, path: key })
+      if (locked) return fail(locked.refused)
       if (verdict === 'suggest') return fail('Others can open this workbook, so taking the write back would show them a change he has not asked for: nothing was taken back. Say it in your reply; he can ask for it in so many words.')
       const res = await env.excel.undo(a.workbook, a.writeId)
       return 'conflict' in res ? fail('Those cells changed since your write, so nothing was taken back. Read the range again to see what they hold.') : workText('Taken back.')

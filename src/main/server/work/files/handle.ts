@@ -47,6 +47,7 @@ import { accountOfPlace, driveAccounts, driveList, drivePlace, driveStat, driveT
 import { admitDrive, DRIVE_APART, driveMake, driveMove, driveRename, driveTrash, namesDrive } from './driveVerbs'
 import { archiveListing } from './zipdir'
 import { waitingFiles, withWaiting } from './waiting'
+import { readOnlyOf } from './readOnly'
 
 /**
  * The files pillar's wire (`work.files.*`, docs/agents/work-files.md "The wire"). Every method names its
@@ -431,7 +432,8 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   const copyOf = { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) }
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
   const kind = as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
-  const back = copySavesBack(kind, name)
+  // A file a pillar says opens only to read (a Microsoft form's answers workbook) is copied to read: no save goes back.
+  const back = copySavesBack(kind, name) && !readOnlyOf(ctx, file)
   // A Word file opened as a document before: the document his edits are kept in opens again, and nothing is read
   // over it (word.ts). Its tab still names the Word file, which Save as Word writes.
   const word = kind === 'document' && isWordFile(name)

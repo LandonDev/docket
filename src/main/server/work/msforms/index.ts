@@ -16,6 +16,7 @@ registerRefSeat('msform', async (ctx, by, ask) => {
   const source = { at: 'msform' as const, host: ctx.host, workspaceId: row.workspaceId, formId: row.formId, tenant: row.tenant }
   return { key: refKey(source), name: row.title, kind: 'msform', source }
 })
+import { ensureWorkbookIndex } from './workbook'
 
 /**
  * The Microsoft Forms pillar's server module (docs/agents/work-msforms.md):
@@ -87,6 +88,7 @@ export const msforms: WorkModule = {
   id: 'msforms',
   ensure(db) {
     ensureMsformsTables(db)
+    ensureWorkbookIndex(db)
   },
   async handle(req, ctx, by) {
     // A method the contract does not list is the router's to call not built.

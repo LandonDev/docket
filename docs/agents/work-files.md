@@ -1936,6 +1936,12 @@ over a file that changed there.
   document edits a `.tcdoc` made of the file, not the file (a Word file's is kept in the workspace's folder and saved
   back by his press alone: "A Word file from another computer" below), and a .csv opens as a sheet of our own: those
   copies, and a PDF's, a picture's or a recording's, keep "A copy from MacBook. Changes stay here".
+- **A file a pillar says opens only to read** is copied to read, and never saves back: a pillar registers its word
+  with `registerReadOnlyFile` (files/hooks.ts), and `readOnlyOf` (files/readOnly.ts) asks it for the file where it
+  lies, or for a tab's copy by the file it is a copy of (the tab's `copyOf`). `copySeat` asks before the copy is
+  made: such a copy gets no record, so nothing is ever sent from it. Today one word is registered: a Microsoft form's
+  answers workbook (msforms/workbook.ts `isFormsWorkbook`), which Forms alone writes; the sheet editor shows it read
+  only and the sheet and office tools refuse it (docs/agents/work-sheets.md "Packages").
 - **The record** (`work_files_copies`, tables.ts): made by `openCopy` from what `copyIn` read in one look: the
   file's host and path (a guest path in the VM), its version, the sha256 of its bytes (`sent`), the copy's path
   here and its folder, how sending stands, and `closed`. Another host answers `office.filesRead {as: 'bytes'}`

@@ -13,6 +13,7 @@ import { OfficeError } from './carrier'
 import { FakeOffice } from './fake'
 import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeEditSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeEdit, type OfficeMail } from './held'
 import { fileShared } from './shared'
+import { registerReadOnlyFile } from '../files/hooks'
 import { fileKey, fileName, OFFICE_TOOLS, sharedKey, type Env, workTools } from './tools'
 
 /**
@@ -90,6 +91,25 @@ describe('writes, by the rule for files others can open', () => {
     expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[100]])
     await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'asked', quote: 'set Q1 to 120' })
     expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[120]])
+  })
+
+  it("refuses to write, suggest on or take back a write of a workbook another pillar alone writes (a Microsoft form's answers)", async () => {
+    const off = registerReadOnlyFile((_ctx, file) => (file.path === SHARED ? { reason: 'Forms writes it.', refused: 'refused: Forms writes it.' } : null))
+    try {
+      said = ['please set Q1 to 120']
+      for (const because of ['asked', 'own'] as const) {
+        const got = await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because, quote: 'set Q1 to 120' })
+        expect(got.isError).toBe(true)
+        expect(text(got)).toBe('refused: Forms writes it.')
+      }
+      expect(text(await run('office_range_undo', { workbook: SHARED, writeId: 'w1', because: 'asked', quote: 'set Q1 to 120' }))).toBe('refused: Forms writes it.')
+      expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[100]])
+      expect(suggestions.open(excelStore(SHARED))).toEqual([])
+      // his own workbook is written as before
+      expect(text(await run('office_range_write', { workbook: MINE, range: 'Sheet1!A1', values: [[3]], because: 'own' }))).toContain('writeId')
+    } finally {
+      off()
+    }
   })
 
   it('answers conflict on a stale base and writes nothing', async () => {

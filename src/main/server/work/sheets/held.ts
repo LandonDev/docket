@@ -10,6 +10,7 @@ import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
 import { pressesFor, sharedOf } from '../files/policy'
+import { readOnlyOf } from '../files/readOnly'
 import { Toolchain } from '../formats/tools'
 import { ensureImported, importedHeld, importedOf, isSharedImport, type ImportedFrom } from './formatsIn'
 import { sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
@@ -215,6 +216,9 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
     changes,
     jobs
   }
+  // A workbook another pillar alone writes (a Microsoft form's answers) opens to read and takes no change: by the file
+  // where it lies, or, for a Files tab's copy, by the file it is a copy of.
+  s.packages.locked = (path) => readOnlyOf(ctx, { host: ctx.host, path })?.reason ?? null
   made.set(ctx.db, s)
   // What was kept of a shared workbook before this rule is moved and emptied now, not only when it is next opened.
   setImmediate(() => {

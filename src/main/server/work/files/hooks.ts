@@ -6,7 +6,7 @@ import type { Caller, WorkCtx } from '../modules'
 /**
  * What a canvas kind's own pillar tells Files (docs/agents/work-files.md "The seam with the editors"): how to
  * make a new file of its kind, how to draw a file's page as a picture, what to re-key when a file is
- * renamed or moved, and how many of an agent's suggestions wait in a file; and one pillar's word on how a file is seated (`registerSeatChooser`). Four registries, each empty until something registers. They are this file's own state
+ * renamed or moved, and how many of an agent's suggestions wait in a file; one pillar's word on how a file is seated (`registerSeatChooser`); and a pillar's word that a file opens only to read (`registerReadOnlyFile`). Four registries, each empty until something registers. They are this file's own state
  * and no module's `start` touches them, so a pillar may register when it loads, before or after the files
  * module starts, and is kept either way.
  *
@@ -95,6 +95,21 @@ export type RefSeat = (ctx: WorkCtx, by: Caller, ask: SeatAsk) => Promise<Omit<S
 
 const makers = new Map<CanvasKind, FileMaker>()
 const refSeats = new Map<CanvasSource['at'], RefSeat>()
+/** What a file that opens only to read says: the editor's line to him, and the refusal a thread's change of it gets. */
+export interface ReadOnlyFile {
+  reason: string
+  refused: string
+}
+
+/**
+ * A pillar's word that a file opens only to read, whatever its kind could do (msforms: a Microsoft form's answers
+ * workbook, which Forms alone writes). `file` is where the file lies: its host and its path there, a guest path for
+ * a file in the Windows VM. Null: nothing to say. Asked by `readOnlyOf` (files/readOnly.ts), which also answers a
+ * Files tab's copy by the file it is a copy of.
+ */
+export type ReadOnlyJudge = (ctx: Pick<WorkCtx, 'db' | 'host'>, file: { host: string; path: string }) => ReadOnlyFile | null
+
+const readOnlyJudges = new Set<ReadOnlyJudge>()
 let importPlace: ImportPlace | null = null
 let seatChooser: SeatChooser | null = null
 const previewers = new Map<CanvasKind, FilePreviewer>()
@@ -138,6 +153,12 @@ export function registerRefSeat(at: CanvasSource['at'], fn: RefSeat): () => void
   return () => void (refSeats.get(at) === fn && refSeats.delete(at))
 }
 export const refSeatFor = (at: CanvasSource['at']): RefSeat | null => refSeats.get(at) ?? null
+/** One more pillar that may say a file opens only to read; every one registered is asked, the first word wins. Returns its off. */
+export function registerReadOnlyFile(fn: ReadOnlyJudge): () => void {
+  readOnlyJudges.add(fn)
+  return () => void readOnlyJudges.delete(fn)
+}
+export const readOnlyHooks = (): readonly ReadOnlyJudge[] => [...readOnlyJudges]
 
 /** The one pillar that may seat a file before Files does (a later one replaces the earlier). Returns its off. */
 export function registerSeatChooser(fn: SeatChooser): () => void {

@@ -5,6 +5,7 @@ import type { SheetCellJson, SheetMutationJson, SheetSuggestion } from '@shared/
 import { agentPrincipal, workText, type CanvasItem, type Principal, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
+import { readOnlyOf } from '../files/readOnly'
 import type { ToolCtx, WorkTool } from '../modules'
 import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
@@ -55,7 +56,7 @@ interface Target {
  * folder, another host: `sharedOf`, the test the grid's view uses), or what the scope says of the
  * source (a guest link, a Microsoft or Google file).
  */
-async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Promise<Target> {
+async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }, change = true): Promise<Target> {
   let item: CanvasItem | null = null
   let held: Exclude<Held, { at: 'excel' | 'google' }>
   let source: CanvasItem['source']
@@ -67,12 +68,14 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
     if (h.at === 'google') throw new Error(`${item.title} lives in Google: read it with google_sheet_read and suggest cells with google_sheet_suggest.`)
     held = h
     source = item.source
+    refuseLocked(ctx, held, change)
     // (a thread's own item no window ever showed is held here: a shared workbook's copies go with the thread)
     if (held.at === 'package') (await sheetsOf(ctx)).packages.hold(held.path, item.id, ctx.sessionId)
   } else {
     if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')
     held = heldOfPath(a.file, ctx.dataDir)
     source = { at: 'file', host: ctx.host, path: a.file }
+    refuseLocked(ctx, held, change)
     // Read by its path, with no tab: this thread holds what is kept of it (a shared workbook's copies go with the thread).
     if (held.at === 'package') (await sheetsOf(ctx)).packages.hold(held.path, '', ctx.sessionId)
   }
@@ -81,6 +84,12 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
   await ensureImported(ctx, held)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
   return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
+}
+
+/** A workbook another pillar alone writes (a Microsoft form's answers) is read, never changed or suggested on: refused before anything is held. */
+function refuseLocked(ctx: ToolCtx, held: Target['held'], change: boolean): void {
+  const locked = change && held.at === 'package' ? readOnlyOf(ctx, { host: ctx.host, path: held.path }) : null
+  if (locked) throw new Error(locked.refused)
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
@@ -352,7 +361,7 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; range: string }
       try {
-        const t = await targetOf(ctx, a)
+        const t = await targetOf(ctx, a, false)
         const s = await sheetsOf(ctx)
         const got = t.held.at === 'package' ? await s.packages.read(t.held.path, a.range) : await host(ctx, 'range', { sheet: t.held.ref, range: a.range })
         const lines = got.cells.map((row) => row.map(show).filter(Boolean).join('  |  ')).filter(Boolean)

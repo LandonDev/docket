@@ -47,6 +47,18 @@ uses the same words when reading older restore labels.
   Rust panic ends only that process (main answers the call with an error and
   forks a fresh one). A test runs the same jobs in its own process
   (`localJobs`).
+- **A workbook another pillar alone writes** opens read only and takes no change. Today that is a Microsoft form's
+  answers workbook (msforms/workbook.ts `isFormsWorkbook`): Forms adds a row for every answer, and a save of ours
+  could write over rows it added meanwhile. Files' hook says so (`readOnlyOf`, files/readOnly.ts, which msforms fills
+  through `registerReadOnlyFile`: sheets never imports msforms); `PackageStore.locked`, set in held.ts, puts its
+  words in `SheetView.readOnly` ("Microsoft Forms writes this workbook. Open it Live in Excel to change it."), and
+  every edit, Undo and restore of that file is refused in those words. A Files tab's copy of one (from the Windows
+  VM) is judged by the file it is a copy of, and Files sends nothing back from it. The sheet tools refuse to write or
+  suggest on it ("refused: Microsoft Forms writes this workbook; no agent changes it. Nothing was written."), before
+  anything is held; `sheet_read` reads it. The office tools' `office_range_write` and `office_range_undo` refuse it
+  too, by its path or web address; a Word or PowerPoint edit is already the held `office.edit`, and a Forms workbook
+  is neither. Another workbook in the same folder is as before. Tests: msforms/workbook.test.ts,
+  office/tools.test.ts.
 - **The patch writer** (`patch/`, from the research lab): replaces only the
   edited `<c>` elements, copies every other part's compressed bytes, and
   patches the cached values IronCalc computes for the edit's dependents.

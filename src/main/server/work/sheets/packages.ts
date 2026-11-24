@@ -150,6 +150,12 @@ export class PackageStore {
     private shared: SharedPlace | null = null
   ) {}
 
+  /**
+   * Why a file takes no change here, by another pillar's word (files/readOnly.ts: a Microsoft form's answers workbook):
+   * its view opens read only with these words, and every write, undo and restore of it is refused. Set by held.ts.
+   */
+  locked: (path: string) => string | null = () => null
+
   private sharedSeen = new Map<string, { at: number; value: boolean }>()
   /** Whether others can open the file, asked of the host's rule and kept for a moment (it reads the disk). */
   isShared(path: string): boolean {
@@ -277,7 +283,8 @@ export class PackageStore {
     const hit = this.inspected.get(path)
     const inspected = hit?.stamp === row.stamp ? hit.value : await this.jobs.inspect(path)
     this.inspected.set(path, { stamp: row.stamp, value: inspected })
-    return { rev: row.rev, inspected, saveError: row.save_error, missing: false }
+    const locked = this.locked(path)
+    return { rev: row.rev, inspected: locked ? { ...inspected, readOnly: locked } : inspected, saveError: row.save_error, missing: false }
   }
 
   /** The package's bytes as revision `rev` stood: the file itself when it is the newest, else its kept copy. */
@@ -330,6 +337,8 @@ export class PackageStore {
     return this.serial(path, async () => {
       // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
       if (!existsSync(path)) throw new NotSaved('This file is not where it was: it was moved or deleted.')
+      const locked = this.locked(path)
+      if (locked) throw new NotSaved(locked)
       const row = this.sync(path)
       if (baseRev > row.rev || (baseRev < row.rev && (this.reloadSince(path, baseRev) || this.listSince(path, baseRev, mutations)))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
@@ -580,6 +589,8 @@ export class PackageStore {
    */
   restore(path: string, rev: number, by: string): Promise<{ rev: number }> {
     return this.serial(path, async () => {
+      const locked = this.locked(path)
+      if (locked) throw new NotSaved(locked)
       const row = this.sync(path)
       const copy = this.copyOf(path, rev)
       if (!existsSync(copy)) throw new Error('That version of the file is no longer kept.')
