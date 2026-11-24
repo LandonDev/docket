@@ -1,5 +1,5 @@
 {
-  "n": 369,
-  "notes": "Work, Nov 23 night (369): the box answers its windows under load (the process scan no longer floods the server; connect and focus are held to 500 ms); a Word file from a Teams library saves by itself, shows its Save line when opened fresh, is no longer called \"already edited\" when it is not, and Replace works on your press; New makes a Word document in a library; a workbook's last edit reaches its file when its tab closes, and a copy's header says Saved only when the file holds the latest edit; the chat beside the mail (Ask, or ⌘L in Mail), narrowed to reading mail and writing drafts; the Windows vault sealed for its user; council fixes to Review, Clashes, Digest, Money, Templates, the phone's reader and Guests.",
-  "ts": 1795496690010
+  "n": 370,
+  "notes": "Word files from Teams save by themselves from what is on screen and are never deleted with their tab while your words may be in them; New → Document works in a Teams library; Save as Word to… a folder you pick; a Work workspace reopens where you left it; no code or git parts in Work threads; a close × on every file beside a chat; real Office live in a Files tab (Edit here or Live, per file); sheet and Files fixes from the review; a refused file watch never stops the box starting.",
+  "ts": 1795504739372
 }
