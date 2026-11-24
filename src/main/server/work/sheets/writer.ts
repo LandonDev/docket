@@ -474,6 +474,12 @@ export function tablesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string 
 }
 
 /** The cells, styles and shape of the workbook as a new .xlsx; `names` is each sheet's tab name in it and `ids` the sheets' ids in the file's order. */
+/**
+ * Whether a workbook holds a formula: only then is Excel asked to work the file out again on load. One with none (a
+ * .tsv read as an Excel copy) has nothing to work out, and a value of it read later stands as written (jobs.ts `unworkedIn`).
+ */
+const anyFormula = (sheets: readonly IWorksheetData[]): boolean => sheets.some((sh) => Object.values(sh.cellData ?? {}).some((row) => Object.values(row ?? {}).some((c) => !!(c as { f?: unknown; si?: unknown } | null)?.f || !!(c as { si?: unknown } | null)?.si)))
+
 function writeCells(wb: IWorkbookData): { bytes: Uint8Array; names: Map<string, string>; ids: string[] } {
   const look = lookOf(wb)
   const pools: Pools = {
@@ -514,7 +520,7 @@ function writeCells(wb: IWorkbookData): { bytes: Uint8Array; names: Map<string, 
   files.set(
     'xl/workbook.xml',
     enc.encode(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS}" xmlns:r="${R}"><bookViews><workbookView/></bookViews><sheets>${entries.join('')}</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS}" xmlns:r="${R}"><bookViews><workbookView/></bookViews><sheets>${entries.join('')}</sheets><calcPr calcId="191029"${anyFormula(sheets) ? ' fullCalcOnLoad="1"' : ''}/></workbook>`
     )
   )
   files.set(

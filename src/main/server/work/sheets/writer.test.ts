@@ -261,3 +261,15 @@ describe('the tables of a sheet made here, in its export', () => {
     expect(again.sheets[again.sheetOrder[0]!]!.cellData?.[1]?.[0]?.v).toBe('Venue')
   })
 })
+
+describe('the ask to work the file out again on load', () => {
+  const workbookXml = (bytes: Uint8Array): string => readText(readZip(bytes), 'xl/workbook.xml')
+  it('is made only for a workbook that holds a formula: one with none (a .tsv read as an Excel copy) keeps the values it has', () => {
+    // Council r2 (Sol 11): every copy of a .tsv asked it, so a value worked out later read as untrusted.
+    const plain = blankWorkbook('workbook', 'Scores')
+    plain.sheets.sheet1!.cellData = { 0: { 0: { v: 'Item' }, 1: { v: 3 } } }
+    expect(workbookXml(writeXlsx(plain))).not.toContain('fullCalcOnLoad')
+    plain.sheets.sheet1!.cellData[1] = { 1: { f: '=B1*2', v: 6 } }
+    expect(workbookXml(writeXlsx(plain))).toContain('fullCalcOnLoad="1"')
+  })
+})

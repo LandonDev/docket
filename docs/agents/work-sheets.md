@@ -490,7 +490,12 @@ the file's own name.
   asks Excel to calculate again on load) is refused (`packageCsv`: "The
   formula in B2 has no value worked out yet, so the sheet cannot be written
   as text. Save as Excel to keep your edits."), and the file keeps its bytes;
-  Export → CSV of a package refuses the same. The copy's saves are held
+  Export → CSV of a package refuses the same, and so do Preview's CSV and
+  TSV and their export (LibreOffice writes the values the file keeps and
+  works none out, `unworkedIn`); a sheet of values alone draws as it is.
+  Our model writer asks for the work-out on load only of a workbook that
+  holds a formula, so a .tsv's copy is not untrusted from birth. (PDF and
+  the other formats still draw the kept values: see "Known limits".) The copy's saves are held
   while it converts and is stamped (`PackageStore.holding`), so the stamp
   names the copy that went back, and the window sends his last edit first
   (sync.ts `written`).
@@ -1778,6 +1783,13 @@ The harness corpus also keeps the workbooks the editors plan measured with
   engine.
 
 ## Known limits
+
+- Preview's PDF, Print, OpenDocument, Excel 97-2003 and web page of an
+  opened Excel file are LibreOffice's from the values the file keeps: one
+  that asks to be worked out on load (a save here with no engine, a file a
+  generator wrote) draws the kept values, which may be from before an edit.
+  Recalculating first needs a `+calc` pair for each (as Save back's
+  `xls+calc`, formatsInBack.ts): for the owner.
 
 - The `/internal/sheet/<op>` routes main calls sit behind the same secret
   the LifeOS worker holds, and take `by` and the sheet on trust: the

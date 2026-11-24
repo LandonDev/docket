@@ -471,16 +471,29 @@ export function packageRules(path: string): PackageRules {
  */
 export function packageCsv(path: string, sheet?: string): string {
   const { workbook } = importPackage(path)
+  const cell = unworkedIn(workbook, () => new Uint8Array(readFileSync(path)), sheet)
+  if (cell) throw new Error(notWorkedOut(cell))
+  return writeCsv(workbook, sheet)
+}
+
+/** Why a sheet is not written out as text, in his words. */
+export const notWorkedOut = (cell: string): string => `The formula in ${cell} has no value worked out yet, so the sheet cannot be written as text.`
+
+/**
+ * The first formula of a sheet (the first sheet when none is named) whose value is not worked out, as A1, or null: no
+ * value is kept beside it, or the file asks to be calculated again on load, so none it keeps can be trusted.
+ */
+export function unworkedIn(workbook: IWorkbookData, bytes: () => Uint8Array, sheet?: string): string | null {
   const id = sheet === undefined ? workbook.sheetOrder[0] : workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === sheet)
-  let later: boolean | undefined
   const cells = ((id && workbook.sheets[id]?.cellData) || {}) as Record<string, Record<string, ICellData | null | undefined>>
+  let later: boolean | undefined
   for (const [r, cols] of Object.entries(cells))
     for (const [c, cell] of Object.entries(cols ?? {})) {
       if (!cell?.f && !cell?.si) continue
-      later ??= CALC_ON_LOAD.test(workbookMap(readZip(new Uint8Array(readFileSync(path)))).wbXml)
-      if (later || cell.v === undefined || cell.v === null) throw new Error(`The formula in ${cellName(Number(r), Number(c))} has no value worked out yet, so the sheet cannot be written as text.`)
+      later ??= CALC_ON_LOAD.test(workbookMap(readZip(bytes())).wbXml)
+      if (later || cell.v === undefined || cell.v === null) return cellName(Number(r), Number(c))
     }
-  return writeCsv(workbook, sheet)
+  return null
 }
 const CALC_ON_LOAD = /<(?:[\w.-]+:)?calcPr(?=[\s>/])[^>]*\bfullCalcOnLoad\s*=\s*["'](?:1|true)["']/
 

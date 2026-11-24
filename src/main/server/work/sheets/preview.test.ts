@@ -109,6 +109,12 @@ const book = (name: string): string => {
   copyFileSync(join(CORPUS, name), path)
   return path
 }
+/** A workbook as Excel saves it: no ask to work it out again on load, so the values kept beside its formulas stand (the corpus is XlsxWriter's, which asks). */
+const settled = (path: string): string => {
+  const z = readZip(new Uint8Array(readFileSync(path)))
+  writeFileSync(path, writeZip(z, new Map([['xl/workbook.xml', new TextEncoder().encode(readText(z, 'xl/workbook.xml').replace(/\s*fullCalcOnLoad="1"/, ''))]]), new Set(), new Map()))
+  return path
+}
 /** Every file under the data folder, as paths inside it. */
 const tree = (root = dir): string[] => (existsSync(root) ? readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => relative(dir, join(e.parentPath, e.name))) : [])
 
@@ -242,7 +248,7 @@ describe('the formats', () => {
   })
 
   it('draws CSV and TSV as one sheet\'s table, with the sheets to pick from', async () => {
-    const item = itemOf(book('formulas.xlsx'))
+    const item = itemOf(settled(book('formulas.xlsx')))
     const csv = await previewSheet(sheetsOf(), item, { format: 'csv', sheet: 'Calc' })
     expect(jobs[0].options?.filter).toBe(textFilter(44, 2))
     expect(csv).toMatchObject({ kind: 'table', name: 'Calc', rows: [['Item', 'Cost'], ['Hotel, two nights', '240'], ['Taxi', '35']], sheets: ['Data', 'Calc', 'Dynamic', 'Q1', 'Q2', 'Q3'] })
@@ -250,6 +256,18 @@ describe('the formats', () => {
     const tsv = await previewSheet(sheetsOf(), item, { format: 'tsv' })
     expect(jobs[1]).toMatchObject({ from: 'xlsx', to: 'tsv', options: { filter: textFilter(9, 1) } })
     expect(tsv).toMatchObject({ kind: 'table', name: 'Data', rows: [['Item', 'Cost'], ['Hotel, two nights', '240'], ['Taxi', '35']] })
+  })
+
+  it('draws no CSV or TSV, and exports none, of an opened Excel file whose kept values cannot be trusted', async () => {
+    // Council r2 (Sol 11): LibreOffice writes the values the file keeps, and a save with no engine left them from before the edit.
+    const path = book('formulas.xlsx')
+    const words = 'The formula in B2 has no value worked out yet, so the sheet cannot be written as text.'
+    await expect(previewSheet(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Calc' })).rejects.toThrow(words)
+    await expect(previewSheet(sheetsOf(), itemOf(path), { format: 'tsv', sheet: 'Calc' })).rejects.toThrow(words)
+    await expect(exportPreview(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Calc' })).rejects.toThrow(words)
+    expect(jobs).toEqual([])
+    // a sheet of values alone is drawn as it is
+    expect(await previewSheet(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Data' })).toMatchObject({ kind: 'table' })
   })
 
   it('draws the web page as its HTML', async () => {
@@ -260,7 +278,7 @@ describe('the formats', () => {
   })
 
   it('exports the file as it stands; an opened Excel file is its own bytes', async () => {
-    const path = book('formulas.xlsx')
+    const path = settled(book('formulas.xlsx'))
     const out = await exportPreview(sheetsOf(), itemOf(path), { format: 'xlsx' })
     expect(out.name).toBe('Budget.xlsx')
     const read = Buffer.from(readSheetPreview(ctxOf(), itemOf(path), { rev: out.rev, offset: 0, length: out.size }).data, 'base64')

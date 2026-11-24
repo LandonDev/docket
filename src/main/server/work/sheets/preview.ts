@@ -12,6 +12,8 @@ import { libreOffice } from '../formats/index'
 import type { Converter } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { chartsOf, heldOf, host, sharedPreviews, sharedPreviewsRoot, storeKey, type Held, type Sheets } from './held'
+import { importXlsx } from 'work-kit/sheet/xlsx'
+import { notWorkedOut, unworkedIn } from './jobs'
 import { workbookMap } from './patch/patch'
 import { readText, readZip, writeZip } from './patch/zip'
 import { factsOfPackage, factsOfWorkbook, fitOf, sheetDrops, sheetFor, type BookFacts } from './previewFacts'
@@ -436,7 +438,14 @@ export async function fileOf(job: Job, format: SheetPreviewFormat, sheet?: strin
     made = join(book.scratch, `${randomUUID()}.${ext}`)
     writeFileSync(made, book.bytes, { mode: 0o600 })
   } else if (format === 'pdf') made = (await pdfOf(job, book.kind, withoutBreaksUnderFit(book.bytes) ?? book.bytes, 1, null)).path
-  else if (format === 'csv' || format === 'tsv') made = await convert(job, book.kind, format === 'csv' ? 'csv' : 'tsv', book.bytes, { filter: textFilter(format === 'csv' ? 44 : 9, at!) })
+  else if (format === 'csv' || format === 'tsv') {
+    // LibreOffice writes the values an opened Excel file keeps beside its formulas and works none out again: a sheet
+    // whose kept values cannot be trusted (none, or the file asks to be calculated on load) is refused, as its Save
+    // back and Export are (jobs.ts `packageCsv`), never drawn or written with an empty or an old field.
+    const cell = book.package ? unworkedIn(importXlsx(book.bytes).workbook, () => book.bytes, tab!.name) : null
+    if (cell) throw new Error(notWorkedOut(cell))
+    made = await convert(job, book.kind, format === 'csv' ? 'csv' : 'tsv', book.bytes, { filter: textFilter(format === 'csv' ? 44 : 9, at!) })
+  }
   else made = await convert(job, book.kind, format, book.bytes)
   const name = `${book.stem}${tab && book.facts.sheets.filter((s) => !s.chart).length > 1 ? ` - ${tab.name}` : ''}.${ext}`.replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
   return book.store.put({ rev, ext, key: book.key, size: statSync(made).size, name }, made)
