@@ -493,6 +493,20 @@ describe('a tab closed before its changes reached the file', () => {
     expect(existsSync(copy)).toBe(false)
   })
 
+  it('closed while a send is on its way, keeps the newer write made during it and sends that before letting go', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    let open!: () => void
+    hold = new Promise((r) => (open = r))
+    await editorSaves(copy, 'two')
+    // "two" is on its way; "three" is written to the copy, then the tab closes before the Mac answers.
+    await editorSaves(copy, 'three')
+    await call('work.files.tabClose', { tabId })
+    open()
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('three')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+  })
+
   it('Discard drops the copy and what waits in it at once', async () => {
     const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
     macUp = false

@@ -209,7 +209,7 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
   if (hash === r.sent) {
     // The file holds these bytes already: the writes up to this look are in it, and that is known now.
     if (r.held < r.writes) ctx.db.prepare(`UPDATE work_files_copies SET held = ?, saved_at = ? WHERE id = ?`).run(r.writes, Date.now(), r.id)
-    if (r.closed) return letGo(ctx, r)
+    if (r.closed) return letGoIfHeld(ctx, r.id)
     if (r.state !== 'ok') setState(ctx, r, 'ok')
     else if (r.held < r.writes) said(ctx, r.workspace_id)
     return
@@ -228,9 +228,24 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
   if (!('version' in got)) return setState(ctx, r, 'refused', { detail: 'The other computer answered something else.' })
   // The bytes read after write `r.writes` landed: the file holds that write (a later one asks for its own send).
   ctx.db.prepare(`UPDATE work_files_copies SET version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL, held = MAX(held, ?) WHERE id = ?`).run(got.version, hash, Date.now(), r.writes, r.id)
-  const after = row(ctx, r.id)
-  if (after?.closed) return letGo(ctx, after)
+  if (row(ctx, r.id)?.closed) return letGoIfHeld(ctx, r.id)
   said(ctx, r.workspace_id)
+}
+
+/**
+ * A closed tab's copy goes only once its file holds the copy's latest write: a write that landed while a send was on
+ * its way (counted, or found in the bytes) keeps the copy, and its send runs next, never a let-go that takes it.
+ */
+async function letGoIfHeld(ctx: WorkCtx, id: string): Promise<void> {
+  const r = row(ctx, id)
+  if (!r) return
+  const now = await readFile(r.copy).catch(() => null)
+  const after = row(ctx, id)
+  if (!after) return
+  if (after.held >= after.writes && (!now || sha(now) === after.sent)) return letGo(ctx, after)
+  const flight = flights.get(id)
+  if (flight) flight.again = true
+  else void sendBack(ctx, id)
 }
 
 const flights = new Map<string, { run: Promise<void>; again: boolean }>()

@@ -1868,7 +1868,9 @@ over a file that changed there.
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is
     kept with its record and sent (`copiesLeft`, from the module's `itemsRemoved`); the office pillar's drop of a
     closed item's folder leaves any folder a record names (`copyKeptIn`), so the order the pillars hear in never
-    matters. The copy goes with its record only once nothing waits in it (`letGo`).
+    matters. The copy goes with its record only once nothing waits in it: the file holds the copy's latest write and
+    the copy's bytes are the ones last sent (`letGoIfHeld`, then `letGo`). A write that lands while a send is on its
+    way keeps the copy, and its own send runs next, even after the tab closed.
   - Opened again, a copy whose bytes are not what its file holds is shown as it is, never read over (`copyWaits`).
   - At start an open copy holding bytes its file does not (the host stopped before it was sent) is sent once its
     computer answers (`settleCopies`, `retryWaiting`).
