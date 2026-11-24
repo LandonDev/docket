@@ -25,6 +25,11 @@ describe('badJsxTags', () => {
     expect(badJsxTags(source)).toEqual([])
   })
 
+  it("passes Electron's guest tag, which a live Office file's layer makes by document.createElement", () => {
+    expect(badJsxTags('const el = doc.createElement("webview");')).toEqual([])
+    expect(badJsxTags('jsx("webviewer", {})')).toEqual(['webviewer'])
+  })
+
   it("passes a namespaced name, which only a DOM factory's call has (pdf.js's svg:line)", () => {
     expect(badJsxTags('svgFactory.createElement("svg:line");svgFactory.createElement("svg:g")')).toEqual([])
   })

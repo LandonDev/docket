@@ -147,7 +147,9 @@ export const KNOWN_TAGS = new Set(
     // MathML roots KaTeX renders
     'math semantics mrow mi mn mo ms mtext annotation ' +
     // Vendor: parse5's fragment parser makes a placeholder node with createElement("documentmock").
-    'documentmock'
+    'documentmock ' +
+    // Electron's guest page: a live Office file's `<webview>`, made by document.createElement (work/office/live/layer.ts).
+    'webview'
   ).split(' ')
 )
 
