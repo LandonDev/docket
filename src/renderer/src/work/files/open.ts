@@ -1,12 +1,11 @@
 import type { FilesOpened, FileTab } from "@shared/contract-work-files";
 import { canvasSourcePath, type CanvasItem, type CanvasKind, type CanvasSource } from "@shared/work";
-import { kindOfEntry, threadCanvasOf, type FileEntry } from "@shared/work/files";
+import { kindOfEntry, type FileEntry } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { bridgeNewThread } from "../../lib/macBridge";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
-import type { WireSessionMeta, WorkspaceMeta } from "../../lib/tcserver/types";
+import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workOpenPort } from "../../lib/workSwitch";
 import { openItem, setFolded } from "../canvas/store";
 import { openWay, type PlaceCopy } from "./model";
@@ -15,8 +14,8 @@ import { openFileTab } from "./store";
 /**
  * How a file opens from the Files place (docs/agents/work-files.md "A tab"): in a tab of its own on the workspace's
  * host, with no thread; a file of another computer as a copy he allowed; a file no canvas shows, in its own app
- * where it lies. A workspace whose host is a release behind keeps no tabs: there a file opens as it always did, in
- * a new thread's canvas with the thread folded away.
+ * where it lies. A workspace whose host is a release behind keeps no tabs: there a file opens in its own app where
+ * it lies, and no thread is made for it.
  */
 
 /** What a row says while its file is on its way: the one word beside its spinner. */
@@ -37,16 +36,6 @@ export interface OpenFrom {
 
 const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: refusalWords(err) || undefined }));
 const readMs = (copy: PlaceCopy, ms: number): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: ms } : {});
-const isOffice = (name: string): boolean => /\.(xlsx|xlsm|xlsb|xls|docx|docm|doc|rtf|odt|pptx|pptm|ppt|odp)$/i.test(name);
-
-/** A new thread in the workspace, titled for the file. Nothing runs until he writes. */
-async function newThread(workspace: OpenFrom["workspace"], title: string): Promise<string> {
-  const link = registry.linkOf(workspace.environmentId);
-  const wire = await link.request<WireSessionMeta>("session.create", { workspaceId: workspace.id, cwd: workspace.path, threadType: "chat", title });
-  sessionStore.adopt({ ...wire, environmentId: link.environmentId }, { created: true });
-  await bridgeNewThread(link.environmentId, wire.id).catch(() => {});
-  return wire.id;
-}
 
 /** A thread's item on screen: opened and shown in its pane, the thread folded away or beside it. */
 async function showInThread(environmentId: string, sessionId: string, what: { itemId: string } | { kind: CanvasKind; source: CanvasSource; title: string }, folded: boolean): Promise<void> {
@@ -106,7 +95,7 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
   if (way === "app") {
     // A switch that decides what he sees is never only in Settings: where the copy being off is why, the refusal turns it on.
     const shown = kindOfEntry(entry.name).canvas !== null;
-    if (!here && !from.copy && shown && from.allowed) {
+    if (from.tabs && !here && !from.copy && shown && from.allowed) {
       const where = copy.place.vm ? "the Windows VM" : copy.host;
       void loadToast().then((toast) =>
         toast.message(`Teams files open on ${where} for this workspace.`, {
@@ -131,7 +120,6 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     return null;
   }
   try {
-    if (way === "thread") return await openInThread(entry, copy, from, here);
     if (here) {
       await fetched(entry, copy, from);
       from.busy({ key: entry.key, word: "Opening…" });
@@ -154,43 +142,6 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
   } finally {
     from.busy(null);
   }
-}
-
-/** As it opened before there were tabs: in a new thread's canvas, the thread folded away; the thread that already holds it shows it again. */
-async function openInThread(entry: FileEntry, copy: PlaceCopy, from: OpenFrom, here: boolean): Promise<null> {
-  const ref = entry.ref!;
-  const ws = registry.linkOf(from.workspace.environmentId);
-  const held = await heldBy(from.workspace, ref, from.tabs);
-  if (held) {
-    if (held.source.at === "microsoft") await registry.linkOf(copy.link).request("work.office.filesOpen", { source: ref });
-    await showInThread(from.workspace.environmentId, held.sessionId, { itemId: held.itemId }, true);
-    return null;
-  }
-  const kind = threadCanvasOf(entry.name)!;
-  let sessionId: string | null = null;
-  try {
-    let source: CanvasSource = ref;
-    if (here) {
-      await fetched(entry, copy, from);
-      from.busy({ key: entry.key, word: "Opening…" });
-      const app = ref.at === "file" && isOffice(entry.name) ? (/\.(xls|xlsx|xlsm|xlsb)$/i.test(entry.name) ? "excel" : /\.(ppt|pptx|pptm|odp)$/i.test(entry.name) ? "powerpoint" : "word") : null;
-      if (app && ref.at === "file") {
-        source = { at: "microsoft", host: ref.host, app, name: entry.name, ref: { kind: "path", path: ref.path } };
-        await registry.linkOf(copy.link).request("work.office.filesOpen", { source: ref });
-      }
-      sessionId = await newThread(from.workspace, entry.name);
-    } else {
-      // A copy lands in its thread's folder, so the thread comes first, and goes again if the copy fails.
-      from.busy({ key: entry.key, word: entry.local === false ? "Downloading…" : "Opening…" });
-      sessionId = await newThread(from.workspace, entry.name);
-      source = (await ws.request<{ source: CanvasSource }>("work.office.filesCopy", { sessionId, source: ref })).source;
-    }
-    await showInThread(from.workspace.environmentId, sessionId, { kind: source.at === "microsoft" ? ({ excel: "sheet", word: "document", powerpoint: "slides" } as const)[source.app] : kind, source, title: entry.name }, true);
-  } catch (err) {
-    if (sessionId && !here) void ws.request("session.delete", { sessionId }).catch(() => {});
-    throw err;
-  }
-  return null;
 }
 
 /** The file a tab shows, as its place names it: the item's own source, or for a copy the file it was made of. */

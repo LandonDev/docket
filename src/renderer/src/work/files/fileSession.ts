@@ -89,7 +89,8 @@ export class FileSession {
   /** Reads the file: as text where it is text this editor keeps whole, else its facts. */
   async load(): Promise<void> {
     try {
-      if (!triedAsText(this.of.name, undefined)) return await this.facts();
+      // A Drive file that is no Google file has no bytes here to read: it is its facts, with Open in Drive.
+      if (this.of.source.at === "google" || !triedAsText(this.of.name, undefined)) return await this.facts();
       const got = await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: this.of.itemId, offset: 0, length: FILE_TEXT_MAX });
       if (this.disposed) return;
       if (!got.end) return await this.facts(`Over ${FILE_TEXT_MAX / 1024 / 1024} MB, too big to edit here.`);

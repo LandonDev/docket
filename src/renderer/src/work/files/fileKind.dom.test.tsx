@@ -38,6 +38,8 @@ vi.mock("../../lib/connection", async (original) => {
         return { data: b64(file.text), size: file.text.length, version: `v${file.version}`, changed: file.changed, end: true, ...(file.locked ? { locked: file.locked } : {}) } satisfies FileBytes;
       }
       if (method === "work.files.stat") {
+        // A Drive file picked in Google: its facts as Drive says them.
+        if ((params.refs as { at: string }[])[0]?.at === "google") return { entries: [{ key: "google:pScan", ref: (params.refs as CanvasSource[])[0]!, folder: null, name: "Scan.pdf", kind: "other", size: 2048, changed: AT, shared: true } satisfies FileEntry] };
         return {
           entries: (params.refs as unknown[]).map((ref) => {
             const file = disk.files.get(pathOf(ref)) as Kept | undefined;
@@ -65,6 +67,9 @@ vi.mock("../../lib/connection", async (original) => {
   });
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: () => undefined, environments: () => [], onLink: () => () => undefined } };
 });
+// Open in Drive goes to the system's browser.
+const opened = vi.hoisted(() => [] as string[]);
+vi.mock("../../lib/native", async (original) => ({ ...(await original<typeof import("../../lib/native")>()), openUrl: async (url: string) => void opened.push(url) }));
 // The editor's stand-in: a field that shows the text it was given and reports what is typed, read only when told.
 vi.mock("./FileTextEditor", () => ({
   FileTextEditor: ({ name, text, readOnly, onChange }: { name: string; text: string; readOnly: boolean; onChange(text: string): void }) => (
@@ -197,6 +202,21 @@ describe("a file no editor here shows", () => {
     // Its bytes are not read to show its facts, and the header keeps the frame's own line.
     expect(disk.calls.map((c) => c.method).filter((m) => m !== "work.files.archive")).toEqual(["work.files.stat"]);
     expect(document.querySelector("[data-files-header]")!.textContent).toContain("In Events");
+  });
+
+  it("shows a picked Drive PDF as its facts with Open in Drive alone, and reads none of its bytes", async () => {
+    opened.length = 0;
+    show("/w/Scan.pdf", { item: { source: { at: "google", account: "landon@example.com", fileId: "pScan", mime: "application/pdf" } } });
+    const facts = await waitFor(() => {
+      const el = document.querySelector("[data-file-facts]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(facts.textContent).toContain("2 KB");
+    expect([...facts.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Open in Drive"]);
+    fireEvent.click(screen.getByRole("button", { name: "Open in Drive" }));
+    expect(opened).toEqual(["https://drive.google.com/file/d/pScan/view"]);
+    expect(disk.calls.map((c) => c.method)).toEqual(["work.files.stat"]);
   });
 
   it("lists what a zip holds under its facts, from its directory alone, and says when it holds more", async () => {

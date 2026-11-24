@@ -5,6 +5,7 @@ import { extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { openUrl } from "../../lib/native";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -125,13 +126,21 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
+  // A Drive file no editor here reads (a picked PDF or workbook) has no bytes here: it opens where Drive keeps it.
+  const drive = source.at === "google" ? source.fileId : null;
   // A sound is played here and a zip lists what it holds: both read the file where it lies, on a press or as its listing alone.
-  const here = entry && !cloudOnly ? { ...entry, ref: source } : null;
+  const here = entry && !cloudOnly && !drive ? { ...entry, ref: source } : null;
   const sound = here && kind === "audio" ? here : null;
   const zip = here && extOf(name) === "zip" ? here : null;
   const from = useMemo(() => hostFrom(env, workspaceId), [env, workspaceId]);
   const archive = useArchive(zip ? from : null, zip, !!zip);
-  const ways = entry ? (
+  const ways = !entry ? null : drive ? (
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" size="sm" onClick={() => void openUrl(`https://drive.google.com/file/d/${encodeURIComponent(drive)}/view`)}>
+        Open in Drive
+      </Button>
+    </div>
+  ) : (
     <div className="flex items-center gap-2">
       {inLibrary ? (
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => run("app", () => link().request("work.office.filesOpen", { source }).then(() => undefined))}>
@@ -144,7 +153,7 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
         </Button>
       ) : null}
     </div>
-  ) : null;
+  );
   if (sound)
     return (
       <div data-file-facts="audio" className="flex min-h-0 flex-1 flex-col bg-background">

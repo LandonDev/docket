@@ -2,7 +2,7 @@ import type { FileCrumb, FilePage, FilesPlaces, FileTab } from "@shared/contract
 import { clampDock as clampDockIn, DOCK_FOLD_AT, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds } from "../dock/shapes";
 import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
-import { kindOfEntry, PLACE, refKey, refusal, threadCanvasOf, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
+import { kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
 import { placesIn, type LibraryPlace } from "@shared/work/filePlaces";
 
 /**
@@ -189,24 +189,19 @@ export function trailOf(row: PlaceRow | null, trail: readonly FileCrumb[]): File
 
 /**
  * How a file opens from a row: `tab` in the Files pane, on the workspace's host (a file of another computer comes
- * as a copy he allowed); `thread` as it did before there were tabs, in a new thread's canvas, for a workspace whose
- * host is a release behind and keeps none; `app` in its own app where it lies: an old Office form or a sound in a
- * library, which has its app behind it and no viewer here, and any file where no copy is allowed. In a tab every
+ * as a copy he allowed); `app` in its own app where it lies: an old Office form or a sound in a library, which has
+ * its app behind it and no viewer here, any file where no copy is allowed, and every file of a workspace whose host
+ * is a release behind and keeps no tabs (opening a file never makes a thread he did not ask for). In a tab every
  * file opens (`seatOf`): what has no viewer of its own shows its facts.
  */
-export type OpenWay = "tab" | "thread" | "app";
+export type OpenWay = "tab" | "app";
 
 export function openWay(entry: Pick<FileEntry, "name" | "kind">, copy: Pick<PlaceCopy, "link" | "place" | "wire">, workspace: { link: string; tabs: boolean; copy: boolean }): OpenWay {
+  if (!workspace.tabs) return "app";
   const what = kindOfEntry(entry.name);
   const library = LIBRARY.includes(copy.place.kind);
   const here = copy.link === workspace.link && !copy.place.vm;
   const office = library && here && isOffice(entry.name);
-  if (!workspace.tabs) {
-    // Beside a thread the `file` kind does not seat yet: text and sound in a library, and what no kind shows, open in their app.
-    const shown = threadCanvasOf(entry.name) !== null && !(library && (what.kind === "text" || what.kind === "audio"));
-    if (!shown && !office) return "app";
-    return !here && !workspace.copy ? "app" : "thread";
-  }
   if (library && !office && (what.canvas === null || what.kind === "audio")) return "app";
   if (!here && !workspace.copy) return "app";
   return "tab";

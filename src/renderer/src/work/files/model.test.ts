@@ -188,9 +188,8 @@ describe("where a file opens", () => {
     expect(openWay(f("Deck.pdf"), vm, { ...ws, copy: false })).toBe("app");
   });
 
-  it("opens as it always did, in a thread, for a workspace whose host keeps no tabs", () => {
-    expect(openWay(f("Plan.docx"), here, { ...ws, tabs: false })).toBe("thread");
-    expect(openWay(f("bundle.zip"), here, { ...ws, tabs: false })).toBe("app");
+  it("opens in its own app, never in a thread he did not ask for, for a workspace whose host keeps no tabs", () => {
+    for (const place of [here, far, vm]) for (const name of ["Plan.docx", "Deck.pdf", "bundle.zip"]) expect(openWay(f(name), place, { ...ws, tabs: false })).toBe("app");
   });
 
   it("names a file's own app", () => {

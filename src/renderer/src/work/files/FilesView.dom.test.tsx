@@ -258,6 +258,7 @@ function oldHost(): Host {
     answer(method, params) {
       if (method === "work.office.filesLibraries") return libraries;
       if (method === "work.office.filesCopyGet") return { on: false };
+      if (method === "work.office.filesOpen") return { opened: true };
       if (method === "work.office.filesList") {
         const path = (params.source as { path: string }).path;
         return { entries: path === "/cloud/Staff/General" ? [{ name: "Plan.docx", path: "/cloud/Staff/General/Plan.docx", library: "old~1", kind: "document", size: 9, modified: 5, local: true, by: "Sam Ortiz" }, { name: "Budgets", path: "/cloud/Staff/General/Budgets", library: "old~1", kind: "folder", size: 0, modified: 4, local: true, by: null }] : [] };
@@ -720,6 +721,10 @@ describe("a host a release behind", () => {
     // Nothing of the new wire was asked again once it was found missing, and no tab went to the host.
     expect(calls(host, "work.files.tabOpen")).toEqual([]);
     expect(calls(host, "work.files.list")).toEqual([]);
+    // A file there opens in its own app where it lies: no thread is made for it.
+    fireEvent.doubleClick(row("Plan.docx"));
+    await waitFor(() => expect(calls(host, "work.office.filesOpen")).toMatchObject([{ params: { source: { at: "file", host: "env_box", path: "/cloud/Staff/General/Plan.docx" } } }]));
+    expect(calls(host, "session.create")).toEqual([]);
   });
   it("still keeps its tabs in the window when another computer answered first", async () => {
     const mac = newHost({ places: [] });
