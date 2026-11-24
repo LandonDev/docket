@@ -441,16 +441,22 @@ accounts under these OneDrive settings directories:
 
 `global.ini` gives the active `cid`. In `<cid>.ini`, `libraryScope` pairs the mount path
 with `ClientPolicy.ini` for My files or a matching `ClientPolicy_*.ini` for a Teams
-library. The policy's `DavUrlNamespace` gives the HTTPS folder address. `libraryFolder`
-and `AddedScope` also need folder names and parent IDs from `<cid>.dat` or the
-checkpointed `SyncEngineDatabase.db`. The reader caches each account by its settings
-file times. It reads OneDrive's metadata and resolves mount aliases without reading
-the contents of synced files. Files matches mounts by real path without regard to
-case. Live Office uses the closest known mount, including a shortcut within My files.
-These are private formats and the installed Mac client still needs a check. Run
-`bun scripts/probe-mac-onedrive.ts` on that Mac to print the mount and namespace pairs
-and compare them with the VM and the My files trial. Under Bun the reader uses the
-system `/usr/bin/sqlite3` for the checkpointed database. [Public format reference](https://gist.github.com/guwidoe/038398b6be1b16c458365716a921814d)
+library. The policy's `DavUrlNamespace` gives the HTTPS folder address. The App Store
+client also writes `ClientPolicy_<library ID>_<site ID>.ini` and can keep old mount
+paths after moving them into File Provider. The reader checks CloudStorage for
+`OneDrive-<account domain>`, `OneDrive-<account domain>-<SiteTitle>`, or that site
+name followed by the folder display name with spaces removed. It falls back to the
+INI path if that directory still exists.
+
+For `libraryFolder`, the reader follows the folder resource ID and its parents
+from the checkpointed `SyncEngineDatabase.db` or legacy `<cid>.dat`. A missing
+folder or parent leaves the mount without a OneDrive web address, so Live Office
+can use its synced twin. `AddedScope` uses the same folder records to locate a
+shortcut in My files. The reader caches settings by file time and checks mounts
+on each lookup. It reads OneDrive's metadata and directory names only.
+`bun scripts/probe-mac-onedrive.ts` lists the mount and namespace pairs. Under Bun
+it uses the system `/usr/bin/sqlite3` to read the checkpointed database.
+[Public format reference](https://gist.github.com/guwidoe/038398b6be1b16c458365716a921814d)
 
 **Windows PC.** TempCode runs `reg query` under the signed-in Windows user for
 `HKCU\Software\SyncEngines\Providers\OneDrive`. A provider subkey supplies

@@ -22,6 +22,12 @@ const SHORTCUT_WEB = 'https://example.sharepoint.com/sites/Other/Archive'
 const SETTINGS_WEB = 'https://example.sharepoint.com/sites/Old/Documents'
 const APP_STORE = 'Library/Containers/com.microsoft.OneDrive-mac/Data/Library/Application Support/OneDrive/settings'
 const STANDALONE = 'Library/Group Containers/UBF8T346G9.OneDriveStandaloneSuite/OneDrive.noindex/OneDrive/settings'
+const RECWELL_WEB = 'https://example.sharepoint.com/sites/RecWell/Shared%20Documents'
+const RECWELL_FOLDERS = [
+  { id: '1'.repeat(32), name: 'Team RecWell', mount: 'TeamRecWell' },
+  { id: '2'.repeat(32), name: 'Sport Programs', mount: 'SportPrograms' },
+  { id: '3'.repeat(32), name: 'AI Task Force', mount: 'AITaskForce' }
+]
 
 let home: string
 let cloud: string
@@ -60,6 +66,36 @@ function fixture(rows: string[], teamPolicy = `ClientPolicy_${LIBRARY}${SITE}.in
   writeFileSync(join(settings, `ClientPolicy_${LIBRARY}${SITE}${LINK}.ini`), policy(SHORTCUT_WEB))
 }
 
+/** The App Store client's folder-only sync records, with fixture account and resource IDs. */
+function appStoreFixture() {
+  settings = join(home, APP_STORE, 'Business1')
+  mkdirSync(settings, { recursive: true })
+  const myMount = join(cloud, 'OneDrive-example.edu')
+  const folders = RECWELL_FOLDERS.map((folder) => ({
+    ...folder,
+    previous: join(home, 'example.edu', `RecWell - ${folder.name}`),
+    path: join(cloud, `OneDrive-example.edu-RecWell-${folder.mount}`)
+  }))
+  for (const path of [myMount, ...folders.map((f) => f.path)]) mkdirSync(path)
+  const scope0 = `libraryScope = 0 0 0 0 "MySite" "ODB" https://example-my.sharepoint.com/personal/alex_example_edu 0 0 0 0 0 "${home}/OneDrive - example.edu" 0 00000000-0000-0000-0000-000000000000`
+  const scope1 = `libraryScope = 1 1 0 0 "RecWell" "Documents" https://example.sharepoint.com/sites/RecWell 0 ${SITE} ${WEB} ${LIBRARY} 0 "" 0 00000000-0000-0000-0000-000000000000`
+  const rows = [scope0, scope1, ...folders.map(({ id, name, previous }, index) =>
+    `libraryFolder = ${index} 1 ${id}+1 0 "${previous}" "${name}" 0 00000000-0000-0000-0000-000000000000`)]
+  const account = join(settings, `${CID}.ini`)
+  writeFileSync(account, rows.join('\n'))
+  writeFileSync(join(settings, 'global.ini'), `cid = ${CID}\n`)
+  writeFileSync(join(settings, 'ClientPolicy.ini'), policy(MINE_WEB + '/') + 'SiteTitle = Alex Example\n')
+  writeFileSync(join(settings, `ClientPolicy_${LIBRARY}_${SITE}.ini`), policy(RECWELL_WEB.replace('%20', ' ') + '/') + 'SiteTitle = RecWell\n')
+  const source = new DatabaseSync(join(settings, 'SyncEngineDatabase.db'))
+  source.exec('PRAGMA journal_mode = WAL')
+  source.exec('CREATE TABLE od_ClientFolder_Records (resourceID TEXT, parentResourceID TEXT, folderName TEXT, parentScopeID TEXT)')
+  const root = '4'.repeat(32)
+  const insert = source.prepare('INSERT INTO od_ClientFolder_Records VALUES (?, ?, ?, ?)')
+  for (const [i, folder] of folders.entries()) insert.run(i === 1 ? folder.id + '+1' : folder.id, root, folder.name, root)
+  source.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  return { account, rows, source, folders, myMount, root, insert }
+}
+
 /** The Mac settings .dat stores the folder name in UTF-32LE after its two IDs. */
 function folderRecord(id: string, parent: string, name: string, headerSize: number): Buffer {
   const at = headerSize + 8
@@ -90,6 +126,61 @@ describe.skipIf(process.platform === 'win32')('OneDrive for Mac settings', () =>
     const guid = (id: string) => `{${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}}`.toUpperCase()
     writeFileSync(join(settings, 'ClientPolicy_other.ini'), policy(TEAM_WEB) + `SiteID = ${guid(SITE)}\nWebID = ${guid(WEB)}\nIrmLibraryId = ${guid(LIBRARY)}\n`)
     expect(read()).toEqual([{ path: team, web: TEAM_WEB }])
+  })
+
+  it('prints the four App Store mounts even when their configured paths have gone stale', () => {
+    const { source } = appStoreFixture()
+    try {
+      const lines = read().map(({ path, web }) => `${path.replace(home, '/Users/alex')}\t${web}`)
+      expect(lines).toEqual([
+        '/Users/alex/Library/CloudStorage/OneDrive-example.edu\thttps://example-my.sharepoint.com/personal/alex_example_edu/Documents',
+        '/Users/alex/Library/CloudStorage/OneDrive-example.edu-RecWell-TeamRecWell\thttps://example.sharepoint.com/sites/RecWell/Shared%20Documents/Team%20RecWell',
+        '/Users/alex/Library/CloudStorage/OneDrive-example.edu-RecWell-SportPrograms\thttps://example.sharepoint.com/sites/RecWell/Shared%20Documents/Sport%20Programs',
+        '/Users/alex/Library/CloudStorage/OneDrive-example.edu-RecWell-AITaskForce\thttps://example.sharepoint.com/sites/RecWell/Shared%20Documents/AI%20Task%20Force'
+      ])
+    } finally {
+      source.close()
+    }
+  })
+
+  it('prefers the File Provider folder and falls back to the existing ini directory as mounts change', () => {
+    const { folders, source } = appStoreFixture()
+    try {
+      const { path, previous } = folders[0]!
+      mkdirSync(previous, { recursive: true })
+      expect(read().map((m) => m.path)).toContain(path)
+      expect(read().map((m) => m.path)).not.toContain(previous)
+      rmSync(path, { recursive: true })
+      expect(read().map((m) => m.path)).toContain(previous)
+      rmSync(previous, { recursive: true })
+      expect(read().map((m) => m.web)).not.toContain(`${RECWELL_WEB}/Team%20RecWell`)
+    } finally {
+      source.close()
+    }
+  })
+
+  it('backs stale whole-library mounts with CloudStorage and builds folder URLs only from complete database paths', () => {
+    const { account, rows, folders, source, root, insert, myMount } = appStoreFixture()
+    try {
+      const mount = join(cloud, 'OneDrive-example.edu-RecWell')
+      mkdirSync(mount)
+      rows[1] = rows[1]!.replace('""', `"${home}/example.edu/RecWell - Documents"`)
+      writeFileSync(account, rows.join('\n'))
+      const parent = '5'.repeat(32)
+      insert.run(parent, root, 'Server # Archive', root)
+      const statement = source.prepare('UPDATE od_ClientFolder_Records SET parentResourceID = ?, folderName = ? WHERE resourceID = ?')
+      statement.run(parent, 'Server Team', folders[0]!.id)
+      statement.run('6'.repeat(32), 'Server AI', folders[2]!.id)
+      source.prepare('DELETE FROM od_ClientFolder_Records WHERE resourceID = ?').run(folders[1]!.id + '+1')
+      source.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+      expect(read()).toEqual([
+        { path: myMount, web: MINE_WEB },
+        { path: mount, web: RECWELL_WEB },
+        { path: folders[0]!.path, web: `${RECWELL_WEB}/Server%20%23%20Archive/Server%20Team` }
+      ])
+    } finally {
+      source.close()
+    }
   })
 
   it('reads a separately synced folder and a shortcut with a different local name from .dat folder IDs', () => {
@@ -156,12 +247,12 @@ describe.skipIf(process.platform === 'win32')('OneDrive for Mac settings', () =>
 
   it('matches existing libraries by mount without regard to case, and prefers OneDrive to Settings', () => {
     fixture([
-      scope(1, team.toUpperCase()),
+      scope(1, team),
       scope(0, mine),
       `AddedScope = 0 ${SHORTCUT} 0 0 0 ${SITE} ${WEB} ${LIBRARY} ${LINK} "/Deep%20Docs"`
     ])
     writeFileSync(join(settings, `${CID}.dat`), folderRecord(SHORTCUT, ROOT, 'Local alias', 16))
-    const mounts = read()
+    const mounts = read().map((m) => m.path === team ? { ...m, path: m.path.toUpperCase() } : m)
     vi.spyOn(macOneDrive, 'readMacOneDrive').mockReturnValue(mounts)
     setCloudDir(() => cloud)
     const db = new DatabaseSync(':memory:')

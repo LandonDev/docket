@@ -20,6 +20,7 @@ export function oneDriveNamespace(value: string): string | null {
       }
     })
     if (parts.some((part) => /^:[a-z]:$|^forms$|\.aspx$/i.test(part))) return null
+    url.pathname = parts.map(encodeURIComponent).join('/')
     return url.href.replace(/\/+$/, '')
   } catch {
     return null
