@@ -198,12 +198,15 @@ describe("page", () => {
     const day = page(all, { jobs, lifeos: "ok", open: new Set(["box"]) });
     expect(day.kind).toBe("day");
     if (day.kind !== "day") return;
-    expect(day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.map((f) => f.environmentId)])).toEqual([["held", []], ["due", ["box"]]]);
+    // Held lost its only read to the offline host: all it would draw is its heading, so it is left out (council round 9).
+    expect(day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.map((f) => f.environmentId)])).toEqual([["due", ["box"]]]);
     // Not a job's host, but its read failed: named once with the others.
     expect(day.offline).toEqual(["pc"]);
-    // The section lost a read to it: it never says it is empty (TodayView's `unknown`).
-    expect(day.blocks.map((b) => b.kind === "section" && b.section.away)).toEqual([true, false]);
-    // So does a section whose host read skipped an offline host and says so (`away`, read.ts `readState`).
+    // A section that lost a read to it and kept rows stays, and never says it is empty (TodayView's `unknown`).
+    const kept = page([fed("held", HELD, { rows: [row("held:1", "held")], failed: notConnected })], { jobs, lifeos: "ok", open: new Set(["box"]) });
+    expect(kept.kind === "day" && kept.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.away])).toEqual([["held", true]]);
+    // So does a section whose host read skipped an offline host and says so (`away`, read.ts `readState`), while the foot
+    // names no host: its heading is then the only trace of what it lost.
     const skipped = page([fed("due", DUE, { rows: [], away: true })], { jobs, lifeos: "ok" });
     expect(skipped.kind === "day" && skipped.blocks.map((b) => b.kind === "section" && b.section.away)).toEqual([true]);
     // A failure that names no host (a source that threw) stays where it is.
@@ -328,6 +331,26 @@ describe("a job's session on another host that is down", () => {
   it("is never All clear while a read is lost to it", () => {
     const at = page([fed("due", DUE, { rows: [], failed: [lost("mac", "ref", "tasks", "signed-out")] })], { jobs, lifeos: "ok" });
     expect(at.kind).toBe("day");
+  });
+
+  /** Council round 9 (Opus Today 1, Sol Today 1): a section the down session emptied stood as a bare heading. */
+  it("leaves out a section it emptied, which would draw only its heading, and keeps the page from All clear", () => {
+    const at = page(
+      [
+        fed("held", HELD, {}),
+        fed("due", DUE, { rows: [row("t1", "due")], failed: [lost("mac", "ref", "tasks", "signed-out")] }),
+        fed("waiting", WAITING, { rows: [], failed: [lost("mac", "ref", "mail", "signed-out")] }),
+      ],
+      { jobs, lifeos: "ok" },
+    );
+    expect(at.kind).toBe("day");
+    if (at.kind !== "day") return;
+    // Held is plainly empty and says so; Due keeps its rows; Waiting on others held nothing but the lost read.
+    expect(at.blocks.map((b) => (b.kind === "section" ? b.section.id : b.kind))).toEqual(["held", "lost", "due"]);
+    expect(at.blocks.flatMap((b) => (b.kind === "lost" ? [b.failure.said] : []))).toEqual(["Refereeing's tasks and mail left out"]);
+    // Every section it fed but the one it emptied is clear: the page still says the lost read, never All clear.
+    const only = page([fed("held", HELD, {}), fed("waiting", WAITING, { rows: [], failed: [lost("mac", "ref", "mail", "signed-out")] })], { jobs, lifeos: "ok" });
+    expect(only.kind === "day" && only.blocks.map((b) => (b.kind === "section" ? b.section.id : b.kind))).toEqual(["held", "lost"]);
   });
 });
 

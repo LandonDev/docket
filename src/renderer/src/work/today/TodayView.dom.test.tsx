@@ -441,10 +441,11 @@ describe("Today", () => {
     };
     resetToday([held, failing]);
     render(<View onClose={() => {}} />);
-    // Said once for the page, not in the section (council round 8): the section keeps no empty line beside them.
+    // Said once for the page, not in the section (council round 8). The section lost all it had to them, so it is not
+    // drawn at all: a heading over nothing (council round 9).
     const lines = [...document.querySelectorAll<HTMLElement>("[data-today-lost] [data-view-state]")];
-    expect(section("money").querySelector("[data-view-state]")).toBeNull();
-    expect(section("money").textContent).not.toContain("Nothing owed");
+    expect(document.querySelector('[data-today-section="money"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("Nothing owed");
     expect(lines.map((line) => line.textContent)).toEqual(["This computer cannot read LifeOS through MacRefereeing's tasks left out", "The box did not answerHypixel's tasks left outRetry"]);
     expect(within(lines[0]!).queryByRole("button")).toBeNull();
     fireEvent.click(within(lines[1]!).getByRole("button", { name: "Retry" }));
@@ -550,8 +551,9 @@ describe("Today", () => {
     world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { sector: "ref", workspaceId: "ws2" })]);
     await loadOutbox();
     render(<View onClose={() => {}} />);
-    expect(section("held").textContent).not.toContain("Nothing waits on your press");
-    expect(section("held").querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
+    // All it would draw is its heading: the foot names the host, and the section is left out (council round 9).
+    expect(document.querySelector('[data-today-section="held"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("Nothing waits on your press");
     expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
     expect(screen.queryByText("All clear")).toBeNull();
   });
@@ -881,7 +883,9 @@ describe("a source", () => {
     const { rerender } = render(<View onClose={() => {}} />);
     await waitFor(() => expect(world.calls.some((c) => c.env === "box" && c.method === "work.test.owed")).toBe(true));
     await act(async () => {});
-    expect(section("messages").textContent).not.toContain("No one is waiting on a reply");
+    // Never empty, nor a bare heading: left out while the foot names the host (council round 9).
+    expect(document.querySelector('[data-today-section="messages"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("No one is waiting on a reply");
     expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
     // The Mac is back, with a chat waiting on Ref.
     world.owed = 1;

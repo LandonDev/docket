@@ -1668,9 +1668,16 @@ Around the canvas:
     tasks, mail, held items: a held item is Shipped's approval, Slipped's
     row and desk time). An empty section is always one muted line, and
     says "nothing" only where every source of it answered, every host
-    among them: with LifeOS out it reads "Not known while LifeOS does not
-    answer", otherwise "Some of it could not be read", the line over the
-    sections saying what. A host that did not answer is named in his
+    among them: with LifeOS out it reads "Not counted", otherwise "Some of
+    it could not be read", the line over the sections saying what. A host
+    that left LifeOS out says why once, by the rule, its computer named, with
+    ", so the calendar, tasks and mail are not counted." after it: "LifeOS
+    did not answer the box" red with a Retry that asks that host alone; "Not
+    signed in to LifeOS on the box" muted with Sign in, a sign-in that waits
+    with Show the code, Work off with Open Settings, else who can; "The box
+    is still connecting to LifeOS" with no press. The line goes once that
+    host's LifeOS says connected again; a host a build behind keeps "LifeOS
+    did not answer, so the calendar, tasks and mail are not counted.". A host that did not answer is named in his
     words ("The Mac did not answer: it timed out.", never a wire method),
     and says so when what it answered before still stands in the numbers
     ("Its last answer is shown."). A slipped row whose source did not
@@ -2884,9 +2891,14 @@ own selected fill is a card's fill at rest in light.
   "Work is off on the box" muted with Open Settings where this window may
   turn it on; else with who can under it; "This computer cannot read LifeOS
   through the box", muted with no press. A job read through another host's
-  session that is down says that session's state the same way in its
-  section, its press by the same rule, with "<Job>'s tasks left out" after
-  it; the other jobs' rows stay. A muted line with no press
+  session that is down is one line for the page a host and state, in the
+  place of the first section it fed: that session's state the same way, its
+  press by the same rule, then what every section left out on a muted line
+  of its own ("Refereeing's meetings, tasks and mail left out"), its Retry
+  asking that host alone; the other jobs' rows stay. A section that held
+  nothing but what that session, or an offline host the foot names, took
+  from it is left out whole, never a bare heading, and the page is still not
+  clear. A muted line with no press
   wraps across the columns the press would take, never cut. A cut detail is a Tab stop with its
   whole words in a tip.
 - **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
@@ -4069,7 +4081,8 @@ host does not answer its own check, the Hosts row says so with the one Retry, an
 drawn. On Today a job's session on another host that is down
 is one line for the page a host and state, naming what every section left
 out ("Refereeing's meetings, tasks and mail left out"), its Retry asking
-that host alone. A read that failed is never said
+that host alone; a section that held nothing else is left out. Review names
+each host that left LifeOS out the same way, once. A read that failed is never said
 as a sign-out (Capture names this computer with Retry). A part that stands in
 for what it could not read (a held act's details, a chat card, Running
 late's place in a clash, the Start places dialog) draws

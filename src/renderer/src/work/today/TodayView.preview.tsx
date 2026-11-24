@@ -91,12 +91,15 @@ function modelOf(state: State) {
     case "lost-elsewhere": {
       // The jobs on the Mac are read through its own sessions: one silent, one kept from this computer. Each is one line
       // for the page, naming what every section left out (council round 8).
+      // The Mac's jobs' rows are what was left out, so none of them is drawn; Waiting on others lost all it had, and is
+      // left out whole (council round 9).
       const lost = (sector: "ref" | "unify", what: string, down: "unreachable" | "withheld") => ({ environmentId: "mac", error: "x", down, sector, said: `${JOB_NAMES[sector]!}'s ${what} left out`, left: { job: JOB_NAMES[sector]!, what }, ...(down === "unreachable" ? { retry: noop } : {}) });
+      const onBox = (r: TodayRow): boolean => r.sector !== "ref" && r.sector !== "unify";
       return page(
         [
-          fed(HELD, { rows: HELD_ROWS.slice(0, 1) }),
-          fed(MEETINGS, { rows: MEETING_ROWS.slice(2), failed: [lost("ref", "meetings", "unreachable")] }),
-          fed(DUE, { rows: DUE_ROWS.slice(0, 3), failed: [lost("ref", "tasks", "unreachable"), lost("unify", "tasks", "withheld")] }),
+          fed(HELD, { rows: HELD_ROWS.filter(onBox).slice(0, 1) }),
+          fed(MEETINGS, { rows: MEETING_ROWS.slice(2).filter(onBox), failed: [lost("ref", "meetings", "unreachable")] }),
+          fed(DUE, { rows: DUE_ROWS.filter(onBox).slice(0, 3), failed: [lost("ref", "tasks", "unreachable"), lost("unify", "tasks", "withheld")] }),
           fed(WAITING, { rows: [], failed: [lost("ref", "mail", "unreachable")] }),
           fed(FILES, {}),
         ],

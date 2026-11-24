@@ -137,7 +137,11 @@ nothing.
 - The host is the Work home when its link is open, else the first open host
   that holds a job (`lifeosHosts`, today/lifeos.ts). A host found signed
   out, refused or out of reach gives way to the next (`pickHost`,
-  today/env.ts); the set is forgotten when the hosts change and on Retry.
+  today/env.ts); the set is forgotten when the hosts change. While the host
+  read is down, one passed over is read again once its LifeOS status, heard
+  since it was passed over, says connected (`useBackAgain`, at most
+  `PASSED_MOST` hosts heard), never under a Retry, which keeps the computer
+  its line names until the ask is back.
 - `work.lifeos.jwt {}` answers a JWT of the host's whole device session:
   the host trades its token with no sectors named
   (work/lifeos/lifeos.test.ts holds it), and LifeOS's `auth:token` then
@@ -188,7 +192,10 @@ nothing.
   `TodayFailure.left`); its Retry asks that host for its own sessions alone,
   once each (`Rows.retryLost`), never another host; a computer kept from
   LifeOS there has no press, and the jobs that read stay. A section that lost
-  a read to it says no empty line (`ShownSection.left`).
+  a read to it says no empty line (`ShownSection.left`); one that held
+  nothing else is left out whole, as is one whose only read was lost to an
+  offline host the foot names (`bare` in model.ts), and the page is still
+  never All clear over either.
   A held calendar act's details use the same helper. A muted line with no
   press wraps across the job and time columns; one with Sign in wraps in
   the titles' column.

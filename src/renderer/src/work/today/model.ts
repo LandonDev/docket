@@ -283,6 +283,10 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   // A job's session on another host that is down is said once for the page, in the place of the first section it fed,
   // never once a section: one line a host and state (`lostLine`).
   const lostAt = new Map<string, TodayFailure[]>();
+  // The hosts the foot names: a section whose only read was lost to one of them is left out (below).
+  const offline = [...new Set([...offlineHosts(opts.jobs), ...away])];
+  // A section left out of the page held a read that did not come back: the page is never clear over it.
+  let leftOut = false;
   for (let section of merge(reached, opts.gone)) {
     if (down && section.def.lifeos) {
       if (!said) blocks.push({ kind: "lifeos", reach: down });
@@ -305,24 +309,36 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
     }
     // A session on its way: a LifeOS section that has no rows yet is still to answer.
     const waiting = opts.lifeos === "waiting" && !!section.def.lifeos;
-    blocks.push({ kind: "section", section: fold(waiting ? { ...section, loading: true, waiting: true } : section, opts.folds) });
+    const shownSection = fold(waiting ? { ...section, loading: true, waiting: true } : section, opts.folds);
+    // All it would draw is its heading: what it lost is said once already, by the page's line for a down session or the
+    // foot for an offline host, so a bare heading is left out (DESIGN.md "Today", States).
+    if (bare(shownSection, offline.length > 0)) {
+      leftOut = true;
+      continue;
+    }
+    blocks.push({ kind: "section", section: shownSection });
   }
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
     if (block.kind === "lost") blocks[i] = { kind: "lost", failure: lostLine(lostAt.get(`${block.failure.environmentId}|${block.failure.down}`)!) };
   }
-  const offline = [...new Set([...offlineHosts(opts.jobs), ...away])];
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
   // LifeOS out of reach matters only where a section reads it: `said` is set when one gave way.
   const drawn = new Set(shown.map((s) => s.id));
   const out = reached.some(({ source, answer }) => !!answer.loading && !(source.section && drawn.has(source.section.id)));
-  if (!said && !out && offline.length === 0 && shown.every(done)) {
+  if (!said && !leftOut && !out && offline.length === 0 && shown.every(done)) {
     const line = shown.find((s) => s.note)?.note;
     return { kind: "clear", ...(line ? { line } : {}) };
   }
   const keys = shown.flatMap((s) => (s.state !== "rows" ? [] : [...(s.earlier > 0 ? [foldKey("earlier", s.id)] : []), ...s.rows.map((r) => r.key), ...(s.more > 0 ? [foldKey("more", s.id)] : [])]));
   return { kind: "day", blocks, offline, keys };
 }
+
+/**
+ * A section that would draw its heading and nothing under it: no row, no line of its own, no note, and a read lost to a
+ * down session (`left`, said by the page's line) or to an offline host the foot names (`away`).
+ */
+const bare = (s: ShownSection, footNames: boolean): boolean => s.state === "empty" && s.failed.length === 0 && !s.note && (!!s.left || (s.away && footNames));
 
 /** "a", "a and b", "a, b and c". */
 const listed = (items: readonly string[]): string => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
