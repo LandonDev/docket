@@ -12,7 +12,7 @@ import { allocateIds, isNote, slideOfOp, type DeckInfo, type ShapeInfo } from '.
 import { writeNewDeck } from './newDeck'
 import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
-import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, comesAs } from './view'
+import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, writing, comesAs } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -228,7 +228,7 @@ export const slidesTools: WorkTool[] = [
         // thought of itself reaches the file, and so their screens, until the person accepts it.
         const shared = sharedDeck(ctx, it)
         const key = deckKey(it)
-        const said = await serial(ctx, it, () => withDeck(ctx, it, ctx.signal, async (deck) => {
+        const said = await writing(ctx, it, () => withDeck(ctx, it, ctx.signal, async (deck) => {
           // Read on the queue: the owner may have switched the mode while this waited behind a render.
           const writes = store.mode(it.id) === 'writes'
           const all = allocateIds([...deck.pending.map((p) => p.op), ...a.ops], deck.file.info)

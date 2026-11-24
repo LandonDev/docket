@@ -434,9 +434,13 @@ the file.
 - **Every write is said to Files** (`fileWritten`, files/save.ts): a Files
   tab's copy of a deck on another computer of his, or in the Windows VM, is
   sent to its file by the host as soon as the deck wrote it
-  (work-files.md "A copy saves back"), with no ask of his window. The deck's
-  queue for its file (`serial`) is work on that file (`workingOn`): a closed
-  tab's copy is judged only once it has ended.
+  (work-files.md "A copy saves back"), with no ask of his window. A step
+  on the deck's queue that may write the file (`writing`: his edit, Undo and
+  Redo, a restore, an accept, an agent's Undo or direct write) is work on
+  that file (`workingOn`) from the moment it is queued: a copy is judged or
+  sent only once it has ended. A read (the view, a picture, the show) is
+  not, so a copy's send never waits behind the pictures his window reads
+  after an edit.
 - **His words in an open box are sent before the tab closes.** The box
   commits when the body unmounts, and the tab's close awaits that commit
   (`registerFlush`, canvas/flush.ts, `HandSession.flush`), so the edit

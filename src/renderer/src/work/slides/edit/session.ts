@@ -331,16 +331,16 @@ export class HandSession {
     }, TYPING_SAVE_MS);
   }
 
-  /** Runs one send of the box's words, after any still on its way. */
-  private async sendBox(work: () => Promise<void>): Promise<void> {
-    await this.settled();
-    const run = work();
+  /**
+   * Runs one send of the box's words after any still on its way. It joins the line at once, so a close that asks
+   * (`settled`) never finds the line empty while this one waits its turn.
+   */
+  private sendBox(work: () => Promise<void>): Promise<void> {
+    const run = (this.sending ?? Promise.resolve()).catch(() => undefined).then(work);
     this.sending = run;
-    try {
-      await run;
-    } finally {
+    return run.finally(() => {
       if (this.sending === run) this.sending = null;
-    }
+    });
   }
 
   /** Settles once no words of the box are on their way. */

@@ -144,15 +144,21 @@ function chained<T>(key: string, fn: () => Promise<T>): Promise<T> {
   })
   return run
 }
-/** The item's deck's one queue: every seat on a file waits in the same line. */
-export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>): Promise<T> {
+/**
+ * The item's deck's one queue: every seat on a file waits in the same line. `writes`: a step that may write the file
+ * (his edit, Undo, a restore, an accept, an agent's write), which Files waits for, from the moment it is queued, before
+ * it judges a copy clean or sends it (files/save.ts `workingOn`). A read (the view, a picture, the show) is no work on
+ * the file: a copy's send never waits behind the window's reads of the pictures an edit made.
+ */
+export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>, writes = false): Promise<T> {
   const run = chained(seatOf(ctx, item), fn)
-  // Files waits for it before it judges a closed tab's copy clean (files/save.ts `workingOn`). It is handed the step's
-  // end alone: a refusal is the caller's to hear, and a second promise of it would reject with no one to hear it.
-  const path = filePathOf(item.source)
+  // Handed the step's end alone: a refusal is the caller's to hear, and a second promise of it would reject unheard.
+  const path = writes ? filePathOf(item.source) : null
   if (path !== null) workingOn(path, run.then(noop, noop))
   return run
 }
+/** A step on the deck's queue that may write its file (`serial`'s `writes`). */
+export const writing = <T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>): Promise<T> => serial(ctx, item, fn, true)
 
 /** The LibreOffice kept running, where the host has one (set by the module when Work starts; null: every render starts its own). */
 let renderer: SlideRenderer | null = null
@@ -1139,7 +1145,7 @@ function checkRev(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasIte
  * a `StaleChangesError` names it.
  */
 export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal, rev?: string): Promise<void> {
-  const stale = await serial(ctx, item, () =>
+  const stale = await writing(ctx, item, () =>
     withDeck(ctx, item, signal, async (deck) => {
       checkRev(ctx, item, deck, rev)
       let chosen = deck.pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))
@@ -1280,7 +1286,7 @@ export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
 
 /** Puts the file back as it was before the agent's direct write, while the file is still what that write left. */
 export async function undo(ctx: Ctx, item: CanvasItem, writeId: string): Promise<void> {
-  await serial(ctx, item, async () => {
+  await writing(ctx, item, async () => {
     const store = new SlidesStore(ctx.db)
     const w = writtenFor(ctx, item)
     if (!w || w.id !== writeId) throw new Error('That write can no longer be taken back.')

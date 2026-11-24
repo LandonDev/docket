@@ -240,3 +240,121 @@ describe("each send of a box names the runs its words lie in now", () => {
     expect(session.get().box?.phase ?? null).not.toBe("typing");
   });
 });
+
+describe("a close while the box's words are on their way", () => {
+  function deck() {
+    const view = deckView({ slides: [slide(3, { shapes: [TITLE] })], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const store = new DeckStore();
+    store.view(view);
+    return { host, store, session: new HandSession(host, store), slide: view.slides[0], shape: view.slides[0].shapes[0] };
+  }
+  /** Each edit waits until the test lets it go; the edits sent so far. */
+  function held(host: ReturnType<typeof deck>["host"]) {
+    const gates: Array<() => void> = [];
+    const edit = host.edit.bind(host);
+    host.edit = async (ops) => {
+      await new Promise<void>((go) => gates.push(go));
+      return edit(ops);
+    };
+    return { gates };
+  }
+  const sentEdits = (host: ReturnType<typeof deck>["host"]) => host.calls.filter(([name]) => name === "edit");
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+
+  it("a keep on its way, then a press away and the close together: the close settles once the words are in, with one write", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      const { gates } = held(host);
+      session.open(s, shape, "end");
+      type(session, " today");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(gates).toHaveLength(1);
+      // He presses away (the tab's More), then closes the tab while the keep is still on its way.
+      const away = session.commit();
+      let closed = false;
+      const closing = session.flush().then(() => void (closed = true));
+      await settle();
+      expect(closed).toBe(false);
+      gates.shift()!();
+      await away;
+      await closing;
+      expect(closed).toBe(true);
+      expect(sentEdits(host)).toHaveLength(1);
+      expect(session.get().box?.phase ?? null).not.toBe("typing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("words typed while a keep is on its way: the close waits for both writes, and settles only once the second is in", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      const { gates } = held(host);
+      session.open(s, shape, "end");
+      type(session, " today");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      type(session, "!");
+      const away = session.commit();
+      let closed = false;
+      const closing = session.flush().then(() => void (closed = true));
+      gates.shift()!();
+      await settle();
+      // The keep is in; the box's own words are not yet: the close still waits.
+      expect(closed).toBe(false);
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      expect(closed).toBe(false);
+      gates.shift()!();
+      await away;
+      await closing;
+      expect(sentEdits(host)).toHaveLength(2);
+      expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => r.text).join("")).toBe("Who comes today!");
+      expect(session.get().box?.phase ?? null).not.toBe("typing");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a press away and the close at once: the close waits for the commit's write, never passing it while it is queued", async () => {
+    const { host, session, slide: s, shape } = deck();
+    const { gates } = held(host);
+    session.open(s, shape, "end");
+    type(session, " today");
+    const away = session.commit();
+    let closed = false;
+    const closing = session.flush().then(() => void (closed = true));
+    await settle();
+    expect(closed).toBe(false);
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    expect(closed).toBe(false);
+    gates.shift()!();
+    await away;
+    await closing;
+    expect(sentEdits(host)).toHaveLength(1);
+    expect(session.get().box?.phase ?? null).not.toBe("typing");
+  });
+
+  it("after a keep the box opened on what was written: a press away and the close send nothing more and settle at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      session.open(s, shape, "end");
+      type(session, " today");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      const box = session.get().box!;
+      expect(box.phase).toBe("typing");
+      expect(JSON.stringify(box.initial)).toBe(JSON.stringify(box.model));
+      expect(session.saved(() => undefined).state).toBe("saved");
+      void session.commit();
+      await session.flush();
+      expect(sentEdits(host)).toHaveLength(1);
+      expect(session.get().box).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

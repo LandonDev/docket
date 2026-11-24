@@ -1915,6 +1915,25 @@ describe('his own edits to a deck', () => {
     expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
   })
 
+  it("a read of the deck is no work on its file: a copy's send never waits behind the window's reads, and waits for his edit", async () => {
+    const { workDone } = await import('../files/save')
+    const item = openDeck(fileSource(path))
+    const done = async (): Promise<boolean> => Promise.race([workDone(path).then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 50))])
+    let release!: () => void
+    holdInfo = new Promise((res) => (release = res))
+    // The window reads the deck's view and pictures (here held in the deck tool): nothing of the file is being written.
+    const reading = call('work.slides.open', { itemId: item.id })
+    expect(await done()).toBe(true)
+    // His edit waits behind the read on the deck's queue: that is work on the file, and Files waits for it.
+    const editing = retitle(item, 256, 'Queued')
+    expect(await done()).toBe(false)
+    release()
+    holdInfo = null
+    await Promise.all([reading, editing])
+    expect(await done()).toBe(true)
+    expect(titles()[0]).toBe('Queued')
+  })
+
   it('a file renamed under its deck keeps his line of edits', async () => {
     const item = openDeck(fileSource(path))
     await retitle(item, 256, 'A')
