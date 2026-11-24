@@ -228,6 +228,15 @@ the pass (eight hours, in memory: a restart of main or the service ends
 it). The item opens on its own route (`/w/doc/<id>`, `/w/sheet/<id>`) with
 the owner's token; the ticket leaves the address once used.
 
+A pass's token edits, except on a LifeOS row others can read (LifeOS's
+`shared`, a row it does not answer for taken as read) asked by a key that is
+not his press (files/policy.ts `pressesFor`): that token views, as
+docs/index.ts `roleOf` rules for the desktop. Such an editing pass is looked
+at again at every pass over the list (`dropShared`): once its row reads as
+shared it ends, its page cannot renew, and a new ticket views. The service's
+redeem still answers `role: 'edit'` whatever the token says
+(service/routes/item.ts `answer`); the token decides what the socket takes.
+
 The phone (milestone 47) asks a ticket each time it shows a LifeOS document
 or sheet in a thread's Item segment and loads the address in a WKWebView
 with a store of its own that keeps nothing (`.nonPersistent()`), so each

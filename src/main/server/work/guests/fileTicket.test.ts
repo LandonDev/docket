@@ -26,11 +26,14 @@ import { ensureGuestTables } from './store'
  */
 
 const shared = vi.hoisted(() => ({ paths: new Set<string>() }))
-vi.mock('../files/policy', () => ({ sharedOf: (_ctx: unknown, source: { path?: string }) => !!source.path && shared.paths.has(source.path) }))
+vi.mock('../files/policy', async (real) => ({ ...(await real<typeof import('../files/policy')>()), sharedOf: (_ctx: unknown, source: { path?: string }) => !!source.path && shared.paths.has(source.path) }))
 
 const SECRET = 's'.repeat(43)
 const LOCAL: Caller = { kind: 'local', caps: [] }
 const PHONE: Caller = { kind: 'remote', caps: ['read', 'operate'] }
+const APPROVER: Caller = { kind: 'remote', caps: ['read', 'operate', 'approve'] }
+/** A token's claims, read without a check: what a socket would be let do. */
+const claimsOf = (token: string): { role?: string } => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { role?: string }
 const open: { dirs: string[]; services: RunningService[]; clients: CollaborationClient[]; convex: FakeConvex[]; hosts: SheetHost[] } = { dirs: [], services: [], clients: [], convex: [], hosts: [] }
 
 beforeEach(() => {
@@ -70,6 +73,8 @@ interface Rig {
   /** a folder of this host outside it */
   outside: string
   open(kind: CanvasItem['kind'], source: CanvasSource): string
+  /** LifeOS's rows by id, as `docs:get` and `sheets:get` answer them */
+  rows: Map<string, { shared: boolean }>
 }
 
 async function rig(): Promise<Rig> {
@@ -109,6 +114,7 @@ async function rig(): Promise<Rig> {
   db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
   ensureGuestTables(db)
   const items = new Map<string, CanvasItem>()
+  const rows = new Map<string, { shared: boolean }>()
   const base = `http://127.0.0.1:${service.port}`
   const ctx = {
     db,
@@ -120,7 +126,7 @@ async function rig(): Promise<Rig> {
     // A remote key reaches the workspace's own folder; a screen at the host reaches everything.
     reaches: (by: Caller, path: string) => by.kind === 'local' || path.startsWith(folder + '/'),
     service: { url: (route: string) => `${base}${route}`, token: async () => 'ok', internal: async () => ({}) },
-    lifeos: { owner: () => ({ query: async () => null, mutation: async () => undefined }) }
+    lifeos: { owner: () => ({ query: async (_name: string, args: { id?: string }) => rows.get(args.id ?? '') ?? null, mutation: async () => undefined }) }
   } as unknown as WorkCtx
   const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) }))
   let n = 0
@@ -132,6 +138,7 @@ async function rig(): Promise<Rig> {
     base,
     folder,
     outside,
+    rows,
     close: (itemId) => {
       const it = items.get(itemId)
       if (it) items.set(itemId, { ...it, state: 'closed' })
@@ -188,8 +195,34 @@ describe("the owner's ticket for a file-kept item", () => {
 
   it('opens a LifeOS row named by its item as the row itself', async () => {
     const r = await rig()
+    r.rows.set('kdoc1', { shared: false })
     const got = await redeem(r, (await r.rt.ticket(item(r.open('document', { at: 'lifeos', table: 'docs', id: 'kdoc1' })), 'Run of show', PHONE)).url)
     expect(got.body).toMatchObject({ kind: 'doc', doc: 'kdoc1', me: 'owner', role: 'edit' })
+    expect(claimsOf(got.body.token!).role).toBe('edit')
+  })
+
+  it('views a LifeOS row others can read from a key that may only operate, as Docs rules; his press edits it', async () => {
+    const r = await rig()
+    r.rows.set('kshared', { shared: true })
+    const opened = r.open('document', { at: 'lifeos', table: 'docs', id: 'kshared' })
+    expect(claimsOf((await redeem(r, (await r.rt.ticket(item(opened), 'Run of show', PHONE)).url)).body.token!).role).toBe('view')
+    expect(claimsOf((await redeem(r, (await r.rt.ticket(item(opened), 'Run of show', APPROVER)).url)).body.token!).role).toBe('edit')
+    expect(claimsOf((await redeem(r, (await r.rt.ticket(item(opened), 'Run of show', LOCAL)).url)).body.token!).role).toBe('edit')
+    // A row LifeOS does not answer for is taken as read by others.
+    const unknown = r.open('sheet', { at: 'lifeos', table: 'sheets', id: 'knone' })
+    expect(claimsOf((await redeem(r, (await r.rt.ticket(item(unknown), 'Budget', PHONE)).url)).body.token!).role).toBe('view')
+  })
+
+  it('ends an operate key’s editing pass once its LifeOS row comes to be shared: the page cannot renew', async () => {
+    const r = await rig()
+    r.rows.set('kdoc2', { shared: false })
+    const got = await redeem(r, (await r.rt.ticket(item(r.open('document', { at: 'lifeos', table: 'docs', id: 'kdoc2' })), 'Run of show', PHONE)).url)
+    expect(claimsOf(got.body.token!).role).toBe('edit')
+    const renew = (got.body as { renew?: string }).renew
+    r.rows.set('kdoc2', { shared: true })
+    await r.rt.tick()
+    const again = await fetch(`${r.base}/w/open/renew`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ renew }) })
+    expect(again.status).toBe(403)
   })
 
   it('redeems to the file’s room, and words typed through the socket are written into the .tcdoc', async () => {

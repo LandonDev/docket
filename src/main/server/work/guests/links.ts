@@ -3,7 +3,7 @@ import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, typ
 import { guestProjectionOf, projectionItems, type GuestProjection } from '@shared/work/guestProjection'
 import { fileDocName, type CollabClaims as KitClaims } from 'work-kit/collab-server'
 import { FenceError } from '../../remote/fence'
-import { sharedOf } from '../files/policy'
+import { pressesFor, sharedOf } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
@@ -110,6 +110,13 @@ interface Pass {
   title: string
   /** the canvas item a file was opened by: while the pass stands, the item must still be open, on that file, in a place of his own */
   itemId?: string
+  /**
+   * What its token may do. A LifeOS row others can read is edited by his press alone (files/policy.ts `pressesFor`,
+   * as docs/index.ts `roleOf` rules for the desktop): a key that may only operate views it.
+   */
+  role: 'edit' | 'view'
+  /** it was asked by his press: a row that comes to be shared later leaves its role as it is */
+  press: boolean
 }
 
 /** What a guests module keeps while Work is on: tickets, and the tokens it has signed. */
@@ -294,16 +301,39 @@ export class GuestRuntime {
   /** A ticket for the owner's hosted editor: the address holds it, once. */
   async ticket(source: TicketSource, title: string, by: Caller, method = 'work.guests.ticket'): Promise<{ url: string; expiresAt: number }> {
     const opens: Opens = source.at === 'item' ? this.opensOf(source.itemId, by, method) : { at: 'lifeos', source }
+    const press = pressesFor(by)
+    let role: Pass['role'] = 'edit'
     if (opens.at === 'lifeos') {
       if (opens.source.table === 'projects') throw new Error(TICKET_REFUSALS.kind)
       await this.servedHere(opens.source)
+      if (!press && (await this.othersRead(opens.source))) role = 'view'
     }
     const ticket = randomBytes(32).toString('base64url')
     const now = Date.now()
-    const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, opens, title, ...(source.at === 'item' && opens.at !== 'lifeos' ? { itemId: source.itemId } : {}) }
+    const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, opens, title, role, press, ...(source.at === 'item' && opens.at !== 'lifeos' ? { itemId: source.itemId } : {}) }
     this.passes.set(pass.id, pass)
     await this.sync()
     return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
+  }
+
+  /** Whether others can read a LifeOS row (LifeOS's `shared`); a row LifeOS does not answer for is taken as read by others. */
+  private async othersRead(source: GuestSource): Promise<boolean> {
+    const row = await this.ctx.lifeos
+      .owner()
+      .query<{ shared?: unknown } | null>(source.table === 'sheets' ? 'sheets:get' : 'docs:get', { id: source.id })
+      .catch(() => undefined)
+    return row === undefined || row === null || row.shared !== false
+  }
+
+  /**
+   * An editing pass a key that is not his press holds on a LifeOS row that others can now read ends: its page cannot
+   * renew, and a new ticket views. Asked at every pass over the list, before the list is sent.
+   */
+  private async dropShared(): Promise<void> {
+    for (const p of [...this.passes.values()]) {
+      if (p.press || p.role !== 'edit' || p.opens.at !== 'lifeos') continue
+      if (await this.othersRead(p.opens.source)) this.passes.delete(p.id)
+    }
   }
 
   /** LifeOS told one row's `shared`. Answers whether LifeOS took it. */
@@ -523,13 +553,13 @@ export class GuestRuntime {
         continue
       }
       const key = PASS_PREFIX + p.id
-      const t = await this.sign(key, { ...opensClaims(p.opens), role: 'edit', principal: 'owner' }).catch(() => null)
+      const t = await this.sign(key, { ...opensClaims(p.opens), role: p.role, principal: 'owner' }).catch(() => null)
       if (!t) continue
       keep.add(key)
       out.push({
         linkId: key,
         item: opensItem(p.opens),
-        role: 'edit',
+        role: p.role,
         expiresAt: p.until,
         revokedAt: null,
         pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, token: t.token, tokenExp: t.exp, ...(p.opens.at === 'tcsheet' ? { sheetFile: p.opens.path } : {}) }
@@ -585,6 +615,7 @@ export class GuestRuntime {
 
   /** Every 30 s: links that ended, rows LifeOS has not marked yet, tokens near their end (`settle`). */
   async tick(): Promise<void> {
+    await this.dropShared()
     const { changed } = await this.settle()
     if (changed) this.ctx.push({ push: 'work.guests' })
   }
