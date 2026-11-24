@@ -406,18 +406,17 @@ describe('an agent formatting a document', () => {
     }
   }
 
-  it('formats his own document, with no Undo on the bar; History restores the text formatting and margins', async () => {
+  it('formats his own document with an Undo version, which restores the text formatting and margins', async () => {
     const r = await rig()
     expect(await r.tool('doc_format', { item: 'i1', ...blue, ...margins, because: 'own' })).toMatchObject({
       error: false, text: expect.stringMatching(/^Applied 3 formatting changes:.*Text colour set to #0F4761.*Margins become/)
     })
     const written = docsPushes(r.pushes).find((p) => p.written)?.written
     expect(written?.versionId).toBeTruthy()
-    // No Undo on the bar for a direct format: either version may hold a change of his made while it formatted.
-    expect(written?.after).toBeUndefined()
+    // Its after-version holds the format alone: Undo is offered for it.
+    expect(written?.after).toBeTruthy()
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 36, right: 36 })
-    // History still goes back to the version before it, on his own choice.
-    await r.post('/internal/history/restore', { file: r.path, versionId: written!.versionId, fence: { sectors: 'all' } })
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true, after: written!.after })).toEqual({ ok: true, undone: true })
     expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 72, right: 72 })
     expect((await r.tool('doc_read', { item: 'i1', with: 'styles' })).text).not.toContain('#0F4761')
   })

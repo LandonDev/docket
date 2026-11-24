@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
 import { fileDocName, readDocument, writeMarkdown, type CollabContext, type CollabFile } from 'work-kit/collab-server'
+import type { BlockDiff } from 'work-kit/formats/diff'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 import { documentStyleLines } from './formatDescription'
@@ -64,6 +65,17 @@ async function liveRev(ctx: RouteCtx, t: Target): Promise<string> {
   let rev = ''
   await ctx.collab.edit(t.name, 'owner', (doc) => void (rev = stateRev(doc)), t.file)
   return rev
+}
+
+/**
+ * Whether a direct format's after-version holds formatting alone over its before-version: no words put in, taken out
+ * or moved, in a block or a table's cell. Anything else in it is someone's edit landed between the format and its
+ * cut, which an Undo of the format would take back too. A change of his that is formatting too, made in the same
+ * instant, is not told apart (work-kit makes the edit and both cuts with no point at which the host can take the state).
+ */
+function formattingAlone(diff: BlockDiff): boolean {
+  const words = (ops: readonly { op: string }[] | null | undefined): boolean => !!ops?.some((op) => op.op !== '=')
+  return diff.stats.added + diff.stats.removed + diff.stats.moved === 0 && diff.rows.every((row) => !words(row.inline) && !row.cells?.some((cells) => cells.some((cell) => words(cell))))
 }
 
 export const docsRoutes: InternalRoute[] = [
@@ -179,10 +191,10 @@ export const docsRoutes: InternalRoute[] = [
           ...(t.file ? { file: t.file } : {}),
           ...(paper ? { paper } : {})
         })
-        // No Undo is offered for a direct format: work-kit cuts its two versions and makes its edit with no point at
-        // which the host can take the state on either side, so either version may hold a change of his (his margins, a
-        // word) that an Undo between them would take back. History keeps both versions for his own choice.
-        return { ...done, shared: t.shared, undoable: false }
+        // Its Undo is offered only while its after-version holds the format alone (`formattingAlone`).
+        const direct = done.mode === 'direct' && done.versionId && done.beforeVersionId
+        const undoable = direct ? formattingAlone(await raw.compare(t.name, done.beforeVersionId!, done.versionId!, t.file)) : false
+        return { ...done, shared: t.shared, undoable }
       })
     }
   },
