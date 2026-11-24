@@ -41,7 +41,8 @@ export function homeOf(ctx: Pick<WorkCtx, 'db'>, sector: SectorKey): { id: strin
 export function captureState(ctx: Pick<WorkCtx, 'db' | 'lifeos' | 'host'>): CaptureState {
   const last = ctx.db.prepare('SELECT value FROM work_capture_state WHERE key = ?').get(LAST_KEY) as { value: string } | undefined
   const homes = (ctx.db.prepare("SELECT DISTINCT sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL").all() as { sector: string }[]).map((r) => r.sector)
-  return { host: ctx.host, last: last && last.value !== '' ? last.value : null, homes, connected: ctx.lifeos.connected() }
+  const lifeos = ctx.lifeos.state?.()
+  return { host: ctx.host, last: last && last.value !== '' ? last.value : null, homes, connected: ctx.lifeos.connected(), ...(lifeos ? { lifeos } : {}) }
 }
 
 /**

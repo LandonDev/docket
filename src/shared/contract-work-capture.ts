@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { LifeosStateName } from './contract-work-lifeos'
 import { CanvasSourceSchema } from './work/canvas'
 import { SectorKeySchema, type SectorKey } from './work/ids'
 import { request, type CapsOf, type RelayOf } from './work/wire'
@@ -45,6 +46,8 @@ export interface CaptureState {
   homes: SectorKey[]
   /** LifeOS answers: a capture can be filed now */
   connected: boolean
+  /** the host's LifeOS session by its state's name, so the window says why it cannot file; a host a build behind sends none */
+  lifeos?: LifeosStateName
 }
 
 /** What a capture made: the LifeOS task, the files kept (names in the folder) and the thread it started. */

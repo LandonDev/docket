@@ -225,6 +225,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
         files={draft.files}
         sector={draft.sector}
         status={silent ? "silent" : offline ? "offline" : "ready"}
+        lifeos={state?.lifeos}
         host={thisComputer()}
         onRetry={refresh}
         error={error}

@@ -185,7 +185,40 @@ describe("the capture window", () => {
     expect(bridge.hide).not.toHaveBeenCalled();
   });
 
-  it("files nothing while LifeOS is away, and says so", async () => {
+  /** Council round 8 (Opus rest 1, Sol rest 1): every down state read "Not signed in to LifeOS". */
+  it.each([
+    ["signed-out", /^Not signed in to LifeOS on this (Mac|PC)$/, false],
+    ["pairing", /^The LifeOS sign-in on this (Mac|PC) waits for your approval$/, false],
+    ["refused", /^LifeOS refused this (Mac|PC)'s sign-in$/, false],
+    ["off", /^Work is off on this (Mac|PC)$/, false],
+    ["connecting", /^LifeOS is still connecting$/, false],
+    ["unreachable", /^LifeOS did not answer this (Mac|PC)$/, true],
+  ] as const)("says LifeOS %s in the rule's words, this computer named, Retry only for silence, the draft kept", async (lifeos, words, retry) => {
+    state = { ...state, connected: false, lifeos };
+    let asks = 0;
+    const counting: CaptureHost = { ...host(), state: () => (++asks, Promise.resolve(state)) };
+    render(<CapturePage host={counting} bridge={bridge} />);
+    act(() => shown());
+    await flush();
+    fireEvent.change(field(), { target: { value: "Call the ref assigner" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await flush();
+    expect(filed).toEqual([]);
+    const line = screen.getByText(words);
+    expect(Boolean(line.closest("[role=alert]"))).toBe(retry);
+    expect(Boolean(screen.queryByRole("button", { name: "Retry" }))).toBe(retry);
+    expect(screen.queryByRole("button", { name: /^Sign in|^Show the code/ })).toBeNull();
+    expect((screen.getByText("File").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    if (retry) {
+      const before = asks;
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await flush();
+      expect(asks).toBe(before + 1);
+    }
+    expect(field().value).toBe("Call the ref assigner");
+  });
+
+  it("files nothing while LifeOS is away, and says so: a host a build behind, with no state, keeps the old words", async () => {
     state = { ...state, connected: false };
     await open();
     fireEvent.change(field(), { target: { value: "x" } });

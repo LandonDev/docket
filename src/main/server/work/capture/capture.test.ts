@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { CaptureRequestSchemas, CAPTURE_CAPS } from '@shared/contract-work-capture'
 import { requiredCapability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
+import { CaptureStateSchema } from '@shared/wireSchemas'
 import type { Caller, WorkCtx } from '../modules'
 import { capture } from '.'
 import { captureState, taskWords, threadText, TITLE_MAX } from './file'
@@ -107,6 +108,21 @@ describe('filing', () => {
     await file({ text: 'https://example.com/article', sector: null })
     expect(sent[1]?.args).toMatchObject({ sector: 'life', title: 'https://example.com/article', source: { channel: 'Unsorted' } })
     expect(captureState(ctx).last).toBeNull()
+  })
+
+  /** Council round 8 (Opus rest 1, Sol rest 1): a connected flag alone made every down state read as a sign-out. */
+  it("sends the host's LifeOS state by name beside connected, so the window says why it cannot file", async () => {
+    const states = ['unreachable', 'pairing', 'refused', 'connecting', 'signed-out', 'off'] as const
+    for (const state of states) {
+      connected = false
+      ;(ctx.lifeos as { state?: () => string }).state = () => state
+      const answer = (await capture.handle!(req('work.capture.state', {}), ctx, LOCAL)) as { result: unknown }
+      expect(answer.result).toMatchObject({ connected: false, lifeos: state })
+      expect(CaptureStateSchema.parse(answer.result)).toMatchObject({ lifeos: state })
+    }
+    // A session with no state to give (a build behind) sends none: the window keeps its old words.
+    delete (ctx.lifeos as { state?: () => string }).state
+    expect(captureState(ctx)).not.toHaveProperty('lifeos')
   })
 
   it('copies a file into the sector workspace folder under a kept name, and names it in the notes', async () => {

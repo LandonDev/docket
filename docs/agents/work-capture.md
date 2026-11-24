@@ -32,9 +32,12 @@ is the title. `QUICK_ADD_VIAS` in LifeOS's `@lifeos/shared` and the Swift
 `src/shared/contract-work-capture.ts`. It lists no tool and adds nothing to a
 thread's preamble.
 
-- `work.capture.state {}` (read) → `{host, last, homes, connected}`: this
-  host's id, the sector of his last capture here (null after an unsorted one),
-  the sectors with a Work workspace on this host, and whether LifeOS answers.
+- `work.capture.state {}` (read) → `{host, last, homes, connected, lifeos?}`:
+  this host's id, the sector of his last capture here (null after an unsorted
+  one), the sectors with a Work workspace on this host, whether LifeOS
+  answers, and the session's state by name (`signed-out`, `unreachable`, …;
+  `ctx.lifeos.state`), so the window says why it cannot file. A host a build
+  behind sends no `lifeos`.
 - `work.capture.file {key, text, sector | null, files?, start?}` (operate) →
   `{taskId, kept, threadId?}`. Refused, before anything is written, with no
   words and no file, while LifeOS is not connected, for a file on another
@@ -99,8 +102,16 @@ A frame change in the main process, kept small:
   the host gave is kept in localStorage, so the window is whole the instant
   it shows. A state ask the host did not answer is not a sign-out: the line
   says "This Mac did not answer" (This PC on Windows) with Retry, the page's
-  own refresh, and keeps the draft, the last state and both presses; "Not
-  signed in to LifeOS" is for a host that says so. It wears Work's theme.
+  own refresh, and keeps the draft, the last state and both presses. A LifeOS
+  that cannot take a capture is said in the rule's words with this computer
+  named (`captureDown`, `lifeosDownWords` in work/shell/lifeosWords.ts, which
+  keeps Convex out of this window): "Not signed in to LifeOS on this Mac",
+  "The LifeOS sign-in on this Mac waits for your approval", "LifeOS refused
+  this Mac's sign-in", "Work is off on this Mac", muted and with no press
+  (the fix is on Connections); "LifeOS is still connecting" while it
+  connects; "LifeOS did not answer this Mac" in red with Retry. The presses
+  are off and the draft stays in each. A host that names no state keeps "Not
+  signed in to LifeOS". It wears Work's theme.
 
 ## The phone: a voice note
 

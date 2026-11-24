@@ -7,7 +7,7 @@ import { TellGroupSchema, type TellHow, type TellOpen, type TellRow } from './wo
 import { DigestLevelsSchema, type DigestDay, type DigestList, type DigestSettings } from './contract-work-digest'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
 import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
-import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
+import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStateName, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
 import type { MoneyReceived, MoneyState } from './contract-work-money'
@@ -1212,7 +1212,8 @@ export const CaptureStateSchema = z.object({
   host: z.string(),
   last: SectorKeySchema.nullable(),
   homes: z.array(SectorKeySchema),
-  connected: z.boolean()
+  connected: z.boolean(),
+  lifeos: z.enum(LifeosStateSchema.options.map((o) => o.shape.state.value) as [LifeosStateName, ...LifeosStateName[]]).optional()
 })
 export const CaptureFiledSchema = z.object({
   taskId: z.string(),

@@ -6,6 +6,8 @@ import { X } from "../../chrome/icons";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
 import { ErrorLine } from "../../chrome/ConfirmDialog";
 import { keyHint } from "../../lib/keys";
+import { lifeosDownWords } from "../shell/lifeosWords";
+import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { choiceLabel, SECTOR_CHOICES, type DraftFile, type SectorChoice } from "./draft";
 
 /**
@@ -19,9 +21,11 @@ export interface CaptureViewProps {
   text: string;
   files: readonly DraftFile[];
   sector: SectorChoice;
-  /** offline: not signed in to LifeOS here; silent: this computer's host did not answer the window's ask */
+  /** offline: LifeOS cannot take a capture here now (`lifeos` says why); silent: this computer's host did not answer the window's ask */
   status: "ready" | "offline" | "silent";
-  /** this computer's name ("This Mac"), for a host that did not answer */
+  /** the host's LifeOS state while offline; none from a host a build behind */
+  lifeos?: LifeosStateName;
+  /** this computer's name ("This Mac"), named in every state */
   host?: string;
   /** asks the host again (the page's refresh) */
   onRetry?(): void;
@@ -44,8 +48,22 @@ export interface CaptureViewProps {
 
 const OPTIONS = SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value) }));
 
+/**
+ * Why nothing can be filed, in the rule's words with this computer named (docs/DESIGN.md "The capture window"); `retry`
+ * where it is silence, which asking again can mend. A host a build behind names no state: its old words stand.
+ */
+export function captureDown(p: Pick<CaptureViewProps, "status" | "lifeos" | "host">): { words: string; retry: boolean } | null {
+  const host = p.host ?? "This computer";
+  if (p.status === "silent") return { words: lifeosDownWords("unanswered", false, host), retry: true };
+  if (p.status !== "offline") return null;
+  if (!p.lifeos) return { words: "Not signed in to LifeOS", retry: false };
+  if (p.lifeos === "connecting" || p.lifeos === "connected") return { words: "LifeOS is still connecting", retry: false };
+  return { words: lifeosDownWords(p.lifeos, false, host), retry: p.lifeos === "unreachable" };
+}
+
 export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(function CaptureView(p, field) {
   const off = p.status === "offline" || !p.canFile;
+  const down = captureDown(p);
   return (
     <div
       data-capture
@@ -82,18 +100,19 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         <div role="alert" className="px-4 pb-2">
           <ErrorLine error={p.error} />
         </div>
-      ) : p.status === "silent" ? (
-        // A read that failed is not a sign-out: the computer named, Retry asks again, the draft and the presses stay.
+      ) : down?.retry ? (
+        // Silence, this computer's host's or LifeOS's: red, the computer named, Retry asks again; the draft stays.
         <div role="alert" className="flex min-h-6 items-center gap-2 px-4 pb-2">
-          <ErrorLine error={`${p.host ?? "This computer"} did not answer`} />
+          <ErrorLine error={down.words} />
           {p.onRetry ? (
             <Button variant="ghost" size="xs" onClick={p.onRetry}>
               Retry
             </Button>
           ) : null}
         </div>
-      ) : p.status === "offline" ? (
-        <p className="px-4 pb-2 text-xs text-muted-foreground">Not signed in to LifeOS</p>
+      ) : down ? (
+        // A state, not a fault: muted, and no press here (ruling 29); the fix is on Connections.
+        <p className="px-4 pb-2 text-xs text-muted-foreground">{down.words}</p>
       ) : null}
       <div className="flex h-12 items-center gap-2 border-t border-border px-3">
         <ChoiceToggle label="Job" value={p.sector} options={OPTIONS} onChange={p.onSector} />

@@ -232,6 +232,7 @@ export const lifeosPart: CtxPart<'lifeos' | 'links'> = (ctx, deps) => {
   return {
     lifeos: {
       connected: () => session.connected(),
+      state: () => session.state().state,
       owner: () => session.owner(),
       jwt: async (sector) => (await session.jwt(sector ? [sector] : undefined)).jwt,
       subscribe: (fn, args, on) => session.subscribe(fn, args, on)

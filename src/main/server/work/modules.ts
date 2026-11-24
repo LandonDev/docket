@@ -4,6 +4,7 @@ import type { Reasoning } from '@shared/catalog'
 import type { ClientRequest } from '@shared/contract'
 import type { AddonRow } from '@shared/contract-addons'
 import type { RoutineJobOpen } from '@shared/contract-work-routines'
+import type { LifeosStateName } from '@shared/contract-work-lifeos'
 import type { WorkPush } from '@shared/contract-work'
 import type {
   ActKind,
@@ -250,6 +251,8 @@ export interface WorkCtx {
   /** milestone 7 */
   lifeos: {
     connected(): boolean
+    /** the session's state by name ("signed-out", "unreachable", …): what a screen words when it is not connected */
+    state?(): LifeosStateName
     /** the host's device session */
     owner(): LifeosClient
     jwt(sector?: SectorKey): Promise<string>
