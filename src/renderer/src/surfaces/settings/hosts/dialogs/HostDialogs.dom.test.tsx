@@ -163,7 +163,7 @@ describe("PairDialog", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create code" }));
     });
-    expect(calls[0]).toEqual({ method: "remote.pairings.create", params: { name: "iPhone", audience: "client", caps: ["operate"] } });
+    expect(calls.find((c) => c.method === "remote.pairings.create")).toEqual({ method: "remote.pairings.create", params: { name: "iPhone", audience: "client", caps: ["operate"] } });
 
     expect(await screen.findByText("ABCDE-12345")).toBeTruthy();
     expect(screen.getByAltText("Pairing QR code")).toBeTruthy();
@@ -188,6 +188,41 @@ describe("PairDialog", () => {
     answers.set("remote.pairings.create", { pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 600_000 }, code: "ABCDE-12345", url: "http://127.0.0.1:7677/pair#ABCDE-12345" });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create code" })));
     expect(await screen.findByText("This computer has no public address, so this link opens only there.")).toBeTruthy();
+  });
+});
+
+describe("PairDialog's link", () => {
+  const pairing = { pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 600_000 }, code: "ABCDE-12345", url: "http://127.0.0.1:7677/pair#ABCDE-12345" };
+  const create = async (): Promise<void> => {
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Laptop" } });
+    answers.set("remote.pairings.create", pairing);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create code" })));
+    await screen.findByText("ABCDE-12345");
+  };
+
+  it("builds the link and its QR on the address he set, else the one learned from the tunnel", async () => {
+    answers.set("remote.status", { publicOrigin: "https://tc.example.com/", learnedOrigin: "https://tunnel.example.com" });
+    const first = render(<PairDialog onClose={() => {}} onChanged={noop} />);
+    await waitFor(() => expect(calls.map((c) => c.method)).toContain("remote.status"));
+    await create();
+    expect((screen.getByLabelText("Link") as HTMLInputElement).value).toBe("https://tc.example.com/pair#ABCDE-12345");
+    expect(screen.getByAltText("Pairing QR code")).toBeTruthy();
+    expect(document.querySelector("[data-pair-unreachable]")).toBeNull();
+    first.unmount();
+    answers.set("remote.status", { publicOrigin: "", learnedOrigin: "https://tunnel.example.com" });
+    render(<PairDialog onClose={() => {}} onChanged={noop} />);
+    await waitFor(() => expect(calls.filter((c) => c.method === "remote.status")).toHaveLength(2));
+    await create();
+    expect((screen.getByLabelText("Link") as HTMLInputElement).value).toBe("https://tunnel.example.com/pair#ABCDE-12345");
+  });
+
+  it("says before the code is made that no other device reaches this computer yet, and offers no link and no QR", async () => {
+    answers.set("remote.status", { publicOrigin: "", learnedOrigin: null });
+    render(<PairDialog onClose={() => {}} onChanged={noop} />);
+    expect((await screen.findByText("Other devices cannot reach this computer yet. Set its Public origin on this page.")).hasAttribute("data-pair-unreachable")).toBe(true);
+    await create();
+    expect(screen.queryByLabelText("Link")).toBeNull();
+    expect(screen.queryByAltText("Pairing QR code")).toBeNull();
   });
 });
 

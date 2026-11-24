@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import type { Capability } from "@server/shared/capabilities";
-import type { RemotePairing, SavedEnvironment } from "@server/shared/contract-remote";
+import type { RemotePairing, RemoteStatus, SavedEnvironment } from "@server/shared/contract-remote";
 import { Input } from "@renderer/components/ui/input";
 import { DialogFooter, ErrorLine, errorText } from "../../../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../../../chrome/DialogField";
@@ -13,7 +13,10 @@ import { rpc } from "../rpc";
 import { CapsPicker, Countdown, Secret, grantText } from "./fields";
 
 type Pairing = { pairing: RemotePairing; code: string; url: string };
-type Made = Pairing & { qr: string | null };
+/** `url` null: no other device reaches the host yet, so no link is offered, nor its QR. */
+type Made = Omit<Pairing, "url"> & { url: string | null; qr: string | null };
+/** The address other devices reach the host at, as it says it: the Public origin he set, else the one learned from the tunnel. Null: none yet. Undefined: not known (the host did not say). */
+type Reach = string | null | undefined;
 /** `host`: a paired host this window holds an admin key on (the box): the pairing is that host's, asked over its own link. None: this machine's. */
 type Props = { host?: SavedEnvironment; onClose: () => void; onChanged: () => Promise<void> };
 
@@ -32,12 +35,27 @@ export const loopbackLink = (url: string): boolean => {
   }
 };
 
+/** The address a pairing link starts with (docs/agents/remote-access.md "Pairing"): never the loopback fallback, which no other device opens. */
+export const outsideOrigin = (status: Pick<RemoteStatus, "publicOrigin" | "learnedOrigin">): string | null => status.publicOrigin || status.learnedOrigin || null;
+
+/** The link a pairing is offered by: on the host's outside address; none where it has none; the host's own where it did not say. */
+export const pairLink = (reach: Reach, made: Pairing): string | null => (reach === null ? null : reach ? `${reach.replace(/\/+$/, "")}/pair#${made.code}` : made.url);
+
 export function PairDialog(props: Props) {
   const [pending, setPending] = useState(false);
   const [made, setMade] = useState<Made | null>(null);
+  const [reach, setReach] = useState<Reach>(undefined);
+  useEffect(() => {
+    let live = true;
+    askOf(props.host)<RemoteStatus | undefined>("remote.status", {}).then(
+      (status) => live && setReach(status ? outsideOrigin(status) : undefined),
+      () => undefined,
+    );
+    return () => void (live = false);
+  }, [props.host]);
   return (
     <Modal onClose={props.onClose} busy={pending} title={props.host ? `Pair a device with ${props.host.name}` : "Pair a device"} size="sm">
-      {made ? <Code made={made} {...props} /> : <Form {...props} pending={pending} setPending={setPending} onMade={setMade} />}
+      {made ? <Code made={made} {...props} /> : <Form {...props} reach={reach} pending={pending} setPending={setPending} onMade={setMade} />}
     </Modal>
   );
 }
@@ -70,14 +88,14 @@ function Code({ made, host, onClose, onChanged }: Props & { made: Made }) {
             />
           </div>
         </div>
-        <Secret label="Link" value={made.url} hint={loopbackLink(made.url) ? `${host ? host.name : "This computer"} has no public address, so this link opens only there.` : undefined} />
+        {made.url ? <Secret label="Link" value={made.url} hint={loopbackLink(made.url) ? `${host ? host.name : "This computer"} has no public address, so this link opens only there.` : undefined} /> : null}
       </div>
       <DialogFooter onCancel={() => void cancel()} confirmLabel="Done" onConfirm={() => (close ? close(onClose) : onClose())} />
     </>
   );
 }
 
-function Form({ host, onClose, onChanged, pending, setPending, onMade }: Props & { pending: boolean; setPending: (on: boolean) => void; onMade: (made: Made) => void }) {
+function Form({ host, reach, onClose, onChanged, pending, setPending, onMade }: Props & { reach: Reach; pending: boolean; setPending: (on: boolean) => void; onMade: (made: Made) => void }) {
   const [name, setName] = useState("");
   const [caps, setCaps] = useState<Capability[]>(["operate"]);
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +105,10 @@ function Form({ host, onClose, onChanged, pending, setPending, onMade }: Props &
     setError(null);
     try {
       const next = await askOf(host)<Pairing>("remote.pairings.create", { name: name.trim(), audience: "client", caps });
-      const qr = await QRCode.toDataURL(next.url, { margin: 1, width: 192, color: { dark: "#000000", light: "#ffffff" } }).catch(() => null);
-      onMade({ ...next, qr });
+      const url = pairLink(reach, next);
+      // A QR only of a link another device can open.
+      const qr = url && !loopbackLink(url) ? await QRCode.toDataURL(url, { margin: 1, width: 192, color: { dark: "#000000", light: "#ffffff" } }).catch(() => null) : null;
+      onMade({ ...next, url, qr });
       await onChanged();
     } catch (err) {
       setError(errorText(err));
@@ -111,6 +131,11 @@ function Form({ host, onClose, onChanged, pending, setPending, onMade }: Props &
         <FieldRow label="May">
           <CapsPicker value={caps} audience="client" onChange={setCaps} />
         </FieldRow>
+        {reach === null ? (
+          <p data-pair-unreachable className="text-xs text-muted-foreground">
+            {host ? `Other devices cannot reach ${host.name} yet. Set its Public origin in Settings → Hosts on ${host.name}.` : "Other devices cannot reach this computer yet. Set its Public origin on this page."}
+          </p>
+        ) : null}
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Create code" pending={pending} disabled={!name.trim()} />
