@@ -26,3 +26,9 @@ export function setMode(db: DatabaseSync, workspaceId: string, refKey: string, m
   db.prepare(`INSERT INTO work_office_live (workspace_id, ref_key, mode, at) VALUES (?, ?, ?, ?)
     ON CONFLICT (workspace_id, ref_key) DO UPDATE SET mode = excluded.mode, at = excluded.at`).run(workspaceId, refKey, mode, Date.now())
 }
+
+/** A removed workspace's remembered modes go with it (made first: a host may remove a workspace before the module's first start). */
+export function dropWorkspaceModes(db: DatabaseSync, workspaceId: string): void {
+  ensureLiveTables(db)
+  db.prepare('DELETE FROM work_office_live WHERE workspace_id = ?').run(workspaceId)
+}

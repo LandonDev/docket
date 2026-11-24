@@ -27,7 +27,7 @@ import { officeProbe, officeRows } from './health'
 import { officeConverters, type RenderDeps, type RenderPlace } from './render'
 import { liveRows } from './live/health'
 import { liveHandle } from './live/handle'
-import { ensureLiveTables } from './live/memory'
+import { dropWorkspaceModes, ensureLiveTables } from './live/memory'
 import { canPresent, presentDeck, type PresentDeps } from './present'
 
 /**
@@ -236,7 +236,7 @@ export const office: WorkModule = {
   // A removed workspace's copies and remembered file modes go with it.
   workspaceRemoved(id, ctx) {
     dropCopies(ctx, { workspaceId: id })
-    ctx.db.prepare('DELETE FROM work_office_live WHERE workspace_id = ?').run(id)
+    dropWorkspaceModes(ctx.db, id)
   },
   tools: () => [
     ...addinTools(hereOf, { offered: (ctx) => vmAllowed(ctx, ctx.scope) && vmHasOffice(ctx), awake: vmAwake, here: vmHereOf }),
