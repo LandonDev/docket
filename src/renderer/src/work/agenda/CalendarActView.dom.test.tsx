@@ -106,6 +106,21 @@ describe("a held invite's guests", () => {
     // An address alone is the guest's only name: drawn in the row's ink.
     expect(screen.getByText("sam@arena.com").className).not.toContain("text-muted-foreground");
   });
+
+  it("wrap inside the value column: between name and address, and within an address too long for a line", () => {
+    day.fail = false;
+    const long = "events-and-facilities-reservations.recwell@purdue.edu";
+    const invite = { ...op, payload: { ...op.payload, attendees: [{ name: "Alexandra Montgomery-Fitzgerald", address: long }] } };
+    const { container } = render(<View item={{ kind: "calendar.op", payload: invite, sector: "purdue" } as never} env="box" />);
+    const dd = [...container.querySelectorAll("dt")].find((dt) => dt.textContent === "Invites")!.nextElementSibling!;
+    expect(dd.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "break-words"]));
+    const address = screen.getByText(long);
+    expect(address.className.split(" ")).toContain("wrap-anywhere");
+    // Nothing between the column and the address holds the line whole.
+    for (let el: Element | null = address; el && el !== dd; el = el.parentElement) expect(el.className).not.toContain("whitespace-nowrap");
+    // A break may fall between the name and its address.
+    expect(address.previousElementSibling?.tagName).toBe("WBR");
+  });
 });
 
 describe("a held reply whose LifeOS session is down", () => {

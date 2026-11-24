@@ -87,19 +87,27 @@ function Body({ op, event, session, sector, read = "none", onRetry }: Props & { 
   );
 }
 
-/** Guests as Mail's cards name a recipient: the name he knows, then the address it goes to, muted 4px after it. */
+/**
+ * Guests as Mail's cards name a recipient: the name he knows, then the address it goes to, muted 4px after it. A guest
+ * longer than the column wraps inside it, between name and address first and within the address if it must: he reads
+ * every address before he sends.
+ */
 function People({ people }: { people: { address: string; name?: string }[] }) {
   return (
     <>
       {people.map((who, i) => {
         const name = who.name?.trim();
+        const named = !!name && name !== who.address;
         return (
           <span key={who.address}>
             {i ? ", " : null}
-            <span className="whitespace-nowrap">
-              {name && name !== who.address ? <span className="me-1">{name}</span> : null}
-              <span className={name && name !== who.address ? "text-muted-foreground" : undefined}>{who.address}</span>
-            </span>
+            {named ? (
+              <>
+                <span className="me-1">{name}</span>
+                <wbr />
+              </>
+            ) : null}
+            <span className={cn("wrap-anywhere", named && "text-muted-foreground")}>{who.address}</span>
           </span>
         );
       })}

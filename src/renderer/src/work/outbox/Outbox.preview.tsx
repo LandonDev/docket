@@ -1,4 +1,5 @@
 import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
+import { useEffect } from "react";
 import { registry, type Link } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn } from "../../lib/workSwitch";
@@ -17,7 +18,7 @@ import { resetOutboxStore } from "./store";
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
  * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
  * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
+ * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `longGuest` (`kinds` with `pick` 1: the invite, opened, with a guest whose long name and long address wrap in the column), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -137,31 +138,35 @@ const FAILED: OutboxItem = { ...sent(6, "Re: Ballroom deposit", "Hi Dana,\n\nThe
 
 /** One held item of each of six kinds, as the Waiting list shows them; the last one's payload is not one its kind reads. */
 const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
+const INVITE = { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } };
 const KINDS: OutboxItem[] = [
   { ...SENT[0]!, state: "held", decidedBy: null, decidedAt: null, result: null, n: 21, createdAt: at(20, 10, 50) },
-  held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } }, 44),
+  held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", INVITE, 44),
   held(23, "chat.reply", "Reply to Sam Ortiz in Teams: Thursday at 7 works for varsity", "Reply", { chatId: "c1", source: "teams", chat: "Sam Ortiz", text: "Thursday at 7 works for varsity." }, 38),
   held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", { verb: "move", name: "Risk assessment.docx" }, 31),
   held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", { name: "Maya Chen", role: "comment" }, 20),
   held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", "not a payload", 12),
   held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu" }, 6),
 ];
+/** `longGuest`: the invite asks one more guest, whose name and address are each longer than a narrow column. */
+const LONG_GUEST = { address: "events-and-facilities-reservations.recwell@purdue.edu", name: "Alexandra Montgomery-Fitzgerald" };
+const LONG_KINDS: OutboxItem[] = KINDS.map((k) => (k.payload === INVITE ? { ...k, payload: { ...INVITE, payload: { ...INVITE.payload, attendees: [...INVITE.payload.attendees, LONG_GUEST] } } } : k));
 const GRANTS: OutboxGrant[] = [
   { id: "g1", workspaceId: "ws", kind: "mail.send", matcher: {}, label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", madeFrom: SENT[0]!.ref, routineId: null, createdAt: at(12, 9), removedAt: null },
   { id: "g2", workspaceId: "ws", kind: "calendar.op", matcher: {}, label: "Changes to events on the Esports calendar", madeFrom: SENT[1]!.ref, routineId: "r1", createdAt: at(15, 16), removedAt: null },
 ];
 
-type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "kindsSilent" | "given" | "loadingAct";
+type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "kindsSilent" | "longGuest" | "given" | "loadingAct";
 
 // Each kind draws its act in a chunk of its own: landed before the first render, as a warm window draws them.
 await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
 let state: State = "offer";
 /** `kinds`, or `kindsSilent`: the same held items, the host silent on its LifeOS status. */
-const kinds = (): boolean => state === "kinds" || state === "kindsSilent";
+const kinds = (): boolean => state === "kinds" || state === "kindsSilent" || state === "longGuest";
 /** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
 /** The oldest waiting item is the one selected: the picked kind is made the oldest. */
-const pickedKinds = (): OutboxItem[] => KINDS.map((k, i) => (i === pick ? { ...k, createdAt: at(20, 8) } : k));
+const pickedKinds = (): OutboxItem[] => (state === "longGuest" ? LONG_KINDS : KINDS).map((k, i) => (i === pick ? { ...k, createdAt: at(20, 8) } : k));
 const waitingEdits = (): OutboxItem[] => EDITS.map((e, i) => (i === pick ? { ...e, createdAt: at(20, 8) } : e));
 let ready = false;
 
@@ -184,7 +189,7 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
       return { results: [] };
     case "work.lifeos.status":
       // The held calendar acts read LifeOS: in `kinds` its session did not answer, so their details say so once, with Retry.
-      if (state === "kinds") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
+      if (state === "kinds" || state === "longGuest") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
       // In `kindsSilent` the host itself never answers its status: the acts' details name it, with Retry.
       if (state === "kindsSilent") throw Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
       break;
@@ -225,10 +230,16 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     if (s === "kindsSilent") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
     // A mail's own view still on its way: the bones it shows until then.
     if (s === "loadingAct") ACT_VIEWS["mail.send"] = { kind: "mail.send", chunk: defineChunk("preview-never", () => new Promise(() => {})) };
-    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "empty" || s === "failed" ? "waiting" : "sent");
+    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "longGuest" || s === "empty" || s === "failed" ? "waiting" : "sent");
   }
   // Grants is the header's own press.
   usePressNamed(s === "grants" ? "Grants" : null, 80);
+  // `longGuest` opens the picked row, so a narrow window shows its detail in the list's place.
+  useEffect(() => {
+    if (s !== "longGuest") return;
+    const t = setTimeout(() => document.querySelector<HTMLElement>('button[aria-current="true"]')?.click(), 120);
+    return () => clearTimeout(t);
+  }, [s]);
   return (
     <OverFrame maxWidth={1100} height={640}>
       <div className="flex h-full w-full">
