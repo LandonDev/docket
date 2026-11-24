@@ -3,6 +3,7 @@ import type { StoreHome } from "@shared/contract-addons";
 import type { SkillMeta, SkillsList } from "@shared/contract-skills";
 import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
+import { useRecheckWhileOffline } from "../../../lib/settingsHome";
 import { byNameThenScope, useAskAgainOnLinks } from "../addons/useAddons";
 
 export interface SkillsPageData {
@@ -39,6 +40,7 @@ export function useSkillsPage(link: Link) {
     [link, put],
   );
   useAskAgainOnLinks(retry);
+  useRecheckWhileOffline(main.value?.home, retry);
 
   const replaceRow = useCallback(
     (row: SkillMeta) => {

@@ -7,6 +7,7 @@ import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWork
 import { BUILT_IN_SCOPE, modelSeed, parseDefaultsScope, type DefaultsScope } from "./defaults";
 import { modeForPolicy } from "./access";
 import { setNewThreadAccess, setNewThreadModel } from "../session";
+import { useRecheckWhileOffline } from "../settingsHome";
 
 /**
  * The server's workspace and project lists, beside `sessionStore`. Both
@@ -436,16 +437,25 @@ export function useWorkspaceIcon(workspaceId: string | null | undefined): Worksp
   return workspaceId ? icons.get(workspaceId) : undefined;
 }
 
-/** A scope's thread defaults on one environment, loading them the first time they are asked for. */
+/** A scope's thread defaults on one environment, loading them the first
+ *  time they are asked for. `fresh` (the editors) asks again at mount, the
+ *  cached set shown meanwhile, and keeps asking while its home reads offline
+ *  (settingsHome.ts `useRecheckWhileOffline`): the launch's read may predate
+ *  the host's link to the box. */
 export function useThreadDefaults(
   environmentId: string,
   workspaceId: string | null | undefined,
+  fresh = false,
 ): DefaultsScope | undefined {
   const { defaults } = useWorkspaceCatalog();
   const scope = defaults.get(scopeKey(environmentId, workspaceId));
   useEffect(() => {
-    if (!scope) void workspaceStore.loadDefaults(environmentId, workspaceId ?? null);
-  }, [scope, environmentId, workspaceId]);
+    if (fresh) void workspaceStore.loadDefaults(environmentId, workspaceId ?? null);
+  }, [fresh, environmentId, workspaceId]);
+  useEffect(() => {
+    if (!scope && !fresh) void workspaceStore.loadDefaults(environmentId, workspaceId ?? null);
+  }, [scope, fresh, environmentId, workspaceId]);
+  useRecheckWhileOffline(fresh ? scope?.home : null, () => void workspaceStore.loadDefaults(environmentId, workspaceId ?? null));
   return scope;
 }
 

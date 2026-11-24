@@ -15,7 +15,7 @@ import type { Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";
 import { scopeKey } from "./workspaces";
 import type { ProviderId, ProviderInfo } from "./types";
-import type { SettingsHome } from "../settingsHome";
+import { useRecheckWhileOffline, type SettingsHome } from "../settingsHome";
 
 /**
  * Orchestration rules, global with whole-object per-workspace overrides,
@@ -369,8 +369,11 @@ export function useRulesScope(
     void rulesStore.loadCatalog(environmentId, freshCatalog).catch(() => undefined);
   }, [environmentId, workspaceId, freshCatalog]);
   const key = scopeKey(environmentId, workspaceId);
+  const scope = state.scopes.get(key);
+  // The editor's home note follows the host's link to the box, as the thread defaults' does.
+  useRecheckWhileOffline(freshCatalog ? scope?.home : null, () => void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined));
   return {
-    scope: state.scopes.get(key),
+    scope,
     catalog: state.catalogs.get(environmentId) ?? null,
     error: state.errors.get(key) ?? null,
     retry: () => void rulesStore.load(environmentId, workspaceId).catch(() => {}),

@@ -4780,7 +4780,10 @@ their first section ("Saved on box"); while the box is out of reach they say
 (`refused: orchestration rules and thread defaults live on box; it is
 offline`) rolls back on the page, a switch slides back, and a toast says why;
 the page reads the rules again at each mount, when a host's link comes or
-goes, and on the host's `workspaces` push.
+goes, and on the host's `workspaces` push. `online` is the host's link at the
+instant it answers, and a window's first read runs before the Mac has dialed
+the box: Thread defaults asks again at each mount too, and a page that says
+offline asks again every 5 s until the link is up (`useRecheckWhileOffline`).
 
 Tests: `remote/rulesSync.test.ts` (the seed, the follow, the rule for a model
 only the Mac runs, the key per workspace, the race, the refusal, the home, the

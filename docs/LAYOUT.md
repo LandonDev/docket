@@ -362,7 +362,11 @@ line in its section. When the rules live on another host (`rules.get`'s
 the box") the first section's description says "Saved on box", 4px under a
 workspace's "Follows the global rules."; while that host is offline it says
 "box is offline" and every control is disabled. Thread defaults says the
-same under its section.
+same under its section. The host's answer is its link to the box at that
+instant, so both editors ask again when they open, and every page that shows
+"box is offline" (these two, Add-ons, Skills) asks again every 5 s while it
+does (lib/settingsHome.ts `useRecheckWhileOffline`): a read taken at launch,
+before the host dialed the box, never holds the controls off.
 
 ### Settings → Add-ons and Skills
 

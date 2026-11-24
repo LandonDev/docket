@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 /**
  * Where a setting's one copy lives when another host holds it: the
  * orchestration rules and the thread defaults are kept on the box
@@ -11,6 +13,29 @@ export function readHome(raw: unknown): SettingsHome | null {
   if (!raw || typeof raw !== "object") return null;
   const { name, online } = raw as Record<string, unknown>;
   return typeof name === "string" && typeof online === "boolean" ? { name, online } : null;
+}
+
+/** How often a page that shows its home offline asks again. */
+export const HOME_RECHECK_MS = 5_000;
+
+/**
+ * A home's `online` is the host's link to it at the instant of the answer:
+ * one read before the link came up (a window opened at launch, before the
+ * host dialed the box) would say offline for good. While a page shows its
+ * home offline it asks again every HOME_RECHECK_MS, so the note and the
+ * controls follow the link without a press.
+ */
+export function useRecheckWhileOffline(home: SettingsHome | null | undefined, recheck: () => void): void {
+  const latest = useRef(recheck);
+  useEffect(() => {
+    latest.current = recheck;
+  });
+  const offline = home?.online === false;
+  useEffect(() => {
+    if (!offline) return;
+    const timer = setInterval(() => latest.current(), HOME_RECHECK_MS);
+    return () => clearInterval(timer);
+  }, [offline]);
 }
 
 /** The line a settings section prints for it: "Saved on box", or "box is offline" with the controls off. */

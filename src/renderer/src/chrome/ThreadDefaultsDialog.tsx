@@ -138,7 +138,7 @@ export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | nu
 }
 
 function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
-  const scope = useThreadDefaults(environmentId, workspaceId);
+  const scope = useThreadDefaults(environmentId, workspaceId, true);
   const failure = useThreadDefaultsError(environmentId, workspaceId);
   // Which host a new thread starts on is a question only with two hosts, and only the global set answers it.
   const multiHost = useEnvironments().length > 1;

@@ -3,6 +3,7 @@ import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonRow, AddonsList, AddonStatus, StoreHome } from "@shared/contract-addons";
 import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
+import { useRecheckWhileOffline } from "../../../lib/settingsHome";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
 
 export interface AddonsPageData {
@@ -85,6 +86,7 @@ export function useAddonsPage(link: Link) {
     [link, putMain, setGrants],
   );
   useAskAgainOnLinks(retry);
+  useRecheckWhileOffline(main.value?.home, retry);
 
   const replaceRow = useCallback(
     (row: AddonRow) => {
