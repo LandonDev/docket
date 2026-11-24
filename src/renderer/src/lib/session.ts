@@ -17,6 +17,7 @@ import type { BackgroundWork, Failure } from "@server/shared/events";
 import type { ThreadState } from "./tcserver/todos";
 import { modeForPolicy, policyForMode } from "./tcserver/access";
 import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
+import { titleSeed } from "@server/shared/titleSeed";
 
 export type HarnessId =
   "claude" | "codex" | "cursor" | "grok" | "opencode" | "pi" | "omp" | "fx" | "muse";
@@ -551,7 +552,8 @@ export function titleFromPrompt(
   harness: HarnessId,
   attachments: Attachment[] = [],
 ): string {
-  const line = prompt.trim().split(/\r?\n/)[0]?.trim() ?? "";
+  // His own first words, never a chip's line and its ref (shared/titleSeed.ts).
+  const line = titleSeed(prompt);
   const fromFiles =
     !line && attachments.length > 0
       ? attachments

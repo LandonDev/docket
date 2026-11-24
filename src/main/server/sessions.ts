@@ -189,6 +189,7 @@ import {
 } from '@shared/projectLinks'
 
 import { THREAD_TITLES, isPlaceholderTitle as isPlaceholderTitleText } from '@shared/placeholderTitles'
+import { titleSeed } from '@shared/titleSeed'
 
 type SessionListener = (row: EventRow) => void
 /** `producer` is notifyMeta's tag: which code pushed (the stall log's `pushes=` breakdown). */
@@ -3568,7 +3569,8 @@ export class SessionRegistry {
     // message right away; a generated title replaces the raw slice once
     // the first turn completes (maybeRetitle).
     if (isPlaceholderTitle(meta)) {
-      const title = text.trim().split('\n')[0].slice(0, 60)
+      // His own first words: a message that opens with what it is about (a chip's line) is not named by that line.
+      const title = titleSeed(text).slice(0, 60)
       if (title) {
         const next = this.store.updateSession(sessionId, { title })
         if (next) this.notifyMeta(next)
