@@ -2775,9 +2775,12 @@ own selected fill is a card's fill at rest in light.
   offline."), on the titles' edge, and nothing more: no section draws a failed line for a read
   its link refused, and a section that reads LifeOS says nothing while no
   linked host holds a job. While no
-  host can reach LifeOS its sections give way to one line on the same grid:
-  "LifeOS did not answer" with Retry, or the plain muted "Not signed in to
-  LifeOS" with Sign in.
+  host can reach LifeOS its sections give way to one line on the same grid,
+  in the session's true state: "LifeOS did not answer" in red with Retry;
+  the plain muted "Not signed in to LifeOS" (or the refused sign-in) with
+  Sign in; a sign-in that waits, Work off, and a computer the host keeps
+  LifeOS from, muted with no press. A cut detail is a Tab stop with its
+  whole words in a tip.
 - **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
   Home End move, Enter opens the row or the fold, Space ticks a task; the
   row the arrows are on shows its verbs. A fold he opens hands its focus to

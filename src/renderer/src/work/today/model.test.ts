@@ -264,6 +264,11 @@ describe("page", () => {
     expect(day.keys).toEqual(["held:1"]);
     const out = page(all, { jobs, lifeos: "signed-out" });
     expect(out.kind === "day" && out.blocks[1]).toEqual({ kind: "lifeos", reach: "signed-out" });
+    // The line keeps the session's true state, so it says each in its own words.
+    for (const reach of ["withheld", "pairing", "refused", "off"] as const) {
+      const one = page(all, { jobs, lifeos: reach });
+      expect(one.kind === "day" && one.blocks[1]).toEqual({ kind: "lifeos", reach });
+    }
   });
 
   it("with no linked host to read LifeOS through, its sections say nothing: the foot names the hosts, and the page is not clear", () => {

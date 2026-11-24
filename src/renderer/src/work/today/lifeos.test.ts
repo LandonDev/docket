@@ -35,10 +35,12 @@ describe("the host whose LifeOS session Today reads", () => {
     expect(reachOf({ client: null, state: "connecting" }, "box")).toBe("waiting");
     expect(reachOf({ client: null, state: "connected" }, "box")).toBe("waiting");
     expect(reachOf({ client: null, state: "signed-out" }, "box")).toBe("signed-out");
-    expect(reachOf({ client: null, state: "refused" }, "box")).toBe("signed-out");
-    expect(reachOf({ client: null, state: "pairing" }, "box")).toBe("signed-out");
+    // A session that is down keeps its true state: a sign-in that waits is not "signed out", a withheld session is not silence.
+    expect(reachOf({ client: null, state: "refused" }, "box")).toBe("refused");
+    expect(reachOf({ client: null, state: "pairing" }, "box")).toBe("pairing");
     expect(reachOf({ client: null, state: "unreachable" }, "box")).toBe("unreachable");
-    expect(reachOf({ client: null, state: "off" }, "box")).toBe("unreachable");
+    expect(reachOf({ client: null, state: "unreachable", withheld: true }, "box")).toBe("withheld");
+    expect(reachOf({ client: null, state: "off" }, "box")).toBe("off");
     // No linked host holds a job: the page's foot says so, not LifeOS.
     expect(reachOf({ client: null, state: "connecting" }, null)).toBe("offline");
   });

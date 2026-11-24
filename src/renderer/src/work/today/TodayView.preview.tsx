@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -97,6 +97,10 @@ function modelOf(state: State) {
       return page(FULL, opts("unreachable"));
     case "signed-out":
       return page(FULL, opts("signed-out"));
+    case "withheld":
+      return page(FULL, opts("withheld"));
+    case "pairing":
+      return page(FULL, opts("pairing"));
     case "clear":
       return page([fed(HELD, {}), fed(MEETINGS, {}), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
     case "evening":

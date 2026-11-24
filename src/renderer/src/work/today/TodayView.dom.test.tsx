@@ -123,7 +123,8 @@ import { nextHeld } from "./HeldSheet";
 import { forgetEach, readState, TIMED_OUT, useEachWorkspace } from "./read";
 import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
-import { hostFailureWords, View } from "./TodayView";
+import { hostFailureWords, TodayPageView, View } from "./TodayView";
+import type { LifeosDown } from "./lifeosDown";
 import type { TodaySource } from "./types";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -299,6 +300,51 @@ describe("Today", () => {
     expect(hostFailureWords(TIMED_OUT, "Mac")).toBe("Mac did not answer");
     expect(hostFailureWords("Work is off on this host", "The box")).toBe("Work is off on the box. Turn it on in Settings, Work.");
     expect(hostFailureWords("work.money.owed failed at /srv/agents/data/ledger.json", "The box")).toBe("The box could not read this");
+  });
+
+  it("says a LifeOS session that is down in its true state's words, with only the press that can help", () => {
+    const retry = vi.fn();
+    const lineOf = (reach: LifeosDown): HTMLElement => {
+      cleanup();
+      render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} onRetryLifeos={retry} />);
+      return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"]`)!;
+    };
+    const presses = (line: HTMLElement): string[] => within(line).queryAllByRole("button").map((b) => b.textContent!);
+    // Silence alone is a failure, and only asking again can help.
+    let line = lineOf("unreachable");
+    expect(line.querySelector('[data-view-state="failed"]')).not.toBeNull();
+    expect(line.textContent).toBe("LifeOS did not answerRetry");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    // A computer the host keeps LifeOS from: Retry cannot help, so none is offered.
+    line = lineOf("withheld");
+    expect(line.textContent).toBe("This computer cannot read LifeOS through this host");
+    expect(presses(line)).toEqual([]);
+    // A sign-in that waits for his approval is not "Not signed in".
+    line = lineOf("pairing");
+    expect(line.textContent).toBe("The LifeOS sign-in waits for your approval");
+    expect(presses(line)).toEqual([]);
+    expect(lineOf("off").textContent).toBe("Work is off on this host");
+    line = lineOf("refused");
+    expect(line.textContent).toBe("LifeOS refused this host's sign-in" + "Sign in");
+    line = lineOf("signed-out");
+    expect(presses(line)).toEqual(["Sign in"]);
+    expect(line.querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
+  it("keeps a failed read's cut detail whole to the keyboard: the canvas's CutDetail", async () => {
+    await loadOutbox();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => ({ rows: [], failed: [{ environmentId: "box", error: "Work is off on this host" }] }),
+    };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    const detail = section("money").querySelector<HTMLElement>('[data-slot="status-detail"]')!;
+    expect(detail.textContent).toBe("Turn it on in Settings, Work.");
+    // Its own box that truncates and, once cut, takes a Tab stop with the whole words in its tip.
+    expect(detail.querySelector(".focus-ring.truncate")?.textContent).toBe("Turn it on in Settings, Work.");
   });
 
   it("says did not answer once for a host whose wait ran out, on the rows' grid; a read LifeOS refused is said in its own words", async () => {

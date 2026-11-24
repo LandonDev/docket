@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { reopenLifeos, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { downOf } from "./lifeosDown";
 import type { LifeosReach } from "./model";
 import { toastUp } from "./store";
 import type { TodayAnswer, TodayEnv, TodayFailure, TodayRow, TodayWorkspace } from "./types";
@@ -32,12 +33,15 @@ export function pickHost(hosts: readonly string[], wanting: ReadonlySet<string>)
 /** A session that cannot read and is not on its way: signed out, refused, unreachable, off. */
 export const sessionDown = (session: Pick<LifeosSession, "client" | "state">): boolean => !session.client && !sessionWaits(session);
 
-/** Whether the session can be read, as the page says it. No open host holds a job: `offline`, which the page's foot already says. */
-export function reachOf(session: Pick<LifeosSession, "client" | "state">, host: string | null): LifeosReach {
+/**
+ * Whether the session can be read, as the page says it. No open host holds a job: `offline`, which the page's foot
+ * already says. A session that is down keeps its true state (`downOf`): a computer the host keeps LifeOS from, or a
+ * sign-in that waits for his approval, is never said as silence or as signed out.
+ */
+export function reachOf(session: Pick<LifeosSession, "client" | "state" | "withheld">, host: string | null): LifeosReach {
   if (!host) return "offline";
   if (session.client) return "ok";
-  if (sessionWaits(session)) return "waiting";
-  return session.state === "signed-out" || session.state === "refused" || session.state === "pairing" ? "signed-out" : "unreachable";
+  return downOf(session) ?? "waiting";
 }
 
 /** The six sectors, as fixed slots for the narrowed reads. */

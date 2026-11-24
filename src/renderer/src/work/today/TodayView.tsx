@@ -15,7 +15,9 @@ import type { WorkPlaceProps } from "../places/registry";
 import { sectorName } from "../shell/actions";
 import { openConnections } from "../shell/open";
 import { useMinute } from "../tasks/minute";
+import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
+import { downPress, downWords, type LifeosDown } from "./lifeosDown";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -217,11 +219,7 @@ export function TodayPageView({
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
-            {block.reach === "signed-out" ? (
-              <PageLine word="Not signed in to LifeOS" action={{ label: "Sign in", run: openConnections }} />
-            ) : (
-              <PageLine failed word="LifeOS did not answer" action={onRetryLifeos ? { label: "Retry", run: onRetryLifeos } : undefined} />
-            )}
+            <LifeosLine down={block.reach} retry={onRetryLifeos} />
           </div>
         ),
       )}
@@ -375,6 +373,17 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
 }
 
 /**
+ * The page's one line while the LifeOS session is down, in its true state's shared words and with the one press that
+ * can help (`downPress`): silence is the failed line with Retry; a sign-in missing or refused is muted with Sign in;
+ * a sign-in that waits for his approval, Work off and a computer the host keeps LifeOS from are muted, with none.
+ */
+function LifeosLine({ down, retry }: { down: LifeosDown; retry: (() => void | Promise<void>) | undefined }) {
+  const press = downPress(down);
+  const action = press === "sign-in" ? { label: "Sign in", run: openConnections } : press === "retry" && retry ? { label: "Retry", run: retry } : undefined;
+  return <PageLine failed={down === "unreachable"} word={downWords(down)} action={action} />;
+}
+
+/**
  * A read that did not come back, said in the section it feeds. "Did not
  * answer" is the wait running out; any other cause is said beside it, and a
  * read the host is not at fault for has its own words (`said`).
@@ -413,7 +422,8 @@ function PageLine({ word, detail, failed = false, action }: { word: string; deta
   return (
     <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 leading-5", ROW_GRID)}>
       <span className="flex h-5 items-center justify-center">{failed ? <StatusMark state="failed" word={false} aria-hidden /> : null}</span>
-      {failed ? <StatusMark state="failed" glyph={false} word={word} detail={detail} className="min-w-0" /> : <span className="min-w-0 truncate text-xs text-muted-foreground">{word}</span>}
+      {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). */}
+      {failed ? <StatusMark state="failed" glyph={false} word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" /> : <span className="min-w-0 truncate text-xs text-muted-foreground">{word}</span>}
       <span className="col-span-2 flex justify-end">
         {action ? (
           <Button

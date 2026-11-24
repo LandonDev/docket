@@ -8,6 +8,8 @@ export const fixtures = [
   { name: "LifeOS refused one read", props: { state: "refused" } },
   { name: "LifeOS did not answer", props: { state: "lifeos-down" } },
   { name: "Not signed in to LifeOS", props: { state: "signed-out" } },
+  { name: "This computer cannot read LifeOS through this host", props: { state: "withheld" } },
+  { name: "The LifeOS sign-in waits for your approval", props: { state: "pairing" } },
   { name: "All clear", props: { state: "clear" } },
   { name: "All clear, the day's meetings over", props: { state: "evening" } },
   { name: "With the other pillars' rows: clashes, Messages, Owed, the review", props: { state: "pillars" } },

@@ -1,4 +1,5 @@
 import type { SectorKey } from "@shared/work";
+import type { LifeosDown } from "./lifeosDown";
 import type { TodayAnswer, TodayFailure, TodayMark, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "./types";
 
 /**
@@ -191,10 +192,13 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
   };
 }
 
-/** Whether the one LifeOS session can be read: `waiting` while it is on its way; `offline` while no host that holds a job is linked. */
-export type LifeosReach = "ok" | "waiting" | "unreachable" | "signed-out" | "offline";
+/**
+ * Whether the one LifeOS session can be read: `waiting` while it is on its way; `offline` while no host that holds a
+ * job is linked; else the true state of a session that is down (`LifeosDown`), which the page's one line says.
+ */
+export type LifeosReach = "ok" | "waiting" | "offline" | LifeosDown;
 
-export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: "unreachable" | "signed-out" };
+export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: LifeosDown };
 
 export type TodayPage =
   /** No Work workspace has a sector. */
@@ -265,7 +269,7 @@ function jobsOnly(fed: readonly Fed[], jobs: readonly TodayWorkspace[]): readonl
  */
 export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string>; open?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
-  const down = opts.lifeos === "unreachable" || opts.lifeos === "signed-out" ? opts.lifeos : null;
+  const down = opts.lifeos === "ok" || opts.lifeos === "waiting" || opts.lifeos === "offline" ? null : opts.lifeos;
   const { fed: apartFed, away } = opts.open ? apart(fed, opts.open) : { fed, away: [] };
   const reached = jobsOnly(apartFed, opts.jobs);
   const blocks: Block[] = [];

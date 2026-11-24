@@ -165,8 +165,15 @@ nothing.
   (`useStableRows(rows, ways)`), so no row on the page acts through one
   that is gone.
 - While no host can read LifeOS, its sections give way to one line where the
-  first stood: "LifeOS did not answer" with Retry, or "Not signed in to
-  LifeOS" with Sign in (Settings → Connections).
+  first stood, in the session's true state (`reachOf`, `today/lifeosDown.ts`)
+  and the view frame's words (`sessionFailure`): "LifeOS did not answer" with
+  Retry; "Not signed in to LifeOS" or "LifeOS refused this host's sign-in"
+  with Sign in (Settings → Connections); a sign-in that waits for his
+  approval, Work off, and a computer the host keeps LifeOS from ("This
+  computer cannot read LifeOS through this host") with no press, since none
+  can help. A held calendar act's details use the same helper.
+- A failed read's muted detail, cut on a narrow page, is a Tab stop with its
+  whole words in a tip (the canvas's `CutDetail`).
 
 ## Adding to Today
 
