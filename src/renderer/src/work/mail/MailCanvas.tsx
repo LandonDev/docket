@@ -13,6 +13,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { openConnections, openWorkSettings } from "../shell/open";
+import { sentState } from "./sentState";
 import { reopenLifeos, sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
@@ -172,7 +173,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
     );
   }
   // A new mail on its way or gone keeps its words, read only.
-  if (!open && !threadId) return <Letter draft={doc.message} lead={doc.status === "sent" ? "Sent to" : "Sending to"} />;
+  if (!open && !threadId) return <Letter draft={doc.message} lead={`${sentState(doc) ?? "Sending"} to`} />;
   return (
     <div data-mail-kit className="contents">
       <Mailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />

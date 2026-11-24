@@ -1952,7 +1952,9 @@ Around the canvas:
   once he types. Its answers are cards in the transcript, 12px radius and
   a hairline, no card inside one: a draft (a 36px head, "Reply",
   "Forward" or "New mail" at 13px medium and its state at the end in 12px
-  muted: Draft, In your reply, Sent 2:14 PM, Discarded; then To, Cc and
+  muted: Draft, In your reply, Sending, Scheduled for Tue 8:00 AM, Sent, Not sent,
+  Discarded (one word a status, `sentState` in work/mail/sentState.ts: a mail he scheduled is
+  never "Sending", and a sent one names no time the row does not keep); then To, Cc and
   Bcc in full at 12px, each name with the address it really goes to, and
   one plain line in medium when an address is not on the thread or there
   is a bcc ("Not on this thread: …. Bcc: …."); the words at 13/20, twelve

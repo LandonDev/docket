@@ -7,6 +7,7 @@ import { refusalWords } from "../../../lib/settingsHome";
 import { openWorkView } from "../../../lib/workSwitch";
 import { Trash2 as Trash } from "../../../chrome/icons";
 import { patch, putInReply, usePage } from "../page";
+import { sentState } from "../sentState";
 import { CARD, CardBones, FOOT, HEAD } from "./cardParts";
 import { strangers, strangersLine, type Address } from "./recipients";
 import type { OfferAt } from "./OfferCard";
@@ -14,7 +15,6 @@ import type { OfferAt } from "./OfferCard";
 /** Lines of a draft shown before "Show all". */
 const LINES = 12;
 
-const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 /** One recipient as the card names it: the name he knows, then the address it really goes to. */
 function Who({ who }: { who: Address }) {
   const name = who.name?.trim();
@@ -45,7 +45,7 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   if (doc === undefined) return <CardBones />;
   const message = doc?.message;
   const inReply = page.compose && "open" in page.compose && (page.compose.open as { kind?: string; id?: string }).kind === "row" && (page.compose.open as { id?: string }).id === shownId;
-  const state = gone || !doc ? "Discarded" : doc.status === "sent" ? `Sent ${clock(doc.editedAt)}` : doc.status === "failed" ? "Not sent" : doc.status === "queued" || doc.status === "sending" ? "Sending" : inReply ? "In your reply" : "Draft";
+  const state = gone || !doc ? "Discarded" : (sentState(doc) ?? (inReply ? "In your reply" : "Draft"));
   const reply = message?.mode === "reply" || message?.mode === "replyAll";
   // Whom it goes to is the rows' to say, each in full: the head names only what kind of mail it is.
   const title = message ? (reply ? "Reply" : message.mode === "forward" ? "Forward" : "New mail") : "A draft";
