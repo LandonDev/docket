@@ -20,12 +20,17 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
 
 const { ReturnHost } = await import("./ReturnHost");
 const { forgetReturnWindow, keepReturn, returnOf } = await import("./returnRecord");
-const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
+const { openWorkView, workSwitch, workViewNow } = await import("../../lib/workSwitch");
+const { registry } = await import("../../lib/connection");
+const { WORK_VIEWS } = await import("../views/registry");
+const { resetLifeos } = await import("./lifeos");
 const { projectStore } = await import("../../stores/project");
 
 beforeEach(() => openWorkView(null));
 afterEach(() => {
   cleanup();
+  resetLifeos();
+  vi.restoreAllMocks();
   localStorage.clear();
   sessionStorage.clear();
   forgetReturnWindow(true);
@@ -49,6 +54,36 @@ describe("a launch that comes back on a Work workspace", () => {
     render(<ReturnHost />);
     expect(workViewNow()).toBeNull();
     expect(returnOf("code")).toEqual({});
+  });
+});
+
+describe("a launch's first asks", () => {
+  /** M1: the view's chunk and its LifeOS session start from the record, side by side, before the view mounts. */
+  it("starts Mail's chunk and its session's JWT before the view opens, with no status ask in front of it", () => {
+    const order: string[] = [];
+    vi.spyOn(WORK_VIEWS.mail.chunk, "preload").mockImplementation(() => void order.push("preload"));
+    vi.spyOn(registry, "has").mockReturnValue(true);
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      connected: true,
+      request: (method: string) => (order.push(method), new Promise(() => {})),
+      onPush: () => () => {},
+      onOpen: () => () => {},
+    } as never);
+    const off = workSwitch.subscribe(() => workViewNow() && !order.includes("view") && order.push("view"));
+    // The last launch's status said connected.
+    localStorage.setItem("work.lifeos.connected.v1", JSON.stringify(["env_box"]));
+    keepReturn("ws", { view: "mail", environmentId: "env_box", sector: "purdue" });
+    projectStore.setState({ projectCwd: "/w/purdue" });
+    render(<ReturnHost />);
+    off();
+    expect(order).toEqual(["preload", "work.lifeos.status", "work.lifeos.jwt", "view"]);
+  });
+
+  it("writes the workspace's host and sector into its record", () => {
+    projectStore.setState({ projectCwd: "/w/purdue" });
+    render(<ReturnHost />);
+    act(() => openWorkView({ workspaceId: "ws", view: "tasks" }));
+    expect(returnOf("ws")).toMatchObject({ view: "tasks", environmentId: "env_box", sector: "purdue" });
   });
 });
 

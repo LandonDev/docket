@@ -9,6 +9,9 @@ export interface WorkSpot {
   event?: string;
   thread?: string;
   places?: Record<string, unknown>;
+  /** The workspace's host and sector, so a launch asks for its LifeOS session beside the view's chunk (work/shell/ReturnHost.tsx). */
+  environmentId?: string;
+  sector?: string | null;
 }
 
 export const RETURN_KEY = "work.return.v1";

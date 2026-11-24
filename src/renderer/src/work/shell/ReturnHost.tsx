@@ -8,6 +8,9 @@ import { useWorkspaceCatalog, workspaceByPath } from "../../lib/tcserver/workspa
 import { keepReturn, returnOf } from "./returnRecord";
 import { openWorkView, useWorkView, type OpenWorkView } from "../../lib/workSwitch";
 import { projectStore, useProject } from "../../stores/project";
+import type { SectorKey } from "@shared/work";
+import { WORK_VIEWS, type WorkViewDef } from "../views/registry";
+import { keepLifeosOf, startLifeosSession } from "./lifeos";
 import { useWorkspaceTabs } from "../../stores/workspace";
 
 /** The thread is one of this workspace's own: a thread of the Work Chats or of another job shown here is not recorded. */
@@ -37,6 +40,10 @@ export function ReturnHost() {
   const focused = useWorkspaceTabs((s) => s.tabs.find((t) => t.id === s.activeTabId)?.focusedId ?? null);
   // The launch's own folder: until its workspace is known the window has not come back yet; once he leaves it, it never will.
   const boot = useRef<string | null>(projectStore.getState().projectCwd);
+  // A workspace removed takes its LifeOS session and its kept rows with it (work/shell/lifeos.ts).
+  useEffect(() => {
+    if (catalog.loaded) keepLifeosOf(catalog.workspaces);
+  }, [catalog]);
   useEffect(() => {
     if (boot.current !== null) {
       if (cwd !== boot.current || open) boot.current = null;
@@ -44,12 +51,19 @@ export function ReturnHost() {
       else {
         boot.current = null;
         const spot = workspace.kind === "work" ? returnOf(workspace.id) : {};
-        if (spot.view) return openWorkView({ workspaceId: workspace.id, view: spot.view, ...(spot.event ? { event: spot.event } : {}) });
+        if (spot.view) {
+          // The view's chunk and its LifeOS session start side by side, before the view mounts.
+          const def = (WORK_VIEWS as Record<string, WorkViewDef | undefined>)[spot.view];
+          def?.chunk.preload();
+          const sector = (spot.sector ?? workspace.sector ?? null) as SectorKey | null;
+          if (def?.readsLifeos && sector) startLifeosSession(spot.environmentId ?? workspace.environmentId, sector);
+          return openWorkView({ workspaceId: workspace.id, view: spot.view, ...(spot.event ? { event: spot.event } : {}) });
+        }
       }
     }
     if (workspace?.kind !== "work") return;
     const spot = spotOfWindow(open, workspace.id, threadOf(focused ? sessionStore.get(focused) : undefined, workspace, catalog));
-    if (spot) keepReturn(workspace.id, spot);
+    if (spot) keepReturn(workspace.id, { ...spot, environmentId: workspace.environmentId, sector: workspace.sector ?? null });
   }, [catalog, cwd, workspace, open, focused]);
   return null;
 }

@@ -10,8 +10,9 @@ is `.temp-code/plans/landed/F-workspace-return.md`.
 One record per Work workspace, this window's own. The first paint holds its read alone, `lib/workReturn.ts` (~1.6 kB,
 on the entry graph's Work list in scripts/entryGraph.test.ts); the writer is Work's chunk, `work/shell/returnRecord.ts`.
 
-- `returnOf(workspaceId)` answers `{ view, event, thread, places }`: the column's view (`null`: a thread), the meeting
-  of a prep page, the thread on screen, and each view's own place under its key. It reads storage each call.
+- `returnOf(workspaceId)` answers `{ view, event, thread, places, environmentId, sector }`: the column's view (`null`:
+  a thread), the meeting of a prep page, the thread on screen, each view's own place under its key, and the
+  workspace's host and sector. It reads storage each call.
 - `keepReturn(workspaceId, patch)` (returnRecord.ts) merges and writes through; a place set to `undefined` is dropped.
 - It lives in localStorage under `work.return.v1`, keyed by a window id in sessionStorage (the same rule as Files'
   `work.files.view.v1`): a reload keeps the window's own record, a relaunch (a new sessionStorage) starts from the
@@ -29,7 +30,9 @@ on the entry graph's Work list in scripts/entryGraph.test.ts); the writer is Wor
   opens (`openWorkView`). Opening the landing's tab clears any view, so the view opens after it.
 - **A launch or a reload** (`ReturnHost`, work/shell/ReturnHost.tsx, mounted by WorkRailHost while Work is on): once
   the workspace the window came back on is known, its record's view opens; the thread is the workspace snapshot's
-  (lib/appLifecycle.ts) as before. If he moves before the catalog names it, nothing is opened.
+  (lib/appLifecycle.ts) as before. If he moves before the catalog names it, nothing is opened. Before the view
+  opens, the view's chunk `preload()` and its LifeOS session (`startLifeosSession`, by the record's host and sector)
+  start side by side, so the session's JWT is out before the view mounts (work-lifeos.md "Sessions kept").
 - **As he moves**, `ReturnHost` writes the Work workspace on screen: the view open (none while the view open is
   another workspace's, the window on its way), a prep page's event, and the focused thread when it is the workspace's
   own (`threadOf`).
