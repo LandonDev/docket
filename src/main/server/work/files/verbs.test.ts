@@ -79,7 +79,9 @@ describe('make', () => {
     const folder = await call('work.files.make', { at: general(), kind: 'folder' })
     expect(folder.entries[0]).toMatchObject({ name: 'Untitled folder', shared: true, key: 'lib:esportsstaffgeneral:Untitled folder' })
     await expect(call('work.files.make', { at: general(), kind: 'sheet' })).rejects.toThrow("A sheet cannot be made in General yet. Make it in Excel, or in your workspace's folder.")
-    await expect(call('work.files.make', { at: general(), kind: 'document' })).rejects.toThrow("A document cannot be made in General yet. Make it in Word, or in your workspace's folder.")
+    // A document is Files' own blank Word file in every library.
+    expect(names(await call('work.files.make', { at: general(), kind: 'document' }))).toEqual(['Untitled document.docx'])
+    expect(readFileSync(join(rig.team, 'General', 'Untitled document.docx'))).toEqual(blank('docx'))
     await expect(call('work.files.make', { at: general(), kind: 'deck' })).rejects.toThrow("A deck cannot be made in General yet. Make it in PowerPoint, or in your workspace's folder.")
     // Excel on this host stands behind the grid: a sheet is offered, as Excel's own form.
     setExcelHere(() => true)
