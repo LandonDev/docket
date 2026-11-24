@@ -35,6 +35,12 @@ export function ensureChangeTables(db: DatabaseSync): void {
     PRIMARY KEY (store, id)
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_sheets_changes_open ON work_sheets_changes (store, state)')
+  // Which archive a .tcsheet's change was made over (backends.ts `archiveMarkOf`): null elsewhere, and for a row made before.
+  try {
+    db.exec('ALTER TABLE work_sheets_changes ADD COLUMN archive TEXT')
+  } catch {
+    // the column is there already
+  }
 }
 
 interface Row {
@@ -88,10 +94,20 @@ export class ChangeStore {
     return this.held(store).map(({ ask: _ask, rev: _rev, ...change }) => change)
   }
 
-  add(store: string, change: { id: string; changeSet: string; by: Principal; reason?: string; sheet: string; range: SheetChange['range']; words: string; ask: ChangeAsk; rev: number }): void {
+  add(store: string, change: { id: string; changeSet: string; by: Principal; reason?: string; sheet: string; range: SheetChange['range']; words: string; ask: ChangeAsk; rev: number; archive?: string | null }): void {
     this.db
-      .prepare(`INSERT INTO work_sheets_changes (store, id, change_set, by, reason, kind, sheet, range, words, ask, state, rev, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-      .run(store, change.id, change.changeSet, change.by, change.reason ?? null, change.ask.kind, change.sheet, change.range === null ? null : JSON.stringify(change.range), change.words, JSON.stringify(change.ask), change.rev, this.now())
+      .prepare(`INSERT INTO work_sheets_changes (store, id, change_set, by, reason, kind, sheet, range, words, ask, state, rev, at, archive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`)
+      .run(store, change.id, change.changeSet, change.by, change.reason ?? null, change.ask.kind, change.sheet, change.range === null ? null : JSON.stringify(change.range), change.words, JSON.stringify(change.ask), change.rev, this.now(), change.archive ?? null)
+  }
+
+  /**
+   * Turns orphaned every waiting change of a store that `stands` does not hold to its archive (its revision and the mark
+   * it was made with): one made over another workbook at the same path can only be dropped.
+   */
+  settle(store: string, stands: (rev: number, archive: string | null) => boolean): void {
+    const rows = this.db.prepare(`SELECT id, rev, archive FROM work_sheets_changes WHERE store = ? AND state = 'pending'`).all(store) as { id: string; rev: number; archive: string | null }[]
+    const gone = rows.filter((r) => !stands(r.rev, r.archive)).map((r) => r.id)
+    if (gone.length) this.mark(store, gone, 'orphaned')
   }
 
   pick(store: string, which: Which): OpenChange[] {

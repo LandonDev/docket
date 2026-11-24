@@ -19,7 +19,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
 import { googleSheetRefOf, googleStore, type GoogleSheetRef } from '../google/grid'
-import { gz, tcsheetRev, writeTcsheet } from './host/backends'
+import { archiveMarkOf, gz, tcsheetRev, writeTcsheet } from './host/backends'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
 import { readCsv } from './writer'
 import { cellsOfMutations, PackageStore } from './packages'
@@ -392,7 +392,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     rev: st.rev,
     shared: shared || st.shared,
     suggestions: st.suggestions,
-    ...changesOf(s, key),
+    ...changesOf(s, key, held),
     ...(written ? { written } : {}),
     // A .csv others can open saves each edit through to its file; one a save would damage opens to read.
     ...(held.csv && isSharedCsvSheet(s.ctx.dataDir, held.ref) && sharedCsvReadOnly(held.csv) ? { readOnly: sharedCsvReadOnly(held.csv)! } : {}),
@@ -415,9 +415,22 @@ export function viewFor(view: SheetView, by: Caller): SheetView {
 }
 
 /** The formats and rules an agent proposed on a sheet, for its view: this host's own rows, said in words. */
-function changesOf(s: Sheets, key: string): { changes?: SheetView['changes'] } {
+function changesOf(s: Sheets, key: string, held?: Held): { changes?: SheetView['changes'] } {
+  if (held) settleArchive(s, held, key)
   const changes = s.changes.open(key)
   return changes.length ? { changes } : {}
+}
+
+/**
+ * A .tcsheet's waiting formats and rules stand only over the archive they were made over (backends.ts `archiveMarkOf`):
+ * read over another workbook at the same path (put there while the host was down), or made before this rule, they turn
+ * orphaned, to be dropped, never laid into it. The file is read only while one waits.
+ */
+export function settleArchive(s: Sheets, held: Held, key: string): void {
+  if (held.at !== 'service' || !('tcsheet' in held.ref) || held.csv) return
+  let mark: ((rev: number) => string | null) | null = null
+  const path = held.ref.tcsheet
+  s.changes.settle(key, (rev, archive) => archive !== null && archive === (mark ??= archiveMarkOf(path))(rev))
 }
 
 /** Bytes of a file by range. */

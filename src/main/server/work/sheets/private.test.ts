@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -634,6 +634,18 @@ describe('a format or a rule an agent proposes on a .tcsheet others can open', (
     const resource = (name: string): Record<string, unknown> => JSON.parse(wb.resources?.find((r) => r.name === name)?.data ?? '{}') as Record<string, unknown>
     expect((resource('SHEET_DATA_VALIDATION_PLUGIN').sheet1 as Record<string, unknown>[])[0]).toMatchObject({ type: 'list', formula1: 'Open,Done', showErrorMessage: true })
     expect(Object.values(resource('SHEET_DEFINED_NAME_PLUGIN'))[0]).toMatchObject({ name: 'Status', formulaOrRefString: 'Sheet1!$C$1:$C$9' })
+  })
+
+  it('one made over another workbook than the one now at its path waits only to be dropped: Accept lays nothing into the replacement', async () => {
+    // Council r3 (Sol 2): a rule proposed at revision 0 was still pending over a replacement at the same path and revision.
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'list', range: 'C1:C9', items: ['Open', 'Done'] }, because: 'own' })
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes!.map((c) => c.state)).toEqual(['pending'])
+    TcsheetBackend.create(join(library, 'incoming.tcsheet'), 'Payroll')
+    renameSync(join(library, 'incoming.tcsheet'), path)
+    const theirs = readFileSync(path)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes!.map((c) => c.state)).toEqual(['orphaned'])
+    await call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(readFileSync(path).equals(theirs)).toBe(true)
   })
 
   it('on his own sheet set to write, the agent\'s own format is written and said in the bar, with no Undo on the line', async () => {

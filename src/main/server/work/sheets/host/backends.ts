@@ -264,6 +264,27 @@ export function tcsheetRev(path: string): number | null {
   }
 }
 
+/**
+ * What names a .tcsheet's lineage at a revision: its first snapshot (kept for good; later ones are pruned) and the op
+ * it stood at then (its time and who made it). Another workbook put at the same path answers another, or none. Read
+ * once for all the revisions asked of it.
+ */
+export function archiveMarkOf(path: string): (rev: number) => string | null {
+  let t: Tcsheet
+  try {
+    t = readTcsheet(path)
+  } catch {
+    return () => null
+  }
+  const first = t.snapshots.get(0)
+  const base = first ? createHash('sha256').update(first).digest('hex').slice(0, 24) : ''
+  return (rev) => {
+    if (rev === 0) return base
+    const op = t.ops.find((o) => o.rev === rev)
+    return op ? `${base}:${op.at}:${op.by}` : null
+  }
+}
+
 export function readTcsheet(path: string): Tcsheet {
   const z = readZip(new Uint8Array(readFileSync(path)))
   const json = <T>(name: string): T => JSON.parse(readText(z, name)) as T

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { archiveMarkOf } from './host/backends'
 import { z } from 'zod'
 import type { SheetCellJson, SheetMutationJson, SheetSuggestion } from '@shared/contract-work-sheets'
 import { agentPrincipal, workText, type CanvasItem, type Principal, type WorkToolResult } from '@shared/work'
@@ -250,7 +251,9 @@ async function propose(s: Sheets, t: Target, ask: ChangeAsk, by: Principal, reas
   const { at, words, sheet } = await read(ask, now)
   // Made once now and thrown away, so one that cannot be made (a format that changes nothing) is refused as it is asked.
   await mutationsFor(s, t.held, ask, now)
-  s.changes.add(storeKey(t.held), { id: randomUUID(), changeSet: randomUUID(), by, ...(reason ? { reason } : {}), sheet: at?.sheet ?? sheet ?? now.sheets[0]!.id, range: at ? at.range : null, words, ask, rev: now.rev })
+  // (over a .tcsheet, the archive it was made over: one put at the same path later does not take it, held.ts `settleArchive`)
+  const archive = t.held.at === 'service' && 'tcsheet' in t.held.ref ? archiveMarkOf(t.held.ref.tcsheet)(now.rev) : null
+  s.changes.add(storeKey(t.held), { id: randomUUID(), changeSet: randomUUID(), by, ...(reason ? { reason } : {}), sheet: at?.sheet ?? sheet ?? now.sheets[0]!.id, range: at ? at.range : null, words, ask, rev: now.rev, archive })
   return words
 }
 

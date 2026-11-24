@@ -1059,7 +1059,13 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   after a restart finds none of them, and names the archive they were made
   over (its stamp, written again at each write here): read cold over another
   archive at that path (put there while the host was down) they turn
-  `orphaned`, to be dropped, never accepted into it. (A guest
+  `orphaned`, to be dropped, never accepted into it. The formats and rules
+  an agent proposed over a `.tcsheet` (main's `work_sheets_changes`) keep
+  the same: each row names the archive it was made over (`archive`:
+  `archiveMarkOf`, its first snapshot and the op it stood at), and one read
+  over another turns `orphaned` before it is shown or taken
+  (`settleArchive`). What waited across the deploy that brought these marks
+  turns `orphaned` once, to be asked for again. (A guest
   pass bound to the resolved file is the guests pillar's, guests/links.ts.)
 - history lists the ops; compare and restore replay from the nearest
   snapshot in a second engine;

@@ -19,7 +19,7 @@ import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
 import { dropSharedImports, ensureImported, importAct } from './formatsIn'
 import { SHEET_BACK_CONVERTERS } from './formatsInBack'
-import { afterEdit, chartsOf, dropChart, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
+import { afterEdit, chartsOf, dropChart, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setSharedPath, settleArchive, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, sheetFilePreviewer, sweepPreviewScratch } from './preview'
@@ -373,6 +373,7 @@ async function approves(s: Sheets, item: CanvasItem, by: Caller): Promise<void> 
  * cell suggestion.
  */
 async function reviewChanges(s: Sheets, held: Extract<Held, { at: 'package' | 'service' }>, key: string, which: Which, verdict: 'accept' | 'reject', by: Principal): Promise<'only' | 'some' | false> {
+  settleArchive(s, held, key)
   const picked = s.changes.pick(key, which)
   if (!picked.length) return false
   const only = which !== 'all' && 'ids' in which && which.ids.every((id) => picked.some((p) => p.id === id))
