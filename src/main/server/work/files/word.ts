@@ -102,6 +102,32 @@ export function wordBacksOf(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Map<
   }))
 }
 
+/**
+ * At start: a Word file a build before this one opened in a Files tab became a document in its copy's own folder, with
+ * no record, and that folder went with the tab. Each such open tab's document is taken as the Word file's kept
+ * document where it lies: never deleted with its tab (`copyKeptIn`, `wordsLeft` with no `doc_at`), opened again for
+ * the Word file, and saved as Word only by his press. The version it was read at is not known (`''`), so Save as Word
+ * meets the file as changed and offers Keep Both, never a write over it.
+ */
+export function adoptWordCopies(ctx: Pick<WorkCtx, 'db' | 'canvas'>, tabs: (workspaceId: string) => FileTab[]): number {
+  let adopted = 0
+  const panes = ctx.db.prepare(`SELECT DISTINCT workspace_id FROM work_files_tabs WHERE kind = 'file'`).all() as { workspace_id: string }[]
+  for (const { workspace_id: workspaceId } of panes) {
+    for (const tab of tabs(workspaceId)) {
+      if (!tab.copyOf || !tab.itemId || !isWordFile(tab.copyOf.path.replaceAll('\\', '/'))) continue
+      const item = ctx.canvas.get(tab.itemId)
+      if (!item || item.kind !== 'document' || item.source.at !== 'file' || !item.source.path.endsWith('.tcdoc')) continue
+      if (wordRow(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path)) continue
+      const name = tab.copyOf.path.slice(Math.max(tab.copyOf.path.lastIndexOf('/'), tab.copyOf.path.lastIndexOf('\\')) + 1)
+      ctx.db
+        .prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, '', ?, NULL, NULL, NULL, ?)`)
+        .run(workspaceId, tab.copyOf.host, tab.copyOf.path, tab.copyOf.vm ? 1 : 0, name, item.source.path, Date.now())
+      adopted++
+    }
+  }
+  return adopted
+}
+
 /** How the Word file stands, as its tab says it. */
 export function wordBackOf(r: WordRow): WordBack | null {
   if (!r.doc) return null

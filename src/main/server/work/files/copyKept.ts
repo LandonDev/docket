@@ -40,7 +40,9 @@ export function isSavingCopy(db: DatabaseSync, path: string): boolean {
  * (copies.ts `letGo`, once nothing waits in it), however its item went.
  */
 export function copyKeptIn(db: DatabaseSync, dir: string): boolean {
-  return ask(db, `SELECT 1 FROM work_files_copies WHERE dir = ? LIMIT 1`, real(dir))
+  const at = real(dir)
+  // A Word file's document kept in a copy's folder (files/word.ts `adoptWordCopies`) holds his edits: never dropped.
+  return ask(db, `SELECT 1 FROM work_files_copies WHERE dir = ? LIMIT 1`, at) || ask(db, `SELECT 1 FROM work_files_word WHERE doc LIKE ? || '/%' LIMIT 1`, at)
 }
 
 /**
@@ -69,6 +71,8 @@ export function dropCopyRecords(db: DatabaseSync, workspaceId: string): Set<stri
       if (copyWaits(r)) kept.add(r.dir)
       else db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
     }
+    // A Word file's kept document whose folder is a copy's stays too: it holds his edits.
+    for (const w of db.prepare(`SELECT doc FROM work_files_word WHERE workspace_id = ? AND doc IS NOT NULL`).all(workspaceId) as { doc: string }[]) kept.add(dirname(real(w.doc)))
   } catch {
     // no table: nothing was kept
   }
