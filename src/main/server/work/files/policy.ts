@@ -258,11 +258,11 @@ export const PEER_WRONG_ACT = 'That held act is not for this change.'
 
 /**
  * The digest that binds a held act to exactly one change: its workspace, its verb, the things it names, where they go,
- * the name they take and, for New, the kind it makes. A host that runs a held act for another checks it before it runs.
+ * the name they take and, for New, the kind it makes and the template it is made from. A host that runs a held act for another checks it before it runs.
  */
-export function changeDigest(change: { workspaceId: string; verb: FileVerb; refs: readonly unknown[]; to?: unknown; name?: string; kind?: string }): string {
+export function changeDigest(change: { workspaceId: string; verb: FileVerb; refs: readonly unknown[]; to?: unknown; name?: string; kind?: string; template?: unknown }): string {
   return createHash('sha256')
-    .update(JSON.stringify([change.workspaceId, change.verb, change.refs, change.to ?? null, change.name ?? null, change.kind ?? null]))
+    .update(JSON.stringify([change.workspaceId, change.verb, change.refs, change.to ?? null, change.name ?? null, change.kind ?? null, change.template ?? null]))
     .digest('hex')
 }
 

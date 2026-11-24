@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
 import { FILE_MAKE_KINDS, FileActSchema, type FileAct, type FileActVerb, type FileDone, type FileRef, type FileMakeKind, type FilesListing, type FilesPlaces } from '@shared/contract-work-files'
 import { canvasSourcePath, workText, type CanvasSource, type WorkScope, type WorkToolResult } from '@shared/work'
-import { audienceOf, refusal, type FileEntry, type FilePlace, type FileVerb, type FolderRef } from '@shared/work/files'
+import { audienceOf, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileVerb, type FolderRef } from '@shared/work/files'
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
@@ -12,7 +12,7 @@ import { admitChange, filesHandle, filesState, openAs } from './handle'
 import { formIn } from './make'
 import { changeDigest, locate, workspaceHere } from './policy'
 import { restoreRows, trashFiles } from './trash'
-import { copyVerb, makeVerb, moveVerb, renameVerb } from './verbs'
+import { copyVerb, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
 import { admitDrive, driveMake, driveMove, driveRename, driveTrash, type DriveDone } from './driveVerbs'
 import { googleSeated, googleSeatOf } from '../google/drive'
 import { driveFacts } from './places/drive'
@@ -200,7 +200,7 @@ export function fileActWords(p: Pick<FileAct, 'verb' | 'request' | 'things' | 'f
   const from = whereWords(p.from)
   const head =
     p.verb === 'make'
-      ? `Make ${p.request.name ?? 'a new file'} in ${from}.`
+      ? `Make ${p.request.name ?? `a new ${(MAKE_WORDS[p.request.kind ?? 'text'] ?? 'file').toLowerCase()}`} in ${from}.`
       : p.verb === 'rename'
         ? `Rename ${what} to ${p.request.name} in ${from}.`
         : p.verb === 'trash'
@@ -215,7 +215,28 @@ const STALE = {
   gone: (name: string) => `${name} is no longer where it was, so nothing was done.`,
   folder: (name: string) => `The folder ${name} is gone or moved, so nothing was done.`,
   digest: 'This act no longer matches the change it describes, so nothing was done.',
-  audience: (name: string) => `Who can open ${name} changed since this was held, so nothing was done. Ask the thread again if it is still wanted.`
+  audience: (name: string) => `Who can open ${name} changed since this was held, so nothing was done. Ask the thread again if it is still wanted.`,
+  taken: (folder: string, name: string) => `${folder} already holds something named ${name}, so nothing was done: the copy would take another name than the one shown.`,
+  renamed: (name: string) => `The folder ${name} was renamed since this was held, so nothing was done.`
+}
+
+/** A thing's ref inside a folder on a disk, by its name; null for a place with no path (a Drive). */
+function childRef(folder: FileRef | undefined, name: string): FileRef | null {
+  if (!folder || folder.at !== 'file') return null
+  const slash = /^[A-Za-z]:\\/.test(folder.path) ? '\\' : '/'
+  return { ...folder, path: `${folder.path.replace(/[\\/]+$/, '')}${slash}${name}` }
+}
+
+/**
+ * A move or copy whose name is taken in the folder it goes to: a copy (and a move across places, which is a copy)
+ * takes the next free name there, which is not the change the card shows. Answers the first name taken.
+ */
+async function takenIn(ctx: ToolCtx, host: string, workspaceId: string, to: FileRef | undefined, names: readonly string[]): Promise<string | null> {
+  const refs = names.map((n) => childRef(to, n))
+  if (refs.some((r) => r === null) || !refs.length) return null
+  const got = await ask<{ entries: (FileEntry | null)[] }>(ctx, host, 'stat', { workspaceId, refs })
+  const i = got.entries.findIndex((e) => e !== null)
+  return i < 0 ? null : names[i]!
 }
 
 /**
@@ -238,6 +259,14 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     if (changeDigest({ workspaceId: p.workspaceId, verb: p.verb, refs: p.request.refs, to: p.request.to, name: p.request.name, kind: p.request.kind }) !== p.digest) throw new ActStale(STALE.digest)
     const signal = AbortSignal.timeout(5 * 60_000)
     const toolCtx = { ...act, scope, sessionId: item.sessionId, signal } as ToolCtx
+    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest }
+    const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
+    // A press whose answer was lost, pressed again: the change ran under its own operation id, and its receipt here
+    // answers what it did, before the facts it moved (an old path gone) can call it stale. (Another host's receipt is
+    // that host's to answer: see docs/agents/work-files.md "The held act".)
+    const asked = p.verb === 'make' ? { ...params, at: makeFolderRef(act, WINDOW, p.request.refs[0] as FolderRef) } : params
+    const receipt = p.host === act.host && p.verb !== 'trash' ? replayed(act, WINDOW, p.verb, asked as never) : null
+    if (receipt) return pressed(act, p, item.sessionId, await receipt)
     // The fence and the facts, again, on the file's own host: the thread must still reach each thing as it was.
     const now = await ask<{ entries: (FileEntry | null)[] }>(toolCtx, p.host, 'stat', { workspaceId: p.workspaceId, refs: p.request.refs })
     p.things.forEach((thing, i) => {
@@ -252,9 +281,14 @@ export const fileActKind: ActKindDef<FileAct, never> = {
       const name = p.into?.trail.at(-1) ?? p.into?.name ?? 'it was to go in'
       if (!into || into.key !== p.into?.key || into.kind !== 'folder') throw new ActStale(STALE.folder(name))
       if (p.into.shared !== undefined && !!into.shared !== p.into.shared) throw new ActStale(STALE.audience(name))
+      // A Drive's folder keeps its id when renamed: the card named it by the name it had.
+      const last = p.into.trail.at(-1)
+      if (p.request.to?.at === 'drive' && last !== undefined && into.name !== last) throw new ActStale(STALE.renamed(last))
+      if (p.verb === 'copy' || p.verb === 'move') {
+        const taken = await takenIn(toolCtx, p.host, p.workspaceId, p.request.to, p.things.map((t) => t.name))
+        if (taken) throw new ActStale(STALE.taken(name, taken))
+      }
     }
-    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest }
-    const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
     let done: FileDone
     if (p.host === act.host) {
       const answer = await filesHandle({ id: 'act', method: `work.files.${p.verb}`, params } as unknown as ClientRequest, act, WINDOW, signal)
@@ -263,15 +297,20 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     } else {
       done = (await act.peer.call(toolCtx, p.host).call('files', p.verb, params)) as FileDone
     }
-    // A delete answers what it sent to the bin, not entries: what was not refused went.
-    const went = p.verb === 'trash' ? p.things.filter((t) => !done.refused.some((r) => r.name === t.name)).map((t) => ({ key: t.key, name: t.name })) : done.entries
-    if (!went.length && done.refused.length) throw new ActNotSent(done.refused.map((r) => `${r.name}: ${r.text}`).join(' '))
-    if (p.verb === 'make') markMade(act, p.workspaceId, item.sessionId, done.entries)
-    const words = fileActWords(p)
-    const past = { make: 'Made', rename: 'Renamed', move: 'Moved', copy: 'Copied', trash: 'Deleted' }[p.verb]
-    const left = done.refused.length ? ` Not done: ${done.refused.map((r) => `${r.name} (${r.text})`).join('; ')}` : ''
-    return { summary: `${past}: ${went.map((e) => e.name).join(', ')}.${left}`, ref: { keys: went.map((e) => e.key), asked: words.summary } }
+    return pressed(act, p, item.sessionId, done)
   }
+}
+
+/** What a press did, as the Outbox records it: what went, and what was refused. */
+function pressed(act: WorkCtx, p: FileAct, sessionId: string, done: FileDone): { summary: string; ref: unknown } {
+  // A delete answers what it sent to the bin, not entries: what was not refused went.
+  const went = p.verb === 'trash' ? p.things.filter((t) => !done.refused.some((r) => r.name === t.name)).map((t) => ({ key: t.key, name: t.name })) : done.entries
+  if (!went.length && done.refused.length) throw new ActNotSent(done.refused.map((r) => `${r.name}: ${r.text}`).join(' '))
+  if (p.verb === 'make') markMade(act, p.workspaceId, sessionId, done.entries)
+  const words = fileActWords(p)
+  const past = { make: 'Made', rename: 'Renamed', move: 'Moved', copy: 'Copied', trash: 'Deleted' }[p.verb]
+  const left = done.refused.length ? ` Not done: ${done.refused.map((r) => `${r.name} (${r.text})`).join('; ')}` : ''
+  return { summary: `${past}: ${went.map((e) => e.name).join(', ')}.${left}`, ref: { keys: went.map((e) => e.key), asked: words.summary } }
 }
 
 // ── a change, run or held ─────────────────────────────────────────────
@@ -320,7 +359,7 @@ async function change(ctx: ToolCtx, workspaceId: string, a: Asked): Promise<Work
     verdict = 'hold'
   }
   if (verdict === 'hold') {
-    return hold(ctx, workspaceId, a, things)
+    return await hold(ctx, workspaceId, a, things)
   }
   const op = `tool:${randomUUID()}`
   const done = await runHere(ctx, me, workspaceId, a, op, method)
@@ -360,9 +399,15 @@ async function runHere(ctx: ToolCtx, me: Caller, workspaceId: string, a: Asked, 
 }
 
 /** A change others will see: held for his press, bound to each thing as it is now. */
-function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEntry[]): WorkToolResult {
+async function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEntry[]): Promise<WorkToolResult> {
   const { host, place } = a.named
   const verb = a.verb
+  // The card says where the things are now as one folder: things from several folders are held one folder at a time.
+  if (new Set(a.paths.map(dirOfWords)).size > 1) return fail('Those are in different folders: move or copy the files of one folder at a time.')
+  if (verb === 'copy' || verb === 'move') {
+    const taken = await takenIn(ctx, host, workspaceId, a.request.to, things.map((t) => t.name))
+    if (taken) return fail(`${a.into?.words || 'That folder'} already holds something named ${taken}: rename one first.`)
+  }
   const at = a.into?.named.place ?? place
   const payload: FileAct = {
     workspaceId,

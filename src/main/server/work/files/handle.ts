@@ -499,7 +499,7 @@ function markedOf(ctx: WorkCtx, by: Caller, workspaceId: string, ref: FileRef, m
  * A change before its verb is built: the thing is located and the door decides, so every refusal the door makes
  * is already the answer; what the door admits is not carried out yet.
  */
-export function admitChange(ctx: WorkCtx, by: Caller, verb: FileVerb, p: { workspaceId: string; refs: FileRef[]; to?: FolderRef; name?: string; kind?: string; asked?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): 'run' | 'hold' {
+export function admitChange(ctx: WorkCtx, by: Caller, verb: FileVerb, p: { workspaceId: string; refs: FileRef[]; to?: FolderRef; name?: string; kind?: string; from?: FileRef; asked?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): 'run' | 'hold' {
   admitCaller(ctx, by, p.workspaceId)
   const into = p.to ? locate(ctx, by, p.workspaceId, p.to.at === 'place' ? placeRoot(ctx, by, p.workspaceId, p.to.id) : p.to, method) : null
   const to = into ? doorPlace(ctx, by, into).place : null
@@ -515,7 +515,7 @@ export function admitChange(ctx: WorkCtx, by: Caller, verb: FileVerb, p: { works
     const name = at.in === 'place' ? '' : basename(at.path)
     // Both ends by their real paths: a workspace kept in OneDrive, or a library reached inside it, is others' to open.
     const othersOpen = locatedShared(ctx, at) || (!!into && locatedShared(ctx, into))
-    const got = admitWrite(by, { verb, from, to, entry: { name, kind: kindOfEntry(name).kind }, asked: p.asked, origin: p.origin, digest: changeDigest({ workspaceId: p.workspaceId, verb, refs: p.refs, to: p.to, name: p.name, kind: p.kind }), othersOpen })
+    const got = admitWrite(by, { verb, from, to, entry: { name, kind: kindOfEntry(name).kind }, asked: p.asked, origin: p.origin, digest: changeDigest({ workspaceId: p.workspaceId, verb, refs: p.refs, to: p.to, name: p.name, kind: p.kind, template: p.from }), othersOpen })
     if (got === 'hold') verdict = 'hold'
   }
   return verdict

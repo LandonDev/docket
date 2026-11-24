@@ -338,6 +338,37 @@ describe('in a place others can open a change is held as a file.act', () => {
     expect((made as { result: { entries: unknown[] } }).result.entries).toEqual([expect.objectContaining({ name: 'Agenda.txt', madeBy: 'Venue thread' })])
   })
 
+  it('shows the change his press will make: the kind a New makes, one folder at a time, and never a copy under another name', async () => {
+    const ctx = toolCtx(workCtx())
+    await call('files_make', { place: TEAM_GENERAL, kind: 'sheet' }, ctx)
+    expect(outbox.store.list({})[0]!.summary).toBe('Make a new sheet in Esports Staff, General. Everyone in Esports Staff can open it.')
+    // Files of two folders would be said as lying in the first one's.
+    mkdirSync(join(rig.team, 'General', 'Archive'))
+    const two = await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx', 'Budgets/2026.xlsx'], to: { place: TEAM_GENERAL, path: 'Archive' } }, ctx)
+    expect(two).toMatchObject({ isError: true, text: 'Those are in different folders: move or copy the files of one folder at a time.' })
+    // A copy into a folder that holds the name would land as "Plan 2.docx": refused when held, stale when it comes to be so after.
+    writeFileSync(join(rig.team, 'General', 'Archive', 'Plan.docx'), 'theirs')
+    const taken = await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: TEAM_GENERAL, path: 'Archive' } }, ctx)
+    expect(taken).toMatchObject({ isError: true, text: expect.stringContaining('already holds something named Plan.docx') })
+    rmSync(join(rig.team, 'General', 'Archive', 'Plan.docx'))
+    await call('files_copy', { place: TEAM_GENERAL, paths: ['Plan.docx'], to: { place: TEAM_GENERAL, path: 'Archive' } }, ctx)
+    const copy = outbox.store.list({}).at(-1)!
+    writeFileSync(join(rig.team, 'General', 'Archive', 'Plan.docx'), 'theirs, after')
+    expect(await press({ ref: { at: 'host', id: copy.id } })).toMatchObject({ state: 'stale', error: expect.stringContaining('already holds something named Plan.docx') })
+    expect(readdirSync(join(rig.team, 'General', 'Archive'))).toEqual(['Plan.docx'])
+  })
+
+  it('answers a press whose answer was lost from its own receipt, though the old path is gone', async () => {
+    const ctx = toolCtx(workCtx())
+    await call('files_move', { place: TEAM_GENERAL, paths: ['Plan.docx'], name: 'Plan v2.docx' }, ctx)
+    const row = outbox.store.list({})[0]!
+    expect(await press({ ref: { at: 'host', id: row.id } })).toMatchObject({ state: 'sent', result: { summary: 'Renamed: Plan v2.docx.' } })
+    // The rename landed and its answer went missing: pressed again, the act finds its receipt, not a stale old path.
+    const again = await fileActKind.execute(fileActKind.payload.parse(row.payload), { ...workCtx(), item: { sessionId: 't1', workspaceId: WS, ref: { at: 'host', id: row.id } } } as never)
+    expect(again).toMatchObject({ summary: 'Renamed: Plan v2.docx.' })
+    expect(readdirSync(join(rig.team, 'General')).filter((n) => n.startsWith('Plan'))).toEqual(['Plan v2.docx'])
+  })
+
   it('does nothing on a press gone stale: the file changed, the file moved, the folder gone, the thread moved', async () => {
     const ctx = toolCtx(workCtx())
     const holdMove = async (): Promise<string> => {

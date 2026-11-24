@@ -1030,7 +1030,17 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   what it was is stale ("Who can open … changed since this was held": a
   folder keeps its key while its sharing changes, and the sentence he read
   named who can open it). An act held before `shared` was bound skips that
-  check. Stale does nothing. Then the window's own
+  check. A Drive folder it goes to that was renamed since (it keeps its id)
+  is stale, and so is a copy or move whose name is taken in the folder it
+  goes to (a copy would take the next free name, not the one shown); a thread
+  is told the same when it asks, and a change of files from more than one
+  folder is refused then, since the card names one folder. Stale does
+  nothing. First of all, on this host, the act's own operation id is looked
+  up (`replayed`): a press whose answer was lost, pressed again, answers what
+  it did from that receipt rather than calling the old path gone. On
+  another host that receipt is the far host's own and no wire asks for it
+  yet, so such a press there goes stale and says nothing was done, though it
+  was (for the owner: a receipt-first call). Then the window's own
   verb runs: here through `filesHandle` as his window, with `asked`; on
   another host through `ctx.peer` with the thread's scope, where the peer's
   door runs it only for `origin: { from: 'act', id, digest }` whose digest
