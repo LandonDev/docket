@@ -390,6 +390,7 @@ its row saying "Downloading… 2.1 of 8.4 MB". Each part goes straight to the di
 window: main begins the file in Downloads with the first part under a short name of its own ("TempCode download <id>.download", `wx`: a long name that fits Downloads would not fit
 with ".download" after it), adds each part,
 and on the last names it under its own safe, free name (a link, never over a file that took the name meanwhile;
+on a disk with no links a copy made exclusively, never a rename, and a name taken meanwhile takes the next number;
 a name and its number fit the disk's 255 UTF-8 bytes, a long stem cut to make room and the extension kept,
 `safeFileName`, `freeName` in shared/fileName.ts) and answers its path; a name the disk still refuses fails the
 download and takes its part away; a part that did not come, or the window closed or reloaded mid-file, takes the unfinished file away,

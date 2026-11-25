@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { link, open, rename, rm, writeFile, type FileHandle } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
+import { copyFile, link, open, rm, writeFile, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { freeName, safeFileName } from '@shared/fileName'
 
@@ -52,9 +52,13 @@ export function partWriter(dir: () => string): {
             await link(one.path, path)
           } catch (err) {
             if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
-            // A disk with no links (FAT): renamed, the name checked free a moment ago.
-            await rename(one.path, path)
-            return path
+            // A disk with no links (FAT): copied to a file made anew, never renamed over one that took the name since.
+            try {
+              await copyFile(one.path, path, constants.COPYFILE_EXCL)
+            } catch (copyErr) {
+              if ((copyErr as NodeJS.ErrnoException).code === 'EEXIST') continue
+              throw copyErr
+            }
           }
           await rm(one.path, { force: true })
           return path
