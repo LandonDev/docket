@@ -151,15 +151,17 @@ export function useTracker(): TrackerView {
   useEffect(() => {
     let alive = true;
     // Only the newest read lands: an older one that answers late never replaces a newer answer.
-    let latest = 0;
+    // On an object, not a let: the React Compiler does not lower `++` on a variable a closure holds.
+    const reads = { latest: 0 };
     const show = (got: HostAnswer[]): void => {
       kept = got;
       if (alive) setAnswers(got);
     };
     const read = (): void => {
-      const n = ++latest;
+      reads.latest += 1;
+      const n = reads.latest;
       void askHosts(askOverview).then((got) => {
-        if (n === latest) show(got);
+        if (n === reads.latest) show(got);
       });
     };
     read();
@@ -174,7 +176,7 @@ export function useTracker(): TrackerView {
       const closed = new Map([...wasOpen].filter((id) => !now.has(id) && workSwitch.hosts().has(id)).map((id) => [id, closedWords(hostIn(id), registry.statusOf(id).transport)]));
       wasOpen = now;
       if (closed.size && kept) {
-        latest++;
+        reads.latest += 1;
         show(withClosed(kept, closed));
       }
       if (opened || closed.size) read();
