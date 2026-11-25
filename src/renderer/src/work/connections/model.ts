@@ -1,7 +1,7 @@
 import { fixAllowed, HEALTH_OWN_COMPUTER, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
 import type { ThreadState } from "../../components/ui/status";
 import { nameInLine } from "../../lib/hostWords";
-import { atHead, lifeosDownWords } from "../shell/lifeosWords";
+import { connectingWords, lifeosDownWords } from "../shell/lifeosWords";
 
 /**
  * Connections, as the page lays it out (docs/agents/work-connections.md):
@@ -91,7 +91,7 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
  */
 export function lifeosLine(row: HealthRow, hostName: string): string | null {
   if (row.pillar !== "lifeos" || !row.lifeos || row.lifeos === "connected") return null;
-  if (row.lifeos === "connecting") return `${atHead(hostName)} is still connecting to LifeOS`;
+  if (row.lifeos === "connecting") return connectingWords(hostName);
   const words = lifeosDownWords(row.lifeos, false, hostName);
   if (row.lifeos !== "unreachable") return words;
   // The sign-in row's time follows ("since 2:02 PM"); the answers row keeps a cause the host gave.

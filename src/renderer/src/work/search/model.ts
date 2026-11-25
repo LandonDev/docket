@@ -1,6 +1,6 @@
 import { mentionMatches } from "@shared/work/mentions";
 import { nameInLine } from "../../lib/hostWords";
-import { lifeosDownWords, lifeosStateOf } from "../shell/lifeosWords";
+import { connectingWords, lifeosDownWords, lifeosStateOf } from "../shell/lifeosWords";
 import {
   RECENT_KIND,
   SEARCH_ALL,
@@ -164,7 +164,7 @@ export function quietLine(cause: string, line: string, at: SearchHost, hosts: nu
     // The words every reader of a down session says (`lifeosDownWords`), the computer named, from the state the host's
     // own words name (`lifeosStateOf`); a cause it names no state of stays the host's.
     const state = lifeosStateOf(line);
-    const words = state === "connecting" ? `LifeOS is still connecting on ${host.name}` : state && state !== "connected" ? lifeosDownWords(state, false, at.name) : line.replace(/\.$/, "");
+    const words = state === "connecting" ? connectingWords(at.name) : state && state !== "connected" ? lifeosDownWords(state, false, at.name) : line.replace(/\.$/, "");
     return { key: "lifeos", line: `${words}.` };
   }
   const said = `${line.replace(/\.$/, "")}`;

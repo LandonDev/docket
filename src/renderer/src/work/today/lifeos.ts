@@ -2,7 +2,8 @@ import { makeFunctionReference } from "convex/server";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
-import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { lifeosHostName, reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { connectingWords } from "../shell/lifeosWords";
 import { downOf, type LifeosDown } from "../shell/lifeosDown";
 import type { LifeosReach } from "./model";
 import { toastUp } from "./store";
@@ -228,7 +229,7 @@ export function answerOf(
 /** A write to LifeOS as the session's owner; rejects when the session cannot write. */
 export function mutate<T>(session: LifeosSession, name: string, args: Record<string, unknown>): Promise<T> {
   // A session with no client says its true state, the computer named (`sessionWords`), never a sign-out it is not.
-  if (!session.client) return Promise.reject(new Error(sessionWaits(session) ? "LifeOS is still connecting" : sessionWords(session)));
+  if (!session.client) return Promise.reject(new Error(sessionWaits(session) ? connectingWords(lifeosHostName(session.environmentId)) : sessionWords(session)));
   return session.client.mutation(makeFunctionReference<"mutation">(name), args) as Promise<T>;
 }
 

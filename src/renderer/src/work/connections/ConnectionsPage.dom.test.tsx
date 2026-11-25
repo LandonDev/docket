@@ -74,7 +74,7 @@ describe("Connections", () => {
     expect(linkOf).not.toHaveBeenCalledWith("mac");
     expect(screen.getByText("Offline")).toBeTruthy();
     expect(screen.getByText("Broken")).toBeTruthy();
-    expect(screen.getByText("The box is still connecting to LifeOS")).toBeTruthy();
+    expect(screen.getByText("LifeOS is still connecting on the box")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await settle();
     await settle();

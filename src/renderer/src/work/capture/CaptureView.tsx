@@ -6,7 +6,7 @@ import { X } from "../../chrome/icons";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
 import { ErrorLine } from "../../chrome/ConfirmDialog";
 import { keyHint } from "../../lib/keys";
-import { lifeosDownWords } from "../shell/lifeosWords";
+import { connectingWords, lifeosDownWords } from "../shell/lifeosWords";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { choiceLabel, SECTOR_CHOICES, type DraftFile, type SectorChoice } from "./draft";
 
@@ -57,7 +57,7 @@ export function captureDown(p: Pick<CaptureViewProps, "status" | "lifeos" | "hos
   if (p.status === "silent") return { words: lifeosDownWords("unanswered", false, host), retry: true };
   if (p.status !== "offline") return null;
   if (!p.lifeos) return { words: "Not signed in to LifeOS", retry: false };
-  if (p.lifeos === "connecting" || p.lifeos === "connected") return { words: "LifeOS is still connecting", retry: false };
+  if (p.lifeos === "connecting" || p.lifeos === "connected") return { words: connectingWords(host), retry: false };
   return { words: lifeosDownWords(p.lifeos, false, host), retry: p.lifeos === "unreachable" };
 }
 

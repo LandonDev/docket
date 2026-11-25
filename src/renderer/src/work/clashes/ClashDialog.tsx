@@ -22,6 +22,7 @@ import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
 import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSession, type LifeosSession } from "../shell/lifeos";
+import { connectingWords } from "../shell/lifeosWords";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine } from "../shell/DownLine";
 import { useHostDown } from "../shell/lifeosLive";
@@ -284,7 +285,7 @@ function Body({
     const workspaceId = clash.b.workspaceId;
     if (!workspaceId) return;
     // A session that cannot read says so: a press never ends in nothing.
-    if (!session.client) return setError(sessionWaits(session) ? "LifeOS is still connecting" : sessionWords(session));
+    if (!session.client) return setError(sessionWaits(session) ? connectingWords(lifeosHostName(session.environmentId)) : sessionWords(session));
     setError(null);
     setPending(true);
     setBusy("late");

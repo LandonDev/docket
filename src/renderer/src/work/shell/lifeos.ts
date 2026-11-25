@@ -5,7 +5,7 @@ import { errorText, type SectorKey } from "@shared/work";
 import type { LifeosJwtAnswer, LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
 import { registry } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
-import { lifeosDownWords } from "./lifeosWords";
+import { connectingWords, lifeosDownWords } from "./lifeosWords";
 import { workSwitch } from "../../lib/workSwitch";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
@@ -487,7 +487,7 @@ export function lifeosHeardWords(environmentId: string): string {
   const host = lifeosHostName(environmentId);
   if (unanswered.has(environmentId)) return sessionFailure("unanswered", false, host);
   const state = statuses.get(environmentId)?.lifeos.state;
-  if (state === "connecting") return "LifeOS is still connecting";
+  if (state === "connecting") return connectingWords(host);
   return sessionFailure(!state || state === "connected" ? "unreachable" : state, false, host);
 }
 

@@ -1010,7 +1010,7 @@ describe("the Clash dialog", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
     await settle();
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS is still connecting");
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS is still connecting on the box");
     expect(mail.drafts).toEqual([]);
   });
 

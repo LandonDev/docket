@@ -201,7 +201,7 @@ describe("the capture window", () => {
     ["pairing", /^The LifeOS sign-in on this (Mac|PC) waits for your approval$/, false],
     ["refused", /^LifeOS refused this (Mac|PC)'s sign-in$/, false],
     ["off", /^Work is off on this (Mac|PC)$/, false],
-    ["connecting", /^LifeOS is still connecting$/, false],
+    ["connecting", /^LifeOS is still connecting on this (Mac|PC)$/, false],
     ["unreachable", /^LifeOS did not answer this (Mac|PC)$/, true],
   ] as const)("says LifeOS %s in the rule's words, this computer named, Retry only for silence, the draft kept", async (lifeos, words, retry) => {
     state = { ...state, connected: false, lifeos };

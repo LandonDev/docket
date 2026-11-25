@@ -44,7 +44,7 @@ describe("sectionsOf", () => {
     expect(signIn("signed-out")).toBe("Not signed in to LifeOS on the box");
     expect(signIn("pairing")).toBe("The LifeOS sign-in on the box waits for your approval");
     expect(signIn("refused")).toBe("LifeOS refused the box's sign-in");
-    expect(signIn("connecting")).toBe("The box is still connecting to LifeOS");
+    expect(signIn("connecting")).toBe("LifeOS is still connecting on the box");
     expect(signIn("unreachable")).toBe("LifeOS did not answer the box. Still trying since");
     expect(signIn("connected")).toBeNull();
     expect(signIn(undefined, "Not signed in on this host")).toBeNull();

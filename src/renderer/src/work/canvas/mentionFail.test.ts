@@ -22,7 +22,7 @@ describe("mentionFailWords", () => {
     setLifeosStatus("box", status("off"));
     expect(mentionFailWords(["task"], "box")).toBe("Work is off on the box");
     setLifeosStatus("box", status("connecting"));
-    expect(mentionFailWords(["task"], "box")).toBe("LifeOS is still connecting");
+    expect(mentionFailWords(["task"], "box")).toBe("LifeOS is still connecting on the box");
     // Connected, yet LifeOS's kinds failed: LifeOS did not answer in time.
     setLifeosStatus("box", status("connected"));
     expect(mentionFailWords(["event"], "box")).toBe("LifeOS did not answer the box");
