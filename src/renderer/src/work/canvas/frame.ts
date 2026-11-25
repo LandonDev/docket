@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import type { CanvasItem, ContextChip } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
+import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { CanvasMode, CanvasSelection, CanvasShell, MoreEntry, Presence, ReviewAdapter, SavedLine, StatusLine, WrittenLine } from "./kind";
 import { openHeld } from "./held";
 import { openItem } from "./store";
@@ -24,10 +27,20 @@ export interface Feeds {
 const NO_PEOPLE: readonly Presence[] = [];
 export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null, ready: null, saved: null };
 
-/** An error a person should see once, in the thread's toast stack. */
-export function sayError(error: unknown, fallback: string): void {
-  const message = error instanceof Error && error.message ? error.message : fallback;
-  void loadToast().then((toast) => toast.error(message));
+/**
+ * An error a person should see once, in the thread's toast stack: the act's own line (`fallback`, "Couldn't refresh")
+ * as its title, and the host's answer in plain words under it (`workErrorWords`, naming the computer asked where the
+ * caller gives `environmentId`), none when the answer has no plain words. Never a method's name or a path.
+ */
+export function sayError(error: unknown, fallback: string, environmentId?: string | null): void {
+  void loadToast().then((toast) => toast.error(fallback, errorDescription(error, environmentId)));
+}
+
+/** The plain words under `sayError`'s title, or none. */
+export function errorDescription(error: unknown, environmentId?: string | null): { description: string } | undefined {
+  const name = environmentId ? registry.environment?.(environmentId)?.name : undefined;
+  const words = workErrorWords(error, name ? { host: nameInLine(name) } : {});
+  return words ? { description: words } : undefined;
 }
 
 /**
@@ -68,7 +81,7 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
       saved: feed("saved"),
       openHistory: () => {
         if (!source || !title || kind === "history") return;
-        openItem(environmentId, sessionId, { kind: "history", source, title }).catch((error: unknown) => sayError(error, "Couldn't open the history"));
+        openItem(environmentId, sessionId, { kind: "history", source, title }).catch((error: unknown) => sayError(error, "Couldn't open the history", environmentId));
       },
       held: (ref) => openHeld(ref, environmentId),
     };

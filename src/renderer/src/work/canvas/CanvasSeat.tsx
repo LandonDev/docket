@@ -83,7 +83,7 @@ export function CanvasSeat({
   // Every close goes through the door a Files tab's close uses, so what the item holds is sent before it goes.
   const closeOne = async (itemId: string): Promise<void> => {
     const item = view.items.find((i) => i.id === itemId);
-    if (item) await closeThroughDoor(environmentId, sessionId, item).catch((error: unknown) => sayError(error, "Couldn't close the item"));
+    if (item) await closeThroughDoor(environmentId, sessionId, item).catch((error: unknown) => sayError(error, "Couldn't close the item", environmentId));
   };
   const close = (itemId: string): void => void closeOne(itemId);
   const closeMany = async (itemIds: readonly string[]): Promise<void> => {
@@ -132,23 +132,23 @@ export function CanvasSeat({
     if (entry) {
       Promise.resolve()
         .then(() => entry.run())
-        .catch((error: unknown) => sayError(error, `Couldn't ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`));
+        .catch((error: unknown) => sayError(error, `Couldn't ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`, environmentId));
       return;
     }
     const verb = id.startsWith(VERB_ROW) ? verbs.find((v) => VERB_ROW + v.id === id) : undefined;
     if (verb) {
       Promise.resolve()
         .then(() => verb.run(shown, { environmentId }))
-        .catch((error: unknown) => sayError(error, `Couldn't ${verb.label.charAt(0).toLowerCase()}${verb.label.slice(1)}`));
+        .catch((error: unknown) => sayError(error, `Couldn't ${verb.label.charAt(0).toLowerCase()}${verb.label.slice(1)}`, environmentId));
       return;
     }
     if (id === "google-open") setPicking(true);
-    if (id === "open-file") void import("./openOutside").then(({ pickAndOpen }) => pickAndOpen({ at: "thread", sessionId })).catch((error: unknown) => sayError(error, "Couldn't open the file"));
+    if (id === "open-file") void import("./openOutside").then(({ pickAndOpen }) => pickAndOpen({ at: "thread", sessionId })).catch((error: unknown) => sayError(error, "Couldn't open the file", environmentId));
     if (id === "close") close(shown.id);
     if (id === "close-others") void closeMany(view.items.filter((item) => item.id !== shown.id).map((item) => item.id));
     if (review && !review.held && !review.verdictsHeld && (id === "reject-all" || (id === "accept-all" && !review.acceptHeld))) {
       const accept = id === "accept-all";
-      review[accept ? "accept" : "reject"]("all").catch((error: unknown) => sayError(error, accept ? "Couldn't accept the changes" : "Couldn't reject the changes"));
+      review[accept ? "accept" : "reject"]("all").catch((error: unknown) => sayError(error, accept ? "Couldn't accept the changes" : "Couldn't reject the changes", environmentId));
     }
   };
 
@@ -178,7 +178,7 @@ export function CanvasSeat({
                 onSelect={(itemId) => selectItem(sessionId, itemId)}
                 onClose={close}
                 kinds={kinds}
-                onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab"))}
+                onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab", environmentId))}
               />
             </div>
           ) : undefined

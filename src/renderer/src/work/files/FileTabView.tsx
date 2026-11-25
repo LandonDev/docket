@@ -359,7 +359,7 @@ export function FileTabView({
   useEffect(() => {
     if (!copy || !word || word.auto !== undefined || !word.since || asked.current) return;
     asked.current = true;
-    void askAutosave(tab, { choose: confirmChoice, set: (on) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) }).catch((err: unknown) => sayError(err, "The choice was not kept"));
+    void askAutosave(tab, { choose: confirmChoice, set: (on) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) }).catch((err: unknown) => sayError(err, "The choice was not kept", workspace.environmentId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copy, word?.auto, word?.since]);
   const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
@@ -401,7 +401,7 @@ export function FileTabView({
     setRunning(action.id);
     void Promise.resolve()
       .then(() => action.run())
-      .catch((err: unknown) => sayError(err, `${action.label} did not work`))
+      .catch((err: unknown) => sayError(err, `${action.label} did not work`, workspace.environmentId))
       .finally(() => setRunning(null));
   };
   // Full window: the file fills the app's window, the rail and the tabs gone; Escape returns.
@@ -468,7 +468,7 @@ export function FileTabView({
         busy: setSwitching,
       },
     )
-      .catch((err: unknown) => sayError(err, "The file did not switch"))
+      .catch((err: unknown) => sayError(err, "The file did not switch", workspace.environmentId))
       .finally(() => setSwitchBusy(false));
   };
   const liveNote = live && liveState ? (liveState.site ? `Signing in at ${liveState.site}` : liveState.stage !== "ready" && !liveState.failed ? `Opening in ${APP_NAME[live.app]}…` : null) : null;
@@ -504,7 +504,7 @@ export function FileTabView({
         rows={rows}
         onPick={(id) => {
           if (id === "close") return onClose();
-          if (id === "word-auto") return void setWordAuto(workspace.environmentId, workspace.id, tab.id, !tab.word?.auto).catch((err: unknown) => sayError(err, "The choice was not kept"));
+          if (id === "word-auto") return void setWordAuto(workspace.environmentId, workspace.id, tab.id, !tab.word?.auto).catch((err: unknown) => sayError(err, "The choice was not kept", workspace.environmentId));
           if (id === "full") return setFull(!full);
           if (id === "download") return manage?.download?.();
           if (id === "save-as" && item) return openSaveAs(item.id);
