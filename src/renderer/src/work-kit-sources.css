@@ -251,6 +251,11 @@
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-generator.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-manager.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/plugin.ts";
+@source "../../../node_modules/work-kit/src/sheet/find/FindBar.tsx";
+@source "../../../node_modules/work-kit/src/sheet/find/access.ts";
+@source "../../../node_modules/work-kit/src/sheet/find/marks.ts";
+@source "../../../node_modules/work-kit/src/sheet/find/plugin.ts";
+@source "../../../node_modules/work-kit/src/sheet/find/typed.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/FormulaBar.tsx";
 @source "../../../node_modules/work-kit/src/sheet/grid/SheetCanvas.tsx";
 @source "../../../node_modules/work-kit/src/sheet/grid/SheetTabs.tsx";
@@ -262,8 +267,11 @@
 @source "../../../node_modules/work-kit/src/sheet/grid/format.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/handle.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/keys.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/layout.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/marks.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/menu.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/place.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/pointing.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/selection.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/state.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/theme.ts";
@@ -325,6 +333,7 @@
 @source "../../../node_modules/work-kit/src/sheet/tables/model.ts";
 @source "../../../node_modules/work-kit/src/sheet/tables/presets.ts";
 @source "../../../node_modules/work-kit/src/sheet/tables/refs.ts";
+@source "../../../node_modules/work-kit/src/sheet/typed.ts";
 @source "../../../node_modules/work-kit/src/sheet/xlsx/comments.ts";
 @source "../../../node_modules/work-kit/src/sheet/xlsx/features.ts";
 @source "../../../node_modules/work-kit/src/sheet/xlsx/index.ts";
