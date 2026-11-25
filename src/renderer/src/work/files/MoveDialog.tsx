@@ -164,7 +164,7 @@ export function MoveDialog({
                   first: naming ? (
                     <div className={ROW}>
                       <KindGlyph kind="folder" />
-                      <NameField name="New Folder" className="h-6 flex-1 text-[13px]" onDone={(typed) => void newFolder(typed)} />
+                      <NameField name="New Folder" folder className="h-6 flex-1 text-[13px]" onDone={(typed) => void newFolder(typed)} />
                     </div>
                   ) : null,
                 }

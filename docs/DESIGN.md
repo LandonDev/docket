@@ -2088,6 +2088,9 @@ Around the canvas:
   folders: elsewhere it stays the app's New Window. A name is typed in place (F2, a slow
   second press on the selected name, Rename in the menu): the field
   stands where the name was with the part before the extension selected.
+  A file's name typed with no extension where it had one asks first, as
+  Finder does ("Remove “.docx” from the name?", Keep .docx in the first
+  focus, then Remove; Cancel renames nothing).
   **A row's menu** (a right-click, the same for one or many) is the
   verbs the place takes, each refused one greyed with its sentence as the
   tooltip: Open, Quick Look (its key, Space, at the row's end; a press

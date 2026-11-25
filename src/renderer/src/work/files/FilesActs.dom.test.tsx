@@ -43,6 +43,8 @@ const world = vi.hoisted(() => ({
   /** the web page the workspace's host knows for a library's file, by its path */
   pages: {} as Record<string, string>,
   opened: [] as string[],
+  /** the answer to a question with two answers (confirmChoice) */
+  choice: "other" as "action" | "other" | null,
   /** the files main wrote into Downloads, by name */
   saved: [] as string[],
 }));
@@ -94,6 +96,7 @@ vi.mock("../../components/ui/toaster", () => {
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   ...(await original<typeof import("../../chrome/ConfirmDialog")>()),
   confirmAction: async (request: { title: string; body?: string; action: string }) => (world.asked.push({ title: request.title, action: request.action }), world.bodies.push(request.body), world.yes),
+  confirmChoice: async (request: { title: string; body?: string; action: string; other: string }) => (world.asked.push({ title: request.title, action: `${request.action}|${request.other}` }), world.bodies.push(request.body), world.choice),
 }));
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
@@ -335,6 +338,7 @@ beforeEach(async () => {
   world.bodies.length = 0;
   world.started.length = 0;
   world.yes = true;
+  world.choice = "other";
   world.mayUse = [];
   world.links = {};
   world.platform = "linux";
@@ -703,6 +707,38 @@ describe("the keys for what is selected", () => {
     await waitFor(() => expect(calls("work.files.trash")).toHaveLength(1));
     expect((calls("work.files.trash")[0]!.refs as unknown[]).length).toBe(2);
     await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ title: "Deleted 2 things" }));
+  });
+});
+
+describe("a name typed over its extension", () => {
+  it("asks before a file loses its extension: Keep puts it back, Remove keeps the name typed, Cancel renames nothing", async () => {
+    await mount();
+    const rename = async (from: string, to: string): Promise<void> => {
+      fireEvent.click(row(from));
+      fireEvent.keyDown(list(), { key: "F2" });
+      const field = (await screen.findByRole("textbox", { name: `Rename ${from}` })) as HTMLInputElement;
+      fireEvent.change(field, { target: { value: to } });
+      fireEvent.keyDown(field, { key: "Enter" });
+    };
+    world.choice = "other";
+    await rename("Plan.docx", "Plan for spring");
+    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(1));
+    expect(world.asked.at(-1)).toEqual({ title: "Remove “.docx” from the name?", action: "Remove|Keep .docx" });
+    expect(calls("work.files.rename")[0]).toMatchObject({ name: "Plan for spring.docx" });
+    await waitFor(() => expect(rows()).toContain("Plan for spring.docx"));
+    world.choice = null;
+    await rename("Budget.xlsx", "Budget");
+    await waitFor(() => expect(world.asked.at(-1)?.title).toBe("Remove “.xlsx” from the name?"));
+    expect(calls("work.files.rename")).toHaveLength(1);
+    world.choice = "action";
+    await rename("Budget.xlsx", "Budget");
+    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(2));
+    expect(calls("work.files.rename")[1]).toMatchObject({ name: "Budget" });
+    // A name typed with an extension, and a folder's name, ask nothing.
+    const asked = world.asked.length;
+    await rename("notes.txt", "notes.md");
+    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(3));
+    expect(world.asked).toHaveLength(asked);
   });
 });
 

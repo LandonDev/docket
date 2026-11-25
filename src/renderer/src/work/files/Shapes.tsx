@@ -93,7 +93,7 @@ function Tile({
       <div className="flex h-[52px] min-w-0 flex-col">
         {renaming ? (
           <span className="flex items-start">
-            <NameField name={entry.name} className="text-center" onDone={(next) => onRenamed(entry, next)} />
+            <NameField name={entry.name} folder={!!entry.folder} className="text-center" onDone={(next) => onRenamed(entry, next)} />
           </span>
         ) : (
           <span data-files-name className={`line-clamp-2 text-center text-[13px] leading-[18px] break-words text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
@@ -287,7 +287,7 @@ function Column({
       >
         <KindGlyph kind={entry.kind} />
         {active && renaming === entry.key ? (
-          <NameField name={entry.name} onDone={(next) => onRenamed(entry, next)} />
+          <NameField name={entry.name} folder={!!entry.folder} onDone={(next) => onRenamed(entry, next)} />
         ) : (
           <span className={`min-w-0 flex-1 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>{shownName(entry.name)}</span>
         )}

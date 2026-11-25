@@ -351,7 +351,7 @@ const FileRow = memo(function FileRow({
       {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line). */}
       <span className="flex min-w-0 flex-1 items-baseline gap-1">
         {renaming ? (
-          <NameField name={entry.name} onDone={(next) => live.current.onRenamed(entry, next)} />
+          <NameField name={entry.name} folder={!!entry.folder} onDone={(next) => live.current.onRenamed(entry, next)} />
         ) : (
           <TruncateTip text={busy?.name ?? shownName(entry.name)}>
             <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { FileEntry, FolderRef } from "@shared/work/files";
+import { confirmChoice } from "../../chrome/ConfirmDialog";
 import { Tip, TruncateTip } from "../../components/tip";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
@@ -82,9 +83,10 @@ export function RowState({ entry, cut }: { entry: FileEntry; cut?: string }) {
 /**
  * A name typed in place: the field stands where the name was, with the part before the extension selected.
  * Return keeps it, Escape and a press elsewhere leave the name as it was (a press elsewhere keeps what was
- * typed, as a rename anywhere does).
+ * typed, as a rename anywhere does). A file's name typed with no extension where it had one asks first, as Finder
+ * does: Keep ".docx" (the first focus) puts it back, Remove leaves the name as typed, Cancel leaves the name as it was.
  */
-export function NameField({ name, className, onDone }: { name: string; className?: string; onDone(next: string | null): void }) {
+export function NameField({ name, folder = false, className, onDone }: { name: string; /** a folder's name has no extension to keep */ folder?: boolean; className?: string; onDone(next: string | null): void }) {
   // TempCode's own ending is kept, never typed or shown: the field holds the name before it.
   const ending = hiddenEnding(name);
   const [value, setValue] = useState(shownName(name));
@@ -101,7 +103,14 @@ export function NameField({ name, className, onDone }: { name: string; className
   const finish = (next: string | null): void => {
     if (done.current) return;
     done.current = true;
-    onDone(next === null || !ending || !next.trim() ? next : `${next.trim()}${ending}`);
+    if (next === null || !next.trim()) return onDone(next);
+    if (ending) return onDone(`${next.trim()}${ending}`);
+    const was = folder ? "" : name.slice(stemEnd(name));
+    const typed = next.trim();
+    if (!was || stemEnd(typed) < typed.length) return onDone(next);
+    void confirmChoice({ title: `Remove “${was}” from the name?`, body: "Without it, the file may not open in its own app.", action: "Remove", other: `Keep ${was}`, focusOther: true }).then((answer) =>
+      onDone(answer === "action" ? typed : answer === "other" ? `${typed}${was}` : null),
+    );
   };
   return (
     <Input

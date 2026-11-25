@@ -495,7 +495,7 @@ export function FileBeside({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-2">
             {renaming === entry.key ? (
-              <NameField name={entry.name} className="h-5" onDone={(next) => onRenamed(entry, next)} />
+              <NameField name={entry.name} folder={!!entry.folder} className="h-5" onDone={(next) => onRenamed(entry, next)} />
             ) : (
               <span data-files-name className={`min-w-0 flex-1 truncate leading-4 text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
                 {mine?.name ?? shownName(entry.name)}
