@@ -375,23 +375,29 @@ export function View(props: WorkViewProps) {
       if (chunk?.reopenNotes.current === reopen) chunk.reopenNotes.current = null;
     };
   }, [eventId, workspaceId]);
+  // His Retry on a page that did not load: the line stays, Retry spinning in place, until the read answers.
+  const [pressed, setPressed] = useState(false);
   // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
   if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <PrepSkeleton /> : null;
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
   const retry = () => loadPrep(props.env, workspaceId, eventId);
   // With no page to show, a read on its way is the bones: a Retry that draws nothing would look deaf.
   if (!page)
-    return loaded && error && !reading ? (
+    return loaded && error && (!reading || pressed) ? (
       <div ref={failedPage} data-prep-failed className="contents">
         <EmptyState
           title="This page did not load"
           line={error}
           action={{
             label: "Retry",
+            busy: pressed,
             onClick: () => {
-              // The button goes while the bones show: its place in the view is kept now, to hand the caret on once the read is in.
+              // Its place in the view is kept now, to hand the caret on once the read is in.
               const region = regionOf(failedPage.current);
-              void retry().then(() => focusAfterRetry(region));
+              setPressed(true);
+              void retry()
+                .finally(() => setPressed(false))
+                .then(() => focusAfterRetry(region));
             },
           }}
         />

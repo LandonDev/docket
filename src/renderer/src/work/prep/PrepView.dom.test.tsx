@@ -333,14 +333,15 @@ describe("what does not load", () => {
     await mount();
     expect(screen.getByText("This page did not load")).toBeTruthy();
     expect(screen.getByText("That event is not in Purdue’s sector.")).toBeTruthy();
-    // the retry's read is on its way: the bones, not a button that looks deaf
+    // the retry's read is on its way: the line stays with Retry spinning in place, held (council round 12), never bones
     let land: () => void = () => {};
     host.fails = null;
     const was = host.page;
     host.page = new Promise((resolve) => (land = () => resolve(was)));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(document.querySelector("[aria-busy]")).not.toBeNull();
+    expect(screen.getByText("This page did not load")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).hasAttribute("disabled")).toBe(true);
     await act(async () => land());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
   });
