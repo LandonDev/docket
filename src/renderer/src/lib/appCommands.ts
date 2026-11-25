@@ -17,7 +17,7 @@
  *   1. Lightbox open: Escape / ← / → become the lightbox commands and
  *      nothing else fires but zoom.
  *   2. Inside a dialog (`role="dialog"` or `"alertdialog"`): only
- *      DIALOG_SAFE commands (zoom, Save All, update check) fire.
+ *      DIALOG_SAFE commands (zoom, Save, update check) fire.
  *   3. A focused Monaco keeps its own chords (⌘P parameter info, ⌃T, ⌃D,
  *      ⌃H, ⌃⌥H); lib/editorKeys.ts stops ⌘P before we see it.
  *   4. A focused terminal keeps every ctrl-only chord for the shell.
@@ -31,12 +31,13 @@
  *   7. Focus inside a mounted Files view (lib/filesKeys.ts): its tab chords
  *      (⌘T ⌘W ⌘[ ⌘] ⌃Tab ⌃⇧Tab ⌘⇧[ ⌘⇧]) become `files_command` with the
  *      Files command they name, which runs the view's port. The menu route reads the same overlay through
- *      `filesOverlay`, so Close Tab there closes a Files tab, never the thread.
+ *      `filesOverlay`, so Close Tab there closes a Files tab, never the thread. With the view on screen and the
+ *      focus on nothing (`filesPort.idle`), ⌘P alone is still its Go to.
  *
  * Keys:
  *   Shift Shift (400 ms)  go_to_file        ⌘P        go_to_file
  *   ⌘O                    open_project      ⌘T        show_hierarchy
- *   ⌘S                    save_all          ⌘N        new_tab
+ *   ⌘S                    save_all (what holds the focus, lib/saveKey.ts)   ⌘N new_tab
  *   ⌘K open_search  ⌘B toggle_sidebar  ⌘⇧R toggle_panel  ⌘, open_settings
  *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘⇧O go_to_symbol  ⌘= / ⌘- / ⌘0 zoom
  *   ⌘⇧M toggle_message_list
@@ -244,8 +245,8 @@ function monacoOwns(e: KeyboardEvent): boolean {
  * (Close Tab closes the Files tab, never the thread or the pane under it).
  * The native menu and the in-app bar both go through it.
  */
-export function filesOverlay(id: AppCommandId, focusInFiles: boolean): AppCommand {
-  const files = focusInFiles ? filesPort.menu(id) : undefined;
+export function filesOverlay(id: AppCommandId, focusInFiles: boolean, idle = false): AppCommand {
+  const files = focusInFiles ? filesPort.menu(id) : idle && filesPort.menu(id) === "go-to" ? "go-to" : undefined;
   return files ? { id: "files_command", files } : { id };
 }
 
@@ -363,6 +364,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       const files = filesPort.chord(e);
       if (files) return { id: "files_command", files };
     }
+    // The Files view on screen with the focus on nothing: ⌘P is still its Go to (decision 11), its other chords the app's.
+    if (filesPort.idle(target) && filesPort.chord(e) === "go-to") return { id: "files_command", files: "go-to" };
 
     const tab = tabCommand(e);
     if (tab) {

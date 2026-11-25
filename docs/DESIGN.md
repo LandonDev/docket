@@ -1926,7 +1926,8 @@ Around the canvas:
   the steps above give way first, each down to a letter and its ellipsis,
   before the folder's own name is cut; then Go to and Search (28px ghost glyphs), the view
   switch, the page's options (⋯) and the one primary button, New. A press
-  on the trail's empty part, or ⌘P, turns the trail into **Go to**'s
+  on the trail's empty part, or ⌘P (the focus in the list, the sidebar,
+  the bar, or on nothing at all; inside an editor it is Print), turns the trail into **Go to**'s
   field: a panel under it (the popover's own depth, 32px rows, at least
   360px wide where the bar has room) lists the
   open tabs and recent files first, then names from every place, then
@@ -3334,6 +3335,15 @@ box's right edge, ghost controls in 12px muted text (`ROW_CONTROL`).
 
 What the document, the sheet and the deck share on screen. Who hears a key,
 Print… and Export… are docs/agents/work-editors.md.
+
+**Two keys every editor shares** (decision 11). ⌘S saves now what holds the
+focus: a Work file sends the edits it still holds, and its line says Saved
+only on that send's receipt; a Word file of Teams whose save is his press
+says so in a toast ("Plan.docx changes when you press Save to Teams as
+  Word."); a
+code editor saves on ⌘S only when the focus is in it. The menu's row is
+File → Save. ⌘P is Print inside an editor, and Go to everywhere else in
+the Files place.
 
 **The format row** (work-kit `src/format`, `FormatRow` and its parts; drawn
 by each kind as the first, unscrolled row of its own body, under the kind's

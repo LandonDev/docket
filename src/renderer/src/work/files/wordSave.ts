@@ -17,6 +17,12 @@ export const serviceOf = (tab: Pick<FileTab, "key">): string => (tab.key?.starts
 /** The Word file's name, from where it lies. */
 export const wordName = (tab: Pick<FileTab, "copyOf" | "name">): string => tab.copyOf?.path.split(/[\\/]/).pop() || tab.name;
 
+/** The header's press that writes his changes into the Word file. */
+export const wordPress = (tab: Pick<FileTab, "key">): string => `Save to ${serviceOf(tab)} as Word`;
+
+/** ⌘S on a Word file whose save is his press: his edits are kept in the document, and the Word file waits for that press. */
+export const wordWaitsWords = (tab: Pick<FileTab, "copyOf" | "name" | "key">): string => `${wordName(tab)} changes when you press ${wordPress(tab)}.`;
+
 /**
  * The header's line: whether the Word file holds his changes. A save is said of the computer that holds the file
  * (`computer`, as a copy's line names it, fileText.ts `copyLine`): that is all a save knows. It reads as in Teams only

@@ -106,8 +106,10 @@ export function DiffSurface({
         setFileState(opened.state);
         cleanups.push(opened.onState(setFileState));
         cleanups.push(
-          registerEditorFlusher(path, (explicit) =>
-            explicit ? saveExplicit(path) : opened.flushNow(),
+          registerEditorFlusher(
+            path,
+            (explicit) => (explicit ? saveExplicit(path) : opened.flushNow()),
+            () => editor?.getModifiedEditor().hasTextFocus() ?? false,
           ),
         );
         original = monaco.editor.createModel(head, languageForPath(path));

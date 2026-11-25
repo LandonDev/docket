@@ -41,10 +41,24 @@ In this order:
    A body he can only read is marked `read`: ⌘B stays Sidebar and ⌘K Search
    there, since there is nothing to make bold.
 2. **The menu**, as before, everywhere else. Go to File… keeps ⌘P and Find… ⌘F
-   outside an editor, and inside one until an editor answers them.
+   outside an editor, and inside one until an editor answers them. In the
+   Files place ⌘P is the place's Go to (the list, the sidebar, the bar, and
+   with the focus on nothing: `filesPort.idle`, work/files/chords.ts
+   `filesIdle`), never the app's code picker.
 
 Every other chord (⌘S, ⌘W, ⌘O, zoom, ⇧⌘F, the tab and pane chords) is the
 app's inside an editor as outside it; a dialog over an editor still wins.
+
+**⌘S** (File → Save, decision 11) saves what holds the focus and nothing else
+(`saveFocused`, lib/saveKey.ts): a code editor with the focus writes its
+buffer as his explicit save (lib/editorFlush.ts `flushFocusedEditor`; one
+without the focus is never written by the key); else the Work file whose pane
+holds the focus (`data-canvas-item`, or with the focus on nothing the file a
+Files tab shows) sends what its kind holds, the same send a close makes
+(canvas/flush.ts), and its save line says Saved only on that send's receipt.
+A file whose save is his own press registers its own ⌘S (`saveKeyPort`): a
+Teams Word file that asks sends its edits to the document and toasts that the
+Word file changes on his press (wordSave.ts `wordWaitsWords`).
 
 How it is built:
 
@@ -106,7 +120,7 @@ Today the document and the sheet answer `export` by opening Preview on the
 format he last used and `print` by opening it on Print ("Print" below); the
 document answers `find` by opening the editor's own find bar (work-docs.md
 "Find…"). A document of a Work workspace also answers `save_word`, File →
-Save As… (⇧⌘S, a Work-only row under Save All): one sheet with the name, the
+Save As… (⇧⌘S, a Work-only row under Save): one sheet with the name, the
 format and a folder of his places, and the file it makes stays linked to the
 document (work-files.md "Save As…"). The sheet's `find` and the deck's answers
 come with their milestones; Save As… for sheets and decks is not built.

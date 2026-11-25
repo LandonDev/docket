@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudLine } from "./fileText";
-import { askAutosave, saveAsWord, serviceOf, WORD_LOSSES, wordLine } from "./wordSave";
+import { askAutosave, saveAsWord, serviceOf, WORD_LOSSES, wordLine, wordWaitsWords } from "./wordSave";
 
 /** A Word file of another computer opened as its document: the header's words, and Save as Word's one confirm. */
 
@@ -93,5 +93,11 @@ describe("a Word file saved by itself", () => {
     const later = vi.fn(async () => null);
     expect(await askAutosave(TAB, { choose: later, set })).toBeNull();
     expect(set).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("⌘S on a Word file whose save is his press", () => {
+  it("says the Word file changes on that press, by its own name and service", () => {
+    expect(wordWaitsWords(TAB)).toBe("AD Screening 9-2.docx changes when you press Save to Teams as Word.");
   });
 });

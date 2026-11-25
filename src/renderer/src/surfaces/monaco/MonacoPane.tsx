@@ -129,8 +129,10 @@ export default function MonacoPane(props: Props) {
       setFileState(opened.state);
       cleanups.push(opened.onState(setFileState));
       cleanups.push(
-        registerEditorFlusher(path, (explicit) =>
-          explicit ? saveExplicit(path) : opened.flushNow(),
+        registerEditorFlusher(
+          path,
+          (explicit) => (explicit ? saveExplicit(path) : opened.flushNow()),
+          () => editor?.hasTextFocus() ?? false,
         ),
       );
       const debuggable = ["java", "kotlin"].includes(model.getLanguageId());

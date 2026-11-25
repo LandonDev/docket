@@ -221,7 +221,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Go to Symbol", keys: [[CMD, SHF, "O"]] },
       { name: "Type Hierarchy", keys: [[CMD, "T"]] },
       { name: "Find in Files", keys: [[CMD, SHF, "F"]] },
-      { name: "Save All", keys: [[CMD, "S"]] },
+      { name: "Save", keys: [[CMD, "S"]] },
       { name: "New Window", keys: [[CMD, SHF, "N"]] },
       { name: "Sidebar", keys: [[CMD, "B"]] },
       { name: "Panel", keys: [[CMD, SHF, "R"]] },

@@ -148,7 +148,8 @@ import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import type { EditorNavigation, OpenFileFn, OpenFileOptions } from "./lib/search";
 import { editorForPath } from "./surfaces/monaco/route";
-import { flushAllEditors, flushEditor } from "./lib/editorFlush";
+import { flushEditor } from "./lib/editorFlush";
+import { saveFocused } from "./lib/saveKey";
 import { loadAutoSave } from "./lib/settings";
 import { OPEN_DEBUG_EVENT, OPEN_SETTINGS_EVENT } from "./lib/monaco/debugTab";
 import {
@@ -3075,8 +3076,9 @@ export default function App() {
     })();
   }, [onGoToSymbol]);
 
+  // ⌘S saves what holds the focus alone: a code editor's buffer, or a Work file's edits (lib/saveKey.ts).
   const onSaveAll = useCallback(() => {
-    void flushAllEditors();
+    void saveFocused();
   }, []);
 
   const onFindInProject = shell.openFilesSearch;
@@ -3424,7 +3426,7 @@ export default function App() {
       ) {
         return;
       }
-      execute(filesOverlay(id, filesPort.owns(document.activeElement)));
+      execute(filesOverlay(id, filesPort.owns(document.activeElement), filesPort.idle(document.activeElement)));
     },
     [execute],
   );

@@ -51,6 +51,17 @@ const within = (target: EventTarget | null, selector: string): boolean => {
 export const filesOwnsFocus = (target: EventTarget | null): boolean => within(target, FILES_VIEW) && !within(target, NOT_FILES);
 
 /**
+ * The focus on nothing (the page's body) while a Files view is on screen: a click on the list's empty part or an Escape
+ * from search leaves it there, and ⌘P is still the view's Go to (decision 11), never the app's code picker.
+ */
+export const filesIdle = (target: EventTarget | null, doc: Pick<Document, "body" | "documentElement" | "querySelector"> | null = typeof document === "undefined" ? null : document): boolean => {
+  if (!doc || (target && target !== doc.body && target !== doc.documentElement)) return false;
+  const view = doc.querySelector<HTMLElement>(FILES_VIEW);
+  if (!view || view.closest("[inert], [hidden]")) return false;
+  return typeof view.checkVisibility !== "function" || view.checkVisibility();
+};
+
+/**
  * What the close key closes: the file at a tab's side (SideFile.tsx) while the focus is in it, as its own × does;
  * anywhere else in the view, the tab, and the side with it.
  */
@@ -83,4 +94,4 @@ export const FILES_MENU: Partial<Record<AppCommandId, FilesCommand>> = {
 };
 
 /** What the view gives the port while it is mounted (lib/filesKeys.ts). */
-export const FILES_KEYS: FilesKeys = { owns: filesOwnsFocus, chord: filesChord, menu: FILES_MENU as Readonly<Record<string, FilesCommand>> };
+export const FILES_KEYS: FilesKeys = { owns: filesOwnsFocus, idle: filesIdle, chord: filesChord, menu: FILES_MENU as Readonly<Record<string, FilesCommand>> };

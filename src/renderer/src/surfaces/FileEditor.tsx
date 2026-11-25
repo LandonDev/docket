@@ -818,7 +818,7 @@ function CodeMirrorEditor({
       autoSaveTimer = null;
       if (explicit && view.hasFocus && interceptSaveRef.current()) return true;
       return dirtyRef.current ? saveNow() : true;
-    });
+    }, () => view.hasFocus);
     bufferRef.current = {
       doc: () => view.state.doc.toString(),
       apply: (text, disk, history) => {

@@ -139,7 +139,7 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   window's page as a keydown on the tab's body: ⌘W, ⌃Tab, ⌃⇧Tab, ⌘1 to ⌘9, ⌘⇧K, ⌘, and Escape while the tab is in Full
   Window. Everything else is Office's: ⌘S, ⌘F, ⌘P, ⌘Z, ⌘B, ⌘K, the arrows.
 - While a live guest has the focus the window sends `MenuState.live`: the menu drops the keys of `LIVE_KEY_IDS`
-  (Find, Go to File's ⌘P, Print, Save All, Export, Search, Sidebar) and turns Find, Print, Export and Save off, so
+  (Find, Go to File's ⌘P, Print, Save, Export, Search, Sidebar) and turns Find, Print, Export and Save off, so
   Office's own find, print and save answer.
 
 ## Signing in (Settings → Connections)

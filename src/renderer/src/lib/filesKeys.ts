@@ -16,6 +16,8 @@ export type FilesCommand = "new-tab" | "close-tab" | "next-tab" | "prev-tab" | "
  */
 export interface FilesKeys {
   owns(target: EventTarget | null): boolean;
+  /** The focus is on nothing while the view is on screen (a click on its empty part, an Escape): ⌘P is still its Go to. */
+  idle?(target: EventTarget | null): boolean;
   chord(e: KeyboardEvent): FilesCommand | null;
   menu: Readonly<Record<string, FilesCommand>>;
 }
@@ -43,5 +45,7 @@ export const filesPort = {
   menu: (id: string): FilesCommand | undefined => keys?.menu[id],
   /** Whether focus is the Files view's own: false while none is mounted. */
   owns: (target: EventTarget | null): boolean => keys?.owns(target) ?? false,
+  /** Whether the view is on screen with the focus on nothing: false while none is mounted. */
+  idle: (target: EventTarget | null): boolean => keys?.idle?.(target) ?? false,
   mounted: (): boolean => handler !== null,
 };

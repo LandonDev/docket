@@ -87,7 +87,7 @@ describe('menu tree', () => {
       ['Open Project…', 'Cmd+O'],
       ['Open File…'],
       '—',
-      ['Save All', 'Cmd+S'],
+      ['Save', 'Cmd+S'],
       ['Save As…', 'Shift+Cmd+S'],
       ['Share…'],
       '—',
@@ -361,7 +361,7 @@ describe('resolveMenu', () => {
       expect(MENU_COMMANDS.find((c) => c.id === 'print')!.accelerator).toBeUndefined()
     })
 
-    it('Save As… sits under Save All with ⇧⌘S, Export… and Print… together after it, all the renderer\'s, and grey as the window says', () => {
+    it('Save As… sits under Save with ⇧⌘S, Export… and Print… together after it, all the renderer\'s, and grey as the window says', () => {
       const file = MENU_TREE.find((s) => s.label === 'File')!.items
       const save = file.findIndex((i) => i.kind === 'command' && i.id === 'save_word')
       expect(file[save - 1]).toMatchObject({ kind: 'command', id: 'save_all' })

@@ -37,7 +37,9 @@ import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, shownName, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
-import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
+import { askAutosave, saveAsWord, serviceOf, wordLine, wordPress, wordWaitsWords } from "./wordSave";
+import { canvasFlushPort } from "../../lib/canvasFlushPort";
+import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
 import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
@@ -386,12 +388,22 @@ export function FileTabView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copy, word?.auto, word?.since]);
   const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
-    const service = serviceOf(tab);
     const save = (keep: boolean, replace = false, version?: string): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version).then(() => undefined);
     // Replace goes over the change the line names (its version); a newer one there stops it again, and the line says so.
     if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true, w.stoppedVersion) }];
-    return w.auto || !w.since ? [] : [{ id: "word", label: `Save to ${service} as Word`, run: saveWord }];
+    return w.auto || !w.since ? [] : [{ id: "word", label: wordPress(tab), run: saveWord }];
   };
+  // ⌘S on a Word file whose save is his press: the document takes his edits, and the toast says the Word file waits.
+  const waitsPress = !!(copy && word && !word.auto && !word.stopped);
+  const itemId = item?.id;
+  const waitsWords = wordWaitsWords(tab);
+  useEffect(() => {
+    if (!waitsPress || !itemId) return;
+    return saveKeyPort.set(itemId, async () => {
+      await canvasFlushPort.get(itemId)?.()?.catch(() => undefined);
+      void loadToast().then((toast) => toast.message(waitsWords));
+    });
+  }, [waitsPress, itemId, waitsWords]);
   // The workspace as this window knows it: Save As… needs it (SaveAs.tsx).
   const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   const said: HeaderLine | null =

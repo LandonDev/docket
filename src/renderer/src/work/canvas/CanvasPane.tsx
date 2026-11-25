@@ -207,6 +207,8 @@ export function CanvasPane({
   return (
     <div
       data-canvas-pane
+      // ⌘S finds the file it saves by this (lib/saveKey.ts).
+      data-canvas-item={item.id}
       data-kind={item.kind}
       // Under the tab row the pane is the shown tab's panel, named by its tab; one item alone has no tabs, and no panel role.
       {...(tabbed ? { role: "tabpanel", id: canvasPanelId(item.id), "aria-labelledby": canvasTabId(item.id) } : {})}

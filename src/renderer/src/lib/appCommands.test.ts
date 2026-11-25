@@ -5,7 +5,7 @@ import { setWorkOn, workSwitch } from "./workSwitch";
 vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
 import { createKeyResolver, editorAnswers, editorHeld, editorKeys, filesOverlay, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
-import { FILES_KEYS } from "../work/files/chords";
+import { FILES_KEYS, filesIdle } from "../work/files/chords";
 import { filesPort } from "./filesKeys";
 
 type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "driving" | null;
@@ -418,6 +418,30 @@ describe("the Files place keeps its own tab chords", () => {
     filesPort.set(() => {}, FILES_KEYS);
     expect(resolve(within(key("f", { meta: true }), FILES), ctx)).toEqual({ id: "files_command", files: "search" });
     expect(resolve(key("f", { meta: true }), ctx)).toBeNull();
+  });
+
+  it("⌘P with the Files view on screen and the focus on nothing is still its Go to; its other chords stay the app's (decision 11)", () => {
+    filesPort.set(() => {}, { ...FILES_KEYS, idle: () => true });
+    expect(resolve(key("p", { meta: true }), ctx)).toEqual({ id: "files_command", files: "go-to" });
+    expect(resolve(key("w", { meta: true }), ctx)).toEqual({ id: "close_tab" });
+    expect(filesOverlay("go_to_file", false, true)).toEqual({ id: "files_command", files: "go-to" });
+    expect(filesOverlay("close_tab", false, true)).toEqual({ id: "close_tab" });
+    // A Work editor holding the caret keeps ⌘P as Print, inside the Files view too.
+    filesPort.set(() => {}, FILES_KEYS);
+    const print = { ...key("p", { meta: true }), target: { closest: (sel: string) => (sel.includes("data-editor-keys") ? { getAttribute: () => "" } : sel.includes("data-editor-answers") ? { getAttribute: () => "print find" } : sel.includes("data-files-view") ? {} : null) } } as unknown as KeyboardEvent;
+    expect(resolve(print, ctx)).toEqual({ id: "print" });
+  });
+
+  it("filesIdle: the page's body with a Files view shown, never a focused element or a hidden view", () => {
+    const body = {};
+    const shown = { closest: () => null };
+    const doc = (view: unknown) => ({ body, documentElement: {}, querySelector: () => view }) as never;
+    expect(filesIdle(body as never, doc(shown))).toBe(true);
+    expect(filesIdle(null, doc(shown))).toBe(true);
+    expect(filesIdle({} as never, doc(shown))).toBe(false);
+    expect(filesIdle(body as never, doc(null))).toBe(false);
+    expect(filesIdle(body as never, doc({ closest: () => ({}) }))).toBe(false);
+    expect(filesIdle(body as never, doc({ closest: () => null, checkVisibility: () => false }))).toBe(false);
   });
 
   it("with no Files view mounted, a stray mark changes nothing", () => {

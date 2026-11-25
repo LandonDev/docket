@@ -113,7 +113,8 @@ export const MENU_TREE: MenuSection[] = [
       cmd('open_project', 'Open Project…', 'CmdOrCtrl+O'),
       cmd('open_file', 'Open File…', undefined, { desktopOnly: true }),
       sep,
-      cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
+      // ⌘S saves what holds the focus (lib/saveKey.ts): a code editor's buffer, or a Work file's edits.
+      cmd('save_all', 'Save', 'CmdOrCtrl+S'),
       // A document's Save As… (work/files/SaveAs.tsx): the id is the Save as Word row's it took over.
       cmd('save_word', 'Save As…', 'CmdOrCtrl+Shift+S', { workOnly: true }),
       // A document's or a sheet's Share sheet (work/guests/ShareSheet.tsx), live while one on screen answers it.
