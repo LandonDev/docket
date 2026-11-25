@@ -1303,12 +1303,13 @@ the original changed. A copy he can see in Files has none of these faults.
   file back: `OpenFailed`'s `instead` is "Show in Files", the folder it was
   in as a page tab of the item's workspace (`openInFiles`, loaded at the
   press).
-- **A show file.** A `.pps` or `.ppsx` opens as a deck with Present one press
-  away. `noteSlidesOpenedByHand(env, item)` (`openShow.ts`) starts the show
-  at the first slide once the deck is ready, but nothing calls it yet: the
-  window has no word that an item was just opened by his own press in it,
-  and the hook must never fire from a restore, a push, an agent's open or
-  another window. Files' opener is to call it after his press opens the file.
+- **A show file.** A `.pps` or `.ppsx` he opens from a row of Files starts its
+  show at the first slide once the deck is ready, as PowerPoint does: Files'
+  opener (`openEntry`, work/files/open.ts) calls `noteSlidesOpenedByHand(env,
+  item)` (`openShow.ts`) with the item the host answered, and the deck's
+  `useOpenShow` starts it. Only his own press in this window does: a restore,
+  a push, an agent's open or another window opens the deck with Present one
+  press away.
 - Files previews for these formats give no picture; opening the deck draws
   the snapshot.
 

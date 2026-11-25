@@ -30,6 +30,9 @@ vi.mock("../canvas/registry", () => ({
   },
 }));
 
+const shows = vi.hoisted(() => ({ noted: [] as Array<[string, string]> }));
+vi.mock("../slides/openShow", () => ({ noteSlidesOpenedByHand: (env: string, item: CanvasItem) => void shows.noted.push([env, item.id]) }));
+
 const { openEntry } = await import("./open");
 const { importItem, resetImports } = await import("../formats/importOnce");
 
@@ -75,5 +78,14 @@ describe("a row's open", () => {
     answerOpen({ tabs: [], tabId: "t1", item: itemOf("Plan.tcdoc", "document") });
     await opening;
     expect(order).not.toContain("work.formats.import");
+  });
+
+  it("tells the deck a file he opened by his own press, so a show file (.pps, .ppsx) starts its show", async () => {
+    shows.noted.length = 0;
+    const opening = openEntry(entry("Keynote.ppsx"), copy, { workspace, tabs: true, copy: true, busy: () => undefined });
+    await vi.waitFor(() => expect(order).toContain("work.files.open"));
+    answerOpen({ tabs: [], tabId: "t1", item: itemOf("Keynote.ppsx", "slides") });
+    await opening;
+    expect(shows.noted).toEqual([["box", "i1"]]);
   });
 });

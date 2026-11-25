@@ -11,6 +11,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { openItem, setFolded } from "../canvas/store";
 import { CANVAS } from "../canvas/registry";
 import { importAhead } from "../formats/importOnce";
+import { noteSlidesOpenedByHand } from "../slides/openShow";
 import { appOpens, openWay, type PlaceCopy } from "./model";
 import { openingWords, type MarkBusy } from "./busy";
 import { openFileTab } from "./store";
@@ -153,6 +154,8 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     });
     // A Word file's import into a document starts as soon as the item is there, beside the editor's code.
     if (answer.item) importAhead(workspaceLink, answer.item);
+    // A show file (.pps, .ppsx) he opened by his own press starts its show once the deck is ready, as PowerPoint does.
+    if (answer.item) noteSlidesOpenedByHand(workspaceLink, answer.item);
     // A thread already holds it and its kind keeps its marks by item: that thread's item is shown, and no second seat is made.
     if (answer.held) await showInThread(workspaceLink, answer.held.sessionId, { itemId: answer.held.itemId }, true);
     return answer.tabId ?? null;
