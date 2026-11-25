@@ -13,7 +13,7 @@ import type { WorkViewProps } from "../views/registry";
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 const NOW = new Date(2026, 10, 23, 12).getTime();
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false, pageFails: false, once: [] as { args: unknown; answer(): void; fail(e: Error): void }[] }));
 const directory = [
   { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: NOW - 3_600_000 },
   { _id: "p_tom", name: "Tom Beck", emails: ["tom@school.edu"] },
@@ -24,7 +24,7 @@ vi.mock("../shell/lifeos", async (original) => ({
     lifeos.asked.push({ name, args });
     if (name === "people:directory") return lifeos.directoryFails ? { status: "failed", error: "LifeOS refused" } : { status: "ready", value: directory };
     if (name === "mail:faces") return { status: "ready", value: [] };
-    if (name === "people:page") return { status: "ready", value: lifeos.page };
+    if (name === "people:page") return lifeos.pageFails ? { status: "failed", error: "LifeOS refused the page" } : { status: "ready", value: lifeos.page };
     return { status: "loading" };
   },
 }));
@@ -58,7 +58,7 @@ const mayaPage = {
 
 let started: ContextChip[];
 const props = (): WorkViewProps =>
-  ({ env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: (c: ContextChip) => void started.push(c) }) as never;
+  ({ env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: { query: (_ref: unknown, args: unknown) => new Promise<void>((answer, fail) => void lifeos.once.push({ args, answer, fail })) }, state: "connected" }, startThread: (c: ContextChip) => void started.push(c) }) as never;
 const mount = () =>
   render(
     <>
@@ -112,6 +112,31 @@ describe("the list", () => {
     lifeos.directoryFails = true;
     mount();
     expect(screen.getByText("People did not load")).toBeTruthy();
+    lifeos.directoryFails = false;
+  });
+
+  /** Council round 12 (the walk): People did not load had no Retry. */
+  it("reads the list again on Retry, the failure kept and Retry spinning until LifeOS answers", async () => {
+    lifeos.directoryFails = true;
+    lifeos.once.length = 0;
+    try {
+      mount();
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(lifeos.once.map((o) => o.args)).toEqual([{ sector: "purdue" }]);
+      expect(screen.getByText("People did not load")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+      // Refused again: its words in place, Retry at rest.
+      await act(async () => lifeos.once[0].fail(new Error("LifeOS still refused")));
+      expect(screen.getByText("LifeOS still refused")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      lifeos.directoryFails = false;
+      await act(async () => lifeos.once[1].answer());
+      expect(screen.queryByText("People did not load")).toBeNull();
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    } finally {
+      lifeos.directoryFails = false;
+    }
   });
 });
 
@@ -160,6 +185,28 @@ describe("a person's page", () => {
     expect(screen.getAllByRole("region").map((s) => s.getAttribute("aria-label")).at(-1)).toBe("Answered");
     fireEvent.click(screen.getByText("Spring LAN sign-up"));
     expect(files.opened).toEqual([[{ id: "ws", environmentId: "box" }, { ref: { at: "msform", host: "box", workspaceId: "ws", formId: "f1", tenant: "purdue0" }, name: "Spring LAN sign-up" }]]);
+  });
+
+  /** Council round 12 (the walk): This page did not load had no Retry. */
+  it("reads a person's page again on Retry, the failure kept and Retry spinning until LifeOS answers", async () => {
+    setPlace("ws", { person: "p_maya" });
+    lifeos.page = mayaPage;
+    lifeos.pageFails = true;
+    lifeos.once.length = 0;
+    try {
+      mount();
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      expect(screen.getByText("This page did not load")).toBeTruthy();
+      fireEvent.click(retry);
+      expect(lifeos.once[0].args).toMatchObject({ id: "p_maya", sector: "purdue" });
+      expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+      lifeos.pageFails = false;
+      await act(async () => lifeos.once[0].answer());
+      expect(screen.queryByText("This page did not load")).toBeNull();
+      expect(screen.getAllByText("Maya Chen").length).toBeGreaterThan(0);
+    } finally {
+      lifeos.pageFails = false;
+    }
   });
 
   /** Council round 5 (Sol rest 1): a kept person's page said "This page did not load" under the frame's own line. */

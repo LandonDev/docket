@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { makeFunctionReference } from "convex/server";
 import type { ContextChip } from "@shared/work";
 import { formatDue, formatStamp, formatTime } from "work-kit/views/lib/format";
 import { ArrowLeft, Search, X } from "../../chrome/icons";
@@ -201,7 +202,32 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
 
 // ── The body ──
 
+/**
+ * A LifeOS read that failed, with Retry: his press asks LifeOS once while the failure stays, Retry spinning in place;
+ * an answer starts the live read again (`onBack`), a failure says its own words where the old ones stood.
+ */
+function ReadFailed({ title, error, session, name, args, onBack }: { title: string; error: string; session: LifeosSession; name: string; args: Record<string, unknown>; onBack(): void }) {
+  const [retrying, setRetrying] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  const retry = (): void => {
+    const client = session.client;
+    if (!client) return;
+    setRetrying(true);
+    void client
+      .query(makeFunctionReference<"query">(name), args)
+      .then(onBack, (err: unknown) => setSaid(err instanceof Error ? err.message : String(err)))
+      .finally(() => setRetrying(false));
+  };
+  return <EmptyState title={title} line={said ?? error} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
+}
+
+/** The view, read anew (its live reads too) once a Retry's own read has answered. */
 export function View(props: WorkViewProps) {
+  const [round, setRound] = useState(0);
+  return <PeopleBody key={round} {...props} again={() => setRound((n) => n + 1)} />;
+}
+
+function PeopleBody({ again, ...props }: WorkViewProps & { again(): void }) {
   const workspaceId = props.workspace.id;
   const { person } = usePlace(workspaceId);
   const directory = useDirectory(props.lifeos, props.sector);
@@ -225,7 +251,7 @@ export function View(props: WorkViewProps) {
   if (!props.lifeos.client && !sessionWaits(props.lifeos)) return null;
   if (person) return <PersonPageView {...props} person={person} faces={faces} />;
   if (!props.lifeos.client) return <ListSkeleton />;
-  if (directory.status === "failed") return <EmptyState title="People did not load" line={directory.error} />;
+  if (directory.status === "failed") return <ReadFailed title="People did not load" error={directory.error} session={props.lifeos} name="people:directory" args={{ sector: props.sector }} onBack={again} />;
   if (!rows) return <ListSkeleton />;
   return <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />;
 }
@@ -352,12 +378,14 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   const name = directory.status === "ready" ? directory.value.find((p) => p._id === props.person)?.name : undefined;
   const links = useGuestLinks(props.env, props.person);
   // The page is asked of LifeOS once, with the links in hand: asked before them, it was asked twice (no links, then the links).
+  // Read anew (its live read too) once a Retry's own read has answered.
+  const [round, setRound] = useState(0);
   if (links === null) return <PageSkeleton />;
-  return <PersonPageRead {...props} directory={directory} name={name} links={links} />;
+  return <PersonPageRead key={round} {...props} directory={directory} name={name} links={links} again={() => setRound((n) => n + 1)} />;
 }
 
 function PersonPageRead(
-  props: WorkViewProps & { person: string; faces: ReadonlyMap<string, string>; directory: ReturnType<typeof useDirectory>; name: string | undefined; links: GuestLinkRow[] },
+  props: WorkViewProps & { person: string; faces: ReadonlyMap<string, string>; directory: ReturnType<typeof useDirectory>; name: string | undefined; links: GuestLinkRow[]; again(): void },
 ) {
   const { directory, name, links } = props;
   // The links made for them, by the name the list knows; LifeOS keeps those of this sector and says their titles now.
@@ -366,7 +394,8 @@ function PersonPageRead(
   const shared = useMemo(() => mine.slice(0, 50).map((l) => ({ table: l.source.table, id: l.source.id })), [mine]);
   const page = useLifeosQuery<PersonPage | null>(props.lifeos, "people:page", { id: props.person, sector: props.sector, shared });
   const answered = useAnswered(props.env, props.workspace.id, page.status === "ready" ? page.value?.person.emails : undefined);
-  if (page.status === "failed") return <EmptyState title="This page did not load" line={page.error} />;
+  if (page.status === "failed")
+    return <ReadFailed title="This page did not load" error={page.error} session={props.lifeos} name="people:page" args={{ id: props.person, sector: props.sector, shared }} onBack={props.again} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
   if (page.status === "loading" || (directory.status === "loading" && !name)) return <PageSkeleton />;
   // A page kept from a window before this one whose person is gone: the list, quietly.
