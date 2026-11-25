@@ -35,13 +35,8 @@ const GOOGLE_ROLE = { reader: 'view', commenter: 'comment on', writer: 'edit' } 
 const ANSWER = { accept: 'you will come to', decline: 'you will not come to', tentative: 'you might come to' } as Record<string, string>
 
 const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
-  'mail.send': (p) => {
-    const m = (p?.message ?? null) as P
-    if (!m) return undefined
-    const from = str((m.from as P)?.address)
-    const cc = arr(m.cc).length + arr(m.bcc).length
-    return `Goes${from ? ` from ${from}` : ''} to ${people(arr(m.to))}${cc ? `, with ${cc} more on copy` : ''} after your undo time.`
-  },
+  // Mail, posts and replies draw their From, To and place right under the sentence: it says only when, and who sees it.
+  'mail.send': (p) => (p?.message ? 'Goes as your mail after your undo time.' : undefined),
   'calendar.op': (p) => {
     const title = str(p?.eventTitle) ?? str((p?.payload as P)?.title) ?? 'the event'
     const kind = str(p?.kind)
@@ -52,13 +47,7 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
     const guests = arr((p?.payload as P)?.attendees)
     return `Sends an invite for ${title}${guests.length ? ` to ${people(guests)}` : ''}.`
   },
-  'office.mail.send': (p) => {
-    const to = arr(p?.to)
-    const cc = arr(p?.cc).length + arr(p?.bcc).length
-    const account = str(p?.account)
-    const what = str(p?.replyTo) ? 'Your reply goes' : str(p?.forward) ? 'Forwards it' : 'Goes'
-    return `${what} from ${account ?? 'Outlook'} to ${people(to)}${cc ? `, with ${cc} more on copy` : ''} as soon as you press.`
-  },
+  'office.mail.send': (p) => `${str(p?.replyTo) ? 'Your reply goes' : str(p?.forward) ? 'The forward goes' : 'Goes'} from Outlook as soon as you press.`,
   'office.calendar.op': (p) => {
     if (p?.op === 'create') {
       const e = (p.event ?? null) as P
@@ -67,12 +56,8 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
     const answer = str(p?.answer)
     return `Tells ${str(p?.organizer) ?? 'the organizer'} ${(answer && ANSWER[answer]) ?? 'your answer to'} ${str(p?.subject) ?? 'the event'}.`
   },
-  'teams.post': (p) => `Posts as you in Teams, in ${str(p?.chat) ?? 'the chat'}, where everyone in it sees it.`,
-  'chat.reply': (p) => {
-    const where = str(p?.to) ?? str(p?.chat)
-    const source = str(p?.source)
-    return `Sends as you${source ? ` in ${source[0]!.toUpperCase()}${source.slice(1)}` : ''}${where ? ` to ${where}` : ''}.`
-  },
+  'teams.post': () => 'Posts as you; everyone in the chat sees it.',
+  'chat.reply': () => 'Sends as you; everyone in the conversation sees it.',
   'share.guestLink': (p) => {
     const until = typeof p?.expiresAt === 'number' ? ` until ${day(p.expiresAt)}` : ''
     return `Makes a link ${str(p?.name) ?? 'your guest'} opens without signing in. They can ${ROLE[str(p?.role) ?? ''] ?? 'view'} ${str(p?.title) ?? 'it'}${until}.`
@@ -96,7 +81,9 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
 }
 
 /** The sentence for an item: the kind's own, else the table's, else the plain line. Never throws. */
-export function effectOf(kind: ActKind, payload: unknown, own?: (p: unknown) => string): string {
+export function effectOf(kind: ActKind, payload: unknown, own?: (p: unknown) => string, scheduled = false): string {
+  // A time he set is what decides when it goes: "as soon as you press" would be untrue.
+  if (scheduled) return 'Goes at the time you set, as you.'
   try {
     const said = own?.(payload) ?? EFFECTS[kind]?.((payload ?? null) as P)
     if (said) return said

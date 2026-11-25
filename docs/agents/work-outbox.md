@@ -93,9 +93,11 @@ digest's tells (`syncTells`) and the phone all read it, and one fixture
 `OutboxModel.needsHim` is held to the same ten items in Swift
 (ios/TempCodeClient OutboxWaitingTests).
 
-**What a press does.** Every item carries `effect`, one sentence of who
-it reaches, as whom and when ("Goes from landon@purdue.edu to Dana Lee
-after your undo time."): a kind's own `ActKindDef.effect`, else
+**What a press does.** Every item carries `effect`, one sentence of what
+the fields drawn under it do not say: when it goes and who sees it ("Goes
+as your mail after your undo time.", "Posts as you; everyone in the chat
+sees it."), never the people or the place the fields already name; a
+scheduled item's says "Goes at the time you set, as you.": a kind's own `ActKindDef.effect`, else
 work/outbox/effects.ts, else "Carries this out as you." A change to a
 file others can open says only "Changes a file others can open." to a
 caller that cannot press, with no first words and no reason (`seenBy`).

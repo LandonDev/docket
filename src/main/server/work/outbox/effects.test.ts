@@ -6,20 +6,24 @@ import { seenBy } from './index'
 describe('what a press does, in one sentence', () => {
   it('names who it reaches, as whom and when, for each kind', () => {
     const cases: [Parameters<typeof effectOf>[0], unknown, string][] = [
-      ['mail.send', { message: { from: { address: 'landon@purdue.edu' }, to: [{ name: 'Dana Lee', address: 'dana@x.edu' }], cc: [], bcc: [] } }, 'Goes from landon@purdue.edu to Dana Lee after your undo time.'],
-      ['mail.send', { message: { to: [{ address: 'a@x' }, { address: 'b@x' }], cc: [{ address: 'c@x' }], bcc: [] } }, 'Goes to a@x and b@x, with 1 more on copy after your undo time.'],
+      // the fields under it name who: the sentence says when, and who sees it
+      ['mail.send', { message: { from: { address: 'landon@purdue.edu' }, to: [{ name: 'Dana Lee', address: 'dana@x.edu' }], cc: [], bcc: [] } }, 'Goes as your mail after your undo time.'],
       ['calendar.op', { kind: 'accept', eventTitle: 'Staff sync' }, 'Tells the organizer you will come to Staff sync.'],
       ['calendar.op', { kind: 'create', payload: { title: 'Scrim', attendees: ['a@x'] } }, 'Sends an invite for Scrim to a@x.'],
-      ['office.mail.send', { account: 'me@purdue.edu', to: ['sam@x.edu'], cc: [], bcc: [] }, 'Goes from me@purdue.edu to sam@x.edu as soon as you press.'],
+      ['office.mail.send', { account: 'me@purdue.edu', to: ['sam@x.edu'], cc: [], bcc: [] }, 'Goes from Outlook as soon as you press.'],
       ['office.calendar.op', { op: 'answer', subject: 'Budget', answer: 'decline', organizer: 'Pat' }, 'Tells Pat you will not come to Budget.'],
-      ['teams.post', { chat: 'Esports staff, General', text: 'hi' }, 'Posts as you in Teams, in Esports staff, General, where everyone in it sees it.'],
-      ['chat.reply', { source: 'slack', chat: '#ops', text: 'ok' }, 'Sends as you in Slack to #ops.'],
+      ['teams.post', { chat: 'Esports staff, General', text: 'hi' }, 'Posts as you; everyone in the chat sees it.'],
+      ['chat.reply', { source: 'slack', chat: '#ops', text: 'ok' }, 'Sends as you; everyone in the conversation sees it.'],
       ['share.google', { email: 'sam@x.edu', role: 'commenter', name: 'Plan', notify: true }, 'Lets sam@x.edu comment on Plan in Google Drive, and Google mails them.'],
       ['form.publish', { title: 'Tryouts' }, 'Publishes Tryouts: anyone with its link can answer.'],
       ['msform.publish', { act: 'audience', title: 'Survey' }, 'Changes who can answer Survey.'],
       ['portal.submit', {}, 'Carries this out as you.']
     ]
     for (const [kind, payload, words] of cases) expect(effectOf(kind, payload), kind).toBe(words)
+  })
+
+  it('says a scheduled item goes at the time he set, whatever its kind', () => {
+    expect(effectOf('office.mail.send', { to: ['a@x'] }, undefined, true)).toBe('Goes at the time you set, as you.')
   })
 
   it('takes a kind\'s own words first, and never throws on a payload it cannot read', () => {

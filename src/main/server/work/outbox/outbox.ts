@@ -990,7 +990,7 @@ export class Outbox {
       const there = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(item.ref))
       return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload) }) : item
     })
-    const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload), ...(LATER[i.kind] && i.state === 'held' ? { later: true as const } : {}) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
+    const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload, i.scheduledFor !== undefined), ...(LATER[i.kind] && i.state === 'held' ? { later: true as const } : {}) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
     const items = [...rows, ...held]
     if (show === 'waiting') items.sort((a, b) => a.createdAt - b.createdAt)
     return { items: items.slice(0, q.limit ?? 200), waiting: this.waiting() }
@@ -1030,9 +1030,9 @@ export class Outbox {
   }
 
   /** What a press does, in one sentence. */
-  effect(kind: ActKind, payload: unknown): string {
+  effect(kind: ActKind, payload: unknown, scheduled = false): string {
     const own = this.deps.kinds.get(kind)?.effect
-    return effectOf(kind, payload, own ? (p) => own(p as never) : undefined)
+    return effectOf(kind, payload, own ? (p) => own(p as never) : undefined, scheduled)
   }
 
   /** The words as first written, kept by earned.ts; null when the host never saw them. */
@@ -1096,7 +1096,7 @@ export class Outbox {
   /** A row as a screen gets it: a kind's payload is its own to trim (a picture's file path never leaves the host). */
   wire(row: HeldRow): OutboxItem {
     const fact = row.state === 'sent' ? this.lifeos?.sentFact?.(row) : undefined
-    const item = this.withChanged({ ...itemOfRow(row), ...fact, effect: this.effect(row.kind, row.payload), ...(LATER[row.kind] && (row.state === 'held' || row.state === 'failed') && !row.outcomeUnknown ? { later: true as const } : {}) })
+    const item = this.withChanged({ ...itemOfRow(row), ...fact, effect: this.effect(row.kind, row.payload, row.state === 'scheduled'), ...(LATER[row.kind] && (row.state === 'held' || row.state === 'failed') && !row.outcomeUnknown ? { later: true as const } : {}) })
     const payload = item.payload as { picture?: { path?: string } | null } | null
     if (row.kind === 'computer.act' && payload?.picture && typeof payload.picture === 'object') {
       const { path: _path, ...picture } = payload.picture
