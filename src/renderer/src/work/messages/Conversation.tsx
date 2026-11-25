@@ -357,13 +357,23 @@ export function keepBlocks(prev: readonly Block[], next: readonly Block[]): read
 }
 
 function useKeptBlocks(blocks: Block[]): Block[] {
-  // A box of the hook's own, read and written while rendering (as today/stable.ts keeps its rows).
-  const [kept] = useState<{ handed: Block[] | null; blocks: readonly Block[] }>(() => ({ handed: null, blocks: [] }));
-  if (kept.handed !== blocks) {
-    kept.handed = blocks;
-    kept.blocks = keepBlocks(kept.blocks, blocks);
-  }
-  return kept.blocks as Block[];
+  // An object of the hook's own whose method holds what it last handed: a render writes nothing into a hook's value.
+  const [keeper] = useState(blockKeeper);
+  return keeper.keep(blocks);
+}
+
+function blockKeeper(): { keep(blocks: Block[]): Block[] } {
+  let handed: Block[] | null = null;
+  let kept: readonly Block[] = [];
+  return {
+    keep(blocks) {
+      if (blocks !== handed) {
+        handed = blocks;
+        kept = keepBlocks(kept, blocks);
+      }
+      return kept as Block[];
+    },
+  };
 }
 
 function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: string; chat: ChatRow; since: number | null; page: Paged<ChatMessage>; onPlaced: () => void }) {
