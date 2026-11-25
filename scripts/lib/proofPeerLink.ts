@@ -1,5 +1,6 @@
 import { createConnection, createServer, type Socket } from 'node:net'
 import { withinDeadline } from '../e2e-work-lib'
+import { withHost } from './slowLink'
 import { paragraphsOf, unescapeXml } from '../../src/main/server/work/templates/ooxml'
 
 /** Routes the scratch Mac's link to the scratch box. The window and the Mac's native peer use separate sockets. */
@@ -36,7 +37,8 @@ export async function proofPeerLink(boxPort: number): Promise<{ port: number; un
       client.once('close', () => upstream.destroy())
       upstream.once('close', () => client.destroy())
       upstream.on('error', () => upstream.destroy())
-      upstream.write(first)
+      // Box's own Host, as his tunnel presents it: box refuses a page's socket that names another.
+      upstream.write(withHost(first, end, `127.0.0.1:${boxPort}`))
       client.pipe(upstream).pipe(client)
     }
     client.on('data', identify)
