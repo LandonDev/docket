@@ -609,7 +609,9 @@ host alone.
 ### A new deck by hand
 
 `blankDeck.ts` holds a blank .pptx (16:9, one Title Slide, PowerPoint's own
-eleven layouts, the Office theme), and the module registers the deck kind's
+eleven layouts, the Office theme). Its core properties are empty: no author,
+no last editor, no maker's note and no dates (python-pptx's template named
+its own author as last editor). The module registers the deck kind's
 maker with Files (`registerFileMaker`, form `pptx`): Files writes it where
 it says, never over a file, and the deck kind then edits it in place.
 `src/shared/work/deckThemes.ts` lists the themes a deck can be given

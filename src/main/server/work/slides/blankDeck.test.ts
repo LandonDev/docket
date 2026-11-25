@@ -25,6 +25,18 @@ describe('a new deck made in Files', () => {
     expect(await zip.file('ppt/slides/_rels/slide1.xml.rels')!.async('string')).toContain('slideLayout1.xml')
   })
 
+  it('carries no stranger\'s name: no author, no last editor, no maker\'s note, no 2013 dates', async () => {
+    const zip = await JSZip.loadAsync(BLANK_DECK)
+    const core = await zip.file('docProps/core.xml')!.async('string')
+    expect(core).not.toMatch(/Steve|Canny|python-pptx|2013/)
+    expect(core).not.toContain('lastModifiedBy')
+    expect(core).toMatch(/<dc:creator\/>|<dc:creator><\/dc:creator>/)
+    for (const name of Object.keys(zip.files)) {
+      if (zip.files[name].dir) continue
+      expect((await zip.file(name)!.async('nodebuffer')).toString('latin1'), name).not.toMatch(/Steve Canny|python-pptx/)
+    }
+  })
+
   it('is written by the kind\'s maker where Files says, as a .pptx only, and never over a file', async () => {
     const maker = fileMakerFor('slides', 'pptx')!
     expect(maker.forms).toEqual(['pptx'])
