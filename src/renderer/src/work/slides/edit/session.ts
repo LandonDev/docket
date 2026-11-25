@@ -192,16 +192,19 @@ export class HandSession {
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
   /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
   private sending: Promise<void> | null = null;
-  /** His notes waiting for the typing pause, the send of them on its way, and what the host last took for each slide. */
+  /**
+   * His notes waiting for the typing pause (one field at a time), and by slide the last send of them on its way and
+   * what the host last took: two slides' notes never share a slot.
+   */
   private notesWaiting: { slide: number; text: string; began: string; timer: ReturnType<typeof setTimeout> } | null = null;
-  private notesSending: { slide: number; text: string; done: Promise<boolean> } | null = null;
+  private notesSending = new Map<number, { text: string; done: Promise<boolean> }>();
   private notesHeld = new Map<number, string>();
-  /** His notes the host refused, still in the field until he types again. */
-  private notesRefused: { slide: number; text: string; conflict?: boolean } | null = null;
+  /** By slide, his notes the host refused and its word, still in the field until he types in that slide's again. */
+  private notesRefused = new Map<number, { text: string; said: string; conflict?: boolean }>();
   /** where the open box's unsent words are kept on this computer; null where there is no store */
   private journal: DraftJournal | null = null;
-  /** where his notes not yet in the file are kept, beside the box's */
-  private notesJournal: DraftJournal | null = null;
+  /** where each slide's notes not yet in the file are kept, beside the box's: a draft per slide */
+  private notesJournals = new Map<number, DraftJournal>();
   /** what was last kept, as its JSON: the same box said again is not written again */
   private keptJson = "";
   private offered: Draft | null = null;
@@ -241,7 +244,6 @@ export class HandSession {
   journalTo(journal: DraftJournal | null): void {
     if (this.journal || !journal) return;
     this.journal = journal;
-    this.notesJournal = journal.twin();
     void this.lookForDrafts();
   }
 
@@ -642,7 +644,7 @@ export class HandSession {
     // His notes go first, and a close waits for them as for the box. Notes in conflict with a save made elsewhere keep
     // the tab: they go only by his Replace. Notes refused otherwise go once more over the notes as they are now;
     // refused again, the tab stays with them in the field.
-    if (this.notesRefused?.conflict) throw new CloseRefused("Your notes changed elsewhere. Replace or Reload them first");
+    if ([...this.notesRefused.values()].some((r) => r.conflict)) throw new CloseRefused("Your notes changed elsewhere. Replace or Reload them first");
     if (!(await this.retryNotes())) throw new CloseRefused("Your notes are not in the file yet");
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = await Promise.race([
@@ -755,50 +757,59 @@ export class HandSession {
    * written over (`was`): what the host last took from this field, else what the field began from.
    */
   typeNotes(slide: number, text: string, began: string): void {
-    const refused = this.notesRefused;
-    if (refused?.conflict && refused.slide === slide) {
+    const refused = this.notesRefused.get(slide);
+    if (refused?.conflict) {
       // In conflict with a save made elsewhere: his words stay his, kept on this computer, and nothing is sent until
       // he presses Replace or Reload.
-      this.notesRefused = { ...refused, text };
-      this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
+      this.notesRefused.set(slide, { ...refused, text });
+      this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
       return;
     }
     const waiting = this.notesWaiting;
     if (waiting && waiting.slide !== slide) void this.keepNotes();
-    if (!refused?.conflict) this.notesRefused = null;
+    // A key clears only this slide's refusal: another slide's stays in its field, its draft and the line.
+    this.notesRefused.delete(slide);
     if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
     // Waiting for the pause, nothing is on its way: the line keeps its Saved until the pause ends or they are sent.
-    this.set({ notesEditedAt: Date.now(), ...(refused?.conflict ? {} : { notesFailure: null, notesConflict: false }) });
+    this.set({ notesEditedAt: Date.now(), ...this.refusedLine() });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
-    this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
+    this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
   }
 
-  /** The notes waiting for the pause, sent now; resolves once every notes edit on its way has its answer. False: refused. */
+  /** The notes waiting for the pause, sent now; resolves once every notes edit on its way has its answer. False: one was refused. */
   async keepNotes(): Promise<boolean> {
+    const out = [...this.notesSending.values()].map((s) => s.done);
     const waiting = this.notesWaiting;
-    if (!waiting) return (await this.notesSending?.done) ?? true;
-    clearTimeout(waiting.timer);
-    this.notesWaiting = null;
-    const was = this.notesHeld.get(waiting.slide) ?? waiting.began;
-    if (waiting.text === was) {
-      this.set({ notesEditedAt: null });
+    if (waiting) {
+      clearTimeout(waiting.timer);
+      this.notesWaiting = null;
+      out.push(this.sendNotes(waiting.slide, waiting.text, this.notesHeld.get(waiting.slide) ?? waiting.began));
+    }
+    return (await Promise.all(out)).every(Boolean);
+  }
+
+  /** One slide's notes sent over `was`; nothing when they are `was` already. False: refused. */
+  private async sendNotes(slide: number, text: string, was: string): Promise<boolean> {
+    if (text === was) {
+      this.set({ notesEditedAt: this.notesWaiting ? this.state.notesEditedAt : null });
       // (a send on its way holds the same words: its answer lets the draft go)
-      if (!this.notesSending) this.notesJournal?.clear();
-      return (await this.notesSending?.done) ?? true;
+      if (!this.notesSending.has(slide)) this.notesJournals.get(slide)?.clear();
+      return (await this.notesSending.get(slide)?.done) ?? true;
     }
     // The send counts itself on its way as the wait ends, so the line never says saved between the two.
-    this.notesHeld.set(waiting.slide, waiting.text);
-    this.set({ busy: this.state.busy + 1, notesEditedAt: null });
-    const sending: { slide: number; text: string; done: Promise<boolean> } = {
-      slide: waiting.slide,
-      text: waiting.text,
-      done: this.host.edit([{ op: "notes", slide: waiting.slide, text: waiting.text, was }]).then(
+    this.notesHeld.set(slide, text);
+    this.set({ busy: this.state.busy + 1, ...(this.notesWaiting ? {} : { notesEditedAt: null }) });
+    const sending: { text: string; done: Promise<boolean> } = {
+      text,
+      done: this.host.edit([{ op: "notes", slide, text, was }]).then(
         (next) => {
           this.store.view(next);
-          this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
-          // Kept until this send's own answer: a later send's draft stays while it is on its way or waits.
-          if (!this.notesWaiting && this.notesSending === sending) this.notesJournal?.clear();
+          // His words of this slide are in: an earlier refusal of them is past.
+          this.notesRefused.delete(slide);
+          this.set({ busy: this.state.busy - 1, savedAt: Date.now(), ...this.refusedLine() });
+          // Kept until this slide's last send has its answer: a later send's draft stays while it is on its way or waits.
+          if (this.notesWaiting?.slide !== slide && this.notesSending.get(slide) === sending) this.notesJournals.get(slide)?.clear();
           return true;
         },
         (error) => {
@@ -807,17 +818,32 @@ export class HandSession {
           // other save. Refused otherwise, Retry writes them over the notes as the deck has them now.
           const said = message(error, "Couldn't save the notes");
           const conflict = MOVED.test(said);
-          this.notesHeld.set(waiting.slide, conflict ? was : (this.deckNotes(waiting.slide) ?? was));
-          this.notesRefused = { slide: waiting.slide, text: waiting.text, ...(conflict ? { conflict } : {}) };
-          this.set({ busy: this.state.busy - 1, notesFailure: conflict ? CONFLICT_WORD : said, notesConflict: conflict });
+          this.notesHeld.set(slide, conflict ? was : (this.deckNotes(slide) ?? was));
+          this.notesRefused.set(slide, { text, said, ...(conflict ? { conflict } : {}) });
+          this.set({ busy: this.state.busy - 1, ...this.refusedLine() });
           return false;
         },
       ),
     };
-    this.notesSending = sending;
+    this.notesSending.set(slide, sending);
     const ok = await sending.done;
-    if (this.notesSending === sending) this.notesSending = null;
+    if (this.notesSending.get(slide) === sending) this.notesSending.delete(slide);
     return ok;
+  }
+
+  /** The line's word for the notes refused now: a conflict first, as it alone needs Replace or Reload; else the last. */
+  private refusedLine(): Pick<HandState, "notesFailure" | "notesConflict"> {
+    const all = [...this.notesRefused.values()];
+    const shown = all.find((r) => r.conflict) ?? all.at(-1);
+    return { notesFailure: shown ? (shown.conflict ? CONFLICT_WORD : shown.said) : null, notesConflict: !!shown?.conflict };
+  }
+
+  /** Where one slide's notes are kept on this computer: its own draft, beside the box's and every other slide's. */
+  private notesJournal(slide: number): DraftJournal | null {
+    if (!this.journal) return null;
+    let journal = this.notesJournals.get(slide);
+    if (!journal) this.notesJournals.set(slide, (journal = this.journal.twin()));
+    return journal;
   }
 
   /** A slide's notes as the deck has them now. */
@@ -825,37 +851,42 @@ export class HandSession {
     return this.store.get().view?.slides.find((s) => s.id === slide)?.notes;
   }
 
-  /** His refused notes sent once more (Retry, or Replace over notes changed elsewhere), over the notes as the deck has them now; resolves as `keepNotes` does. */
+  /**
+   * Every slide's refused notes sent once more (Retry, or Replace over notes changed elsewhere), over the notes as the
+   * deck has them now, with the notes waiting for the pause; resolves as `keepNotes` does.
+   */
   retryNotes(): Promise<boolean> {
-    const refused = this.notesRefused;
-    if (refused?.conflict) {
-      this.notesHeld.set(refused.slide, this.deckNotes(refused.slide) ?? this.notesHeld.get(refused.slide) ?? "");
-      this.notesRefused = { slide: refused.slide, text: refused.text };
-    }
-    if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
-    return this.keepNotes();
+    const again = [...this.notesRefused].map(([slide, refused]) => {
+      if (refused.conflict) this.notesHeld.set(slide, this.deckNotes(slide) ?? this.notesHeld.get(slide) ?? "");
+      return { slide, text: refused.text };
+    });
+    this.notesRefused.clear();
+    if (again.length) this.set(this.refusedLine());
+    const sends = again.map(({ slide, text }) => this.sendNotes(slide, text, this.notesHeld.get(slide) ?? ""));
+    return Promise.all([this.keepNotes(), ...sends]).then((all) => all.every(Boolean));
   }
 
-  /** Reload over notes changed elsewhere: his words go, and the field takes the deck's notes as they are now. */
+  /** Reload over notes changed elsewhere: his words in those slides go, and their fields take the deck's notes as they are now. */
   reloadNotes(): Promise<void> {
-    const refused = this.notesRefused;
-    this.notesRefused = null;
-    if (refused) this.notesHeld.delete(refused.slide);
-    this.notesJournal?.clear();
-    this.set({ notesFailure: null, notesConflict: false, notesReload: (this.state.notesReload ?? 0) + 1 });
+    for (const [slide, refused] of this.notesRefused) {
+      if (!refused.conflict) continue;
+      this.notesRefused.delete(slide);
+      this.notesHeld.delete(slide);
+      this.notesJournals.get(slide)?.clear();
+    }
+    this.set({ ...this.refusedLine(), notesReload: (this.state.notesReload ?? 0) + 1 });
     return this.reload();
   }
 
   /** His notes for a slide that are not yet the deck's (waiting, on their way or refused): what a field drawn again starts from. */
   pendingNotes(slide: number): string | null {
     if (this.notesWaiting?.slide === slide) return this.notesWaiting.text;
-    if (this.notesRefused?.slide === slide) return this.notesRefused.text;
-    return this.notesSending?.slide === slide ? this.notesSending.text : null;
+    return this.notesRefused.get(slide)?.text ?? this.notesSending.get(slide)?.text ?? null;
   }
 
   /** Whether his notes for a slide are not yet the deck's: waiting, on their way or refused. The field keeps them over a view that comes meanwhile. */
   notesPending(slide: number): boolean {
-    return this.notesWaiting?.slide === slide || this.notesSending?.slide === slide || this.notesRefused?.slide === slide;
+    return this.notesWaiting?.slide === slide || this.notesSending.has(slide) || this.notesRefused.has(slide);
   }
 
   /** A picture or a video on its way to the host: where it will lie, or null once it is there or failed. */

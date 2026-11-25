@@ -1820,7 +1820,12 @@ so they are words he cannot type in, with one muted "Too long to edit here"
 (`notesCut`), and the deck tool refuses a `notes` edit over notes longer than
 that, so a key never saves them cut; each draft is let go only by its own
 send's answer, so an earlier send landing never drops the words of a later
-one still waiting or on its way. A slide an agent's
+one still waiting or on its way. Each slide's notes are their own: the send
+on its way, the refusal and the draft on this computer are kept by slide
+(`notesSending`, `notesRefused`, `notesJournals`, one journal twin a slide),
+so his key in one slide's notes clears only that slide's refusal, and Retry
+or a close sends every slide's refused notes. The line names a conflict
+first, else the last refusal still standing (`refusedLine`). A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
 

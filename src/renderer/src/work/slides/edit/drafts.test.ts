@@ -183,6 +183,37 @@ describe("a deck's open box", () => {
     expect(await before.kept()).toEqual([]);
   });
 
+  it("of two slides' notes are kept apart: one refused while the other lands stays on this computer", async () => {
+    const before = store();
+    const view = deckView({ slides: [slide(3), slide(5)], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const decks = new DeckStore();
+    decks.view(view);
+    const session = new HandSession(host, decks);
+    session.journalTo(before.journal);
+    // Slide 3's send is still out when he types in slide 5's notes; it is refused, and slide 5's lands.
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    const edit = host.edit.bind(host);
+    host.edit = async (ops) => {
+      if (ops[0]?.op === "notes" && ops[0].slide === 3) {
+        await answered;
+        throw new Error("No room");
+      }
+      return edit(ops);
+    };
+    session.typeNotes(3, "Thank the sponsors", "");
+    const three = session.keepNotes();
+    session.typeNotes(5, "Doors at six", "");
+    const five = session.keepNotes();
+    answer();
+    expect(await three).toBe(false);
+    await five;
+    expect(host.view.slides[1].notes).toBe("Doors at six");
+    await before.s.settled();
+    expect((await before.kept()).map((d) => d.body)).toEqual([{ kind: "notes", slideId: 3, text: "Thank the sponsors", was: "" }]);
+  });
+
   it("of notes the host took is let go", async () => {
     const before = store();
     const { host, decks } = deck();

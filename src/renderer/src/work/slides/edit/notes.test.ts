@@ -113,6 +113,23 @@ describe("notes he types", () => {
     expect(edits()).toHaveLength(1);
   });
 
+  it("refused on one slide stay that slide's when he types in another's: the field, the line and Retry keep them", async () => {
+    const { host, session, edits } = setUp();
+    host.refuse = "No room";
+    session.typeNotes(3, "Thank the sponsors", "Say hello");
+    expect(await session.keepNotes()).toBe(false);
+    host.refuse = undefined;
+    session.typeNotes(5, "Five", "");
+    expect(session.pendingNotes(3)).toBe("Thank the sponsors");
+    expect(session.saved(() => undefined)).toMatchObject({ state: "conflict", detail: "Not saved. No room.", actions: [{ id: "retry" }] });
+    // His key on slide 5 cleared only slide 5's: Retry sends slide 3's, and slide 5's go with the pause.
+    session.saved(() => undefined).actions![0].run();
+    await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+    await vi.waitFor(() => expect(session.saved(() => undefined).state).toBe("saved"));
+    expect(edits().slice(1)).toEqual(expect.arrayContaining([[{ op: "notes", slide: 3, text: "Thank the sponsors", was: "Say hello" }], [{ op: "notes", slide: 5, text: "Five", was: "" }]]));
+    expect(session.notesPending(3)).toBe(false);
+  });
+
   it("a close waits for them, and stays open when the host will not take them", async () => {
     const { host, session } = setUp();
     session.typeNotes(3, "Mine", "Say hello");
