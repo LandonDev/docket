@@ -510,7 +510,12 @@ The fault it closes: the grid's cell editor hands back its own document, a
 run a key in the editor's font and colour, and Univer calls any styled run
 rich text, so `42` reached the file as the words "42" (a shared string Excel
 flags, that SUM reads as 0). `plainWords` reads a document whose runs share
-one style (no link, list, picture or second paragraph) as plain words;
+one style (no link, list, picture or second paragraph) as plain words. A
+Teams sheet's editor gives the first key's run its colour (`{cl}`) and the
+next ones its font and size too (`{cl, ff, fs}`): its font and size on some
+runs and not others are the editor's, never his (`oneStyle`, `EDITOR_KEYS`),
+so "42" there is a number; any other key that differs between runs, or a font
+of his beside another, is his styling;
 `typedCell` turns such a cell, or a string value with no text type, into
 Univer's NUMBER or BOOLEAN (true as 1), a formula, or text held as STRING.
 Text he styled keeps its runs where the store keeps runs; where it keeps

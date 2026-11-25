@@ -48,10 +48,28 @@ interface DocBody {
   customBlocks?: unknown[];
 }
 
+/** The editor's own font and size, which a Teams sheet's editor adds to a run from the second key on: never his. */
+const EDITOR_KEYS = new Set(["ff", "fs"]);
+
+/**
+ * Whether runs hold one style: each key the same in every run, or in none. The editor's font and size (`EDITOR_KEYS`)
+ * may be on some runs and not others, as long as the runs that carry one agree.
+ */
+function oneStyle(runs: NonNullable<DocBody["textRuns"]>): boolean {
+  const keys = new Set(runs.flatMap((r) => Object.keys((r.ts as Record<string, unknown> | undefined) ?? {})));
+  for (const key of keys) {
+    const values = new Set(runs.map((r) => ((r.ts as Record<string, unknown> | undefined)?.[key] === undefined ? undefined : JSON.stringify((r.ts as Record<string, unknown>)[key]))));
+    if (EDITOR_KEYS.has(key)) values.delete(undefined);
+    if (values.size > 1) return false;
+  }
+  return true;
+}
+
 /**
  * A cell's document as the words he typed, or null when it is text he styled: more than one style, a link, a list,
  * a picture, more than one paragraph. The grid's cell editor hands back a document whose runs carry the editor's
- * own font and colour, split a key at a time ("1" and "0"); one style over every run is plain words.
+ * own font and colour, split a key at a time ("1" and "0"), the font and size from the second key on in a Teams
+ * sheet (`{cl}`, then `{cl, ff, fs}`); one style over every run (`oneStyle`) is plain words.
  */
 export function plainWords(p: unknown): string | null {
   const body = (p as { body?: DocBody } | null | undefined)?.body;
@@ -59,10 +77,9 @@ export function plainWords(p: unknown): string | null {
   const words = body.dataStream.replace(/\r\n$/, "");
   if (/[\r\n]/.test(words) || body.customRanges?.length || body.customBlocks?.length || (body.paragraphs ?? []).some((x) => x.bullet)) return null;
   const runs = (body.textRuns ?? []).filter((r) => (r.st ?? 0) < words.length);
-  const styles = new Set(runs.map((r) => JSON.stringify(r.ts ?? {})));
-  if (styles.size > 1) return null;
+  if (!oneStyle(runs)) return null;
   // One style over part of the words leaves the rest in another (the cell's own).
-  if (runs.length && styles.values().next().value !== "{}") {
+  if (runs.some((r) => Object.keys((r.ts as object | undefined) ?? {}).length > 0)) {
     let at = 0;
     for (const r of [...runs].sort((a, b) => (a.st ?? 0) - (b.st ?? 0))) {
       if ((r.st ?? 0) > at) return null;

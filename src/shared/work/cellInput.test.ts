@@ -40,6 +40,21 @@ describe("a cell as the grid commits his typing", () => {
     expect(plainWords({ body: {} })).toBeNull();
   });
 
+  it("reads the runs a Teams sheet's editor gives, its colour on the first key and its font and size added from the next, as plain words", () => {
+    // As the M11 walk caught them in `work.sheets.edit`: none of these styles is his.
+    const cl = { rgb: "#000000" };
+    const walked = (words: string) => ({ body: { dataStream: `${words}\r\n`, textRuns: [...words].map((_, i) => ({ st: i, ed: i + 1, ts: i === 0 ? { cl } : { cl, ff: "Aptos Narrow", fs: 11 } })), paragraphs: [{ startIndex: words.length }] } });
+    for (const words of ["10", "20", "42"]) expect(plainWords(walked(words))).toBe(words);
+    expect(typedCell({ v: null, p: walked("42") }, { runs: false })).toEqual({ v: 42, t: CELL_NUMBER, p: null });
+    expect(typedCell({ v: null, p: walked("42") })).toEqual({ v: 42, t: CELL_NUMBER, p: null });
+    // His own: a colour on one key alone, bold on one, another colour, a font of his on part with another on the rest.
+    const runs = (a: object, b: object) => ({ body: { dataStream: "10\r\n", textRuns: [{ st: 0, ed: 1, ts: a }, { st: 1, ed: 2, ts: b }] } });
+    expect(plainWords(runs({ cl: { rgb: "#ff0000" } }, {}))).toBeNull();
+    expect(plainWords(runs({ cl, bl: 1 }, { cl, ff: "Aptos Narrow", fs: 11 }))).toBeNull();
+    expect(plainWords(runs({ cl }, { cl: { rgb: "#ff0000" }, ff: "Aptos Narrow", fs: 11 }))).toBeNull();
+    expect(plainWords(runs({ cl, ff: "Georgia" }, { cl, ff: "Aptos Narrow", fs: 11 }))).toBeNull();
+  });
+
   it("holds a number, true or false and a formula as themselves, and text as text", () => {
     expect(typedCell({ v: null, f: null, si: null, p: typedDoc("42") })).toEqual({ v: 42, f: null, si: null, t: CELL_NUMBER, p: null });
     expect(typedCell({ v: null, p: typedDoc("-3.5"), s: { bl: 1 } })).toEqual({ v: -3.5, t: CELL_NUMBER, p: null, s: { bl: 1 } });
