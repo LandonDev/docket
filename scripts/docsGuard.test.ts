@@ -98,6 +98,7 @@ const NOT_WIRE: Record<string, string> = {
   'work.capture.draft': 'ios/TempCodeClient/Sources/TempCodeClient/Work/Capture/VoiceNote.swift', // the phone's defaults
   'work.lifeos.jwks': 'src/main/server/work/service/ctx.ts', // a host setting
   'work.google.clientId': 'src/main/server/work/google/picker.ts', // a host setting
+  'work.guests.origin': 'src/main/server/work/service/config.ts', // a host setting
   'work.winvm.sleepAfter': 'src/main/server/work/winvm/index.ts', // a host setting
   'work.winvm.screen': 'src/main/server/work/winvm/index.ts', // a host setting
   'work.ownerName': 'src/main/server/work/preamble.ts', // a host setting
