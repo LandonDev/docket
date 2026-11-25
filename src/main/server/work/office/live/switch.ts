@@ -198,37 +198,62 @@ async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { h
  * is after his last key. A sync of a save from before his last key, early or late, is not that change. Where the
  * holder gives no clock (the VM's guest), the next change seen after the press. A window that does not say `quiet`
  * waits for any change since the tab went live (`base`). Answers whether it moved; when it did not, nothing proves the
- * file holds his typing, and the live seat stays.
+ * file holds his typing, the live seat stays, and the answer gives his last key by the holder's clock (`last`, null
+ * where none is known) for the next press to read (`refused`).
+ *
+ * `last`: a press refused before kept his last key: the guest that came back counts keys from none, so the later of
+ * the two is his last key, and a press with no keys counted waits all the same.
  *
  * A change the file names as someone else's save (`by`, against his name in Work, `ownerName`) is a coauthor's, which
  * may have reached Teams before his typing did: it counts only when saved after the press, once Word had let the live
  * view go with his words saved and Teams had them in every save since. Before that, it is not taken, and the answer
- * names whose save it was. A file that names no one, or no name of his to read it against, keeps the clock's rule.
+ * names whose save it was. After Switch Anyway (`forced`) Word let go mid-save, so a coauthor's save after the press
+ * proves nothing either: only his own does. A file that names no one, or no name of his to read it against, keeps the
+ * clock's rule.
  */
-async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, base: string | null, since: number, quiet: number | undefined, signal?: AbortSignal): Promise<{ moved: true } | { moved: false; other?: string }> {
+async function versionMoved(
+  ctx: WorkCtx,
+  workspaceId: string,
+  ref: { host: string; path: string },
+  base: string | null,
+  since: number,
+  o: { quiet?: number; last?: number | null; forced?: boolean },
+  signal?: AbortSignal
+): Promise<{ moved: true } | { moved: false; other?: string; last: number | null }> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
-  if (first && quiet === undefined && base !== null && first.word !== base) return { moved: true }
+  // Told of his last key: by the window now, or kept from a refused press.
+  const told = o.quiet !== undefined || o.last !== undefined
+  if (first && !told && base !== null && first.word !== base) return { moved: true }
+  const keys = first?.now === undefined ? [] : [...(o.quiet !== undefined ? [first.now - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
   // His last key by the holder's clock; for a tab live from before its version was kept, the live view's opening by this host's.
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
-  const after = quiet !== undefined && first?.now !== undefined ? first.now - quiet : quiet === undefined && ownClock ? since : null
-  const owner = quiet !== undefined && first?.now !== undefined ? ownerName(ctx) : null
+  const after = keys.length ? Math.max(...keys) : !told && ownClock ? since : null
+  const owner = told && after !== null ? ownerName(ctx) : null
   let other: string | undefined
-  /** Whether the save is his, or came after the press; a coauthor's from before it is kept as the answer's word. */
+  /** Whether the save is his, or came after the press of an unload Word allowed; a coauthor's else is kept as the answer's word. */
   const his = (v: { changed: number; by?: string }): boolean => {
-    if (!owner || !v.by || sameName(v.by, owner) || v.changed >= first!.now!) return true
+    if (!owner || !v.by || sameName(v.by, owner) || (!o.forced && v.changed >= first!.now!)) return true
     other = v.by
     return false
   }
-  if (first && after !== null && (quiet !== undefined || base === null) && (base === null || first.word !== base) && first.changed > after && his(first)) return { moved: true }
-  const from = quiet === undefined ? (base ?? first?.word ?? null) : (first?.word ?? base)
+  if (first && after !== null && (told || base === null) && (base === null || first.word !== base) && first.changed > after && his(first)) return { moved: true }
+  const from = !told ? (base ?? first?.word ?? null) : (first?.word ?? base)
   const end = Date.now() + liveTiming.version
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
     const now = await versionNow(ctx, workspaceId, ref, signal)
-    if (now && now.word !== from && (quiet === undefined || after === null || now.changed > after) && his(now)) return { moved: true }
+    if (now && now.word !== from && (!told || after === null || now.changed > after) && his(now)) return { moved: true }
   }
-  return { moved: false, ...(other ? { other } : {}) }
+  return { moved: false, last: after, ...(other ? { other } : {}) }
 }
+
+/**
+ * Edit here refused with his typing unproven, by the tab's key (`versionMoved`'s `last`; `forced`, the press was Switch
+ * Anyway): the next press waits by it whatever keys the guest that came back counted. Gone once a press passes or the
+ * tab goes live again. In memory: a host that restarts asks again from the next press's own count.
+ */
+const refused = new Map<string, { last: number | null; forced: boolean }>()
+const refusedKey = (workspaceId: string, key: string): string => `${workspaceId}\t${key}`
 
 /** One person by two names: Work's for him and the one Office saved under ("Landon" and "Landon Johnson"), by whole words. */
 export function sameName(a: string, b: string): boolean {
@@ -254,14 +279,19 @@ async function uploaded(workspaceId: string, ref: { host: string; path: string }
 }
 
 /** `work.office.live.set`: his press on the tab's mode. */
-export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; quiet?: number; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
+export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; quiet?: number; forced?: boolean; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
   if (by.kind === 'model') throw new Error('A Files tab is switched from his window.')
   const { tab, item, ref } = tabFile(ctx, by, p.workspaceId, p.tabId)
   if (tab.kind !== 'file' || !item || !ref || !appOf(ref.path)) throw new Error('That tab shows no shared Office file.')
   const live = isLiveSource(item.source)
+  const kept = refusedKey(p.workspaceId, tab.key ?? '')
   if (p.mode === 'here') {
     if (live) {
-      const moved = p.typed ? await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, p.quiet, signal) : null
+      const before = refused.get(kept)
+      const forced = !!p.forced || !!before?.forced
+      const asks = { ...(p.quiet !== undefined ? { quiet: p.quiet } : {}), ...(before ? { last: before.last } : {}), forced }
+      const moved = p.typed || before ? await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, asks, signal) : null
+      if (moved && !moved.moved) refused.set(kept, { last: moved.last, forced })
       if (moved && !moved.moved)
         throw new Error(
           moved.other
@@ -269,6 +299,7 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
             : `What you typed in ${nameOf(ref.path)} has not come down from OneDrive yet, so it stays live. Try again in a moment.`
         )
       await reseat(ctx, p.workspaceId, tab.id, by, signal)
+      refused.delete(kept)
     }
     setMode(ctx.db, p.workspaceId, tab.key ?? '', 'here')
     return DONE
@@ -290,6 +321,7 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
     ctx.canvas.replace(now.item.sessionId, now.item.id, APP_CANVAS[of.app], liveSource(ctx, of.app, name, of.address), name)
     await forgetKept(ctx, p.workspaceId, now.tab)
     setMode(ctx.db, p.workspaceId, now.tab.key ?? '', 'live')
+    refused.delete(refusedKey(p.workspaceId, now.tab.key ?? ''))
     await keepBase(ctx, p.workspaceId, now.tab.key ?? '', now.ref, signal)
     return DONE
   }

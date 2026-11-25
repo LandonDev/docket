@@ -132,9 +132,10 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   on the guest, `office-live:quiet`), then unloads the guest; Word may
   hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Switch Anyway"
   (`leaveForSwitch`; a close asks "Close Anyway", naming the app by the file's name, "Word for the web has not
-  finished saving it", `leaveLive`). Switch Anyway counts as typing (`typed` at least 1): nothing
+  finished saving it", `leaveLive`). Switch Anyway counts as typing (`typed` at least 1) and says `forced`: nothing
   proves the file holds what Word had not saved, so the host must see the file move or the tab stays live and the
-  guest comes back; the seat is kept. When he typed, the host waits up to 60 s for a change made after his last key
+  guest comes back; the seat is kept. After it a coauthor's save, even one made after the press, proves nothing: only
+  a save the file names as his counts (a file that names no one keeps the clock's rule). When he typed, the host waits up to 60 s for a change made after his last key
   there (`quiet`, ms before the press, the wait to leave added), its time read by the holder's own clock: this
   host's, or his desktop's, which its `work.files.stat` answer gives (`now`). One already in the file counts at once
   (a Mac library's typing that came down before the press is taken, never waited out), else the next change seen
@@ -151,7 +152,11 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   (the VM, a cloud-only file), or no name of his set in Work, keeps the clock's rule alone. A window that does not
   say `quiet` waits for the file to differ from that kept version. Then it `reseat`s the file fresh. Nothing moved by then, nothing proves the file holds
   his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
-  live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from
+  live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). The guest that came
+  back counts keys from none, so the host keeps the refusal by the tab's key (`refused` in switch.ts: his last key by
+  the holder's clock, and whether it was Switch Anyway): the next press waits by it whatever `typed` says, his last key
+  the later of the kept one and any new one. It goes once a press passes or the tab goes live again; a host restart
+  forgets it. A tab live from
   before its version was kept falls back to the file's time after the live view opened, on this host's own clock
   (never the VM's). Every save back is by version, so a later OneDrive change is "changed there", never a write over
   Word's edits.

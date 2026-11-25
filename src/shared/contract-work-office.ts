@@ -291,10 +291,12 @@ export const OfficeRequestSchemas = [
    * mode remembered for the file. `typed`: what he typed in the live view; above 0, Edit here first waits up to 60 s for
    * the file on its computer to differ from its version as the tab went live, and is refused (the tab stays live) when
    * it does not. `quiet`: ms from his last key in the live view to the press; given, only a change made after that key
-   * counts (an earlier sync does not hold it). To Live waits for OneDrive to upload a send of ours first. His press
+   * counts (an earlier sync does not hold it). A refused Edit here is kept by the tab's key, so the next press waits by
+   * it whatever `typed` says. `forced`: the press is Switch Anyway (Word let go mid-save), and a coauthor's save after
+   * it proves nothing; only his own does. To Live waits for OneDrive to upload a send of ours first. His press
    * alone: a thread is refused.
    */
-  request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), quiet: z.number().int().min(0).max(1e10).optional(), choice: z.literal('keep-both').optional() })),
+  request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), quiet: z.number().int().min(0).max(1e10).optional(), forced: z.literal(true).optional(), choice: z.literal('keep-both').optional() })),
   /** A Files entry's web address (`ref` its `{at: 'file'}` source), without a tab: the phone's Open in Word. → OfficeLiveAddress */
   request('work.office.live.address', z.object({ workspaceId: z.string().max(200), ref: CanvasSourceSchema })),
   request('work.office.live.libraryDefault', LiveLibrary),

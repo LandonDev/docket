@@ -542,6 +542,56 @@ describe('Live → Edit here', () => {
     expect((await itemOf(tabId)).source).toMatchObject({ ref: { kind: 'path', path } })
   })
 
+  it('after a refusal, the next press with no keys counted still waits: the guest that came back counts from zero', async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('has not come down from OneDrive yet')
+    // He presses again at once, in the guest that came back: it read no keys.
+    await expect(set(tabId, { mode: 'here', typed: 0 })).rejects.toThrow('has not come down from OneDrive yet')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    // His typing comes down: the next press takes it, and the one after that asks nothing more.
+    writeFileSync(path, 'word, with every word')
+    expect(await set(tabId, { mode: 'here' })).toEqual({ is: 'done' })
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    expect(await set(tabId, { mode: 'here' })).toEqual({ is: 'done' })
+  })
+
+  it("after a refusal, a later press reads his last key from the first: a coauthor's save before it still holds the seat", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx')
+    await new Promise((settle) => setTimeout(settle, 20))
+    await expect(set(tabId, { mode: 'here' })).rejects.toThrow('Dana Lee saved Plan.docx')
+  })
+
+  it("after Switch Anyway, never takes a coauthor's save made after the press: Word did not let go with his words saved", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    let failed: unknown = null
+    const switching = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true }).catch((err: unknown) => (failed = err))
+    await new Promise((settle) => setTimeout(settle, 30))
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, 1000)
+    await switching
+    expect(String(failed)).toContain('Dana Lee saved Plan.docx')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
+  it('after Switch Anyway, takes his own save made after the press', async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    const switching = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true })
+    await new Promise((settle) => setTimeout(settle, 30))
+    writeFileSync(path, savedBy('Landon Johnson', 'his words'))
+    shiftMtime(path, 1000)
+    expect(await switching).toEqual({ is: 'done' })
+  })
+
   it("after typing, never takes a coauthor's save on his Mac from before the press, read there", async () => {
     const { path, tabId } = await openFar('Plan.docx', 'word')
     expect(await set(tabId)).toEqual({ is: 'done' })

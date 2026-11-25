@@ -133,10 +133,10 @@ describe("switching to Edit here", () => {
   it("after Switch Anyway, has the host prove the file moved even when no key was counted", async () => {
     const { d } = deps([{ is: "done" }], { leave: vi.fn(async () => "forced" as const) });
     expect(await switchTo("here", FROM, d)).toBe(true);
-    expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 1 });
+    expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 1, forced: true });
     const typed = deps([{ is: "done" }], { leave: vi.fn(async () => "forced" as const), typed: vi.fn(async () => 7) });
     await switchTo("here", FROM, typed.d);
-    expect(typed.d.set).toHaveBeenCalledWith({ mode: "here", typed: 7 });
+    expect(typed.d.set).toHaveBeenCalledWith({ mode: "here", typed: 7, forced: true });
   });
 
   it("keeps the seat after Switch Anyway when the host cannot prove the file holds his edits", async () => {
