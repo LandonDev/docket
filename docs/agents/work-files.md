@@ -2346,9 +2346,9 @@ over a file that changed there.
   (`QUIT_FLUSH_MS`: main gives each window but the first 2 s, `PERSIST_TIMEOUT_MS` in src/main/windows.ts; the first
   and a window's own close have no cap of main's). Past it the app quits and the window goes anyway; the items whose
   send failed or was late are named in the console (`[quit]`). A text file's words are kept on this computer as a
-  draft ("Drafts survive a crash" below) and offered when the file opens again; the other kinds keep no draft yet, so
-  what did not reach the host by then is lost: a deck's open box (2 s), a sheet's cells (150 ms) or an open grid cell,
-  a document's last frames. A send that reached the host is safe: a copy's changes are kept and sent from there
+  draft ("Drafts survive a crash" below) and offered when the file opens again, and so are a sheet's cells (150 ms)
+  the host has not answered; the kinds that keep no draft yet lose what did not reach the host by then: a deck's open
+  box (2 s), a document's last frames. A send that reached the host is safe: a copy's changes are kept and sent from there
   ("Nothing he changed is dropped in silence"). A window that hides because a thread is busy keeps its tabs and sends
   nothing yet. Before, quit and window close sent the chat drafts alone, and every such edit was lost.
 - **Drafts survive a crash** (decision 14 of plan cBclQIRDtvVS, audit A3). Each text edit the host has not
@@ -2368,8 +2368,17 @@ over a file that changed there.
   2:14 PM were not saved" with Restore (the draft in the editor, sent by its base through `work.files.write` as any
   save, so the door's version, fence and hold checks are the live edit's) and Discard; over a base the file no longer
   is, "Edits from 2:14 PM were not saved. The file changed since" with Keep Both (written beside the file under its
-  keep-both name, `copy: true`, never over the newer file) and Discard. Sheets, decks and documents keep no draft
-  yet.
+  keep-both name, `copy: true`, never over the newer file) and Discard. The other kinds journal through one helper,
+  `DraftJournal` (work/canvas/drafts.ts: the newest body under its base, the older base's dropped, all dropped once
+  answered): a sheet (below, and work-sheets.md "The canvas"). Decks and documents keep no draft yet.
+- **A sheet's draft** (`DraftBody` kind `sheet`): the mutations the host has not answered, the batch on its way and
+  the queue after it, under the file's revision (`SheetSync.note`, after each push into the queue, each send's end and
+  each drop). As the book is read the newest unclaimed draft is offered in the same line with the grid read only:
+  at the revision it was made on, Restore sends it through `work.sheets.edit` by that revision, as a live edit, and
+  lays it on the grid as anyone's op is laid; at another revision, "The file changed since" with Copy Edits (each
+  cell as "Budget!A1", a tab, what he put; the draft stays) and Discard. Nothing is laid over a newer workbook. An open
+  cell, and the formula bar's words where the pinned work-kit has `SheetHandle.commitEditing` (Pin A, work-kit branch
+  `pin-a-formula-commit`, needs a signed release), are ended into the queue before a close, a quit or a reload.
 - **An editor that goes keeps its words sendable.** A text file's body that unmounts (another tab chosen, or its tab
   closed from another window, handle.ts `tabClose`) with words the host has not taken keeps its session (`kept` in
   work/files/FileKind.tsx): its send stays registered for a close and quit (`canvasFlushPort`) and it sends again

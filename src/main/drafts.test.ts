@@ -54,7 +54,7 @@ describe('the draft store', () => {
     store.put(draft('new base', 'v2', 2))
     store.put({ ...draft('other file'), file: draftFileOf({ at: 'file', host: 'env_box', path: '/w/Other.md' }) })
     await store.settled()
-    expect((await new DraftStore(store.dir).list(place)).map((d) => d.body.text)).toEqual(['new base', 'old base'])
+    expect((await new DraftStore(store.dir).list(place)).map((d) => (d.body.kind === 'text' ? d.body.text : null))).toEqual(['new base', 'old base'])
   })
 
   it('names one file one way whatever order its source was written in', () => {
@@ -65,6 +65,11 @@ describe('the draft store', () => {
     expect(draftOf(draft('x'))).toEqual(draft('x'))
     expect(draftOf({ ...draft('x'), base: '' })).toBeNull()
     expect(draftOf({ ...draft('x'), body: { kind: 'sheet' } })).toBeNull()
+    expect(draftOf({ ...draft('x'), body: { kind: 'sheet', mutations: [] } })).toBeNull()
+    const cells = { kind: 'sheet', mutations: [{ id: 'sheet.mutation.set-range-values', params: { cellValue: { 0: { 0: { v: 42 } } } } }] }
+    expect(draftOf({ ...draft('x'), body: cells })?.body).toEqual(cells)
+    expect(draftOf({ ...draft('x'), body: { kind: 'sheet', mutations: [{ id: 'x', params: 'y'.repeat(4 * 1024 * 1024) }] } })).toBeNull()
+    expect(draftOf({ ...draft('x'), body: { kind: 'other' } })).toBeNull()
     expect(draftOf({ ...draft('x'), body: { kind: 'text', text: 'x'.repeat(4 * 1024 * 1024 + 1) } })).toBeNull()
   })
 })

@@ -91,7 +91,11 @@ export const univerGrid: SheetGrid = {
     commit: async () => {
       const workbook = handle.api.getActiveWorkbook();
       if (!workbook) return true;
-      await workbook.endEditingAsync(true);
+      // The formula bar's words too, where the pinned work-kit hands its commit to the handle (`commitEditing`, Pin A);
+      // a pin without it ends the cell editor alone.
+      const withBar = handle as SheetHandle & { commitEditing?(): Promise<void> };
+      if (withBar.commitEditing) await withBar.commitEditing();
+      else await workbook.endEditingAsync(true);
       return !workbook.isCellEditing();
     },
     onCommand: (listener) => handle.onCommand(listener),

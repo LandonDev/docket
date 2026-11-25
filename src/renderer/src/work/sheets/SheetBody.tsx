@@ -26,7 +26,10 @@ import { linkSheetHost, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
 import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
-import { SheetSync, syncOf, useSheetSync } from "./sync";
+import { SheetSync, syncOf, useSheetSync, type SheetSyncState } from "./sync";
+import { copyText } from "../../lib/clipboard";
+import { itemJournal } from "../canvas/drafts";
+import { whenWords } from "../files/fileText";
 import { shareTargetOf } from "../guests/api";
 import { openShare } from "../guests/sharePort";
 import { useWorkspaceOf } from "../files/workspaceOf";
@@ -83,6 +86,8 @@ export function Body(props: Props) {
   const frame = useRef<HTMLDivElement>(null);
   const pictureInput = useRef<HTMLInputElement>(null);
 
+  // His edits the host has not answered are kept on this computer and offered when the file opens again (canvas/drafts.ts).
+  useEffect(() => sync.journalTo(itemJournal(props.env, item)), [sync]);
   useEffect(() => sync.start(), [sync]);
   // A tab's close sends what waits and waits for the host's answer before the item goes (canvas/flush.ts); an edit that
   // did not save rejects it, so a switch that would replace the item (`flushedItem`) stops.
@@ -148,7 +153,7 @@ export function Body(props: Props) {
     shell.ready?.(ready);
   }, [shell, ready]);
   useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready);
-  useSavedLine(shell, sync, failed ? null : view, state.sendError, state.saving, state.savedAt);
+  useSavedLine(shell, sync, failed ? null : view, state.sendError, state.saving, state.savedAt, state.offer ?? null);
   // Preview is a state of the item: the frame over the grid, which stays mounted under it, out of reach, its place kept.
   // Each ask is counted: Print… pressed while Preview shows another format opens it on Print anew.
   const [previewing, setPreviewing] = useState<false | "last" | "print">(false);
@@ -258,7 +263,7 @@ export function Body(props: Props) {
           snapshot={book.workbook as never}
           worker={grid.worker}
           // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
-          readOnly={locked || state.reloading}
+          readOnly={locked || state.reloading || !!state.offer}
           styleKeys={controls.length > 0}
           // The filter's header buttons and menu only where the host keeps a filter (a workbook Excel or Google holds keeps none).
           filter={controls.includes("filter")}
@@ -447,11 +452,24 @@ function CustomFormatBody({ current, onClose, onApply }: { current: string; onCl
  * refusal an opened Excel file gave is a file the grid no longer matches, so its press is Reload; elsewhere the edits
  * wait and the press sends them again.
  */
-function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null): void {
+function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null, offer: SheetSyncState["offer"]): void {
   const line = view ? savedLine(view, sendError, saving, savedAt) : null;
-  const key = line ? JSON.stringify(line) : "";
+  const key = line ? JSON.stringify([line, offer]) : "";
   useEffect(() => {
     if (!shell.saved || !line) return;
+    if (offer) {
+      // Edits kept from before: the same revision sends them as a live edit; a newer file is never written over.
+      const when = whenWords(offer.at);
+      shell.saved({
+        state: "conflict",
+        detail: offer.same ? `Edits from ${when} were not saved` : `Edits from ${when} were not saved. The file changed since`,
+        actions: [
+          offer.same ? { id: "restore", label: "Restore", run: () => sync.restoreDraft() } : { id: "copy", label: "Copy Edits", run: () => void copyText(offer.cells.join("\n")) },
+          { id: "discard", label: "Discard", run: () => sync.discardDraft() },
+        ],
+      });
+      return () => shell.saved?.(null);
+    }
     const { again, ...rest } = line;
     shell.saved({ ...rest, ...(again ? { actions: [{ id: "again", label: again, run: () => sync.retry() }] } : {}) });
     return () => shell.saved?.(null);

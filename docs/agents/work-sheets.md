@@ -1559,6 +1559,14 @@ range at the view's rev, edits batched from the rev the grid stands on, a
 conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 `SheetCanvas`, its worker as a `?worker` chunk), `model.ts`, `host.ts`.
 
+- **Edits the host never answered are kept on this computer** (work-files.md "Drafts survive a crash"): the batch on
+  its way and the queue, by the file's revision, through `SheetSync.journalTo` (SheetBody hands it the item's
+  `draftJournal`). Opened again, the sheet offers them: Restore at the same revision (`restoreDraft`, one
+  `work.sheets.edit` by that revision, laid on the grid by the catch-up), Copy Edits and Discard over a newer one; the
+  grid takes no edit until he answers. A cell still open, and the formula bar's words (work-kit `commitEditing`, Pin
+  A: on the branch `pin-a-formula-commit`, needs a signed release; until the pin moves, the cell editor alone), are
+  ended into the queue before a close, quit or reload.
+
 - **A book comes in pieces at once, and is kept for a tab shown again**
   (perf M7, sync.ts). `work.sheets.open {first: true}` carries the book's
   first piece (`first`, as `work.sheets.load` answers it at the view's rev,

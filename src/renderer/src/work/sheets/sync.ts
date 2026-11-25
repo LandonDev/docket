@@ -5,6 +5,8 @@ import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES
 import { cellText, holds } from "./model";
 import { FileIds, listChanges, listMedia, MadePictures, objectListOf, pictureAdded, tabList } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type LoadAnswer, type SheetHost, type SheetPushed } from "./host";
+import type { Draft } from "@shared/work/drafts";
+import type { DraftJournal } from "../canvas/drafts";
 import { CloseRefused } from "../canvas/flush";
 import { onItemsGone } from "../canvas/gone";
 
@@ -66,6 +68,12 @@ export interface SheetSyncState {
   tick: number;
   /** a book of more than one piece is on its way: the bytes read of it so far, of its size; null otherwise */
   loading: { at: number; size: number } | null;
+  /**
+   * Edits of his a window kept on this computer and the host never answered (canvas/drafts.ts), offered as the sheet
+   * opens: `same` when the file is still at the revision they were made on (Restore sends them as a live edit), else
+   * the file changed since and they are offered to copy, never laid over it. The grid takes no edit until he answers.
+   */
+  offer?: { at: number; same: boolean; cells: string[] } | null;
 }
 
 /** A workbook as it was read, with its charts and pictures and their bytes by part where it holds any (an Excel file's own; absent elsewhere). */
@@ -119,6 +127,23 @@ const NAMED_MOST = 3;
  * so he can make it again on the sheet as it is now. A sheet is named only when the cells lie on more than one.
  */
 export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined): string {
+  const cells = cellsOf(batch);
+  const moves = batch.filter((m) => SHEET_MOVES.has(m.id)).length;
+  const moved = moves === 1 ? "a move" : moves > 1 ? `${moves} moves` : "";
+  if (!cells.length) return moved ? `The file changed before ${moved === "a move" ? "your move was" : "your moves were"} saved, so ${moves === 1 ? "it was" : "they were"} not made. Make ${moves === 1 ? "it" : "them"} again.` : "The file changed before your last change was saved, so it was not made. Make it again.";
+  const many = new Set(cells.map((x) => x.sheet)).size > 1;
+  const named = cells.slice(0, NAMED_MOST).map((x) => `${many ? `${sheetName(x.sheet) ?? x.sheet}!` : ""}${x.at} ${x.put}`);
+  const more = cells.length - named.length;
+  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}${moved ? `, and ${moved}` : ""}. Make it again.`;
+}
+
+/** A kept draft's cells as lines to copy: "Sheet1!A1<tab>42", each he wrote, what he put in it whole. */
+export function draftCellLines(batch: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined): string[] {
+  return cellsOf(batch, Infinity).map((x) => `${sheetName(x.sheet) ?? x.sheet}!${x.at}\t${x.put === "cleared" ? "" : x.put}`);
+}
+
+/** Each cell a batch writes and what it puts there, cut at `cut` characters. */
+function cellsOf(batch: readonly SheetMutationJson[], cut = 40): { sheet: string; at: string; put: string }[] {
   const cells: { sheet: string; at: string; put: string }[] = [];
   for (const m of batch) {
     if (m.id !== SET_RANGE_VALUES) continue;
@@ -128,17 +153,11 @@ export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (i
         // (a style alone keeps what the cell held)
         if (cell && !("v" in cell) && !("f" in cell) && !("p" in cell)) continue;
         const text = cell?.f ?? cell?.p?.body?.dataStream?.replace(/[\r\n]+$/, "") ?? (cell?.v === null || cell?.v === undefined ? "" : String(cell.v));
-        const put = text === "" ? "cleared" : text.length > 40 ? `${text.slice(0, 39)}…` : text;
+        const put = text === "" ? "cleared" : text.length > cut ? `${text.slice(0, cut - 1)}…` : text;
         cells.push({ sheet: p.subUnitId ?? "", at: `${columnName(Number(c))}${Number(r) + 1}`, put });
       }
   }
-  const moves = batch.filter((m) => SHEET_MOVES.has(m.id)).length;
-  const moved = moves === 1 ? "a move" : moves > 1 ? `${moves} moves` : "";
-  if (!cells.length) return moved ? `The file changed before ${moved === "a move" ? "your move was" : "your moves were"} saved, so ${moves === 1 ? "it was" : "they were"} not made. Make ${moves === 1 ? "it" : "them"} again.` : "The file changed before your last change was saved, so it was not made. Make it again.";
-  const many = new Set(cells.map((x) => x.sheet)).size > 1;
-  const named = cells.slice(0, NAMED_MOST).map((x) => `${many ? `${sheetName(x.sheet) ?? x.sheet}!` : ""}${x.at} ${x.put}`);
-  const more = cells.length - named.length;
-  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}${moved ? `, and ${moved}` : ""}. Make it again.`;
+  return cells;
 }
 
 interface Laid {
@@ -199,6 +218,13 @@ export class SheetSync {
   private busy = 0;
   /** its item closed while a body still held it: let go at the release */
   gone = false;
+  /** where his unanswered edits are kept on this computer; null where there is no store */
+  private journal: DraftJournal | null = null;
+  /** the batch on its way to the host: his until it answers */
+  private inflight: SheetMutationJson[] = [];
+  /** the draft offered as the sheet opened, until he answers it */
+  private offered: Draft | null = null;
+  private looked = false;
 
   constructor(
     readonly host: SheetHost,
@@ -231,6 +257,8 @@ export class SheetSync {
     return () => {
       if (--this.live > 0) return;
       this.flush();
+      // Gone with edits the host has not answered: they are offered when the file opens again.
+      if (this.gone && this.journal?.holding) void this.chain.then(() => this.journal?.release());
       if (this.gone) forget(this);
       else if (this.kept) keep(this);
       else this.dropBook();
@@ -254,6 +282,7 @@ export class SheetSync {
       this.set({ failed: null });
       this.view(view);
       await this.load(view.rev, first, mine);
+      void this.lookForDrafts();
     } catch (error) {
       if (mine === this.loads) this.set({ failed: message(error, "The host did not answer"), loading: null });
     }
@@ -392,6 +421,7 @@ export class SheetSync {
       if (taken.length === 0) {
         if (!lists.length) return;
         this.queue.push(...lists);
+        this.note();
         this.set({ saving: true });
         this.wait();
         return;
@@ -401,6 +431,7 @@ export class SheetSync {
         // refuse it (a table it would cut, a formula that reads where it lands), and an edit made on a move the file never
         // took would be lost with it or written into another cell.
         this.queue.push(...taken, ...lists);
+        this.note();
         this.lock();
         this.set({ tick: this.state.tick + 1, saving: true });
         if (this.timer) clearTimeout(this.timer);
@@ -409,6 +440,7 @@ export class SheetSync {
         return;
       }
       this.queue.push(...latestRules([...taken, ...lists]));
+      this.note();
       this.set({ tick: this.state.tick + 1, saving: true });
       if (this.queue.length >= EDIT_MAX) this.flush();
       else this.wait();
@@ -532,6 +564,7 @@ export class SheetSync {
     const dropped = this.queue;
     this.queue = [];
     for (const m of dropped) if (SHEET_MOVES.has(m.id)) this.unlock();
+    this.note();
     return dropped;
   }
 
@@ -614,6 +647,57 @@ export class SheetSync {
     else this.run(async () => this.view(await this.host.open()));
   }
 
+  /** What the host has not answered, kept on this computer by the revision it was made on; nothing once all is answered. */
+  private note(): void {
+    const all = [...this.inflight, ...this.queue];
+    this.journal?.keep(String(this.rev), all.length ? { kind: "sheet", mutations: all } : null);
+  }
+
+  /** Where his unanswered edits are kept (SheetBody, as the item is drawn); a book already read asks for an earlier draft now. */
+  journalTo(journal: DraftJournal | null): void {
+    if (this.journal || !journal) return;
+    this.journal = journal;
+    if (this.kept) void this.lookForDrafts();
+  }
+
+  /** Once, as the book is read: the newest draft no live window holds is offered, and the grid waits for his answer. */
+  private async lookForDrafts(): Promise<void> {
+    if (this.looked || !this.journal || !this.kept) return;
+    this.looked = true;
+    const draft = (await this.journal.offered("sheet"))[0];
+    if (!draft || draft.body.kind !== "sheet") return;
+    this.offered = draft;
+    this.set({ offer: { at: draft.at, same: draft.base === String(this.rev), cells: draftCellLines(draft.body.mutations, (id) => this.state.book?.workbook.sheets?.[id]?.name) } });
+  }
+
+  /** Restore: the offered edits, made on the revision the file still stands at, sent as a live edit is and laid on the grid. A file that moved on meanwhile turns the offer to Copy. */
+  restoreDraft(): Promise<void> {
+    const draft = this.offered;
+    if (!draft || draft.body.kind !== "sheet" || draft.base !== String(this.rev)) return Promise.resolve();
+    const mutations = draft.body.mutations as SheetMutationJson[];
+    return this.run(async () => {
+      try {
+        const answer = await this.host.edit(this.rev, mutations);
+        if (answer.conflict) return this.set({ offer: { ...this.state.offer!, same: false } });
+        this.journal?.drop(draft);
+        this.offered = null;
+        this.set({ offer: null, savedAt: Date.now() });
+        // Not this grid's own op: the catch-up lays it on the grid as it lays anyone's.
+        await this.catchUp();
+      } catch (error) {
+        this.set({ sendError: message(error, "The host did not answer") });
+      }
+    });
+  }
+
+  /** Discard: the offered edits go, and the grid is his again. */
+  discardDraft(): void {
+    if (!this.offered) return;
+    this.journal?.drop(this.offered);
+    this.offered = null;
+    this.set({ offer: null });
+  }
+
   /** One thing at a time with the host, in order: a send, a catch-up, a load. */
   private run(work: () => Promise<void>): Promise<void> {
     this.busy++;
@@ -633,6 +717,17 @@ export class SheetSync {
   private async send(): Promise<void> {
     if (this.queue.length === 0) return;
     const batch = this.batch();
+    this.inflight = batch;
+    try {
+      await this.sendBatch(batch);
+    } finally {
+      // Answered or put back in the queue: what is kept now is what still waits.
+      if (this.inflight === batch) this.inflight = [];
+      this.note();
+    }
+  }
+
+  private async sendBatch(batch: SheetMutationJson[]): Promise<void> {
     const move = SHEET_MOVES.has(batch[0]!.id);
     // A receipt past an op the grid has not laid (someone's that landed between): caught up before what comes next.
     let behind = false;

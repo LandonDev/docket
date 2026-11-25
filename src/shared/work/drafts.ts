@@ -17,8 +17,12 @@ export interface DraftKey {
   base: string;
 }
 
-/** What each editor keeps of an edit, by kind. */
-export type DraftBody = { kind: "text"; text: string; bom: boolean; crlf: boolean };
+/**
+ * What each editor keeps of an edit, by kind: a text file's words; a sheet's mutations the host has not answered (sent
+ * and queued, in order), made on the file's revision.
+ */
+export type DraftBody = { kind: "text"; text: string; bom: boolean; crlf: boolean } | { kind: "sheet"; mutations: { id: string; params: unknown }[] };
+export type DraftKind = DraftBody["kind"];
 
 export interface Draft extends DraftKey {
   /** the file's name when the edit was made */
@@ -28,7 +32,7 @@ export interface Draft extends DraftKey {
   body: DraftBody;
 }
 
-/** The longest draft kept, in characters: a text editor holds no more (`FILE_TEXT_MAX`, 2 MB). */
+/** The longest draft kept, in characters (a body's JSON for the kinds that are not words): a text editor holds no more (`FILE_TEXT_MAX`, 2 MB). */
 export const DRAFT_MAX_CHARS = 4 * 1024 * 1024;
 
 /** A canvas source as one string, its keys sorted, so the same file is the same identity from any window. */
@@ -52,7 +56,30 @@ export function draftOf(v: unknown): Draft | null {
   const d = v as Partial<Draft> | null;
   const key = draftKeyOf(d);
   if (!key || !d || !isStr(d.name) || typeof d.at !== "number" || !Number.isFinite(d.at)) return null;
-  const b = d.body as Partial<Extract<DraftBody, { kind: "text" }>> | undefined;
-  if (!b || b.kind !== "text" || typeof b.text !== "string" || b.text.length > DRAFT_MAX_CHARS) return null;
-  return { ...key, name: d.name, at: d.at, body: { kind: "text", text: b.text, bom: b.bom === true, crlf: b.crlf === true } };
+  const body = bodyOf(d.body);
+  return body ? { ...key, name: d.name, at: d.at, body } : null;
+}
+
+const fits = (v: unknown): boolean => {
+  try {
+    return JSON.stringify(v).length <= DRAFT_MAX_CHARS;
+  } catch {
+    return false;
+  }
+};
+
+/** A body of a kind this build keeps, within the size kept; null for anything else. */
+function bodyOf(v: unknown): DraftBody | null {
+  const b = v as { kind?: unknown } | null | undefined;
+  if (!b || typeof b !== "object") return null;
+  if (b.kind === "text") {
+    const t = b as Partial<Extract<DraftBody, { kind: "text" }>>;
+    return typeof t.text === "string" && t.text.length <= DRAFT_MAX_CHARS ? { kind: "text", text: t.text, bom: t.bom === true, crlf: t.crlf === true } : null;
+  }
+  if (b.kind === "sheet") {
+    const m = (b as { mutations?: unknown }).mutations;
+    if (!Array.isArray(m) || m.length === 0 || !m.every((x) => x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string") || !fits(m)) return null;
+    return { kind: "sheet", mutations: m.map((x: { id: string; params?: unknown }) => ({ id: x.id, params: x.params ?? null })) };
+  }
+  return null;
 }
