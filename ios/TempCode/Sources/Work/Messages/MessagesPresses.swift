@@ -124,6 +124,16 @@ final class MessagesPresses {
         schedule()
     }
 
+    /// Undo of one press by its attempt (the tab's foot's capsule names it): true only if that very press still
+    /// waited, so a tap that lands as its countdown ends never says words came back that went.
+    @discardableResult
+    func undo(_ id: String) -> Bool {
+        guard let press = wait.undo(id, now: Self.now) else { return false }
+        desks.update(press.payload.key) { $0.undo() }
+        schedule()
+        return true
+    }
+
     private func leftScreen() {
         let held = [wait.counting].compactMap { $0 } + wait.queued
         wait.leftScreen()

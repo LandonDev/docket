@@ -1,0 +1,190 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "due-whole-waiting",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [
+        {
+          "_id": "r1",
+          "title": "File the game report",
+          "sector": "ref",
+          "status": "open",
+          "dueAt": 1795561200000
+        }
+      ],
+      "read": {
+        "built": false
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": []
+    },
+    "clashes": {
+      "range": {
+        "clashes": [],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": []
+    },
+    "review": {
+      "asked": [],
+      "answered": {}
+    },
+    "prep": {
+      "answers": []
+    },
+    "msforms": {
+      "answers": []
+    },
+    "digest": {
+      "rows": [],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "bones",
+            "pending": true,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "messages",
+            "title": "Messages",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "empty": "No one is waiting on a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        }
+      ]
+    }
+  }
+}

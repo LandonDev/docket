@@ -54,6 +54,14 @@ enum RequestPresses {
         WorkHost.requestHeard = { _, id, state, request in
             if let request { wait.heard(request) } else { wait.heard(requestId: id, state: state) }
         }
+        // A press whose sheet he closed: its outcome is the toast, as the Outbox's are.
+        wait.toldOff = { outcome in
+            switch outcome {
+            case .failed(let line): FleetToastCenter.shared.post(message: line)
+            case .answered(let request): FleetToastCenter.shared.post(note: RequestSheetModel.resultsHead(request) ?? "Done")
+            case .checking: break
+            }
+        }
     }
 
     /// When the seconds end: why the press may not go now, or nil.
@@ -162,6 +170,8 @@ struct OutboxRequestSheet: View {
         #endif
         // His press's answer, whenever it lands: in this sheet, or in one opened after the first was closed.
         .onChange(of: wait.outcomes[requestId], initial: true) { _, outcome in take(outcome) }
+        // On screen while shown: closed, its press's Undo and outcome are the tab's foot's and the toast's.
+        .task(id: requestId) { await wait.sheetShown(requestId) }
         // A refused key: the request read under it, and every receipt opened from it, go from memory.
         .onChange(of: revoked) {
             guard revoked else { return }

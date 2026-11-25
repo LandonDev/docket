@@ -154,7 +154,8 @@ private struct PersonPageView: View {
                 } description: {
                     Text(why)
                 } actions: {
-                    Button("Try Again", action: retry)
+                    // A session whose access ended asks nothing again: its words say why.
+                    if !host.accessEnded { Button("Try Again", action: retry) }
                 }
             case .failed:
                 ContentUnavailableView {

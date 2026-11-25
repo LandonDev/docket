@@ -183,6 +183,6 @@ private final class RegistryRig {
         let before = AccessLostLog.count("env_b")
         await rig.registry.remove("env_b")
         #expect(rig.registry.client("env_b") == nil)
-        #expect(AccessLostLog.count("env_b") >= before + 1)
+        #expect(AccessLostLog.count("env_b") == before + 1)
     }
 }

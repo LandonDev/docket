@@ -111,7 +111,8 @@ private struct ChatConversation: View {
             } description: {
                 Text(why)
             } actions: {
-                PillButton("Try Again") { Task { await host.prepare() } }
+                // A session whose access ended asks nothing again: its words say why.
+                if !host.accessEnded { PillButton("Try Again") { Task { await host.prepare() } } }
             }
         } else if messages.isEmpty {
             ContentUnavailableView("No Messages Yet", systemImage: WorkPlace.messages.glyph)

@@ -344,6 +344,33 @@ struct RelayedHostsTests {
         #expect(shell.sessions.isEmpty)
     }
 
+    #if canImport(SQLite3)
+    @Test @MainActor func `a host the carrier dropped takes its supplied Today rows from another host's key before Today opens, and ends its access once`() async throws {
+        AccessLostLog.install()
+        let store = try #require(WorkCacheStore.shared)
+        // Before Today's feed starts: the Mac's session read a wait for a job on an independently paired host, kept under
+        // that host's key by an earlier launch.
+        let other = "env_other_\(UUID().uuidString.prefix(8))"
+        let key = WorkCache.Key(host: other, account: "k", keyGeneration: 1, scope: .today)
+        var wait = TodayRow(key: "mail:w1", section: "waiting", sector: "purdue", title: "Dana Lee")
+        wait.suppliedBy = RelayRig.macId
+        let held = TodayRow(key: "held:\(other):host:1", section: "held", sector: nil, title: "Send: A")
+        try store.put(.todayRows([wait, held], day: "d"), at: key)
+        let rig = try RelayRig()
+        let carrier = await rig.openCarrier(hosts: [presenceJSON()])
+        #expect(await rig.wait { rig.mac != nil })
+        let before = AccessLostLog.count(RelayRig.macId)
+        // Box's next presence list drops the Mac.
+        carrier.deliver(rig.presencePushJSON([]))
+        #expect(await rig.wait { rig.mac == nil })
+        await rig.registry.sync()
+        #expect(AccessLostLog.count(RelayRig.macId) == before + 1)
+        // Read again from the file, as the next cold launch does: the other host keeps its own row, not the Mac's wait.
+        let reopened = try WorkCacheStore(path: WorkCacheStore.defaultPath(), protect: { _ in })
+        #expect(reopened.get(key)?.todayShown(on: "d").map(\.key) == ["held:\(other):host:1"])
+    }
+    #endif
+
     @Test @MainActor func `forgetting the carrier forgets the relayed hosts`() async throws {
         let rig = try RelayRig()
         _ = await rig.openCarrier(hosts: [presenceJSON()])

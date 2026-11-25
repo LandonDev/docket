@@ -42,7 +42,7 @@ struct LifeViewScreen: View {
                 ContentUnavailableView {
                     Label(words, systemImage: view.symbol)
                 } actions: {
-                    Button("Try Again") { Task { await host.prepare() } }
+                    if !host.accessEnded { Button("Try Again") { Task { await host.prepare() } } }
                 }
             case .ready:
                 if let store = host.store, let scene = host.scene {

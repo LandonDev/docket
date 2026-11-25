@@ -118,10 +118,15 @@ public final class ClientRegistry {
         }
         let keep = Set(wanted.map(\.id))
         for id in clients.keys where !keep.contains(id) {
-            await clients.removeValue(forKey: id)?.remove()
-            // A host its carrier dropped from the relay list, or one forgotten: its LifeOS sessions end with it, an
-            // open job's Mail and the draft reader among them (council 14, Sol 4).
+            // A host its carrier dropped from the relay list, or one forgotten. First, at once and whether or not Today
+            // ever started this launch: its kept Work rows go, and the Today rows its sessions supplied under every other
+            // host's key with them, its fence closed (council 15, Sol 4). Then its LifeOS sessions end, an open job's
+            // Mail and the draft reader among them (council 14, Sol 4), and its client and thread cache go.
+            #if canImport(SQLite3)
+            WorkCacheStore.purge(.hostRemoved(host: id), close: true)
+            #endif
             WorkHost.accessLost?(id)
+            await clients.removeValue(forKey: id)?.remove()
         }
     }
 
@@ -234,8 +239,7 @@ public final class ClientRegistry {
         #if canImport(SQLite3)
         for host in [id] + carried { WorkCacheStore.purge(.hostRemoved(host: host), close: true) }
         #endif
-        // Their LifeOS sessions end now: an open job's Mail never reads on through a host he forgot.
-        for host in [id] + carried { WorkHost.accessLost?(host) }
+        // Their LifeOS sessions end in the sync, as each leaves the wanted set: once each.
         await sync()
     }
 

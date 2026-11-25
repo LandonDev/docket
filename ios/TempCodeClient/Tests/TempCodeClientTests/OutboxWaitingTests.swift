@@ -422,6 +422,32 @@ private actor Gate {
         #expect(wait.outcomes.isEmpty)
     }
 
+    @Test func aClosedSheetsPressKeepsItsUndoAtTheFootAndItsOutcomeIsSaidOffIt() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var told: [RequestPressWait.Outcome] = []
+        wait.toldOff = { told.append($0) }
+        var sent = 0
+        wait.start(macPress, check: { _ in nil }) { _ in sent += 1; return self.answered() }
+        // The sheet is open: its own capsule has the Undo, the foot has none.
+        let sheet = Task { await wait.sheetShown("q") }
+        await settle { wait.showing["q"] == 1 }
+        #expect(wait.offScreen.isEmpty)
+        // He closes it while it counts: the press is the foot's, Undo bound to this request.
+        sheet.cancel()
+        await settle { wait.showing["q"] == nil }
+        #expect(wait.offScreen.map(\.requestId) == ["q"])
+        // The link drops after closing: the line is said off the sheet, not only kept for it.
+        wait.linkLost(host: "mac")
+        #expect(told == [.failed(SendWait<RequestPress>.line(.linkLost, hostName: "Mac"))])
+        #expect(wait.offScreen.isEmpty)
+        // An Undo that lands after it no longer waits reports nothing came back.
+        #expect(!wait.undo("q"))
+        await gate.release()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent == 0)
+    }
+
     private var macPress: RequestPress {
         RequestPress(environmentId: "mac", requestId: "q", receipts: ["r-a"], word: "Send 1", lines: [], hostName: "Mac", key: "k1|approve")
     }

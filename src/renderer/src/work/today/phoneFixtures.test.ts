@@ -159,6 +159,27 @@ const CASES: Case[] = [
   { ...base, name: "no-jobs", jobs: [], sources: emptySources() },
   {
     ...base,
+    // The whole session's tasks failed while a narrowed session (Refereeing's, on another host) answered one: the desktop
+    // shows the list's failure alone, never the narrowed rows under it (the phone's per-job rule must not run here).
+    name: "due-whole-failed",
+    jobs: [PURDUE, REF],
+    sources: {
+      ...emptySources(),
+      due: { tasks: [task("r1", "ref", "File the game report", { dueAt: at(24, 17) })], read: { built: false, error: "Server error: tasks:list" } },
+    },
+  },
+  {
+    ...base,
+    // The whole session's tasks still loading while a narrowed session answered: the desktop shows the section loading.
+    name: "due-whole-waiting",
+    jobs: [PURDUE, REF],
+    sources: {
+      ...emptySources(),
+      due: { tasks: [task("r1", "ref", "File the game report", { dueAt: at(24, 17) })], read: { built: false } },
+    },
+  },
+  {
+    ...base,
     name: "due-projects",
     jobs: [PURDUE, REF],
     sources: {

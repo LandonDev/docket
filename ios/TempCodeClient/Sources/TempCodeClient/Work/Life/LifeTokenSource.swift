@@ -48,6 +48,9 @@ public final class LifeTokenSource {
         generation &+= 1
     }
 
+    /// The host's access went (`end`): no token will be asked for or given again.
+    public var isEnded: Bool { ended }
+
     /// The host's access went: the token goes, an answer still out is dropped, and nothing is asked again.
     public func end() {
         forget()

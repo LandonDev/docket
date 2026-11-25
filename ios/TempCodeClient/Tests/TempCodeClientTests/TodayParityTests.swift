@@ -194,8 +194,14 @@ struct TodayParityTests {
             add("meetings", TodaySources.lifeosAnswer(m.read.lifeos, rows: built?.rows, sessionDown: down, host: c.lifeosHost, what: "meetings", note: built?.note, jobs: jobs))
         }
         if let d = s.due {
-            let rows = d.read.built ? TodaySources.dueRows(d.tasks, now: c.now, jobs: jobs, names: d.projects, calendar: cal) : nil
-            add("due", TodaySources.lifeosAnswer(d.read.lifeos, rows: rows, sessionDown: down, host: c.lifeosHost, what: "tasks", note: TodaySources.namesNote(d.projects, rows: rows), jobs: jobs))
+            // Through the phone's own rule for a whole session's list (`settle`, `whole`): the desktop has only that reach,
+            // so tasks a narrowed session gave beside a failed or waiting whole session never show.
+            var read = d.read.lifeos
+            let lead: TodaySources.LeadAnswer = d.read.built ? .answered : read.error.map { .failed($0) } ?? .pending
+            read.error = nil
+            let have = TodaySources.settle(lead: lead, othersAnswered: !d.tasks.isEmpty, whole: true, read: &read) { TodaySources.Lost(environmentId: c.lifeosHost, sector: nil, error: $0) }
+            let rows = have ? TodaySources.dueRows(d.tasks, now: c.now, jobs: jobs, names: d.projects, calendar: cal) : nil
+            add("due", TodaySources.lifeosAnswer(read, rows: rows, sessionDown: down, host: c.lifeosHost, what: "tasks", note: TodaySources.namesNote(d.projects, rows: rows), jobs: jobs))
         }
         if let w = s.waiting {
             let rows = w.read.built ? TodaySources.waitingRows(w.waits, today: day.from, jobs: jobs, calendar: cal) : nil

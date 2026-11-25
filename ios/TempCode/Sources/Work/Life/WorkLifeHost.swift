@@ -78,6 +78,10 @@ final class WorkLifeHost: LifeActions {
     @ObservationIgnored private var authenticated = false
     /// Moves when the host says its LifeOS signed out: a session made before it, or a sign-in still out, is done.
     @ObservationIgnored private var session = 0
+    /// The host's access went and this session ended for good (`accessLost`, or a rebuilt client): it keeps the words
+    /// that say so, and its page offers no Try Again, which the key would always refuse; a fresh session is the one the
+    /// page gets when it is opened again.
+    private(set) var accessEnded = false
 
     /// The host said its LifeOS signed out (`WorkHost.heardLifeosSignOut`): this session ends now, whether or not a
     /// screen shows it. Its stores stop and forget every query and value (a late answer has nowhere to land), the
@@ -119,6 +123,7 @@ final class WorkLifeHost: LifeActions {
         for (key, life) in hosts where life.client.environment.id == host {
             life.end(state: nil, words: "This phone can no longer read LifeOS through \(life.client.environment.name).")
             life.tokens.end()
+            life.accessEnded = true
             hosts[key] = nil
         }
     }
@@ -132,6 +137,7 @@ final class WorkLifeHost: LifeActions {
         if host.client === client { return host }
         host.end(state: nil, words: "This phone can no longer read LifeOS through \(host.client.environment.name).")
         host.tokens.end()
+        host.accessEnded = true
         hosts[key] = nil
         return nil
     }
@@ -188,7 +194,8 @@ final class WorkLifeHost: LifeActions {
     /// Builds the store once the host has signed a token; again after a refusal (Retry).
     func prepare() async {
         // One at a time: the screen's task and Try Again may both ask.
-        guard store == nil, !preparing else { return }
+        // An ended session stays as it is, its words on screen: asking again would only spin (council 15, Opus 1.1).
+        guard store == nil, !preparing, !accessEnded, !tokens.isEnded else { return }
         preparing = true
         defer { preparing = false }
         phase = .loading

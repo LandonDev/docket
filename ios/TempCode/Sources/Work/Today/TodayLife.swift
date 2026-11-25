@@ -311,12 +311,14 @@ enum TodayLife {
         eventsRead.lost = lost
         tasksRead.lost = lost
         waitsRead.lost = lost
-        // The leading reader's own lost read names its job, where it has one.
+        // The leading reader's own lost read names its job, where it has one. A whole session leading follows the
+        // desktop: its own failure or wait is the list's (council 15, Opus 4.1).
         let lead = readers.first
+        let wholeLead = lead?.sectors == nil
         let leadLost = { (error: String) in TodaySources.Lost(environmentId: lead?.environmentId ?? host, sector: lead?.sectors?.first, error: error) }
-        let haveEvents = TodaySources.settle(lead: leadEvents, othersAnswered: otherEvents, read: &eventsRead, leadLost: leadLost)
-        let haveTasks = TodaySources.settle(lead: leadTasks, othersAnswered: otherTasks, read: &tasksRead, leadLost: leadLost)
-        let haveWaits = TodaySources.settle(lead: leadWaits, othersAnswered: otherWaits, read: &waitsRead, leadLost: leadLost)
+        let haveEvents = TodaySources.settle(lead: leadEvents, othersAnswered: otherEvents, whole: wholeLead, read: &eventsRead, leadLost: leadLost)
+        let haveTasks = TodaySources.settle(lead: leadTasks, othersAnswered: otherTasks, whole: wholeLead, read: &tasksRead, leadLost: leadLost)
+        let haveWaits = TodaySources.settle(lead: leadWaits, othersAnswered: otherWaits, whole: wholeLead, read: &waitsRead, leadLost: leadLost)
         input.events = haveEvents ? events : nil
         input.tasks = haveTasks ? tasks : nil
         input.waits = haveWaits ? waits : nil

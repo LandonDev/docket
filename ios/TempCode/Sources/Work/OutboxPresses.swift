@@ -301,6 +301,12 @@ final class OutboxPresses {
         schedule()
     }
 
+    /// Undo of one press by its id (the tab's foot names it): nothing if that press no longer counts.
+    func undo(_ id: String) {
+        guard wait.counting?.id == id else { return }
+        undo()
+    }
+
     /// TempCode left the screen: nothing waiting goes; each item comes back, and the capsule says so.
     func leftScreen() {
         wait.leftScreen()
@@ -504,8 +510,9 @@ struct OutboxUndoInset: ViewModifier {
         let presses = OutboxPresses.shared
         let notice = presses.noticeLine
         let enabled = fallback ? presses.surfaces == 0 : enabled
-        // The tab's foot also keeps a Mail or Messages countdown's Undo in reach once its own page is off screen.
-        let elsewhere = fallback ? ElsewhereUndo.current : nil
+        // The tab's foot also keeps every other countdown's Undo in reach once its own page is off screen: one capsule
+        // each, its Undo bound to its own press, through its whole wait.
+        let elsewhere = fallback ? ElsewhereUndo.all : []
         content
             // A surface of its own counts while shown; the shell's copy steps back for it.
             .task(id: !fallback && enabled) {
@@ -513,14 +520,14 @@ struct OutboxUndoInset: ViewModifier {
                 await presses.surfaceShown()
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Group {
+                VStack(spacing: 0) {
+                    ForEach(elsewhere) { other in
+                        UndoCapsule(line: other.line, identifier: "elsewhere-undo") { other.undo() }
+                    }
                     if enabled, let pending = presses.pending {
-                        UndoCapsule(line: pending.line) { presses.undo() }
-                    } else if let elsewhere {
-                        UndoCapsule(line: elsewhere.line, identifier: "elsewhere-undo") { elsewhere.undo() }
-                    } else if !enabled {
-                        EmptyView()
-                    } else if let notice {
+                        let id = pending.id
+                        UndoCapsule(line: pending.line) { presses.undo(id) }
+                    } else if enabled, elsewhere.isEmpty, let notice {
                         // What did not go and why, in the capsule's own line, until it has been seen.
                         UndoCapsule(line: notice, undo: nil)
                     }
@@ -529,15 +536,15 @@ struct OutboxUndoInset: ViewModifier {
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
             .animation(Motion.base, value: presses.pending)
-            .animation(Motion.base, value: elsewhere?.id)
+            .animation(Motion.base, value: elsewhere.map(\.id))
             .animation(Motion.base, value: notice)
             // Seen once it has shown for a toast's time, in front, with no countdown over it: a countdown hides it and
             // the clock starts again when it is back. Only that line goes (by its id); the next waiting one shows.
             // Keyed by `enabled` too: a copy that starts drawing when the capsule moves to another tab (the list's count
             // drops a turn later) starts its own clock, so a line carried there never stays for good.
-            .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)-\(elsewhere == nil)" }) {
+            .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)-\(elsewhere.isEmpty)" }) {
                 // A Mail or Messages countdown drawn over it hides it too, without spending it.
-                guard enabled, elsewhere == nil, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
+                guard enabled, elsewhere.isEmpty, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
                 // Spoken once as its clock starts: a sum, a refusal or a cancel, as the countdown was.
                 presses.speak(shown)
                 try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
@@ -550,24 +557,31 @@ struct OutboxUndoInset: ViewModifier {
 /// A Mail or Messages countdown whose own Undo is off screen (he went Back, or to another tab): its line and Undo for
 /// the tab's foot. Undo sends nothing; the words or the draft stay where they were, and a plain note says where.
 @MainActor
-struct ElsewhereUndo {
+struct ElsewhereUndo: Identifiable {
     let id: String
     let line: String
     let undo: () -> Void
 
-    static var current: ElsewhereUndo? {
+    /// Every countdown whose own page is off screen, each with its own Undo bound to its own press: a request whose
+    /// sheet was closed, a Mail or Messages wait whose page he left. The Outbox's own is the foot's first, apart.
+    static var all: [ElsewhereUndo] {
+        var out: [ElsewhereUndo] = []
+        for press in RequestPresses.wait.offScreen {
+            out.append(ElsewhereUndo(id: "request:\(press.requestId)", line: press.waitingLine) {
+                if RequestPresses.wait.undo(press.requestId) { FleetToastCenter.shared.post(note: "Not sent. The request still waits for you.") }
+            })
+        }
         if let press = MailPresses.shared.offScreenCounting {
-            return ElsewhereUndo(id: press.id, line: press.payload.sendAt == nil ? "Sending mail" : "Scheduling mail") {
+            out.append(ElsewhereUndo(id: "mail:\(press.id)", line: press.payload.sendAt == nil ? "Sending mail" : "Scheduling mail") {
                 if MailPresses.shared.undo(press.id) { FleetToastCenter.shared.post(note: "Not sent. The mail is in Drafts.") }
-            }
+            })
         }
         if let press = MessagesPresses.shared.offScreenCounting {
-            return ElsewhereUndo(id: press.id, line: press.line) {
-                MessagesPresses.shared.undo()
-                FleetToastCenter.shared.post(note: "Not sent. Your reply to \(press.payload.name) is back in its field.")
-            }
+            out.append(ElsewhereUndo(id: "chat:\(press.id)", line: press.line) {
+                if MessagesPresses.shared.undo(press.id) { FleetToastCenter.shared.post(note: "Not sent. Your reply to \(press.payload.name) is back in its field.") }
+            })
         }
-        return nil
+        return out
     }
 }
 

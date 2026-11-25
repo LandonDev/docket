@@ -584,6 +584,11 @@ public final class RequestPressWait {
     /// What each press's host answered, by request id.
     public private(set) var outcomes: [String: Outcome] = [:]
 
+    /// Request sheets on screen now, by request id: a press whose sheet is closed has its Undo at the tab's foot.
+    public private(set) var showing: [String: Int] = [:]
+    /// Said when a press's outcome lands while no sheet shows it (the app's toast), so a closed sheet loses nothing.
+    @ObservationIgnored public var toldOff: (@MainActor (Outcome) -> Void)?
+
     @ObservationIgnored private var waits: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private let sleep: @Sendable () async throws -> Void
 
@@ -613,10 +618,32 @@ public final class RequestPressWait {
         }
     }
 
-    /// Undo: the press never reaches the host.
-    public func undo(_ requestId: String) {
+    /// Undo: the press never reaches the host. False when it no longer waits (its seconds ended, or it went back).
+    @discardableResult
+    public func undo(_ requestId: String) -> Bool {
+        guard pending[requestId] != nil else { return false }
         waits.removeValue(forKey: requestId)?.cancel()
         pending[requestId] = nil
+        return true
+    }
+
+    /// Counts the request's sheet as on screen until the calling view's task ends.
+    public func sheetShown(_ requestId: String) async {
+        showing[requestId, default: 0] += 1
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        showing[requestId, default: 1] -= 1
+        if showing[requestId] == 0 { showing[requestId] = nil }
+    }
+
+    /// The presses waiting while no sheet shows them, in a steady order: their Undo is the tab's foot's.
+    public var offScreen: [RequestPress] {
+        pending.values.filter { showing[$0.requestId, default: 0] == 0 }.sorted { $0.requestId < $1.requestId }
+    }
+
+    /// An outcome landed: kept for the sheet, and said off it when no sheet is open.
+    private func land(_ requestId: String, _ outcome: Outcome) {
+        outcomes[requestId] = outcome
+        if showing[requestId, default: 0] == 0 { toldOff?(outcome) }
     }
 
     /// TempCode left the screen: every press still waiting goes back, and says so.
@@ -665,7 +692,7 @@ public final class RequestPressWait {
         for press in pending.values where matches(press) {
             waits.removeValue(forKey: press.requestId)?.cancel()
             pending[press.requestId] = nil
-            outcomes[press.requestId] = .failed(SendWait<RequestPress>.line(why, hostName: press.hostName))
+            land(press.requestId, .failed(SendWait<RequestPress>.line(why, hostName: press.hostName)))
         }
     }
 
@@ -678,20 +705,20 @@ public final class RequestPressWait {
         pending[press.requestId] = nil
         waits[press.requestId] = nil
         if let why = check(press) {
-            outcomes[press.requestId] = .failed(SendWait<RequestPress>.line(why, hostName: press.hostName))
+            land(press.requestId, .failed(SendWait<RequestPress>.line(why, hostName: press.hostName)))
             return
         }
         sending.insert(press.requestId)
         defer { sending.remove(press.requestId) }
         do {
-            outcomes[press.requestId] = .answered(try await answer(press))
+            land(press.requestId, .answered(try await answer(press)))
         } catch is PressLedger.Unknown {
             // Its end may have come already (the request's last push): that stands.
             if case .answered? = outcomes[press.requestId] { return }
             outcomes[press.requestId] = .checking
         } catch {
             let words = ActionError.wrap(error).message
-            outcomes[press.requestId] = .failed(words.hasPrefix("Not ") ? words : "Not sent: \(words)")
+            land(press.requestId, .failed(words.hasPrefix("Not ") ? words : "Not sent: \(words)"))
         }
     }
 }

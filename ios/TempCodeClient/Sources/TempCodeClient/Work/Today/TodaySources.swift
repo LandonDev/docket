@@ -498,8 +498,11 @@ public enum TodaySources {
     /// whether the list has rows to show, and its read. The leading reader's failure or wait never hides the rows
     /// another reader answered (council 13, Sol): a failure is said as that reader's own lost read, with its job
     /// (`leadLost`), beside the rows; a wait keeps the section pending over them. With no other answer the lead's
-    /// failure is the list's, and its wait the section's loading, as before.
-    public static func settle(lead: LeadAnswer, othersAnswered: Bool, read: inout LifeosRead, leadLost: (String) -> Lost) -> Bool {
+    /// failure is the list's, and its wait the section's loading, as before. `whole`: the lead is the whole session (the
+    /// desktop's one reach, lifeos.ts `main.status !== "ready"`): its failure or wait is the list's whatever the narrowed
+    /// sessions beside it answered, as the desktop shows it; the rule above is the per-job reach's alone.
+    public static func settle(lead: LeadAnswer, othersAnswered: Bool, whole: Bool = false, read: inout LifeosRead, leadLost: (String) -> Lost) -> Bool {
+        let othersAnswered = othersAnswered && !whole
         switch lead {
         case .answered:
             return true
