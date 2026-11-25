@@ -19,7 +19,7 @@ import { writeFileSync } from 'node:fs'
 import { LOCAL_PRINCIPAL } from '../src/shared/capabilities'
 import type { WinvmState } from '../src/shared/contract-work-winvm'
 import type { StreamClaim } from '../src/main/server/remote/auth'
-import { VideoRelay } from '../src/main/server/video/relay'
+import { VideoRelay, type StreamInfo } from '../src/main/server/video/relay'
 import { VideoRpc } from '../src/main/server/video/rpc'
 import { VmDisplay } from '../src/main/server/work/winvm/display'
 import type { GuestDisplay } from '../src/main/server/work/winvm/door'
@@ -84,7 +84,7 @@ async function main(s: Scratch): Promise<ResizeRow[]> {
   const minted: StreamClaim[] = []
   const rpc = new VideoRpc(relay, { mintStreamTicket: (c) => (minted.push(c), { ticket: 't', expiresIn: 30 }) }, () => true)
   const state: WinvmState = { state: 'awake', step: null, error: null, cannot: null, sleepAfter: '30m', since: Date.now() }
-  const isVm = (st: { tag?: string }) => st.tag === VM_COMPUTER
+  const isVm = (st: StreamInfo): boolean => st.tag === VM_COMPUTER
   const display = new VmDisplay({ run: s.machine.p.run, guest: () => guest, screen: s.screen, relay, isVm, log })
   const picture = new VmPicture({
     state: () => state,
