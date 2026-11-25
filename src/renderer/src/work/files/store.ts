@@ -244,6 +244,8 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
     };
     const listen = (link: string): void =>
       void offs.push(
+        // A reopened link: what changed while it was cut is read once (Sol round 1, S4); a places read wakes nothing.
+        filesLink(link).onOpen(() => inReopenLane(link, () => ask(link), true)),
         filesLink(link).onPush((push) => {
           if (push.push === "work.office.files") ask(link);
           if (push.push === "work.files" && push.workspaceId === workspace.id && push.places) ask(link);
@@ -792,6 +794,7 @@ export function resetFilesStore(): void {
   deskAsks.clear();
   tabSearches.clear();
   homes.clear();
+  homeDrops.clear();
   homeReads.clear();
   look = null;
   windowId = null;
@@ -926,6 +929,11 @@ function hearForKeep(link: string): void {
   const host = filesLink(link);
   if (keepHears.get(link) === host) return;
   keepHears.set(link, host);
+  // A reopened link: every folder kept from it may have changed while it was cut, so each is read when shown again
+  // (the shown one reads at once, below in useListing).
+  host.onOpen(() => {
+    for (const meta of listingMeta.values()) if (meta.link === link) meta.dirty = true;
+  });
   host.onPush((push) => {
     if (push.push !== "work.files") return;
     for (const meta of listingMeta.values()) {
@@ -944,7 +952,13 @@ function hearWorkOff(): void {
     const on = workSwitch.hosts();
     dropListings((meta) => !on.has(meta.link));
     for (const key of [...reachKept.keys()]) if (!on.has(key.split("\u0000")[0]!)) reachKept.delete(key);
-    for (const key of [...homes.keys()]) if (!on.has(key.split("\u0000")[0]!)) homes.delete(key);
+    for (const key of [...homes.keys()]) {
+      const link = key.split("\u0000")[0]!;
+      if (on.has(link)) continue;
+      homes.delete(key);
+      // A Home read still out for this host answers into nothing (Sol round 1, S7).
+      homeDrops.set(link, (homeDrops.get(link) ?? 0) + 1);
+    }
   });
 }
 
@@ -1247,12 +1261,19 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     // A team's page asks no host, and a page fed by the seam has none to hear from.
     if (from.team || listingSeams.fetch) return;
     hearForKeep(from.copy.link);
-    const off = filesLink(from.copy.link).onPush((push) => {
+    const host = filesLink(from.copy.link);
+    const off = host.onPush((push) => {
       if (push.push !== "work.files" || push.workspaceId !== from.workspaceId) return;
       // A lens follows his marks, which change with the tabs he opens.
       if ((watched && push.at === watched) || (lens && (push.tabs !== undefined || push.marks))) void load(key, from, at, sort, false, true);
     });
-    return off;
+    // A reopened link: the folder on screen is read once, in the shown front of the host's lane, and never wakes its
+    // machine (Sol round 1, S4).
+    const offOpen = host.onOpen(() => inReopenLane(from.copy.link, () => load(key, from, at, sort, false, true, false), true));
+    return () => {
+      off();
+      offOpen();
+    };
     // The key names the host, the folder and the order; a team's rows are its own input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, team]);
@@ -1299,8 +1320,17 @@ const homes = new Map<string, HomeKept>();
 const homeListeners = new Map<string, Set<() => void>>();
 const NO_HOME: HomeKept = { home: null, error: null, reading: false, again: false };
 const homeKey = (link: string, workspaceId: string): string => `${link}\u0000${workspaceId}`;
+/** The most Homes kept: past it the one read longest ago that no screen shows goes (a removed workspace's among them). */
+export const HOMES_KEPT = 16;
+/** Bumped for a host each time its Homes are dropped (Work off): a read made before answers into nothing. */
+const homeDrops = new Map<string, number>();
 function putHome(key: string, next: HomeKept): void {
+  homes.delete(key);
   homes.set(key, next);
+  for (const old of [...homes.keys()]) {
+    if (homes.size <= HOMES_KEPT) break;
+    if (!homeListeners.get(old)?.size) homes.delete(old);
+  }
   for (const listener of homeListeners.get(key) ?? []) listener();
 }
 /** Each Home read out, by key: a read asked while one is out settles with the one after it. */
@@ -1314,10 +1344,15 @@ function readHome(link: string, workspaceId: string): Promise<void> {
     return homeReads.get(key) ?? Promise.resolve();
   }
   putHome(key, { ...was, reading: true, again: false });
+  const drops = homeDrops.get(link) ?? 0;
   const read = ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
     (home) => ({ home, error: null }),
     (err: unknown) => ({ home: (homes.get(key) ?? NO_HOME).home, error: workErrorWords(err) || "The host did not answer." }),
   ).then((got): Promise<void> | undefined => {
+    if ((homeDrops.get(link) ?? 0) !== drops) {
+      if (homeReads.get(key) === read) homeReads.delete(key);
+      return undefined;
+    }
     const now = homes.get(key) ?? NO_HOME;
     putHome(key, { ...got, reading: false, again: false });
     if (homeReads.get(key) === read) homeReads.delete(key);
@@ -1342,6 +1377,7 @@ export function useHome(link: string, workspaceId: string): { home: FilesHome | 
     () => homes.get(key) ?? NO_HOME,
   );
   useEffect(() => {
+    hearWorkOff();
     void readHome(link, workspaceId);
     const host = registry.linkOf(link);
     const offPush = host.onPush((push) => {

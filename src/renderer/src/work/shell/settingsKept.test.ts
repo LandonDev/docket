@@ -18,7 +18,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environments: () => [] } };
 });
 
-const { forgetWorkspaceSettings, setWorkspaceSettings, workspaceSettings } = await import("./actions");
+const { forgetWorkspaceSettings, setWorkspaceSettings, workspaceSettings, workspaceSettingsKept } = await import("./actions");
 const ws = { id: "w1", environmentId: "box" };
 
 beforeEach(() => {
@@ -45,5 +45,18 @@ describe("a workspace's settings, kept", () => {
     await workspaceSettings(ws);
     expect(net.calls.at(-1)).toBe("work.workspace.get");
     expect(net.calls).toHaveLength(4);
+  });
+
+  /** Sol round 1, S7: a workspace's settings past their five minutes are not kept on, a removed workspace's included. */
+  it("lets go of what has outlived its five minutes when another workspace is asked", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await workspaceSettings({ id: "gone", environmentId: "box" });
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      await workspaceSettings(ws);
+      expect(workspaceSettingsKept()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

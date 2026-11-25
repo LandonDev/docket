@@ -15,6 +15,7 @@ type Push = Record<string, unknown>;
 const net = vi.hoisted(() => ({
   calls: [] as { method: string; params: Record<string, unknown> }[],
   pushes: new Set<(push: Push) => void>(),
+  opens: new Set<() => void>(),
   /** an answer by method; a function may hold it */
   answer: (_method: string, _params: Record<string, unknown>): Promise<unknown> => Promise.resolve(null),
 }));
@@ -29,7 +30,7 @@ vi.mock("../../lib/connection", async (original) => {
       return net.answer(method, params);
     },
     onPush: (listener: (push: Push) => void) => (net.pushes.add(listener), () => net.pushes.delete(listener)),
-    onOpen: () => () => undefined,
+    onOpen: (listener: () => void) => (net.opens.add(listener), () => net.opens.delete(listener)),
     onClose: () => () => undefined,
   });
   return {
@@ -47,7 +48,8 @@ vi.mock("../shell/actions", () => ({
   linkIdOfHost: () => null,
 }));
 
-const { goTo, listingsKept, resetFilesStore, useHome, useListing, useReach, useTabs } = await import("./store");
+const { goTo, HOMES_KEPT, listingsKept, resetFilesStore, useHome, useListing, useReach, useTabs } = await import("./store");
+const { setWorkOn, workSwitch } = await import("../../lib/workSwitch");
 const { LISTING_FRESH_MS, LISTING_KEEP_MOST, LISTING_KEEP_MS } = await import("./keep");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w", name: "Dummy Esports", kind: "work", sector: "purdue" } as unknown as WorkspaceMeta;
@@ -62,12 +64,55 @@ beforeEach(() => {
   resetFilesStore();
   net.calls = [];
   net.pushes.clear();
+  net.opens.clear();
   settings.next = null;
   net.answer = (method) => Promise.resolve(method === "work.files.places" ? PLACES : method === "work.office.filesCopyGet" ? { on: false } : method === "work.files.home" ? HOME : null);
 });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+describe("Sol round 1: S4 and S7", () => {
+  it("a reopened link reads the sidebar's places once more (S4)", async () => {
+    const { result } = renderHook(() => useReach(workspace, 0));
+    await waitFor(() => expect(result.current?.sidebar.folder).toBeTruthy());
+    net.calls = [];
+    await act(async () => {
+      for (const open of [...net.opens]) open();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(asked("work.files.places")).toBe(1);
+  });
+
+  it("a Home read that answers after Work went off on its host keeps nothing (S7)", async () => {
+    setWorkOn("box", true);
+    let answer!: (home: FilesHome) => void;
+    net.answer = (method) => (method === "work.files.home" ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(null));
+    const first = renderHook(() => useHome("box", "w1"));
+    await waitFor(() => expect(asked("work.files.home")).toBe(1));
+    first.unmount();
+    act(() => setWorkOn("box", false));
+    await act(async () => answer({ ...HOME, recent: [{ key: "k" } as never] }));
+    // Shown again, nothing is painted from the late answer: it is read afresh.
+    net.answer = () => new Promise(() => undefined);
+    const again = renderHook(() => useHome("box", "w1"));
+    expect(again.result.current.home).toBeNull();
+    again.unmount();
+    workSwitch.reset();
+  });
+
+  it("keeps at most HOMES_KEPT Homes, the oldest no screen shows going first (S7)", async () => {
+    for (let i = 0; i < HOMES_KEPT + 4; i++) {
+      const view = renderHook(() => useHome("box", `w${i}`));
+      await waitFor(() => expect(view.result.current.home).not.toBeNull());
+      view.unmount();
+    }
+    net.answer = () => new Promise(() => undefined);
+    const oldest = renderHook(() => useHome("box", "w0"));
+    const newest = renderHook(() => useHome("box", `w${HOMES_KEPT + 3}`));
+    expect([oldest.result.current.home, newest.result.current.home !== null]).toEqual([null, true]);
+  });
 });
 
 describe("a workspace's reach", () => {

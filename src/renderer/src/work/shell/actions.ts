@@ -140,6 +140,8 @@ const settingsKey = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): st
 function keepSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, value: Promise<WorkspaceWorkSettings>): Promise<WorkspaceWorkSettings> {
   const key = settingsKey(workspace);
   const entry = { at: Date.now(), value };
+  // What has outlived its five minutes goes, a removed workspace's included (Sol round 1, S7).
+  for (const [k, kept] of settingsKept) if (entry.at - kept.at > SETTINGS_KEEP_MS) settingsKept.delete(k);
   settingsKept.set(key, entry);
   // A refusal or a lost link is never kept.
   value.catch(() => settingsKept.get(key) === entry && settingsKept.delete(key));
@@ -170,3 +172,5 @@ export function setWorkspaceSettings(
 
 /** Test seam: nothing kept. */
 export const forgetWorkspaceSettings = (): void => settingsKept.clear();
+/** Test seam: how many workspaces' settings are kept. */
+export const workspaceSettingsKept = (): number => settingsKept.size;
