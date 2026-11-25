@@ -1,5 +1,6 @@
 // A Work thread's head: what it left him, at the top of its transcript (docs/DESIGN.md "A thread's head").
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { reducedMotion } from "../../lib/motion";
 import { makeFunctionReference } from "convex/server";
 import type { ThreadRecord, RecordMade, RecordWait, RecordWork } from "@shared/work/threadRecord";
 import { kindOfEntry } from "@shared/work/files";
@@ -150,7 +151,7 @@ function goToQuestion(from: HTMLElement, keyboard: boolean): void {
   const cards = scroller.querySelectorAll<HTMLElement>('[data-slot="question-card"], [data-approval-mark]');
   const card = cards[cards.length - 1];
   // A press from the keyboard, or reduced motion, lands at once.
-  const behavior: ScrollBehavior = keyboard || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  const behavior: ScrollBehavior = keyboard || reducedMotion() ? "auto" : "smooth";
   if (card) card.scrollIntoView({ block: "center", behavior });
   else scroller.scrollTo({ top: scroller.scrollHeight, behavior });
 }
