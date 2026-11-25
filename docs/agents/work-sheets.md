@@ -469,8 +469,10 @@ uses the same words when reading older restore labels.
   `.csv` opens as.
 - **An Excel file moved or deleted outside TempCode** (the Finder, a sync)
   opens to read (`missing`), and its line says so in the words every kind's
-  moved line uses: "This file was moved or deleted", with Keep Both, in the
-  foreground under the name and as the quiet line over the grid in a thread.
+  moved line uses: "This file was moved or deleted", with Keep Both, said
+  once: in a Files tab in the foreground under the name alone (the quiet line
+  is marked `saving`, so the pane draws it only where no save line is), and
+  as the quiet line over the grid in a thread.
   Keep Both is `work.sheets.restore` at the revision the sheet shows: on a
   missing file the package store makes the kept copy of that revision again
   where the file was (`putBack` in packages.ts, through Files' `makeFile`,

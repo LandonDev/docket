@@ -15,7 +15,7 @@ import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
-import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasKindDef, CanvasShell, SavedLine, StatusLine } from "../canvas/kind";
 import { EDIT_MAX, LOAD_MAX } from "./host";
 import { EDIT_WAIT, resetSheetSyncs } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, suggestion, workbookOf, type FakeGrid, type FakeSheetHost } from "./testkit";
@@ -1457,6 +1457,25 @@ describe("the sheet kind", () => {
     // the copy the sheet stands on goes back where the file was, by the revision it shows
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["restore", 3]));
     await waitFor(() => expect(document.querySelector("[data-canvas-state]")).toBeNull());
+  });
+
+  it("says a moved Excel file once in a Files tab: in the save line under its name, with one Keep Both, never again in the kind bar", async () => {
+    const { CanvasPane } = await import("../canvas/CanvasPane");
+    const { NO_FEEDS } = await import("../canvas/frame");
+    open(sheetView({ missing: true }));
+    cleanup();
+    // The pane as a Files tab draws it (`saveLine`), its shell's lines read back as the tab feeds them.
+    const said: { status: StatusLine | null; saved: SavedLine | null } = { status: null, saved: null };
+    const shell = new Proxy({} as Record<string, unknown>, { get: (_, key) => (key === "statusLine" ? (l: StatusLine | null) => (said.status = l) : key === "saved" ? (l: SavedLine | null) => (said.saved = l) : () => undefined) }) as unknown as CanvasShell;
+    const sheetKinds = kinds();
+    const pane = () => <CanvasPane item={ITEM} environmentId="local" feeds={{ ...NO_FEEDS, status: said.status, saved: said.saved }} shell={shell} onAsk={() => undefined} kinds={sheetKinds as never} saveLine />;
+    const view = render(pane());
+    await waitFor(() => expect(said.saved?.state).toBe("conflict"));
+    await waitFor(() => expect(said.status?.word).toBe("This file was moved or deleted"));
+    view.rerender(pane());
+    expect(said.saved).toMatchObject({ detail: "This file was moved or deleted", actions: [{ id: "keep", label: "Keep Both" }] });
+    expect(view.container.querySelector("[data-canvas-state]")).toBeNull();
+    expect(view.queryAllByRole("button", { name: "Keep Both" })).toHaveLength(0);
   });
 
   it("says a sheet that did not open once, in the body, with no state line over it", async () => {
