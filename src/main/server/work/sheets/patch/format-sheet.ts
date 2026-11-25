@@ -215,7 +215,8 @@ export class FormatSheet {
   /**
    * The first window's frozen pane (`<sheetView><pane state="frozen"/>`): the rows above and the columns left of a cell
    * stay, the rest scroll. A pane of any kind already there is replaced, and a selection that names a pane goes with it
-   * (it names one that is no longer there); 0 and 0 leave no pane.
+   * (it names one that is no longer there); 0 and 0 leave no pane. A window last saved scrolled (its own `topLeftCell`)
+   * starts at its top again with a pane, as the grid freezes from the sheet's top: else Excel freezes other rows.
    */
   private renderFreeze(rows: number, columns: number) {
     const P = this.prefix
@@ -231,8 +232,9 @@ export class FormatSheet {
       if (pane) this.changes.push({ start: views.start, end: views.end, text: withBody(openTag(this.xml, views), views.name, `<${P}sheetView workbookViewId="0">${pane}</${P}sheetView>`) })
       return
     }
+    const open = pane ? removeAttrInTag(openTag(this.xml, view), 'topLeftCell') : openTag(this.xml, view)
     if (view.openEnd === view.end) {
-      if (pane) this.changes.push({ start: view.start, end: view.end, text: withBody(openTag(this.xml, view), view.name, pane) })
+      if (pane) this.changes.push({ start: view.start, end: view.end, text: withBody(open, view.name, pane) })
       return
     }
     for (const el of children(this.xml, view)) {
@@ -240,7 +242,7 @@ export class FormatSheet {
       if (el.name === P + 'pane' || named) this.changes.push({ start: el.start, end: el.end, text: '' })
     }
     // The pane is the window's first child (CT_SheetView).
-    if (pane) this.changes.push({ start: view.openEnd, end: view.openEnd, text: pane })
+    if (pane) this.changes.push({ start: view.start, end: view.openEnd, text: open + pane })
   }
 
   private child(name: string) {

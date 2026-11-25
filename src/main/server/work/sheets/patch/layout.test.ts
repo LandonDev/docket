@@ -61,6 +61,22 @@ test('a frozen pane written into the first window, replaced, and taken away', ()
   expect(data(none).freeze ?? null).toBeNull()
 })
 
+test('a frozen pane over a window last saved scrolled starts the window at its top, as the grid freezes from the top', () => {
+  const scrolled = (view: string) => {
+    const zip = readZip(base)
+    const xml = readText(zip, SHEET).replace('<sheetView tabSelected="1" workbookViewId="0"/>', view)
+    expect(xml).toContain(view)
+    return writeZip(zip, new Map([[SHEET, new TextEncoder().encode(xml)]]), new Set(), new Map())
+  }
+  // An empty window, and one with a selection in it, each scrolled to row 40.
+  for (const view of ['<sheetView tabSelected="1" topLeftCell="A40" workbookViewId="0"/>', '<sheetView tabSelected="1" topLeftCell="A40" workbookViewId="0"><selection activeCell="A41" sqref="A41"/></sheetView>']) {
+    const frozen = readText(readZip(patched([{ kind: 'freeze', sheet: 'Data', rows: 1, columns: 0 }], scrolled(view))), SHEET)
+    const open = frozen.match(/<sheetView\s[^>]*>/)![0]
+    expect(open).toBe('<sheetView tabSelected="1" workbookViewId="0">')
+    expect(frozen).toContain('<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>')
+  }
+})
+
 test('the tabs in a new order, read back in it', () => {
   const bytes = patched([{ kind: 'sheetOrder', sheet: 'Untouched', to: 0 }])
   const wb = read(bytes)

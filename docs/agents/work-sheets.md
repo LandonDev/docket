@@ -1653,7 +1653,8 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   all three through the patch writer: the grid's `set-frozen`, `set-row-hidden`/`set-row-visible`,
   `set-col-hidden`/`set-col-visible` and `set-worksheet-order` ride the formatting path (`FORMATTING` in mutations.ts,
   `formatEditsOf`) to `patchFormat`, which writes the first window's frozen `pane` (`format-sheet.ts`
-  `renderFreeze`: a pane already there is replaced, a selection that names a pane goes with it), `hidden` on rows
+  `renderFreeze`: a pane already there is replaced, a selection that names a pane goes with it, and a window last saved
+  scrolled loses its own `topLeftCell`, so Excel freezes from the sheet's top as the grid does), `hidden` on rows
   (made where the file had none) and on `<col>`s (their widths kept), and the order of `<sheets>` (`format-book.ts`:
   among the worksheets, as the grid counts them, a chartsheet keeping its place; a defined name's `localSheetId` and
   the window's `activeTab` and `firstSheet` follow their sheets). A protected sheet still freezes, its window being the
