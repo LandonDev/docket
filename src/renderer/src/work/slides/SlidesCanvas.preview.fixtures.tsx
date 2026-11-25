@@ -8,6 +8,8 @@ export default [
   { name: "Notes, written directly, with Undo", props: { moment: "notes" } },
   { name: "Real PowerPoint", props: { moment: "ppt" } },
   { name: "A shape picked on the stage: its outline, eight handles and the rotate handle", props: { moment: "picked" } },
+  { name: "A blank deck: the title and subtitle show their prompts, the notes field empty", props: { moment: "blank", previewWidth: 864, previewHeight: 520 } },
+  { name: "The stage at Fit in a 1,200px tab, the notes field under it", props: { moment: "stage", previewWidth: 1200, previewHeight: 640 } },
   { name: "A turned shape picked: the selection turns with it", props: { moment: "turned" } },
   { name: "Typing on a slide: the box over the points, “6,200” selected, the row on it", props: { moment: "typing" } },
   { name: "The format row at 1,200px: a picked title, every control in the row", props: { moment: "row" } },

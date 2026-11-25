@@ -13,7 +13,7 @@ import { CanvasSeat } from "../canvas/CanvasSeat";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { CANVAS } from "../canvas/registry";
 import { applyCanvasPush, resetCanvasStore, setFolded } from "../canvas/store";
-import type { PdfEngine } from "../pdf/engine";
+import type { PdfDoc, PdfEngine } from "../pdf/engine";
 import { deckStoreOf } from "./deck";
 import * as SlidesCanvas from "./SlidesCanvas";
 import type { DeckParagraph, DeckSlide } from "@shared/contract-work-slides";
@@ -54,7 +54,9 @@ export type SlidesMoment =
   | "animateppt"
   | "sorter"
   | "copy"
-  | "google";
+  | "google"
+  | "stage"
+  | "blank";
 
 void workCanvasChunk.load();
 
@@ -217,13 +219,46 @@ function setUp(moment: SlidesMoment): {
     const order = [1, 2, 3, 4, 5, 6, 8];
     const turned = moment === "turned";
     const quad = (turned ? [[0.1, 0.33], [0.72, 0.42], [0.69, 0.62], [0.07, 0.53]] : [[0.086, 0.2], [0.72, 0.2], [0.72, 0.31], [0.086, 0.31]]) as never;
+    // A deck he can edit by hand, each shape with its own box: the handles are drawn only where his hand can move it.
+    const [W, H] = [12_192_000, 6_858_000];
+    const own = turned
+      ? { box: [Math.round(0.086 * W), Math.round(0.375 * H), Math.round(0.63 * W), Math.round(0.2 * H)] as [number, number, number, number], rot: 12, flipH: false, flipV: false }
+      : { box: [Math.round(0.086 * W), Math.round(0.2 * H), Math.round(0.634 * W), Math.round(0.11 * H)] as [number, number, number, number], rot: 0, flipH: false, flipV: false };
     return {
       view: deckView({
-        slides: order.map((id, i) => slide(id, { number: i + 1, title: title(id), page: i + 1, shapes: id === 2 ? [{ id: 3, name: "Title 1", bbox: [0.07, 0.2, 0.72, 0.62], text: title(2), kind: "text", quad, ...(turned ? { rot: 12 } : {}) }] : [] })),
+        slides: order.map((id, i) => slide(id, { number: i + 1, title: title(id), page: i + 1, shapes: id === 2 ? [{ id: 3, name: "Title 1", bbox: [0.07, 0.2, 0.72, 0.62], text: title(2), kind: "text", quad, own, ...(turned ? { rot: 12 } : {}) }] : [] })),
         renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
+        hand: { undo: false, redo: false },
+        size: { width: W, height: H },
       }),
       current: "2",
       picked: 3,
+    };
+  }
+  // The stage at Fit in a wide pane: "Who comes" with its notes in the field he types in.
+  if (moment === "stage") {
+    const view = whoComes();
+    return { view: { ...view, slides: view.slides.map((s) => (s.id === 3 ? { ...s, notes: "Open with the turnout: 480 players and 6,200 on stream." } : s)) }, current: "3" };
+  }
+  // A blank deck as Files makes one: the title and subtitle show their prompts, the notes field empty.
+  if (moment === "blank") {
+    const holder = (id: number, label: string, prompt: string, box: [number, number, number, number], size: number, anchor: "middle" | "top") =>
+      textShape(id, [{ level: 0, align: "center", list: "none", runs: [], end: { font: "Calibri", size, color: "000000" } }], box, { label, prompt, frame: { anchor, insets: [91_440, 45_720, 91_440, 45_720], fit: "shrink", wrap: true } });
+    const white: PdfDoc = { ...sponsorDoc([1]), async paint(_page, host) {
+      const page = host.ownerDocument.createElement("div");
+      page.style.cssText = "position:absolute;inset:0;background:var(--paper)";
+      host.replaceChildren(page);
+    } };
+    return {
+      view: deckView({
+        name: "Untitled deck.pptx",
+        slides: [slide(256, { number: 1, page: 1, title: "", layout: "Title Slide", shapes: [holder(2, "Title", "Click to add title", [0.125, 0.311, 0.875, 0.536], 44, "middle"), holder(3, "Subtitle", "Click to add subtitle", [0.25, 0.567, 0.75, 0.8], 32, "top")] })],
+        renders: { file: { rev: "f", size: 1, pages: 1 }, proposed: null },
+        hand: { undo: false, redo: false },
+        size: { width: 12_192_000, height: 6_858_000 },
+      }),
+      current: "256",
+      engine: { open: async () => white },
     };
   }
   if (moment === "loading") return { view: deckView(), engine: { open: () => new Promise(() => undefined) } };
@@ -249,7 +284,7 @@ function AskBar() {
   );
 }
 
-export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: SlidesMoment; previewWidth?: number }) {
+export function SlidesPreview({ moment = "sugg", previewWidth, previewHeight }: { moment?: SlidesMoment; previewWidth?: number; previewHeight?: number }) {
   resetCanvasStore();
   const sessionId = `preview-slides-${moment}`;
   const itemId = `${sessionId}-item`;
@@ -278,7 +313,7 @@ export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: Slid
         host={host}
         engine={fake}
         width={width ?? 454}
-        height={width ? 456 : 492}
+        height={previewHeight ?? (width ? 456 : 492)}
         picked={picked}
         typing={typing}
         dragging={dragging}
@@ -296,7 +331,7 @@ export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: Slid
   if (width) {
     setFolded(sessionId, true);
     return (
-      <div className="relative flex h-[560px] overflow-hidden rounded-xl border border-border" style={{ width }}>
+      <div className={`relative flex overflow-hidden rounded-xl border border-border ${previewHeight ? "" : "h-[560px]"}`} style={{ width, ...(previewHeight ? { height: previewHeight + 104 } : {}) }}>
         <CanvasSeat session={{ id: sessionId, environmentId: "local" }} kinds={kinds}>
           <div />
         </CanvasSeat>
@@ -388,4 +423,12 @@ function ThemeOpen({ view }: { view: DeckView }) {
       <ThemeList view={view} onPick={() => undefined} />
     </div>
   );
+}
+
+/**
+ * The stage in a Files tab of a given size, for pictures at his display's widths:
+ * `bun run ui:preview src/renderer/src/work/slides/SlidesCanvas.preview.tsx#StagePreview --props '{"width":3200,"height":1700}' --shot`.
+ */
+export function StagePreview({ width = 1440, height = 820, blank = false }: { width?: number; height?: number; blank?: boolean }) {
+  return <SlidesPreview moment={blank ? "blank" : "stage"} previewWidth={width} previewHeight={height} />;
 }
