@@ -100,7 +100,8 @@ export async function liveSeat(ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: 
     const copyOf = far ? { copyOf: { host, path, ...(host === ctx.host ? { vm: true } : {}) } } : {}
     // Opened live, a saved document made of the Word file goes, as on a switch: a later Edit here reads the file afresh.
     if (far) await forgetKept(ctx, ask.workspaceId, { copyOf: { host, path } } as FileTab)
-    await keepBase(ctx, ask.workspaceId, key, { host, path }, signal)
+    // A refused Edit here keeps the base it was refused against: his typing may have come down since, and is no change from a new base.
+    if (!refused.has(refusedKey(ask.workspaceId, key))) await keepBase(ctx, ask.workspaceId, key, { host, path }, signal)
     return { key, name, kind: APP_CANVAS[app], source: liveSource(ctx, app, name, of.address), file: { host, path }, ...copyOf }
   } catch {
     // Files' own open says what is wrong with it.
@@ -221,10 +222,12 @@ async function versionMoved(
   signal?: AbortSignal
 ): Promise<{ moved: true } | { moved: false; other?: string; last: number | null }> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
-  // Told of his last key: by the window now, or kept from a refused press.
-  const told = o.quiet !== undefined || o.last !== undefined
+  // Told of his last key: by the window now, or kept from a refused press. Switch Anyway always is: no change since the
+  // base proves a save of his, so with no last key known it is timed from the press (the holder's clock now).
+  const told = o.quiet !== undefined || o.last !== undefined || !!o.forced
   if (first && !told && base !== null && first.word !== base) return { moved: true }
   const keys = first?.now === undefined ? [] : [...(o.quiet !== undefined ? [first.now - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
+  if (o.forced && first?.now !== undefined && !keys.length) keys.push(first.now)
   // His last key by the holder's clock; for a tab live from before its version was kept, the live view's opening by this host's.
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
   const after = keys.length ? Math.max(...keys) : !told && ownClock ? since : null
@@ -316,7 +319,9 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
     if (live) {
       const before = refused.get(kept)
       const forced = !!p.forced || !!before?.forced
-      const asks = { ...(p.quiet !== undefined ? { quiet: p.quiet } : {}), ...(before ? { last: before.last } : {}), forced }
+      // That's Me answers the press just asked, with the guest gone since: its last key is the one kept, never a `quiet` resent.
+      const quiet = p.mine && before ? undefined : p.quiet
+      const asks = { ...(quiet !== undefined ? { quiet } : {}), ...(before ? { last: before.last } : {}), forced }
       const moved = p.typed || before ? await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, asks, signal) : null
       if (moved && !moved.moved) {
         refused.set(kept, { last: moved.last, forced })

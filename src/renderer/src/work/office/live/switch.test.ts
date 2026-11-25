@@ -168,6 +168,25 @@ describe("switching to Edit here", () => {
     expect(no.d.back).toHaveBeenCalledTimes(1);
   });
 
+  it("times That’s Me's `quiet` at its own send, his time in the ask added, with `forced` carried", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const other = { is: "ask" as const, why: "other" as const, name: "lhale", words: "lhale saved Plan.docx after your last key." };
+      const { d } = deps([other, { is: "done" }], {
+        typed: vi.fn(async () => 4),
+        quiet: vi.fn(async () => 1000),
+        leave: vi.fn(async (): Promise<boolean | "forced"> => "forced"),
+        // He reads the ask for 90 s before That's Me.
+        confirm: vi.fn(async () => (vi.advanceTimersByTime(90_000), true)),
+      });
+      expect(await switchTo("here", FROM, d)).toBe(true);
+      expect(d.set).toHaveBeenNthCalledWith(1, { mode: "here", typed: 4, quiet: 1000, forced: true });
+      expect(d.set).toHaveBeenNthCalledWith(2, { mode: "here", typed: 4, quiet: 91_000, forced: true, mine: "lhale" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stays live when he keeps Word open while it saves", async () => {
     const { d } = deps([], { leave: vi.fn(async () => false) });
     expect(await switchTo("here", FROM, d)).toBe(false);

@@ -657,6 +657,51 @@ describe('Live → Edit here', () => {
     expect(await set(tabId, { mode: 'here', typed: 3, quiet: 1000 })).toEqual({ is: 'done' })
   })
 
+  it("takes That's Me by the asked press's last key, whatever `quiet` a window resends from it", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon Hale')
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    // His save as lhale came down 100 ms after his last key.
+    writeFileSync(path, savedBy('lhale', 'his typing'))
+    shiftMtime(path, -900)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toMatchObject({ is: 'ask', why: 'other', name: 'lhale' })
+    // A window a build behind sends the first press's `quiet` again with That's Me, timed back then.
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000, mine: 'lhale' })).toEqual({ is: 'done' })
+  })
+
+  it("after a refusal, a tab opened again keeps the base it had: his typing come down meanwhile passes the next press", async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('has not come down from OneDrive yet')
+    await call('work.files.tabClose', { tabId })
+    // His typing comes down while the tab is closed; the file opens live again, as remembered.
+    writeFileSync(path, 'word, with every word')
+    const again = await call<FilesOpened>('work.files.open', { ref: at(path) })
+    expect(isLiveSource(again.item!.source)).toBe(true)
+    expect(await set(again.tabId!, { mode: 'here' })).toEqual({ is: 'done' })
+  })
+
+  it('after Switch Anyway with no keys counted, never takes a save from before the press, and takes his own after it', async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    // Dana's save is there before the press: a ribbon change counted no keys, so nothing dates his last one.
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 1, forced: true })).rejects.toThrow('has not come down from OneDrive yet')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    // Nor a file that names no one, saved before the press.
+    writeFileSync(path, 'word, of before the press')
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 1, forced: true })).rejects.toThrow('has not come down from OneDrive yet')
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    const switching = set(tabId, { mode: 'here', typed: 1, forced: true })
+    await new Promise((settle) => setTimeout(settle, 30))
+    writeFileSync(path, savedBy('Landon Johnson', 'his words'))
+    shiftMtime(path, 1000)
+    expect(await switching).toEqual({ is: 'done' })
+  })
+
   it('takes a name as his only from his press', async () => {
     const { path, tabId } = await liveHere()
     hisName('Landon Hale')

@@ -135,7 +135,9 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   finished saving it", `leaveLive`). Switch Anyway counts as typing (`typed` at least 1) and says `forced`: nothing
   proves the file holds what Word had not saved, so the host must see the file move or the tab stays live and the
   guest comes back; the seat is kept. After it a coauthor's save, even one made after the press, proves nothing: only
-  a save the file names as his counts (a file that names no one keeps the clock's rule). When he typed, the host waits up to 60 s for a change made after his last key
+  a save the file names as his counts (a file that names no one keeps the clock's rule). With no last key known (a
+  ribbon change counts no keys), Switch Anyway is timed from the press, by the holder's clock: no change since the
+  tab went live is taken, only one after the press, and the tab stays live if none comes. When he typed, the host waits up to 60 s for a change made after his last key
   there (`quiet`, ms before the press, the wait to leave added), its time read by the holder's own clock: this
   host's, or his desktop's, which its `work.files.stat` answer gives (`now`). One already in the file counts at once
   (a Mac library's typing that came down before the press is taken, never waited out), else the next change seen
@@ -151,7 +153,9 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   his words saved. Before that it is not taken, and the host asks, naming whose save it was (`why: 'other'`, `name`):
   "Is Dana Lee you?", "Dana Lee saved Plan.docx after your last key, and nothing shows your typing in that save, so
   it stays live until a save of yours comes down." That’s Me asks again with `mine`: the host keeps the name as his
-  (`work_office_files` `mine`, the newest 20, lower case) and takes that save, then and on every later Edit here;
+  (`work_office_files` `mine`, the newest 20, lower case) and takes that save, then and on every later Edit here.
+  That’s Me answers the press just asked, so the host reads its last key from the refusal it kept, never a `quiet`
+  sent again; the window times `quiet` at each send all the same, his time in the ask added;
   Cancel keeps the tab live and the guest comes back. A file that names no one
   (the VM, a cloud-only file), or no name of his set in Work, keeps the clock's rule alone. A window that does not
   say `quiet` waits for the file to differ from that kept version. Then it `reseat`s the file fresh. Nothing moved by then, nothing proves the file holds
@@ -160,7 +164,8 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   back counts keys from none, so the host keeps the refusal by the tab's key (`refused` in switch.ts: his last key by
   the holder's clock, and whether it was Switch Anyway): the next press waits by it whatever `typed` says, his last key
   the later of the kept one and any new one. It goes once a press passes or the tab goes live again; a host restart
-  forgets it. A tab live from
+  forgets it. Closing the tab keeps it, and a file opened live again while it stands keeps the version it was refused
+  against (`liveSeat` keeps no new one), so his typing that came down meanwhile passes the next press. A tab live from
   before its version was kept falls back to the file's time after the live view opened, on this host's own clock
   (never the VM's). Every save back is by version, so a later OneDrive change is "changed there", never a write over
   Word's edits.
