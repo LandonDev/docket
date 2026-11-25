@@ -762,7 +762,7 @@ export class HandSession {
       // In conflict with a save made elsewhere: his words stay his, kept on this computer, and nothing is sent until
       // he presses Replace or Reload.
       this.notesRefused.set(slide, { ...refused, text });
-      this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
+      this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
       return;
     }
     const waiting = this.notesWaiting;
@@ -774,7 +774,17 @@ export class HandSession {
     this.set({ notesEditedAt: Date.now(), ...this.refusedLine() });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
-    this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
+    this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
+  }
+
+  /**
+   * What a slide's notes are written over: what the host last took from the field while that send is on its way, is
+   * refused, or is still the deck's notes; once another save has come into the field since, the field's own base.
+   */
+  private notesBase(slide: number, began: string): string {
+    const held = this.notesHeld.get(slide);
+    if (held === undefined) return began;
+    return this.notesSending.has(slide) || this.notesRefused.has(slide) || (this.deckNotes(slide) ?? held) === held ? held : began;
   }
 
   /** The notes waiting for the pause, sent now; resolves once every notes edit on its way has its answer. False: one was refused. */
@@ -784,7 +794,7 @@ export class HandSession {
     if (waiting) {
       clearTimeout(waiting.timer);
       this.notesWaiting = null;
-      out.push(this.sendNotes(waiting.slide, waiting.text, this.notesHeld.get(waiting.slide) ?? waiting.began));
+      out.push(this.sendNotes(waiting.slide, waiting.text, this.notesBase(waiting.slide, waiting.began)));
     }
     return (await Promise.all(out)).every(Boolean);
   }

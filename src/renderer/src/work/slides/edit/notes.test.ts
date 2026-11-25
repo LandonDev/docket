@@ -65,6 +65,19 @@ describe("notes he types", () => {
     expect(edits()).toHaveLength(2);
   });
 
+  it("typed again after another save came into the field go over that save, never as no change while the line says Saved", async () => {
+    const { session, edits, store, line } = setUp();
+    session.typeNotes(3, "Thank the sponsors", "Say hello");
+    await session.keepNotes();
+    // A coauthor's save reaches the field, which takes it as its base; he types his earlier words again.
+    store.view({ ...store.get().view!, slides: store.get().view!.slides.map((s) => (s.id === 3 ? { ...s, notes: "Doors open at six" } : s)) });
+    session.typeNotes(3, "Thank the sponsors", "Doors open at six");
+    await session.keepNotes();
+    expect(edits().at(-1)).toEqual([{ op: "notes", slide: 3, text: "Thank the sponsors", was: "Doors open at six" }]);
+    expect(store.get().view!.slides[0].notes).toBe("Thank the sponsors");
+    expect(line()).toBe("saved");
+  });
+
   it("another slide's notes go first when he types on the next slide's", async () => {
     const { session, edits } = setUp();
     session.typeNotes(3, "Three", "Say hello");

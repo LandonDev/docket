@@ -1801,7 +1801,9 @@ are kept as the box's are (`HandSession.typeNotes`, `keepNotes`): one
 leaves the field, presses Escape (which gives the keyboard back to the
 slide), the stage leaves the slide or the tab closes (`flush` waits for
 them). Each edit names the notes it was written over (`was`: what the host
-last took from the field, else what the field began from); the host
+last took from the field while that send is on its way, refused or still the
+deck's notes, else what the field began from, so his words typed again over
+another save that came into the field since go over that save, `notesBase`); the host
 refuses one whose slide's notes changed since (`handEdit`, the box's
 `CHANGED_WHILE`): the save line says "The deck changed while you typed"
 with Replace and Reload (`notesConflict`), and nothing of his notes is sent
