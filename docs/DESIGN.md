@@ -2994,6 +2994,8 @@ Around the canvas:
     no fill (a folded lane neither), a plus each but Done's and Dropped's, so a card is the one surface: `background` with
     a hairline (6px), a stronger hairline in hand, no shadow; it says its
     name, done of all and its target. Only a card being dragged lifts.
+    Its menu opens on a right-click, or on the menu key or ⇧F10 when the
+    card has the focus.
   - **New project** is the form dialog: Name, then State (Backlog, Active,
     Paused: a project starts open) and Target side
     by side, Cancel and Create (the one primary). While Create writes,
@@ -3009,7 +3011,7 @@ Around the canvas:
     below; the tree (or the task board, which keeps the brief, Files and
     Log around it; grouped by State or Priority, New task draws the plain
     tree while its line is open, Tab in it too, as does a row's Add
-    sub-task, and the groups come back when it shuts; Tab and Shift+Tab keep the words typed; New task from
+    sub-task, and the groups come back when it shuts; Tab and Shift+Tab keep the words typed, and Tab nests only under a task the tab shows; New task from
     a board card's menu opens the project in List with the field focused);
     "2 done"; Files; Log. Sections stand 40px apart with
     a 14/600 head, no boxes. Files lists the project's documents, sheets,
