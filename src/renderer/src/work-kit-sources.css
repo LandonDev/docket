@@ -198,6 +198,7 @@
 @source "../../../node_modules/work-kit/src/projects/board.tsx";
 @source "../../../node_modules/work-kit/src/projects/client.tsx";
 @source "../../../node_modules/work-kit/src/projects/documents.tsx";
+@source "../../../node_modules/work-kit/src/projects/facts-row.tsx";
 @source "../../../node_modules/work-kit/src/projects/fixtures.ts";
 @source "../../../node_modules/work-kit/src/projects/guest-client.ts";
 @source "../../../node_modules/work-kit/src/projects/index.ts";
