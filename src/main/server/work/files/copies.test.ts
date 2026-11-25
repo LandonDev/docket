@@ -378,6 +378,45 @@ describe('a file renamed or moved on its computer while its copy is open', () =>
     expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
   })
 
+  it("a closed copy whose follow never came reaches the renamed file: its computer says where it went, and nothing is made at the old name", async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    macUp = false
+    await editorSaves(copy, 'two')
+    await settled()
+    await call('work.files.tabClose', { tabId })
+    // Renamed on the Mac; the window's word of it to this host is lost on the way.
+    const renamed = join(dirname(path), 'Roster 2026.xlsx')
+    await filesHandle({ id: 'r', method: 'work.files.rename', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path }, name: 'Roster 2026.xlsx', op: 'op-r3' } } as never, mac.ctx, window)
+    macUp = true
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(readFileSync(renamed, 'utf8')).toBe('two')
+    expect(existsSync(path)).toBe(false)
+    expect(readdirSync(dirname(path)).filter((n) => n.includes('(mine)'))).toEqual([])
+    // It held his last write, so the closed copy went.
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+    expect(copyRecord(box.ctx, WS, MAC, renamed)).toBeNull()
+  })
+
+  it('a file of the same bytes put at the old name since never takes the moved copy\'s edits', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    const was = statSync(path)
+    macUp = false
+    await editorSaves(copy, 'two')
+    await settled()
+    await call('work.files.tabClose', { tabId })
+    const renamed = join(dirname(path), 'Roster 2026.xlsx')
+    await filesHandle({ id: 'r', method: 'work.files.rename', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path }, name: 'Roster 2026.xlsx', op: 'op-r4' } } as never, mac.ctx, window)
+    // Another file at the old name: the same bytes, even the same change time, so the same version word.
+    writeFileSync(path, 'one')
+    utimesSync(path, was.atime, was.mtime)
+    macUp = true
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('one')
+    expect(readFileSync(renamed, 'utf8')).toBe('two')
+  })
+
   it('a move of two files of one name from two folders re-points neither copy to the other\'s file', async () => {
     const a = await openFar('Plan.xlsx', 'a')
     const otherDir = join(mac.team, 'Events')

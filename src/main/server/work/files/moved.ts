@@ -1,9 +1,11 @@
-import { lstatSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, renameSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { fileDocName } from 'work-kit/collab-server'
 import type { CanvasSource } from '@shared/work'
+import { privateBranchDir } from '../history/privateBranches'
 import type { WorkCtx } from '../modules'
+import { servicePaths } from '../service/config'
 import { fileMovedHooks } from './hooks'
 
 /**
@@ -31,6 +33,8 @@ export interface MovedResult {
 }
 
 const SAVEPOINT = 'work_files_moved'
+/** How long a move is remembered for a copy elsewhere still sent to the old path: a copy that waited longer is gone there. */
+const MOVES_KEPT_MS = 90 * 24 * 3600_000
 /** The most files under a renamed folder whose own rows are carried one by one (a document's comments, a pillar's hook). */
 const FOLDER_FILES_MAX = 50_000
 
@@ -192,6 +196,30 @@ function moveDocs(db: DatabaseSync, pairs: readonly [string, string][]): void {
 }
 
 /**
+ * An agent's pending suggestions on a `.tcdoc` are kept by its path under the service's data (history/privateBranches.ts):
+ * they follow it to its new name, so he still finds them there. A folder already at the new path (left by a file once
+ * there) is never merged into or replaced; the move is said in the log and those suggestions stay where they were.
+ */
+function moveBranches(ctx: Pick<WorkCtx, 'dataDir' | 'log'>, pairs: readonly [string, string][]): void {
+  const root = join(servicePaths(ctx.dataDir).serviceDir, 'private-branches')
+  if (!existsSync(root)) return
+  for (const [a, b] of pairs) {
+    // A file still at its old path was copied, not moved (the Word store's first start keeps it until a later one,
+    // wordStore.ts): its suggestions are copied there, never taken from it.
+    if (!a.toLowerCase().endsWith('.tcdoc') || existsSync(a)) continue
+    const from = privateBranchDir(root, a)
+    const to = privateBranchDir(root, b)
+    if (!existsSync(from)) continue
+    try {
+      if (existsSync(to)) throw new Error('suggestions are already kept at the new name')
+      renameSync(from, to)
+    } catch (err) {
+      ctx.log(`files: ${basename(a)}'s pending suggestions stayed at its old name: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+}
+
+/**
  * What a copy of the file hangs on follows it (copies.ts, word.ts, saveAs.ts): a copy tab's `copyOf`, the copy's
  * record, a Word file's record and the file a Save As link writes, each by the host and path the file lies at, and the
  * body last read of it. A moved `.tcdoc` keeps its Word file and its links (`doc`). Without this, his next edit of a
@@ -276,6 +304,11 @@ export function fileMoved(ctx: Pick<WorkCtx, 'db' | 'dataDir' | 'host' | 'canvas
       db.prepare(`DELETE FROM work_files_names WHERE ref_key = ? OR ref_key LIKE ? ESCAPE '\\'`).run(from.key, under)
     }
     const copied = moveCopies(db, host, from.path, to.path, pairs)
+    if (hasTable(db, 'work_files_moves')) {
+      const now = Date.now()
+      db.prepare(`DELETE FROM work_files_moves WHERE at < ?`).run(now - MOVES_KEPT_MS)
+      db.prepare(`INSERT INTO work_files_moves (from_path, to_path, at) VALUES (?, ?, ?)`).run(from.path, to.path, now)
+    }
     const tabs = [...new Set([...moveTabs(db, host, from, to), ...copied])].map((workspaceId) => {
       db.prepare(`INSERT INTO work_files_revs (workspace_id, rev) VALUES (?, 1) ON CONFLICT (workspace_id) DO UPDATE SET rev = rev + 1`).run(workspaceId)
       return { workspaceId, rev: (db.prepare(`SELECT rev FROM work_files_revs WHERE workspace_id = ?`).get(workspaceId) as { rev: number }).rev }
@@ -287,6 +320,7 @@ export function fileMoved(ctx: Pick<WorkCtx, 'db' | 'dataDir' | 'host' | 'canvas
     db.exec(`RELEASE ${SAVEPOINT}`)
     throw err
   }
+  moveBranches(ctx, pairs)
   for (const owner of result.owners) {
     try {
       ctx.canvas.announce(owner)
@@ -302,6 +336,27 @@ export function fileMoved(ctx: Pick<WorkCtx, 'db' | 'dataDir' | 'host' | 'canvas
     }
   }
   return result
+}
+
+/**
+ * Where the file a copy elsewhere was made of lies now, when it was renamed or moved here (itself or a folder it was in)
+ * after `since`, the change time its version names, in this host's clock: that copy is of the moved file, never of
+ * whatever came to lie at the old path since, even a file of the same bytes. A file made at the old path after the move
+ * has a later change time, so a copy of it is its own. Followed through later moves; null when nothing moved it.
+ */
+export function movedAway(db: DatabaseSync, path: string, since: number): string | null {
+  if (!hasTable(db, 'work_files_moves')) return null
+  let at = path
+  // Rows are written in the order the moves were made: each later hop is a move made after the last one followed.
+  let after = -1
+  for (let hops = 0; hops < 20; hops++) {
+    const sep = sepOf(at)
+    const row = db.prepare(`SELECT rowid AS id, from_path, to_path FROM work_files_moves WHERE at >= ? AND rowid > ? AND (from_path = ? OR substr(?, 1, length(from_path) + 1) = from_path || ?) ORDER BY rowid ASC LIMIT 1`).get(since, after, at, at, sep) as { id: number; from_path: string; to_path: string } | undefined
+    if (!row) break
+    at = under(at, row.from_path, row.to_path, sep)!
+    after = row.id
+  }
+  return after === -1 ? null : at
 }
 
 /**

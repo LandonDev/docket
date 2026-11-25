@@ -638,7 +638,14 @@ and Upload.
 - Across volumes a move is a copy, synced to disk and read back (size, and
   sha256 for a file of 64 MB or less), then the source removed; a folder over
   2 GB is refused. A copy that fails its check is removed and the source left
-  as it was.
+  as it was. The source goes only while it is still what was copied: a file
+  by its inode, size and change time, a folder by the same of every file in
+  it and no file added. A late write to a copied file, or a file added since,
+  keeps the source whole, removes the copy and refuses the move ("x was
+  written while it moved, so it stays where it is."). A move by hard link
+  unlinks the old name only while it is still that inode: a file saved over
+  it between the link and the unlink is kept, and the move refused
+  (`writeSeams.beforeRemove` is the tests' hook there).
 - A folder swapped for a link between the check and the write is caught: the
   real parent is resolved again just before and just after each write, and
   what landed outside is taken back.
@@ -783,8 +790,13 @@ A file of another host (his Mac's OneDrive, from a box workspace) moves on
 that host, whose own `fileMoved` knows nothing of the copy the workspace's
 host keeps. So his window, once a rename or a move it asked of that host
 lands, tells the workspace's host where each thing went
-(`work.files.copiesMoved`, acts.ts `copiesFollow`, only when a tab holds a
-copy of it); the host re-points that workspace's records of the copy
+(`work.files.copiesMoved`, acts.ts `copiesFollow`), whether or not a tab
+here shows the file: a closed tab's waiting copy, a Word file's record and a
+Save As link follow as an open tab's copy does. A follow whose answer did not
+come is asked again (after 1 s and 4 s). A rename or move whose open tab's
+words did not go into the file is refused in the window before it is asked
+("What x holds has not gone into the file yet, so it stays where it is."):
+the editor could not hand them to the new name. The host re-points that workspace's records of the copy
 (`farMoved`), his own act only (his window or a key that may approve),
 never for a file of its own and never across two hosts. A move's things are
 paired with where they went by a name one thing alone holds, never one the
@@ -793,7 +805,22 @@ dropped for the one that moved, which stays, with its tab, where it was. A
 send on its way when the file moves is sent again to the new path, never
 answered as gone (`sendOnce`). Nothing is read or
 written on a disk there, and a record pointed at the wrong file still
-writes only over the version it read. The fence lets a remote key name the
+writes only over the version it read.
+
+A follow that never landed is made good by the file's own host. Each rename
+or move there is kept in its journal (`work_files_moves`: old path, new path,
+when, in that host's clock; 90 days; `fileMoved`). A copy sent to a path
+moved after the version it was made of (`writeBack`; `base`, the version a
+Word file's save first read, when it sends a later one) is that moved file's
+(moved.ts `movedAway`, followed through later moves): nothing is written at
+the old path, even over a file of the same bytes and time put there since,
+and the answer is `{conflict: {gone, movedTo}}` when the same door admits the
+new path. The workspace's host re-points every record of the file
+(`deliver`, `farMoved`) and sends again to the new path (a copy by
+`sendOnce`, a link by `putOver`). A file made at the old path after the move
+has a later change time, so a copy of it is its own. A Word file's save that
+finds nothing at all at the old path still waits as gone: it reads the file
+before it sends, and that read is told of no move. The fence lets a remote key name the
 other host's paths in this verb alone (`ELSEWHERE_METHODS`).
 
 A fault anywhere rolls the savepoint back and the file is moved back. Once

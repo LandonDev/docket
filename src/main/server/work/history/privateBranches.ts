@@ -24,10 +24,10 @@ import type { BranchRow, BranchStatus, CollabFile, NewBranch, NewVersion, Versio
  *   out of it.
  * - A branch that is decided (merged or dropped) is removed here: accepted
  *   words are in the file as an ordinary edit, rejected ones are gone.
- * - Keyed by the file's path: a `.tcdoc` moved or renamed leaves its pending
- *   agent suggestions behind (the agent suggests again). A Word file's kept
- *   document moved into main's Word store takes its folder with it
- *   (`privateBranchDir`, files/wordStore.ts).
+ * - Keyed by the file's path: main moves a `.tcdoc`'s folder with it when
+ *   the file is renamed or moved (files/moved.ts `moveBranches`), and a Word
+ *   file's kept document moved into main's Word store takes its folder with
+ *   it (`privateBranchDir`, files/wordStore.ts).
  *
  * Loaded by the service's entry: node, work-kit and fflate only
  * (service/boundary.test.ts).

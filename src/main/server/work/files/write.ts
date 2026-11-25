@@ -40,7 +40,7 @@ export interface WriteFence {
  * empty folder reserved for it, so a test can take that name there. `across` makes every move take the path
  * between volumes.
  */
-export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; across?: boolean } = {}
+export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; beforeRemove?: (src: string) => Promise<void> | void; across?: boolean } = {}
 
 /** A file at most this big is checked by its sha256; a bigger one by its size alone. */
 export const HASH_MAX = 64 * 1024 * 1024
@@ -58,6 +58,11 @@ const within = (path: string, dir: string): boolean => {
 const gone = (): FileRefused => new FileRefused('gone', 'That file or folder is not there any more.')
 const isLink = (): FileRefused => new FileRefused('link', 'That is a link to somewhere else, so it cannot be changed here.')
 const changed = (): FileRefused => new FileRefused('outside', 'The folder changed while this ran, so nothing was put there.')
+/** A move's source written or replaced after it was copied or linked: it stays, and the copy goes. */
+const writtenWhileMoved = (path: string): FileRefused => new FileRefused('busy', `${basename(path)} was written while it moved, so it stays where it is.`)
+
+/** What a file was when a move took it: the same inode, size and change time are the bytes it copied or linked. */
+const sameFile = (a: Pick<Stats, 'ino' | 'dev' | 'size' | 'mtimeMs'>, b: Pick<Stats, 'ino' | 'dev' | 'size' | 'mtimeMs'>): boolean => a.ino === b.ino && a.dev === b.dev && a.size === b.size && a.mtimeMs === b.mtimeMs
 
 /** The sentence for a taken name, naming what is there. */
 async function taken(name: string, at: string): Promise<FileRefused> {
@@ -123,8 +128,8 @@ async function admitFolder(fence: WriteFence, dir: string, follow = false): Prom
  * what it is, so a path built from a real folder and names that are not links is a real path itself.
  * A socket, a pipe or a device is left out.
  */
-async function walk(dir: string, most: number): Promise<{ files: string[]; dirs: string[]; links: string[]; bytes: number }> {
-  const tree = { files: [] as string[], dirs: [] as string[], links: [] as string[], bytes: 0 }
+async function walk(dir: string, most: number): Promise<{ files: string[]; dirs: string[]; links: string[]; bytes: number; seen: Map<string, Stats> }> {
+  const tree = { files: [] as string[], dirs: [] as string[], links: [] as string[], bytes: 0, seen: new Map<string, Stats>() }
   const queue = [dir]
   for (let i = 0; i < queue.length; i++) {
     const names = await readdir(queue[i])
@@ -141,6 +146,7 @@ async function walk(dir: string, most: number): Promise<{ files: string[]; dirs:
       } else if (info.isFile()) {
         tree.files.push(path)
         tree.bytes += info.size
+        tree.seen.set(path, info)
       }
     })
   }
@@ -148,7 +154,7 @@ async function walk(dir: string, most: number): Promise<{ files: string[]; dirs:
 }
 
 /** Every file and folder under `dir`, admitted one by one (links are never followed and are reported, not walked). Bounded: more than `most` entries (default 50_000) is refused 'too-big'. Folders come before what they hold. */
-export async function admitTree(fence: WriteFence, dir: string, most = 50_000): Promise<{ files: string[]; dirs: string[]; links: string[]; bytes: number }> {
+export async function admitTree(fence: WriteFence, dir: string, most = 50_000): Promise<{ files: string[]; dirs: string[]; links: string[]; bytes: number; seen: Map<string, Stats> }> {
   return walk(await admitFolder(fence, dir), most)
 }
 
@@ -330,11 +336,27 @@ export async function moveNoReplace(fence: WriteFence, from: string, toDir: stri
       await copyOne(src, to, true).catch(async (e) => {
         throw codeOf(e) === 'EEXIST' ? await taken(name, to) : e
       })
-      await landed(parent, to, removeIfSame(await lstat(to)))
+      const copy = await lstat(to)
+      await landed(parent, to, removeIfSame(copy))
+      // The source goes only while it is still the file copied: a save since (in place, or a new file over its name)
+      // stays, and the copy goes.
+      await writeSeams.beforeRemove?.(src)
+      const now = await lstat(src).catch(() => null)
+      if (!now || !sameFile(now, info)) {
+        await removeIfSame(copy)(to).catch(() => {})
+        throw writtenWhileMoved(src)
+      }
       await unlink(src)
       return to
     }
     await landed(parent, to, removeIfSame(info))
+    // Linked, both names are one file: only a file saved over the old name since is another, and it is never unlinked.
+    await writeSeams.beforeRemove?.(src)
+    const now = await lstat(src).catch(() => null)
+    if (!now || now.ino !== info.ino || now.dev !== info.dev) {
+      await removeIfSame(info)(to).catch(() => {})
+      throw writtenWhileMoved(src)
+    }
     await unlink(src)
     return to
   }
@@ -379,8 +401,9 @@ export async function moveNoReplace(fence: WriteFence, from: string, toDir: stri
 async function moveAcross(fence: WriteFence, src: string, parent: string, to: string, made: Stats, sameDisk = false): Promise<string> {
   const undo = removeIfSame(made)
   const where = sameDisk ? 'here' : 'to another disk'
+  let tree: Awaited<ReturnType<typeof walk>>
   try {
-    const tree = await walk(src, 50_000)
+    tree = await walk(src, 50_000)
     if (tree.bytes > FOLDER_ACROSS_MAX) throw new FileRefused('too-big', `This folder is over 2 GB, too big to move ${where}.`)
     if (tree.links.length) throw new FileRefused('link', `This folder holds a link, which cannot be moved ${where}.`)
     await fillFolder(tree, src, to)
@@ -389,8 +412,15 @@ async function moveAcross(fence: WriteFence, src: string, parent: string, to: st
     await undo(to).catch(() => {})
     throw e
   }
-  // The source is removed only where it still really is.
+  // The source is removed only where it still really is, and only while it holds just the files copied, each as it
+  // was copied: a late write to a member, or a file added since, keeps the source whole, and the copy goes.
   if ((await admitPath(fence, src)) !== src) throw changed()
+  await writeSeams.beforeRemove?.(src)
+  const now = await walk(src, tree.files.length + tree.dirs.length + tree.links.length + 1).catch(() => null)
+  if (!now || now.files.length !== tree.files.length || now.dirs.length !== tree.dirs.length || now.links.length || now.files.some((f) => !tree.seen.has(f) || !sameFile(now.seen.get(f)!, tree.seen.get(f)!))) {
+    await undo(to).catch(() => {})
+    throw writtenWhileMoved(src)
+  }
   await rm(src, { recursive: true })
   return to
 }

@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fileDocName } from 'work-kit/collab-server'
@@ -16,6 +16,8 @@ import { files } from './index'
 import { movedSource } from './moved'
 import { keptDoc } from './word'
 import { madeFromShared } from '../docs/target'
+import { privateBranchDir } from '../history/privateBranches'
+import { servicePaths } from '../service/config'
 import { at, HOST, makeRig, window, WS, type Rig } from './testkit'
 
 /** Rename and move carry what hangs on a file (docs/agents/work-files.md "New, rename, move and copy"). */
@@ -99,6 +101,29 @@ describe('a rename carries what hangs on the file', () => {
     const item = rig.canvas.open('t1', { kind: 'sheet', source: at(inFolder('Budget.xlsx')), title: 'Budget.xlsx' })
     await call('work.files.move', { refs: [at(inFolder('Budget.xlsx'))], to: at(inFolder('Events')), op: op() })
     expect(sourceOf(item.id)).toEqual(at(inFolder('Events', 'Budget.xlsx')))
+  })
+})
+
+describe("an agent's pending suggestions on a document", () => {
+  it('follow a renamed .tcdoc and a moved folder, so he finds them at the new name', async () => {
+    const root = join(servicePaths(rig.ctx.dataDir).serviceDir, 'private-branches')
+    const keep = (path: string): string => {
+      const dir = privateBranchDir(root, path)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'index.json'), JSON.stringify([{ id: 'b1', path }]))
+      return dir
+    }
+    const was = keep(inFolder('Run of show.tcdoc'))
+    await rename(inFolder('Run of show.tcdoc'), 'Run of show v2.tcdoc')
+    expect(existsSync(was)).toBe(false)
+    expect(readFileSync(join(privateBranchDir(root, inFolder('Run of show v2.tcdoc')), 'index.json'), 'utf8')).toContain('Run of show.tcdoc')
+
+    writeFileSync(inFolder('Events', 'Plan.tcdoc'), '{}')
+    keep(inFolder('Events', 'Plan.tcdoc'))
+    await rename(inFolder('Events'), 'Shows')
+    expect(existsSync(join(privateBranchDir(root, inFolder('Shows', 'Plan.tcdoc')), 'index.json'))).toBe(true)
+    // A same-named document made at the old path later starts with none of them.
+    expect(existsSync(privateBranchDir(root, inFolder('Events', 'Plan.tcdoc')))).toBe(false)
   })
 })
 

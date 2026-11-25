@@ -20,6 +20,7 @@ import { WebSocketServer } from 'ws'
 import { PrivateBranchStore } from '../history/privateBranches'
 import { compactionSchedule } from './compaction'
 import { notServedWords } from './config'
+import { boundToFile } from '../docs/fileBound'
 import { storeBook } from '../docs/storeBook'
 import { docStateRev } from './docRevision'
 import { INTERNAL_ROUTES, routeFor } from './routes'
@@ -178,7 +179,8 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   }
   // The live documents' stores, each outcome written down: a tab's close is told the document is on disk only when it is.
   const stores = storeBook()
-  const liveFiles = stores.wrap(fileStore)
+  // A moved or renamed .tcdoc's document, still open at its old name, never makes the old file again (docs/fileBound.ts).
+  const liveFiles = stores.wrap(boundToFile(fileStore))
   const liveLifeos = stores.wrap(lifeosStore)
   const verifier = createCollabVerifier(() => trusted)
   const collab = createCollabServer({

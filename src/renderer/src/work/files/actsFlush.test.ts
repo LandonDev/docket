@@ -21,13 +21,13 @@ vi.mock("./store", () => ({ tabsNow: () => world.tabs, closeTab: vi.fn() }));
 vi.mock("../../chrome/ConfirmDialog", () => ({ confirmAction: async (ask: { title: string; body?: string }) => (world.asked.push(ask), world.answer) }));
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: vi.fn(), error: vi.fn() }) }));
 
-const { renameTo, trash } = await import("./acts");
+const { carryTo, renameTo, trash } = await import("./acts");
 const { registerFlush } = await import("../canvas/flush");
 
 const W = "/w/Events/Notes.txt";
 const entry = { key: `file:box:${W}`, ref: { at: "file", host: "box", path: W }, folder: null, name: "Notes.txt", kind: "text" } as FileEntry;
 const of = { workspaceId: "w1", home: "box" };
-const folder = { link: "box", place: { id: "folder", kind: "folder", name: "Events", host: "box", env: "box", shared: false, can: ["trash"], state: { state: "ok" }, root: { at: "file", host: "box", path: "/w" } } } as never;
+const folder = { link: "box", place: { id: "folder", kind: "folder", name: "Events", host: "box", env: "box", shared: false, can: ["trash", "rename", "move"], state: { state: "ok" }, root: { at: "file", host: "box", path: "/w" } } } as never;
 const tab: FileTab = { id: "t1", kind: "file", name: "Notes.txt", key: entry.key, itemId: "i1" };
 
 beforeEach(() => {
@@ -65,5 +65,17 @@ describe("a delete of a file whose tab still holds words", () => {
     await renameTo(of, folder, entry, "Practice.txt");
     off();
     expect(world.calls).toEqual(["flush", "work.files.rename"]);
+  });
+
+  it("keeps the file where it is when the tab's words did not go in: a rename or move would leave them at the old name", async () => {
+    const off = registerFlush("i1", async () => {
+      throw new Error("Your words are not in the file yet");
+    });
+    expect(await renameTo(of, folder, entry, "Practice.txt")).toBeNull();
+    const why: string[] = [];
+    expect(await carryTo(of, "move", folder, [entry], { copy: folder, at: { at: "file", host: "box", path: "/w/Archive" } as never, name: "Archive" }, undefined, (w) => void why.push(w))).toBe(false);
+    off();
+    expect(world.calls).toEqual([]);
+    expect(why[0]).toContain("Notes.txt");
   });
 });

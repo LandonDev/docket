@@ -103,6 +103,10 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // A file the Word store took from a workspace's folder (wordStore.ts): the old path, its copy, the store path a record
   // must name before the old one goes (`named`), and the sha256 it was copied with (null for a folder of branches).
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_word_moved (old TEXT PRIMARY KEY, new TEXT NOT NULL, named TEXT NOT NULL, sha TEXT, at INTEGER NOT NULL)`)
+  // Each rename or move made here (moved.ts `fileMoved`): the old path, the new one and when, in this host's clock. A copy
+  // of another host sent to the old path is told where its file went (copies.ts `writeBack`, `movedAway`).
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_moves (from_path TEXT NOT NULL, to_path TEXT NOT NULL, at INTEGER NOT NULL)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_moves_by_from ON work_files_moves (from_path)`)
   // A document's linked files (Save As…, saveAs.ts): where each lies, the format, the version and the document's live
   // revision last written to it, and how it stands (ok, waiting for its place, changed or gone there, refused).
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_links (
@@ -119,4 +123,4 @@ export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_source ON work_files_links (doc, state)`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays', 'work_files_bodies', 'work_files_word', 'work_files_word_moved', 'work_files_links'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays', 'work_files_bodies', 'work_files_word', 'work_files_word_moved', 'work_files_moves', 'work_files_links'] as const

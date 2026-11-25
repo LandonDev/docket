@@ -19,7 +19,7 @@ import { saveCopy, saveFile, versionWord, workDone } from './save'
 import { uploadPending, uploadWrote } from './uploads'
 import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
-import { farMoved } from './moved'
+import { farMoved, movedAway } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, runOp, versionOf, withFileLocks } from './write'
 import { bytesSink, copyFolderOf, farBytes, type FarPiece } from '../office/files/handle'
@@ -164,10 +164,16 @@ export const unreachable = (err: unknown): boolean =>
   isNotReachable(err) || err instanceof VmUnreachable || err instanceof OpLost || (err as { name?: string })?.name === 'PeerOfflineError' || /offline|no live link|timed out|timeout|unreachable|not answer|ECONNRE|socket hang up/i.test(message(err))
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
-export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {
+export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string, base?: string): Promise<WrittenBack> {
   // From the moment new bytes leave for the file, what OneDrive did with the last ones is not told of it (uploads.ts).
   if (!keep) uploadPending(ctx, r)
-  let got = await deliverOnce(ctx, r, data, keep, op)
+  let got = await deliverOnce(ctx, r, data, keep, op, base)
+  // The file was renamed or moved there since it was read, and its host says where (`movedAway`): every record of it
+  // here follows, open or closed (a copy, a Word file's, a Save As link's), though his window's own follow never came.
+  // This send is the old path's: its caller sends again to where the file lies now.
+  if ('conflict' in got && 'gone' in got.conflict && got.conflict.movedTo && got.conflict.movedTo !== r.path) {
+    if (farMoved(ctx.db, r.workspace_id, r.host, r.path, got.conflict.movedTo)) said(ctx, r.workspace_id)
+  }
   // SharePoint's own rewrite of an Office file in a Teams library, seconds after its upload, is no one's edit
   // (body.ts): found changed with its body as we last read or wrote it, the file is written over by its new version.
   if (!keep && 'conflict' in got && !('gone' in got.conflict)) {
@@ -189,7 +195,7 @@ export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'h
 }
 
 /** `op`: Keep Both's press, kept across a lost answer, so the file's computer answers it again rather than make a second file. */
-async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {
+async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string, base?: string): Promise<WrittenBack> {
   const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
   if (r.vm) {
     // The Windows VM's file: through this host's own door for his edit of that library, then the guest's versioned write.
@@ -211,7 +217,7 @@ async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host
   const origin: FileOrigin = { from: 'window' }
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id } } as never, r.host)
   // In pieces when it is over one (pieces.ts): never the whole file as one frame of the peer link.
-  return (await writeBackInPieces((method, params) => far.call('files', method, params), { workspaceId: r.workspace_id, ref, version: r.version, origin, ...(keep ? { copy: true, ...(op ? { op } : {}) } : {}) }, data)) as WrittenBack
+  return (await writeBackInPieces((method, params) => far.call('files', method, params), { workspaceId: r.workspace_id, ref, version: r.version, ...(base && base !== r.version ? { base } : {}), origin, ...(keep ? { copy: true, ...(op ? { op } : {}) } : {}) }, data)) as WrittenBack
 }
 
 /** One look: the copy's bytes as they lie, sent when they differ from what the file holds. */
@@ -677,7 +683,7 @@ export function reopened(ctx: Pick<WorkCtx, 'db'>, r: CopyRow): void {
  * keep-both name, never over anything. `into`: Save as Word to… a library folder here: `ref` names the new file,
  * made in its folder under a free name through New's door (`make`), never over anything.
  */
-export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; pieces?: PieceRef; version: string; copy?: boolean; into?: boolean; op?: string; origin: FileOrigin }, method: string): Promise<WrittenBack> {
+export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; pieces?: PieceRef; version: string; base?: string; copy?: boolean; into?: boolean; op?: string; origin: FileOrigin }, method: string): Promise<WrittenBack> {
   if (by.kind !== 'remote' || !by.peer) throw new Error(ONLY_HOST)
   // Sent in pieces (pieces.ts), kept here for this write alone; the door below admits the write as it always did.
   const data = p.pieces ? takePieces(by, p.workspaceId, p.pieces) : Buffer.from(p.data, 'base64')
@@ -712,6 +718,21 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     }
     // Keep Both's press asked again after its answer was lost: the file it made is answered, and nothing is made twice.
     return p.op ? runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'writeBack.copy', refs: { ref: p.ref } }, keep) : keep()
+  }
+  // A copy of a file renamed or moved here since the version it was made of is that file's (moved.ts `movedAway`):
+  // nothing is written at the old path, even over a file of the same bytes put there since; it is told where the file
+  // lies now, when that is a file the same door admits.
+  const away = movedAway(ctx.db, path, Number((p.base ?? p.version).split(':')[1]) || 0)
+  if (away !== null && away !== path) {
+    const to: CanvasSource = { at: 'file', host: p.ref.host, path: away }
+    try {
+      admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [to], origin: p.origin }, method)
+      const there = locate(ctx, by, p.workspaceId, to, method)
+      if (there.in === 'library' && !there.library.vm) return { conflict: { gone: true, movedTo: away } }
+    } catch {
+      // Not his to write there now: the copy waits as gone, with Keep Both.
+    }
+    return { conflict: { gone: true } }
   }
   let at: ReturnType<typeof locate>
   try {

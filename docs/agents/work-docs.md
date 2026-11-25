@@ -736,7 +736,17 @@ else reads.
   never in the zip (history/privateBranches.ts): a path's sharing can change
   with no write. An older file's agent branches move out at the first touch;
   a decided one is removed. A Word author's and his own restore's stay in
-  the file. Keyed by path: a moved `.tcdoc` leaves them behind.
+  the file. Keyed by path, they follow a renamed or moved `.tcdoc` (one in a
+  moved folder too) to its new name (files/moved.ts `moveBranches`); a
+  folder already kept for the new name is never merged into, and the log
+  says the suggestions stayed. A document made at the old name later starts
+  with none.
+- **A moved `.tcdoc`'s live document stores only over the file it was
+  loaded from** (docs/fileBound.ts, around the service's file store): no
+  file at its path, or a file there with another id
+  (guests/fileIdent.ts), and the store is refused as "not found", so a room
+  still open at the old name never makes the old file again or writes over
+  a file put there since; work-kit keeps those edits in its journal.
 - **Exports leave every agent suggestion out**, on any document, shared or
   not: Word, OpenDocument, Rich Text, Markdown and Preview's render. The
   answer counts them (`heldSuggestions`) and Preview says "3 suggestions

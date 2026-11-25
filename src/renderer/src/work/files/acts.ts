@@ -84,8 +84,10 @@ export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, na
     [entry.key],
     { word: "Renaming…", name: next },
     async () => {
-      // What an open tab on it holds goes in first; words still waiting follow the file to its new name.
-      await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
+      // What an open tab on it holds goes in first; words still waiting follow the file to its new name. Words that
+      // did not go in keep the file where it is: its editor could not hand them to the new name.
+      const unsaved = await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
+      if (unsaved) return (failed(`${entry.name} was not renamed`, new Error(notHandedOff(unsaved))), null);
       try {
         const done = await filesLink(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
         const made = done.entries[0];
@@ -100,10 +102,19 @@ export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, na
   );
 }
 
+/** Why a rename or move was refused while an open tab's words had not gone into the file. */
+export const notHandedOff = (name: string): string => `What ${name} holds has not gone into the file yet, so it stays where it is. Try again once it saves.`;
+
+/** How long apart the follow is asked again when its answer did not come. */
+export const FOLLOW_TRIES_MS = [1000, 4000] as const;
+
 /**
- * A file of another host renamed or moved there: the workspace's own host keeps its open copy, which follows to where
- * the file now lies, so his next edit is sent there (files/copies.ts `copiesMoved`). A host of this host's own carries
- * its copies itself. An older workspace host that does not know the verb leaves the copy as it was.
+ * A file of another host renamed or moved there: the workspace's own host keeps its copies of it (an open tab's, a
+ * closed tab's waiting copy, a Word file's record, a Save As link), which follow to where the file now lies, so his
+ * next edit is sent there (files/copies.ts `copiesMoved`). Asked whether or not a tab here shows it, and asked again
+ * when no answer came; a follow that never lands is made good by the file's own host, which tells a send to the old
+ * path where the file went (files/moved.ts `movedAway`). A host of this host's own carries its copies itself. An
+ * older workspace host that does not know the verb leaves the copy as it was.
  */
 async function copiesFollow(of: ActsOf, copy: PlaceCopy, pairs: readonly [FileEntry, FileEntry][]): Promise<void> {
   if (copy.link === of.home) return;
@@ -112,8 +123,14 @@ async function copiesFollow(of: ActsOf, copy: PlaceCopy, pairs: readonly [FileEn
     const to = refOf(now);
     return from.at === "file" && to.at === "file" && from.path !== to.path ? [{ from, to }] : [];
   });
-  if (!moves.length || !tabsOn(tabsNow(of.home, of.workspaceId), pairs.map(([was]) => was)).length) return;
-  await registry.linkOf(of.home).request("work.files.copiesMoved", { workspaceId: of.workspaceId, moves }).catch(() => undefined);
+  if (!moves.length) return;
+  const ask = () => registry.linkOf(of.home).request("work.files.copiesMoved", { workspaceId: of.workspaceId, moves });
+  // The first ask is waited on; the tries after it run on their own, so the act's toast never waits on a far host.
+  const again = (left: readonly number[]): void => {
+    if (!left.length) return;
+    setTimeout(() => void ask().catch(() => again(left.slice(1))), left[0]);
+  };
+  await ask().catch(() => again(FOLLOW_TRIES_MS));
 }
 
 /**
@@ -157,7 +174,11 @@ export async function carryTo(
   if (no) return didNot(new Error(no.text));
   const question = questionFor(from.place, verb, entries[0], to.copy.place);
   if (question && !(await confirmAction({ title: question.split("? ")[0]! + "?", body: question.split("? ").slice(1).join("? ") || undefined, action: verb === "move" ? "Move" : "Copy" }))) return false;
-  if (verb === "move") await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
+  if (verb === "move") {
+    // Words an open tab holds go in first; a tab whose words did not go in keeps its file where it is.
+    const unsaved = await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
+    if (unsaved) return didNot(new Error(notHandedOff(unsaved)));
+  }
   try {
     const done = await marking(
       of,

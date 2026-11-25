@@ -183,6 +183,8 @@ async function putOver(ctx: WorkCtx, r: Spot & { version: string }, data: Buffer
   const vmHere = r.host === ctx.host && !!r.vm
   if (vmHere) uploadPending(ctx, r)
   const got = r.host === ctx.host ? await writeBytes(ctx, LOCAL, { workspaceId: r.workspace_id, ref: { at: 'file', host: r.host, path: r.path }, data, version: r.version }, METHOD) : await deliver(ctx, { ...r, vm: 0 }, data, false)
+  // The linked file was renamed or moved there: the link has followed it (`deliver`), and this write goes there, once.
+  if ('conflict' in got && 'gone' in got.conflict && got.conflict.movedTo && got.conflict.movedTo !== r.path) return putOver(ctx, { ...r, path: got.conflict.movedTo }, data)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) throw new Error('The file was not written.')
   if (vmHere) uploadWrote(ctx, r)

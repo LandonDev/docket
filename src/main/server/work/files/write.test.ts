@@ -277,6 +277,44 @@ describe('across volumes', () => {
     expect(readFileSync(join(root, 'f', 'x'), 'utf8')).toBe('x')
   })
 
+  it('keeps a file written after it was copied, and the copy goes', async () => {
+    writeSeams.across = true
+    const file = put(join(root, 'a.txt'), 'A')
+    mkdirSync(join(root, 'sub'))
+    // A late save lands between the checked copy and the source's removal: a write in place, then one that replaces it.
+    writeSeams.beforeRemove = (src) => writeFileSync(src, 'A, and his late words')
+    await refusedWith(moveNoReplace(fence, file, join(root, 'sub'), 'a.txt'), 'busy')
+    expect(readFileSync(file, 'utf8')).toBe('A, and his late words')
+    expect(readdirSync(join(root, 'sub'))).toEqual([])
+    writeSeams.beforeRemove = (src) => (writeFileSync(`${src}.new`, 'B'), renameSync(`${src}.new`, src))
+    await refusedWith(moveNoReplace(fence, file, join(root, 'sub'), 'a.txt'), 'busy')
+    expect(readFileSync(file, 'utf8')).toBe('B')
+    expect(readdirSync(join(root, 'sub'))).toEqual([])
+  })
+
+  it('keeps a folder whose copied member was written, or which gained a file, after the copy', async () => {
+    writeSeams.across = true
+    mkdirSync(join(root, 'f', 'deep'), { recursive: true })
+    put(join(root, 'f', 'deep', 'two'), '22')
+    writeSeams.beforeRemove = (src) => writeFileSync(join(src, 'deep', 'two'), '22, and a late write')
+    await refusedWith(moveNoReplace(fence, join(root, 'f'), root, 'g'), 'busy')
+    expect(readFileSync(join(root, 'f', 'deep', 'two'), 'utf8')).toBe('22, and a late write')
+    expect(existsSync(join(root, 'g'))).toBe(false)
+    writeSeams.beforeRemove = (src) => writeFileSync(join(src, 'late'), 'new')
+    await refusedWith(moveNoReplace(fence, join(root, 'f'), root, 'g'), 'busy')
+    expect(readFileSync(join(root, 'f', 'late'), 'utf8')).toBe('new')
+    expect(existsSync(join(root, 'g'))).toBe(false)
+  })
+
+  it('never unlinks a file saved over the source between the link and the unlink', async () => {
+    const file = put(join(root, 'a.txt'), 'A')
+    mkdirSync(join(root, 'sub'))
+    writeSeams.beforeRemove = (src) => (writeFileSync(`${src}.new`, 'B'), renameSync(`${src}.new`, src))
+    await refusedWith(moveNoReplace(fence, file, join(root, 'sub'), 'a.txt'), 'busy')
+    expect(readFileSync(file, 'utf8')).toBe('B')
+    expect(readdirSync(join(root, 'sub'))).toEqual([])
+  })
+
   it('refuses to move a folder that holds a link, since the copy would drop it', async () => {
     writeSeams.across = true
     mkdirSync(join(root, 'f'))

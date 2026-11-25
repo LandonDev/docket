@@ -7,13 +7,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileTab } from "@shared/contract-work-files";
 import type { FileEntry } from "@shared/work/files";
 
-const world = vi.hoisted(() => ({ calls: [] as { link: string; method: string; params: Record<string, unknown> }[], tabs: [] as FileTab[], answers: {} as Record<string, unknown> }));
+const world = vi.hoisted(() => ({ calls: [] as { link: string; method: string; params: Record<string, unknown> }[], tabs: [] as FileTab[], answers: {} as Record<string, unknown>, fail: null as ((method: string) => boolean) | null }));
 
 vi.mock("../../lib/connection", () => ({
   registry: {
     has: () => true,
     linkOf: (link: string) => ({
-      request: async (method: string, params: Record<string, unknown>) => (world.calls.push({ link, method, params }), world.answers[method] ?? {}),
+      request: async (method: string, params: Record<string, unknown>) => {
+        world.calls.push({ link, method, params });
+        if (world.fail?.(method)) throw new Error("No answer: timed out");
+        return world.answers[method] ?? {};
+      },
     }),
   },
 }));
@@ -33,6 +37,7 @@ beforeEach(() => {
   world.calls = [];
   world.tabs = [];
   world.answers = {};
+  world.fail = null;
 });
 
 describe("a far file whose copy is open", () => {
@@ -62,11 +67,30 @@ describe("a far file whose copy is open", () => {
     expect(movedPairs([a, b, c], went).map(([x, y]) => [x.ref, y.ref])).toEqual([[c.ref, { at: "file", host: MAC, path: "/T/Out/Roster.xlsx" }]]);
   });
 
-  it("asks nothing more when no tab holds a copy of it, or when the file is the workspace host's own", async () => {
+  it("tells it though no tab here shows the file: a closed tab's waiting copy, a Word file's record or a link follow too", async () => {
     world.answers["work.files.rename"] = { entries: [file("/T/General/Roster 2026.xlsx")], refused: [], op: "o" };
     await renameTo(of, macCopy, file("/T/General/Roster.xlsx"), "Roster 2026.xlsx");
+    expect(world.calls.map((c) => c.method)).toEqual(["work.files.rename", "work.files.copiesMoved"]);
+  });
+
+  it("asks nothing more when the file is the workspace host's own: that host carries its copies itself", async () => {
     world.tabs = [copyTab("/T/General/Roster.xlsx")];
+    world.answers["work.files.rename"] = { entries: [file("/T/General/Roster 2026.xlsx")], refused: [], op: "o" };
     await renameTo(of, { ...(macCopy as object), link: "box" } as never, file("/T/General/Roster.xlsx"), "Roster 2026.xlsx");
-    expect(world.calls.map((c) => c.method)).toEqual(["work.files.rename", "work.files.rename"]);
+    expect(world.calls.map((c) => c.method)).toEqual(["work.files.rename"]);
+  });
+
+  it("asks again when the follow's answer was lost, until one comes", async () => {
+    vi.useFakeTimers();
+    try {
+      world.answers["work.files.rename"] = { entries: [file("/T/General/Roster 2026.xlsx")], refused: [], op: "o" };
+      let lost = 2;
+      world.fail = (method) => method === "work.files.copiesMoved" && lost-- > 0;
+      await renameTo(of, macCopy, file("/T/General/Roster.xlsx"), "Roster 2026.xlsx");
+      await vi.runAllTimersAsync();
+      expect(world.calls.filter((c) => c.method === "work.files.copiesMoved")).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

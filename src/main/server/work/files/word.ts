@@ -401,7 +401,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   const data = Buffer.from(out.data, 'base64')
   // Kept until the answer: a send whose answer is lost is known as his own on the next press.
   if (!p.keep) ctx.db.prepare(`UPDATE work_files_word SET tried_sha = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(shaOf(data), r.workspace_id, r.host, r.path)
-  const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
+  // The version it was read at goes too: a move there since is followed, never a file put at the old path (copies.ts `deliver`).
+  const got = await deliver(ctx, { ...row, version }, data, !!p.keep, undefined, row.version)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
