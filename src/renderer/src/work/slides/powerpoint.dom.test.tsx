@@ -29,7 +29,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...real, registry };
 });
 
-import { forgetPowerPoint, hostOf, InPowerPoint, openInPowerPoint, presentInPowerPoint, useInPowerPoint, useOpening } from "./powerpoint";
+import { computerOf, forgetPowerPoint, hostOf, InPowerPoint, openInPowerPoint, presentInPowerPoint, useInPowerPoint, useOpening } from "./powerpoint";
 
 const VIEW = { slides: [] } as unknown as DeckView;
 const deckOn = (host: string): CanvasSource => ({ at: "file", host, path: "/work/deck.pptx" });
@@ -88,7 +88,7 @@ describe("a deck's computer, as this window names it", () => {
   it("fills the pane with each state, and words a failure as every viewer does, with Retry", async () => {
     const source = deckOn("env_elsewhere");
     const retry = vi.fn();
-    render(<InPowerPoint itemId="item" onRetry={retry} />);
+    render(<InPowerPoint itemId="item" on={null} onRetry={retry} />);
     await openInPowerPoint("item", source, "local");
     const failed = await waitFor(() => document.querySelector<HTMLElement>("[data-in-powerpoint='failed']")!);
     // A content-width item of the deck's preview row still fills it, so the words stand in the pane's middle.
@@ -111,5 +111,15 @@ describe("a deck's computer, as this window names it", () => {
     expect(hostOf({ at: "thread", path: "deck.pptx" } as CanvasSource, "local")).toBe("local");
     void presentInPowerPoint(deckOn("env_mac"), "local");
     expect(await answer(mac, "work.office.present", { presented: true })).toEqual({ source: deckOn("env_mac") });
+  });
+  it("names the computer the deck opened on, as the rail names it in a line", async () => {
+    render(<InPowerPoint itemId="named" on="the box" onRetry={() => undefined} />);
+    expect(screen.getByText("In PowerPoint")).toBeTruthy();
+    expect(screen.getByText("On the box")).toBeTruthy();
+    cleanup();
+    // A computer this window has no way to: the title alone.
+    render(<InPowerPoint itemId="named" on={null} onRetry={() => undefined} />);
+    expect(document.querySelector("[data-in-powerpoint='open']")!.textContent).toBe("In PowerPoint");
+    expect(computerOf(deckOn("env_nowhere"), "local")).toBeNull();
   });
 });

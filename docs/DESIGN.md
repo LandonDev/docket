@@ -1481,6 +1481,9 @@ The kinds, each a hand-made body built from components/ui:
   notes" when empty, kept after a 2s pause, on leaving it and on Escape,
   as the typing box is. The
   TempCode and PowerPoint switch sits in the tab row, as the sheet's does.
+  Its PowerPoint side is the empty state "In PowerPoint" with the computer
+  it opened on as its line ("On the box", "On this Mac"), so from another
+  computer he knows where the window is.
 - **Images and video.** The frame at radius 8 on `stage` with a 12px
   inset; the scrubber a 24px hit row with a 4px `track`, a 12px head and
   2 by 6 ticks in `success`; the transport 32px; list rows 32px or more on

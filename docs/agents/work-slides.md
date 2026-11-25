@@ -1440,7 +1440,9 @@ How it works:
   file is on (`work.office.status` asked of that host, `powerpoint.tsx`
   `usePowerPointOn`); where it is not, the switch is absent, never greyed.
   The PowerPoint side opens the deck there (`work.office.switch`), and the
-  canvas says "In PowerPoint", centred (a spinner and "Opening in PowerPoint…"
+  canvas says "In PowerPoint", centred, over "On" and the computer as the
+  rail names it in a line (`hostName` of `hostOf`; none where the window
+  has no way to it) (a spinner and "Opening in PowerPoint…"
   while the switch runs; "Couldn't open it in PowerPoint" with the
   office pillar's words and Try again when it fails); the bar says how many
   suggestions wait in TempCode, with Review to go back to them.

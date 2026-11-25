@@ -46,7 +46,7 @@ import { askPreview, PreviewOpener } from "./preview/ask";
 import { DeckPreviewLayer } from "./preview/DeckPreview";
 import { NoticeLine, useSlideFileActions } from "./slideFileActions";
 import { Clicker, useClickerShow } from "./show/Clicker";
-import { InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
+import { computerOf, InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
 import { forgetWithItems } from "../canvas/gone";
 
 export { freePage } from "./Picture";
@@ -344,7 +344,7 @@ export function SlidesBody({
   // export first has nothing to try again.
   if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : retry} />;
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
-  if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => openInPowerPoint(item.id, source, env, { again: true })} />;
+  if (side === "powerpoint") return <InPowerPoint itemId={item.id} on={computerOf(source, env)} onRetry={() => openInPowerPoint(item.id, source, env, { again: true })} />;
 
   const revOf = (doc: PdfDoc): string | null => (filePictures.holds(doc) ? fileState.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];

@@ -5,6 +5,7 @@ import { effectsChanged } from "@shared/work/deckShow";
 import type { CanvasSource } from "@shared/work";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
+import { hostName } from "../../lib/threadResources";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -146,8 +147,18 @@ export function openInPowerPoint(itemId: string, source: CanvasSource, env: stri
   );
 }
 
-/** The canvas while the deck is in PowerPoint: the bar says how many suggestions wait here, with Review. */
-export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): void | Promise<void> }) {
+/** The computer a deck's PowerPoint opens on, as the rail names it in a line ("the box", "this Mac"); null where this window does not know it. */
+export function computerOf(source: CanvasSource, env: string): string | null {
+  const host = hostOf(source, env);
+  return host && registry.environment?.(host) ? hostName(host) : null;
+}
+
+/**
+ * The canvas while the deck is in PowerPoint: the bar says how many suggestions wait here, with Review. `on`, the
+ * computer it opened on in a line (`computerOf`): named under the title, so from another computer he knows where to
+ * look.
+ */
+export function InPowerPoint({ itemId, on, onRetry }: { itemId: string; on: string | null; onRetry(): void | Promise<void> }) {
   const opening = useOpening(itemId);
   const [retrying, setRetrying] = useState(false);
   if (opening?.state === "opening")
@@ -177,7 +188,7 @@ export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): v
     // A noun, centred as every empty pane is: a verb here read as a press that did nothing. The tab row's switch is the way back.
     // Each state fills the pane, also as a content-width item of the deck's preview row (DeckPreviewLayer).
     <div data-in-powerpoint="open" className="flex size-full flex-1">
-      <EmptyState title="In PowerPoint" />
+      <EmptyState title="In PowerPoint" {...(on ? { line: `On ${on}` } : {})} />
     </div>
   );
 }

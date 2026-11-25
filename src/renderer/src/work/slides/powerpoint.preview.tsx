@@ -6,7 +6,7 @@ export function InPowerPointPreview({ state = "open" }: { state?: "open" | "open
   sayOpening("preview", state === "failed" ? { state, error: "Microsoft PowerPoint is not installed on this Mac." } : { state });
   return (
     <div className="h-[280px] w-[480px] rounded-xl border border-border">
-      <InPowerPoint itemId="preview" onRetry={() => undefined} />
+      <InPowerPoint itemId="preview" on="the box" onRetry={() => undefined} />
     </div>
   );
 }
