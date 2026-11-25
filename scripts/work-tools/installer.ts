@@ -563,7 +563,7 @@ export async function probed(
   entry: ToolPlatformEntry,
   dir: string,
   state: ToolchainState,
-  opts: Pick<InstallOptions, 'dataDir' | 'nodeBin'>,
+  opts: Pick<InstallOptions, 'dataDir' | 'nodeBin'> & Partial<Pick<InstallOptions, 'manifestsDir'>>,
   run: Run,
   what: 'probe' | 'build' = 'probe'
 ): Promise<{ ok: boolean; probed?: string; error?: string }> {
@@ -572,8 +572,12 @@ export async function probed(
   try {
     for (const [name, text] of Object.entries(tool.probe.write ?? {})) writeFileSync(join(tmp, name), text)
     const fill = (s: string): string =>
-      s.replace(/\{(bin(?::[a-z0-9-]+)?|dir|tmp|tmpUrl|node)\}/g, (_m, key: string) => {
+      s.replace(/\{(bin(?::[a-z0-9-]+)?|dir|tmp|tmpUrl|node|manifests)\}/g, (_m, key: string) => {
         if (key === 'dir') return dir
+        if (key === 'manifests') {
+          if (!opts.manifestsDir) throw new Error(`the ${what} names {manifests}, and no manifests folder was given`)
+          return opts.manifestsDir
+        }
         if (key === 'tmp') return tmp
         if (key === 'tmpUrl') return pathToFileURL(tmp).href
         if (key === 'node') return opts.nodeBin ?? process.execPath

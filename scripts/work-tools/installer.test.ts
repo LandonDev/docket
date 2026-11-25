@@ -385,6 +385,41 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     expect(tool.licenceNote).toMatch(/none is linked into our code, bundled, or shipped in the app/)
   })
 
+  it("the Windows VM's pillar names virtio-win's display driver: the 0.1.302 image pinned by sha256, its viogpudo folder taken out with no mount and no root", () => {
+    const tool = loadManifests(join(import.meta.dirname)).find((t) => t.name === 'virtio-win')!
+    expect(tool).toMatchObject({ pillar: 'winvm', file: 'winvm.json', version: '0.1.302', licence: 'BSD-3-Clause' })
+    const entry = tool.platforms['linux-x64']!
+    expect(entry.kind).toBe('build')
+    expect(entry.files).toEqual([
+      {
+        url: 'https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso',
+        sha256: '303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d',
+        size: 877373440,
+        into: 'iso',
+        raw: true
+      }
+    ])
+    const build = entry.build![0].run.join(' ')
+    expect(build).toContain('python3 -I')
+    expect(build).toContain('{manifests}/iso-folder.py')
+    expect(build).toContain('viogpudo/w11/amd64')
+    // the image goes once its folder is out: 877 MB the box does not keep
+    expect(build).toContain('rm -rf "$2/iso"')
+    expect(existsSync(join(import.meta.dirname, 'iso-folder.py'))).toBe(true)
+    expect(entry.bin).toBe('viogpudo/viogpudo.inf')
+    expect(entry.check).toEqual(['viogpudo/viogpudo.sys', 'viogpudo/viogpudo.cat'])
+    expect(tool.licenceNote).toMatch(/None is linked into our code, bundled, or shipped in the app/)
+  })
+
+  it('a build step reaches a helper beside the manifests by {manifests}', async () => {
+    const dir = join(root, 'manifests')
+    writeFileSync(join(mkdirSync(dir, { recursive: true }) ?? dir, 'helper.sh'), '#!/bin/sh\nset -e\nmkdir -p "$1/out" "$1/sys/usr/share"\nprintf "hello from the tree" > "$1/sys/usr/share/greeting"\nprintf \'#!/bin/sh\\necho "hello from the tree, built in place"\\n\' > "$1/out/greet"\nchmod +x "$1/out/greet"\n')
+    const steps = [{ run: ['sh', '{manifests}/helper.sh', '{dir}'], expectFile: '{dir}/out/greet' }]
+    manifest(dir, 'p.json', 'pillar', [buildTool('helped', [{ ...sources('helped'), into: 'src' }], steps)])
+    const { state } = await install(opts(dir))
+    expect(state.tools.helped).toMatchObject({ ok: true })
+  })
+
   it('refuses a pip line with no hashes and a file that would land outside its folder', () => {
     const pip = (packages: string[]) => ({ pillar: 'p', tools: [{ ...(tool('pp', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64) }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages, bin: 'bin/python' } } }] })
     expect(ToolManifestSchema.safeParse(pip(['python-pptx==1.0.2'])).success).toBe(false)

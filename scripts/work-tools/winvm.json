@@ -69,6 +69,60 @@
           }
         ]
       }
+    },
+    {
+      "name": "virtio-win",
+      "version": "0.1.302",
+      "licence": "BSD-3-Clause",
+      "licenceNote": "Red Hat's VirtIO GPU display driver for Windows (viogpudo, BSD-3-Clause, signed by Microsoft's Windows Hardware Compatibility Publisher), the viogpudo\\w11\\amd64 folder of the virtio-win 0.1.302 image, taken out of the image on this host with no mount and no root (iso-folder.py), the image itself deleted after. The Windows VM's keeper copies the folder into the guest and stages it with pnputil at his Turn on of live resize; it runs inside the guest's Windows alone. None is linked into our code, bundled, or shipped in the app.",
+      "homepage": "https://github.com/virtio-win/kvm-guest-drivers-windows",
+      "platforms": {
+        "linux-x64": {
+          "kind": "build",
+          "files": [
+            {
+              "url": "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso",
+              "sha256": "303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d",
+              "size": 877373440,
+              "into": "iso",
+              "raw": true
+            }
+          ],
+          "bin": "viogpudo/viogpudo.inf",
+          "check": [
+            "viogpudo/viogpudo.sys",
+            "viogpudo/viogpudo.cat"
+          ],
+          "build": [
+            {
+              "run": [
+                "sh",
+                "-c",
+                "set -e; python3 -I \"$1\" \"$2/iso/virtio-win-0.1.302.iso\" viogpudo/w11/amd64 \"$2/viogpudo\"; rm -rf \"$2/iso\"",
+                "build",
+                "{manifests}/iso-folder.py",
+                "{dir}"
+              ],
+              "expectFile": "{dir}/viogpudo/viogpudo.sys",
+              "timeoutMs": 300000
+            }
+          ]
+        }
+      },
+      "probe": {
+        "steps": [
+          {
+            "run": [
+              "sh",
+              "-c",
+              "grep -c 'VEN_1AF4&DEV_1050' \"$1/viogpudo/viogpudo.inf\"",
+              "probe",
+              "{dir}"
+            ],
+            "expect": "^[1-9]"
+          }
+        ]
+      }
     }
   ]
 }

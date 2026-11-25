@@ -46,7 +46,7 @@ const ToolFileSchema = z
   })
   .refine((f) => !!f.sha256 !== !!f.integrity, 'a file has a sha256 or an integrity, one of the two')
 
-/** One probe or build step. Placeholders: `{bin}`, `{bin:<other bin or tool>}`, `{dir}`, `{tmp}`, `{tmpUrl}` (file URL), `{node}` (the installer's own runtime). */
+/** One probe or build step. Placeholders: `{bin}`, `{bin:<other bin or tool>}`, `{dir}`, `{tmp}`, `{tmpUrl}` (file URL), `{node}` (the installer's own runtime), `{manifests}` (the folder of the manifests: a helper script beside them). */
 const ProbeStepSchema = z.object({
   run: z.array(z.string()).min(1),
   env: z.record(z.string(), z.string()).optional(),
