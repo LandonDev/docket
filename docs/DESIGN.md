@@ -2055,8 +2055,8 @@ Around the canvas:
   and Made by threads say so in one line over the list, and a row only
   that session opens (a LifeOS document, a mail's file) is greyed and
   shut, in every shape, Star still offered; the rest stay live. Found
-  anywhere, such a row opens from its own place, and Show in Its Folder
-  goes to its project, else the top of LifeOS.
+  anywhere, Recent and Starred too, such a row opens from its own place,
+  and Show in Its Folder goes to its project, else the top of LifeOS.
   A **file open as itself** has a 48px header: its kind's glyph in its
   tint, its name at 14px semibold, and under it one 12px muted line that
   says where it is kept ("In Events") or whose copy it is ("A copy from

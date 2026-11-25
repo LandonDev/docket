@@ -521,6 +521,25 @@ export async function searchLifeos(ctx: WorkCtx, workspace: WorkspaceRow | null,
     })
 }
 
+/**
+ * His marks' LifeOS rows (Recent, Starred) homed as a search's are: in LifeOS, under the project the catalog files
+ * them in, so Show in Its Folder is offered on them too. The catalog and the projects are the kept reads, waited for
+ * as Home's waiting rows are; with LifeOS down a row is still in LifeOS, with no project.
+ */
+export async function withLifeosHomes(ctx: WorkCtx, workspace: WorkspaceRow | null, entries: FileEntry[]): Promise<FileEntry[]> {
+  if (!entries.some((e) => e.ref?.at === 'lifeos')) return entries
+  const sector = workspace?.sector
+  const [rows, projects] = sector && ctx.lifeos.connected() ? await Promise.all([keptRead(ctx, `catalog|${sector}`, () => catalogOf(ctx, sector), { wait: FIRST_WAIT_MS }), projectsOf(ctx, sector, { wait: FIRST_WAIT_MS })]) : [null, null]
+  const names = new Map((projects ?? []).map((x) => [x._id, x.name]))
+  const byKey = new Map((rows ?? []).map((r) => [refKey(lifeosRef(r.table, r.id)), r]))
+  return entries.map((e) => {
+    if (e.ref?.at !== 'lifeos') return e
+    const projectId = byKey.get(refKey(e.ref))?.projectId
+    const project = projectId && names.has(projectId) ? { id: projectId, name: names.get(projectId)! } : null
+    return { ...e, ...(project ? { project } : {}), where: { place: PLACE.lifeos, name: 'LifeOS', trail: project ? [project.name] : [] } }
+  })
+}
+
 /** A LifeOS row again for `stat`: as the catalog has it now, or null when it is gone or not this workspace's. */
 export async function statLifeos(ctx: WorkCtx, by: Caller, workspaceId: string, ref: CanvasSource): Promise<FileEntry | null> {
   try {

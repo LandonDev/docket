@@ -1365,10 +1365,13 @@ greyed in every shape and shut (no open, no Open, Share… or Open in its app
 in their menu; Star stays), the files on disk live, each row live again on
 return (`sessionHeld` in Page.tsx, `readsSession` in lifeosPlace.ts).
 
-A LifeOS row or a mail's file found by Home, Go to or a search opens from its
-own place (`sessionCopyOf`: LifeOS, or From mail), and Show in Its Folder goes
-to its project's folder, else the top of LifeOS, or to From mail
-(`sessionFolderOf`). A folder whose read failed with nothing listed offers no
+A LifeOS row or a mail's file found by Home, Go to, a search, Recent or
+Starred opens from its own place (`sessionCopyOf`: LifeOS, or From mail), and
+Show in Its Folder goes to its project's folder, else the top of LifeOS, or to
+From mail (`sessionFolderOf`). The host homes his marks' LifeOS rows as a
+search's results are homed: in LifeOS, under the project the catalog files them
+in (`withLifeosHomes` in places/lifeos.ts, the kept catalog waited for as
+Home's waiting rows are; with LifeOS down, in LifeOS with no project). A folder whose read failed with nothing listed offers no
 New. Every Retry in the place spins on itself alone until its answer: a
 place's Retry until each host has said its places again (`reachAnswered`),
 Go to's "Couldn't load names" and a linked file's Retry (its menu stays open)

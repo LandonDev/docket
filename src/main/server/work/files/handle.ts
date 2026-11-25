@@ -35,7 +35,7 @@ import { changeElsewhere, farHostOf, filesAcross, restoreElsewhere, trashElsewhe
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace, type VmPage } from './places/teams'
 import { placeExtras } from './extras'
 import { admitCaller, admitWrite, primeReals, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
-import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
+import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withLifeosHomes, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
 import { TabStore } from './tabs'
@@ -257,7 +257,8 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
       const workspace = ownRows(ctx, by, p.workspaceId)
       const marks = at.id === PLACE.recent ? state.marks.recent(p.workspaceId) : at.id === PLACE.starred ? state.marks.starred(p.workspaceId) : state.marks.made(p.workspaceId)
       const libraries = listedLibraries(ctx, by)
-      const entries = marks.flatMap((m) => markEntry(ctx, by, m, workspace, libraries) ?? [])
+      // A LifeOS row is homed in LifeOS and its project, as a search's result is, so it can be shown in its folder.
+      const entries = await withLifeosHomes(ctx, workspace, marks.flatMap((m) => markEntry(ctx, by, m, workspace, libraries) ?? []))
       return { entries: p.foldersOnly ? entries.filter((e) => e.kind === 'folder') : entries, place: at.id, trail: [{ name: at.id === PLACE.recent ? 'Recent' : at.id === PLACE.starred ? 'Starred' : 'Made by threads', at: { at: 'place', id: at.id } }] }
     }
     if (at.id === PLACE.trash) {

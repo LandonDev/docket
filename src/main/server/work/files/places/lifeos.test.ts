@@ -522,6 +522,20 @@ describe('opening', () => {
     expect(again.tabId).toBe(opened.tabId)
     expect((await call<FilesOpened>('work.files.open', { ref: sheet('s1') })).item!.kind).toBe('sheet')
   })
+
+  it('homes a LifeOS row in Recent as a search does: in LifeOS, under its project, so it can be shown in its folder', async () => {
+    await call<FilesOpened>('work.files.open', { ref: doc('d1') })
+    await call<FilesOpened>('work.files.open', { ref: sheet('s1') })
+    const recent = (await list({ at: 'place', id: 'recent' })).entries
+    expect(recent.find((e) => e.key === 'lifeos:docs:d1')).toMatchObject({ project: { id: 'p1', name: 'Spring LAN' }, where: { place: 'lifeos', name: 'LifeOS', trail: ['Spring LAN'] } })
+    const loose = recent.find((e) => e.key === 'lifeos:sheets:s1')!
+    expect(loose.where).toEqual({ place: 'lifeos', name: 'LifeOS', trail: [] })
+    expect(loose.project).toBeUndefined()
+    // With LifeOS down the row is still in LifeOS, and Recent does not wait on it.
+    fresh()
+    lifeos.up = false
+    expect((await list({ at: 'place', id: 'recent' })).entries.find((e) => e.key === 'lifeos:docs:d1')?.where).toEqual({ place: 'lifeos', name: 'LifeOS', trail: [] })
+  })
 })
 
 describe('From mail', () => {

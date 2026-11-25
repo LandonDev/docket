@@ -189,6 +189,24 @@ describe("a LifeOS row from Home or a search, signed in", () => {
     fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Show in Its Folder" }));
     await waitFor(() => expect(calls(again, "work.files.tabSet").at(-1)?.params.page).toMatchObject({ at: { at: "place", id: "lifeos" }, name: "LifeOS" }));
   });
+
+  it("offers Show in Its Folder on a LifeOS row in Recent and Starred too, and goes to its project", async () => {
+    setLifeosStatus("box", st("connected"));
+    // The host homes his marks' LifeOS rows as a search's results (places/lifeos.ts withLifeosHomes).
+    const inProject: FileEntry = { ...brief, project: { id: "p1", name: "Fall season" }, where: { place: "lifeos", name: "LifeOS", trail: ["Fall season"] } };
+    for (const lensId of ["recent", "starred"] as const) {
+      const tab: FileTab = { id: "t1", kind: "page", name: lensId, page: { at: { at: "place", id: lensId }, name: lensId } };
+      const host = standIn(tab, { lists: [() => ({ entries: [{ ...inProject, ...(lensId === "starred" ? { starred: true } : {}) }], trail: [] })] });
+      render(<View {...props} />);
+      await waitFor(() => expect(listRow("Sponsor brief")).toBeTruthy());
+      fireEvent.contextMenu(listRow("Sponsor brief"));
+      expect(await menuItems()).toContain("Show in Its Folder");
+      fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Show in Its Folder" }));
+      await waitFor(() => expect(calls(host, "work.files.tabSet").at(-1)?.params.page).toMatchObject({ at: { at: "project", id: "p1" }, name: "Fall season" }));
+      cleanup();
+      resetFilesStore();
+    }
+  });
 });
 
 describe("Recent and Starred while the host's LifeOS is down or on its way", () => {
