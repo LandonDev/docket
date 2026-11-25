@@ -288,6 +288,36 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
     expect(after).toContain('<a:r><a:rPr lang="en-US" dirty="0"/><a:t>This is slide </a:t></a:r><a:fld id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}" type="slidenum">')
   })
 
+  it('notes: Enter before a linked word, and Backspace that joins the lines again, keep the link and the runs they moved', async () => {
+    const pptx = new PptxGenJS()
+    pptx.addSlide().addNotes('Visit our site')
+    pptx.addSlide().addText('Second', { x: 1, y: 1, w: 4, h: 1 })
+    const zip = await JSZip.loadAsync((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
+    const notes = 'ppt/notesSlides/notesSlide1.xml'
+    const rels = 'ppt/notesSlides/_rels/notesSlide1.xml.rels'
+    const lead = '<a:r><a:rPr lang="en-US" dirty="0"/><a:t>Visit our </a:t></a:r>'
+    const link = '<a:r><a:rPr lang="en-US" b="1" dirty="0"><a:hlinkClick r:id="rIdJump" action="ppaction://hlinksldjump"/></a:rPr><a:t>site</a:t></a:r>'
+    zip.file(notes, (await zip.file(notes)!.async('string')).replace('<a:r><a:rPr lang="en-US" dirty="0"/><a:t>Visit our site</a:t></a:r>', lead + link))
+    zip.file(rels, (await zip.file(rels)!.async('string')).replace('</Relationships>', '<Relationship Id="rIdJump" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide2.xml"/></Relationships>'))
+    const input = file(await zip.generateAsync({ type: 'nodebuffer' }))
+    const [first] = (await inspect(input)).slides
+    const read = async (path: string) => (await JSZip.loadAsync(readFileSync(path))).file(notes)!.async('string')
+    // Enter before "site": the linked word starts the new paragraph with its own run, link and look.
+    const split = await apply(input, [{ op: 'notes', slide: first.id, text: 'Visit our \nsite' }], true)
+    expect((await inspect(split.output)).slides[0].notes).toBe('Visit our \nsite')
+    const xml = await read(split.output)
+    expect(xml).toMatch(new RegExp(`<a:p>(<a:pPr[^>]*/>)?${lead.replace(/[/]/g, '\\/')}<a:endParaRPr`))
+    expect(xml).toMatch(new RegExp(`<a:p>(<a:pPr[^>]*/>)?${link.replace(/[/]/g, '\\/')}<a:endParaRPr`))
+    // Enter inside the word, with a word typed: each half keeps the link, the new word its neighbour's run.
+    const inside = await apply(input, [{ op: 'notes', slide: first.id, text: 'Visit our si\nte now' }], true)
+    expect((await inspect(inside.output)).slides[0].notes).toBe('Visit our si\nte now')
+    expect((await read(inside.output)).match(/<a:hlinkClick r:id="rIdJump"/g)).toHaveLength(2)
+    // Backspace that joins them again: one paragraph, its runs as they were.
+    const joined = await apply(split.output, [{ op: 'notes', slide: first.id, text: 'Visit our site' }], true)
+    expect((await inspect(joined.output)).slides[0].notes).toBe('Visit our site')
+    expect(await read(joined.output)).toContain(lead + link)
+  })
+
   it('notes: refuses an edit of notes longer than the outline carries, so their cut tail is never written over', async () => {
     const pptx = new PptxGenJS()
     pptx.addSlide().addNotes('x'.repeat(20_001))

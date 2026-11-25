@@ -1153,8 +1153,13 @@ slide's.
   the words before and after the change keep their runs, links and fields;
   words put in at a run's edge go to the run before, unless it is a link or
   a field, where they get a run of their own in its look without the link),
-  a new one takes its neighbour's look, one gone is removed. Only a change
-  that puts in a line break rewrites the paragraph in its first run's look.
+  a new one takes its neighbour's look, one gone is removed. A paragraph split
+  by Enter, or two joined by Backspace, keeps its runs: each run, link and field
+  moves with its words into the paragraph they now fall in, a run cut where a
+  line now ends, and any words changed with it are put right as above
+  (`move_paragraphs`); the paragraph split off takes the look of the one its
+  words came from. Only a change that puts in a line break inside a paragraph
+  (`\v`, `a:br`) rewrites the paragraph in its first run's look.
   A key in the field never strips a colleague's looks from the rest.
 
 ### Tests

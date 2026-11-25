@@ -973,6 +973,70 @@ def set_paragraphs(txBody, paragraphs):
         txBody.remove(p)
 
 
+def move_paragraphs(ps, texts):
+    """Paragraphs split (Enter) or joined (Backspace at a line's start), maybe with words changed too: the runs, links
+    and fields move with their words into the paragraph they now fall in, a run cut where a line now ends; then each
+    paragraph's words are put right as edit_paragraph does. Paragraph i keeps paragraph i's look; one more copies the
+    look of the paragraph its words came from."""
+    old = ''.join(p_text(p) for p in ps)
+    new = ''.join(texts)
+    lo = 0
+    while lo < min(len(old), len(new)) and old[lo] == new[lo]:
+        lo += 1
+    tail = 0
+    while tail < min(len(old), len(new)) - lo and old[-1 - tail] == new[-1 - tail]:
+        tail += 1
+    # Where each new line ends in the old words: before the change as it is, after it shifted, inside it at its start.
+    ends, at = [], 0
+    for text in texts[:-1]:
+        at += len(text)
+        ends.append(at if at <= lo else at - len(new) + len(old) if at >= len(new) - tail else lo)
+    els, starts, pos = [], [], 0
+    for i, p in enumerate(ps):
+        starts.append(pos)
+        for el, a, b, w in segments(p):
+            els.append([el, pos + a, pos + b, i])
+        pos += len(p_text(p))
+    for cut in ends:
+        for item in els:
+            el, a, b, i = item
+            if a < cut < b and el.tag == qn('a:r'):
+                second = split_run(el, cut - a)
+                item[2] = cut
+                els.insert(els.index(item) + 1, [second, cut, b, i])
+                break
+    out = []
+    bounds = [0] + ends + [len(old)]
+    for j, text in enumerate(texts):
+        a, b = bounds[j], bounds[j + 1]
+        if j < len(ps):
+            p = ps[j]
+        else:
+            src = max((i for i, s in enumerate(starts) if s <= a), default=0)
+            p = copy.deepcopy(ps[src])
+        for child in list(p):
+            if child.tag in (qn('a:r'), qn('a:br'), qn('a:fld')):
+                p.remove(child)
+        out.append(p)
+    for el, a, b, i in els:
+        # Each run goes to the line its words start in (an empty one to the line it sits at the start of).
+        j = next(k for k in range(len(texts)) if a < bounds[k + 1] or k == len(texts) - 1)
+        p = out[j]
+        end = p.find(qn('a:endParaRPr'))
+        if end is not None:
+            end.addprevious(el)
+        else:
+            p.append(el)
+    for p, text in zip(out, texts):
+        if p_text(p) != text:
+            edit_paragraph(p, text)
+    return out
+
+
+def p_text(p):
+    return ''.join(w for _, _, _, w in segments(p))
+
+
 def keep_paragraphs(tf, texts):
     """His words over a text frame's paragraphs, rewriting only what changed: paragraphs matched by their words, one
     whose words are the same left as it is (its runs' looks, links and fields), one changed rewritten only in the runs
@@ -986,6 +1050,9 @@ def keep_paragraphs(tf, texts):
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, [p.text for p in paras], texts, autojunk=False).get_opcodes():
         if tag == 'equal':
             out.extend(ps[i1:i2])
+            continue
+        if tag == 'replace' and i2 - i1 != j2 - j1:
+            out.extend(move_paragraphs(ps[i1:i2], texts[j1:j2]))
             continue
         for k in range(j2 - j1):
             if i1 + k < i2:
