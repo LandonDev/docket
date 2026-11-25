@@ -153,6 +153,8 @@ describe("the kit's thread slots", () => {
     const { result, rerender } = renderHook(() => useThreadFacts("purdue"));
     expect(result.current.get("p-lan")?.words).toBe("Asks you");
     expect(result.current.has("p-quiet")).toBe(false);
+    // The cell's tip names the thread with its words (work-kit's ProjectThreadFact.title).
+    expect(result.current.get("p-lan")?.title).toBe("Thread t-asks");
     result.current.get("p-lan")!.open!();
     expect(opened).toEqual(["t-asks"]);
     // The same map while the roots are the same: the list's memoised rows keep their cell.

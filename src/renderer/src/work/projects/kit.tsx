@@ -210,7 +210,7 @@ export function useThreadFacts(sector: SectorKey): ReadonlyMap<string, ProjectTh
     const facts = new Map<string, ProjectThreadFact>();
     for (const [projectId, threads] of roots) {
       const lead = leadOf(threads);
-      if (lead?.outcome) facts.set(projectId, { mark: <OutcomeMark tone={lead.outcome.tone} />, words: lead.outcome.words, open: () => openThread(lead.sessionId) });
+      if (lead?.outcome) facts.set(projectId, { mark: <OutcomeMark tone={lead.outcome.tone} />, words: lead.outcome.words, title: lead.title, open: () => openThread(lead.sessionId) });
     }
     return facts;
   }, [roots]);
