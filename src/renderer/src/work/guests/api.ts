@@ -64,15 +64,16 @@ export function shareHomeOf(url: string): "Teams" | "OneDrive" {
 /**
  * A library file's own web page in his tenant, as the workspace's host knows it (`work.office.live.address`: the
  * library's web folder from its sync, or the address he gave), for Share in Teams; the Word file's for a document kept
- * for one. Null where the host knows none, or did not answer: Share in Teams is then greyed, never a guess.
+ * for one. Null where the host knows none: Share in Teams is then greyed, never a guess. Undefined where the ask did
+ * not get an answer: nothing is known, so a caller keeps nothing and asks again.
  */
-export async function filePageOf(env: string, workspaceId: string, source: CanvasSource): Promise<string | null> {
+export async function filePageOf(env: string, workspaceId: string, source: CanvasSource): Promise<string | null | undefined> {
   if (source.at !== "file" || !mayHavePage(source.path)) return null;
   try {
     const got = await registry.linkOf(env).request<{ address: string | null }>("work.office.live.address", { workspaceId, ref: source });
     return got.address ?? null;
   } catch {
-    return null;
+    return undefined;
   }
 }
 

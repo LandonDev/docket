@@ -13,7 +13,7 @@ import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
 const NAMES: Record<string, string> = { box: "The box", win: "Windows PC" };
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null, pages: {} as Record<string, string>, opened: [] as string[] }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null, pages: {} as Record<string, string>, opened: [] as string[], addressGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -30,6 +30,7 @@ vi.mock("../../lib/connection", async (original) => {
         calls.failOnce = false;
         throw new Error("LifeOS did not answer");
       }
+      if (method === "work.office.live.address" && calls.addressGate) await calls.addressGate;
       if (method === "work.office.live.address") return { address: calls.pages[(params.ref as { path: string }).path] ?? null, app: null };
       if (method === "work.guests.forItem" || method === "work.guests.list") return calls.links;
       if (method === "work.guests.create")
@@ -83,6 +84,7 @@ afterEach(() => {
   calls.down.clear();
   calls.downWords = {};
   calls.revokeGate = null;
+  calls.addressGate = null;
   calls.revokeRefusal = null;
   calls.itemGate = null;
   calls.pages = {};
@@ -205,6 +207,47 @@ describe("Share", () => {
     cleanup();
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Notes.tcdoc" }} kind="document" title="Notes" workspaceId="w1" />);
     expect(await screen.findByRole("button", { name: "Share" })).toBeTruthy();
+  });
+
+  it("draws Share at once while the host is asked for the file's page, then reads Share in Teams", async () => {
+    const { ShareButton } = await import("./Share");
+    let answer!: () => void;
+    calls.addressGate = new Promise((r) => (answer = r));
+    calls.pages = { "/w/Plan.tcdoc": "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1" };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    expect(screen.getByRole("button", { name: "Share" })).toBeTruthy();
+    await act(async () => answer());
+    expect(await screen.findByRole("button", { name: "Share in Teams" })).toBeTruthy();
+    calls.addressGate = null;
+  });
+
+  it("keeps only a real answer for a file's page: a lost one is asked again, never kept as none", async () => {
+    const { filePageOf } = await import("./api");
+    const src = { at: "file" as const, host: "box", path: "/w/Plan.docx" };
+    expect(await filePageOf("box", "w1", src)).toBeNull();
+    calls.down.add("box");
+    expect(await filePageOf("box", "w1", src)).toBeUndefined();
+  });
+
+  it("forgets a new link's address once that link is revoked, so it cannot be copied after", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.links = [];
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Sam Ortiz" } });
+    calls.links = [LINK];
+    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+    await screen.findByText("https://tempcode.landonhale.com/g/abc#k=secret");
+    fireEvent.click(await screen.findByRole("button", { name: "Sam Ortiz's link" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke…" }));
+    await waitFor(() => expect(screen.queryByText("https://tempcode.landonhale.com/g/abc#k=secret")).toBeNull());
+    expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
+  });
+
+  it("calls a document kept for a Teams file the Teams file opened here, never a copy", async () => {
+    const { SHARE_REFUSALS } = await import("@shared/work/guestRoles");
+    expect(SHARE_REFUSALS.teamsCopy).not.toMatch(/copy/i);
+    expect(SHARE_REFUSALS.teamsCopy).toContain("Share it from Teams");
   });
 
   it("says a host's refusal of a file as the sheet's one line, not as a failure", async () => {

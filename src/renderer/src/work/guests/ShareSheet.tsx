@@ -174,7 +174,7 @@ function Sharing({
           <ErrorLine error={error} />
         </form>
       )}
-      <LiveLinks env={home} rows={rows} error={listError} onRetry={() => load()} onChanged={() => void load()} onAddress={onMade} />
+      <LiveLinks env={home} rows={rows} error={listError} onRetry={() => load()} onChanged={() => void load()} onAddress={onMade} onRevoked={(id) => made?.link.id === id && onMade(null)} />
       {made ? (
         <DialogFooter start={<Button variant="ghost" size="sm" onClick={() => onMade(null)}>New link</Button>} confirmLabel="Done" onConfirm={onClose} />
       ) : (
@@ -193,6 +193,7 @@ function LiveLinks({
   onRetry,
   onChanged,
   onAddress,
+  onRevoked,
 }: {
   env: string;
   rows: GuestLinkRow[] | null;
@@ -200,6 +201,8 @@ function LiveLinks({
   onRetry(): Promise<void>;
   onChanged(): void;
   onAddress(made: { url: string; link: GuestLinkRow }): void;
+  /** A link revoked: its address shown above the list goes with it, so it cannot be copied after. */
+  onRevoked(linkId: string): void;
 }) {
   const [retrying, setRetrying] = useState(false);
   if (rows?.length === 0 && !error) return null;
@@ -211,7 +214,7 @@ function LiveLinks({
           <Skeleton className="h-3 w-40" />
         </div>
       ) : null}
-      {rows?.map((l) => <LinkRow key={l.id} env={env} link={l} onChanged={onChanged} onAddress={onAddress} />)}
+      {rows?.map((l) => <LinkRow key={l.id} env={env} link={l} onChanged={onChanged} onAddress={onAddress} onRevoked={onRevoked} />)}
       {error ? (
         <div className="flex min-h-11 items-center gap-2 px-2">
           <div className="min-w-0 flex-1">
@@ -234,7 +237,7 @@ function LiveLinks({
   );
 }
 
-function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: GuestLinkRow; onChanged(): void; onAddress(made: { url: string; link: GuestLinkRow }): void }) {
+function LinkRow({ env, link, onChanged, onAddress, onRevoked }: { env: string; link: GuestLinkRow; onChanged(): void; onAddress(made: { url: string; link: GuestLinkRow }): void; onRevoked(linkId: string): void }) {
   const roles = guestRolesOf(link.source.at === "file" ? link.source : { at: "lifeos", table: link.source.table });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,7 +264,7 @@ function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: Guest
   // Asked first, with no Undo after: a revoked address must never open again (decision 21).
   const revoke = async (): Promise<void> => {
     if (!(await confirmRevoke(link.name))) return;
-    await act(() => registry.linkOf(env).request("work.guests.revoke", { linkId: link.id }).then(() => undefined), "did not revoke the link");
+    await act(() => registry.linkOf(env).request("work.guests.revoke", { linkId: link.id }).then(() => onRevoked(link.id)), "did not revoke the link");
   };
   return (
     <div data-share-link={link.id} className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5">

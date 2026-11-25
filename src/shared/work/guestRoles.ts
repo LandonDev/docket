@@ -33,7 +33,7 @@ export const SHARE_REFUSALS = {
   word: 'Guest links open TempCode documents. Save As a TempCode document to share this one.',
   excel: 'Guest links open TempCode sheets. Save As a TempCode sheet to share this one.',
   teams: 'This file lives in Teams. Share it from Teams.',
-  teamsCopy: 'This is a copy of a file in Teams. Share the file from Teams.',
+  teamsCopy: 'This document is a Teams file opened here. Share it from Teams.',
   google: 'This file lives in Google Drive. Share it from Google.',
   shared: 'This file is in a place others open. Share it from there.',
   gone: 'That file is not there any more.',

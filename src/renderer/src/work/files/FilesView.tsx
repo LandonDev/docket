@@ -977,7 +977,8 @@ function FolderPage({
                     asking.current.add(entry.key);
                     void filePageOf(workspace.environmentId, workspace.id, entry.ref).then((url) => {
                       asking.current.delete(entry.key);
-                      setPages((now) => new Map(now).set(entry.key, url));
+                      // A lost ask keeps nothing: the next pick asks again, so one drop never greys Share in Teams for good.
+                      if (url !== undefined) setPages((now) => new Map(now).set(entry.key, url));
                     });
                   },
                   open: (url: string) => void openUrl(url),

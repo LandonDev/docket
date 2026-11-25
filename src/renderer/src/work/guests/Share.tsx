@@ -25,9 +25,10 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
   const key = JSON.stringify(source);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value: a new object each render is the same source.
   const target = useMemo(() => shareTargetOf(source, kind), [key, kind]);
-  // A file whose library shows it on its own web page is shared there: the host is asked once, and the button waits.
+  // A file whose library shows it on its own web page is shared there: the host is asked once; Share is drawn meanwhile,
+  // and reads Share in Teams once a page comes.
   const asks = !!workspaceId && source.at === "file" && mayHavePage(source.path);
-  const [page, setPage] = useState<{ key: string; url: string | null } | null>(null);
+  const [page, setPage] = useState<{ key: string; url: string | null | undefined } | null>(null);
   useEffect(() => {
     if (!asks) return;
     let live = true;
@@ -35,8 +36,7 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
     return () => void (live = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value
   }, [asks, env, workspaceId, key]);
-  if (asks && page?.key !== key) return null;
-  if (asks && page?.url) return <ShareInHome url={page.url} itemId={itemId} />;
+  if (asks && page?.key === key && page.url) return <ShareInHome url={page.url} itemId={itemId} />;
   return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} /> : null;
 }
 
