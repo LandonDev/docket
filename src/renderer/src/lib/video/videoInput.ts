@@ -17,7 +17,9 @@ import { macCommand } from "../keys";
  * close or quit the shared browser are never sent to it (the Windows VM's are
  * his); and Ctrl+Alt pressed with
  * nothing else is his way out of the picture, since Tab and Escape are the
- * page's while it holds the keyboard.
+ * page's while it holds the keyboard. In full screen, while main holds the
+ * keyboard (`fullScreen`, main's keyboardHold.ts), a Mac's ⌘ is Windows'
+ * Ctrl, ⌘ alone is the Windows key and ⌘Q is Alt+F4.
  */
 
 /** `KeyboardEvent.code` to HID usage code. */
@@ -39,12 +41,14 @@ export const HID_KEYS: Readonly<Record<string, number>> = (() => {
 })();
 
 const CONTROL = 224;
+const ALT = 226;
 const SHIFT_BITS = (1 << 1) | (1 << 5);
 const CONTROL_BITS = (1 << 0) | (1 << 4);
 const ALT_LEFT_BIT = 1 << 2;
 const ALT_BITS = ALT_LEFT_BIT | (1 << 6);
 const isModifier = (code: number): boolean => code >= 224 && code <= 231;
 const isMeta = (code: number): boolean => code === 227 || code === 231;
+const isCtrlOrAlt = (code: number): boolean => code === 224 || code === 226 || code === 228 || code === 230;
 
 /** On a Mac these ⌘ chords go to the page as the Ctrl chords; ⌘V is the paste. Every other ⌘ chord stays the app's. */
 export const MAC_CHORDS: ReadonlySet<string> = new Set(["KeyC", "KeyX", "KeyA", "KeyZ"]);
@@ -57,6 +61,8 @@ export const NEVER_SENT: ReadonlySet<string> = new Set(["KeyW", "KeyQ", "KeyN", 
  */
 export type DrivenScreen = "browser" | "vm";
 export const drivenScreen = (computer: string): DrivenScreen => (computer.startsWith("vm:") ? "vm" : "browser");
+/** In full screen ⌘ with these stays the Mac's: the app switcher and Spotlight. ⌘Q is main's (`closeWindow`), and the menu's Quit when main does not hold the keyboard. */
+export const MAC_KEEPS: ReadonlySet<string> = new Set(["Tab", "Space", "KeyQ"]);
 /** Held together and let go with no other key or button between: the keyboard goes back to the app (`leave`). The way a VM's window lets go. */
 export const LEAVE_CHORD = "ctrl+alt";
 
@@ -108,6 +114,17 @@ export class VideoInput {
   private readonly queued: InputEvent[] = [];
   private nextMoveAt = -Infinity;
   private moveTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The picture holds the keyboard in full screen and main holds it too (lib/video/keyboardHold.ts): the full-screen map.
+   * The window's map otherwise.
+   */
+  fullScreen = false;
+  /** ⌘ is down in full screen: let go with nothing between, it is the Windows key */
+  private commandAlone = false;
+  /** the Ctrl sent for a held ⌘ */
+  private commandCtrl = false;
+  /** the second of Ctrl and Alt, held back while the two may be his way out: it goes once another key comes */
+  private withheld: number | null = null;
 
   constructor(
     private readonly send: (event: InputEvent) => void,
@@ -173,8 +190,23 @@ export class VideoInput {
     const leaving = this.leaving;
     this.leaving = false;
     if (!code) return false;
-    if (isMeta(code)) return this.opts.mac ? false : true;
+    const full = this.fullScreen && this.opts.mac;
+    if (isMeta(code)) {
+      if (!full) return !this.opts.mac;
+      // ⌘ alone is only ⌘ with nothing else held
+      if (!e.repeat) this.commandAlone = this.modifiers === 0 && this.held.size === 0;
+      return true;
+    }
     const command = this.opts.mac && !!e.command;
+    if (full) this.commandAlone = false;
+    if (full && command && MAC_KEEPS.has(e.code)) return false;
+    if (this.fullScreen && !e.repeat && !this.held.has(code)) this.sendWithheld();
+    if (full && command && e.code !== "KeyV" && !this.commandCtrl && (this.modifiers & CONTROL_BITS) === 0) {
+      // ⌘ is Ctrl from here until it is let go
+      this.commandCtrl = true;
+      this.setModifier(CONTROL, true);
+      this.emit({ type: "keyDown", key: CONTROL });
+    }
     const control = !!e.ctrlKey || (this.modifiers & CONTROL_BITS) !== 0;
     // the paste is his clipboard's text, handed to the host: the far clipboard has none of it to paste
     if (e.code === "KeyV" && (command || control)) {
@@ -182,7 +214,7 @@ export class VideoInput {
       return true;
     }
     if ((command || control) && (e.code === "KeyC" || e.code === "KeyX") && !e.repeat && this.opts.screen === "vm") this.opts.copied?.();
-    if (command) {
+    if (command && !full) {
       // every other ⌘ chord is the app's
       if (!MAC_CHORDS.has(e.code)) return false;
       if (!e.repeat) {
@@ -204,15 +236,67 @@ export class VideoInput {
     }
     this.held.add(code);
     this.setModifier(code, true);
-    this.emit({ type: "keyDown", key: code });
     this.leaving = isModifier(code) && this.chordAlone();
+    // in full screen the way out never reaches the guest: the second of the two waits for another key
+    if (this.fullScreen && this.leaving && isCtrlOrAlt(code)) this.withheld = code;
+    else this.emit({ type: "keyDown", key: code });
     return true;
+  }
+
+  private sendWithheld(): void {
+    const code = this.withheld;
+    this.withheld = null;
+    if (code !== null) this.emit({ type: "keyDown", key: code });
+  }
+
+  /** The Ctrl sent for ⌘ is let go. */
+  private dropCommandCtrl(): void {
+    if (!this.commandCtrl) return;
+    this.commandCtrl = false;
+    if ([...this.held].some((held) => held === CONTROL || held === 228)) return;
+    this.setModifier(CONTROL, false);
+    this.emit({ type: "keyUp", key: CONTROL });
+  }
+
+  /**
+   * ⌘Q in full screen, which main heard first (keyboardHold.ts): Alt+F4 closes the Windows VM's window. Never the box's
+   * browser's: it would close the browser every thread shares.
+   */
+  closeWindow(): void {
+    this.commandAlone = false;
+    if (this.opts.screen !== "vm") return;
+    this.dropCommandCtrl();
+    const alt = (this.modifiers & ALT_BITS) !== 0;
+    if (!alt) {
+      this.setModifier(ALT, true);
+      this.emit({ type: "keyDown", key: ALT });
+    }
+    this.tap(HID_KEYS.F4);
+    if (!alt) {
+      this.setModifier(ALT, false);
+      this.emit({ type: "keyUp", key: ALT });
+    }
   }
 
   keyUp(e: KeyLike): boolean {
     const code = HID_KEYS[e.code];
     if (!code) return false;
-    if (isMeta(code)) return !this.opts.mac;
+    const full = this.fullScreen && this.opts.mac;
+    if (isMeta(code)) {
+      if (!full) return !this.opts.mac;
+      this.dropCommandCtrl();
+      if (this.commandAlone) {
+        // ⌘ pressed and let go with nothing between: the Windows key
+        this.commandAlone = false;
+        this.setModifier(code, true);
+        this.emit({ type: "keyDown", key: code });
+        this.setModifier(code, false);
+        this.emit({ type: "keyUp", key: code });
+      }
+      return true;
+    }
+    // a key let go that never went down here (main kept ⌃⌘F and ⌘Q) came between
+    if (!isModifier(code)) this.commandAlone = false;
     if (e.code === "CapsLock") {
       this.syncCaps(e);
       return true;
@@ -220,7 +304,8 @@ export class VideoInput {
     // a key that never went down there (a chord's letter, one never sent) has nothing to let go
     if (!this.held.delete(code)) return false;
     this.setModifier(code, false);
-    this.emit({ type: "keyUp", key: code });
+    if (this.withheld === code) this.withheld = null;
+    else this.emit({ type: "keyUp", key: code });
     if (this.leaving) {
       this.leaving = false;
       this.opts.leave?.();
@@ -245,6 +330,8 @@ export class VideoInput {
   buttonDown(button: number, x: number, y: number): boolean {
     if (button < 0 || button > 2) return false;
     this.leaving = false;
+    this.commandAlone = false;
+    this.sendWithheld();
     this.buttons |= 1 << button;
     this.emit({ type: "buttonDown", button: (button + 1) as 1 | 2 | 3, x: share(x), y: share(y) });
     return true;
@@ -284,6 +371,9 @@ export class VideoInput {
     this.queued.length = 0;
     this.held.clear();
     this.leaving = false;
+    this.commandAlone = false;
+    this.commandCtrl = false;
+    this.withheld = null;
     this.buttons = 0;
     this.modifiers = 0;
     this.wheelRemainder[0] = this.wheelRemainder[1] = 0;

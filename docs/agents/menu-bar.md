@@ -9,7 +9,10 @@ Screen, ⌃⌘F, a `pageKey` row for the eye: main catches the key in
 `before-input-event` (src/main/fullScreen.ts) and sends the page its
 `full_screen` command, so a live picture that holds the keyboard never takes
 it; the row reads Exit Full Screen while a computer fills the display and is
-grey with none offered, and off a Mac it shows F11, `offMac`), Go
+grey with none offered, and off a Mac it shows F11, `offMac`; while a
+computer's picture holds the keyboard in full screen every menu shortcut
+stands down and ⌘Q is the guest's Alt+F4, main's keyboardHold.ts and
+live-video.md "The keyboard in full screen"), Go
 (navigation; Today, ⇧⌘T, is Work's own row: `workOnly`, drawn only while
 some host has Work on, since a window with none names it in
 `MenuState.hidden` and `resolveMenu` then leaves the row and its key out;

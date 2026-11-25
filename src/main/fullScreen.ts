@@ -49,6 +49,8 @@ export function setFull(win: FullScreenWindow, on: boolean, platform: NodeJS.Pla
 export interface KeyInput {
   type: string
   key: string
+  /** the key's place (`AltRight`); only the keyboard hold reads it (keyboardHold.ts) */
+  code?: string
   control: boolean
   meta: boolean
   alt: boolean

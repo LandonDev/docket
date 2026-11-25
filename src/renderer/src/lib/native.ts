@@ -505,6 +505,16 @@ export function onWindowFullScreen(handler: (state: { on: boolean; popOut: boole
   return api().win.onFullScreen(handler);
 }
 
+/** This window's picture holds the keyboard in full screen, or no longer does (main's keyboardHold.ts); answers whether main holds it. */
+export function holdKeyboard(on: boolean): Promise<boolean> {
+  return api().win.keyboardHold(on).catch(() => false);
+}
+
+/** What main says while it holds the keyboard: it let go (`freed`), or ⌘Q was pressed (`closeWindow`, Alt+F4 for the picture). */
+export function onHeldKey(handler: (key: "freed" | "closeWindow") => void): () => void {
+  return api().win.onHeldKey(handler);
+}
+
 export type NativeWindow = {
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;

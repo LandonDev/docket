@@ -722,7 +722,8 @@ phone's full screen ("The phone" below), and from then on:
   Browsers without raw updates use `pointermove`.
 - **A Mac's Command key** never crosses. ⌘C, ⌘X, ⌘A and ⌘Z go to the page
   as the Ctrl chords; every other ⌘ chord stays the app's. The Control key
-  is Ctrl there.
+  is Ctrl there. Full screen has its own map ("The keyboard in full
+  screen" below); this one is the window's.
 - **Paste** (⌘V, or Ctrl+V elsewhere) is his clipboard's text handed to
   `video.paste`, never typed and never the far clipboard's own.
 - **Copy out of the VM**: a copy or cut chord sent to the Windows VM
@@ -756,7 +757,8 @@ phone's full screen ("The phone" below), and from then on:
   lib/appCommands.ts): Escape and the arrows do not close full screen or step
   the view, Ctrl+S and its like run no command, a double Shift opens nothing,
   and Escape closes no page under it (lib/pageEscape.ts). Only a Mac's ⌘
-  chords stay the app's, and ⌃⌘F, which main catches before the page
+  chords stay the app's (in full screen they are the page's too), and
+  ⌃⌘F, which main catches before the page
   (fullScreen.ts), so full screen can always be left.
 - **The keyboard's way out** is Ctrl+Alt pressed with nothing else and let
   go (⌃⌥ on a Mac; off a Mac only the left Alt, since the right one is
@@ -770,6 +772,37 @@ phone's full screen ("The phone" below), and from then on:
   full screen say nothing); it takes no pointer (`LEAVE_TOAST_CLASS`), so
   it never stands over a control or stays open under a resting pointer.
   The box says the chord to a screen reader (`aria-description`).
+- **The keyboard in full screen** (main's keyboardHold.ts, the page's
+  lib/video/keyboardHold.ts). While the picture he drives in full screen
+  has the focus, the page asks main to hold the keyboard
+  (`window:keyboardHold`), and main says yes only while the window covers
+  its display and has the focus. While main holds it the menu's shortcuts
+  stand down (`setIgnoreMenuShortcuts(true)`), so the ⌘ chords reach the
+  page, and the page uses the full-screen map (`VideoInput.fullScreen`,
+  set only on main's yes): on a Mac ⌘ is Ctrl for every key (⌘S, ⌘F, ⌘T,
+  ⌘W are Ctrl+S, Ctrl+F, Ctrl+T, Ctrl+W; Ctrl goes down at the first key
+  and up with ⌘), ⌘ pressed alone and let go is the Windows key (none once
+  any key, modifier or button came between, and none for a ⌘ held as the
+  focus went), ⌘V is still his paste and ⌘C still copies out of the VM,
+  and ⌘Tab and ⌘Space stay the Mac's. ⌘Q is Alt+F4 only while main holds
+  the keyboard: main keeps it from the page and the menu and tells the
+  page (`window:heldKey closeWindow`), which sends Alt+F4 to the Windows
+  VM and nothing to the box's browser. Whenever main does not hold it, ⌘Q
+  is the menu's Quit. The box's browser keeps its never-sent list here
+  too. The window's map is unchanged.
+- **The two ways out of full screen**, heard in main's
+  `before-input-event` before the page and whatever the menu's state:
+  ⌃⌥ pressed with nothing else and let go frees the keyboard (the picture
+  goes to Hand back), and ⌃⌘F (F11 off a Mac) leaves full screen. Neither
+  reaches the guest: of Ctrl and Alt the second is held back until another
+  key comes (so Ctrl+Alt+Delete still goes), and main keeps the F. Main
+  lets go, the menu's shortcuts come back and the page hears it
+  (`window:heldKey freed`) on either way out, on a blur, a crashed renderer
+  (`render-process-gone`), a reload or new page (`did-start-navigation` of
+  the main frame, not a route change in it) and leaving full screen; the
+  page lets go itself on a lost stream, Hand back and closing full
+  screen. Each entry where he drives says both ways out for three seconds
+  (`FullScreenHint`). The pop-out's full screen has no hold yet.
 - **His drive lasts while something of his shows the computer**
   (lib/driveHold.ts): a Computers tile, full screen, the pop-out or a
   thread's browser canvas each hold it while mounted; when the last one

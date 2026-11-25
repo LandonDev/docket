@@ -1175,7 +1175,16 @@ Every computer being driven now, on every connected host, in one place
   with keyboard focus in it. ⌃⌘F leaves (and from the Computers page takes
   the stage's computer in: View → Enter Full Screen); Escape leaves when
   the picture does not hold the keyboard; a double click on the picture
-  leaves when he does not drive. A click on any live picture (the stage's,
+  leaves when he does not drive. While he drives, the picture holds the
+  keyboard as the computer's own: ⌘ is Ctrl, ⌘ alone the Windows key, ⌘Q
+  Alt+F4, and no app shortcut runs; ⌘Tab and ⌘Space stay the Mac's. The
+  two ways out are said once on each entry where he drives, for three
+  seconds: one quiet line at the foot of the display, 24px up, centred, on
+  the popover's ground (12px muted, `rounded-lg`, `shadow-overlay`, a
+  ring), each way a key cap and its words, 16px between the two: "⌃⌥
+  frees the keyboard" (the picture goes to Hand back) and "⌃⌘F leaves full
+  screen" (Ctrl+Alt and F11 off a Mac). It fades in over `--dur-base`, out
+  over `--dur-fast`, takes no pointer, and goes at once on Hand back. A click on any live picture (the stage's,
   the Computer section's, the browser canvas's) or the stage's Full screen
   button opens it, the picture growing from where it was over `--dur-slow`
   on `--ease-out` (reduced motion: a fade over `--dur-fast`); the key's

@@ -1,5 +1,6 @@
 import { showWindowOptions } from './present'
 import { followFullScreen, isFull, isFullScreenKey, setFull } from './fullScreen'
+import { followHold, KeyboardHold } from './keyboardHold'
 import { POP_OUT_BAR, POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
@@ -141,6 +142,8 @@ function saveStateNow(): void {
 interface Entry {
   win: BrowserWindow
   slot: string
+  /** the keyboard while a computer's picture holds it in full screen (keyboardHold.ts) */
+  hold: KeyboardHold
 }
 
 /** Live windows by webContents id. */
@@ -242,7 +245,9 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   })
   attachLiveFence(win)
   const id = win.webContents.id
-  windows.set(id, { win, slot })
+  const hold = new KeyboardHold(win.webContents, () => !win.isDestroyed() && win.isFocused() && isFull(win))
+  followHold(hold, win, win.webContents)
+  windows.set(id, { win, slot, hold })
   loadStateFile().windows[slot] = state
 
   if (process.platform === 'win32') {
@@ -339,10 +344,12 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   // Full screen for a computer's picture (fullScreen.ts): ⌃⌘F is the page's full screen command, heard before the page
   // so a picture that holds the keyboard never takes it.
   followFullScreen(win, (on) => tellFullScreen(win, on, false))
+  // the keyboard hold (keyboardHold.ts) hears every key first: its ways out, and ⌘Q while the picture holds the keyboard
   win.webContents.on('before-input-event', (event, input) => {
-    if (!isFullScreenKey(input)) return
+    const action = hold.heard(input)
+    if (action === 'page') return
     event.preventDefault()
-    win.webContents.send('native:menu', 'full_screen')
+    if (action === 'fullScreen') win.webContents.send('native:menu', 'full_screen')
   })
 
   win.on('closed', () => {
@@ -484,10 +491,13 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void; 
     const target = popOut ? popOuts.get(e.sender.id) : owner
     if (!owner || !target || target.isDestroyed()) return false
     const on = a?.on === true
+    if (!on && !popOut) entryOf(owner)?.hold.letGo()
     const was = setFull(target, on)
     tellFullScreen(owner, on, popOut)
     return was
   })
+  // The page's picture holds the keyboard in full screen, or no longer does (keyboardHold.ts); answers whether main holds it.
+  ipcMain.handle('window:keyboardHold', (e, on: unknown) => windows.get(e.sender.id)?.hold.ask(on === true) ?? false)
   ipcMain.handle('window:toggle-maximize', (e) => {
     const win = windowOf(e)
     if (!win) return

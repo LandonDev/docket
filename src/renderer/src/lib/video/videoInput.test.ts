@@ -277,6 +277,175 @@ describe("leaving the picture", () => {
   });
 });
 
+describe("the full-screen map", () => {
+  /** A Mac in full screen on the Windows VM, main holding the keyboard. */
+  function full(screen: DrivenScreen = "vm") {
+    const r = rig(true, screen);
+    r.input.fullScreen = true;
+    return r;
+  }
+  const W = K.MetaLeft;
+  const C = K.ControlLeft;
+
+  it("makes ⌘ Ctrl for every letter: ⌘S, ⌘F, ⌘T and ⌘W reach Windows as Ctrl+S, Ctrl+F, Ctrl+T and Ctrl+W", () => {
+    for (const code of ["KeyS", "KeyF", "KeyT", "KeyW", "KeyK", "KeyL"]) {
+      const r = full();
+      expect(r.input.keyDown({ code: "MetaLeft", command: true }), code).toBe(true);
+      expect(r.input.keyDown({ code, command: true }), code).toBe(true);
+      // held, the guest repeats it itself
+      expect(r.input.keyDown({ code, command: true, repeat: true }), code).toBe(true);
+      expect(r.input.keyUp({ code, command: true }), code).toBe(true);
+      expect(r.input.keyUp({ code: "MetaLeft" }), code).toBe(true);
+      expect(r.keys(), code).toEqual([`+${C}`, `+${K[code]}`, `-${K[code]}`, `-${C}`]);
+      expect(r.sent[1].modifiers, code).toBe(1);
+    }
+  });
+
+  it("keeps Ctrl down for as long as ⌘ is: two chords in one press", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    for (const code of ["KeyS", "KeyW"]) {
+      r.input.keyDown({ code, command: true });
+      r.input.keyUp({ code, command: true });
+    }
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${C}`, `+${K.KeyS}`, `-${K.KeyS}`, `+${K.KeyW}`, `-${K.KeyW}`, `-${C}`]);
+  });
+
+  it("sends the Windows key for ⌘ pressed alone and let go, and none once anything came between", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    r.input.keyDown({ code: "MetaLeft", command: true, repeat: true });
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${W}`, `-${W}`]);
+    expect(r.sent[0].modifiers).toBe(1 << 3);
+    for (const between of [
+      () => r.input.keyDown({ code: "ShiftLeft", command: true }),
+      () => r.input.keyDown({ code: "ControlLeft", ctrlKey: true }),
+      () => r.input.buttonDown(0, 0.5, 0.5),
+      // a key main kept (the F of ⌃⌘F, the Q of ⌘Q) whose key-up still comes
+      () => r.input.keyUp({ code: "KeyF" }),
+    ]) {
+      r.input.release();
+      r.sent.length = 0;
+      r.input.keyDown({ code: "MetaLeft", command: true });
+      between();
+      r.input.keyUp({ code: "MetaLeft" });
+      expect(r.keys().filter((k) => k === `+${W}`)).toEqual([]);
+    }
+    // ⌘ pressed while Ctrl is down: ⌃⌘F's way
+    r.input.release();
+    r.sent.length = 0;
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "MetaLeft", command: false, ctrlKey: true });
+    r.input.keyUp({ code: "KeyF" });
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${C}`]);
+  });
+
+  it("sends no Windows key for a ⌘ held when focus is lost", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    r.input.release();
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([]);
+  });
+
+  it("makes ⌘Q, which main hears, Alt+F4 on the Windows VM and nothing on the shared browser", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    // main keeps the Q itself: the page never sends it, and the menu's Quit runs where main does not hold the keyboard
+    expect(r.input.keyDown({ code: "KeyQ", command: true })).toBe(false);
+    r.input.closeWindow();
+    r.input.keyUp({ code: "KeyQ" });
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${K.AltLeft}`, `+${K.F4}`, `-${K.F4}`, `-${K.AltLeft}`]);
+    expect(r.sent[1].modifiers).toBe(1 << 2);
+    // after ⌘S in the same press, the Ctrl ⌘ stands for is let go first
+    const s = full();
+    s.input.keyDown({ code: "MetaLeft", command: true });
+    s.input.keyDown({ code: "KeyS", command: true });
+    s.input.keyUp({ code: "KeyS" });
+    s.input.closeWindow();
+    expect(s.keys()).toEqual([`+${C}`, `+${K.KeyS}`, `-${K.KeyS}`, `-${C}`, `+${K.AltLeft}`, `+${K.F4}`, `-${K.F4}`, `-${K.AltLeft}`]);
+    const b = full("browser");
+    b.input.closeWindow();
+    expect(b.sent).toEqual([]);
+  });
+
+  it("leaves ⌘Tab and ⌘Space to the Mac", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    expect(r.input.keyDown({ code: "Tab", command: true })).toBe(false);
+    expect(r.input.keyDown({ code: "Space", command: true })).toBe(false);
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.sent).toEqual([]);
+  });
+
+  it("keeps ⌘V his clipboard's paste and ⌘C the copy out of the VM", () => {
+    let copies = 0;
+    let pastes = 0;
+    const sent: InputEvent[] = [];
+    const input = new VideoInput((e) => sent.push(e), { mac: true, paste: () => void pastes++, screen: "vm", copied: () => void copies++ });
+    input.fullScreen = true;
+    input.keyDown({ code: "MetaLeft", command: true });
+    expect(input.keyDown({ code: "KeyV", command: true })).toBe(true);
+    input.keyDown({ code: "KeyC", command: true });
+    expect([pastes, copies]).toEqual([1, 1]);
+    expect(sent.map((e) => ("key" in e ? e.key : e.type))).toEqual([C, K.KeyC]);
+  });
+
+  it("keeps the shared browser's never-sent chords from it in full screen too", () => {
+    const r = full("browser");
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    expect(r.input.keyDown({ code: "KeyW", command: true })).toBe(true);
+    expect(r.keys()).toEqual([`+${C}`]);
+  });
+
+  it("never sends ⌃⌥ to the guest, still leaves on it, and sends the held-back key once another comes", () => {
+    const r = full();
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    r.input.keyUp({ code: "AltLeft" });
+    expect(r.left()).toBe(1);
+    expect(r.keys()).toEqual([`+${C}`]);
+    r.input.release();
+    r.sent.length = 0;
+    // Ctrl+Alt+Delete is still the guest's
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    r.input.keyDown({ code: "Delete", ctrlKey: true });
+    r.input.keyUp({ code: "Delete" });
+    r.input.keyUp({ code: "AltLeft" });
+    r.input.keyUp({ code: "ControlLeft" });
+    expect(r.keys()).toEqual([`+${C}`, `+${K.AltLeft}`, `+${K.Delete}`, `-${K.Delete}`, `-${K.AltLeft}`, `-${C}`]);
+    expect(r.left()).toBe(1);
+    // the first of the two let go first: Ctrl goes up there, and the held-back Alt never went down
+    r.sent.length = 0;
+    r.input.keyDown({ code: "AltLeft" });
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyUp({ code: "AltLeft" });
+    expect(r.keys()).toEqual([`+${K.AltLeft}`, `-${K.AltLeft}`]);
+    expect(r.left()).toBe(2);
+  });
+
+  it("leaves the window's map exactly as it was", () => {
+    const r = rig(true, "vm");
+    expect(r.input.keyDown({ code: "MetaLeft", command: true })).toBe(false);
+    expect(r.input.keyDown({ code: "KeyS", command: true })).toBe(false);
+    expect(r.input.keyUp({ code: "MetaLeft" })).toBe(false);
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    expect(r.keys()).toEqual([`+${C}`, `+${K.AltLeft}`]);
+    // off a Mac full screen changes no ⌘: there is none
+    const pc = rig(false, "vm");
+    pc.input.fullScreen = true;
+    expect(pc.input.keyDown({ code: "MetaLeft" })).toBe(true);
+    pc.input.keyUp({ code: "MetaLeft" });
+    expect(pc.sent).toEqual([]);
+  });
+});
+
 describe("the window the picture is in", () => {
   it("lets go of every key he holds when that window loses focus, the pop-out's own and not the main window's", () => {
     const r = rig();

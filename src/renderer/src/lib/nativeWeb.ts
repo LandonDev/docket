@@ -124,6 +124,8 @@ export const webApi: Api = {
     popOutShape: done,
     fullScreen: () => Promise.resolve(false),
     onFullScreen: () => noop,
+    keyboardHold: () => Promise.resolve(false),
+    onHeldKey: () => noop,
     toggleMaximize: done,
     close: done,
     isMaximized: () => Promise.resolve(false),

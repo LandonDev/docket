@@ -11,6 +11,7 @@ import { onWindowFullScreen, setWindowFullScreen } from "../../../lib/native";
 import { drawnPixelated, fitStage, pictureKind, type PictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
 import { ComputerCaption, ViewButton } from "./ComputerCaption";
+import { FullScreenHint } from "./FullScreenHint";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
 
@@ -23,7 +24,9 @@ import { drivenScreen } from "../../../lib/video/videoInput";
  * over the top edge; it fades after two seconds with no pointer movement and
  * comes back with it, or with keyboard focus in it. ⌃⌘F leaves; Escape leaves
  * when the picture does not hold the keyboard; a double click on the picture
- * leaves when he does not drive. A press grows the picture from where it was;
+ * leaves when he does not drive. While he drives the picture holds the
+ * keyboard with main (lib/video/keyboardHold.ts), and the two ways out are
+ * said on entry (FullScreenHint). A press grows the picture from where it was;
  * a key's entry has no motion. It is another canvas on the stream the page
  * already plays.
  */
@@ -257,7 +260,7 @@ export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string
   const focusOnDrive = useRef(false);
   const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure, { room });
   // its Hand back wears the leave chord: no toast says it again
-  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""), { chordShown: true });
+  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""), { chordShown: true, fullScreen: true });
   useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
   useLeaveOnEscape(closeFullWindow);
   useWindowFullScreen(!!target, target?.from, measure);
@@ -293,6 +296,7 @@ export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string
         }}
         onTookOver={() => void (focusOnDrive.current = true)}
       />
+      <FullScreenHint driving={!!stream.drive} />
     </div>
   );
 }

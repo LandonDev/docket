@@ -13,6 +13,7 @@ import { useComputerVideo, type GuestSizeSetting, type VideoDrive } from "../../
 import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
+import { attachKeyboardHold } from "../../../lib/video/keyboardHold";
 import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import { reducedMotion } from "../../../lib/motion";
@@ -294,7 +295,12 @@ export const COPY_SETTLE_MS = 300;
  * toast says it again; elsewhere one toast says it once a launch, taking no
  * pointer, so it never sits over a control nor waits for the pointer to go.
  */
-export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>, screen: DrivenScreen = "browser", { chordShown = false }: { chordShown?: boolean } = {}): boolean {
+export function useDrivingInput(
+  stream: LiveStream,
+  box: RefObject<HTMLElement | null>,
+  screen: DrivenScreen = "browser",
+  { chordShown = false, fullScreen = false }: { chordShown?: boolean; /** the picture is full screen: main holds the keyboard while it does (lib/video/keyboardHold.ts) */ fullScreen?: boolean } = {},
+): boolean {
   const drive = stream.drive;
   useEffect(() => {
     const el = box.current;
@@ -321,12 +327,15 @@ export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement |
       leaveSaid = true;
       void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`, { className: LEAVE_TOAST_CLASS }));
     }
-    const detach = attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied }));
+    const input = new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied });
+    const detach = attachInput(el, input);
+    const unhold = fullScreen ? attachKeyboardHold(el, input, () => leavePicture(el)) : undefined;
     return () => {
       if (timer) clearTimeout(timer);
+      unhold?.();
       detach();
     };
-  }, [box, chordShown, drive, screen]);
+  }, [box, chordShown, drive, fullScreen, screen]);
   return drive !== null;
 }
 

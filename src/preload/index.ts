@@ -175,6 +175,10 @@ const api = {
     /** This window's full screen, or its pop-out's, as it changes. */
     onFullScreen: (cb: (state: { on: boolean; popOut: boolean }) => void): (() => void) =>
       on<[{ on: boolean; popOut: boolean }]>('window:fullScreenChanged', cb),
+    /** This window's picture holds the keyboard in full screen, or no longer does (main's keyboardHold.ts); answers whether main holds it. */
+    keyboardHold: (on: boolean): Promise<boolean> => ipcRenderer.invoke('window:keyboardHold', on),
+    /** What main says while it holds the keyboard: it let go, or ⌘Q was pressed (Alt+F4 for the picture). */
+    onHeldKey: (cb: (key: 'freed' | 'closeWindow') => void): (() => void) => on<['freed' | 'closeWindow']>('window:heldKey', cb),
     toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),

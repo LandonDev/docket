@@ -6,6 +6,7 @@ import { registry } from "../../../lib/connection/registry";
 import { closeFullWindow, fullWindowTarget, openFullWindow } from "../../../lib/fullWindow";
 import { saveMotionPreference } from "../../../lib/motion";
 import { CAPTION_REST_MS, FullWindow, FullWindowView, growFrom } from "./FullWindow";
+import { FULL_SCREEN_HINT_MS, FullScreenHint } from "./FullScreenHint";
 import fixtures, { streamOf, tile } from "./FullWindow.fixtures";
 
 const h = vi.hoisted(() => ({
@@ -15,11 +16,17 @@ const h = vi.hoisted(() => ({
   asks: [] as { on: boolean; popOut?: boolean }[],
   wasFull: false,
   told: null as ((state: { on: boolean; popOut: boolean }) => void) | null,
+  // the stream's drive while he drives, and what the page asks of main's keyboard hold
+  drive: null as null | { send: () => void; paste: () => void; copy: () => Promise<string> },
+  holds: [] as boolean[],
+  heldKey: null as ((key: "freed" | "closeWindow") => void) | null,
 }));
 vi.mock("../../../lib/native", async (original) => ({
   ...(await original<typeof import("../../../lib/native")>()),
   setWindowFullScreen: async (ask: { on: boolean; popOut?: boolean }) => (h.asks.push(ask), h.wasFull),
   onWindowFullScreen: (fn: (state: { on: boolean; popOut: boolean }) => void) => ((h.told = fn), () => void (h.told = null)),
+  holdKeyboard: async (on: boolean) => (h.holds.push(on), on),
+  onHeldKey: (fn: (key: "freed" | "closeWindow") => void) => ((h.heldKey = fn), () => void (h.heldKey = null)),
 }));
 vi.mock("../../../lib/computers", async (original) => ({ ...(await original<typeof import("../../../lib/computers")>()), useComputer: () => h.tile }));
 vi.mock("./Viewport", async (original) => {
@@ -28,7 +35,7 @@ vi.mock("./Viewport", async (original) => {
     ...actual,
     useLiveStream: (entry: { previewKey?: string } | null, run: boolean) => {
       h.streams.push({ key: entry?.previewKey ?? "", run });
-      return { state: { status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true }, retry: () => undefined, canvas: { current: null }, ring: { current: null }, mode: "video", drive: null };
+      return { state: { status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true }, retry: () => undefined, canvas: { current: null }, ring: { current: null }, mode: "video", drive: h.drive };
     },
   };
 });
@@ -47,6 +54,9 @@ beforeEach(() => {
   h.asks.length = 0;
   h.wasFull = false;
   h.told = null;
+  h.drive = null;
+  h.holds.length = 0;
+  h.heldKey = null;
   toastError.mockReset();
   vi.spyOn(registry, "link").mockImplementation(
     (host: string) =>
@@ -290,5 +300,66 @@ describe("the full window, live", () => {
     expect(caption().dataset.shown).toBeUndefined();
     act(() => void window.dispatchEvent(new Event("pointermove")));
     expect(caption().dataset.shown).toBe("true");
+  });
+});
+
+describe("the ways out, said on entry", () => {
+  const drive = () => ({ send: () => undefined, paste: () => undefined, copy: async () => "" });
+  const hint = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-slot="full-screen-hint"]');
+
+  it("says both for three seconds on each entry while he drives, in key caps", () => {
+    vi.useFakeTimers();
+    h.tile = tile({ driving: true, doing: null });
+    h.drive = drive();
+    render(<FullWindow onOpenSession={noop} />);
+    for (let entry = 0; entry < 2; entry++) {
+      act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+      expect(hint()?.dataset.shown, `entry ${entry}`).toBe("true");
+      expect(hint()?.getAttribute("role")).toBe("status");
+      expect([...hint()!.querySelectorAll("kbd")].map((cap) => cap.textContent)).toEqual(["Ctrl+Alt", "F11"]);
+      expect(hint()?.textContent).toBe("Ctrl+Altfrees the keyboardF11leaves full screen");
+      act(() => vi.advanceTimersByTime(FULL_SCREEN_HINT_MS - 1));
+      expect(hint()?.dataset.shown).toBe("true");
+      act(() => vi.advanceTimersByTime(1));
+      expect(hint()?.dataset.shown).toBeUndefined();
+      expect(hint()?.getAttribute("aria-hidden")).toBe("true");
+      act(() => closeFullWindow());
+      expect(hint()).toBeNull();
+    }
+  });
+
+  it("names a Mac's keys on a Mac", () => {
+    render(<FullScreenHint driving mac />);
+    expect([...hint()!.querySelectorAll("kbd")].map((cap) => cap.textContent)).toEqual(["⌃⌥", "⌃⌘F"]);
+  });
+
+  it("says nothing while he only watches, and says it once he takes over", () => {
+    vi.useFakeTimers();
+    h.tile = tile();
+    const { rerender } = render(<FullScreenHint driving={false} />);
+    expect(hint()).toBeNull();
+    rerender(<FullScreenHint driving />);
+    expect(hint()?.dataset.shown).toBe("true");
+    // handed back, it goes at once
+    rerender(<FullScreenHint driving={false} />);
+    expect(hint()?.dataset.shown).toBeUndefined();
+  });
+
+  it("asks main to hold the keyboard while the picture he drives has it, and lets go as full screen closes", async () => {
+    h.tile = tile({ driving: true, doing: null });
+    const { rerender } = render(<FullWindow onOpenSession={noop} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    // the drive stream comes once full screen is open
+    h.drive = drive();
+    rerender(<FullWindow onOpenSession={noop} />);
+    const picture = document.querySelector<HTMLElement>("[data-driving]")!;
+    act(() => picture.focus());
+    await flush();
+    expect(h.holds).toEqual([true]);
+    // main let go (⌃⌥, a blur): the keyboard goes to Hand back
+    act(() => h.heldKey?.("freed"));
+    expect(document.activeElement?.hasAttribute("data-hand-back")).toBe(true);
+    act(() => closeFullWindow());
+    expect(h.holds.at(-1)).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import { ComputersPage } from "../../ComputersView";
 import { shot } from "../../ComputersView.fixtures";
 import { fitStage, stageLayout } from "../../../lib/stageLayout";
 import { FullWindowView } from "./FullWindow";
+import { FullScreenHint } from "./FullScreenHint";
 import fixtures, { streamOf, tile, vmPicture, vmTile } from "./FullWindow.fixtures";
 
 export function FullWindowStates({ only }: { only?: number[] }) {
@@ -68,6 +69,20 @@ export function FullScreenProof({ display }: { display?: "MacBook" | "ASUS" }) {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** `#FullScreenHintStates`: the two ways out over the Windows VM's picture, as a Mac and a PC say them. */
+export function FullScreenHintStates() {
+  return (
+    <div className="flex flex-col gap-8 p-4">
+      {[true, false].map((mac) => (
+        <div key={String(mac)} className="relative bg-matte" style={{ width: 832, height: 520 }}>
+          <div className="absolute inset-0">{vmPicture}</div>
+          <FullScreenHint driving mac={mac} />
+        </div>
+      ))}
     </div>
   );
 }
