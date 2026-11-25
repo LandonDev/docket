@@ -997,7 +997,10 @@ merged as the rail merges threads, from `work.outbox.list` (waiting and
 done) and `work.outbox.grants`; the work-shell chunk imports it so the
 rail's count follows the `work.outbox` push from boot. No screen reads
 LifeOS's `outbox`; every press goes to the host that holds the item, and a
-LifeOS item's Send carries `rev` = its `updatedAt` as shown.
+LifeOS item's Send carries `rev` = its `updatedAt` as shown. The page's
+keys E (Edit), D (Discard) and Esc (clear the ticks) are rows of the Work
+group in Settings → Keybindings, "In the Outbox"; its tips read them with
+`shortcutFor`, never a typed key (lib/menuShortcuts.test.ts).
 
 - **The rail's Outbox row** (M8's) shows whenever a host has Work on, with
   the plain muted count; it opens the Outbox page (`shell.openOutbox`,

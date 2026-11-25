@@ -2,6 +2,7 @@ import { useEffect, useState, type RefObject } from "react";
 import { Button } from "../../components/ui/button";
 import { Tip } from "../../components/tip";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { shortcutFor } from "../../lib/settings";
 import { ownZone } from "work-kit/mail/lib/zones";
 import { DiscardButton, PickTime, SendSplit, useKeyVerbs, type DetailCommands } from "./HeldDetail";
 import { DetailColumn, VerbBar } from "./parts";
@@ -130,7 +131,7 @@ export function TickedDetail({
           <SummaryList head={resultsHead([...batch.results.values()], batch.did) || "Working"} rows={batch.items.map((item) => ({ item, on: true, result: batch.results.get(itemKey(item)) }))} host={host} />
         </DetailColumn>
         <VerbBar>
-          <Tip label="Clear" shortcut="Esc">
+          <Tip label="Clear" shortcut={shortcutFor("Work", "Clear Ticks")}>
             <Button variant="ghost" size="sm" disabled={busy} onClick={onClear}>
               Clear
             </Button>
@@ -161,7 +162,7 @@ export function TickedDetail({
         />
       </DetailColumn>
       <VerbBar>
-        <Tip label="Clear" shortcut="Esc">
+        <Tip label="Clear" shortcut={shortcutFor("Work", "Clear Ticks")}>
           <Button variant="ghost" size="sm" onClick={onClear}>
             Clear
           </Button>

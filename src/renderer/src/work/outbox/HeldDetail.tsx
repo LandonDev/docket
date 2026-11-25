@@ -15,6 +15,7 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody } from "../../chrome/Modal";
 import { cn } from "../../lib/cn";
 import { keyHint, modKey } from "../../lib/keys";
+import { shortcutFor } from "../../lib/settings";
 import { useLinkMay } from "../../lib/linkMay";
 import { nameInLine } from "../../lib/hostWords";
 import { storeTitleOf } from "../../lib/threadMentions";
@@ -453,7 +454,7 @@ export function DiscardButton({ busy, disabled, open, instant = false, onOpenCha
   };
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <Tip label={label} shortcut="D">
+      <Tip label={label} shortcut={shortcutFor("Work", "Discard Held Item")}>
         <PopoverTrigger render={<Button variant="ghost" size="sm" disabled={disabled} />}>
           <BusyLabel busy={busy} label={label} />
         </PopoverTrigger>
@@ -842,7 +843,7 @@ export function HeldDetail({
           {/* A send that may have gone: no plain Send, only his own Send again once he has looked. */}
           {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}
           {editable ? (
-            <Tip label="Edit" shortcut="E">
+            <Tip label="Edit" shortcut={shortcutFor("Work", "Edit Held Item")}>
               <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
                 Edit
               </Button>

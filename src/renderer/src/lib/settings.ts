@@ -200,7 +200,7 @@ export type Keybinding = {
   /** Each entry is one chord as caps; a second entry is an alternative. */
   keys: string[][];
   /** Where the binding holds, when not everywhere. */
-  scope?: "editor" | "outside-editor" | "files" | "work-search";
+  scope?: "editor" | "outside-editor" | "files" | "work-search" | "outbox";
 };
 
 /** `desktopOnly`: the bindings act only in the desktop app (the terminal), so /ui leaves the group out.
@@ -301,6 +301,10 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Open Result", keys: [[RET]], scope: "work-search" },
       { name: "New Thread About Result", keys: [[CMD, RET]], scope: "work-search" },
       { name: "Ask about the selection", keys: [[CMD, "L"]] },
+      // The Outbox's own keys (work/outbox/OutboxView.tsx onKeyDown).
+      { name: "Edit Held Item", keys: [["E"]], scope: "outbox" },
+      { name: "Discard Held Item", keys: [["D"]], scope: "outbox" },
+      { name: "Clear Ticks", keys: [["Esc"]], scope: "outbox" },
     ],
     work: true,
   },
@@ -328,6 +332,7 @@ export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, st
   "outside-editor": "Outside the editor",
   files: "In the file tree",
   "work-search": "In Work search",
+  outbox: "In the Outbox",
 };
 
 /** The groups with only the bindings whose name, group or keys match;
