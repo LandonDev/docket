@@ -24,7 +24,10 @@ import { liveDeps, SearchController } from "./controller";
 import { holdStill, outOfSight } from "./hold";
 import { askDesktop, DESK, deskHosts, desktopsFor, NO_DESKTOPS, unsearchedLine, type Desktops } from "./desktops";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
-import { activeOf, busy, isOption, placesMix, rowsOf, type Option, type Row } from "./model";
+import { activeOf, busy, isOption, placesMix, rowsOf, withLifeosLine, type Option, type Row } from "./model";
+import { downWords } from "../shell/lifeosDown";
+import { savedOfState, useLiveDown } from "../shell/lifeosLive";
+import { connectingWords } from "../shell/lifeosWords";
 import { canStartAbout, openHit, startAbout } from "./open";
 import { factOf, marksOf, timeOf } from "./words";
 
@@ -140,14 +143,21 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const desktops = useRef<Desktops>(NO_DESKTOPS);
   const [desksAt, setDesksAt] = useState(0);
   const [controller] = useState(() => new SearchController(liveDeps((hostId, params) => (hostId.startsWith(DESK) ? askDesktop(desktops.current, hostId, params) : askHost(hostId, params)))));
-  const model = useSyncExternalStore(controller.subscribe, controller.read, controller.read);
+  const asked = useSyncExternalStore(controller.subscribe, controller.read, controller.read);
+  // LifeOS left out on a host: its line follows that host's live status (`useLiveDown`), with no press, and the same
+  // words are asked again once it says connected.
+  const [reran, setReran] = useState(0);
+  const left = asked.quiet.find((q) => q.lifeos)?.lifeos ?? null;
+  const live = useLiveDown(left ? savedOfState(left.state) : null, left?.host ?? null, () => setReran((n) => n + 1));
+  const liveLine = !left ? null : live.down ? `${downWords(live.down, left.name)}.` : live.waits ? `${connectingWords(left.name)}.` : null;
+  const model = useMemo(() => (left ? withLifeosLine(asked, liveLine) : asked), [asked, left, liveLine]);
   useEffect(() => () => controller.close(), [controller]);
   useEffect(() => {
     const { hosts, offline } = searchHosts(job, { workspaces: () => workspaces });
     const files = kind === "file";
     controller.search(query, kind, files ? [...hosts, ...deskHosts(desktops.current)] : hosts, offline, job?.key ?? null, job?.ids ?? null, files ? unsearchedLine(desktops.current.far) : null);
-    // The hosts follow the Work switches and the catalog; a job is its key.
-  }, [controller, query, kind, job?.key, workHosts, workspaces, desksAt]);
+    // The hosts follow the Work switches and the catalog; a job is its key; `reran`, LifeOS back on the host it was left out on.
+  }, [controller, query, kind, job?.key, workHosts, workspaces, desksAt, reran]);
   // Which desktops the jobs in scope may use is asked once files are asked alone, and the search runs again with them.
   const filesAlone = kind === "file";
   useEffect(() => {

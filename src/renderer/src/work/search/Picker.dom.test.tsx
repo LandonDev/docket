@@ -325,6 +325,34 @@ describe("Work search", () => {
     expect(list().querySelector("[data-picker-note]")).toBeNull();
   });
 
+  /** Council round 11 (Sol rest 1): the footer kept "connecting" after the box came back, and mail stayed out until the words changed. */
+  it("says LifeOS's line as its host's live status, and asks the same words again once the host says connected", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    try {
+      act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never));
+      await mount();
+      await type("budget");
+      await land(asks.length - 1, answer([group("thread", "Threads", [hit("thread:t1", "thread")])], { quiet: [{ cause: "lifeos", line: "LifeOS is still connecting" }] }));
+      const foot = () => document.querySelector("[data-work-search-causes]")?.textContent ?? null;
+      expect(foot()).toBe("LifeOS is still connecting on the box.");
+      // No press in the foot (DESIGN.md "Work search").
+      expect(document.querySelector("[data-work-search-causes] button")).toBeNull();
+      act(() => setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as never));
+      expect(foot()).toBe("Not signed in to LifeOS on the box.");
+      const before = asks.length;
+      await act(async () => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      // The same words, asked again at once, and the old line gone while they are out.
+      expect(asks.length).toBe(before + 1);
+      expect(asks.at(-1)!.params).toMatchObject({ text: "budget" });
+      expect(foot()).toBeNull();
+      await land(asks.length - 1, answer([group("mail", "Mail", [hit("mail:m1", "mail")])]));
+      expect(document.body.textContent).toContain("Budget mail:m1");
+      expect(foot()).toBeNull();
+    } finally {
+      resetLifeos();
+    }
+  });
+
   it("keeps the time column from his first word, whichever rows have landed: the job column never jumps when a timed kind lands", async () => {
     await mount();
     await type("dana");

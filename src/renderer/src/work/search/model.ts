@@ -1,5 +1,6 @@
 import { mentionMatches } from "@shared/work/mentions";
 import { nameInLine } from "../../lib/hostWords";
+import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { connectingWords, lifeosDownWords, lifeosStateOf } from "../shell/lifeosWords";
 import {
   RECENT_KIND,
@@ -66,8 +67,8 @@ export interface SearchModel {
   slots: Slot[];
   /** what was asked this generation and has not answered: `<host>\n*` for a host's first answer, `<host>\n<source>` for a source */
   out: ReadonlySet<string>;
-  /** one line a cause, in the order they came */
-  quiet: { key: string; line: string }[];
+  /** one line a cause, in the order they came; LifeOS's names the host it was asked through and the state it said */
+  quiet: Quiet[];
   /** kinds in the order they were first seen, for the ones the fixed order does not name */
   seen: string[];
   /** each kind's rows, by key, in the order they came to stand: what lands later goes under them */
@@ -156,8 +157,15 @@ export function paramsFor(model: SearchModel, host: SearchHost, o: { workspaceId
 
 const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], model: SearchModel): Slot => ({ host, source: group.source, kind: group.kind, label: group.label, tier, hits: group.hits, more: group.more, gen: model.gen, text: model.text });
 
+/** One line under the list. `lifeos`: the line says LifeOS on `host` was left out in `state`, which its live status may change (`withLifeosLine`). */
+export interface Quiet {
+  key: string;
+  line: string;
+  lifeos?: { host: string; name: string; state: LifeosStateName };
+}
+
 /** LifeOS's and a host's own words, as the list's foot says them. */
-export function quietLine(cause: string, line: string, at: SearchHost, hosts: number): { key: string; line: string } {
+export function quietLine(cause: string, line: string, at: SearchHost, hosts: number): Quiet {
   // "the box" mid-line, as every Work line names it (lib/hostWords.ts).
   const host = { ...at, name: nameInLine(at.name) };
   if (cause === "lifeos") {
@@ -165,10 +173,21 @@ export function quietLine(cause: string, line: string, at: SearchHost, hosts: nu
     // own words name (`lifeosStateOf`); a cause it names no state of stays the host's.
     const state = lifeosStateOf(line);
     const words = state === "connecting" ? connectingWords(at.name) : state && state !== "connected" ? lifeosDownWords(state, false, at.name) : line.replace(/\.$/, "");
-    return { key: "lifeos", line: `${words}.` };
+    return { key: "lifeos", line: `${words}.`, ...(state && state !== "connected" ? { lifeos: { host: at.id, name: at.name, state } } : {}) };
   }
   const said = `${line.replace(/\.$/, "")}`;
   return { key: `${cause}@${host.id}`, line: hosts > 1 ? `${said} on ${host.name}.` : `${said}.` };
+}
+
+/**
+ * LifeOS's line as its host's live status says it now (Picker.tsx, `useLiveDown`): `words` in its place, or none while
+ * the search is asked again; the same model when there is no such line or nothing changes.
+ */
+export function withLifeosLine(model: SearchModel, words: string | null): SearchModel {
+  const at = model.quiet.findIndex((q) => q.lifeos);
+  if (at < 0 || model.quiet[at].line === words) return model;
+  const quiet = words === null ? model.quiet.filter((_, i) => i !== at) : model.quiet.map((q, i) => (i === at ? { ...q, line: words } : q));
+  return { ...model, quiet };
 }
 
 function withQuiet(model: SearchModel, host: SearchHost, quiet: SearchAnswer["quiet"]): SearchModel["quiet"] {

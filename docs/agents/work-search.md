@@ -141,7 +141,10 @@ them:
   thirty alone) and sets `more` itself; it never trusts a source's count.
 - **LifeOS.** While `ctx.lifeos.connected()` is false no LifeOS source is
   asked, and the answer carries one quiet line of cause `lifeos` in the
-  session's own words, however many kinds it feeds.
+  session's own words, however many kinds it feeds. The window words that
+  line from the host's live status as it changes (Picker.tsx, `useLiveDown`,
+  `withLifeosLine`), with no press, and asks the same words again once that
+  host says connected; the line is gone while they are out.
 - **A remote key and files.** A hit that names a file (in `open` or its
   chip) is shown to a remote key only when the key could have named the
   file itself (`ctx.reaches`).
