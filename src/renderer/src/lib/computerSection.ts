@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { useStore } from "zustand";
 import { treeIds } from "./activity";
 import { hasHistory, historyKeys, nowState, useComputerHistory, type HistoryKey, type KeyHistory } from "./computerHistory";
 import { computerSessionsStore, previewContext, useComputerEntries, type ComputerEntry } from "./computerSessions";
-import { useSessionMeta, useSessionMetas, useSessionMetasWhen } from "./tcserver/store";
+import { sessionStore, useSessionMeta, useSessionMetasWhen } from "./tcserver/store";
 import type { SessionMeta } from "./tcserver/types";
 
 /**
@@ -38,11 +38,22 @@ function useTree(threadId: string | null, metas: readonly SessionMeta[]): Readon
   return useMemo(() => new Set(ids ? ids.split("\n") : []), [ids]);
 }
 
+/**
+ * The ids of a thread's tree, read through a selector: a push for a thread outside it changes no string, so the reader
+ * draws again only when its own tree moves (the perf pass's M12: the browser canvas and the Computer section).
+ */
+function useLiveTree(threadId: string): ReadonlySet<string> {
+  const ids = useSyncExternalStore(
+    (listener) => sessionStore.onMetaChange(listener),
+    () => [...treeIds(threadId, sessionStore.metas())].join("\n"),
+  );
+  return useMemo(() => new Set(ids ? ids.split("\n") : []), [ids]);
+}
+
 export function useComputerSection(threadId: string): ComputerSectionData {
   const meta = useSessionMeta(threadId);
-  const metas = useSessionMetas();
   const host = meta?.environmentId;
-  const tree = useTree(threadId, metas);
+  const tree = useLiveTree(threadId);
   const all = useComputerEntries(tree, host);
   const entries = useMemo(() => drawable(all), [all]);
   const keys = useMemo(() => (host ? historyKeys(tree, host, previewContext()) : []), [host, tree]);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useSyncExternalStore, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import { Lock } from "../../chrome/icons";
@@ -13,7 +13,7 @@ import { drawable, useComputerSection } from "../../lib/computerSection";
 import { useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
-import { useSessionMetas } from "../../lib/tcserver/store";
+import { sessionStore } from "../../lib/tcserver/store";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, VIEWPORT_INSETS, ViewportLine } from "../../surfaces/threads/computer/Viewport";
 import { openFullWindow } from "../../lib/fullWindow";
 import { useDriveHold } from "../../lib/driveHold";
@@ -48,11 +48,21 @@ export interface Browser {
   retry?(): void | Promise<void>;
 }
 
+/**
+ * The pane's thread tree as one string, sorted: a push for a thread outside it leaves the string as it was, so the
+ * canvas draws again only when its own tree changes (the perf pass's M12), never on every session's push.
+ */
+function useTreeKey(pane: string): string {
+  return useSyncExternalStore(
+    (listener) => sessionStore.onMetaChange(listener),
+    () => [...treeIds(pane, sessionStore.metas())].sort().join("\n"),
+  );
+}
+
 function useBrowser(env: string, pane: string): Browser {
   const { state, error, retry } = useBrowserState(env, pane);
   const acts = useHeldActs(env, pane);
-  const metas = useSessionMetas();
-  const treeKey = [...treeIds(pane, metas)].sort().join("\n");
+  const treeKey = useTreeKey(pane);
   const tree = useMemo(() => new Set(treeKey.split("\n")), [treeKey]);
   const section = useComputerSection(pane);
   const held = useMemo(() => heldSubmitOf(acts, tree, state?.site ? state.since : 0), [acts, tree, state?.site, state?.since]);

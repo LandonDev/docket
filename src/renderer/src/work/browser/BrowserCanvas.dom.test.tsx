@@ -91,6 +91,8 @@ vi.mock("../../lib/threadResources", () => ({ hostName: () => "Landon's MacBook"
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { ENDED_WORDS } from "../../surfaces/threads/computer/Viewport";
 import { Bar, Body } from "./BrowserCanvas";
+import { Profiler } from "react";
+import { sessionStore } from "../../lib/tcserver/store";
 
 const ITEM: CanvasItem = { id: "i1", sessionId: "t1", workspaceId: "w1", kind: "browser", title: "Report: Columbus trip", source: { at: "browser", host: "local", sessionId: "t1" }, state: "open", position: 0, rev: 0, createdAt: 1, updatedAt: 1 };
 const MARK = JSON.stringify(["com.google.Chrome", ["textField|Hotel|$389.20", "textField|Mileage|$184.20"]]);
@@ -653,5 +655,34 @@ describe("the browser's body", () => {
     host.live = [{ ...LIVE_ENTRIES[0], row: { ...LIVE_ENTRIES[0]!.row, idle: true } }];
     render(<Body {...props()} />);
     await screen.findByText("The agent is not driving the browser now");
+  });
+});
+
+describe("what the canvas hears (perf pass M12)", () => {
+  it("100 pushes for other threads draw the canvas 0 times; one that adds a child of its thread draws it once", async () => {
+    type Meta = ReturnType<typeof sessionStore.metas>[number];
+    let metas = [{ id: "t1" }] as Meta[];
+    const heard = new Set<(changes: never) => void>();
+    vi.spyOn(sessionStore, "metas").mockImplementation(() => metas);
+    vi.spyOn(sessionStore, "onMetaChange").mockImplementation((fn) => (heard.add(fn as never), () => void heard.delete(fn as never)));
+    const push = (next: Meta[]): void =>
+      act(() => {
+        metas = next;
+        for (const fn of heard) fn(undefined as never);
+      });
+    let draws = 0;
+    render(
+      <Profiler id="bar" onRender={() => void (draws += 1)}>
+        <Bar {...props()} />
+      </Profiler>,
+    );
+    await waitFor(() => expect(host.calls.some((c) => c.method === "work.browser.state")).toBe(true));
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    const before = draws;
+    for (let i = 0; i < 100; i++) push([{ id: "t1" }, { id: `other-${i}` }] as Meta[]);
+    expect(draws - before).toBe(0);
+    push([{ id: "t1" }, { id: "t1-child", parentId: "t1" }] as Meta[]);
+    expect(draws - before).toBe(1);
+    vi.restoreAllMocks();
   });
 });

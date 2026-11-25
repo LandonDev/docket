@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
 vi.mock("./native", () => ({ nativePlatform: () => "darwin" }));
 vi.mock("./nativeWeb", () => ({ isWebMode: () => false }));
 vi.mock("./tcserver/store", () => ({
+  sessionStore: { onMetaChange: () => () => {}, metas: () => h.metas },
   useSessionMeta: (id: string) => h.metas.find((m) => m.id === id) ?? null,
   useSessionMetas: () => h.metas,
   useSessionMetasWhen: (enabled: boolean) => {
