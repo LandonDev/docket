@@ -22,6 +22,9 @@ struct ShareLinkSheet: View {
     @State private var draft = GuestLinkDraft()
     @State private var days = ShareRules.defaultDays
     @State private var made: ShareRules.Made?
+    /// An address the host made for this item or one of its links that no screen showed yet (`GuestAttempts.unseen`):
+    /// an answer that came after its press stopped waiting, or a press made from Settings.
+    @State private var late: String?
     @State private var links: [GuestLinkRow]?
     @State private var refused: String?
     @State private var listError: String?
@@ -57,6 +60,8 @@ struct ShareLinkSheet: View {
                     case .address(let url, _): GuestAddressSection(address: url)
                     case .again: Section { Text(ShareRules.againWords).foregroundStyle(.secondary) }
                     }
+                } else if let late {
+                    GuestAddressSection(address: late)
                 } else if phase == .made {
                     // A lost answer read back as made: the link is in the list below, its address shown nowhere.
                     Section { Text(ShareRules.againWords).foregroundStyle(.secondary) }
@@ -165,6 +170,7 @@ struct ShareLinkSheet: View {
             if busy == link.id {
                 ProgressView()
             } else if offersMore {
+                // One press on the sheet at a time: a second link's More waits until the first's answer has landed.
                 Menu {
                     if host.work.mayReplace(link.id) {
                         Button("Replace Address…", systemImage: "arrow.triangle.2.circlepath") { replacing = link }
@@ -184,6 +190,7 @@ struct ShareLinkSheet: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("\(link.name)’s link")
+                .disabled(!mayClose)
             }
         }
         .accessibilityElement(children: .combine)
@@ -196,11 +203,12 @@ struct ShareLinkSheet: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        if made != nil || refused != nil || phase == .made || isCut {
+        if made != nil || late != nil || refused != nil || phase == .made || isCut {
             if refused == nil {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("New Link") {
                         made = nil
+                        late = nil
                         attempts.newLink(host: host.environment.id, ref: source.ref)
                         focused = true
                     }
@@ -215,7 +223,7 @@ struct ShareLinkSheet: View {
                     ProgressView()
                 } else {
                     Button("Create") { Task { await create() } }
-                        .disabled(!settled || phase == .checking || !draft.canCreate() || !host.work.may(.guestsCreate))
+                        .disabled(!settled || !mayClose || phase == .checking || !draft.canCreate() || !host.work.may(.guestsCreate))
                         .accessibilityIdentifier("guest-create")
                 }
             }
@@ -228,6 +236,7 @@ struct ShareLinkSheet: View {
         do {
             links = try await host.work.links(for: source)
             listError = nil
+            takeUnseen()
         } catch {
             let message = ActionError.wrap(error).message
             if let line = ShareRules.refusal(in: message) { refused = line; return }
@@ -240,8 +249,18 @@ struct ShareLinkSheet: View {
         }
     }
 
+    /// An address waiting in memory for this item or one of its links (`GuestAttempts.unseen`) shows here, once.
+    private func takeUnseen() {
+        guard made == nil, late == nil, mayClose else { return }
+        let id = host.environment.id
+        let refs = [source.ref] + live.map { ShareRules.rekeyRef($0.id) }
+        guard let ref = refs.first(where: { attempts.unseen(host: id, ref: $0) != nil }), let kept = attempts.unseen(host: id, ref: ref) else { return }
+        late = kept.address
+        attempts.shown(host: id, ref: ref)
+    }
+
     private func create() async {
-        guard settled else { return }
+        guard settled, mayClose else { return }
         saving = true
         defer { saving = false }
         error = nil
@@ -264,6 +283,7 @@ struct ShareLinkSheet: View {
         let attempt = attempts.attempt(host: hostId, ref: source.ref, pending: target.work.presses.pending.presses)
         do {
             made = try await target.work.makeLink(frozen, source: source, title: title, attempt: attempt, key: key)
+            attempts.shown(host: hostId, ref: source.ref)
             attempts.answered(host: hostId, ref: source.ref)
             draft.name = ""
             await load()
@@ -283,7 +303,10 @@ struct ShareLinkSheet: View {
     }
 
     private func setRole(_ link: GuestLinkRow, _ role: GuestLinkDraft.Role) async {
-        guard role.rawValue != link.role.rawValue else { return }
+        guard role.rawValue != link.role.rawValue, mayClose else { return }
+        // Held for the sheet from before the owner's check to the answer: no second press starts meanwhile.
+        busy = link.id
+        defer { busy = nil }
         // Widening what someone outside may do is his press, as making the link is; its key rides to the leave.
         let key = PressGates.key(host.environment, revoked: host.work.keyRevoked)
         if let line = await PressGates.shared.pass(host, .guestsSetRole, ref: "guest-link:\(link.id)", rev: role.rawValue, reason: "Let \(link.name) \(role.rawValue) \(title)") {
@@ -294,17 +317,22 @@ struct ShareLinkSheet: View {
     }
 
     private func replace(_ link: GuestLinkRow) async {
+        guard mayClose else { return }
+        // Held for the sheet from before the owner's check to the answer: one replacement at a time, and its address
+        // lands in this sheet, never under a second press's.
+        busy = link.id
+        defer { busy = nil }
         let key = PressGates.key(host.environment, revoked: host.work.keyRevoked)
         if let line = await PressGates.shared.pass(host, .guestsRekey, ref: "guest-link:\(link.id)", rev: "\(link.createdAt)", reason: "Make a new address for \(link.name)") {
             pressError = line
             return
         }
-        busy = link.id
-        defer { busy = nil }
         switch await host.work.replaceAddress(link, key: key) {
         case .address(let url):
             pressError = nil
             made = .address(url, link: link)
+            late = nil
+            attempts.shown(host: host.environment.id, ref: ShareRules.rekeyRef(link.id))
             await load()
         // Checking and an earlier try's address are said in the link's own row (`rekeyLine`), and settle there.
         case .again, .checking: pressError = nil
@@ -313,6 +341,7 @@ struct ShareLinkSheet: View {
     }
 
     private func revoke(_ link: GuestLinkRow) async {
+        guard mayClose else { return }
         await act(link) { try await host.work.revoke(link) }
     }
 

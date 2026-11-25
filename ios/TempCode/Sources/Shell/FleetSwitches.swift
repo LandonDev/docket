@@ -258,6 +258,8 @@ final class FleetToastCenter {
     static let shared = FleetToastCenter()
 
     private(set) var notice: FleetNotice?
+    /// His own press's success that came while a failure he has not read was up: shown once he taps the failure away.
+    private var queued: FleetNotice?
     private var leave: Task<Void, Never>?
 
     private init() {}
@@ -265,26 +267,36 @@ final class FleetToastCenter {
     static let lingerSeconds: Double = 4
 
     func post(_ toast: BatchToast) {
-        show(.batch(toast))
+        show(.batch(toast), own: true)
     }
 
     /// One action's failure, in the same line. His own cancel of the owner's check ("Nothing was sent.") is no failure:
     /// it is said plainly (`ToastSlot.isPlain`).
     func post(message: String) {
-        show(ToastSlot.isPlain(message) ? .note(message) : .message(message))
+        show(ToastSlot.isPlain(message) ? .note(message) : .message(message), own: true)
     }
 
-    /// An outcome that needs nothing more: in the plain ink, gone after four seconds.
-    func post(note: String) {
-        show(.note(note))
+    /// An outcome that needs nothing more: in the plain ink, gone after four seconds. `own`: it answers a press he just
+    /// made (false for one that comes with no press, as Mail's late "Sent").
+    func post(note: String, own: Bool = true) {
+        show(.note(note), own: own)
     }
 
-    private func show(_ next: FleetNotice) {
-        // A plain line never replaces a failure still up (`ToastSlot.takes`): it is said where it belongs as well.
-        guard ToastSlot.takes(nextSticky: next.sticky, upSticky: notice?.sticky) else { return }
+    /// A line that no longer holds goes (Mail's "Checking whether it went" once the mail is found sent).
+    func withdraw(_ line: String) {
+        if notice?.summary == line { dismiss() }
+    }
+
+    private func show(_ next: FleetNotice, own: Bool, spoken: Bool = false) {
+        // Spoken as it comes, whatever its fate: VoiceOver never misses his own press's outcome.
+        if !spoken { AccessibilityNotification.Announcement(next.summary).post() }
+        switch ToastSlot.fate(nextSticky: next.sticky, own: own, upSticky: notice?.sticky) {
+        case .drop: return
+        case .queue: queued = next; return
+        case .show: break
+        }
         leave?.cancel()
         notice = next
-        AccessibilityNotification.Announcement(next.summary).post()
         guard !next.sticky else { return }
         leave = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.lingerSeconds))
@@ -296,6 +308,11 @@ final class FleetToastCenter {
     func dismiss() {
         leave?.cancel()
         notice = nil
+        // What waited behind the failure shows now, once.
+        if let next = queued {
+            queued = nil
+            show(next, own: true, spoken: true)
+        }
     }
 }
 

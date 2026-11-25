@@ -518,9 +518,14 @@ Stop and Archive done). Resume all runs at once. The outcome is one status
 card on glass floating above the tab bar, "Paused 14" in semibold and,
 under it in the destructive tint, "1 failed: Search (harness not
 responding)": a clean result leaves after four seconds, a
-failure waits for a tap. A plain line never takes the place of a failure
-still up (`ToastSlot.takes`), and his own cancel of the owner's check
-("Nothing was sent.") is a plain line, not a failure.
+failure waits for a tap. A success never takes the place of a failure
+still up (`ToastSlot.fate`): one that answers his own press ("Copied",
+"Paused 14") waits behind it and shows once he taps the failure away, and
+VoiceOver hears it at once; one that comes with no press of his (Mail's late
+"Sent") is said where it belongs instead. A line that no longer holds goes
+when its answer comes (Mail's "Checking whether it went" once the mail is
+found). His own cancel of the owner's check ("Nothing was sent.") is a plain
+line, not a failure.
 
 **Queued, stopped, resources.** A queued root (created, waiting for its
 `after` sibling) reads the host's reason ("Waiting for X", the host's
@@ -2661,7 +2666,9 @@ milestone 46 built, where it lives now:
 - **Settings → Work**: a tool with no rule reads "Not set" until he picks.
   On the host that serves LifeOS's documents, **Guest links**: who and
   what, the role and when it ends ("open now" while the guest is on it),
-  each with New Address (shown once, with Copy) and Revoke; ended ones
+  each with New Address (shown once, with Copy, and shown on return if he
+  went Back while it was made; a cancelled check says so on the link's row)
+  and Revoke; ended ones
   muted.
 - **House rules**: a Work workspace's screen leads with a "House Rules"
   row. The page lists what is proposed (the sentence, "From N edits"
@@ -3063,8 +3070,11 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   a fresh row and for a key that may press it: the tick (`work.tasks.done`, Undo reopens it in LifeOS), Tomorrow (LifeKit's `tasks:snooze`,
   Undo `tasks:unsnooze`), Open project on a task of a LifeOS project (the project's page in the detail, `Route.lifeProject`, which
   makes the job's own LifeOS session and waits for it, with Try Again, and comes back on a relaunch; the project's name is the row's line under the title, and "Project names did not load" is
-  the section's one quiet line when a job's names failed) and Nudge (`work.mail.nudge`: a thread that drafts the
-  follow-up opens; nothing goes until he sends). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
+  the section's one quiet line when a job's names failed), Nudge (`work.mail.nudge`: a thread that drafts the
+  follow-up opens; nothing goes until he sends) and Dismiss on a mail wait (LifeOS's `mailWaits:dismiss`, fenced by
+  the send the row showed, Undo `mailWaits:putBack`). A LifeOS write goes through the session that read the row, on
+  the host that supplied it (`TodaySources.sessionOf`), and its Undo through the same one; never another host's
+  session in host order. None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
   capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
@@ -3539,7 +3549,11 @@ Create waits until the host that keeps the item's links has answered. From
 his Create or Replace Address to the host's answer the sheet stays open:
 Cancel, Done and New Link are dimmed and the swipe does nothing, as Save to
 TempCode's Cancel goes once Save is pressed, because the address shows once
-and only here. A
+and only here. One press on the sheet at a time: while one is out, Create
+and every link's More wait. An address the host sent that no screen showed
+(an answer after the fifteen seconds, a New Address left by Back) is kept in
+memory by its attempt key and shows the next time Share or Settings → Work
+opens on it. A
 press whose answer was lost says "Checking whether the link was made" under
 the form, which waits; closing and opening the sheet again keeps the same
 press, so no second link is made. A link the read-back finds made shows its
@@ -4241,6 +4255,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | `today.minute` | Today | Says the minute's words, once a minute at the minute (Today/TodayScreen.swift) |
 | `messages.hold` | Messages, a chat, People, a person | Holds the screen's LifeOS live queries; it wakes once an hour and does nothing (Messages/MessagesReads.swift) |
 | `mail.foot` | Mail for a job | Holds Mail's capsule as on screen while the place shows; it wakes once an hour and does nothing (Life/MailPresses.swift) |
+| `chat.shown` | A conversation | Holds the conversation as on screen, so a stopped reply is said there and not as a toast; it wakes once an hour and does nothing (Messages/MessagesPresses.swift) |
 | `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
 
 Every other Work screen runs none.

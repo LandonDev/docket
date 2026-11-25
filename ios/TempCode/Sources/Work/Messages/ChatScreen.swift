@@ -219,6 +219,8 @@ private struct ChatConversation: View {
         .padding(.vertical, Layout.rowVertical)
         .background(alignment: .top) { BottomEdgeFade() }
         .animation(Motion.base, value: MessagesPresses.shared.counting(key)?.id)
+        // On screen while shown: a reply put back here is said here alone (`MessagesPresses.tellOff`).
+        .task(id: key) { await MessagesPresses.shared.shown(key) }
         .animation(Motion.crossFade, value: line ?? desk.line ?? recordLine(desk))
         .sensoryFeedback(.impact(weight: .light), trigger: desk.out?.attempt) { _, new in new != nil }
     }

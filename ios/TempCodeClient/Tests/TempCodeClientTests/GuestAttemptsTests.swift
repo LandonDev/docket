@@ -75,4 +75,21 @@ import Testing
         // Replace Address out on one link.
         #expect(!ShareRules.mayClose(creating: false, linkBusy: "link-1"))
     }
+
+    @Test func `every address the host made waits in memory by its attempt until a screen shows it`() {
+        let attempts = GuestAttempts()
+        let a = ShareRules.rekeyRef("link-a"), b = ShareRules.rekeyRef("link-b")
+        // Two replacements answered while no screen waits (Back during New Address, a late answer): both are kept.
+        attempts.delivered(host: "box", ref: a, attempt: "phone-1-a", address: "https://x/a")
+        attempts.delivered(host: "box", ref: b, attempt: "phone-2-b", address: "https://x/b")
+        // The press's own outcome being settled does not drop the address.
+        attempts.answered(host: "box", ref: a)
+        #expect(attempts.unseen(host: "box", ref: a) == .init(attempt: "phone-1-a", address: "https://x/a"))
+        #expect(attempts.unseen(host: "box", ref: b)?.address == "https://x/b")
+        #expect(attempts.unseen(host: "mac", ref: a) == nil)
+        // Shown once: it goes; the other still waits.
+        attempts.shown(host: "box", ref: a)
+        #expect(attempts.unseen(host: "box", ref: a) == nil)
+        #expect(attempts.unseen(host: "box", ref: b) != nil)
+    }
 }

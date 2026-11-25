@@ -167,5 +167,23 @@ struct WorkCacheStoreTests {
         #expect(store.get(mac)?.todayShown(on: "d").map(\.key) == ["held:mac:1"])
         #expect(purges.list().isEmpty)
     }
+
+    @Test func `a retried purge that rewrites the key Today's fresh write is for still lets that write land`() throws {
+        let suite = "work-cache-store-purges-\(UUID().uuidString)"
+        let purges = WorkCachePurges(defaults: { UserDefaults(suiteName: suite)! })
+        let store = try WorkCacheStore.inMemory(purges: purges)
+        let box = "box-\(UUID().uuidString)", mac = "mac-\(UUID().uuidString)"
+        let macKey = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .today)
+        // The Mac's key holds a wait Box's session read, and its own held row.
+        try store.put(.todayRows([Self.row("mail:1", "waiting", by: box), Self.row("held:mac:1", "held", by: nil)], day: "d"), at: macKey)
+        try store.execForTests("ALTER TABLE kept RENAME TO away")
+        #expect(!store.drop(.lifeosSignedOut(host: box)))
+        try store.execForTests("ALTER TABLE away RENAME TO kept")
+        // Today's clean copy of the Mac's key, stamped after the sign-out: the retry it runs rewrites that very key, and
+        // moves neither the Mac's fence nor the Today epoch, so the copy lands.
+        try store.put(.todayRows([Self.row("held:mac:1", "held", by: nil), Self.row("held:mac:2", "held", by: nil)], day: "d"), at: macKey, stamp: WorkCacheFence.stamp(mac), todayStamp: store.todayStamp())
+        #expect(store.get(macKey)?.todayShown(on: "d").map(\.key) == ["held:mac:1", "held:mac:2"])
+        #expect(purges.list().isEmpty)
+    }
 }
 #endif

@@ -15,8 +15,12 @@ extension WorkHost {
     /// key, the host makes no second link and answers it with no address.
     public func makeLink(_ draft: GuestLinkDraft, source: ShareSource, title: String, attempt: String, key: String? = nil) async throws -> ShareRules.Made {
         let params = Methods.WorkGuestsCreate.Params(source: source.createSource, title: title, name: draft.trimmedName, role: draft.role.wire, expiresAt: draft.expiresAtMs, attempt: attempt)
-        let answer = try await presses.run(.guestLink, host: environment.id, hostName: environment.name, ref: source.ref, rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
-            try await socket.request(Methods.WorkGuestsCreate.self, params)
+        let host = environment.id, ref = source.ref
+        let answer = try await presses.run(.guestLink, host: host, hostName: environment.name, ref: ref, rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
+            let out = try await socket.request(Methods.WorkGuestsCreate.self, params)
+            // Kept as it lands, whoever still waits for it (`GuestAttempts.unseen`): the host sends it once.
+            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ref, attempt: attempt, address: url) }
+            return out
         }
         return ShareRules.made(answer)
     }
@@ -95,5 +99,6 @@ extension WorkHost {
     /// Replace Address is offered while no press of it is out on the link.
     public func mayReplace(_ linkId: String) -> Bool {
         may(.guestsRekey) && GuestAttempts.shared.phase(host: environment.id, ref: ShareRules.rekeyRef(linkId)) != .checking
+            && !presses.busy(host: environment.id, ref: ShareRules.rekeyRef(linkId))
     }
 }

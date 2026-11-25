@@ -59,6 +59,8 @@ final class MailPresses {
     func heard(host: String, draftId: String, state: PressState) {
         let kept = checking.removeValue(forKey: "\(host)|\(draftId)")
         guard let said = MailRules.heardLate(state, scheduled: kept?.scheduled) else { return }
+        // Its "Checking whether it went" no longer holds: the outcome takes its place, found sent or not.
+        FleetToastCenter.shared.withdraw(HeldSendRefusal.checking.errorDescription ?? "")
         say(said.line, sticky: said.tell, on: kept?.scene)
     }
 
@@ -90,7 +92,8 @@ final class MailPresses {
         }
         switch places.notice {
         case .sticky?: FleetToastCenter.shared.post(message: line)
-        case .plain?: FleetToastCenter.shared.post(note: line)
+        // A Mail outcome comes with no press of his just then: under an unread failure it is not queued.
+        case .plain?: FleetToastCenter.shared.post(note: line, own: false)
         case nil: break
         }
     }

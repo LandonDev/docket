@@ -6,6 +6,14 @@ import TempCodeContract
 /// writes the desktop's answers to Fixtures/messages/rules.json and MessagesRulesTests replays them, so the two cannot
 /// drift unseen.
 public enum MessagesRules {
+    /// A reply's outcome said off its conversation (the sticky toast when he has left it), named: "Not sent to Dana Lee:
+    /// TempCode left the screen". Nil while the conversation is on screen: its own field and line say it there.
+    public static func offLine(_ line: String, name: String, shown: Bool) -> String? {
+        guard !shown else { return nil }
+        let prefix = "Not sent: "
+        return line.hasPrefix(prefix) ? "Not sent to \(name): \(line.dropFirst(prefix.count))" : "\(name): \(line)"
+    }
+
     /// His own typed reply goes on his press (`OWN_REPLY_HELD`).
     public static let ownReplyHeld = false
     /// The longest a reply may be: LifeOS's own limit (`CHAT_REPLY_MAX`).

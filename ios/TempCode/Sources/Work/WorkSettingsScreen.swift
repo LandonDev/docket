@@ -43,8 +43,11 @@ private struct WorkHostSection: View {
     @State private var rules: WorkRead<[ToolRulesCard]> = .reading
     /// This host's guest links; nil while reading, or when another host serves them.
     @State private var guests: WorkRead<[GuestLinkRow]>?
-    /// A new address, shown once after New Address.
-    @State private var rekeyed: String?
+    /// Why his last New Address on a link did not start (the owner's check said no, or he cancelled it), by link: said
+    /// on its row, where he pressed, never only in the shared toast an older failure may hold.
+    @State private var stopped: [String: String] = [:]
+    /// Links whose New Address is between his press and the host's answer, for the row's spinner.
+    @State private var pressing: Set<String> = []
     /// A link he chose Revoke on, asked once before it goes.
     @State private var revoking: GuestLinkRow?
     @State private var switching = false
@@ -87,9 +90,11 @@ private struct WorkHostSection: View {
                         ForEach(links, id: \.id) { link in guestRow(link, work: work) }
                     }
                 }
-                // The new address itself, once, with Copy and Share: the guest link sheet's last step.
-                .sheet(isPresented: Binding(get: { rekeyed != nil }, set: { if !$0 { rekeyed = nil } })) {
-                    if let rekeyed { NewAddressSheet(address: rekeyed) }
+                // The new address itself, once, with Copy and Share: the guest link sheet's last step. It waits in memory
+                // by its attempt key (`GuestAttempts.unseen`) from the host's answer until this sheet closes, so Back
+                // during New Address, or an answer after the fifteen seconds, shows it on return.
+                .sheet(isPresented: Binding(get: { unseenAddress(guests.value) != nil }, set: { if !$0, let kept = unseenAddress(guests.value) { GuestAttempts.shared.shown(host: client.environment.id, ref: kept.ref) } })) {
+                    if let kept = unseenAddress(guests.value) { NewAddressSheet(address: kept.address) }
                 }
                 .confirmationDialog("Revoke this link?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), titleVisibility: .visible, presenting: revoking) { link in
                     Button("Revoke", role: .destructive) { Task { await revoke(link) } }
@@ -185,15 +190,22 @@ private struct WorkHostSection: View {
                         .lineLimit(1)
                     if !ended, link.open > 0 { Text("Open now").textStep(.meta, weight: .medium) }
                 }
-                // His last New Address on this link, while it has words: Checking, then what came of it.
-                if let replaced = work.rekeyLine(link.id) {
+                // His last New Address on this link, while it has words: Checking, then what came of it; or why it did not
+                // start.
+                if let replaced = work.rekeyLine(link.id) ?? stopped[link.id] {
                     Text(replaced).textStep(.meta).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .opacity(ended ? 0.5 : 1)
             Spacer(minLength: 8)
+            // While New Address is out on this link (his check, then the host; or still out on return), a spinner in
+            // the menu's place.
+            if pressing.contains(link.id) || work.presses.busy(host: client.environment.id, ref: ShareRules.rekeyRef(link.id)) {
+                ProgressView()
+                    .frame(minWidth: Layout.rowHeight, minHeight: Layout.rowHeight)
+                    .accessibilityLabel("Making a new address for \(link.name)")
             // New Address needs approve and Revoke operate (contract-work-guests.ts): a key with neither has no menu.
-            if !ended, work.may(.guestsRekey) || work.may(.guestsRevoke) {
+            } else if !ended, work.may(.guestsRekey) || work.may(.guestsRevoke) {
                 Menu {
                     if work.mayReplace(link.id) {
                         Button("New Address", systemImage: "arrow.triangle.2.circlepath") { Task { await rekey(link) } }
@@ -210,15 +222,29 @@ private struct WorkHostSection: View {
         }
     }
 
+    /// The first new address of this host's links that no screen has shown yet.
+    private func unseenAddress(_ links: [GuestLinkRow]?) -> (ref: String, address: String)? {
+        for link in links ?? [] {
+            let ref = ShareRules.rekeyRef(link.id)
+            if let kept = GuestAttempts.shared.unseen(host: client.environment.id, ref: ref) { return (ref, kept.address) }
+        }
+        return nil
+    }
+
     private func rekey(_ link: GuestLinkRow) async {
+        stopped[link.id] = nil
+        pressing.insert(link.id)
+        defer { pressing.remove(link.id) }
         // A new address shares the document again: the link and the owner's check first; its key rides to the leave.
         let key = PressGates.key(client.environment, revoked: client.work.keyRevoked)
         if let line = await PressGates.shared.pass(client, .guestsRekey, ref: link.id, rev: String(link.expiresAt), reason: "Make a new address for \(link.name)’s link") {
-            return FleetToastCenter.shared.post(message: line)
+            stopped[link.id] = line
+            return
         }
-        // One attempt key per link through the ledger (`replaceAddress`): a lost answer never replaces it twice.
+        // One attempt key per link through the ledger (`replaceAddress`): a lost answer never replaces it twice. The
+        // address itself is kept by `replaceAddress` as it lands, and the sheet above shows it.
         switch await client.work.replaceAddress(link, key: key) {
-        case .address(let url): rekeyed = url
+        case .address: break
         // Checking, and an earlier try's address, are said in the link's own row (`rekeyLine`) and settle there.
         case .again, .checking: break
         case .refused(let words): FleetToastCenter.shared.post(message: "No new address: \(words)")

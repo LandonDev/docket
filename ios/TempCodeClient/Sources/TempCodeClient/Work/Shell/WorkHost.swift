@@ -799,8 +799,12 @@ public final class WorkHost: CaptureHost {
     /// address, or nil when the host had already replaced it under this key (a repeat after a lost answer: the address
     /// showed nowhere, and nothing is replaced again). A lost answer throws `PressLedger.Unknown`, read back by the key.
     public func rekey(_ link: GuestLinkRow, attempt: String, key: String? = nil) async throws -> String? {
-        let answer = try await presses.run(.guestRekey, host: environment.id, hostName: environment.name, ref: ShareRules.rekeyRef(link.id), rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
-            try await socket.request(Methods.WorkGuestsRekey.self, .init(linkId: link.id, attempt: attempt))
+        let host = environment.id
+        let answer = try await presses.run(.guestRekey, host: host, hostName: environment.name, ref: ShareRules.rekeyRef(link.id), rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
+            let out = try await socket.request(Methods.WorkGuestsRekey.self, .init(linkId: link.id, attempt: attempt))
+            // Kept as it lands, whoever still waits for it (`GuestAttempts.unseen`): the host sends it once.
+            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ShareRules.rekeyRef(link.id), attempt: attempt, address: url) }
+            return out
         }
         return answer.again == true ? nil : answer.url
     }

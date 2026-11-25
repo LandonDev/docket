@@ -26,6 +26,15 @@ public final class GuestAttempts {
     public private(set) var attempts: [String: String] = [:]
     public private(set) var phases: [String: Phase] = [:]
 
+    /// An address the host made that no screen has shown yet: the host sends it once, so it waits here, by item and
+    /// with the attempt it answered, until a screen shows it (`shown`). In memory alone: never written to disk, and
+    /// gone with the app.
+    public struct Unseen: Sendable, Hashable {
+        public let attempt: String
+        public let address: String
+    }
+    public private(set) var unseen: [String: Unseen] = [:]
+
     public init() {}
 
     nonisolated static func key(_ host: String, _ ref: String) -> String { "\(host)|\(ref)" }
@@ -74,6 +83,20 @@ public final class GuestAttempts {
         case .checking, .sending:
             phases[key] = .checking
         }
+    }
+
+    /// The host's answer carried an address: kept until shown, whether or not the screen that pressed is still there
+    /// (Back during New Address, an answer after the fifteen seconds).
+    public func delivered(host: String, ref: String, attempt: String, address: String) {
+        unseen[Self.key(host, ref)] = Unseen(attempt: attempt, address: address)
+    }
+
+    /// The address waiting for this item or link, if any.
+    public func unseen(host: String, ref: String) -> Unseen? { unseen[Self.key(host, ref)] }
+
+    /// A screen showed it: it goes from memory (the sheet showing it keeps its own copy until closed).
+    public func shown(host: String, ref: String) {
+        unseen[Self.key(host, ref)] = nil
     }
 
     /// His New Link: whatever the last try made, the next Create is a new link.

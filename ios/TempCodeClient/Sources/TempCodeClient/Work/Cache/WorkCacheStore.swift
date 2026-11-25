@@ -162,13 +162,14 @@ public final class WorkCacheStore: Sendable {
         drop(reason, retried: false)
     }
 
-    /// `retried`: a kept purge run again. A LifeOS sign-out moved the Today epoch on its first try, and moving it
-    /// again would refuse the fresh Today write that ran the retry, and every write queued with it.
+    /// `retried`: a kept purge run again. A LifeOS sign-out moved the Today epoch on its first try, which refuses every
+    /// Today write queued before it; moving it again, or a rewritten host's fence, would refuse the fresh Today write
+    /// that ran the retry (a clean copy of the very key it rewrites), and every write queued with it.
     private func drop(_ reason: WorkCacheDrop, retried: Bool) -> Bool {
         let done: Bool
         switch reason {
         case .lifeosSignedOut(let host):
-            done = dropLifeos(suppliedBy: host, movesEpoch: !retried)
+            done = dropLifeos(suppliedBy: host, movesFences: !retried)
         case .keyReplaced(let host, let generation):
             done = run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
         case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host):
@@ -195,9 +196,9 @@ public final class WorkCacheStore: Sendable {
     /// Today's own fence moves first, under the same lock, so every Today write queued before this is refused,
     /// whichever host's key it names and whether or not that key holds any of the rows yet; each host rewritten has
     /// its fence moved too.
-    private func dropLifeos(suppliedBy host: String, movesEpoch: Bool) -> Bool {
+    private func dropLifeos(suppliedBy host: String, movesFences: Bool) -> Bool {
         db.withLock { db -> Bool in
-            if movesEpoch { todayEpoch.add(1, ordering: .sequentiallyConsistent) }
+            if movesFences { todayEpoch.add(1, ordering: .sequentiallyConsistent) }
             var rewrites: [(binds: [Database.Value], json: Data, host: String)] = []
             do {
                 try db.query("SELECT host, account, generation, workspace, scope, json FROM kept WHERE scope = ?", [.text(WorkCache.Scope.today.text)]) { row in
@@ -221,7 +222,7 @@ public final class WorkCacheStore: Sendable {
                 }
                 try db.transaction { () throws(CacheError) in
                     for one in rewrites {
-                        WorkCacheFence.purge(one.host)
+                        if movesFences { WorkCacheFence.purge(one.host) }
                         try db.run("UPDATE kept SET json = ? WHERE host = ? AND account = ? AND generation = ? AND workspace = ? AND scope = ?", [.blob(one.json)] + one.binds)
                     }
                 }

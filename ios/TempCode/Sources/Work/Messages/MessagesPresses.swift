@@ -19,6 +19,8 @@ final class MessagesPresses {
         var chatId: String
         var attempt: String
         var words: String
+        /// The conversation's name, for the line said off it ("Not sent to Dana Lee: …").
+        var name: String
     }
 
     typealias Wait = SendWait<Press>
@@ -30,6 +32,9 @@ final class MessagesPresses {
     @ObservationIgnored private var clients: (String) -> EnvironmentClient? = { _ in nil }
     @ObservationIgnored private var background: NSObjectProtocol?
     private let desks = MessagesDesks.shared
+    /// The conversations on screen now, counted by desk key (ChatScreen's task): a reply put back or refused in one he
+    /// left is also the sticky toast, as Mail's and the Outbox's are.
+    @ObservationIgnored private var showing: [String: Int] = [:]
 
     private init() {
         // Leaving the screen cancels what waits: nothing goes early, nothing goes unseen.
@@ -40,6 +45,27 @@ final class MessagesPresses {
 
     func attach(_ clients: @escaping (String) -> EnvironmentClient?) {
         self.clients = clients
+    }
+
+    /// Counts the conversation as on screen until the calling view's task ends.
+    func shown(_ key: String) async {
+        showing[key, default: 0] += 1
+        TickLedger.begin("chat.shown"); defer { TickLedger.end("chat.shown") }
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        showing[key, default: 1] -= 1
+        if showing[key] == 0 { showing[key] = nil }
+    }
+
+    /// The words go back into their field; and when that conversation is not on screen, the line is also the sticky
+    /// toast, named, so a reply that did not go is seen wherever he is.
+    private func putBack(_ press: Press, _ line: String) {
+        desks.update(press.key) { $0.putBack(line) }
+        tellOff(press, line)
+    }
+
+    private func tellOff(_ press: Press, _ line: String) {
+        guard let named = MessagesRules.offLine(line, name: press.name, shown: showing[press.key, default: 0] > 0) else { return }
+        FleetToastCenter.shared.post(message: named)
     }
 
     /// The press counting its five seconds in this conversation, for its capsule.
@@ -64,7 +90,7 @@ final class MessagesPresses {
         guard desks.desk(key).words == words else { return "Not sent: the words changed while you were asked. Press Send again." }
         let attempt = ChatPress.newAttempt()
         guard let out = desks.update(key, { $0.press(attempt: attempt) }) else { return nil }
-        let press = Press(key: key, environmentId: client.environment.id, workspaceId: workspaceId, chatId: chatId, attempt: attempt, words: out.words)
+        let press = Press(key: key, environmentId: client.environment.id, workspaceId: workspaceId, chatId: chatId, attempt: attempt, words: out.words, name: chatName)
         wait.press(Wait.Press(id: attempt, host: client.environment.id, hostName: client.environment.name, rev: 0, line: "Sending to \(chatName)", payload: press, key: frozen), now: Self.now)
         if wait.counting?.id == attempt {
             AccessibilityNotification.Announcement("Sending to \(chatName). Undo for five seconds.").post()
@@ -84,7 +110,7 @@ final class MessagesPresses {
     private func leftScreen() {
         let held = [wait.counting].compactMap { $0 } + wait.queued
         wait.leftScreen()
-        for press in held { desks.update(press.payload.key) { $0.putBack("Not sent: TempCode left the screen") } }
+        for press in held { putBack(press.payload, "Not sent: TempCode left the screen") }
         schedule()
     }
 
@@ -106,13 +132,13 @@ final class MessagesPresses {
         guard let counting = wait.counting else { return }
         guard let client = clients(counting.host) else {
             wait.drop(counting.id, why: .notPaired, now: Self.now)
-            desks.update(counting.payload.key) { $0.putBack("Not sent: the host is not paired") }
+            putBack(counting.payload, "Not sent: the host is not paired")
             return schedule()
         }
         let check = Wait.Check(linked: OutboxPresses.linked(client), maySend: client.work.may(.messagesSend), rev: 0, key: PressGates.shared.liveKey(counting.host))
         guard let press = wait.due(now: Self.now, check: check) else {
             if let notice = wait.notice, notice.presses.contains(where: { $0.id == counting.id }) {
-                desks.update(counting.payload.key) { $0.putBack(notice.line) }
+                putBack(counting.payload, notice.line)
             }
             return schedule()
         }
@@ -130,6 +156,11 @@ final class MessagesPresses {
                 answer = words.hasPrefix(MessagesRules.mayHaveGone) ? .mayHaveGone(words) : .refused(words)
             }
             desks.update(p.key) { $0.answered(answer) }
+            switch answer {
+            case .refused(let words): tellOff(p, "Not sent: \(words)")
+            case .mayHaveGone(let words): tellOff(p, words)
+            case .sent, .unknown: break
+            }
             wait.landed(press.id, now: Self.now)
             schedule()
             watchLinks()
@@ -163,7 +194,7 @@ final class MessagesPresses {
                 continue
             }
             let line = wait.notice?.line ?? "Not sent"
-            for press in held { desks.update(press.payload.key) { $0.putBack(line) } }
+            for press in held { putBack(press.payload, line) }
         }
         schedule()
         watchLinks()

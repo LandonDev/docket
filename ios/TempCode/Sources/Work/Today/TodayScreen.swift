@@ -210,8 +210,11 @@ struct TodayScreen: View {
         // The project's page reads through the job's own LifeOS session, as its Projects view does.
         case .openProject(let sector, _):
             return client(sector: sector)?.work.may(.lifeosJwt) == true
-        // LifeKit has no mail-wait write of its own (`mailWaits:dismiss`); Prepare is the meeting's page's own verb.
-        case .dismiss, .prepare:
+        // Through LifeKit on the host's LifeOS token, as Mail's Waiting On dismisses.
+        case .dismiss(let sector, _, _):
+            return client(sector: sector)?.work.may(.lifeosJwt) == true
+        // Prepare is the meeting's page's own verb.
+        case .prepare:
             return false
         }
     }
@@ -239,7 +242,10 @@ struct TodayScreen: View {
         case .openProject(let sector, let projectId):
             // The job is looked up when he presses: a row kept from before a reopen opens in the job that holds it now.
             if let job = jobOf(sector) { TodayProjectOpen.open(job, projectId: projectId, navigator: navigator) }
-        case .dismiss, .prepare:
+        case .dismiss(_, let threadId, let since):
+            leave(row)
+            Task { await dismiss(row, threadId: threadId, since: since) }
+        case .prepare:
             break
         }
     }
@@ -267,7 +273,7 @@ struct TodayScreen: View {
 
     /// Tomorrow: `tasks:snooze` to the next morning in his zone; Undo wakes it (`tasks:unsnooze`).
     private func tomorrow(_ row: TodayRow, sector: String, taskId: String) async {
-        guard let life = TodayLife.store(for: sector, model.registry.ordered) else { return comeBack(row) }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
         let until = Snooze.morning(after: .now, in: life.timeZone)
         do {
             _ = try await life.mutate("tasks:snooze", ["id": Self.json(taskId), "until": String(until.timeIntervalSince1970 * 1000)])
@@ -278,9 +284,32 @@ struct TodayScreen: View {
         }
     }
 
+    /// Dismiss: LifeOS's `mailWaits:dismiss` on the session that read the wait, fenced by the send the row showed
+    /// (`since`), so a stale row changes no newer wait; Undo puts it back as LifeOS answered it was (`mailWaits:putBack`).
+    private func dismiss(_ row: TodayRow, threadId: String, since: Double) async {
+        // The proof's fixture day has no LifeOS behind its wait: it leaves, with nothing to put back.
+        if TestHooks.lifeFixtures {
+            undo = TodayUndo(line: "Dismissed", action: nil)
+            return
+        }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
+        do {
+            let before = try await life.mutate("mailWaits:dismiss", ["threadId": Self.json(threadId), "since": String(since)])
+            let back: TodayUndo.Action? = if let state = before.objectValue?["state"]?.stringValue, let dueAt = before.objectValue?["dueAt"]?.numberValue {
+                .putBack(row: row, threadId: threadId, since: since, state: state, dueAt: dueAt)
+            } else {
+                nil
+            }
+            undo = TodayUndo(line: "Dismissed", action: back)
+        } catch {
+            comeBack(row)
+            undo = TodayUndo(line: "Couldn’t dismiss it", action: nil)
+        }
+    }
+
     /// Mark read: LifeOS's own mark (`chats:markRead`) through LifeKit on the session that reads the row's sector.
     private func markRead(_ row: TodayRow, chatId: String, at: Double) async {
-        guard let life = TodayLife.store(for: row.sector, model.registry.ordered) else { return comeBack(row) }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
         do {
             if !TestHooks.lifeFixtures { try await MessagesReads.markRead(life, chatId: chatId) }
             // How far he read it: a host behind with an older copy brings no row back.
@@ -306,14 +335,17 @@ struct TodayScreen: View {
     private func press(undoing action: TodayUndo.Action) {
         undo = nil
         Task {
-            let (row, write, sector, taskId): (TodayRow, String, String, String) = switch action {
-            case .reopen(let row, let sector, let taskId): (row, "tasks:reopen", sector, taskId)
-            case .unsnooze(let row, let sector, let taskId): (row, "tasks:unsnooze", sector, taskId)
+            // The same session the act went through: the one that read the row (`TodayLife.store(for:)`).
+            let (row, write, args): (TodayRow, String, [String: String]) = switch action {
+            case .reopen(let row, _, let taskId): (row, "tasks:reopen", ["id": Self.json(taskId)])
+            case .unsnooze(let row, _, let taskId): (row, "tasks:unsnooze", ["id": Self.json(taskId)])
+            case .putBack(let row, let threadId, let since, let state, let dueAt):
+                (row, "mailWaits:putBack", ["threadId": Self.json(threadId), "since": String(since), "state": Self.json(state), "dueAt": String(dueAt)])
             }
             if TestHooks.lifeFixtures { return comeBack(row) }
             do {
-                guard let life = TodayLife.store(for: sector, model.registry.ordered) else { throw CancellationError() }
-                _ = try await life.mutate(write, ["id": Self.json(taskId)])
+                guard let life = TodayLife.store(for: row, model.registry.ordered) else { throw CancellationError() }
+                _ = try await life.mutate(write, args)
                 comeBack(row)
             } catch {
                 undo = TodayUndo(line: "Couldn’t undo", action: nil)
@@ -467,6 +499,7 @@ struct TodayUndo: Equatable {
     enum Action: Equatable {
         case reopen(row: TodayRow, sector: String, taskId: String)
         case unsnooze(row: TodayRow, sector: String, taskId: String)
+        case putBack(row: TodayRow, threadId: String, since: Double, state: String, dueAt: Double)
     }
 
     let id = UUID()

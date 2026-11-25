@@ -49,6 +49,7 @@ export const PURE_READS: PureRead[] = [
   { call: 'ReaderCache.shared.latest', file: `${CLIENT}/Work/Reader/ReaderCache.swift`, func: 'latest' },
   { call: 'refused.of', file: 'ios/TempCode/Sources/Work/ShareRefused.swift', func: 'of' },
   { call: 'host.work.may', file: `${CLIENT}/Work/Shell/WorkHost.swift`, func: 'may' },
+  { call: 'work.presses.busy', file: `${CLIENT}/Work/Outbox/PressLedger.swift`, func: 'busy' },
   { call: 'client.work.presses.state', file: `${CLIENT}/Work/Outbox/PressLedger.swift`, func: 'state' },
   { call: 'host.work.rekeyLine', file: `${CLIENT}/Work/Guests/WorkHost+Guests.swift`, func: 'rekeyLine' },
   { call: 'host.work.mayReplace', file: `${CLIENT}/Work/Guests/WorkHost+Guests.swift`, func: 'mayReplace' },

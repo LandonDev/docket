@@ -149,4 +149,10 @@ import TempCodeContract
         // One the page no longer holds cannot be proven: May have gone, never "not sent".
         #expect(truths["o3"] == .mayHaveGone)
     }
+
+    @Test func `a reply put back or refused in a conversation he left is said off it, named; on screen, only there`() {
+        #expect(MessagesRules.offLine("Not sent: TempCode left the screen", name: "Dana Lee", shown: false) == "Not sent to Dana Lee: TempCode left the screen")
+        #expect(MessagesRules.offLine("It may have gone. Check the conversation.", name: "Esports staff", shown: false) == "Esports staff: It may have gone. Check the conversation.")
+        #expect(MessagesRules.offLine("Not sent: Slack's sign-in ended", name: "Dana Lee", shown: true) == nil)
+    }
 }
