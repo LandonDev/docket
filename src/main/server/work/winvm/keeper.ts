@@ -209,7 +209,7 @@ export class Keeper {
     const d = this.d.display
     if (!d || this.name === 'none') return null
     const device = d.device()
-    const size = d.screen() ?? VGA_DEFAULT
+    const size: { width: number; height: number; scale?: number } = d.screen() ?? VGA_DEFAULT
     const choice = d.choice()
     return { device, width: size.width, height: size.height, scale: size.scale ?? 100, fit: choice.screen === 'fit', detail: choice.detail, canResize: device === 'virtio' }
   }

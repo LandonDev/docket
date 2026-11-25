@@ -5,7 +5,8 @@ import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
 import type { VmOfficeStatus } from "@shared/contract-work-office";
 import { GIVEN_KEY, READ_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
-import { WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, winvmRow } from "./WinvmSection";
+import { TURN_OFF, TURN_ON, WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, winvmRow } from "./WinvmSection";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 
@@ -13,7 +14,7 @@ const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "
 vi.mock("./signIn", () => ({ signInOnVm }));
 
 const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
-vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => h.confirm }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: vi.fn(async () => h.confirm) }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
 const flush = () => act(async () => {});
@@ -44,7 +45,7 @@ beforeEach(() => {
           if (method === "work.winvm.settings") {
             const next = (params as { screen?: string }).screen;
             if (next) h.screen = next;
-            return { sleepAfter: "30m", screen: h.screen };
+            return { sleepAfter: "30m", screen: h.screen, detail: "sharp" };
           }
           return null;
         },
@@ -275,5 +276,87 @@ describe("the Windows VM in Settings → Work", () => {
     expect(screen.getAllByRole("button", { name: "Sign in" })).toHaveLength(1);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sign in" })));
     expect(signInOnVm).toHaveBeenCalledWith("box");
+  });
+});
+
+describe("Live resize in Settings → Work", () => {
+  const vga = { device: "vga", width: 1280, height: 800, scale: 100, fit: false, detail: "sharp", canResize: false } as const;
+  const virtio = { ...vga, device: "virtio", width: 2560, height: 1600, scale: 200, fit: true, canResize: true } as const;
+
+  it("turns it on after the confirm in the plan's words; the row says each step while it runs, the Windows row only that it is busy", async () => {
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("Off")).not.toBeNull();
+    // on std VGA a size is a new Set up's, and Detail waits for live resize
+    expect(screen.getByText("Used when the VM is set up again")).not.toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Detail" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Turn on…" })));
+    expect(confirmAction).toHaveBeenCalledWith(TURN_ON);
+    expect(TURN_ON.body).toBe("Windows restarts once. Save your work in it first. Sign-ins stay. A restore point is saved first, in place of your oldest if you have three.");
+    expect(pressed()).toEqual(["work.winvm.display.upgrade"]);
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Saving a restore point", display: vga }) })));
+    expect(screen.getByText("Saving a restore point")).not.toBeNull();
+    expect(screen.getByText("Changing its display")).not.toBeNull();
+    expect((screen.getByRole("button", { name: /Turn on/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(winvmRow(at({ state: "setting-up", step: "Restarting Windows" }))).toEqual({ words: "Changing its display", press: null, busy: false });
+  });
+
+  it("a refusal is the row's red line, and a Cancel sends nothing", async () => {
+    h.state = at({ state: "awake", display: vga });
+    h.fail["work.winvm.display.upgrade"] = "A thread is using the Windows VM. Stop it or take over first.";
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    h.confirm = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Turn on…" })));
+    expect(pressed()).toEqual([]);
+    h.confirm = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Turn on…" })));
+    expect(document.body.textContent).toContain("A thread is using the Windows VM");
+  });
+
+  it("on virtio: Turn off… after its own confirm, Fit to window and 2560 × 1600 offered with no Set up line, and Detail", async () => {
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "fit";
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("On")).not.toBeNull();
+    expect(screen.queryByText("Used when the VM is set up again")).toBeNull();
+    const pick = screen.getByRole("combobox", { name: "Screen size" });
+    expect(pick.textContent).toContain("Fit to window");
+    await act(async () => fireEvent.click(pick));
+    const option = await screen.findByRole("option", { name: "2560 × 1600" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(h.calls).toContainEqual({ method: "work.winvm.settings", params: { screen: "2560x1600" } });
+    const detail = screen.getByRole("combobox", { name: "Detail" });
+    expect(detail.textContent).toContain("Sharp");
+    await act(async () => fireEvent.click(detail));
+    const faster = await screen.findByRole("option", { name: "Faster" });
+    await act(async () => {
+      fireEvent.pointerDown(faster, { pointerType: "mouse" });
+      fireEvent.click(faster);
+    });
+    expect(h.calls).toContainEqual({ method: "work.winvm.settings", params: { detail: "faster" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Turn off…" })));
+    expect(confirmAction).toHaveBeenLastCalledWith(TURN_OFF);
+    expect(pressed()).toEqual(["work.winvm.display.downgrade"]);
+  });
+
+  it("a key that is not an admin's reads On or Off with no press; a host before live resize has no row", async () => {
+    testKey.current = GIVEN_KEY;
+    h.state = at({ state: "awake", display: virtio });
+    const v = render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("Live resize")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Turn (on|off)/ })).toBeNull();
+    v.unmount();
+    resetTestKey();
+    h.state = at({ state: "awake" });
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.queryByText("Live resize")).toBeNull();
   });
 });

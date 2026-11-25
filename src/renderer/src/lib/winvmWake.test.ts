@@ -26,7 +26,9 @@ describe("the VM's plate in each state", () => {
   it("reads the host's screen choice once the keeper says it, and nothing before", () => {
     const base: WinvmState = { state: "awake", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1 };
     expect(displayOf(base)).toBeNull();
-    expect(displayOf({ ...base, display: { width: 1920, height: 1200, fit: false, detail: "faster", canResize: true } } as WinvmState)).toEqual({ screen: "1920x1200", detail: "faster", canResize: true });
-    expect(displayOf({ ...base, display: { width: 3456, height: 2234, fit: true, detail: "sharp", canResize: false } } as WinvmState)).toEqual({ screen: "fit", detail: "sharp", canResize: false });
+    expect(displayOf({ ...base, display: { device: "virtio", width: 1920, height: 1200, scale: 100, fit: false, detail: "faster", canResize: true } })).toEqual({ screen: "1920x1200", detail: "faster", canResize: true });
+    expect(displayOf({ ...base, display: { device: "virtio", width: 3456, height: 2234, scale: 200, fit: true, detail: "sharp", canResize: true } })).toEqual({ screen: "fit", detail: "sharp", canResize: true });
+    // std VGA: Windows takes no new size while it runs, so the bar's rows are off with their own line
+    expect(displayOf({ ...base, display: { device: "vga", width: 1280, height: 800, scale: 100, fit: false, detail: "sharp", canResize: false } })).toEqual({ screen: "1280x800", detail: "sharp", canResize: false });
   });
 });

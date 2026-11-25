@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { WinvmState, WinvmStateName } from "@server/shared/contract-work-winvm";
+import type { WinvmDetail, WinvmScreen, WinvmState, WinvmStateName } from "@server/shared/contract-work-winvm";
 import { registry } from "./connection/registry";
 import { dayTime } from "./duration";
 import { useWorkHosts } from "./workSwitch";
@@ -35,9 +35,9 @@ export interface VmState {
 }
 
 /** The bar's Size: Fit to window, or one fixed size of the guest's pixels. */
-export const VM_SCREEN_PICKS = ["fit", "1280x800", "1920x1200", "2560x1600"] as const;
-export type VmScreenPick = (typeof VM_SCREEN_PICKS)[number];
-export type VmDetail = "sharp" | "faster";
+export const VM_SCREEN_PICKS = ["fit", "1280x800", "1920x1200", "2560x1600"] as const satisfies readonly WinvmScreen[];
+export type VmScreenPick = WinvmScreen;
+export type VmDetail = WinvmDetail;
 /** What the bar's Size and Detail rows read: the host's choice, and whether Windows takes a new size now (live resize). */
 export interface VmDisplay {
   screen: VmScreenPick;
@@ -45,14 +45,10 @@ export interface VmDisplay {
   canResize: boolean;
 }
 
-/**
- * The host's display as the keeper will say it (plan M3d: `WinvmState.display { device, width, height, scale, fit,
- * detail, canResize }`). Read by name until the contract carries it; a host that does not say it has no Size or Detail.
- */
-type DisplayWire = { width?: number; height?: number; fit?: boolean; detail?: VmDetail; canResize?: boolean };
+/** The bar's Size and Detail from the keeper's `WinvmState.display`; a host that does not say it (before live resize) has no Size or Detail. */
 export function displayOf(s: WinvmState): VmDisplay | null {
-  const d = (s as WinvmState & { display?: DisplayWire }).display;
-  if (!d || typeof d.canResize !== "boolean") return null;
+  const d = s.display;
+  if (!d) return null;
   const fixed = `${d.width}x${d.height}`;
   const screen: VmScreenPick = d.fit ? "fit" : ((VM_SCREEN_PICKS as readonly string[]).includes(fixed) ? fixed : "fit") as VmScreenPick;
   return { screen, detail: d.detail === "faster" ? "faster" : "sharp", canResize: d.canResize };

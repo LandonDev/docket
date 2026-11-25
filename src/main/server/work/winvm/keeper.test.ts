@@ -127,7 +127,7 @@ class FakeGuest implements VmGuest {
     this.log.push('ready')
   }
   uploads: string[] = []
-  async admin(script: string) {
+  async admin(script: string): Promise<string> {
     this.scripts.push(script)
     if (script.includes('Win32_VideoController')) return this.m.ranOn === 'virtio' ? `${VIRTIO_ADAPTER}\r\n` : 'Microsoft Basic Display Adapter\r\n'
     return 'step: one\nstep: two\nsetup done'

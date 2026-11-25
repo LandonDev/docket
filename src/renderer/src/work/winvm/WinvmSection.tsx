@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OfficeApp, TeamsLibrariesAnswer, VmOfficeStatus } from "@shared/contract-work-office";
-import { WINVM_EVALUATION_ENDS, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
+import { LIVE_RESIZE_WORDS, WINVM_EVALUATION_ENDS, type WinvmDetail, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
@@ -21,6 +21,7 @@ import { signInOnVm } from "./signIn";
  * docs/agents/work-winvm.md): the box's standing Windows machine on each Work
  * host that can have one. One row says what it is doing with the one press
  * that fits (Set up, Wake, Sleep), then when it sleeps by itself, its
+ * screen (Live resize with Turn on… and Turn off…, Screen size, Detail), its
  * restore points (a dialog), the edition, and Office and OneDrive as last read
  * in it (`work.office.vmStatus`, which never wakes it), with OneDrive's
  * sign-in where it needs his. A host that cannot have it (a Mac, a box with
@@ -30,6 +31,10 @@ import { signInOnVm } from "./signIn";
  * drawn, and the setting it would change stands as plain words.
  */
 
+const RESIZE_STEPS = new Set<string>(Object.values(LIVE_RESIZE_WORDS));
+/** Live resize is being turned on or off: its own row says the step, the Windows row says only that it is busy. */
+export const resizing = (state: WinvmState): boolean => state.state === "setting-up" && !!state.step && RESIZE_STEPS.has(state.step);
+
 /** The machine's row: its state in a few words, and the one press that fits it. */
 export function winvmRow(state: WinvmState): { words: string; press: "setup" | "wake" | "sleep" | null; busy: boolean } {
   const doing = state.step;
@@ -37,6 +42,7 @@ export function winvmRow(state: WinvmState): { words: string; press: "setup" | "
     case "none":
       return { words: "Not set up", press: "setup", busy: false };
     case "setting-up":
+      if (resizing(state)) return { words: "Changing its display", press: null, busy: false };
       return { words: doing ?? "Setting up", press: null, busy: true };
     case "asleep":
       return { words: "Asleep", press: "wake", busy: false };
@@ -58,11 +64,28 @@ const SLEEP_AFTER: { value: WinvmSleepAfter; label: string }[] = [
   { value: "2h", label: "2 hours" },
   { value: "never", label: "Never" },
 ];
-/** The guest's screen: the std VGA's own, or the larger size the picture holds at (docs/agents/live-video.md "The Windows VM"). */
+/** The guest's screen: his window's size while he drives (live resize), or one fixed size (docs/agents/live-video.md "The Windows VM"). */
 const SCREENS: { value: WinvmScreen; label: string }[] = [
+  { value: "fit", label: "Fit to window" },
   { value: "1280x800", label: "1280 × 800" },
   { value: "1920x1200", label: "1920 × 1200" },
+  { value: "2560x1600", label: "2560 × 1600" },
 ];
+const DETAILS: { value: WinvmDetail; label: string }[] = [
+  { value: "sharp", label: "Sharp" },
+  { value: "faster", label: "Faster" },
+];
+/** The confirms of Live resize: Turn on's words are the plan's ("The standing VM"). */
+export const TURN_ON = {
+  title: "Turn on live resize?",
+  body: "Windows restarts once. Save your work in it first. Sign-ins stay. A restore point is saved first, in place of your oldest if you have three.",
+  action: "Turn on",
+} as const;
+export const TURN_OFF = {
+  title: "Turn off live resize?",
+  body: "Windows restarts once, at 1280 × 800. Save your work in it first. Sign-ins stay.",
+  action: "Turn off",
+} as const;
 
 const APP_NAME: Record<OfficeApp, string> = { excel: "Excel", word: "Word", powerpoint: "PowerPoint", outlook: "Outlook" };
 const listed = (names: readonly string[]): string => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
@@ -125,6 +148,9 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   /** A failed read of the points: its own line with Retry, never "None yet". */
   const [pointsError, setPointsError] = useState<string | null>(null);
   const [screen, setScreen] = useState<WinvmScreen | null>(null);
+  const [detail, setDetail] = useState<WinvmDetail | null>(null);
+  const [turning, setTurning] = useState(false);
+  const [resizeError, setResizeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
@@ -156,8 +182,14 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
     // The screen size is read with the settings, the admin rule: a key that may not change it never asks.
     if (admin)
       void link.request<WinvmSettings>("work.winvm.settings", {}).then(
-        (v) => setScreen(v.screen),
-        () => setScreen(null),
+        (v) => {
+          setScreen(v.screen);
+          setDetail(v.detail ?? null);
+        },
+        () => {
+          setScreen(null);
+          setDetail(null);
+        },
       );
     // A host on an older build has no status to give: then the rows are not drawn.
     void Promise.all([
@@ -241,13 +273,27 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       setSigningIn(false);
     }
   };
-  const pickScreen = async (next: WinvmScreen): Promise<void> => {
+  const pickScreen = async (next: { screen: WinvmScreen } | { detail: WinvmDetail }): Promise<void> => {
     try {
-      setScreen(next);
-      await link.request("work.winvm.settings", { screen: next });
+      if ("screen" in next) setScreen(next.screen);
+      else setDetail(next.detail);
+      await link.request("work.winvm.settings", next);
     } catch (err) {
       setError(hostFailure(env, err, "did not save the change", true));
       load();
+    }
+  };
+  const turn = async (on: boolean): Promise<void> => {
+    if (!(await confirmAction(on ? TURN_ON : TURN_OFF))) return;
+    setTurning(true);
+    setResizeError(null);
+    try {
+      // answered at once: the steps come as the state's pushes
+      await link.request(on ? "work.winvm.display.upgrade" : "work.winvm.display.downgrade", {});
+    } catch (err) {
+      setResizeError(hostFailure(env, err, on ? "did not turn on live resize" : "did not turn off live resize", true));
+    } finally {
+      setTurning(false);
     }
   };
   return (
@@ -259,11 +305,14 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         pointsError={pointsError}
         onRetryPoints={loadPoints}
         screen={screen}
+        detail={detail}
         error={error}
         pressing={pressing}
         onPress={() => void press()}
         onSleepAfter={(v) => void setSleepAfter(v)}
-        onScreen={(v) => void pickScreen(v)}
+        onScreen={(v) => void pickScreen({ screen: v })}
+        onDetail={(v) => void pickScreen({ detail: v })}
+        resize={{ busy: turning, error: resizeError, onTurn: (on) => void turn(on) }}
         onPoints={() => setShowPoints(true)}
         office={office}
         signIn={operate ? { busy: signingIn, error: signInError, onPress: () => void signIn() } : undefined}
@@ -283,6 +332,11 @@ export interface WinvmViewProps {
   onRetryPoints?: () => void;
   /** the guest's screen size; null until the host has said */
   screen: WinvmScreen | null;
+  /** Sharp or Faster; null until the host has said */
+  detail?: WinvmDetail | null;
+  onDetail?: (v: WinvmDetail) => void;
+  /** his Turn on… and Turn off…: the press in flight and its refusal */
+  resize?: { busy: boolean; error: string | null; onTurn: (on: boolean) => void };
   error: string | null;
   pressing: boolean;
   onPress: () => void;
@@ -297,8 +351,12 @@ export interface WinvmViewProps {
 }
 
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
-export function WinvmView({ title, state, points, pointsError, onRetryPoints, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
+export function WinvmView({ title, state, points, pointsError, onRetryPoints, screen, detail = null, onDetail, resize, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
   const row = winvmRow(state);
+  // a host before live resize says no display: its rows are as they were
+  const display = state.display;
+  const live = display?.device === "virtio";
+  const turning = resizing(state);
   const press = row.press && (row.press === "setup" ? may.admin : may.operate) ? row.press : null;
   const officeRow = office ? officeLine(office.status) : null;
   const onedriveRow = office ? onedriveLine(office.status, office.libraries) : null;
@@ -316,7 +374,7 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
           <Button variant="secondary" size="sm" disabled={pressing} onClick={onPress}>
             <BusyLabel busy={pressing} label={PRESS_WORDS[press]} />
           </Button>
-        ) : row.press ? null : (
+        ) : row.press || !row.busy ? null : (
           <Button variant="secondary" size="sm" disabled>
             <BusyLabel busy label={state.state === "setting-up" ? "Set up" : state.state === "waking" ? "Wake" : "Sleep"} />
           </Button>
@@ -331,10 +389,26 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
           ) : (
             <PageRow title="Sleeps after" description={SLEEP_AFTER.find((o) => o.value === state.sleepAfter)?.label} />
           )}
+          {display ? (
+            may.admin && resize ? (
+              <PageRow title="Live resize" description={turning ? (state.step ?? undefined) : live ? "On" : "Off"} error={resize.error ?? undefined}>
+                <Button variant="secondary" size="sm" disabled={resize.busy || turning || state.state === "setting-up"} onClick={() => resize.onTurn(!live)}>
+                  <BusyLabel busy={resize.busy || turning} label={live ? "Turn off…" : "Turn on…"} />
+                </Button>
+              </PageRow>
+            ) : (
+              <PageRow title="Live resize" description={live ? "On" : "Off"} />
+            )
+          ) : null}
           {screen && may.admin ? (
-            // Windows keeps the size it was set up at through every sleep (guestScreen.ts): the choice is a new Set up's
-            <PageRow title="Screen size" description="Used when the VM is set up again">
+            // on std VGA Windows keeps the size it was set up at through every sleep (guestScreen.ts): the choice is a new Set up's
+            <PageRow title="Screen size" {...(live ? {} : { description: "Used when the VM is set up again" })}>
               <ChoiceSelect size="sm" label="Screen size" value={screen} options={SCREENS} onChange={(v) => onScreen(v as WinvmScreen)} />
+            </PageRow>
+          ) : null}
+          {live && detail && may.admin && onDetail ? (
+            <PageRow title="Detail">
+              <ChoiceSelect size="sm" label="Detail" value={detail} options={DETAILS} onChange={(v) => onDetail(v as WinvmDetail)} />
             </PageRow>
           ) : null}
           {pointsError ? (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { WinvmStill } from "@shared/contract-work-winvm";
+import type { WinvmDetail, WinvmScreen, WinvmStill } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection/registry";
 
 /**
@@ -13,8 +13,8 @@ export const sleepVm = (host: string): Promise<unknown> => registry.linkOf(host)
 /** Restarts Windows cleanly; the host refuses while a thread holds it. */
 export const restartVm = (host: string): Promise<unknown> => registry.linkOf(host).request("work.winvm.restart", {}, { timeoutMs: 660_000 });
 
-/** The screen's Size or Detail (`work.winvm.settings`, once the host takes them). */
-export const setVmScreen = (host: string, pick: { screen: string } | { detail: string }): Promise<unknown> => registry.linkOf(host).request("work.winvm.settings", pick);
+/** The screen's Size or Detail: the host's setting (`work.winvm.settings`), which `WinvmState.display` then says. */
+export const setVmScreen = (host: string, pick: { screen: WinvmScreen } | { detail: WinvmDetail }): Promise<unknown> => registry.linkOf(host).request("work.winvm.settings", pick);
 
 /** The picture the VM went to sleep on; null before its first sleep, or where this key may not watch it. */
 export async function readVmStill(host: string): Promise<WinvmStill | null> {
