@@ -313,7 +313,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   if (!workspace) return null;
   const host = environments.find((e) => e.id === workspace.environmentId);
   const desktops = desktopRows(environments, far, localHost);
-  const key = keyLine(status?.keys.find((k) => k.workspaceId === workspace.id), host?.name);
+  // While the host's LifeOS is down the Sector row says its sector alone: Waiting on says the state once, with its press.
+  const key = status && status.lifeos.state !== "connected" ? null : keyLine(status?.keys.find((k) => k.workspaceId === workspace.id), host?.name);
   /** The desktops it may use other than its own host: where a Teams file lies that a copy would bring here. */
   const otherDesktops = (list: readonly string[]): string[] => list.filter((id) => id !== workspace.environmentId && id !== hostIdOfLink(workspace.environmentId, localHost));
   // The list holds host ids; this machine's link is "local" in the window, its host id on every host.

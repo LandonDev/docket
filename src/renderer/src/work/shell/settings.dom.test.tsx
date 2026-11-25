@@ -96,6 +96,19 @@ describe("Settings → Work", () => {
     reads.error = "The host did not answer";
   });
 
+  /** Council round 10 (Opus Settings 3): the Sector row said the sign-out a second time, above Waiting on's line. */
+  it("lets the Sector row say only its sector while the host's LifeOS is down, and its key line once it is connected", async () => {
+    reads.fail = false;
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: "env_box" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => new Promise(() => {})), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [{ workspaceId: "ws", sectors: ["purdue"], state: "waiting" }] });
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.queryByText(/Its key is made once/)).toBeNull();
+    act(() => setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [{ workspaceId: "ws", sectors: ["purdue"], state: "failed", error: "Its key could not be made" }] }));
+    expect(screen.getByText("Its key could not be made")).toBeTruthy();
+  });
+
   it("draws Computer use on a PC the workspace's host knows, though this window has no link to it", async () => {
     reads.fail = false;
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);

@@ -40,6 +40,8 @@ export function WorkspacePagePreview({ state = "page" }: { state?: State }) {
         if (state === "failed") throw new Error("The box did not answer");
         return { mayUseDesktop: ["env_pc"], windowsVm: true, model: null, reasoning: null, voice: false };
       }
+      // A host whose LifeOS is down sends the voice row no count and no error, as voice.ts does.
+      if (method === "work.rules.voice" && state === "signedout") return { on: true, count: null, since: null, from: [] };
       if (method in ANSWERS) return ANSWERS[method];
       throw new Error(`The box did not answer ${method}`);
     });

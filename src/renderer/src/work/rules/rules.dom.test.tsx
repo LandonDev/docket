@@ -10,11 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftEdit, HouseRule, RuleProposal } from "@shared/contract-work-rules";
 
 const calls: { method: string; params: Record<string, unknown> }[] = [];
-const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal[]; fail: Set<string>; gate: Promise<void> | null } = { rules: [], proposals: [], line: [], fail: new Set(), gate: null };
+const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal[]; fail: Set<string>; gate: Promise<void> | null; voice: unknown } = { rules: [], proposals: [], line: [], fail: new Set(), gate: null, voice: null };
 
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
+    environment: (id: string) => ({ id, name: "The box" }),
     linkOf: () => ({
       onPush: () => () => {},
       request: async (method: string, params: Record<string, unknown> = {}) => {
@@ -23,7 +24,7 @@ vi.mock("../../lib/connection", async (original) => ({
         if (state.fail.has(method)) throw new Error("The box did not answer");
         if (method === "work.rules.list") return { rules: state.rules, proposals: state.proposals };
         if (method === "work.rules.forDraft") return { workspaceId: "ws", proposals: state.line };
-        if (method === "work.rules.voice") return { on: true, count: 2, since: Date.UTC(2026, 9, 19, 12), from: ["landon@purdue.edu"] };
+        if (method === "work.rules.voice") return state.voice ?? { on: true, count: 2, since: Date.UTC(2026, 9, 19, 12), from: ["landon@purdue.edu"] };
         if (method === "work.rules.add") return rule("r-new", String(params.text));
         return method === "work.rules.remove" ? { removed: true } : null;
       },
@@ -181,6 +182,41 @@ describe("a read that failed", () => {
     await settle();
     expect(screen.getByText(/^2 mails from landon@purdue\.edu since /)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+});
+
+/** Council round 10 (Opus Settings 1): "LifeOS is not connected" in red beside Waiting on's line for the same state. */
+describe("the voice row while LifeOS is down", () => {
+  afterEach(async () => {
+    state.voice = null;
+    (await import("../shell/lifeos")).resetLifeos();
+  });
+
+  it("stays quiet while the host's LifeOS is down, keeps its switch, and reads again once it is back", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] });
+    state.voice = { on: true, count: null, since: null, from: [] };
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    const row = screen.getByText("Read my sent mail for how I write").closest("[data-slot]")!.parentElement!;
+    expect(row.textContent).not.toMatch(/LifeOS|mails/);
+    expect(screen.getByRole("switch", { name: "Read my sent mail for how I write" })).toBeTruthy();
+    const asks = calls.filter((c) => c.method === "work.rules.voice").length;
+    state.voice = null;
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] }));
+    await settle();
+    expect(calls.filter((c) => c.method === "work.rules.voice").length).toBe(asks + 1);
+    expect(screen.getByText(/^2 mails from landon@purdue\.edu since /)).toBeTruthy();
+  });
+
+  it("says a failed read of a connected session as LifeOS's silence, the computer named", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] });
+    state.voice = { on: true, count: null, since: null, from: [], error: "LifeOS did not answer: socket closed" };
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    expect(screen.queryByText(/socket closed/)).toBeNull();
   });
 });
 

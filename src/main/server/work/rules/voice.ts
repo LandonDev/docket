@@ -58,7 +58,8 @@ export async function voiceFacts(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, workspaceI
   const ws = workspaceFacts(ctx, workspaceId)
   if (!ws) throw new Error('only a Work workspace has a voice')
   if (!ws.sector) return { on: ws.voice, count: 0, since: null, from: [] }
-  if (!ctx.lifeos.connected()) return { on: ws.voice, count: null, since: null, from: [], error: 'LifeOS is not connected' }
+  // A session that is not connected is no error of this row's: the page says the state once, at Waiting on, with its press.
+  if (!ctx.lifeos.connected()) return { on: ws.voice, count: null, since: null, from: [] }
   let mail: SentMail[]
   try {
     mail = await sentOfSector(ctx, ws.sector, now)

@@ -401,6 +401,14 @@ describe('the voice switch', () => {
     }
   })
 
+  it('sends no error for a session that is not connected: the page says that state once, at Waiting on', async () => {
+    voice(true)
+    ctx.lifeos.connected = () => false
+    const facts = await call('work.rules.voice', { workspaceId: 'ws-purdue' })
+    expect(facts).toMatchObject({ on: true, count: null })
+    expect(facts).not.toHaveProperty('error')
+  })
+
   it('keeps the switch readable when LifeOS does not answer', async () => {
     voice(true)
     ctx.lifeos.owner = () => ({ query: async () => Promise.reject(new Error('down')) }) as never

@@ -14,6 +14,9 @@ import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
+import { lifeosHostName } from "../shell/lifeos";
+import { downWords } from "../shell/lifeosDown";
+import { useLiveDown } from "../shell/lifeosLive";
 import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice, type Again } from "./data";
 import { Evidence, fromEdits } from "./Evidence";
 import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
@@ -248,8 +251,14 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
     }
   };
   const v = facts.status === "ready" ? facts.value : null;
+  // While the host's LifeOS is down the row is quiet: the page says the state once, at Waiting on, with its press; the
+  // switch stays, a workspace setting. The count is read again once the host is back. A read of a connected session
+  // that failed is LifeOS's silence, its computer named.
+  const quiet = useLiveDown(null, workspace.environmentId, again.retry);
+  const down = !!quiet.down || quiet.waits;
+  const error = !down && v?.error ? downWords("unreachable", lifeosHostName(workspace.environmentId)) : undefined;
   const line =
-    !v || v.count === null
+    down || !v || v.count === null
       ? undefined
       : v.count === 0
         ? "No mail sent in the last 30 days"
@@ -261,7 +270,7 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
       ) : facts.status === "error" ? (
         <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>
       ) : (
-        <PageRow title="Read my sent mail for how I write" description={line} error={facts.value.error}>
+        <PageRow title="Read my sent mail for how I write" description={line} error={error}>
           <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} onChange={flip} />
         </PageRow>
       )}
