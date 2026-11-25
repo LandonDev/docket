@@ -12,7 +12,7 @@ import { WaitingSection } from "./WaitingSection";
  * Rendered by nothing in the app.
  */
 
-type State = "off" | "on" | "lifeos" | "signedout" | "dropped" | "loading";
+type State = "off" | "on" | "lifeos" | "signedout" | "dropped" | "loading" | "connecting";
 let state: State = "off";
 
 // The host's own words for each (src/main/server/work/mail/waiting.ts): one prefix for every cause.
@@ -21,6 +21,8 @@ const ANSWERS: Partial<Record<State, MailWaiting>> = {
   dropped: { days: 5, routine: true, routineId: "r1" },
   lifeos: { days: null, routine: false, error: "LifeOS did not answer: LifeOS is unreachable" },
   signedout: { days: null, routine: false, error: "LifeOS did not answer: This host is not signed in to LifeOS" },
+  // The days read while signed out; the sign-in approved since, the host now connecting.
+  connecting: { days: null, routine: false, error: "LifeOS did not answer: This host is not signed in to LifeOS" },
 };
 const answer = (): MailWaiting => ANSWERS[state] ?? { days: 3, routine: false };
 
@@ -34,7 +36,7 @@ const link = {
   request<T>(method: string): Promise<T> {
     if (state === "loading") return new Promise<T>(() => {});
     // The host's LifeOS status, which the section hears live.
-    if (method === "work.lifeos.status") return Promise.resolve((state === "signedout" || state === "dropped" ? { lifeos: { state: "signed-out" }, keys: [] } : { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] }) as T);
+    if (method === "work.lifeos.status") return Promise.resolve((state === "signedout" || state === "dropped" ? { lifeos: { state: "signed-out" }, keys: [] } : state === "connecting" ? { lifeos: { state: "connecting" }, keys: [] } : { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] }) as T);
     return Promise.resolve(answer() as T);
   },
 } as unknown as Link;

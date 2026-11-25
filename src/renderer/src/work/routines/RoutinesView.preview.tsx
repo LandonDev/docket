@@ -1,12 +1,14 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/routines/RoutinesView.preview.tsx#RoutinesPreview --props '{"state":"list"}'`:
 // the Routines view under its header, over a host that answers from made-up routines. States: `list` (the list, the
 // first routine's detail and its runs), `proposed` (an agent's proposal leads), `runs-failed`, `empty`, `failed`,
-// `form` (New routine), `edit` (a routine's form) and `given` (a computer with a given key: no New routine, no
-// presses that change a routine). Rendered by nothing in the app.
+// `form` (New routine), `edit` (a routine's form), `given` (a computer with a given key: no New routine, no
+// presses that change a routine) and `lifeos` (the box signed out of LifeOS: the first routine waits on it, and its
+// detail says why with Sign in). Rendered by nothing in the app.
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { asGivenComputer, standUpView, usePress, usePressNamed, ViewAt } from "../kit.preview";
+import { setLifeosStatus } from "../shell/lifeos";
 
-type State = "list" | "proposed" | "runs-failed" | "empty" | "failed" | "form" | "edit" | "given";
+type State = "list" | "proposed" | "runs-failed" | "empty" | "failed" | "form" | "edit" | "given" | "lifeos";
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
@@ -60,7 +62,7 @@ export function RoutinesPreview({ state = "list" }: { state?: State }) {
   if (!ready) {
     ready = true;
     if (state === "given") asGivenComputer({ on: ["local"] });
-    const routines = state === "empty" ? [] : state === "proposed" ? [PROPOSED, ...ROUTINES] : ROUTINES;
+    const routines = state === "empty" ? [] : state === "proposed" ? [PROPOSED, ...ROUTINES] : state === "lifeos" ? [{ ...ROUTINES[1]!, waiting: "Waiting on LifeOS", nextAt: null, createdAt: 0 }, ROUTINES[0]!, ...ROUTINES.slice(2)] : ROUTINES;
     standUpView("routines", {}, (method) => {
       if (method === "work.routines.list") {
         if (state === "failed") throw new Error("The box did not answer");
@@ -74,6 +76,8 @@ export function RoutinesPreview({ state = "list" }: { state?: State }) {
       if (method === "work.outbox.rules") return { addons: [] };
       return undefined;
     });
+    // The host's own LifeOS signed out: Routines reads no LifeOS of its own, so its view stands, and the routine says why.
+    if (state === "lifeos") setLifeosStatus("local", { lifeos: { state: "signed-out" }, keys: [] });
   }
   // New routine is the header's own press; a routine's form is its Edit.
   usePress(state === "form" ? "[data-view-heading] ~ button" : null, 80);

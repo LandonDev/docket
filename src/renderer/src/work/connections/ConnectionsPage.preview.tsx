@@ -124,6 +124,25 @@ const HOSTS: Record<string, HostView[]> = {
       },
     },
   ],
+  /** As `unreachable`, the Mac asked again by its Retry: its Hosts row stands, its Retry spinning. */
+  rechecking: [
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer. Still trying since", at: NOW - 3_600_000, fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }), ...BOX.slice(1)] } },
+    {
+      id: "mac",
+      name: "Mac",
+      status: "checking",
+      silent: true,
+      failed: {},
+      report: {
+        host: "env_mac",
+        at: NOW,
+        rows: [
+          r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "working", lifeos: "connected", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }),
+          r({ id: "lifeos.answers", group: "LifeOS", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }),
+        ],
+      },
+    },
+  ],
 };
 
 let given = false;

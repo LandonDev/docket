@@ -1,4 +1,4 @@
-/** ConnectionsPreview's states for `bun run ui:preview`: both hosts answering, the Mac offline, the first check, neither host linked, the Mac's check run out of time, the Mac refusing, LifeOS down on both (the box's sign-in waiting, LifeOS silent on the Mac with Retry), LifeOS unreachable on the box (Retry beside Sign out) with the Mac silent on its Retry, and (last, since it makes this window a given computer) the box signed out and LifeOS silent on the Mac as his laptop sees them. */
+/** ConnectionsPreview's states for `bun run ui:preview`: both hosts answering, the Mac offline, the first check, neither host linked, the Mac's check run out of time, the Mac refusing, LifeOS down on both (the box's sign-in waiting, LifeOS silent on the Mac with Retry), LifeOS unreachable on the box (Retry beside Sign out) with the Mac silent on its Retry, the Mac asked again (its Hosts row kept, its Retry spinning), and (last, since it makes this window a given computer) the box signed out and LifeOS silent on the Mac as his laptop sees them. */
 export const fixtures = [
   { name: "Both hosts", props: { hosts: "both" } },
   { name: "The Mac offline", props: { hosts: "macOffline" } },
@@ -8,5 +8,6 @@ export const fixtures = [
   { name: "The Mac refused", props: { hosts: "macRefused" } },
   { name: "LifeOS down on both", props: { hosts: "lifeosDown" } },
   { name: "LifeOS unreachable, the Mac silent", props: { hosts: "unreachable" } },
+  { name: "The Mac asked again", props: { hosts: "rechecking" } },
   { name: "From a given computer", props: { hosts: "given" } },
 ];
