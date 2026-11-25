@@ -991,7 +991,8 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   and Files holds the picture in memory alone. Other pages, and a
   `.tcsheet` or a .csv, answer null, so Files' own sources draw them.
 - **The canvas.** `SheetBody.tsx` draws the frame over the grid, which
-  stays mounted, unseen and `inert` under it; More's Preview…, File →
+  stays mounted, unseen and `inert` under it; the format row's Preview at
+  its end (work-kit's `out`, given only where Preview has a source), More's Preview…, File →
   Export… and ⇧⌘E open it on the format he last used, File → Print… and
   ⌘P on Print (`useWorkCommands`, offered once the grid is up). The source
   is made once per item, store and file name. It takes its read limit as

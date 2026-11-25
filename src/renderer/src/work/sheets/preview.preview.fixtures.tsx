@@ -4,4 +4,5 @@ export default [
   { name: "PDF of a long sheet: the first pages, more follow", props: { moment: "long" } },
   { name: "Excel 97-2003: what it drops", props: { moment: "xls" } },
   { name: "CSV: one sheet's values, the sheet picker", props: { moment: "csv" } },
+  { name: "Beside a thread (502px): the column folded, the format a menu", props: { moment: "folded" } },
 ];

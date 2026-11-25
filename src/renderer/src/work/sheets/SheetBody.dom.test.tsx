@@ -1117,6 +1117,18 @@ describe("the sheet kind", () => {
     expect(cell("A2").closest("[inert]")).toBeNull();
   });
 
+  it("ends the format row in Preview, as a document's row does, and it opens Preview over the grid", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    const press = await screen.findByRole("button", { name: "Preview" });
+    // The row's last control: nothing of the row stands after it.
+    const row = press.closest("[role=toolbar]")!;
+    const presses = within(row as HTMLElement).getAllByRole("button");
+    expect(presses.at(-1)).toBe(press);
+    fireEvent.click(press);
+    await waitFor(() => expect(document.querySelector("[data-sheet-preview]")).toBeTruthy());
+  });
+
   it("answers File → Print… on Print and File → Export… on the format he last used", async () => {
     localStorage.setItem("work.preview.format.sheet", "csv");
     open(sheetView({ store: "package" }));

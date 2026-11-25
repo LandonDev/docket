@@ -4,7 +4,7 @@ import { OpenFailed, progressWords } from "../canvas/FetchState";
 import type { SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
-import { ChartBar } from "../../chrome/icons";
+import { ChartBar, Eye } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { BusyLabel } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
@@ -250,6 +250,8 @@ export function Body(props: Props) {
           onPageBreaks={setPageView}
           // Insert → Picture opens the system's file picker; the grid seats what he picks at the cell in hand.
           {...(controls.includes("picture") ? { onPicture: () => pictureInput.current?.click() } : {})}
+          // The row ends in Preview, as a document's does: every way out of the sheet, drawn as it will be.
+          {...(source ? { out: { label: "Preview", icon: <Eye />, onPress: () => showPreview("last") } } : {})}
         />
       ) : controls.length > 0 ? (
         // Until the grid hands its handle the row keeps its 36px, so the grid does not drop when the row lands.

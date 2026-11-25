@@ -6,7 +6,7 @@ import { Preview } from "../formats/PreviewFrame";
 import type { Drawn, PreviewBytes, PreviewSource } from "../formats/preview";
 import { sheetFormats } from "./preview";
 
-export type SheetMoment = "excel" | "long" | "xls" | "csv";
+export type SheetMoment = "excel" | "long" | "xls" | "csv" | "folded";
 
 const bytes = (rev: string): PreviewBytes => ({ rev, size: 1, read: async () => new Uint8Array(1) });
 const ROWS = [
@@ -35,7 +35,7 @@ function sheetPage(rows: string[][], from = 0): FakePage {
 const longPages = (count: number): FakePage[] =>
   Array.from({ length: count }, (_, p) => sheetPage(Array.from({ length: 46 }, (_, r) => (p + r === 0 ? ROWS[0]! : [`Seat ${p * 46 + r}`, "Union events", "30.00", (p + r) % 3 ? "Yes" : "No"])), p * 46));
 
-function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; paper: FakePage[]; tight: boolean } {
+function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; paper: FakePage[]; tight: boolean; width?: number } {
   const formats = sheetFormats({ store: "package", name: "Spring LAN budget.xlsx" });
   const paged = (pages: number, drops: string[], shown?: { from: number; to: number; of: number }): Drawn => ({ picture: { kind: "paged", pdf: bytes(moment), pages, drawnBy: "libreoffice", ...(shown ? { shown } : {}) }, drops });
   const source = (draw: () => Promise<Drawn>): PreviewSource => ({ formats, draw, export: async (format) => ({ name: `Spring LAN budget.${format}` }) });
@@ -48,6 +48,9 @@ function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; p
       return { source: source(async () => paged(2, ["3 colour scales stay behind", "2 tables become plain ranges", "4 formulas use functions Excel 97-2003 does not have"])), initial: "xls", paper: short, tight: false };
     case "csv":
       return { source: source(async () => ({ picture: { kind: "table", name: "Budget", rows: ROWS, sheets: ["Budget", "Flights", "Hotel"] }, drops: ["Flights and Hotel stay behind", "1 formula becomes its value", "Formatting stays behind"] })), initial: "csv", paper: [], tight: false };
+    case "folded":
+      // Beside a thread: the column folds under the frame's 600px, the format is the menu.
+      return { source: source(async () => paged(2, ["2 tables become plain ranges"])), initial: "xlsx", paper: short, tight: true, width: 502 };
     default:
       // Eight formats and "Save a copy" do not fit 864px (nor do they beside a count of 25): the format is the menu the bar falls back to.
       return { source: source(async () => paged(2, [])), initial: "xlsx", paper: short, tight: true };
@@ -55,11 +58,12 @@ function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; p
 }
 
 export function SheetPreview({ moment = "excel" }: { moment?: SheetMoment }) {
-  const { source, initial, paper, tight } = setUp(moment);
+  const { source, initial, paper, tight, width = 864 } = setUp(moment);
   return (
-    <div className="flex h-[620px] w-full overflow-hidden rounded-xl border border-border" style={{ maxWidth: 864 }}>
+    // The frame is the width its Preview is told, never squeezed under it: the narrow frame is its own fixture.
+    <div className="flex h-[620px] shrink-0 overflow-hidden rounded-xl border border-border" style={{ width }}>
       <div className="flex min-w-0 flex-1 flex-col">
-        <Preview source={source} title="Spring LAN budget" kind={`sheet-preview-${moment}`} initial={initial} onClose={() => undefined} engine={fakeEngine(fakeDoc(paper))} width={864} height={584} tight={tight} />
+        <Preview source={source} title="Spring LAN budget" kind={`sheet-preview-${moment}`} initial={initial} onClose={() => undefined} engine={fakeEngine(fakeDoc(paper))} width={width} height={584} tight={tight} />
       </div>
     </div>
   );

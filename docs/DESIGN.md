@@ -3443,7 +3443,9 @@ set by hand.
   heading the font and the border, Currency the number format alone), and
   the select names the style a cell wears while that part of its look is
   the style's. A border preset too large for one press has its row off; a
-  merge that would empty cells asks first, in the app's own confirm.
+  merge that would empty cells asks first, in the app's own confirm. The
+  row ends in Preview, as a document's does (the row's way out, its eye
+  glyph and word), opening Preview on the format he last used.
 - **The sheet's Data** is one menu in the row's data group (232px): Sort
   (A to Z, Z to A on the selection's column, then "Custom sort…"), Filter
   with a check while the sheet has one (⇧⌘L), and under a rule Validation,
