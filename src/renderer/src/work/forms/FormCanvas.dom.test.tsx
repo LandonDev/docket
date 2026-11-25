@@ -477,6 +477,29 @@ describe("turning a question to a type that takes options", () => {
   });
 });
 
+describe("the responses' check (perf M10)", () => {
+  it("asks nothing while the window is hidden, and once as it shows again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    try {
+      open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+      await found("[data-form]");
+      fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+      await found("[data-form-responses]");
+      const asked = formHost.responses.mock.calls.length;
+      hidden.mockReturnValue(true);
+      await act(async () => void vi.advanceTimersByTime(5 * 60_000));
+      expect(formHost.responses.mock.calls.length).toBe(asked);
+      hidden.mockReturnValue(false);
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      expect(formHost.responses.mock.calls.length).toBe(asked + 1);
+    } finally {
+      hidden.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("the responses' ticks", () => {
   it("follow each response, not its row: a newer answer above keeps his tick and Ask's quote on the same response; a removed one drops", async () => {
     resetContextChips();

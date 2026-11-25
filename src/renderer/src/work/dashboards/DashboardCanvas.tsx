@@ -22,6 +22,7 @@ import { savedOfState, useLiveDown, type LiveDown } from "../shell/lifeosLive";
 import { connectingWords } from "../shell/lifeosWords";
 import { linkDashHost, type DashHost } from "./host";
 import { forgetWithItems } from "../canvas/gone";
+import { quietPoll } from "../../lib/quietPoll";
 
 /**
  * The dashboard kind (docs/agents/work-dashboards.md; the approved page is
@@ -89,7 +90,10 @@ function useDashLifeos(view: DashboardView | null, env: string, onBack?: () => P
   return useLiveDown(saved, reads ? env : null, onBack);
 }
 
-/** How often an open dashboard asks whether a sheet it reads has moved. */
+/**
+ * How long an open dashboard goes without a word from its host before it asks whether a sheet it reads has moved (the
+ * host pushes the page when it changes it, but not when a sheet changes elsewhere): never while the window is hidden.
+ */
 const STALE_POLL_MS = 30_000;
 
 export function Body(props: Props) {
@@ -104,7 +108,11 @@ export function Body(props: Props) {
     let live = true;
     const load = (): void =>
       void host.open().then(
-        (v) => live && store.set({ view: v, error: null, missed: false }),
+        (v) => {
+          if (!live) return;
+          store.set({ view: v, error: null, missed: false });
+          poll.heard();
+        },
         (e: unknown) => {
           if (!live) return;
           // After the first read a failure keeps the figures but marks them out of date, never drops it in silence.
@@ -112,13 +120,17 @@ export function Body(props: Props) {
           else store.set({ error: e instanceof Error ? e.message : "The dashboard did not load." });
         },
       );
+    // A push is the page as it is now: the next check waits from it, so a page kept current by its pushes asks nothing.
+    const poll = quietPoll(load, STALE_POLL_MS);
     load();
-    const off = host.watch((v) => store.set({ view: v, missed: false }));
-    const t = setInterval(load, STALE_POLL_MS);
+    const off = host.watch((v) => {
+      store.set({ view: v, missed: false });
+      poll.heard();
+    });
     return () => {
       live = false;
       off();
-      clearInterval(t);
+      poll.stop();
     };
   }, [host, store, attempt]);
 

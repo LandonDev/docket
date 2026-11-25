@@ -5,8 +5,38 @@ import type { LiveTicketAsk } from "@shared/work/officeLive";
 import { liveAskKey, liveAskUrl, liveLayer, type LiveLayer, type LiveRect } from "./layer";
 import { APP_NAME, type LiveApp } from "./liveSwitch";
 
-/** How often a shown body checks its place: a rail or panel folding moves it without resizing it. */
-const PLACE_EVERY_MS = 200;
+/**
+ * How often a shown body checks its place in any case (perf M10: it was every 200 ms). What moves it says so first: a
+ * size change of the body, of anything above it or beside anything above it (a rail or panel folding moves it without
+ * resizing it), a scroll anywhere, the window's resize (`watchPlace`).
+ */
+export const PLACE_EVERY_MS = 1_000;
+
+/**
+ * Calls `place` whenever what draws `el` may have moved it: a ResizeObserver on the body, each element above it and each
+ * of their children (a sibling that folds), a scroll anywhere in the document (capture), the window's resize, and a slow
+ * check for what none of them sees. Answers its off.
+ */
+export function watchPlace(el: HTMLElement, place: () => void): () => void {
+  const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+  if (watch) {
+    watch.observe(el);
+    for (let up = el.parentElement; up; up = up.parentElement) {
+      watch.observe(up);
+      for (const beside of up.children) if (beside !== el && !beside.contains(el)) watch.observe(beside);
+    }
+  }
+  const view = el.ownerDocument.defaultView ?? window;
+  view.addEventListener("resize", place);
+  el.ownerDocument.addEventListener("scroll", place, { capture: true, passive: true });
+  const timer = setInterval(place, PLACE_EVERY_MS);
+  return () => {
+    watch?.disconnect();
+    view.removeEventListener("resize", place);
+    el.ownerDocument.removeEventListener("scroll", place, { capture: true });
+    clearInterval(timer);
+  };
+}
 
 const sameRect = (a: LiveRect | null, b: LiveRect): boolean => !!a && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
@@ -44,14 +74,9 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
       layer.show(itemId, asked.current, rect, full, el);
     };
     place();
-    const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
-    watch?.observe(el);
-    window.addEventListener("resize", place);
-    const timer = setInterval(place, PLACE_EVERY_MS);
+    const off = watchPlace(el, place);
     return () => {
-      watch?.disconnect();
-      window.removeEventListener("resize", place);
-      clearInterval(timer);
+      off();
       layer.hide(itemId);
     };
   }, [itemId, want, covered, full, layer]);

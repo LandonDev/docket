@@ -5,14 +5,16 @@ import { ExternalLink, RefreshCw, X } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
+import { quietPoll } from "../../lib/quietPoll";
 import type { MoreEntry } from "../canvas/kind";
 import { Export } from "../icons";
 
 /**
  * A Google Doc in the document canvas (docs/agents/work-google.md "Docs"):
  * its own verbs for the pane's ⋯ (Write to Google, Read again, Drop
- * unwritten edits while there are some, Open in Google) and the minute's check that keeps the Drive version poll running
- * while it is open. When Google moves, one toast says so; the Doc is read
+ * unwritten edits while there are some, Open in Google) and the check that keeps the Drive version poll running while it
+ * is open: asked as it opens and when the link opens again (a host that restarted forgot what it polled), then only after
+ * a minute with no word from the host, never while the window is hidden (`quietPoll`). When Google moves, one toast says so; the Doc is read
  * again only when he asks. `reopen` makes the canvas open the new mirror.
  */
 
@@ -38,6 +40,7 @@ export function useGoogleDoc(env: string, item: Pick<CanvasItem, "id" | "title" 
     let live = true;
     const take = (s: GoogleFileState) => {
       if (!live) return;
+      poll.heard();
       setState(s);
       if (s.behind && !said.current) {
         said.current = true;
@@ -45,15 +48,17 @@ export function useGoogleDoc(env: string, item: Pick<CanvasItem, "id" | "title" 
       }
     };
     const ask = () => void link.request<GoogleFileState>("work.google.watch", { itemId: item.id }).then(take, () => {});
+    const poll = quietPoll(ask, WATCH_MS);
     ask();
-    const timer = setInterval(ask, WATCH_MS);
     const off = link.onPush((push) => {
       if (push.push === "work.google" && push.itemId === item.id) take(push.state);
     });
+    const offOpen = link.onOpen(ask);
     return () => {
       live = false;
-      clearInterval(timer);
+      poll.stop();
       off();
+      offOpen();
     };
   }, [env, google, item.id, item.title]);
 

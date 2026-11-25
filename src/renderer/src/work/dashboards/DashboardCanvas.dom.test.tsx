@@ -217,6 +217,36 @@ describe("the dashboard kind", () => {
   });
 });
 
+describe("the dashboard's checks (perf M10)", () => {
+  it("makes no open in five minutes while its host pushes the page, and checks again after a quiet spell", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let pushed: ((v: DashboardView) => void) | null = null;
+      open(page());
+      dashHost.watch = (on) => ((pushed = on), () => undefined);
+      // (the watch is taken as the body mounts: open again with the push-capturing host)
+      cleanup();
+      host.current = fakeHost([item], host as never);
+      render(
+        <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+          <div />
+        </CanvasSeat>,
+      );
+      await found("[data-dashboard]");
+      const opens = dashHost.open.mock.calls.length;
+      for (let t = 0; t < 15; t++) {
+        await act(async () => void vi.advanceTimersByTime(20_000));
+        act(() => pushed!(page({ itemId: item.id })));
+      }
+      expect(dashHost.open.mock.calls.length).toBe(opens);
+      await act(async () => void vi.advanceTimersByTime(31_000));
+      expect(dashHost.open.mock.calls.length).toBe(opens + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("the dashboard kind, round two", () => {
   it("marks the page out of date when a read after the first fails, until a read answers", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

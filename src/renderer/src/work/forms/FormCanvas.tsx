@@ -13,6 +13,7 @@ import { Tip, TruncateTip } from "../../components/tip";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
+import { quietPoll } from "../../lib/quietPoll";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
@@ -872,18 +873,21 @@ function useResponses(host: FormHost, live: boolean, attempt: number): FormRespo
     const load = (): void =>
       void host.responses(rev).then(
         (r) => {
-          if (!on || "same" in r) return;
+          if (!on) return;
+          poll.heard();
+          if ("same" in r) return;
           rev = r.rev;
           setGot(r);
         },
         () => on && setGot((was) => (was && was !== "failed" ? was : "failed")),
       );
+    // New answers come from outside (no push); the sheet's rev says when to read them again. Never while the window is
+    // hidden: one that came due is read as it shows again (`quietPoll`).
+    const poll = quietPoll(load, POLL_MS);
     load();
-    // New answers come from outside; the sheet's rev says when to read them again.
-    const t = setInterval(load, POLL_MS);
     return () => {
       on = false;
-      clearInterval(t);
+      poll.stop();
     };
   }, [host, live, attempt]);
   return got;
