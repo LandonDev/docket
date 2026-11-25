@@ -23,6 +23,7 @@ afterEach(() => {
 })
 
 const DAY = 86_400_000
+// Rows' times are fixed; a guest link's end is read against the real clock (GuestStore.live), so it ends a day from now.
 const NOW = Date.UTC(2026, 10, 24, 5, 30)
 const LOCAL: Caller = { kind: 'local', caps: [] }
 
@@ -112,7 +113,7 @@ describe('work.docs.find', () => {
         item({ id: 'i5', kind: 'document', title: 'From LifeOS', source: { at: 'lifeos', table: 'docs', id: 'd1' } })
       ]
     })
-    new GuestStore(db).create({ name: 'Ana', source: { at: 'lifeos', table: 'docs', id: 'd1' }, title: 'Kickoff brief', role: 'comment', expiresAt: NOW + DAY, bySession: null })
+    new GuestStore(db).create({ name: 'Ana', source: { at: 'lifeos', table: 'docs', id: 'd1' }, title: 'Kickoff brief', role: 'comment', expiresAt: Date.now() + DAY, bySession: null })
     db.prepare(`INSERT INTO ${HELD_TABLE} (id, workspace_id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES ('h2', 'w1', 'mail.send', 'agent', 'x', ?, 'held', 'k2', 1, 1)`).run(JSON.stringify({ attach: [`${join(folder, 'sub', 'scan.pdf')}.bak`] }))
     db.prepare(`INSERT INTO ${HELD_TABLE} (id, workspace_id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES ('h1', 'w1', 'mail.send', 'agent', 'x', ?, 'held', 'k1', 1, 1)`).run(JSON.stringify({ attach: [{ at: 'lifeos', table: 'sheets', id: 's1' }] }))
 
