@@ -1,6 +1,7 @@
 import type { BrowserEndpoints } from '@shared/browserEndpoints'
 
 export const BROWSER_ENDPOINT_ACK_MS = 3_000
+// The proof sent to native input and the owner socket hold must use the same lifetime.
 export const BROWSER_INPUT_PROOF_MS = 1_500
 
 /** Publish owner routes only after peers can fence them. The native peer sockets stay open. */

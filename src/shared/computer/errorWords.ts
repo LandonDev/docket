@@ -11,6 +11,8 @@ import { hostWords, localComputerPlatform, type ComputerPlatform } from './descr
 import { noReadForTextLine } from './hostErrors'
 import { openItemName } from './words'
 
+export const BROWSER_PROOF_EXPIRED = 'refused: the browser input check expired before the step ran.'
+
 /** What the model asked for: its `app` and `window` strings and the step that failed. */
 export interface ErrorContext {
   app?: string
@@ -164,7 +166,9 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   },
   key_window_unavailable: () => "the window isn't its app's key window, so keys and paste can't reach it; use set_value, or type with element",
   open_refused: OPEN_REFUSED,
-  browser_refused: () => 'refused: the browser tab is off limits or its address could not be verified.',
+  browser_refused: (e) => e.reason === 'browser-proof-expired'
+    ? BROWSER_PROOF_EXPIRED
+    : 'refused: the browser tab is off limits or its address could not be verified.',
   value_not_taken: (e, ctx) => {
     const reads = e.value === undefined ? 'did not take the value' : `still reads ${quote(e.value)}`
     return `${index(e, ctx)} ${reads}; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element`

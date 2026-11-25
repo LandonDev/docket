@@ -32,3 +32,14 @@ it('releases after a short timeout even if a peer never acknowledges', async () 
   await ready
   expect(owner.current).toEqual(moved)
 })
+
+it('does not admit owner sockets on a fast acknowledgement until old input deadlines pass', async () => {
+  vi.useFakeTimers()
+  const owner = new OwnerBrowserEndpoints()
+  const ready = owner.publish(moved, true, () => [Promise.resolve(true)])
+  await vi.advanceTimersByTimeAsync(BROWSER_INPUT_PROOF_MS - 1)
+  expect(owner.current).toBeUndefined()
+  await vi.advanceTimersByTimeAsync(1)
+  await ready
+  expect(owner.current).toEqual(moved)
+})

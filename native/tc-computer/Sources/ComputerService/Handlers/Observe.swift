@@ -69,7 +69,7 @@ extension ComputerService {
                 if let tab = state.tabs[id], !source.tabSelected(tab) { return nil }
                 return source.browserURL(window: window)
             }
-            return .init(browser: true, url: url.flatMap { $0.isEmpty ? nil : $0 })
+            return .init(browser: true, url: url.flatMap { $0.isEmpty ? nil : $0 }, clockMs: Self.browserClockMs)
         }
         router.on("state.get") { [self] (p: Methods.StateGet.Params, ctx) in try await stateGet(p, ctx) }
     }

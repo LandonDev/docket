@@ -1398,9 +1398,13 @@ live peer links. A missing or stale list refuses input on every site.
 Reads still follow the address check, which checks all DNS answers and
 stops on a failed lookup. When a listener changes port or public origin, it
 withholds owner pages and browser sockets until connected peers acknowledge
-the update or a short timeout ends. A peer that missed the update must
-confirm the new list before sending browser input. For a verified browser tab,
-the host passes `browserUrl` on the native request. A changed or missing
+the update or a short timeout ends. It also waits out the lifetime of any
+earlier proof. For a verified browser tab the host passes `browserUrl`.
+When input needs a peer proof, the host sends `browserDeadlineMs` in the
+native service's clock. The Mac and Windows services refuse an input step
+after that deadline, including after the app wait or between batch steps.
+A peer that missed the update must confirm the new list before sending
+browser input. A changed or missing
 address stops a read or a later step with `browser_refused`. The host
 refuses known browsers whose service cannot supply the address. This gate
 runs in every access and Away mode.

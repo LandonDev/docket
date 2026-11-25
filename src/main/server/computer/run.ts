@@ -23,7 +23,7 @@ import {
 import { buildPrior, lastInputEffect } from '@shared/computer/batchStop'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, computerHeldTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
-import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
+import { BROWSER_PROOF_EXPIRED, errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
 import { FAILED_WORDS, maskedTexts, planWords, plannedSteps, readSummary, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
 import { approvalLine } from '@shared/approvalLine'
@@ -250,6 +250,8 @@ export interface ThreadComputer {
 
 export interface BrowserInputProof {
   origins: TempCodeOrigins
+  /** The host's monotonic clock. No deadline when this host has no linked peers. */
+  expiresAt?: number
   valid(): boolean
 }
 
@@ -568,12 +570,13 @@ async function runChecked(
     return origins && withVmOrigin(origins)
   }
   const webOpenItems = (items: string[]): string[] => items.filter((item) => /^https?:/i.test(item))
-  async function browserRefusal(targets: { browser: boolean; url?: string }[], input: boolean): Promise<string | null> {
+  async function checkBrowserTargets(targets: { browser: boolean; url?: string }[], input: boolean): Promise<{ refusal: string | null; expiresAt?: number }> {
     const proof = input ? await host.confirmBrowserInput?.() : undefined
     const origins = proof ? withVmOrigin(proof.origins) : browserOrigins()
-    if (!origins) return null
+    if (!origins) return { refusal: null }
     const lines = await Promise.all(targets.map((target) => refusedBrowserTarget(target, origins, input)))
-    return proof && !proof.valid() ? BROWSER_PEER_UNCONFIRMED : lines.find((line) => line !== null) ?? null
+    const refusal = proof && !proof.valid() ? BROWSER_PEER_UNCONFIRMED : lines.find((line) => line !== null) ?? null
+    return { refusal, expiresAt: proof?.expiresAt }
   }
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
@@ -583,8 +586,8 @@ async function runChecked(
     if (line) return refusalOf(line)
     const URLs = webOpenItems(openOf(args))
     if (URLs.length) {
-      const refused = await browserRefusal(URLs.map((url) => ({ browser: true, url })), true)
-      if (refused) return refusal(refused)
+      const checked = await checkBrowserTargets(URLs.map((url) => ({ browser: true, url })), true)
+      if (checked.refusal) return refusal(checked.refusal)
     }
     // a Work thread opens no Forms page: only the msform tools reach Forms
     if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
@@ -753,15 +756,23 @@ async function runChecked(
     }
   }
   /** Check a browser target without reading its content or switching tabs. The native service binds checks to its steps. */
-  async function browserUrl(target: Pick<TargetBase, 'session' | 'app' | 'window'>, input = false): Promise<string | undefined> {
+  async function browserGuard(target: Pick<TargetBase, 'session' | 'app' | 'window'>, input = false): Promise<{ browserUrl: string; browserDeadlineMs?: number } | undefined> {
     if (!host.origins) return
     const report = await send('browser.target', { session: target.session, app: target.app, window: target.window }).catch((error: unknown) => {
       if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
-      return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined }
+      return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined, clockMs: undefined }
     })
-    const line = report.browser ? await browserRefusal([report], input) : null
-    if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
-    return report.browser ? report.url : undefined
+    if (!report.browser) return
+    const receivedAt = performance.now()
+    const { refusal: line, expiresAt } = await checkBrowserTargets([report], input)
+    const failure = (message: string) => new ComputerRpcError(-32000, message, { kind: 'browser_refused', message })
+    if (line) throw failure(line)
+    if (!report.url) return
+    if (expiresAt === undefined) return { browserUrl: report.url }
+    if (report.clockMs === undefined) throw failure('refused: update the computer service to check when browser input expires.')
+    if (performance.now() >= expiresAt) throw failure(BROWSER_PROOF_EXPIRED)
+    // The service sampled its own clock before the reply reached us. Network time can only shorten the proof.
+    return { browserUrl: report.url, browserDeadlineMs: report.clockMs + Math.floor(expiresAt - receivedAt) }
   }
 
   /** On the bridge, requests wait for a reader so nothing runs unread. */
@@ -776,12 +787,12 @@ async function runChecked(
     return await withReader(async () => {
       if (host.origins && (method === 'state.get' || method === 'action.run' || method === 'action.batch' || method === 'input.probe')) {
         const input = method === 'action.run' || method === 'action.batch'
-        const url = await browserUrl(params as TargetBase, input)
-        if (url) return send(method, { ...params, browserUrl: url })
+        const guard = await browserGuard(params as TargetBase, input)
+        if (guard) return send(method, { ...params, ...guard })
       }
       if (host.origins && method === 'apps.launch') {
         const urls = webOpenItems((params as ComputerParams<'apps.launch'>).open ?? [])
-        const line = urls.length ? await browserRefusal(urls.map((url) => ({ browser: true, url })), true) : null
+        const line = urls.length ? (await checkBrowserTargets(urls.map((url) => ({ browser: true, url })), true)).refusal : null
         if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
       }
       return send(method, params)
@@ -846,7 +857,7 @@ async function runChecked(
     if (host.origins && tool !== 'computer_observe') {
       const current = app()?.window
       const window = args.window ? { title: args.window } : current ? { id: current.id } : undefined
-      await withReader(() => browserUrl({ session: t.serviceSession, app: { pid: pin.app.pid }, window }, steps.some(sendsInput)))
+      await withReader(() => browserGuard({ session: t.serviceSession, app: { pid: pin.app.pid }, window }, steps.some(sendsInput)))
       if (!work) {
         const notAllowed = await askCard()
         if (notAllowed) return notAllowed

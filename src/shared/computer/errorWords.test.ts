@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COMPUTER_ERROR_WORDS, ERROR_LINE_MAX, errorLine } from './errorWords'
+import { BROWSER_PROOF_EXPIRED, COMPUTER_ERROR_WORDS, ERROR_LINE_MAX, errorLine } from './errorWords'
 import { COMPUTER_ERROR_KINDS, type ComputerAction, type ComputerError, type ComputerErrorKind } from './protocol'
 
 const SERVICE = 'the service said so'
@@ -210,4 +210,8 @@ describe('on a Windows PC (§29.5)', () => {
     const key = { kind: 'invalid_key', message: 'x' } as ComputerError
     expect(errorLine(key, { platform: 'windows', action: { action: 'key', text: 'hyper' } as ComputerAction })).toContain('Escape, ctrl+c')
   })
+})
+
+it('explains when the browser proof expired before a queued step', () => {
+  expect(errorLine({ kind: 'browser_refused', message: 'native', reason: 'browser-proof-expired' }, { step: true })).toBe(BROWSER_PROOF_EXPIRED)
 })

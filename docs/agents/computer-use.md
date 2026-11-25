@@ -182,8 +182,10 @@ why and the measured headline.
   live peer links. A missing or stale list stops input on every site,
   including public sites. Reads still follow the address check. When a
   listener changes port or public origin, it waits for peers to acknowledge
-  the new list or for a short timeout before it serves owner pages.
-  A peer that missed the update must confirm the new list before it can send
+  the new list or for a short timeout before it serves owner pages. It also
+  waits for earlier input checks to expire. The native service checks the
+  deadline again after waiting for the app and before each input step. A
+  peer that missed the update must confirm the new list before it can send
   browser input. A failed lookup stops the call. The listener requires a
   known Host for the owner UI and its browser socket. The UI refuses to
   load in a frame.

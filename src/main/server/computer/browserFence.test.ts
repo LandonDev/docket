@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
+import { BROWSER_INPUT_PROOF_MS } from '../remote/ownerBrowserEndpoints'
 import { BROWSER_ADDRESS_UNAVAILABLE, BROWSER_PEER_UNCONFIRMED } from './policy'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
@@ -233,6 +234,44 @@ it('refuses browser input if its peer proof expires before dispatch', async () =
   })
   open.push(h)
   expect(await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab' })).toMatchObject({ body: BROWSER_PEER_UNCONFIRMED })
+  expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
+})
+
+it.each([false, true])('passes the proof deadline in the service clock for browser actions (Windows VM: %s)', async (vm) => {
+  const url = 'https://ordinary.test/'
+  const clockMs = 5_000_000
+  const h = computerHarness({
+    vm,
+    origins,
+    confirmBrowserInput: async () => ({ origins: origins(), valid: () => true, expiresAt: performance.now() + BROWSER_INPUT_PROOF_MS }),
+    env: { FAKE_BROWSER_URL: url, FAKE_BROWSER_CLOCK_MS: String(clockMs) }
+  })
+  open.push(h)
+  const target = { app: 'Webby' }
+  const key = { action: 'key', text: 'Tab' }
+  expect((await h.run('computer_observe', target)).isError).toBe(false)
+  expect((await h.run('computer_act', { ...target, ...key })).isError).toBe(false)
+  expect((await h.run('computer_batch', { ...target, actions: [key, key] })).isError).toBe(false)
+  const requests = h.requests()
+  expect(requests.find(({ method }) => method === 'state.get')?.params).not.toHaveProperty('browserDeadlineMs')
+  for (const method of ['action.run', 'action.batch']) {
+    const params = requests.find((req) => req.method === method)?.params
+    expect(params?.browserUrl).toBe(url)
+    expect(params?.browserDeadlineMs).toBeGreaterThanOrEqual(clockMs + BROWSER_INPUT_PROOF_MS)
+    expect(params?.browserDeadlineMs).toBeLessThan(clockMs + BROWSER_INPUT_PROOF_MS + 1000)
+  }
+})
+
+it('refuses input that needs a deadline on an older service', async () => {
+  const h = computerHarness({
+    origins,
+    confirmBrowserInput: async () => ({ origins: origins(), valid: () => true, expiresAt: performance.now() + BROWSER_INPUT_PROOF_MS }),
+    env: { FAKE_BROWSER_URL: 'https://ordinary.test/', FAKE_BROWSER_CLOCK_MS: 'missing' }
+  })
+  open.push(h)
+  expect(await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab' })).toMatchObject({
+    body: 'refused: update the computer service to check when browser input expires.'
+  })
   expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
 })
 

@@ -771,6 +771,7 @@ export const ErrorReasonSchema = z.enum([
   'scheme',
   'app',
   'browser-field',
+  'browser-proof-expired',
   'moved',
   'unplanned',
   'secure',
@@ -1097,6 +1098,8 @@ export type Prior = z.infer<typeof PriorSchema>
 
 /** The wait rows of §27.3 and the facts of §27.6, §27.7b every `action.run` and `action.batch` may carry. */
 const FewerCallsParams = {
+  /** Native clock time in Unix milliseconds. Browser input must start before it. */
+  browserDeadlineMs: int().positive().optional(),
   /** the wait after the last step when every step went in at `ax` (§27.3) */
   axWait: WaitOptionsSchema.optional(),
   /** the wait after a step that went in at `ax` and is not the last (§27.3) */
@@ -1314,7 +1317,7 @@ export const COMPUTER_METHODS = {
   'session.close': { params: SessionRefSchema, result: EmptySchema },
   'browser.target': {
     params: TargetSchema,
-    result: z.object({ browser: z.boolean(), url: z.string().min(1).optional() })
+    result: z.object({ browser: z.boolean(), url: z.string().min(1).optional(), clockMs: int().positive().optional() })
   },
   'state.get': { params: StateGetParamsSchema, result: ObservationSchema },
   'action.run': { params: ActionRunParamsSchema, result: ActionResultSchema },

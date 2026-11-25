@@ -685,6 +685,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case scheme
     case app
     case browserField
+    case browserProofExpired
     case moved
     case unplanned
     case secure
@@ -707,6 +708,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case "scheme": self = .scheme
         case "app": self = .app
         case "browser-field": self = .browserField
+        case "browser-proof-expired": self = .browserProofExpired
         case "moved": self = .moved
         case "unplanned": self = .unplanned
         case "secure": self = .secure
@@ -730,6 +732,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case .scheme: "scheme"
         case .app: "app"
         case .browserField: "browser-field"
+        case .browserProofExpired: "browser-proof-expired"
         case .moved: "moved"
         case .unplanned: "unplanned"
         case .secure: "secure"

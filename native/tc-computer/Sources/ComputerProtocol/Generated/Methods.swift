@@ -180,10 +180,12 @@ public enum Methods {
         public struct Output: Codable, Hashable, Sendable {
             public let browser: Bool
             public let url: String?
+            public let clockMs: Int?
 
-            public init(browser: Bool, url: String? = nil) {
+            public init(browser: Bool, url: String? = nil, clockMs: Int? = nil) {
                 self.browser = browser
                 self.url = url
+                self.clockMs = clockMs
             }
         }
     }
@@ -249,12 +251,13 @@ public enum Methods {
             public let ignored: IgnoredRoutes?
             public let tabs: TabsMode?
             public let expectFocus: Int?
+            public let browserDeadlineMs: Int?
             public let axWait: WaitOptions?
             public let axStepWait: WaitOptions?
             public let prior: Prior?
             public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, browserDeadlineMs: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -270,6 +273,7 @@ public enum Methods {
                 self.ignored = ignored
                 self.tabs = tabs
                 self.expectFocus = expectFocus
+                self.browserDeadlineMs = browserDeadlineMs
                 self.axWait = axWait
                 self.axStepWait = axStepWait
                 self.prior = prior
@@ -300,12 +304,13 @@ public enum Methods {
             public let ignored: IgnoredRoutes?
             public let tabs: TabsMode?
             public let expectFocus: Int?
+            public let browserDeadlineMs: Int?
             public let axWait: WaitOptions?
             public let axStepWait: WaitOptions?
             public let prior: Prior?
             public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, browserDeadlineMs: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -322,6 +327,7 @@ public enum Methods {
                 self.ignored = ignored
                 self.tabs = tabs
                 self.expectFocus = expectFocus
+                self.browserDeadlineMs = browserDeadlineMs
                 self.axWait = axWait
                 self.axStepWait = axStepWait
                 self.prior = prior

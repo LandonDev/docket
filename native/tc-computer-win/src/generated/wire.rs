@@ -701,6 +701,8 @@ pub enum ErrorReason {
     App,
     #[serde(rename = "browser-field")]
     BrowserField,
+    #[serde(rename = "browser-proof-expired")]
+    BrowserProofExpired,
     #[serde(rename = "moved")]
     Moved,
     #[serde(rename = "unplanned")]
@@ -733,6 +735,7 @@ impl ErrorReason {
             ErrorReason::Scheme => "scheme",
             ErrorReason::App => "app",
             ErrorReason::BrowserField => "browser-field",
+            ErrorReason::BrowserProofExpired => "browser-proof-expired",
             ErrorReason::Moved => "moved",
             ErrorReason::Unplanned => "unplanned",
             ErrorReason::Secure => "secure",
@@ -2236,6 +2239,8 @@ pub struct BrowserTargetResult {
     pub browser: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(rename = "clockMs", default, skip_serializing_if = "Option::is_none")]
+    pub clock_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -2298,6 +2303,8 @@ pub struct ActionRunParams {
     pub tabs: Option<TabsMode>,
     #[serde(rename = "expectFocus", default, skip_serializing_if = "Option::is_none")]
     pub expect_focus: Option<i64>,
+    #[serde(rename = "browserDeadlineMs", default, skip_serializing_if = "Option::is_none")]
+    pub browser_deadline_ms: Option<i64>,
     #[serde(rename = "axWait", default, skip_serializing_if = "Option::is_none")]
     pub ax_wait: Option<WaitOptions>,
     #[serde(rename = "axStepWait", default, skip_serializing_if = "Option::is_none")]
@@ -2338,6 +2345,8 @@ pub struct ActionBatchParams {
     pub tabs: Option<TabsMode>,
     #[serde(rename = "expectFocus", default, skip_serializing_if = "Option::is_none")]
     pub expect_focus: Option<i64>,
+    #[serde(rename = "browserDeadlineMs", default, skip_serializing_if = "Option::is_none")]
+    pub browser_deadline_ms: Option<i64>,
     #[serde(rename = "axWait", default, skip_serializing_if = "Option::is_none")]
     pub ax_wait: Option<WaitOptions>,
     #[serde(rename = "axStepWait", default, skip_serializing_if = "Option::is_none")]

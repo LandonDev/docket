@@ -69,6 +69,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
 
     public func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome {
         dispatchPrecondition(condition: .notOnQueue(.main))
+        if target.cancelled() { throw cancelledFailure() }
         if core.takeInterruption(pid: target.pid) { throw interruptedByPerson() }
         // §26.9: a row's name the app commits only in its own editor (Finder's list view): known from the field before
         // anything is posted, and from the ordinary route's refusal for focus, which posted nothing
@@ -252,6 +253,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     // MARK: dispatch
 
     private func run(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?, live: LiveRoutes) throws -> InputOutcome {
+        if target.cancelled() { throw cancelledFailure() }
         if step.route == .panel {
             // the panel flow keeps its own holds, one per part that needs the app in front
             return try saveAs(action, target: target, tiers: tiers, at: step.tier)

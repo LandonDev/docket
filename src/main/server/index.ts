@@ -1180,10 +1180,10 @@ export async function startServer(
     return [...dialed, ...registered]
   }
   const confirmBrowserInput = async () => {
-    const start = performance.now()
+    const expiresAt = performance.now() + BROWSER_INPUT_PROOF_MS
     const wall = Date.now()
     const links = browserPeerLinks()
-    const unexpired = () => !links.length || (performance.now() - start < BROWSER_INPUT_PROOF_MS && Date.now() - wall < BROWSER_INPUT_PROOF_MS)
+    const unexpired = () => !links.length || (performance.now() < expiresAt && Date.now() - wall < BROWSER_INPUT_PROOF_MS)
     const identities = links.map(({ direction, id }) => `${direction}:${id}`)
     const valid = () => {
       if (!unexpired()) return false
@@ -1208,7 +1208,8 @@ export async function startServer(
         linkedEndpoints: [...(origins.linkedEndpoints ?? []), ...proofs],
         linkedEndpointsUnknown: origins.linkedEndpointsUnknown || proofs.length !== links.length
       },
-      valid
+      valid,
+      expiresAt: links.length ? expiresAt : undefined
     }
   }
   const hostLinks = new HostLinks({ calls: peerCalls, offer: CROSS_HOST_OFFER, link: peerRequest, linkIds: () => listEnvironments(store).map((e) => e.id) })
