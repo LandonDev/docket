@@ -2463,7 +2463,9 @@ class SessionStore {
    *  may hold rows already (the host stored its brief before answering):
    *  it loads as any thread does, and those rows fold in. */
   adopt(meta: SessionMeta, options: { created?: boolean } = {}): void {
-    const fresh = !this.entries.has(meta.id);
+    const before = this.entries.get(meta.id);
+    const fresh = !before;
+    const draft = !!before && !before.meta && !before.provisional;
     this.mergeMeta(meta);
     const entry = this.entries.get(meta.id);
     if (entry && options.created) {
@@ -2473,6 +2475,10 @@ class SessionStore {
         subs.add(meta.id, this.handlersFor(entry));
         void subs.subscribe(meta.id).catch(() => undefined);
       }
+    } else if (entry && draft && entry.loaded && !entry.loading) {
+      // A draft whose first send rode its create (commands.ts `createDraft`) reads as loaded, his unechoed message its
+      // only row: it follows the host from the first row, the message staying on screen until its echo claims it.
+      void this.replayGap(entry, "adopt").catch(() => undefined);
     } else if (entry) {
       void this.ensureLoaded(meta.id, "adopt").catch(() => undefined);
     }

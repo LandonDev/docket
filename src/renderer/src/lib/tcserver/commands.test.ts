@@ -23,6 +23,7 @@ import {
   remove,
   resumeAllPaused,
   retype,
+  afterCreate,
   send,
   startThread,
   steer,
@@ -40,7 +41,7 @@ vi.mock("../macBridge", async (original) => ({
     if (bridge.on) bridge.set.push(sessionId);
   },
 }));
-import type { ServerPush, SessionMeta } from "./types";
+import type { EventRow, ServerPush, SessionMeta } from "./types";
 
 function meta(over: Partial<SessionMeta>): SessionMeta {
   return {
@@ -60,7 +61,7 @@ function wireMeta(over: Partial<SessionMeta> = {}): Omit<SessionMeta, "environme
 
 class FakeLink implements Link {
   environmentId = "local";
-  profile = "local" as const;
+  profile: "local" | "remote" = "local";
   connected = true;
   /** How queue.add answers: an older host's bare item, the typed queued answer, or a steer. */
   queueAnswer: "item" | "queued" | "steered" = "item";
@@ -72,9 +73,35 @@ class FakeLink implements Link {
     return wire;
   }
   private pushListeners = new Set<(push: ServerPush) => void>();
+  /** Rows the host stored per thread, and the threads this socket follows: a host pushes rows to followers alone. */
+  rows = new Map<string, EventRow[]>();
+  followed = new Set<string>();
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve([] as T);
+    if (method === "session.subscribe") {
+      this.followed.add((params as any).sessionId);
+      return Promise.resolve(null as T);
+    }
+    if (method === "session.events") {
+      const p = params as any;
+      const rows = (this.rows.get(p.sessionId) ?? []).filter((r) => r.seq > p.afterSeq);
+      // A remote window's subscription rides its history request.
+      if (!p.subscribe) return Promise.resolve(rows as T);
+      this.followed.add(p.sessionId);
+      return Promise.resolve({ rows, moreBefore: false, moreAfter: false, reset: false, subscribed: true } as T);
+    }
+    if (method === "session.create" && (params as any).firstMessage) {
+      // A folded create: the host stores the message before it answers, then streams the turn to followers.
+      const p = params as any;
+      const wire = this.made(wireMeta({ id: p.id, status: "running" }));
+      this.rows.set(p.id, [{ sessionId: p.id, seq: 1, ts: 1, event: { type: "user-text", text: p.firstMessage } }]);
+      setTimeout(() => {
+        this.stream({ sessionId: p.id, seq: 2, ts: 2, event: { type: "assistant-text", text: "March rose 4%.", delta: false } });
+        this.push({ push: "session", session: { ...wire, status: "idle" } });
+      }, 0);
+      return Promise.resolve(wire as T);
+    }
     if (method === "session.create") {
       const p = params as any;
       // Fields a create leaves out are the host's defaults: here his Codex default.
@@ -111,6 +138,10 @@ class FakeLink implements Link {
   onOpen() { return () => {}; }
   onClose() { return () => {}; }
   push(p: ServerPush) { for (const l of this.pushListeners) l(p); }
+  stream(row: EventRow) {
+    this.rows.set(row.sessionId, [...(this.rows.get(row.sessionId) ?? []), row]);
+    if (this.followed.has(row.sessionId)) this.push({ push: "event", row });
+  }
   of(method: string) { return this.calls.filter((c) => c.method === method).map((c) => c.params); }
 }
 
@@ -180,6 +211,24 @@ describe("send", () => {
     expect(link.of("session.create")[0]).not.toHaveProperty("permission");
     expect(sessionStore.get(draft.id)).toMatchObject({ harness: "codex", runtimeMode: "full-access", modelSettings: { effort: "medium" } });
     expect(sessionStore.get(draft.id)!.model).toMatch(/gpt-5\.5$/);
+  });
+
+  it.each(["local", "remote"] as const)("a draft's first send folded into its create follows the thread on a %s link: his message, the streamed reply and the end all show", async (profile) => {
+    link.profile = profile;
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { features: ["create.steps"] } } as never);
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    // A dock's step as data (work/dock/dockThread.ts): the create carries it with the message.
+    afterCreate.set(draft.id, async () => undefined, { fold: () => ({ items: [{ kind: "sheet", source: { at: "file", host: "local", path: "/repo/Budget.xlsx" }, title: "Budget" }] as never }) });
+    await send(draft, "What changed in March?", [], undefined, undefined);
+    expect(link.of("session.create")[0]).toMatchObject({ firstMessage: "What changed in March?" });
+    expect(link.of("session.send")).toHaveLength(0);
+    const blocks = sessionStore.get(draft.id)!.blocks;
+    expect(blocks.map((b) => [b.role, b.text, !!b.pending])).toEqual([
+      ["user", "What changed in March?", false],
+      ["assistant", "March rose 4%.", false],
+    ]);
+    expect(sessionStore.get(draft.id)!.busy).toBe(false);
   });
 
   it("a provisional entry is never created: a send into it fails instead of minting a second thread", async () => {

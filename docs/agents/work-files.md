@@ -414,7 +414,12 @@ control, takes it away.
   have sent, under the key's capability and the path fence
   (src/main/server/createSteps.ts, index.ts `runStep`), then stores the
   message. A file that did not open comes back in `itemsFailed` and says so
-  as below. Before, the first message waited on four or five requests in a
+  as below. The host does not subscribe the window to the thread it made, so
+  the store's `adopt` follows the draft itself: the draft reads as loaded,
+  his unechoed message its one row, and it resumes from the first row
+  (`replayGap`) with no loading state, the message held until its echo
+  claims it. Without that the dock sat on "Sending" and showed only "Worked
+  for" (commands.test.ts, a local and a remote link). Before, the first message waited on four or five requests in a
   row. An older host, a draft with fast set, or a draft whose step cannot
   ride the create, goes the old way: the composer's normal way (App's
   `onSubmit`, `commands.send`). In it, in this order: `session.create` (it names no file:
