@@ -21,6 +21,8 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { BesideShape, ColumnsShape, Doc, FolderAdd, GalleryShape, GridShape, ListShape, Slides, Table, Upload } from "../icons";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { DownEmpty } from "../shell/DownEmpty";
+import { DownLine } from "../shell/DownLine";
+import { useHostDown, useLiveDown } from "../shell/lifeosLive";
 import { refreshLifeos } from "../shell/lifeos";
 import { readsLifeos, useLifeosPlace } from "./lifeosPlace";
 import type { UploadProgress } from "./acts";
@@ -988,6 +990,13 @@ export function PageView({
   // the host's live status, and lists again by itself once it is back; nothing that needs the session is offered.
   const lifeos = useLifeosPlace(copy, listing);
   const lifeosDown = readsLifeos(copy) && (!!lifeos.down || lifeos.waits);
+  // A search of every place while the host's LifeOS is down leaves LifeOS's rows out: one line over the results says
+  // why, by the rule, and the search runs again once LifeOS is back.
+  const hostDown = useHostDown(copy?.link ?? "");
+  const searchDown = results ? hostDown : null;
+  const newestListing = useRef(listing);
+  newestListing.current = listing;
+  useLiveDown(null, results ? copy?.link : null, () => newestListing.current?.retry());
   const shapeProps: ShapeProps = {
     entries,
     picked,
@@ -1104,7 +1113,11 @@ export function PageView({
     );
   }
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
-  const line = lifeosDown ? null : acts?.uploading ? (
+  const line = lifeosDown ? null : searchDown ? (
+    <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
+      <DownLine session={searchDown} className="min-h-6 flex-1" />
+    </div>
+  ) : acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
   ) : acts?.forms?.making ? (
     <MakingLine stage={acts.forms.stage ?? "Making the form…"} />

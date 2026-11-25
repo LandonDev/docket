@@ -1344,6 +1344,11 @@ remote key hears only of files it could name itself. A caller the router
 did not name, and another host of his, hear of none. Work search keeps its
 own `file` source, so this one is not bridged there.
 
+While the workspace host's LifeOS is down, Home's Waiting on you and a search
+of every place leave LifeOS's rows out: one line over Home and over the
+search's results says the state by the rule (`DownLine`, `useHostDown`), Home
+claims no "Nothing here yet", and both read again once the host says connected.
+
 **Waiting on you and the amber count** (files/waiting.ts). A pillar that
 keeps an agent's suggestions by file registers `registerFileWaiting`
 (hooks.ts): `count(sources)` for the rows on screen, `files(host, most)` for

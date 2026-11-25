@@ -24,6 +24,8 @@ import { openHeld } from "../canvas/held";
 import { closeItem, useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
+import { DownLine } from "../shell/DownLine";
+import { useHostDown, useLiveDown } from "../shell/lifeosLive";
 import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
@@ -941,7 +943,11 @@ interface Nav {
 /** Home in a tab: what waits on him, his stars and what he opened last, from the workspace's own host. */
 function HomeTab({ tab, workspace, busy, find, onOpenFound, ...nav }: Nav & { tab: FileTab; workspace: WorkspaceMeta; busy: Busy; find: PageFind | null; onOpenFound(entry: FileEntry): void }) {
   const { home, error, retry } = useHome(workspace.environmentId, workspace.id);
-  return <HomePage panelId={filesPanelId(tab.id)} home={home} error={error} busy={busy} onRetry={retry} onOpen={onOpenFound} bar={<PageBar name="Home" trail={[]} find={find} {...nav} />} />;
+  // Waiting on you holds LifeOS's rows too: while the host's LifeOS is down one line says so, and Home reads again on return.
+  const hostDown = useHostDown(workspace.environmentId);
+  const down = workspace.sector ? hostDown : null;
+  useLiveDown(null, workspace.sector ? workspace.environmentId : null, retry);
+  return <HomePage panelId={filesPanelId(tab.id)} home={home} error={error} busy={busy} onRetry={retry} onOpen={onOpenFound} lifeos={down ? <DownLine session={down} className="min-h-6 flex-1" /> : null} bar={<PageBar name="Home" trail={[]} find={find} {...nav} />} />;
 }
 
 /** A page of search results: his words in every place of the workspace's host, under the filters in its own bar. */

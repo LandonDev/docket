@@ -73,12 +73,17 @@ function HomeLists({ home, busy, onOpen }: { home: FilesHome; busy: Busy; onOpen
   );
 }
 
-export function HomePage({ panelId, home, error, busy, bar, onRetry, onOpen }: { panelId: string; home: FilesHome | null; error: string | null; busy: Busy; bar: ReactNode; onRetry(): void; onOpen(entry: FileEntry): void }) {
-  const empty = !!home && !home.waiting.length && !home.starred.length && !home.recent.length;
+export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRetry, onOpen }: { panelId: string; home: FilesHome | null; error: string | null; busy: Busy; bar: ReactNode; /** the host's LifeOS down: its line, since Waiting on you leaves LifeOS's rows out */ lifeos?: ReactNode; onRetry(): void; onOpen(entry: FileEntry): void }) {
+  // "Nothing here yet" is not known while LifeOS's rows are left out: the line says why instead.
+  const empty = !!home && !home.waiting.length && !home.starred.length && !home.recent.length && !lifeos;
   return (
     <div role="tabpanel" id={panelId} data-files-home className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {bar}
-      {error ? <ViewStateLine word="Home did not load" detail={error} onRetry={onRetry} /> : null}
+      {error ? <ViewStateLine word="Home did not load" detail={error} onRetry={onRetry} /> : lifeos ? (
+        <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
+          {lifeos}
+        </div>
+      ) : null}
       <div className="@container/files-home flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {!home ? (
           error ? null : (
