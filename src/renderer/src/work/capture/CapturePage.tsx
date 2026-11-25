@@ -70,18 +70,26 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
   const touched = useRef(false);
   const inFlight = useRef(0);
 
-  const refresh = useCallback(() => {
-    host.state().then(
-      (next) => {
-        setSilent(false);
-        setState(next);
-        localStorage.setItem(STATE_KEY, JSON.stringify(next));
-        // The last sector leads a fresh draft; one he already pointed somewhere keeps his pick.
-        if (!touched.current) setDraft((d) => ({ ...d, sector: choiceOf(next.last) }));
-      },
-      () => setSilent(true),
-    );
-  }, [host]);
+  const refresh = useCallback(
+    (): Promise<void> =>
+      host.state().then(
+        (next) => {
+          setSilent(false);
+          setState(next);
+          localStorage.setItem(STATE_KEY, JSON.stringify(next));
+          // The last sector leads a fresh draft; one he already pointed somewhere keeps his pick.
+          if (!touched.current) setDraft((d) => ({ ...d, sector: choiceOf(next.last) }));
+        },
+        () => setSilent(true),
+      ),
+    [host],
+  );
+  // His Retry: it spins until its own state read settles, the line and the draft kept until the answer replaces them.
+  const [retrying, setRetrying] = useState(false);
+  const retry = () => {
+    setRetrying(true);
+    void refresh().finally(() => setRetrying(false));
+  };
 
   const settle = useCallback(() => {
     if (inFlight.current === 0) host.idle();
@@ -239,7 +247,8 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
         status={silent ? "silent" : offline ? "offline" : "ready"}
         lifeos={state?.lifeos}
         host={thisComputer()}
-        onRetry={refresh}
+        onRetry={retry}
+        retrying={retrying}
         error={error}
         dragging={dragging}
         canFile={refusal === null}

@@ -4360,7 +4360,8 @@ did not answer this Mac" is red with Retry. A host that names no state keeps
 "Not signed in to LifeOS". A state
 ask the host did not answer is not a sign-out: "This Mac did not answer" in
 the red line's place with Retry (the window's own refresh), the draft kept
-and both buttons held, Return asking again and filing nothing. A drag of
+and both buttons held, Return asking again and filing nothing. Retry spins
+while its read is out, the line kept until the answer replaces it. A drag of
 a file over it shows the drop wash of the document surface ("Drop to
 add"). It wears Work's theme and follows it.
 

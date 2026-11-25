@@ -110,7 +110,9 @@ A frame change in the main process, kept small:
   "The LifeOS sign-in on this Mac waits for your approval", "LifeOS refused
   this Mac's sign-in", "Work is off on this Mac", muted and with no press
   (the fix is on Connections); "LifeOS is still connecting on this Mac" while it
-  connects; "LifeOS did not answer this Mac" in red with Retry. The presses
+  connects; "LifeOS did not answer this Mac" in red with Retry. Retry spins
+  (`BusyLabel`), held, while its own state read is out; the line and the draft
+  stay until the answer gives the latest cause or File. The presses
   are off and the draft stays in each. A host that names no state keeps "Not
   signed in to LifeOS". While the window shows, the host's `work.lifeos` push
   (it goes to every client socket, the capture socket too: `onLifeos` in

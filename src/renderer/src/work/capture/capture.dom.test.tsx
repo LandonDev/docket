@@ -270,6 +270,42 @@ describe("the capture window", () => {
   });
 });
 
+describe("Retry in flight (council round 12, Sol rest 3)", () => {
+  it("spins on Retry alone, held, with the line and the draft kept, until its own read answers: then the latest cause, or File", async () => {
+    const real = state;
+    const asks: { ok(s: CaptureState): void; fail(): void }[] = [];
+    const held: CaptureHost = { ...host(), state: () => new Promise<CaptureState>((ok, fail) => void asks.push({ ok, fail: () => fail(new Error("No answer in 15 s")) })) };
+    render(<CapturePage host={held} bridge={bridge} />);
+    act(() => shown());
+    await act(async () => asks[0].fail());
+    fireEvent.change(field(), { target: { value: "Call the ref assigner" } });
+    const retry = () => screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    const busy = () => retry().querySelector("[data-slot=busy-label]")?.hasAttribute("data-busy") ?? false;
+    expect(busy()).toBe(false);
+    fireEvent.click(retry());
+    expect(asks).toHaveLength(2);
+    expect(busy()).toBe(true);
+    expect(retry().disabled).toBe(true);
+    // A second press while it is out asks nothing more; the line and the draft stand.
+    fireEvent.click(retry());
+    expect(asks).toHaveLength(2);
+    expect(screen.getByText(/^This (Mac|PC) did not answer$/)).toBeTruthy();
+    expect(field().value).toBe("Call the ref assigner");
+    expect((screen.getByText("File").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    // The answer is LifeOS's own silence now: its words in the line's place, Retry at rest.
+    await act(async () => asks[1].ok({ ...real, connected: false, lifeos: "unreachable" }));
+    expect(screen.getByText(/^LifeOS did not answer this (Mac|PC)$/)).toBeTruthy();
+    expect(busy()).toBe(false);
+    expect(retry().disabled).toBe(false);
+    fireEvent.click(retry());
+    expect(busy()).toBe(true);
+    await act(async () => asks[2].ok(real));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect((screen.getByText("File").closest("button") as HTMLButtonElement).disabled).toBe(false);
+    expect(field().value).toBe("Call the ref assigner");
+  });
+});
+
 describe("a sign-in made elsewhere while the window shows (council round 9)", () => {
   it("reads the state again on the host's LifeOS push, so the line goes by itself and the draft stays", async () => {
     state = { ...state, connected: false, lifeos: "signed-out" } as CaptureState;

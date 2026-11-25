@@ -1,6 +1,6 @@
 import { forwardRef, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { ChoiceToggle } from "../../components/choice-toggle";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Kbd } from "../../components/ui/kbd";
 import { X } from "../../chrome/icons";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
@@ -29,6 +29,8 @@ export interface CaptureViewProps {
   host?: string;
   /** asks the host again (the page's refresh) */
   onRetry?(): void;
+  /** that ask is out: Retry spins, held, the line and the draft as they were, until its answer replaces them */
+  retrying?: boolean;
   /** what stops this draft, or what the last try answered */
   error: string | null;
   /** a file is being dragged over the window */
@@ -106,8 +108,8 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         <div role="alert" className="flex min-h-6 items-center gap-2 px-4 pb-2">
           <ErrorLine error={down.words} />
           {p.onRetry ? (
-            <Button variant="ghost" size="xs" onClick={p.onRetry}>
-              Retry
+            <Button variant="ghost" size="xs" disabled={p.retrying} onClick={p.onRetry}>
+              <BusyLabel busy={!!p.retrying} label="Retry" />
             </Button>
           ) : null}
         </div>
