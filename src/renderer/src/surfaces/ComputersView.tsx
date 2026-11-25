@@ -12,9 +12,9 @@ import { driveName, handBack, tileKey, useComputers, viewKey, type ComputerTile 
 import { registry } from "../lib/connection/registry";
 import { useDriveHold } from "../lib/driveHold";
 import { previewContext } from "../lib/computerSessions";
-import { openFullWindow } from "../lib/fullWindow";
+import { offerFullScreen, openFullWindow, screenRectOf } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
-import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
+import { drawnPixelated, fitStage, pictureKind, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
@@ -22,7 +22,7 @@ import { restingVm, restingVmTiles, useVmStates, wakeVm, WAKING_LINE, type VmSta
 import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
-import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
+import { ENDED_WORDS, PIXELATED, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
 import { drivenScreen } from "../lib/video/videoInput";
 
 /**
@@ -66,8 +66,8 @@ function useSize(ref: RefObject<HTMLElement | null>): Size {
 export type Place = { stage: true; room: Size } | { stage: false };
 
 /**
- * A tile's picture, live, in the box its place gives it: the stage fits the stream's shape to its room, never past
- * twice the stream's own pixels; the strip's is the strip's width. The stream is asked for at that size. On the stage
+ * A tile's picture, live, in the box its place gives it: the stage fits the stream's shape to its room (`fitStage`: a
+ * whole computer's screen fills it, a window's picture stops at twice its own pixels); the strip's is the strip's width. The stream is asked for at that size. On the stage
  * it takes the box's one display and is his to drive; a press on Take over gives the picture the keyboard at once.
  */
 function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean> }) {
@@ -88,14 +88,16 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
   const over = state.status === "ended" || state.status === "failed";
   const label = tileLabel(tile);
   const frame = pictureFrame(frameKey(tile), streamSize(state), tile.computer.startsWith("vm:"));
-  if (!linked) return <WaitingPicture place={place} frame={frame} label={label} words={`Reconnecting to ${hostName(tile.entry.host)}`} />;
-  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(measure.current)) : null;
+  const kind = pictureKind(tile.computer);
+  if (!linked) return <WaitingPicture place={place} frame={frame} kind={kind} label={label} words={`Reconnecting to ${hostName(tile.entry.host)}`} />;
+  const dpr = pixelRatioOf(measure.current);
+  const fit = place.stage ? fitStage(place.room, frame, dpr, kind) : null;
   return (
-    <div ref={measure} data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
+    <div ref={measure} data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? (drawnPixelated(fit.width, frame, dpr) ? PIXELATED : undefined) : "w-full"}>
       <Viewport
         ref={box}
         fill
-        face={over ? { kind: "none" } : liveFace(stream, place.stage ? () => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label }) : undefined)}
+        face={over ? { kind: "none" } : liveFace(stream, place.stage ? (from) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label, from: screenRectOf(from) }) : undefined)}
         label={label}
         size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
@@ -129,8 +131,8 @@ function useHostLinked(host: string): boolean {
 }
 
 /** A picture's box while it waits (the VM waking, the host's link coming back): its words beside a spinner, at the picture's size. */
-function WaitingPicture({ place, frame, label, words, line }: { place: Place; frame: Size | null; label: string; words: string; line?: ReactNode }) {
-  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(null)) : null;
+function WaitingPicture({ place, frame, kind, label, words, line }: { place: Place; frame: Size | null; kind: PictureKind; label: string; words: string; line?: ReactNode }) {
+  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(null), kind) : null;
   return (
     <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
       <Viewport
@@ -189,7 +191,7 @@ export function RestingVmPicture({ host, vm, place, wake = wakeVm }: { host: str
       <ViewportLine words={rest.line} />
     );
   // the size its live picture will have (the last frame seen, else 1280 by 800), so it comes with nothing moving
-  return <WaitingPicture place={place} frame={pictureFrame(`${host}\nvm:windows`, null, true)} label="Windows VM" words={wakes ? WAKING_LINE : rest.line} line={line} />;
+  return <WaitingPicture place={place} frame={pictureFrame(`${host}\nvm:windows`, null, true)} kind="screen" label="Windows VM" words={wakes ? WAKING_LINE : rest.line} line={line} />;
 }
 
 export interface TileProps {
@@ -201,6 +203,12 @@ export interface TileProps {
   stage?: boolean;
   onStage?: () => void;
   onTookOver?: () => void;
+}
+
+/** Where the stage's picture is on his screen, from a control in its tile: full screen grows it from there. */
+function pictureRectOf(control: Element) {
+  const picture = control.closest("[data-slot=computer-tile]")?.querySelector("[data-slot=computer-picture-room]");
+  return picture ? screenRectOf(picture.getBoundingClientRect()) : undefined;
 }
 
 /** One computer, on the stage or in the strip: the same element either way, so its picture's canvas stays. */
@@ -225,7 +233,7 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
                 <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
                   <PictureInPicture className="size-4" />
                 </ViewButton>
-                <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
+                <ViewButton label="Full screen" onClick={(e) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile), from: pictureRectOf(e.currentTarget) })}>
                   <Maximize2 className="size-4" />
                 </ViewButton>
               </>
@@ -275,6 +283,10 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   }, [asked, tiles]);
   const front = stageOf(keyed, pick, kept);
   if (front !== kept) setKept(front);
+  // ⌃⌘F takes the stage's computer full screen while it has a live picture here
+  const staged = !pictureOf ? tiles.find((tile) => tileKey(tile, tiles) === front) : undefined;
+  const offer = staged && !staged.vm && !staged.shownOn ? { host: staged.entry.host, threadId: viewKey(staged), name: tileLabel(staged) } : null;
+  useEffect(() => (offer ? offerFullScreen(offer) : undefined), [offer?.host, offer?.threadId, offer?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   if (tiles.length === 0) return <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />;
   const layout = stageLayout(size, tiles.length);
   const picture =

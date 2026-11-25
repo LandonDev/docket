@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Kbd } from "@renderer/components/ui/kbd";
 import { loadToast } from "@renderer/components/ui/toaster";
@@ -138,7 +138,7 @@ function KeysMenu({ tile }: { tile: ComputerTile }) {
 }
 
 /** A quiet icon button with a tip, for the caption's views (Full window, Pop out, back). */
-export function ViewButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+export function ViewButton({ label, onClick, children }: { label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void; children: ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>

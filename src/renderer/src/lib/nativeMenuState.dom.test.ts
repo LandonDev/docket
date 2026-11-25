@@ -27,6 +27,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   export: true,
   saveWord: true,
   share: true,
+  fullScreen: "ready",
   ...over,
 });
 
@@ -38,6 +39,11 @@ describe("menuStateOf", () => {
       checked: { away_code: false, away_work: false },
     });
     expect(menuStateOf(facts())).toEqual({ open: [], disabled: [], checked: { away_code: false, away_work: false } });
+  });
+
+  it("reads Exit Full Screen while a computer fills the display, and greys the row with none to fill it", () => {
+    expect(menuStateOf(facts({ fullScreen: "open" })).open).toEqual(["full_screen"]);
+    expect(menuStateOf(facts({ fullScreen: undefined })).disabled).toEqual(["full_screen"]);
   });
 
   it("names ⌘W Close Pane while the active tab is split", () => {

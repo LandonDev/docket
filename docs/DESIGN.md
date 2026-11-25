@@ -1085,12 +1085,16 @@ Every computer being driven now, on every connected host, in one place
 - **The stage.** One computer has the page (`ComputersPage`, the layout
   in `lib/stageLayout.ts`). Its picture fits the room left by a 16px inset
   and the caption, both ways, in its own shape, at the top of the room and
-  centred across it; it is never drawn past twice the stream's own pixels,
-  so a small window stays small instead of turning to blur, and grown past
-  them it is drawn at a whole number of screen pixels to each of the
-  stream's (1:1, 2:1) when that costs at most a fifth of its width
-  (`fitStage`). It takes the
-  box's one display and is where he drives.
+  centred across it (`fitStage`, the fill rule). A whole computer's screen
+  (the Windows VM) fills that room: it is the computer. A window's picture
+  (a Mac's, a PC's, the box's page) is never drawn past twice the stream's
+  own pixels, so a small window stays small instead of turning to blur, and
+  grown past them it is drawn at a whole number of screen pixels to each of
+  the stream's (1:1, 2:1) when that costs at most a fifth of its width.
+  Drawn at two or more screen pixels to each of the stream's, exactly, its
+  pixels are doubled crisp (`image-rendering: pixelated`); at any other
+  scale it stays smooth. It takes the box's one display and is where he
+  drives.
 - **The strip.** Every other computer is a live tile beside the stage, 176
   to 240px wide, 16px from it and 16px apart: its picture, its thread's
   title (13px medium; the amber waiting mark before it while a card waits
@@ -1126,7 +1130,7 @@ Every computer being driven now, on every connected host, in one place
   the picture the keyboard as soon as it is his. No toast says the leave
   chord here: Hand back already wears it. While he drives, Escape is the
   computer's key and never closes the page. Leaving the page with nothing
-  else of his showing that computer (no full window, no pop-out) hands it
+  else of his showing that computer (not full screen, no pop-out) hands it
   back by itself 1.5 seconds later (lib/driveHold.ts).
 - **The picture** is the Computer section's viewport with no cap of its
   own (`fill`): its place sizes it. Every face it has (the live picture,
@@ -1137,7 +1141,7 @@ Every computer being driven now, on every connected host, in one place
   a spinner and "Reconnecting to The box", and no stream is asked for;
   "The preview stopped" and Retry are for a stream that truly ended with
   the host linked. A skeleton until the first frame; a
-  click on the stage's picture opens the full window. A session this desktop
+  click on the stage's picture opens full screen. A session this desktop
   may not draw is one muted line in the box's place, naming the machine:
   "Shown on Studio only". The browser /ui lists the tiles with no picture
   at all.
@@ -1153,25 +1157,31 @@ Every computer being driven now, on every connected host, in one place
   arrives; in the strip "Asleep", and his press puts it on the stage, which
   wakes it; "Not set up: Settings → Work → Windows VM" with no Take over; a
   failed wake says why, with Retry. Take over on a VM that is not awake
-  wakes it and then takes over: one press. It has no Pop out or Full window
+  wakes it and then takes over: one press. It has no Pop out or Full screen
   until it has a picture.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
-- **Full window** (`FullWindow`, lib/fullWindow.ts, its own chunk): the
-  stage with the rail and the header gone, over the whole window on the
-  `stage` ground (the ground under a picture; `matte` is black in both
-  themes and no text reads on it in light). One computer, its picture as
-  large as the window allows less a 16px inset and the caption, in its
-  shape and never past twice the stream's own pixels, centred both ways;
-  the stage's caption under it, with Leave full window (a quiet icon button
-  with a tip) after the controls. The caption fades over `--dur-base` two
+- **Full screen** (`FullWindow`, lib/fullWindow.ts, its own chunk; main's
+  fullScreen.ts): one computer over his whole display. The window itself
+  goes full screen (on a Mac on this Space, at once, with no menu bar or
+  Dock) and the picture fills it on `matte` (black in both themes, so no
+  words sit on it), centred both ways, with no inset and no caption row: a
+  whole computer's screen as large as the display allows in its shape
+  (the 1280 by 800 VM is 2880 by 1800 points on a 3200 by 1800 display),
+  a window's picture by the stage's rule. The stage's caption floats over
+  the top edge on its own ground, with Leave full screen (a quiet icon
+  button with a tip) after the controls; it fades over `--dur-base` two
   seconds after the pointer last moved and comes back when it moves, or
-  with keyboard focus in it. Escape leaves when the picture does not hold
-  the keyboard; a double click on the picture leaves when he does not
-  drive. A click on any live picture (the stage's, the Computer section's,
-  the browser canvas's) or the stage's Full window button opens it; the
-  lightbox no longer shows a live picture. It is another canvas on the
-  stream the place already plays, never a second stream.
+  with keyboard focus in it. ⌃⌘F leaves (and from the Computers page takes
+  the stage's computer in: View → Enter Full Screen); Escape leaves when
+  the picture does not hold the keyboard; a double click on the picture
+  leaves when he does not drive. A click on any live picture (the stage's,
+  the Computer section's, the browser canvas's) or the stage's Full screen
+  button opens it, the picture growing from where it was over `--dur-slow`
+  on `--ease-out` (reduced motion: a fade over `--dur-fast`); the key's
+  entry has no motion. A window he had full screen himself stays so when
+  it closes. The lightbox no longer shows a live picture. It is another
+  canvas on the stream the place already plays, never a second stream.
 - **Pop out** (`PopOut`, lib/popOut.ts, main's popOut.ts): a small
   frameless window over every app, every Space and every workspace, with
   no place in the Dock: the picture filling it and one 36px bar under it,
@@ -1185,7 +1195,9 @@ Every computer being driven now, on every connected host, in one place
   computer leaves or the main window closes. Back to the page brings the
   main window in front with that computer on the stage. The main window
   draws it, on the stream it already plays: it is never a second stream.
-  The stage's caption opens it (Pop out, before Full window).
+  The stage's caption opens it (Pop out, before Full screen). ⌃⌘F takes
+  it full screen on its own display: its picture on `matte`, fitted by the
+  stage's rule, its bar under it.
 - **The Windows VM in Settings → Work** (`WinvmSection`, work/winvm/): a
   section of its own on each Work host that can have the VM (a host that
   cannot shows nothing). Its first row, "Windows", says what the machine is

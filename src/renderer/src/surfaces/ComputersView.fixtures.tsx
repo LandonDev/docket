@@ -5,24 +5,25 @@
 import type { ReactNode } from "react";
 import type { ComputerTile } from "../lib/computers";
 import type { ComputersPageProps, Place } from "./ComputersView";
-import { fitStage } from "../lib/stageLayout";
-import { tile } from "./threads/computer/FullWindow.fixtures";
-import { Viewport, ViewportLine, pictureClass } from "./threads/computer/Viewport";
+import { drawnPixelated, fitStage, type PictureKind } from "../lib/stageLayout";
+import { VM_STILL, tile } from "./threads/computer/FullWindow.fixtures";
+import { PIXELATED, Viewport, ViewportLine, pictureClass } from "./threads/computer/Viewport";
 
 const still = (app: string, state: string): string => new URL(`../../../main/server/computer/fixtures/apps/${app}/${state}/window.jpg`, import.meta.url).href;
 const noop = (): void => {};
 
 const SHOTS: Record<string, { src: string; width: number; height: number }> = {
+  vm: { src: VM_STILL, width: 1280, height: 800 },
   page: { src: still("finder", "folder"), width: 1200, height: 800 },
   doc: { src: still("textedit", "doc"), width: 1206, height: 1010 },
 };
 
 /** A still in the live picture's place, in the same box, sized as the place sizes the live one. */
-const shot = (name: keyof typeof SHOTS, label: string) => (place: Place): ReactNode => {
+export const shot = (name: keyof typeof SHOTS, label: string, kind: PictureKind = "window") => (place: Place): ReactNode => {
   const s = SHOTS[name];
-  const fit = place.stage ? fitStage(place.room, s, 2) : null;
+  const fit = place.stage ? fitStage(place.room, s, 2, kind) : null;
   return (
-    <div style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
+    <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? (drawnPixelated(fit.width, s, 2) ? PIXELATED : undefined) : "w-full"}>
       <Viewport fill face={{ kind: "live", drawn: true, picture: <img src={s.src} alt="" draggable={false} className={pictureClass(true)} /> }} label={label} size={s} />
     </div>
   );
@@ -68,7 +69,7 @@ const pictures = new Map<string, (place: Place) => ReactNode>([
   [driven.id, shot("page", "Live view of Parking in Chromium")],
   [asking.id, shot("doc", "Live view of Review in Frame.io")],
   [studio.id, elsewhere("Studio")],
-  [vm.id, shot("page", "Live view of Windows VM")],
+  [vm.id, shot("vm", "Live view of Windows VM", "screen")],
 ]);
 const pictureOf = (t: ComputerTile, place: Place): ReactNode => (pictures.get(t.id) ?? coming)(place);
 

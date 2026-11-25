@@ -5,6 +5,7 @@ import { shellStore } from "../stores/shell";
 import { editorHeld, workCommands } from "./appCommands";
 import { awayKinds, awayStore } from "./away";
 import { workspaceTabsStore } from "../stores/workspace";
+import { canFullScreen, fullWindowTarget, subscribeFullWindow } from "./fullWindow";
 import { leafIds } from "./layout";
 import { threadsToMarkRead } from "./markRead";
 import { messageListFold } from "./messageListFold";
@@ -58,6 +59,8 @@ export type MenuFacts = {
   live?: boolean;
   /** The focused thread is Work's (lib/workRow.ts): the code rows (`CODE_ONLY_IDS`) are not drawn. */
   workThread?: boolean;
+  /** A computer fills the display (lib/fullWindow.ts): Exit Full Screen; `ready` while one is offered to it. */
+  fullScreen?: "open" | "ready";
 };
 
 /**
@@ -83,6 +86,8 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.messageList) open.push("toggle_message_list");
   if (f.split) open.push("close_tab");
   if (f.today) open.push("open_today");
+  if (f.fullScreen === "open") open.push("full_screen");
+  else if (!f.fullScreen) disabled.push("full_screen");
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
   if (!f.workFile) disabled.push("open_file");
@@ -137,6 +142,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     share: workCommands.has("share"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),
     live: liveFocused(caret !== undefined ? caret : typeof document === "undefined" ? null : document.activeElement),
+    fullScreen: fullWindowTarget() ? "open" : canFullScreen() ? "ready" : undefined,
     workThread: !!focusedId && isWorkSession(sessionStore.get(focusedId) ?? sessionStore.metaOf(focusedId), catalog.workspaces),
   };
 }
@@ -179,6 +185,7 @@ export function publishMenuState(
     awayStore.subscribe(schedule),
     workSwitch.subscribe(schedule),
     workCommands.subscribe(schedule),
+    subscribeFullWindow(schedule),
   ];
   // The caret entering or leaving a Work editor moves four keys between the menu and the page: said at once, not after
   // the throttle. Compared with what was last sent, so a state a throttled flush sent (an editor closed under the caret)

@@ -45,7 +45,7 @@ import { markAllSeen } from "./lib/sessionSeen";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/lightboxStore";
-import { useFullWindow } from "./lib/fullWindow";
+import { fullWindowTarget, toggleFullScreen, useFullWindow } from "./lib/fullWindow";
 import { requestStage, usePopOut } from "./lib/popOut";
 import {
   closeHtmlRenderOverlay,
@@ -3311,6 +3311,7 @@ export default function App() {
         case "zoom_in": return go(() => void zoomIn().catch(() => {}));
         case "zoom_out": return go(() => void zoomOut().catch(() => {}));
         case "zoom_reset": return go(() => void zoomReset().catch(() => {}));
+        case "full_screen": return go(toggleFullScreen);
         case "lightbox_close":
           return go(() => {
             closeLightbox();
@@ -3386,6 +3387,7 @@ export default function App() {
           dialogOpen: dialogOpen(),
           lightboxOpen: isLightboxOpen() || isHtmlRenderOverlayOpen(),
           workSearchOpen: !!document.querySelector("[data-work-search]"),
+          fullScreenOpen: fullWindowTarget() !== null,
         })
       ) {
         return;

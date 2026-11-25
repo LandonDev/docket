@@ -96,6 +96,7 @@ export const APP_COMMANDS = [
   "zoom_in",
   "zoom_out",
   "zoom_reset",
+  "full_screen",
   "lightbox_close",
   "lightbox_prev",
   "lightbox_next",
@@ -425,10 +426,12 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 /** The menu route's overlay guard, mirroring the DOM one. */
 export function menuCommandAllowed(
   id: AppCommandId,
-  ctx: { dialogOpen: boolean; lightboxOpen: boolean; workSearchOpen?: boolean },
+  ctx: { dialogOpen: boolean; lightboxOpen: boolean; workSearchOpen?: boolean; fullScreenOpen?: boolean },
 ): boolean {
   // Work search's own key, pressed again inside it, flips its scope: the one dialog that hears its command.
   if (id === "search_work" && ctx.workSearchOpen && !ctx.lightboxOpen) return true;
+  // Full screen is a dialog over the app, and its own key leaves it.
+  if (id === "full_screen" && ctx.fullScreenOpen) return true;
   if (ctx.dialogOpen || ctx.lightboxOpen) return DIALOG_SAFE.has(id);
   return true;
 }

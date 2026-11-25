@@ -35,6 +35,8 @@ export interface MenuCommand {
   checkbox?: true
   /** A row of Work's: drawn only while some host has Work on (the window names it in `MenuState.hidden` otherwise). */
   workOnly?: true
+  /** The key this row shows and is off a Mac, where its own needs a key a PC's keyboard does not have. */
+  offMac?: string
   /** The key this row shows while the window is editing and has taken it from the row `from` (`MenuState.editing`); the page owns it. */
   whileEditing?: { accelerator: string; from: string }
   /** Set by `resolveMenu` only. */
@@ -162,7 +164,15 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('zoom_in', 'Zoom In', 'CmdOrCtrl+='),
       cmd('zoom_out', 'Zoom Out', 'CmdOrCtrl+-'),
-      cmd('zoom_reset', 'Actual Size', 'CmdOrCtrl+0')
+      cmd('zoom_reset', 'Actual Size', 'CmdOrCtrl+0'),
+      sep,
+      // A computer's picture over the whole display (docs/DESIGN.md "Computers", "Full screen"): main hears the key
+      // before the page (src/main/fullScreen.ts), so a picture that holds the keyboard never takes it.
+      {
+        ...cmd('full_screen', 'Enter Full Screen', 'Ctrl+Cmd+F', { pageKey: true, desktopOnly: true }),
+        offMac: 'F11',
+        toggle: { show: 'Enter Full Screen', hide: 'Exit Full Screen' }
+      }
     ]
   },
   {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION_GAP, CAPTION_HEIGHT, STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, fitStage, stageLayout, stageOf } from "./stageLayout";
+import { CAPTION_GAP, CAPTION_HEIGHT, STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, drawnPixelated, fitStage, pictureKind, stageLayout, stageOf } from "./stageLayout";
 
 const caption = CAPTION_GAP + CAPTION_HEIGHT;
 
@@ -52,6 +52,45 @@ describe("the Computers page's stage", () => {
     expect(fitStage({ width: 1000, height: 1000 }, vm, 1)).toEqual({ width: 1000, height: 625 });
     // the 1920 by 1200 VM on a 1x screen 2000 wide: one to one
     expect(fitStage({ width: 2000, height: 1300 }, { width: 1920, height: 1200 }, 1)).toEqual({ width: 1920, height: 1200 });
+  });
+
+  it("fills the room with a whole computer's screen in its shape, with no cap and no snap", () => {
+    const vm = { width: 1280, height: 800 };
+    expect(pictureKind("vm:windows")).toBe("screen");
+    expect(pictureKind("browser:p1")).toBe("window");
+    expect(pictureKind("window:t1")).toBe("window");
+    // full screen on the ASUS (3200×1800 points, 2x): the display's full height, 90% of its width
+    expect(fitStage({ width: 3200, height: 1800 }, vm, 2, "screen")).toEqual({ width: 2880, height: 1800 });
+    // the MacBook (1728×1117 points, 2x): its full width
+    expect(fitStage({ width: 1728, height: 1117 }, vm, 2, "screen")).toEqual({ width: 1728, height: 1080 });
+    // the LG (3840×1620 points): its full height
+    expect(fitStage({ width: 3840, height: 1620 }, vm, 2, "screen")).toEqual({ width: 2592, height: 1620 });
+    // the same rooms hold a window's picture of that size to twice its pixels, as before
+    expect(fitStage({ width: 3200, height: 1800 }, vm, 2)).toEqual({ width: 1280, height: 800 });
+    expect(fitStage({ width: 1728, height: 1117 }, vm, 2)).toEqual({ width: 1280, height: 800 });
+    expect(fitStage({ width: 3840, height: 1620 }, vm, 2)).toEqual({ width: 1280, height: 800 });
+    // a screen on a 1x display is not snapped down to one to one either: 1400 wide, not 1280
+    expect(fitStage({ width: 1400, height: 1000 }, vm, 1, "screen")).toEqual({ width: 1400, height: 875 });
+    expect(fitStage({ width: 800, height: 800 }, null, 2, "screen")).toEqual({ width: 800, height: 500 });
+  });
+
+  it("draws pixelated only at a whole scale of two or more screen pixels to each of the stream's", () => {
+    const vm = { width: 1280, height: 800 };
+    // a window's picture at its cap on a 2x display: 2:1
+    expect(drawnPixelated(1280, vm, 2)).toBe(true);
+    // 3:1: 1920 points of a 1280 stream on a 2x display is 3 device pixels to each
+    expect(drawnPixelated(1920, { width: 1280, height: 800 }, 2)).toBe(true);
+    // the screens of full screen: 4.5:1 on the ASUS, 2.7:1 on the MacBook, 4.05:1 on the LG, smooth
+    expect(drawnPixelated(2880, vm, 2)).toBe(false);
+    expect(drawnPixelated(1728, vm, 2)).toBe(false);
+    expect(drawnPixelated(2592, vm, 2)).toBe(false);
+    // one to one is the stream's own pixels: nothing to double
+    expect(drawnPixelated(640, vm, 2)).toBe(false);
+    expect(drawnPixelated(1280, vm, 1)).toBe(false);
+    // a width floored to a CSS pixel still counts as whole
+    expect(drawnPixelated(1279.6, vm, 2)).toBe(true);
+    expect(drawnPixelated(1200, vm, 2)).toBe(false);
+    expect(drawnPixelated(1280, null, 2)).toBe(false);
   });
 
   it("keeps his pick while it is there, then what had the stage, then the one that needs him, then the one that acted last", () => {

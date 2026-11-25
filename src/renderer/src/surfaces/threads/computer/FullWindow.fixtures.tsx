@@ -1,4 +1,4 @@
-// Every state of the full window of a computer being driven, for `bun run ui:preview
+// Every state of full screen for a computer being driven, for `bun run ui:preview
 // src/renderer/src/surfaces/threads/computer/FullWindow.preview.tsx#FullWindowStates`
 // and the dom test that keeps them honest. The pictures are the recorded app
 // fixtures (src/main/server/computer/fixtures/apps): scratch content only.
@@ -38,17 +38,27 @@ export const tile = (over: Partial<ComputerTile> = {}): ComputerTile => ({
   ...over,
 });
 
+/** A stand-in for the Windows VM's 1280 by 800 screen: a one-pixel grid, so a shot shows how its pixels are drawn. */
+export const VM_STILL = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" shape-rendering="crispEdges"><defs><pattern id="g" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 0H8M0 0V8" stroke="#3a6ea5" stroke-width="1"/></pattern></defs><rect width="1280" height="800" fill="#0b2a4a"/><rect width="1280" height="800" fill="url(#g)"/><rect y="760" width="1280" height="40" fill="#1c1c1c"/><text x="40" y="80" font-family="Segoe UI, sans-serif" font-size="24" fill="#ffffff">Windows VM, 1280 by 800</text></svg>',
+)}`;
+
 export interface FullWindowFixture {
   name: string;
   props: FullWindowViewProps;
 }
 
 const page = <img src={still("finder", "folder")} alt="" draggable={false} className={pictureClass(true)} />;
-// a 1440×900 window on a 2× screen; the picture's own pixels are 600 by 400, so it is drawn at most 1200 by 800
+// a 1440×900 display at 2×; the picture's own pixels are 600 by 400, so a window's is drawn at most 1200 by 800
 const ROOM = { width: 1440, height: 900 };
+/** The Windows VM's screen at 1280 by 800: a grid of its pixels (ComputersView.fixtures.tsx). */
+export const vmPicture = <img src={VM_STILL} alt="" draggable={false} className={pictureClass(true)} />;
+const VM = { status: "live", app: "Windows VM", window: null, width: 1280, height: 800, drawn: true } as const;
+export const vmTile = tile({ title: "Windows VM", doing: null, browser: false, computer: "vm:windows", where: "The box", idle: true, pane: "vm:windows" });
 const base = { room: ROOM, name: "Live view of Expense report in Chromium", dpr: 2, onExit: noop, onOpenSession: noop } as const;
 
 const fixtures: FullWindowFixture[] = [
+  { name: "The Windows VM fills the MacBook's display (1728 by 1117 points): 1728 by 1080, its full width", props: { ...base, room: { width: 1728, height: 1117 }, tile: vmTile, stream: streamOf(VM), picture: vmPicture } },
   { name: "The agent drives the box's browser: the picture as large as the window allows, its caption under it", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page } },
   { name: "He drives: the caption says so, and offers Hand back alone; the picture takes his keys and pointer", props: { ...base, tile: tile({ driving: true, doing: null }), stream: streamOf(live(), "video", driven), picture: page } },
   { name: "The pointer rested: the caption has faded", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page, captionShown: false } },

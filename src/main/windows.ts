@@ -1,4 +1,5 @@
 import { showWindowOptions } from './present'
+import { followFullScreen, isFull, isFullScreenKey, setFull } from './fullScreen'
 import { POP_OUT_BAR, POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
@@ -169,6 +170,11 @@ function entryOf(win: BrowserWindow | null | undefined): Entry | null {
   return win ? (windows.get(win.webContents.id) ?? null) : null
 }
 
+/** A window's full screen, told to the page of the main window it belongs to: its own, or its pop-out's. */
+function tellFullScreen(win: BrowserWindow, on: boolean, popOut: boolean): void {
+  if (!win.isDestroyed()) win.webContents.send('window:fullScreenChanged', { on, popOut })
+}
+
 function windowOf(event: { sender: Electron.WebContents }): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
 }
@@ -315,12 +321,30 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     if (details.frameName !== POP_OUT_FRAME) return
     popOuts.set(id, child)
     popOutCreated(child)
+    // The pop-out's full screen (fullScreen.ts): its key toggles it here, and this window's page, which draws it, hears.
+    followFullScreen(child, (on) => tellFullScreen(win, on, true))
+    child.webContents.on('before-input-event', (event, input) => {
+      if (!isFullScreenKey(input)) return
+      event.preventDefault()
+      const on = !isFull(child)
+      setFull(child, on)
+      tellFullScreen(win, on, true)
+    })
     child.on('moved', saveStateSoon)
     child.on('resized', saveStateSoon)
     child.on('closed', () => {
       if (popOuts.get(id) === child) popOuts.delete(id)
     })
   })
+  // Full screen for a computer's picture (fullScreen.ts): ⌃⌘F is the page's full screen command, heard before the page
+  // so a picture that holds the keyboard never takes it.
+  followFullScreen(win, (on) => tellFullScreen(win, on, false))
+  win.webContents.on('before-input-event', (event, input) => {
+    if (!isFullScreenKey(input)) return
+    event.preventDefault()
+    win.webContents.send('native:menu', 'full_screen')
+  })
+
   win.on('closed', () => {
     const child = popOuts.get(id)
     if (child && !child.isDestroyed()) child.close()
@@ -451,6 +475,18 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void; 
     const child = popOuts.get(e.sender.id)
     if (!child || child.isDestroyed() || typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0) return
     child.setAspectRatio(ratio, { width: 0, height: POP_OUT_BAR })
+  })
+  // A computer's picture asks for full screen (fullScreen.ts): this window's, or its pop-out's; answers whether it was full before.
+  ipcMain.handle('window:fullScreen', (e, ask: unknown) => {
+    const a = ask as { on?: unknown; popOut?: unknown } | null
+    const popOut = a?.popOut === true
+    const owner = windowOf(e)
+    const target = popOut ? popOuts.get(e.sender.id) : owner
+    if (!owner || !target || target.isDestroyed()) return false
+    const on = a?.on === true
+    const was = setFull(target, on)
+    tellFullScreen(owner, on, popOut)
+    return was
   })
   ipcMain.handle('window:toggle-maximize', (e) => {
     const win = windowOf(e)

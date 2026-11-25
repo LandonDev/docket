@@ -4,7 +4,12 @@ src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
 the in-app bar and the tests: TempCode, File, Edit, View (Show/Hide
 Message List, ⌘⇧M, folds the transcript's message list in every thread of
 the window, lib/messageListFold.ts; Force Reload,
-keyless, reloads the focused window past its cache from main), Go
+keyless, reloads the focused window past its cache from main; Enter Full
+Screen, ⌃⌘F, a `pageKey` row for the eye: main catches the key in
+`before-input-event` (src/main/fullScreen.ts) and sends the page its
+`full_screen` command, so a live picture that holds the keyboard never takes
+it; the row reads Exit Full Screen while a computer fills the display and is
+grey with none offered, and off a Mac it shows F11, `offMac`), Go
 (navigation; Today, ⇧⌘T, is Work's own row: `workOnly`, drawn only while
 some host has Work on, since a window with none names it in
 `MenuState.hidden` and `resolveMenu` then leaves the row and its key out;

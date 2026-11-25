@@ -170,6 +170,11 @@ const api = {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     /** This window's pop-out keeps a picture of this width over height, with its bar under it. */
     popOutShape: (ratio: number): Promise<void> => ipcRenderer.invoke('popout:shape', ratio),
+    /** This window, or its pop-out, over its whole display or back (main's fullScreen.ts); answers whether it was full before. */
+    fullScreen: (ask: { on: boolean; popOut?: boolean }): Promise<boolean> => ipcRenderer.invoke('window:fullScreen', ask),
+    /** This window's full screen, or its pop-out's, as it changes. */
+    onFullScreen: (cb: (state: { on: boolean; popOut: boolean }) => void): (() => void) =>
+      on<[{ on: boolean; popOut: boolean }]>('window:fullScreenChanged', cb),
     toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),

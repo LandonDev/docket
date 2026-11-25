@@ -495,6 +495,16 @@ export function setPopOutShape(ratio: number): void {
   void api().win.popOutShape(ratio).catch(() => {});
 }
 
+/** This window, or its pop-out, over its whole display or back (main's fullScreen.ts); answers whether it was full before. */
+export function setWindowFullScreen(ask: { on: boolean; popOut?: boolean }): Promise<boolean> {
+  return api().win.fullScreen(ask).catch(() => false);
+}
+
+/** This window's full screen, or its pop-out's, as it changes. */
+export function onWindowFullScreen(handler: (state: { on: boolean; popOut: boolean }) => void): () => void {
+  return api().win.onFullScreen(handler);
+}
+
 export type NativeWindow = {
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;

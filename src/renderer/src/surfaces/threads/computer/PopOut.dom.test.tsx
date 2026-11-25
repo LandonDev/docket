@@ -6,9 +6,9 @@ import { closePopOut, openPopOut, popOutTarget } from "../../../lib/popOut";
 import { streamOf, tile } from "./FullWindow.fixtures";
 import { LEFT_AFTER_MS, PopOut, PopOutView, mirrorDocument } from "./PopOut";
 
-const h = vi.hoisted(() => ({ tile: null as ComputerTile | null, streams: [] as { key: string; run: boolean }[], shapes: [] as number[] }));
+const h = vi.hoisted(() => ({ tile: null as ComputerTile | null, streams: [] as { key: string; run: boolean }[], shapes: [] as number[], told: null as ((state: { on: boolean; popOut: boolean }) => void) | null }));
 vi.mock("../../../lib/computers", async (original) => ({ ...(await original<typeof import("../../../lib/computers")>()), useComputer: () => h.tile }));
-vi.mock("../../../lib/native", async (original) => ({ ...(await original<typeof import("../../../lib/native")>()), setPopOutShape: (r: number) => void h.shapes.push(r) }));
+vi.mock("../../../lib/native", async (original) => ({ ...(await original<typeof import("../../../lib/native")>()), setPopOutShape: (r: number) => void h.shapes.push(r), onWindowFullScreen: (fn: (state: { on: boolean; popOut: boolean }) => void) => ((h.told = fn), () => void (h.told = null)) }));
 vi.mock("./Viewport", async (original) => {
   const actual = await original<typeof import("./Viewport")>();
   return {
@@ -59,6 +59,22 @@ describe("the pop-out's body", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to the page" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect([back.mock.calls.length, close.mock.calls.length]).toEqual([1, 1]);
+  });
+
+  it("fits its picture as the stage does: a screen fills the room, a window's stops at twice its pixels and is drawn crisp", () => {
+    const picture = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="pop-out-picture"]')!;
+    const v = render(view({ tile: tile({ computer: "vm:windows" }), room: { width: 3200, height: 1764 }, dpr: 2 }));
+    expect([picture().style.width, picture().style.height]).toEqual(["2822px", "1763px"]);
+    expect(picture().className).not.toContain("pixelated");
+    v.rerender(view({ room: { width: 3200, height: 1764 }, dpr: 2 }));
+    expect([picture().style.width, picture().style.height]).toEqual(["1280px", "800px"]);
+    expect(picture().className).toContain("[image-rendering:pixelated]");
+  });
+
+  it("sits on matte in full screen, its bar on its own ground", () => {
+    render(view({ full: true, room: { width: 1728, height: 1081 } }));
+    expect(document.querySelector<HTMLElement>('[data-slot="pop-out"]')!.className).toContain("bg-matte");
+    expect(document.querySelector<HTMLElement>('[data-slot="pop-out-bar"]')!.className).toContain("bg-background");
   });
 
   it("offers Hand back alone while he drives, nothing to stop on an idle page, and no Take over on a person's own window", () => {
@@ -112,6 +128,21 @@ describe("the pop-out, live", () => {
     expect(h.shapes.at(-1)).toBeCloseTo(1.6, 3);
     act(() => closePopOut());
     expect(child.closed.n).toBe(1);
+  });
+
+  it("follows its own window's full screen, not the main window's", () => {
+    h.tile = tile();
+    const child = childWindow();
+    vi.spyOn(window, "open").mockReturnValue(child.w);
+    render(<PopOut onBack={noop} />);
+    act(() => openPopOut({ host: "box", threadId: "t1", name: "Live view" }));
+    const full = (): string | undefined => child.doc.body.querySelector<HTMLElement>('[data-slot="pop-out"]')!.dataset.full;
+    act(() => h.told?.({ on: true, popOut: false }));
+    expect(full()).toBeUndefined();
+    act(() => h.told?.({ on: true, popOut: true }));
+    expect(full()).toBe("true");
+    act(() => h.told?.({ on: false, popOut: true }));
+    expect(full()).toBeUndefined();
   });
 
   it("closes when its computer has left, and when the window went by itself", () => {

@@ -124,7 +124,9 @@ describe('menu tree', () => {
       '—',
       ['Zoom In', 'Cmd+='],
       ['Zoom Out', 'Cmd+-'],
-      ['Actual Size', 'Cmd+0']
+      ['Actual Size', 'Cmd+0'],
+      '—',
+      ['Enter Full Screen', 'Ctrl+Cmd+F']
     ])
     expect(section('Go')).toEqual([
       ['Search…', 'Cmd+K'],
@@ -215,13 +217,16 @@ describe('menu tree', () => {
     expect([...seen].filter(([, n]) => n > 1)).toEqual([])
   })
 
-  it('takes no chord macOS keeps for itself', () => {
+  it('takes no chord macOS keeps for itself, but full screen keeps its own', () => {
     const all = MENU_TREE.flatMap((s) => chords(s.items))
-    expect(all.filter((c) => RESERVED.includes(c))).toEqual([])
+    // ⌃⌘F means full screen on a Mac: the row shows it and leaves it to main, which takes a computer's picture full screen
+    expect(all.filter((c) => RESERVED.includes(c))).toEqual(['Ctrl+Cmd+F'])
+    const full = MENU_COMMANDS.find((c) => c.id === 'full_screen')!
+    expect(full).toMatchObject({ accelerator: 'Ctrl+Cmd+F', offMac: 'F11', pageKey: true, desktopOnly: true, toggle: { show: 'Enter Full Screen', hide: 'Exit Full Screen' } })
   })
 
   it('gives every toggle both labels, and ⌘W its Tab and Pane', () => {
-    const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab' && c.id !== 'open_today')
+    const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab' && c.id !== 'open_today' && c.id !== 'full_screen')
     expect(toggles.map((c) => c.id)).toEqual(['toggle_sidebar', 'toggle_panel', 'toggle_terminal', 'toggle_message_list'])
     expect(MENU_COMMANDS.find((c) => c.id === 'close_tab')!.toggle).toEqual({ show: 'Close Tab', hide: 'Close Pane' })
     // the key closes the page it opened, and the row says so while the page is open

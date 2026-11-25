@@ -4,10 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../../../lib/computers";
 import { registry } from "../../../lib/connection/registry";
 import { closeFullWindow, fullWindowTarget, openFullWindow } from "../../../lib/fullWindow";
-import { CAPTION_REST_MS, FullWindow, FullWindowView } from "./FullWindow";
+import { saveMotionPreference } from "../../../lib/motion";
+import { CAPTION_REST_MS, FullWindow, FullWindowView, growFrom } from "./FullWindow";
 import fixtures, { streamOf, tile } from "./FullWindow.fixtures";
 
-const h = vi.hoisted(() => ({ tile: null as ComputerTile | null, streams: [] as { key: string; run: boolean }[] }));
+const h = vi.hoisted(() => ({
+  tile: null as ComputerTile | null,
+  streams: [] as { key: string; run: boolean }[],
+  // main's answers: whether the window was full before each ask, and what it tells of its full screen
+  asks: [] as { on: boolean; popOut?: boolean }[],
+  wasFull: false,
+  told: null as ((state: { on: boolean; popOut: boolean }) => void) | null,
+}));
+vi.mock("../../../lib/native", async (original) => ({
+  ...(await original<typeof import("../../../lib/native")>()),
+  setWindowFullScreen: async (ask: { on: boolean; popOut?: boolean }) => (h.asks.push(ask), h.wasFull),
+  onWindowFullScreen: (fn: (state: { on: boolean; popOut: boolean }) => void) => ((h.told = fn), () => void (h.told = null)),
+}));
 vi.mock("../../../lib/computers", async (original) => ({ ...(await original<typeof import("../../../lib/computers")>()), useComputer: () => h.tile }));
 vi.mock("./Viewport", async (original) => {
   const actual = await original<typeof import("./Viewport")>();
@@ -31,6 +44,9 @@ beforeEach(() => {
   fail = null;
   h.tile = null;
   h.streams.length = 0;
+  h.asks.length = 0;
+  h.wasFull = false;
+  h.told = null;
   toastError.mockReset();
   vi.spyOn(registry, "link").mockImplementation(
     (host: string) =>
@@ -75,6 +91,30 @@ describe("the full window's body", () => {
     expect((small.container.querySelector('[data-face="live"]')!.parentElement as HTMLElement).style.width).toBe("600px");
   });
 
+  it("fills the display with a whole computer's screen, and holds a window's picture to twice its pixels, pixelated at 2:1", () => {
+    const vm = { status: "live", app: "Windows", window: "Desktop", width: 1280, height: 800, drawn: true } as const;
+    const picture = (v: ReturnType<typeof render>): HTMLElement => v.container.querySelector<HTMLElement>('[data-face="live"]')!;
+    // the ASUS: 2880 by 1800 of its 3200 by 1800 points, drawn smooth at 4.5 screen pixels a pixel
+    const asus = render(view({ tile: tile({ computer: "vm:windows" }), stream: streamOf(vm), room: { width: 3200, height: 1800 }, dpr: 2 }));
+    expect(picture(asus).parentElement!.style.width).toBe("2880px");
+    expect(picture(asus).dataset.pixelated).toBeUndefined();
+    asus.unmount();
+    // the MacBook: its full width, 1728
+    const mac = render(view({ tile: tile({ computer: "vm:windows" }), stream: streamOf(vm), room: { width: 1728, height: 1117 }, dpr: 2 }));
+    expect(picture(mac).parentElement!.style.width).toBe("1728px");
+    mac.unmount();
+    // a window's picture of that size stops at 1280, two screen pixels to each of its own, and is drawn crisp
+    const win = render(view({ stream: streamOf(vm), room: { width: 3200, height: 1800 }, dpr: 2 }));
+    expect(picture(win).parentElement!.style.width).toBe("1280px");
+    expect(picture(win).dataset.pixelated).toBe("true");
+    expect(picture(win).className).toContain("[image-rendering:pixelated]");
+  });
+
+  it("floats its caption over the top edge, on its own ground", () => {
+    const v = render(view());
+    expect(v.container.querySelector<HTMLElement>('[data-slot="full-window-caption"]')!.className).toContain("absolute inset-x-0 top-0 bg-background");
+  });
+
   it("fades the caption when the pointer rests, and keeps it while the keyboard is in it", () => {
     const v = render(view({ captionShown: false }));
     const caption = v.container.querySelector<HTMLElement>('[data-slot="full-window-caption"]')!;
@@ -84,7 +124,7 @@ describe("the full window's body", () => {
     expect(caption.className).not.toContain("opacity-0");
   });
 
-  it("Take over and Hand back are one call each to the host; Stop stops the one; Leave full window leaves", async () => {
+  it("Take over and Hand back are one call each to the host; Stop stops the one; Leave full screen leaves", async () => {
     const exit = vi.fn();
     const v = render(view({ onExit: exit }));
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
@@ -94,7 +134,7 @@ describe("the full window's body", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop File the March expense report" }));
     await flush();
     expect(calls).toEqual([{ host: "box", method: "computer.stop", params: { sessionId: "t1" } }]);
-    fireEvent.click(screen.getByRole("button", { name: "Leave full window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave full screen" }));
     expect(exit).toHaveBeenCalledTimes(1);
     calls.length = 0;
     v.rerender(view({ tile: tile({ driving: true, doing: null }) }));
@@ -116,7 +156,90 @@ describe("the full window's body", () => {
   it("says when nothing drives it any more, and still offers the way out", () => {
     render(view({ tile: null }));
     expect(screen.getByText("Nothing is driving this now")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Leave full window" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Leave full screen" })).not.toBeNull();
+  });
+});
+
+describe("full screen, live", () => {
+  it("takes the window full screen as it opens and puts it back as it closes; a window full before stays full", async () => {
+    h.tile = tile();
+    render(<FullWindow onOpenSession={noop} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    expect(screen.getByRole("dialog").className).toContain("bg-matte");
+    await flush();
+    expect(h.asks).toEqual([{ on: true }]);
+    act(() => closeFullWindow());
+    await flush();
+    expect(h.asks).toEqual([{ on: true }, { on: false }]);
+    h.asks.length = 0;
+    h.wasFull = true;
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    await flush();
+    act(() => closeFullWindow());
+    await flush();
+    expect(h.asks).toEqual([{ on: true }]);
+  });
+
+  it("closes when the window leaves full screen some other way, and not for its pop-out's", async () => {
+    h.tile = tile();
+    render(<FullWindow onOpenSession={noop} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    await flush();
+    act(() => h.told?.({ on: false, popOut: true }));
+    expect(fullWindowTarget()).not.toBeNull();
+    act(() => h.told?.({ on: false, popOut: false }));
+    expect(fullWindowTarget()).toBeNull();
+  });
+
+  it("leaves on a double click on a picture he does not drive", () => {
+    h.tile = tile();
+    render(<FullWindow onOpenSession={noop} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    fireEvent.doubleClick(screen.getByRole("img", { name: "Live view" }));
+    expect(fullWindowTarget()).toBeNull();
+  });
+
+  it("holds a pressed picture unseen until it grows from its place; a key's entry shows at once", async () => {
+    h.tile = tile();
+    render(<FullWindow onOpenSession={noop} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view", from: { x: 100, y: 80, width: 640, height: 400 } }));
+    const picture = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="full-window-picture"]')!;
+    expect(picture().style.opacity).toBe("0");
+    act(() => closeFullWindow());
+    expect(document.querySelector('[data-slot="full-window-picture"]')).toBeNull();
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    expect(picture().style.opacity).toBe("");
+  });
+});
+
+describe("the grow from a pressed picture", () => {
+  const el = (): HTMLElement & { played: [Keyframe[], KeyframeAnimationOptions][] } => {
+    const div = document.createElement("div") as HTMLElement & { played: [Keyframe[], KeyframeAnimationOptions][] };
+    div.played = [];
+    div.style.opacity = "0";
+    div.animate = ((frames: Keyframe[], timing: KeyframeAnimationOptions) => (div.played.push([frames, timing]), {})) as never;
+    div.getBoundingClientRect = () => ({ left: 160, top: 0, width: 2880, height: 1800, right: 3040, bottom: 1800, x: 160, y: 0, toJSON: noop });
+    return div;
+  };
+
+  it("scales by transform from where it was to where it is, over the slow time", () => {
+    const div = el();
+    growFrom(div, { x: 400, y: 300, width: 1440, height: 900 });
+    expect(div.style.opacity).toBe("");
+    const [[frames, timing]] = div.played;
+    expect(frames).toEqual([{ transform: "translate(240px, 300px) scale(0.5, 0.5)" }, { transform: "none" }]);
+    expect(timing.duration).toBe(240);
+  });
+
+  it("fades over the fast time with reduced motion", () => {
+    saveMotionPreference("reduced");
+    try {
+      const div = el();
+      growFrom(div, { x: 400, y: 300, width: 1440, height: 900 });
+      expect(div.played).toEqual([[[{ opacity: 0 }, { opacity: 1 }], expect.objectContaining({ duration: 120 })]]);
+    } finally {
+      saveMotionPreference("system");
+    }
   });
 });
 

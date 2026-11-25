@@ -43,23 +43,34 @@ export function stageLayout(page: Size, count: number): StageLayout {
 }
 
 /**
- * The stage's picture: its shape, as large as the room allows both ways, and
- * never past twice the stream's own pixels, so a small window stays small
- * instead of turning to blur. `frame` is in the stream's pixels; `dpr` the
- * screen's. Before the frame is known the picture takes 16:10 at the room's
- * size. Grown past the stream's own pixels, it is drawn at a whole number of
- * screen pixels to each of the stream's (1:1, 2:1) when that costs at most a
- * fifth of its width: a 1280 by 800 Windows VM in a room 1400 wide on a 1x
- * screen is drawn 1280 wide and sharp, not 1400 and soft.
+ * What a picture shows: a whole computer's screen (the Windows VM, a `vm:`
+ * source) or one window (a Mac's, a PC's, the box's browser page).
  */
+export type PictureKind = "screen" | "window";
+
+export const pictureKind = (computer: string): PictureKind => (computer.startsWith("vm:") ? "screen" : "window");
+
 /** The least of its width a picture keeps when it is drawn at a whole scale of its stream's pixels. */
 export const SNAP_KEEPS = 0.8;
 
-export function fitStage(room: Size, frame: Size | null, dpr: number): Size {
+/**
+ * A picture's size in its room: its shape, as large as the room allows both
+ * ways. `frame` is in the stream's pixels; `dpr` the screen's. Before the
+ * frame is known the picture takes 16:10 at the room's size.
+ *
+ * A whole computer's screen fills its room: it is the computer, and full
+ * screen is that screen on his. A window's picture is never drawn past twice
+ * the stream's own pixels, so a small window stays small instead of turning
+ * to blur, and grown past the stream's own pixels it is drawn at a whole
+ * number of screen pixels to each of the stream's (1:1, 2:1) when that costs
+ * at most a fifth of its width: a 1280 by 800 window in a room 1400 wide on a
+ * 1x screen is drawn 1280 wide and sharp, not 1400 and soft.
+ */
+export function fitStage(room: Size, frame: Size | null, dpr: number, kind: PictureKind = "window"): Size {
   const shape = frame && frame.width > 0 && frame.height > 0 ? frame : { width: 16, height: 10 };
   const ratio = Math.max(1, dpr);
   let width = Math.min(room.width, (room.height * shape.width) / shape.height);
-  if (frame) {
+  if (frame && kind === "window") {
     width = Math.min(width, (frame.width / ratio) * 2);
     const scale = (width * ratio) / frame.width;
     const whole = Math.floor(scale + 1e-6);
@@ -67,6 +78,20 @@ export function fitStage(room: Size, frame: Size | null, dpr: number): Size {
   }
   width = Math.max(0, Math.floor(width));
   return { width, height: Math.floor((width * shape.height) / shape.width) };
+}
+
+/**
+ * Whether a picture `width` CSS pixels wide is drawn at a whole number of
+ * screen pixels to each of the stream's, two or more (2:1, 3:1): then its
+ * canvas is `image-rendering: pixelated`, each pixel doubled crisp as a plain
+ * display shows it. At any other scale it stays smooth. Within one stream
+ * pixel across the width counts as whole (the width is floored to a CSS pixel).
+ */
+export function drawnPixelated(width: number, frame: Size | null, dpr: number): boolean {
+  if (!frame || frame.width <= 0 || width <= 0) return false;
+  const scale = (width * Math.max(1, dpr)) / frame.width;
+  const whole = Math.round(scale);
+  return whole >= 2 && Math.abs(scale - whole) * frame.width < whole;
 }
 
 /** Which computer has the stage: his pick while it is there; else the one kept from before; else the one that needs him; else the one that acted last. */

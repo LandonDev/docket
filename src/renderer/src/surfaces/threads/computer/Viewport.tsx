@@ -101,6 +101,9 @@ export function ViewportLine({ words, onRetry }: { words: string; onRetry?: () =
 export const pictureClass = (drawn: boolean): string =>
   cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !drawn && "invisible");
 
+/** A picture drawn at a whole number of screen pixels to each of the stream's, two or more: each pixel crisp, as a plain display shows it (lib/stageLayout.ts `drawnPixelated`). */
+export const PIXELATED = "[&_canvas]:[image-rendering:pixelated] [&_img]:[image-rendering:pixelated]";
+
 export type ViewportFace =
   /**
    * the live stream: `picture` is the canvas (a still in a fixture); a click opens the full view from the box.

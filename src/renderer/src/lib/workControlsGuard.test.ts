@@ -73,7 +73,7 @@ const SHARED = {
   nativeMenu: [
     "check_for_updates", "open_settings", "quit", "new_tab", "new_window", "open_project", "save_all", "close_tab", "find", "find_in_project",
     "go_to_file", "toggle_sidebar", "toggle_panel", "toggle_message_list", "split_right", "split_down", "focus_left", "focus_right",
-    "focus_up", "focus_down", "force_reload", "zoom_in", "zoom_out", "zoom_reset", "open_search", "back_tab", "forward_tab", "prev_tab",
+    "focus_up", "focus_down", "force_reload", "zoom_in", "zoom_out", "zoom_reset", "full_screen", "open_search", "back_tab", "forward_tab", "prev_tab",
     "next_tab", "prev_environment", "next_environment", "open_inbox", "open_computers", "open_notes", "open_model_picker", "mark_all_read",
     "away_code", "pause_all_threads", "resume_all_threads", "stop_all_threads", "archive_done_threads", "whats_new", "show_logs",
     "profile_host",

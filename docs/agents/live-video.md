@@ -510,12 +510,46 @@ first wanted; nothing of it is in the first paint.
   thread on screen and ask with `take`. A Computers tile does not.
 - **Sharp.** The canvas holds the stream's own pixels. Its box is as wide
   as its column and no wider than those pixels on this screen
-  (`sharpWidth`); the Computers page's stage and the full window draw them
-  as large as their room allows, never past two to one (`fitStage`), and
-  grown past the stream's own pixels they are drawn at a whole scale (1:1,
-  2:1) when that costs at most a fifth of the width (`SNAP_KEEPS`): the
-  1280×800 VM in a room 1400 wide on a 1x screen is 1280 wide and sharp. A
-  narrower column scales the picture down, whole.
+  (`sharpWidth`). The Computers page's stage, full screen and the pop-out
+  size it by one rule, `fitStage` (lib/stageLayout.ts), told what the
+  picture is (`pictureKind`): a whole computer's screen (a `vm:` source)
+  fills its room in its shape, with no cap, since it is the computer and
+  full screen is that screen on his; a window's picture (a Mac's, a PC's,
+  the box's page) is drawn as large as its room allows but never past two
+  to one, so a small window stays small, and grown past the stream's own
+  pixels it is drawn at a whole scale (1:1, 2:1) when that costs at most a
+  fifth of the width (`SNAP_KEEPS`): a 1280×800 window in a room 1400 wide
+  on a 1x screen is 1280 wide and sharp. Drawn at a whole number of screen
+  pixels to each of the stream's, two or more (2:1, 3:1), the canvas is
+  `image-rendering: pixelated` (`drawnPixelated`, `PIXELATED` in
+  Viewport.tsx): each pixel doubled crisp, as a plain display shows it; at
+  any other scale it stays smooth. The VM's 1280×800 in full screen is
+  2880×1800 points on the ASUS (3200×1800, 4.5:1, smooth) and 1728×1080 on
+  the MacBook (1728×1117, 2.7:1, smooth); a 1280×800 window's picture on
+  either stops at 1280×800, 2:1 and pixelated
+  (.temp-code/plans/vm-screen/proofs/M1/proof.md). A narrower column scales
+  the picture down, whole.
+- **Full screen** (surfaces/threads/computer/FullWindow.tsx, its own chunk;
+  lib/fullWindow.ts; main's fullScreen.ts). The window itself goes full
+  screen: the page asks `window:fullScreen { on }`, main answers whether it
+  was full before and pushes `window:fullScreenChanged { on, popOut }`. On a
+  Mac it is `setSimpleFullScreen`, as the slideshow's (present.ts): this
+  Space, at once, no menu bar dropping in over the top edge; elsewhere
+  `setFullScreen`. A window full before (his green button) is left full when
+  full screen closes; a window that leaves full screen some other way closes
+  it; a window that closes leaves full screen first. ⌃⌘F (F11 off a Mac) is
+  caught in main's `before-input-event`, so a picture that holds the
+  keyboard never takes it: in the main window it runs the page's
+  `full_screen` command (View → Enter Full Screen, a `pageKey` row: Exit
+  Full Screen while open, grey with nothing to fill), which leaves full
+  screen or takes the computer the Computers page offers (its stage's live
+  picture, `offerFullScreen`) into it; in the pop-out main toggles the
+  pop-out's own full screen. The picture fills the display on `matte` with
+  no inset; the caption floats over the top edge on its own ground. A press
+  (the stage's picture, Full screen) grows the picture from where it was by
+  `transform` over `--dur-slow` on `--ease-out` once the window fills the
+  display (`growFrom`; reduced motion: a fade over `--dur-fast`); a key's
+  entry has no motion.
 - **Counts.** The worker says how many frames it drew and at what rate
   four times a second; they go to the box's `data-frames` and `data-fps`
   by hand, for the proofs. Nothing on screen shows them.
@@ -536,7 +570,12 @@ the 36px bar as extra). The page portals into it and hands its canvas to
 the main window's own video worker: one stream for every place, as
 everywhere. Input, the pixel ratio and the tips are bound to the child's
 own window (`attachInput` listens for `blur` on the picture's window;
-`pixelRatioOf`; `TooltipContainerProvider`).
+`pixelRatioOf`; `TooltipContainerProvider`). Its picture is fitted to the
+room above the bar by `fitStage` as the stage's is. ⌃⌘F takes it full
+screen on its own display (main's `before-input-event` on the child; on a
+Mac `setSimpleFullScreen`, elsewhere `setFullScreen` after
+`setFullScreenable(true)`, since it is made with `fullscreenable: false`),
+and the page draws it on `matte` while main says it is.
 
 Proven on the Mac on an isolated dev instance (2026-11-20, A6,
 scripts/popout-proof.ts, a worker drawing on `requestAnimationFrame` as
@@ -684,17 +723,18 @@ phone's full screen ("The phone" below), and from then on:
   a phone types into the VM with keys or a paste. A layout that makes
   characters with AltGr as Ctrl+Alt cannot type those few there.
 - **The VM's keys menu.** While he drives the VM, the caption on the stage
-  and in the full window has one quiet Keys button before Hand back, with
+  and in full screen has one quiet Keys button before Hand back, with
   the keys his own keyboard keeps for itself: Windows key, Ctrl+Alt+Del and
   Alt+Tab, pressed on his drive stream (`VideoStreams.press`, `VM_KEYS` in
   ComputerCaption.tsx). Off a Mac the Windows key on his keyboard is never
   sent; the menu sends it.
 - **The app leaves the page's keys alone.** While the picture holds the
   keyboard the app's own key listener passes every key by (`pageOwnsKey`,
-  lib/appCommands.ts): Escape and the arrows do not close or step the full
-  view, Ctrl+S and its like run no command, a double Shift opens nothing,
+  lib/appCommands.ts): Escape and the arrows do not close full screen or step
+  the view, Ctrl+S and its like run no command, a double Shift opens nothing,
   and Escape closes no page under it (lib/pageEscape.ts). Only a Mac's ⌘
-  chords stay the app's.
+  chords stay the app's, and ⌃⌘F, which main catches before the page
+  (fullScreen.ts), so full screen can always be left.
 - **The keyboard's way out** is Ctrl+Alt pressed with nothing else and let
   go (⌃⌥ on a Mac; off a Mac only the left Alt, since the right one is
   AltGr): Tab and Escape are the page's while the picture holds the
@@ -704,11 +744,11 @@ phone's full screen ("The phone" below), and from then on:
   that button is busy. A toast says the chord once a launch, the first
   time a picture becomes his to drive, where Hand back does not already
   wear it (`useDrivingInput`'s `chordShown`: the Computers stage and the
-  full window say nothing); it takes no pointer (`LEAVE_TOAST_CLASS`), so
+  full screen say nothing); it takes no pointer (`LEAVE_TOAST_CLASS`), so
   it never stands over a control or stays open under a resting pointer.
   The box says the chord to a screen reader (`aria-description`).
 - **His drive lasts while something of his shows the computer**
-  (lib/driveHold.ts): a Computers tile, the full window, the pop-out or a
+  (lib/driveHold.ts): a Computers tile, full screen, the pop-out or a
   thread's browser canvas each hold it while mounted; when the last one
   goes, `computer.drive` hands it back 1.5 s later (`HAND_BACK_AFTER_MS`),
   keys let go first, so a place giving way to another keeps it.
@@ -725,7 +765,7 @@ phone's full screen ("The phone" below), and from then on:
   back), holds the keeper awake, and marks his streams (`setDriving`); then
   computer/drive.ts stops every thread's session on the VM. Its row is his
   (`driver: 'owner'`, under `vm:windows`) in place of the threads', and the
-  tile, the full window and the pop-out follow it by that name. His keys and
+  tile, full screen and the pop-out follow it by that name. His keys and
   pointer go engine → XTEST on the VM's display → QEMU's GTK window → the
   guest's PS/2 keyboard and USB tablet, so they work at the UAC prompt and
   the lock screen. Hand back puts the guest's clipboard back as it was at

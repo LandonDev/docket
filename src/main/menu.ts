@@ -59,7 +59,7 @@ function toItem(node: MenuNode): MenuItemConstructorOptions {
   return {
     id: node.id,
     label: node.label,
-    ...(node.accelerator ? { accelerator: node.accelerator } : {}),
+    ...(node.accelerator ? { accelerator: process.platform !== 'darwin' && node.offMac ? node.offMac : node.accelerator } : {}),
     // The page owns the key (a focused terminal keeps ⌃` for the shell, a Work editor ⌘P for Print); the
     // item only shows it. registerAccelerator is Windows and Linux only, so on macOS the key's own click is
     // dropped (its Ctrl or ⌘; Return on the item from menu navigation is also "by accelerator" and still runs).

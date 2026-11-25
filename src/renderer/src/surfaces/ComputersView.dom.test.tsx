@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../lib/computers";
-import { closeFullWindow, fullWindowTarget } from "../lib/fullWindow";
+import { closeFullWindow, fullWindowTarget, toggleFullScreen } from "../lib/fullWindow";
 import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
 import { ComputersPage, ComputersView, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
@@ -207,12 +207,16 @@ describe("the Computers page", () => {
     expect(screen.getAllByRole("button").map((b) => b.textContent)).not.toContain("Take over");
   });
 
-  it("plays the stage's stream as the one he watches, a strip tile's without taking the box's display, and opens the full window on a click of the stage's picture", () => {
+  it("plays the stage's stream as the one he watches, a strip tile's without taking the box's display, and opens full screen on a click of the stage's picture, from where it is", () => {
     h.tiles = [tile(), tile({ id: "box\nt2", computer: "browser:t2", entry: { ...tile().entry, previewKey: "t2", row: { ...tile().entry.row, threadId: "t2", lastCallAt: 0 } } })];
     render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
     expect(h.streams.findLast((s) => s.key === "t1")).toMatchObject({ take: true, run: true });
     expect(h.streams.findLast((s) => s.key === "t2")).toMatchObject({ take: false, run: true });
     fireEvent.click(screen.getByRole("button", { name: "Live view of Expense report in Chromium" }));
+    expect(fullWindowTarget()).toEqual({ host: "box", threadId: "t1", name: "Live view of Expense report in Chromium", from: { x: 0, y: 0, width: 0, height: 0 } });
+    closeFullWindow();
+    // ⌃⌘F takes the stage's computer full screen, with no place to grow from
+    toggleFullScreen();
     expect(fullWindowTarget()).toEqual({ host: "box", threadId: "t1", name: "Live view of Expense report in Chromium" });
     closeFullWindow();
   });
@@ -371,6 +375,18 @@ describe("driving from the page", () => {
     view.rerender(<ComputersView onClose={closed} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("fills the stage with the VM's screen in its shape, and holds a window's picture to twice its pixels, drawn crisp", () => {
+    const room = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="computer-picture-room"]')!;
+    const view = render(<ComputersPage tiles={[vmTile({ driving: false })]} onOpenSession={() => undefined} size={{ width: 3200, height: 1800 }} />);
+    // the room is 3168 by 1724 under the caption: the screen takes its full height
+    expect(room().style.width).toBe("2758px");
+    expect(room().className).not.toContain("pixelated");
+    view.rerender(<ComputersPage tiles={[tile()]} onOpenSession={() => undefined} size={{ width: 3200, height: 1800 }} />);
+    expect(room().style.width).toBe("2560px");
+    expect(room().className).toContain("[image-rendering:pixelated]");
+    expect(screen.getByRole("button", { name: "Full screen" })).not.toBeNull();
   });
 
   it("waits for a host whose link is down in the picture's own box, with no stream asked for and no Retry", () => {
