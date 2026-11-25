@@ -460,3 +460,29 @@ describe("ModelPicker: Meta's models", () => {
     for (const row of settings) expect(row.className.split(" ")).toContain("px-3");
   });
 });
+
+describe("ModelPicker in a Work thread", () => {
+  const tabs = (menu: HTMLElement) =>
+    within(within(menu).getByRole("group", { name: "Providers" }))
+      .getAllByRole("button")
+      .map((tab) => tab.getAttribute("aria-label"));
+
+  it("offers Work's providers alone, in tabs and in search; a code picker offers every one", async () => {
+    seed("claude", [{ id: "claude-opus-5-5", label: "Opus 5.5", reasoning: EFFORTS } as ModelInfo]);
+    seed("codex", [{ id: "gpt-6.2-sol", label: "GPT-6.2 Sol", reasoning: EFFORTS } as ModelInfo]);
+    const cursor: ProviderInfo = { id: "cursor", label: "cursor", defaultModel: "composer-2", models: [{ id: "composer-2", label: "Composer 2", reasoning: [] } as unknown as ModelInfo] };
+    setHarnessModels("cursor", agentModelsFor(cursor), "composer-2");
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" providers={["claude", "codex", "muse"]} onChange={() => {}} />);
+    let menu = await open(/Opus 5\.5/);
+    expect(tabs(menu)).toEqual(["Favorites", "Claude Code", "Codex", "Muse Code"]);
+    await act(async () => fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "Composer" } }));
+    expect(within(menu).queryByRole("option", { name: /Composer 2/ })).toBeNull();
+    cleanup();
+
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={() => {}} />);
+    menu = await open(/Opus 5\.5/);
+    expect(tabs(menu)).toContain("Cursor");
+    await act(async () => fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "Composer" } }));
+    expect(within(menu).getByRole("option", { name: /Composer 2/ })).toBeTruthy();
+  });
+});

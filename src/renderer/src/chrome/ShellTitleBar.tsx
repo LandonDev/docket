@@ -246,9 +246,10 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       running,
       railOpen,
       panelRoom,
+      onScreenId: activeSessionId ?? null,
       ...headerEvents,
     }),
-    [archivedThreads, cost, headerEvents, headerWorkspaceId, panelRoom, planReady, railOpen, running, stripModel],
+    [activeSessionId, archivedThreads, cost, headerEvents, headerWorkspaceId, panelRoom, planReady, railOpen, running, stripModel],
   );
 
   return (

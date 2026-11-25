@@ -25,7 +25,9 @@ vi.mock("./ThreadHeaderStrip", () => ({
     </div>
   ),
 }));
-vi.mock("./WorkCrumb", () => ({ WorkCrumb: () => <span data-testid="crumb" /> }));
+vi.mock("./WorkCrumb", () => ({
+  WorkCrumb: ({ last, thread }: { last?: boolean; thread: { projectId?: string | null } }) => <span data-testid="crumb" data-last={String(!!last)} data-project={thread.projectId ?? ""} />,
+}));
 vi.mock("./ThreadMenu", () => ({
   ThreadMenu: ({ terminal }: { terminal: { onShow?: () => void; onNew?: () => void } }) => (
     <span data-testid="thread-menu" data-terminal={String(!!(terminal.onShow || terminal.onNew))} />
@@ -33,15 +35,17 @@ vi.mock("./ThreadMenu", () => ({
 }));
 
 import { ThreadHeader } from "./ThreadHeader";
+import { sessionStore } from "../lib/tcserver/store";
 
 afterEach(cleanup);
 
 const chip = (id: string) => ({ id, thread: { id, title: id, threadType: "chat", projectId: "p1", workspaceId: null }, tabId: null, live: true, status: "idle", unread: false, updatedAt: 0 });
 
-const mount = () =>
+const mount = (over: { activeId?: string | null; onScreenId?: string } = {}) =>
   render(
     <ThreadHeader
-      model={{ activeId: "t1", live: [chip("t1"), chip("t2")], dormant: [chip("t3")] } as never}
+      model={{ activeId: over.activeId === undefined ? "t1" : over.activeId, live: [chip("t1"), chip("t2")], dormant: [chip("t3")] } as never}
+      onScreenId={over.onScreenId}
       planReady={new Map() as never}
       archived={[]}
       workspaceId="w1"
@@ -88,6 +92,25 @@ describe("ThreadHeader", () => {
     mount();
     expect(screen.getByTestId("thread-menu").dataset.terminal).toBe("true");
     expect(screen.getByTestId("plan-chip")).toBeTruthy();
+    expect(screen.getByTestId("strip").dataset.chips).toBe("3");
+    expect(screen.queryByTestId("crumb")).toBeNull();
+  });
+
+  it("an unsent Work draft in front is its crumb alone: the job's dot and its project, no chips, no title", () => {
+    scope.work = true;
+    sessionStore.mutate((prev) => [...prev, { id: "d1", environmentId: "local", workspaceId: "w1", projectId: "p-lan", blocks: [] } as never]);
+    mount({ activeId: null, onScreenId: "d1" });
+    const strip = screen.getByTestId("strip");
+    expect(strip.dataset.chips).toBe("0");
+    expect(strip.dataset.heading).toBe("");
+    expect(screen.getByTestId("crumb").dataset.last).toBe("true");
+    expect(screen.getByTestId("crumb").dataset.project).toBe("p-lan");
+    scope.work = false;
+  });
+
+  it("a code draft in front keeps the strip", () => {
+    sessionStore.mutate((prev) => [...prev, { id: "d2", environmentId: "local", workspaceId: "w-code", projectId: null, blocks: [] } as never]);
+    mount({ activeId: null, onScreenId: "d2" });
     expect(screen.getByTestId("strip").dataset.chips).toBe("3");
     expect(screen.queryByTestId("crumb")).toBeNull();
   });

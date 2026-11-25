@@ -197,6 +197,19 @@ export const projectDrafts = {
     projectDraftsStore.setState({ records: rest });
     scheduleWrite();
   },
+  /** The record under `from` goes to `to` whole: its id, picks, text and attachments (pasted bytes are kept by id,
+   *  so they follow). A record `to` held is replaced; `movedDraftKey` never picks a key whose draft holds his words. */
+  move(from: string, to: string, now = Date.now()): void {
+    if (from === to) return;
+    const { records } = projectDraftsStore.getState();
+    const prev = records[from];
+    if (!prev) return;
+    const { [from]: _gone, ...rest } = records;
+    const replaced = rest[to];
+    if (replaced && replaced.id !== prev.id) pastedById.delete(replaced.id);
+    projectDraftsStore.setState({ records: capped({ ...rest, [to]: { ...prev, seenAt: now } }) });
+    scheduleWrite();
+  },
   /** The key whose draft is session `id`, else null: only a remembered
    *  draft writes here, so a sent thread never makes a record again. */
   keyOfDraft(id: string): string | null {
@@ -275,6 +288,49 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     createdAt: now,
     blocks: [],
   });
+}
+
+/** The tail a start about a thing adds to its scope's key (lib/sourceDraft.ts `sourceDraftKey`). */
+const ABOUT = "#about:";
+/** The tail of a moved draft's own key, when the scope's key holds another draft's words. */
+const MOVED = "#draft:";
+
+/**
+ * The key a draft takes when he files it in another scope (a Work draft's filing control: a project, No project,
+ * Another job). A start's own draft (`<scope>#about:<ref>`) stays about its thing under the new scope; any other takes
+ * the new scope's key. A key whose draft holds his words, unsent, is never taken: the moved draft gets one of its own
+ * (`<scope>#draft:<id>`) and his other words stay where he left them, as a start about a thing does (sourceDraft.ts).
+ */
+export function movedDraftKey(args: {
+  fromKey: string;
+  toScope: string;
+  id: string;
+  record: (key: string) => DraftRecord | undefined;
+  /** whether draft `id` has become a thread: its record is no draft any more */
+  sent: (id: string) => boolean;
+}): string {
+  const { fromKey, toScope, id, record, sent } = args;
+  const at = fromKey.indexOf(ABOUT);
+  const target = toScope + (at >= 0 ? fromKey.slice(at) : "");
+  const other = record(target);
+  if (!other || other.id === id || sent(other.id) || holdsNothing(other)) return target;
+  return `${toScope}${MOVED}${id}`;
+}
+
+/** A draft filed at `to`: its place, and the defaults there for what he did not pick himself. His words, his
+ *  attachments and its chips are not on the session (the composer, the record and Work's chip store keep them by id). */
+export function filedDraft(session: Session, to: DraftPlace): Session {
+  const moved: Session = {
+    ...session,
+    environmentId: to.environmentId,
+    projectId: to.projectId,
+    workspaceId: to.workspaceId,
+    cwd: to.cwd,
+    branch: undefined,
+    worktreeCwd: undefined,
+    ...(session.accessPicked ? {} : { runtimeMode: newThreadAccess(to.environmentId, to) }),
+  };
+  return withNewThreadModel(moved);
 }
 
 export type DraftCopy = Pick<ProjectMeta, "id" | "environmentId" | "workspaceId" | "cwd">;

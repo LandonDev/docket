@@ -133,6 +133,10 @@ export const workPlacesChunk = defineChunk("work-places", () => import("../work/
  *  mark; first paint holds only the door (lib/workSearchPort.ts). */
 export const workSearchChunk = defineChunk("work-search", () => import("../work/search"));
 
+/** The row under a Work thread's or Work draft's composer (work/composer): the filing control and the one settings
+ *  glyph. Asked for only by a composer whose row is Work's (lib/workRow.ts); a code composer never loads it. */
+export const workComposerChunk = defineChunk("work-composer", () => import("../work/composer"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -172,6 +176,7 @@ export const allChunks = {
   workOutboxChunk,
   workPlacesChunk,
   workSearchChunk,
+  workComposerChunk,
   workDigestChunk,
   computersChunk,
   fullWindowChunk,

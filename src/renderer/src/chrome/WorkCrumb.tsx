@@ -9,7 +9,14 @@ import { openWorkView } from "../lib/workSwitch";
  * project's page) or, loose in the job, the job's name, then a chevron. A Work
  * Chat files in no job and has none: its title stands alone.
  */
-export function WorkCrumb({ thread }: { thread: { projectId?: string | null; workspaceId?: string | null; environmentId?: string } }) {
+export function WorkCrumb({
+  thread,
+  last = false,
+}: {
+  thread: { projectId?: string | null; workspaceId?: string | null; environmentId?: string };
+  /** Nothing follows it (an unsent draft has no title yet): no chevron. */
+  last?: boolean;
+}) {
   const catalog = useWorkspaceCatalog();
   const project = thread.projectId ? catalog.projects.find((p) => p.id === thread.projectId && (!thread.environmentId || p.environmentId === thread.environmentId)) : undefined;
   const workspaceId = project?.workspaceId ?? thread.workspaceId;
@@ -32,7 +39,7 @@ export function WorkCrumb({ thread }: { thread: { projectId?: string | null; wor
       ) : (
         <span className="min-w-0 truncate">{name}</span>
       )}
-      <ChevronRight aria-hidden className="size-3 shrink-0" />
+      {last ? null : <ChevronRight aria-hidden className="size-3 shrink-0" />}
     </span>
   );
 }

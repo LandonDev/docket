@@ -52,6 +52,15 @@ work/narrowing.ts), and changes no Mac bridge or computer-use gate (confirm card
 provider has a mode for each policy (Claude `bypassPermissions`, Codex `never` + `danger-full-access`,
 Cursor `force` with no sandbox, Muse `:unrestricted`); FX has no access picker.
 
+## In a Work thread
+
+The same three modes, named by what a Work thread does on its own (work/composer/access.ts, the
+Work composer's settings popover): Supervised reads "Asks first" (asks before it changes a file or
+runs a program), Auto-accept edits "Edits on its own" (changes files, asks before it runs a
+program), Full access "Works on its own" (changes files and runs programs without asking). The list
+ends on "Sending, posting and sharing always wait for your press.": the hold above, which no mode
+loosens. The defaults and the pick rules are the ones above; only the words change.
+
 ## The model: the same rule
 
 A new thread's provider, model and effort follow the same shape as its access. His Thread defaults

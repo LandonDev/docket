@@ -79,6 +79,8 @@ type Props = {
   };
   /** The composer's row under the box: 24px, 12px muted (`ROW_CONTROL`). */
   quiet?: boolean;
+  /** Only these providers, in tabs, favorites and search (a Work thread's: src/shared/work/providers.ts); every one when absent. */
+  providers?: readonly HarnessId[];
 };
 
 /** Search ladder across every provider: name prefix, name substring, then
@@ -101,6 +103,7 @@ export function ModelPicker({
   onClose,
   settings,
   quiet = false,
+  providers,
 }: Props) {
   const catalogVersion = useSyncExternalStore(
     subscribeModels,
@@ -135,6 +138,7 @@ export function ModelPicker({
 
   const available = (id: HarnessId) => isHarnessAvailable(id, environmentId);
   const shownInPicker = (id: HarnessId) =>
+    (!providers || providers.includes(id)) &&
     showProviderInModelPicker(
       id,
       available(id),

@@ -65,11 +65,14 @@ export function AddMenu({
   onAttach,
   onInsert,
   fieldOf,
+  work = false,
 }: {
   attachable: boolean;
   onAttach: () => void;
   onInsert: (mark: "@" | "/") => void;
   fieldOf: () => HTMLElement | null;
+  /** A Work thread's `@` finds Work's things first: the row names them. */
+  work?: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -92,7 +95,7 @@ export function AddMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onInsert("@")}>
           <AtSign />
-          Mention a file or thread
+          {work ? "Mention a task, mail, file or thread" : "Mention a file or thread"}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onInsert("/")}>
           <Slash />

@@ -3111,6 +3111,37 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   A Work Chat shows its title alone. A code thread's bar and transcript are unchanged (pixel-diffed).
 - **The right panel** lists Results but opens on them only when he picks them.
 
+#### A Work draft
+
+A Work draft and a Work thread share the code composer's box (one row: `+`, the field, Send) and replace only the
+row under it (work/composer/WorkComposerRow.tsx, its own lazy chunk; the branch is the row's, lib/workRow.ts). It
+holds the code row's place and size: 24px, 4px under the box, its first glyph on `+`'s axis, its last control on the
+box's right edge, ghost controls in 12px muted text (`ROW_CONTROL`).
+
+- **The draft** leads with its source chip in the box (a task, a mail) and its field asks "What should it do?"; the
+  centred "How can I help you today?" is code's. Under the box at the left, the filing control: the job's dot (8px in
+  a 14px slot), the job's name, a 12px chevron and the project, then a 12px chevron down ("Purdue Esports › Spring LAN
+  ▾"; loose, the job alone). Its menu: the job's name as the label, the job's projects in the column's order (LifeOS's
+  live projects, a project with no mirror yet among them; the one it files in checked), No project, a separator,
+  Another job (a submenu of the other jobs, each with its dot). A pick moves the unsent draft whole: its words, files
+  and chips stay. Picking a project with no mirror opens it first (`work.project.open`): the trigger shows its name
+  with a 12px spinner just after it until it lands. A Work Chat's draft reads "Work Chats" and its menu lists the
+  jobs. There is no type picker, Master thread, name field, host picker or context meter.
+- **The thread** asks "Reply, or steer the work", and its row holds the settings glyph alone.
+- **One settings glyph** at the right (`SlidersHorizontal`, 24px, "Thread settings"): a 288px popover over it, aligned
+  to its end. A draft's first row is Chat | Research, a full-width segmented toggle; then 32px rows, the label 13px
+  muted at the left, the control at the right: Model (the model menu, its tabs, favourites and search held to the
+  providers Work allows, src/shared/work/providers.ts) and Access. Access names each mode by what the thread does on
+  its own: "Asks first", "Edits on its own", "Works on its own", each with one line of what it changes and asks; the
+  list ends on one muted line, "Sending, posting and sharing always wait for your press." ⌘. opens the popover, then
+  the model menu inside it.
+- **The title bar** of an unsent Work draft is its crumb alone: the job's dot and its project (or the job), no chevron
+  after it, no title and no strip of chips, until the first send makes it a thread's crumb.
+- **The `+` menu** reads "Mention a task, mail, file or thread". A Work thread's first message has no "Project rules N
+  words" row: the rules live in the project's settings.
+- Code composers are unchanged: three code pages (the docked footer, the composer's fixtures, the empty thread) at
+  864 and 400 in both themes differ by zero pixels.
+
 #### Work editors
 
 What the document, the sheet and the deck share on screen. Who hears a key,
@@ -4484,7 +4515,8 @@ ghost controls in 12px muted text; it is always there, so nothing moves on
 focus, and at a narrow width it gives way in order (the meter's percent,
 then the model's effort, then the mode's label, then the model's name,
 leaving their glyphs). The empty thread's composer and the docked one are
-one class chain.
+one class chain. A Work thread's and Work draft's row is Work's own, in the same
+place and size ("A Work draft").
 
 | Element | Size / line |
 | --- | --- |

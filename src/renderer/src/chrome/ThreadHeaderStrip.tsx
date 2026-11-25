@@ -189,7 +189,7 @@ export function ThreadHeaderStrip({
           {model.heading !== undefined ? (
             // The home has no strip: its chats are the column's Chats list,
             // so the row holds the thread on screen's title alone.
-            model.heading ? <HomeHeading chip={model.heading} crumb={crumb} {...events} /> : null
+            model.heading ? <HomeHeading chip={model.heading} crumb={crumb} {...events} /> : (crumb ?? null)
           ) : (
           <div className="relative flex min-w-0 self-stretch" style={pad}>
             {overflow?.left && onScrollBy ? <ScrollArrow side="left" onClick={() => onScrollBy(-1)} /> : null}

@@ -6,9 +6,12 @@ import { copiesOf, newThreadContext, preferredHost } from "./lib/projectHostChoi
 import {
   draftKeyOf,
   draftPicks,
+  filedDraft,
+  movedDraftKey,
   planProjectDraft,
   projectDrafts,
   sessionFromDraft,
+  type DraftPlace,
   type DraftRetype,
 } from "./lib/projectDrafts";
 import { draftKeyForSource, type DraftSource } from "./lib/sourceDraft";
@@ -2035,6 +2038,27 @@ export default function App() {
     [appendTab, cwdContext, projectOfTab, seededSession],
   );
 
+  /**
+   * A Work draft filed elsewhere by its filing control (a project, No project, Another job): the unsent draft moves
+   * whole, keeping its id, so its words, attachments and chips go with it, and its record takes the new scope's key
+   * (`movedDraftKey`, lib/projectDrafts.ts). Another job's folder becomes the window's.
+   */
+  const onDraftFile = useCallback(
+    (sessionId: string, to: DraftPlace) => {
+      const current = sessionStore.get(sessionId);
+      if (!current || !sessionStore.isDraft(sessionId) || sessionStore.metaOf(sessionId)) return;
+      const from = projectDrafts.keyOfDraft(sessionId);
+      if (from) {
+        const toScope = draftKeyOf(to, workspaceStore.getSnapshot());
+        projectDrafts.move(from, movedDraftKey({ fromKey: from, toScope, id: sessionId, record: (k) => projectDrafts.get(k), sent: (id) => !!sessionStore.metaOf(id) }));
+      }
+      if (to.workspaceId !== current.workspaceId) project.enterWorkspace(normalizeProjectPath(to.cwd));
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? filedDraft(s, to) : s)));
+      workspaceActions.leaveGroupIfMoved(sessionId, projectName(to.cwd), projectOfTab);
+    },
+    [projectOfTab],
+  );
+
   const onBranchChange = useCallback(
     (sessionId: string) => {
       notifyGitChanged();
@@ -3451,6 +3475,7 @@ export default function App() {
       onStop,
       onApproval,
       onCwdChange,
+      onDraftFile,
       onChooseFolder,
       onBranchChange,
       onModelChange,
@@ -3472,6 +3497,7 @@ export default function App() {
       onStop,
       onApproval,
       onCwdChange,
+      onDraftFile,
       onChooseFolder,
       onBranchChange,
       onModelChange,

@@ -27,6 +27,7 @@ import { SelectSessionContext } from "../AgentMarkdown";
 import { threadMentionParts, type ThreadMentionPart, useThreadTitles } from "../../lib/threadMentions";
 import { CopyMessageButton } from "../CopyMessageButton";
 import { PreambleRow } from "../PreambleRow";
+import { useWorkSessionId } from "../../lib/workRow";
 import { useTranscriptSession } from "../transcriptSession";
 import { ParkPendingContext } from "../turnState";
 import { NoticeLine } from "./NoticeLine";
@@ -103,6 +104,8 @@ export function UserMessageBlock({
   const sent = useSentChips(full);
   const text = sent.text;
   const sessionId = useTranscriptSession();
+  // A Work thread's rules live in its project's settings, never as a row over his message.
+  const work = useWorkSessionId(sessionId);
 
   useLayoutEffect(() => {
     const el = textRef.current;
@@ -120,7 +123,7 @@ export function UserMessageBlock({
 
   return (
     <div className="flex min-w-0 flex-col items-end">
-      {block.preamble ? (
+      {block.preamble && !work ? (
         <div className="flex max-w-[85%] justify-end">
           <PreambleRow text={block.preamble.text} words={block.preamble.words} />
         </div>

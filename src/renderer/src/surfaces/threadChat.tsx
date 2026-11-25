@@ -49,6 +49,7 @@ import * as serverCommands from "../lib/tcserver/commands";
 import { sessionStore, useQueue } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import type { ThreadType } from "../lib/tcserver/types";
+import type { DraftPlace } from "../lib/projectDrafts";
 import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
 import { ChatColumn, type ChatOpts, type ChatSlots } from "./threads/chatSlots";
@@ -90,6 +91,8 @@ export type SessionActions = {
   /** Settles once the host has the decision, so the card can take it back on a failure. */
   onApproval: (sessionId: string, requestId: string | number, decision: ApprovalDecision) => void | Promise<void>;
   onCwdChange: (sessionId: string, cwd: string) => void;
+  /** A Work draft's filing control: the unsent draft moves to another project or job, keeping what it holds. */
+  onDraftFile?: (sessionId: string, to: DraftPlace) => void;
   /** The folder dialog for a draft's project picker; the pick goes to `onCwdChange`. */
   onChooseFolder?: (sessionId: string) => void;
   onBranchChange: (sessionId: string) => void;
@@ -276,6 +279,7 @@ function boundTo(actions: SessionActions, id: string) {
     onNoteCardDismiss: () => actions.onNoteCardDismiss?.(id),
     onHandoffCardDismiss: () => actions.onHandoffCardDismiss?.(id),
     onCwdChange: (cwd: string) => actions.onCwdChange(id, cwd),
+    onDraftFile: actions.onDraftFile ? (to: DraftPlace) => actions.onDraftFile?.(id, to) : undefined,
     onChooseFolder: actions.onChooseFolder ? () => actions.onChooseFolder?.(id) : undefined,
     onBranchChange: () => actions.onBranchChange(id),
     onNewTerminal: desktopOnly(() => actions.onNewTerminal(id)),

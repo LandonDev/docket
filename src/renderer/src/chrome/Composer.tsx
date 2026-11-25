@@ -81,8 +81,8 @@ import {
   type ComposerToken
 } from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft, takeComposerFiles } from '../lib/composerDrafts'
-import { projectDrafts } from '../lib/projectDrafts'
-import { commandMenuChunk, lightboxChunk, workCanvasChunk } from '../surfaces/chunks'
+import { projectDrafts, type DraftPlace } from '../lib/projectDrafts'
+import { commandMenuChunk, lightboxChunk, workCanvasChunk, workComposerChunk } from '../surfaces/chunks'
 import { chipPort } from '../lib/contextChips'
 
 // The image viewer rides its own chunk (surfaces/chunks.ts); a thumbnail's hover warms it.
@@ -92,6 +92,8 @@ const CommandPopover = commandMenuChunk.surface('CommandPopover')
 // What the message is about: Work's (work/canvas/chips.ts), reached through lib/contextChips.ts's port. The row is
 // mounted only while the composer holds a chip.
 const ComposerChips = workCanvasChunk.surface('ComposerChips')
+// A Work row's controls under the box (work/composer): until the chunk lands, the row's 24px alone, so nothing moves.
+const WorkComposerRow = workComposerChunk.surface('WorkComposerRow', <div data-composer-bar className="mt-1 h-6" />)
 import {
   loadNotes,
   peekNotes,
@@ -132,8 +134,10 @@ type Props = {
   hideProjectPicker?: boolean
   /** A draft's row of new-thread picks (DraftRow); false where the place decides them all (the Files dock). */
   draftRow?: boolean
-  /** A Work thread or draft (lib/workRow.ts): no branch, only Work's thread types, no build in the hint. */
+  /** A Work thread or draft (lib/workRow.ts): Work's own row under the box (work/composer) and its own words. */
   work?: boolean
+  /** A Work draft's filing control moved it: its project, or loose in a job (App's `onDraftFile`). */
+  onDraftFile?: (to: DraftPlace) => void
   context?: ContextUsage
   quoteRequest?: QuoteRequest
   initialDraft?: string
@@ -218,6 +222,7 @@ export function Composer({
   onFocus,
   onGesture,
   onCwdChange,
+  onDraftFile,
   onChooseFolder,
   onBranchChange,
   onNewTerminal,
@@ -1012,7 +1017,7 @@ export function Composer({
                 top and bottom; the controls hold the bottom line as the field
                 grows upward (its 22px line centred on their 28px with 3px each side). */}
             <div data-composer-row className="flex items-end gap-1 px-1.5 py-2" onMouseDown={focusFromRow}>
-              <AddMenu attachable={attachmentsSupported} onAttach={attachFromPicker} onInsert={insertTrigger} fieldOf={fieldOf} />
+              <AddMenu attachable={attachmentsSupported} onAttach={attachFromPicker} onInsert={insertTrigger} fieldOf={fieldOf} work={work} />
               <ComposerInput
                 ref={inputRef}
                 placeholder={
@@ -1024,10 +1029,12 @@ export function Composer({
                       ? 'Add a message, or send…'
                       : handoffCard
                         ? 'Add context, or send to continue…'
-                        : shell
-                          ? 'How can I help you today?'
-                          : work
-                            ? 'Ask, / for skills, @ for references…'
+                        : work
+                          ? draft
+                            ? 'What should it do?'
+                            : 'Reply, or steer the work'
+                          : shell
+                            ? 'How can I help you today?'
                             : 'Ask, build, / for skills, @ for references…'
                 }
                 className="composer-field relative max-h-40 min-w-0 flex-1 px-1 py-[3px] font-sans text-sm leading-[22px] text-foreground outline-none"
@@ -1052,59 +1059,82 @@ export function Composer({
               />
             </div>
           </div>
-          <ComposerBar
-            harness={harness}
-            runtimeMode={runtimeMode}
-            onRuntimeModeChange={onRuntimeModeChange}
-            onClose={() => inputRef.current?.focus()}
-            model={
-              <ModelPicker
-                quiet
+          {work ? (
+            <WorkComposerRow
+              sessionId={sessionId}
+              draft={draftRow && rowOpen}
+              harness={harness}
+              model={model}
+              modelSettings={modelSettings}
+              runtimeMode={runtimeMode}
+              environmentId={environmentId}
+              hotkeys={hotkeys && enabled}
+              threadType={threadType}
+              onThreadTypeChange={onThreadTypeChange}
+              onModelChange={changeModel}
+              onModelSettingsChange={changeModelSettings}
+              onRuntimeModeChange={onRuntimeModeChange}
+              onFile={onDraftFile}
+              beforeFile={saveProjectDraft}
+              fieldOf={fieldOf}
+            />
+          ) : (
+            <>
+              <ComposerBar
                 harness={harness}
-                model={model}
-                environmentId={environmentId}
-                hotkeys={hotkeys && enabled}
-                onChange={changeModel}
+                runtimeMode={runtimeMode}
+                onRuntimeModeChange={onRuntimeModeChange}
                 onClose={() => inputRef.current?.focus()}
-                settings={{ values: modelSettings, onChange: changeModelSettings }}
+                model={
+                  <ModelPicker
+                    quiet
+                    harness={harness}
+                    model={model}
+                    environmentId={environmentId}
+                    hotkeys={hotkeys && enabled}
+                    onChange={changeModel}
+                    onClose={() => inputRef.current?.focus()}
+                    settings={{ values: modelSettings, onChange: changeModelSettings }}
+                  />
+                }
+                context={
+                  sessionId ? (
+                    <ContextMeter
+                      sessionId={sessionId}
+                      usage={context}
+                      busy={busy}
+                      compacting={compacting}
+                      compactable={compactable}
+                      onCompact={() => void compactSession(sessionId).catch((err) => console.warn('[context-meter]', err))}
+                      finalFocus={fieldTarget}
+                    />
+                  ) : null
+                }
               />
-            }
-            context={
-              sessionId ? (
-                <ContextMeter
-                  sessionId={sessionId}
-                  usage={context}
-                  busy={busy}
-                  compacting={compacting}
-                  compactable={compactable}
-                  onCompact={() => void compactSession(sessionId).catch((err) => console.warn('[context-meter]', err))}
-                  finalFocus={fieldTarget}
-                />
-              ) : null
-            }
-          />
-          <DraftRow
-            draft={draftRow && rowOpen}
-            cwd={cwd}
-            recents={recents}
-            enabled={enabled}
-            busy={busy}
-            branch={branch}
-            sessionId={sessionId}
-            hideProjectPicker={hideProjectPicker}
-            work={work}
-            threadType={threadType}
-            master={master}
-            onMasterChange={onMasterChange}
-            draftTitle={draftTitle}
-            onDraftTitleChange={onDraftTitleChange}
-            onCwdChange={onCwdChange}
-            onChooseFolder={onChooseFolder}
-            onNewTerminal={onNewTerminal}
-            onBranchChange={onBranchChange}
-            onThreadTypeChange={onThreadTypeChange}
-            onClose={() => inputRef.current?.focus()}
-          />
+              <DraftRow
+                draft={draftRow && rowOpen}
+                cwd={cwd}
+                recents={recents}
+                enabled={enabled}
+                busy={busy}
+                branch={branch}
+                sessionId={sessionId}
+                hideProjectPicker={hideProjectPicker}
+                work={work}
+                threadType={threadType}
+                master={master}
+                onMasterChange={onMasterChange}
+                draftTitle={draftTitle}
+                onDraftTitleChange={onDraftTitleChange}
+                onCwdChange={onCwdChange}
+                onChooseFolder={onChooseFolder}
+                onNewTerminal={onNewTerminal}
+                onBranchChange={onBranchChange}
+                onThreadTypeChange={onThreadTypeChange}
+                onClose={() => inputRef.current?.focus()}
+              />
+            </>
+          )}
         </div>
       </TooltipProvider>
     </div>

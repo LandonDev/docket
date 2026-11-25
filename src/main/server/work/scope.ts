@@ -4,6 +4,7 @@ import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { ProjectMeta, ThreadType, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type MentionReach, type WorkDesktop, type WorkScope } from '@shared/work'
+import { WORK_PROVIDERS } from '@shared/work/providers'
 import { configureAddonScope } from '../addons/scope'
 import { workRoot } from '../workRoot'
 import type { ScopePart, WorkDeps } from './ctx'
@@ -59,8 +60,10 @@ export const WORK_THREAD_TYPES: readonly ThreadType[] = ['chat', 'research']
  *    (work/fence-muse.proof.test.ts), a real turn's subagent shown not to
  *    read a `.mcp.json` the agent wrote (F1), and it shares the bridge.
  *  - No other harness has a fence at all.
+ *
+ * The list itself is src/shared/work/providers.ts, so the window's model picker offers the same three.
  */
-export const WORK_PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'muse']
+export { WORK_PROVIDERS }
 export const workProviderRefusal = (provider: ProviderId): string | null =>
   WORK_PROVIDERS.includes(provider)
     ? null

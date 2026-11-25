@@ -18,6 +18,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/clashes/model.ts`]: [
     ["`Moved ${title}`", "answer"],
   ],
+  [`${R}/composer/access.ts`]: [
+    ["Sending, posting and sharing always wait for your press.", "held === writes"],
+  ],
   [`${R}/connections/model.ts`]: [
     ["Ready", "answer"],
   ],

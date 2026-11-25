@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -20,6 +20,7 @@ import { useThreadMenu } from "./useThreadMenu";
 import { WorkCrumb } from "./WorkCrumb";
 import { useMasterIds } from "../lib/masterThread";
 import { useWorkSessionId } from "../lib/workRow";
+import { sessionStore } from "../lib/tcserver/store";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
@@ -47,6 +48,8 @@ export type ThreadHeaderProps = {
   railOpen: boolean;
   /** False while the thread's row is too narrow to draw the panel. */
   panelRoom?: boolean;
+  /** The thread in the focused pane, drawn as a chip or not (an unsent draft has none): a Work draft's crumb reads it. */
+  onScreenId?: string | null;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onArchive: (id: string) => void;
@@ -69,6 +72,7 @@ export function ThreadHeader({
   running,
   railOpen,
   panelRoom,
+  onScreenId = null,
   onSelect,
   onRename,
   onArchive,
@@ -111,7 +115,7 @@ export function ThreadHeader({
   });
   const host = useThreadHost(model.activeId);
   // A Work thread in front: no terminal and no project plan, both a code project's.
-  const work = useWorkSessionId(model.activeId);
+  const work = useWorkSessionId(model.activeId ?? onScreenId);
   const masterIds = useMasterIds();
   // The active chip sits on either row: a settled thread on screen is on the
   // shelf; on the home, with no strip, it is the bar's title.
@@ -130,12 +134,18 @@ export function ThreadHeader({
 
   const empty = model.live.length === 0 && model.dormant.length === 0;
   // A Work thread in front has no strip of chips: the bar is its crumb, the job's dot, its project and its title.
-  const workHeading = work && activeChip;
+  // An unsent Work draft: the bar is its crumb alone, the job's dot and its project, until it is sent.
+  const draftWhere = useDraftWhere(work ? (activeChip?.id ?? onScreenId) : null);
+  const workHeading = work && !draftWhere && activeChip;
   return (
     <>
       <ThreadHeaderStrip
-        model={workHeading ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: activeChip } : model}
-        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} /> : undefined}
+        model={
+          workHeading || draftWhere
+            ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: workHeading ? activeChip : null }
+            : model
+        }
+        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} /> : draftWhere ? <WorkCrumb thread={draftWhere} last /> : undefined}
         planReady={planReady}
         renamingId={renamingId}
         onSelect={onSelect}
@@ -183,4 +193,17 @@ export function ThreadHeader({
       {menu.dialogs}
     </>
   );
+}
+
+/** Where an unsent draft files, as one string so a push that moves anything else renders nothing; null for none or a sent thread. */
+function useDraftWhere(id: string | null): { workspaceId: string | null; projectId: string | null; environmentId: string } | null {
+  const key = useSyncExternalStore(sessionStore.subscribe, () => {
+    const s = id && sessionStore.isDraft(id) ? sessionStore.get(id) : undefined;
+    return s ? `${s.environmentId}\n${s.workspaceId ?? ""}\n${s.projectId ?? ""}` : "";
+  });
+  return useMemo(() => {
+    if (!key) return null;
+    const [environmentId, workspaceId, projectId] = key.split("\n");
+    return { environmentId: environmentId!, workspaceId: workspaceId || null, projectId: projectId || null };
+  }, [key]);
 }

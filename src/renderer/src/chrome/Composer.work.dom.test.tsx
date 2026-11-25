@@ -2,7 +2,7 @@
 /**
  * A Work draft's row and field carry nothing of code: no branch picker, no
  * project picker (code projects and a terminal), only Work's thread types,
- * and no "build" in the field's hint. A code draft keeps every one.
+ * and its field asks what it should do. A code draft keeps every one.
  */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,11 +67,11 @@ describe("the composer for a Work thread", () => {
     expect(view.getByTestId("type-chip").dataset.work).toBe("false");
   });
 
-  it("the field's hint says no build for Work, and is as it was for code", () => {
+  it("the field asks a Work draft what it should do, and is as it was for code", () => {
     const work = field(true)!.outerHTML;
     cleanup();
     const code = field(false)!.outerHTML;
-    expect(work).toContain("Ask, / for skills, @ for references…");
+    expect(work).toContain("What should it do?");
     expect(work).not.toContain("build");
     expect(code).toContain("Ask, build, / for skills, @ for references…");
   });
@@ -80,7 +80,7 @@ describe("the composer for a Work thread", () => {
     const said = field(true, { blocked: "The box is offline", blockedSaid: true })!.outerHTML;
     cleanup();
     const unsaid = field(false, { blocked: "The box is offline" })!.outerHTML;
-    expect(said).toContain("Ask, / for skills, @ for references…");
+    expect(said).toContain("What should it do?");
     expect(said).not.toContain("The box is offline");
     expect(unsaid).toContain("The box is offline");
   });

@@ -530,6 +530,57 @@ with a LifeOS in memory), routines/plays.rig.test.ts (`loose`),
 work/tasks/startScope.test.ts, tasks/TasksView.dom.test.tsx,
 lib/sourceDraft.test.ts, lib/railWorking.test.ts; journey J61.
 
+## A Work draft
+
+A Work draft and a Work thread (by the row, `isWorkSession`) keep the
+composer's box and swap only the row under it for Work's
+(`WorkComposerRow`, src/renderer/src/work/composer/, the `work-composer`
+chunk; the look is docs/DESIGN.md "A Work draft"). A code composer never
+loads the chunk and is pixel-identical.
+
+- **What goes.** The type picker, Master thread, the name field, the draft's
+  host picker, the context meter and the token count; the field's "How can I
+  help you today?". The field asks "What should it do?" (a draft) or
+  "Reply, or steer the work" (a thread). The `+` menu reads "Mention a task,
+  mail, file or thread". The transcript draws no "Project rules N words" row
+  for a Work thread (surfaces/transcript/UserMessage.tsx): the rules stay in
+  the project's settings and still reach the first message.
+- **Where it files.** The draft's filing control (`FilingControl`,
+  work/composer/filing.ts `filingOf`) names the job and the project and lists
+  the job's projects as the column does (`withLifeosCards` over the LifeOS
+  rows the column publishes, `useLifeosProjects`), No project and Another
+  job. A LifeOS project with no mirror yet is opened first with
+  `work.project.open` (`openLifeosProject`), as the column's card is.
+- **A move keeps the draft.** App's `onDraftFile` (the `SessionActions`
+  row) moves the unsent draft in place: the composer writes the field into
+  its record first, `projectDrafts.move` re-keys the record to the new
+  scope (`movedDraftKey`: a start's own draft keeps its `#about:` tail; a
+  key whose draft holds his words is never taken, the moved one gets
+  `<scope>#draft:<id>`), and `filedDraft` sets the session's host,
+  workspace, project and folder, with the new place's defaults for access
+  and model he did not pick. The id never changes, so Work's chip store and
+  this run's pasted bytes, both kept by id, go with it. Another job's
+  folder becomes the window's. The host's fence judges the chips at the
+  first send, as it judges any.
+- **Settings.** One glyph opens Chat or Research (a draft), the model menu
+  held to Work's providers (`WORK_PROVIDERS`, src/shared/work/providers.ts,
+  which the host's `workProviderRefusal` reads too; ModelPicker's
+  `providers`) and access in Work's words (work/composer/access.ts;
+  docs/agents/new-thread-access.md "In a Work thread"). His Thread defaults
+  stay the defaults. ⌘. and a failure card's "Continue on another model"
+  open the popover, then the model menu in it.
+- **The title bar.** An unsent Work draft's bar is its crumb alone (the
+  job's dot and its project, `WorkCrumb last`), with no strip of chips;
+  ThreadHeader reads the draft from the focused pane (`onScreenId`), since
+  an unsent draft has no chip.
+
+Tests: work/composer/WorkComposerRow.dom.test.tsx (draft, thread, code;
+filing, a card opened first, Another job, a move keeping words, files and
+chips; settings), lib/projectDrafts.move.test.ts, chrome/ModelPicker.dom.test.tsx
+("in a Work thread"), chrome/Composer.work.dom.test.tsx,
+chrome/ThreadHeader.work.dom.test.tsx, surfaces/transcript/UserMessage.work.dom.test.tsx.
+Preview: work/composer/WorkComposer.preview.tsx.
+
 ## What a thread left him
 
 One record answers it for every screen (the thread's head, the column's outcome line, a project's log, the tracker):

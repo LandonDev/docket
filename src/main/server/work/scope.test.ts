@@ -219,7 +219,7 @@ describe('the rule is the host\'s own, not a pillar', () => {
   const eager = (file: string): string[] =>
     [...readFileSync(resolve(import.meta.dirname, file), 'utf8').matchAll(/^import (type )?[^\n]*? from '([^']+)'/gm)].filter((m) => !m[1]).map((m) => m[2])
   it('scope.ts and preamble.ts load only node, the shared types and two host files', () => {
-    expect(eager('scope.ts').sort()).toEqual(['../addons/scope', '../workRoot', '@shared/catalog', '@shared/work', 'node:fs', 'node:path'])
+    expect(eager('scope.ts').sort()).toEqual(['../addons/scope', '../workRoot', '@shared/catalog', '@shared/work', '@shared/work/providers', 'node:fs', 'node:path'])
     expect(eager('preamble.ts')).toEqual([])
   })
   it('the app tools reach it through orchestration.ts and load nothing else under work/', () => {
