@@ -44,19 +44,25 @@ export function partWriter(dir: () => string): {
     one.unwatch?.()
     await one.file.close()
     if (keep === true) {
-      // Named under a name free now; `link` never goes over a file that took it since the check.
-      for (;;) {
-        const path = join(one.at, freeName(one.name, (candidate) => existsSync(join(one.at, candidate))))
-        try {
-          await link(one.path, path)
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
-          // A disk with no links (FAT): renamed, the name checked free a moment ago.
-          await rename(one.path, path)
+      try {
+        // Named under a name free now; `link` never goes over a file that took it since the check.
+        for (;;) {
+          const path = join(one.at, freeName(one.name, (candidate) => existsSync(join(one.at, candidate))))
+          try {
+            await link(one.path, path)
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
+            // A disk with no links (FAT): renamed, the name checked free a moment ago.
+            await rename(one.path, path)
+            return path
+          }
+          await rm(one.path, { force: true })
           return path
         }
-        await rm(one.path, { force: true })
-        return path
+      } catch (err) {
+        // The disk refused the name: the download fails, and its part goes with it rather than stranded.
+        await rm(one.path, { force: true }).catch(() => undefined)
+        throw err
       }
     }
     await rm(one.path, { force: true })

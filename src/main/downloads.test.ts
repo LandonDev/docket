@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' }, ipcMain: { handle: () => {} } }))
+// A disk that refuses the finished file's name: both ways of naming it fail.
+const refuse = vi.hoisted(() => ({ name: false }))
+vi.mock('node:fs/promises', async (real) => {
+  const fs = await real<typeof import('node:fs/promises')>()
+  const refused = (): Promise<never> => Promise.reject(Object.assign(new Error('ENAMETOOLONG: name too long'), { code: 'ENAMETOOLONG' }))
+  return { ...fs, link: (...a: Parameters<typeof fs.link>) => (refuse.name ? refused() : fs.link(...a)), rename: (...a: Parameters<typeof fs.rename>) => (refuse.name ? refused() : fs.rename(...a)) }
+})
 const { freeName, safeFileName } = await import('./downloads')
 
 describe('safeFileName', () => {
@@ -44,10 +51,26 @@ describe('safeFileName and a long name', () => {
     const cut = safeFileName(`${'e'.repeat(176)}.exe.${'x'.repeat(40)}`)
     expect(cut.length).toBe(180)
     expect(cut).not.toContain('.')
+    // Within the disk's 255 bytes too, whatever its letters.
+    const wide = safeFileName(`${'é'.repeat(170)}.pdf`)
+    expect(Buffer.byteLength(wide)).toBeLessThanOrEqual(255)
+    expect(wide.endsWith('é.pdf')).toBe(true)
   })
 })
 
 describe('freeName', () => {
+  it("numbers a long name within the disk's 255 bytes, cutting its stem and keeping its extension", () => {
+    // Council r4 (Sol 6): a second download of a 253-byte name was 257 bytes with " (1)", and the disk refused it.
+    const name = `${'é'.repeat(124)}.pdf`
+    expect(Buffer.byteLength(name)).toBe(252)
+    const next = freeName(name, (c) => c === name)
+    expect(next.endsWith(' (1).pdf')).toBe(true)
+    expect(Buffer.byteLength(next)).toBeLessThanOrEqual(255)
+    // Never a half of a character at the cut.
+    expect(next).not.toContain('\ufffd')
+    expect(next.startsWith('é'.repeat(120))).toBe(true)
+  })
+
   it('numbers a name already taken, before its extension', () => {
     const taken = new Set(['a.pdf', 'a (1).pdf', 'README'])
     expect(freeName('b.pdf', (n) => taken.has(n))).toBe('b.pdf')
@@ -126,6 +149,32 @@ describe('a download written part by part', () => {
     expect(await parts.end(whole, true)).toBe(join(dir, 'Video (1).mov'))
     expect(readdirSync(dir).sort()).toEqual(['Video (1).mov', 'Video.mov'])
     expect(readFileSync(join(dir, 'Video.mov'), 'utf8')).toBe('came meanwhile')
+  })
+
+  it('saves a second copy of a long name under a number that fits, and leaves no part behind when the disk refuses the name', async () => {
+    const { mkdtempSync, readdirSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    const name = `${'é'.repeat(124)}.pdf`
+    writeFileSync(join(dir, name), 'the first')
+    const parts = partWriter(() => dir)
+    const id = await parts.begin(name)
+    await parts.part(id, new TextEncoder().encode('again'))
+    const kept = await parts.end(id, true)
+    expect(kept!.endsWith(' (1).pdf')).toBe(true)
+    expect(readdirSync(dir)).toHaveLength(2)
+    // The disk refuses the name: the download fails, and its part is taken away.
+    refuse.name = true
+    try {
+      const lost = await parts.begin('Plan.pdf')
+      await parts.part(lost, new Uint8Array(3))
+      await expect(parts.end(lost, true)).rejects.toThrow('ENAMETOOLONG')
+    } finally {
+      refuse.name = false
+    }
+    expect(readdirSync(dir).filter((f) => f.endsWith('.download'))).toEqual([])
   })
 
   it('saves a long name that fits the folder: the part-written file wears a short name of its own, so its ending never pushes the name past the limit', async () => {

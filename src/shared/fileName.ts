@@ -17,30 +17,50 @@ export function safeFileName(name: string): string {
   return kept && !/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(kept) ? kept : 'file'
 }
 
-/** The longest a saved name may be. */
+/** The longest a saved name may be, in letters, and in the UTF-8 bytes every disk counts (255 at most). */
 const NAME_MAX = 180
+const NAME_BYTES = 255
+
+const bytesOf = (text: string): number => new TextEncoder().encode(text).length
+/** `text` cut to at most `max` UTF-8 bytes, never inside a letter. */
+function cutBytes(text: string, max: number): string {
+  if (bytesOf(text) <= max) return text
+  let out = ''
+  let used = 0
+  for (const letter of text) {
+    const size = bytesOf(letter)
+    if (used + size > max) break
+    out += letter
+    used += size
+  }
+  return out
+}
 
 /**
  * A long name cut to fit, from its stem: the last extension is what says what the file is, so it
  * is never the part that goes. Cut from the end, "report … .exe.txt" would be saved as an .exe.
  */
 function clip(name: string): string {
-  if (name.length <= NAME_MAX) return name
+  if (name.length <= NAME_MAX && bytesOf(name) <= NAME_BYTES) return name
   const dot = name.lastIndexOf('.')
   const ext = dot > 0 && name.length - dot <= 20 ? name.slice(dot) : ''
-  const stem = name.slice(0, NAME_MAX - ext.length).replace(/[. ]+$/, '')
+  const stem = cutBytes(name.slice(0, NAME_MAX - ext.length), NAME_BYTES - bytesOf(ext)).replace(/[. ]+$/, '')
   // With no extension short enough to keep, the cut may not make one: a dot left near the end
   // ("… .exe" out of "… .exe.<long tail>") would name a type the file never claimed.
   return ext ? `${stem}${ext}` : stem.replace(/\./g, '_')
 }
 
-/** `name` if free, else "name (1).ext", "name (2).ext", … as a browser numbers a second download. */
+/**
+ * `name` if free, else "name (1).ext", "name (2).ext", … as a browser numbers a second download; a stem the number
+ * would push past the disk's 255 bytes is cut to make room, the extension kept.
+ */
 export function freeName(name: string, taken: (candidate: string) => boolean): string {
   if (!taken(name)) return name
   const dot = name.lastIndexOf('.')
   const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
   for (let n = 1; n < 10_000; n++) {
-    const candidate = `${stem} (${n})${ext}`
+    const end = ` (${n})${ext}`
+    const candidate = `${cutBytes(stem, NAME_BYTES - bytesOf(end))}${end}`
     if (!taken(candidate)) return candidate
   }
   throw new Error('too many files with that name')
