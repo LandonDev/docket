@@ -36,8 +36,9 @@ window says it in plain words (`downWords`: `workErrorWords` with the host's nam
 Purdue Esports's projects from LifeOS.").
 
 `work.projects.files {mirrorId}` (approve, read only) answers what a project mirror's root Work threads on this host
-made or changed, for a project page's Files: `ThreadRecords.projectFiles` over the mirror's roots (`mirrorRoots`),
-from the Results the keeper holds, with no LifeOS read. One row a thing at its newest write that stands, named by its
+made or changed, for a project page's Files: `ThreadRecords.projectFiles` over the mirror's roots, archived ones too
+(`mirrorRoots`, `mirrorFiles`: a file an archived thread made is still the project's, named by its root's title,
+`rootTitle`, which a window may not hold), from the Results the keeper holds, with no LifeOS read. One row a thing at its newest write that stands, named by its
 source (`sourceKeyOf`: a file by its place, a Google file by its id, a LifeOS item by its id, else its ref), so two
 files of one name stay two; a `projects.link` Result carries the LifeOS item it made (`itemId` on its ref), which the
 row passes on.
@@ -108,11 +109,14 @@ that is a hook is the same function for the kit's life.
   each opening its own thread.
 - **`log`**: the project's threads, newest first, each with its mark, its title and its outcome words (but a made
   outcome, which Files says thing by thing), opening the thread. The kit puts them among his notes and LifeOS's changes.
-- **`files`**: what the project's threads made or changed: one `work.projects.files` ask a host the project's threads
-  live on (`useMadeFiles`, `mirrorsOf`), asked again only when one of that mirror's threads' Results moves (the
-  `work.outbox.result` push and a link back, as `resultsStamp` in work/outbox/results.ts counts them), each host's rows
-  landing as it answers and its last answer kept for the window's life; a host that refuses keeps the rows it last
-  gave, and Files ends with one muted "Some files didn't load" whose press is Retry. A batch's files are a row each
+- **`files`**: what the project's threads made or changed, archived threads' too: one `work.projects.files` ask a
+  mirror the catalog lists for the project (`useProjectMirrors` in work/threads/roots.ts, `useMadeFiles`, `mirrorsOf`),
+  whether or not a live thread sits in it, asked again only when that host's Results move (the `work.outbox.result`
+  push and a link back, as `resultsHostStamp` in work/outbox/results.ts counts them), each host's rows landing as it
+  answers and its last answer kept for the window's life. It answers the kit's `ProjectFiles`: `pending` until every
+  mirror's first read has answered, so "No files yet" waits; a host that refuses keeps the rows it last gave and sets
+  `failed`, which the kit draws as one muted "Some files did not load." with a Retry button, never a file row. The
+  tracker and the thread marks keep to live roots (`useProjectRoots`). A batch's files are a row each
   (`madeThingsOf`); a project link from before links named their item draws no row, since the project's own LifeOS row
   lists it. Newest first, one row a thing (`fileRows`: the host's `key`, a LifeOS item once across
   hosts, with its `itemId` so the kit merges it with the item's own row); an undone write is left out. "Made by Seat map for 64" and the time; Open goes to a Files tab of the job (`openInFiles`), a page on

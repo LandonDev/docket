@@ -108,11 +108,15 @@ export async function resultsSince(environmentId: string, since: number): Promis
  */
 const rootMoves = new Map<string, number>();
 const hostBacks = new Map<string, number>();
+/** Each host's last move of any root's, or its link back. */
+const hostMoves = new Map<string, number>();
 let moves = 0;
 /** What has moved, as one number: a store's snapshot. */
 export const resultsMoves = (): number => moves;
 /** A root's Results as far as this window heard: a new stamp after each of its changes. */
 export const resultsStamp = (environmentId: string, rootId: string): string => `${rootMoves.get(`${environmentId}|${rootId}`) ?? 0}.${hostBacks.get(environmentId) ?? 0}`;
+/** A host's Results as far as this window heard, whichever root moved (an archived one this window does not hold too). */
+export const resultsHostStamp = (environmentId: string): string => String(hostMoves.get(environmentId) ?? 0);
 export function subscribeResults(listener: () => void): () => void {
   listeners.add(listener);
   return () => void listeners.delete(listener);
@@ -123,6 +127,7 @@ export function applyResult(environmentId: string, result: WorkResult): void {
   const row = { ...result, environmentId };
   moves++;
   rootMoves.set(`${environmentId}|${result.rootId}`, moves);
+  hostMoves.set(environmentId, moves);
   for (const sessionId of new Set([result.rootId, result.sessionId])) {
     const entry = results.get(sessionId);
     if (!entry || entry.environmentId !== environmentId) continue;
@@ -137,6 +142,7 @@ export function applyResult(environmentId: string, result: WorkResult): void {
 export function reloadResults(environmentId: string): void {
   moves++;
   hostBacks.set(environmentId, moves);
+  hostMoves.set(environmentId, moves);
   changed();
   for (const [sessionId, entry] of results) if (entry.environmentId === environmentId) loadResults(environmentId, sessionId);
 }
@@ -148,5 +154,6 @@ export function resetResults(): void {
   again.clear();
   rootMoves.clear();
   hostBacks.clear();
+  hostMoves.clear();
   changed();
 }

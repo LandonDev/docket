@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { waitsOnHim } from '@shared/work/tracker'
-import { jobRows, mirrorRoots, projectsOverview, type ListedProject, type OverviewRegistry, type ProjectFacts } from './overview'
+import { jobRows, mirrorFiles, mirrorRoots, projectsOverview, type ListedProject, type OverviewRegistry, type ProjectFacts } from './overview'
 
 /**
  * The tracker's host part: one `projects:list` and one `projects:facts` a job, joined in memory with this host's
@@ -39,12 +39,13 @@ function rig(o: { down?: string } = {}) {
     thread('t-live', 'm-lan', { updatedAt: 9, workOutcome: { words: 'Working', tone: 'working' } }),
     thread('t-child', 'm-lan', { parentId: 't-live', workOutcome: { words: 'Asks you', tone: 'asks' } }),
     thread('t-code', 'm-lan', { scope: undefined }),
-    thread('t-old', 'm-old')
+    thread('t-old', 'm-old'),
+    thread('t-shelved', 'm-lan', { archived: true, title: 'Seat map for 64' })
   ]
   const registry: OverviewRegistry = {
     listWorkspaces: () => [ws('w-purdue', 'purdue'), ws('w-cosmic', 'cosmic'), ws('w-code', '', 'code')],
     listProjects: () => [mirror('m-lan', 'w-purdue', 'lan'), mirror('m-old', 'w-purdue', 'old', true)],
-    listRaw: () => metas,
+    listRaw: (opts) => metas.filter((m) => opts.archived === undefined || m.archived === opts.archived),
     get: (id) => metas.find((m) => m.id === id) ?? null
   }
   const ctx = {
@@ -110,7 +111,16 @@ describe('the tracker overview', () => {
 describe('a mirror’s root threads', () => {
   it('lists the Work roots filed in the mirror, never a subagent or a code thread', () => {
     const { registry } = rig()
-    expect(mirrorRoots(registry, 'm-lan')).toEqual(['t-held', 't-live'])
+    expect(mirrorRoots(registry, 'm-lan').map((r) => r.id)).toEqual(['t-held', 't-live', 't-shelved'])
     expect(mirrorRoots(registry, 'm-none')).toEqual([])
+  })
+
+  it('Files keeps what an archived root made, named by its title, which the window may not hold', () => {
+    const { registry } = rig()
+    const asked: string[][] = []
+    const made = (rootId: string) => ({ id: `r-${rootId}`, sessionId: rootId, rootId, key: `files:${rootId}`, kind: 'file.make', verb: 'Made', name: `${rootId}.xlsx`, summary: '', at: 1, undone: false, open: null })
+    const files = mirrorFiles(registry, (roots) => (asked.push([...roots]), roots.map(made)), 'm-lan')
+    expect(asked).toEqual([['t-held', 't-live', 't-shelved']])
+    expect(files.find((f) => f.rootId === 't-shelved')?.rootTitle).toBe('Seat map for 64')
   })
 })

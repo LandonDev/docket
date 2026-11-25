@@ -3,7 +3,7 @@ import type { TasksDone } from "@shared/contract-work-tasks";
 import { useCallback, useEffect, useMemo, useReducer, useSyncExternalStore } from "react";
 import type { ProjectMadeFile, RecordMade } from "@shared/work/threadRecord";
 import type { TrackerThread } from "@shared/work/tracker";
-import type { MenuRow, Project, ProjectFileEntry, ProjectItem, ProjectLogEntry, ProjectsKit, ProjectTask, ProjectThreadFact } from "work-kit/projects";
+import type { MenuRow, Project, ProjectFileEntry, ProjectFiles, ProjectItem, ProjectLogEntry, ProjectsKit, ProjectTask, ProjectThreadFact } from "work-kit/projects";
 import { MessageSquare, Settings } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { Tip } from "../../components/tip";
@@ -15,20 +15,20 @@ import { keyCaps, keyHint } from "../../lib/keys";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { openUrl } from "../../lib/native";
 import { rowState } from "../../lib/sidebarRows";
-import { sessionStore, useSessionMetaValue } from "../../lib/tcserver/store";
+import { useSessionMetaValue } from "../../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
-import { resultsMoves, resultsStamp, subscribeResults } from "../outbox/results";
+import { resultsHostStamp, resultsMoves, subscribeResults } from "../outbox/results";
 import { Face as PersonFace } from "../mail/face";
 import { openLifeosProject } from "../shell/actions";
 import { Doc, File, Link, Share, Table } from "../icons";
 import { openInFiles } from "../files/openFrom";
 import { useLinkedThreads } from "../tasks/links";
 import { hasOutcomeMark, OutcomeMark } from "../threads/mark";
-import { leadOf, useProjectRoots } from "../threads/roots";
+import { leadOf, type ProjectMirror, useProjectMirrors, useProjectRoots } from "../threads/roots";
 import type { WorkViewProps } from "../views/registry";
 import { Bar } from "./bar";
 import { Description } from "./Description";
@@ -235,39 +235,24 @@ export function useThreadLog(project: Pick<Project, "id" | "sector">): readonly 
 }
 
 const NO_THREADS: TrackerThread[] = [];
+const NO_MIRRORS: ProjectMirror[] = [];
 
 /** What a project mirror's threads made or changed, as its host keeps it (`work.projects.files`): one ask a host. */
 export function readProjectFiles(environmentId: string, mirrorId: string): Promise<{ files: ProjectMadeFile[] }> {
   return registry.linkOf(environmentId).request<{ files: ProjectMadeFile[] }>("work.projects.files", { mirrorId });
 }
 
-/** A project's mirror on each host its threads live on, with how far its threads' Results moved: the answer stands while that does. */
-type Mirror = { env: string; mirrorId: string; stamp: string };
+/** A project's mirror on a host, with how far that host's Results moved: the answer stands while that does. */
+type Mirror = ProjectMirror & { stamp: string };
 
-/** The mirrors a project's root threads sit in, one a host. Pure but for the store's lookups, which a test can hand. */
-export function mirrorsOf(
-  threads: readonly TrackerThread[],
-  where: (sessionId: string) => { env: string; mirrorId: string } | null,
-  moved: (env: string, sessionId: string) => string = resultsStamp,
-): Mirror[] {
-  const by = new Map<string, Mirror>();
-  for (const t of threads) {
-    const at = where(t.sessionId);
-    if (!at) continue;
-    const id = `${at.env}|${at.mirrorId}`;
-    const was = by.get(id);
-    // A Result made or undone moves its root's stamp (the host's push), whether or not the outcome's words change.
-    const stamp = `${t.sessionId}|${moved(at.env, t.sessionId)}`;
-    by.set(id, { ...at, stamp: was ? `${was.stamp},${stamp}` : stamp });
-  }
-  return [...by.values()];
+/**
+ * The project's mirrors with their stamps: every mirror the catalog lists, whether or not a live thread sits in it (an
+ * archived thread's files are still the project's). Any Result made or undone on a host moves its stamp, an archived
+ * root's too. Pure but for the stamp, which a test can hand.
+ */
+export function mirrorsOf(at: readonly ProjectMirror[], moved: (env: string) => string = resultsHostStamp): Mirror[] {
+  return at.map((m) => ({ ...m, stamp: moved(m.env) }));
 }
-
-const whereOf = (sessionId: string): { env: string; mirrorId: string } | null => {
-  const env = sessionStore.environmentOf(sessionId);
-  const mirrorId = sessionStore.metaOf(sessionId)?.projectId;
-  return env && mirrorId ? { env, mirrorId } : null;
-};
 
 /** Each mirror's last answer, kept for the window's life by host and mirror. A failed read keeps the last answer, so its rows stand. */
 const filesKept = new Map<string, { stamp: string; files: readonly ProjectMadeFile[] }>();
@@ -279,20 +264,20 @@ export const resetProjectFiles = (): void => {
   filesFailed.clear();
 };
 
-/** What the project's threads made, by host, and whether a host's newest read failed (Files' Retry line). */
-export type MadeFiles = { made: readonly { env: string; file: ProjectMadeFile }[]; failed: boolean; retry: () => void };
+/** What the project's threads made, by host; whether a host has not answered yet (Files holds "No files yet") or its newest read failed (Files' Retry line). */
+export type MadeFiles = { made: readonly { env: string; file: ProjectMadeFile }[]; pending: boolean; failed: boolean; retry: () => void };
 
 /**
- * What the project's threads made, by host: one ask a mirror whose threads' Results moved, each host's rows landing as
+ * What the project's threads made, by host: one ask a mirror whose host's Results moved, each host's rows landing as
  * it answers, its last answer drawn meanwhile. A host that refuses (a release behind, a dropped link) keeps the rows it
  * last gave; the page says once that some did not load, and Retry asks the hosts that failed again.
  */
-export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read = readProjectFiles, where = whereOf): MadeFiles {
+export function useMadeFiles(at: readonly ProjectMirror[] | undefined, read = readProjectFiles): MadeFiles {
   const moves = useSyncExternalStore(subscribeResults, resultsMoves, resultsMoves);
   const mirrors = useMemo(() => {
     void moves;
-    return mirrorsOf(threads ?? NO_THREADS, where);
-  }, [threads, where, moves]);
+    return mirrorsOf(at ?? NO_MIRRORS);
+  }, [at, moves]);
   const [landed, land] = useReducer((n: number) => n + 1, 0);
   const [tries, again] = useReducer((n: number) => n + 1, 0);
   // The line goes while Retry's reads are out, and comes back only if one fails again.
@@ -328,6 +313,7 @@ export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read
     void tries;
     return {
       made: mirrors.flatMap((m) => (filesKept.get(`${m.env}|${m.mirrorId}`)?.files ?? []).map((file) => ({ env: m.env, file }))),
+      pending: mirrors.some((m) => !filesKept.has(`${m.env}|${m.mirrorId}`) && !filesFailed.has(`${m.env}|${m.mirrorId}`)),
       failed: mirrors.some((m) => filesFailed.has(`${m.env}|${m.mirrorId}`)),
       retry,
     };
@@ -358,7 +344,7 @@ export function fileRows(made: readonly { env: string; file: ProjectMadeFile }[]
       ...(file.itemId ? { itemId: file.itemId } : {}),
       name: file.name,
       kind: file.open?.at === "url" ? "link" : "file",
-      by: `${file.verb} by ${titleOf(file.rootId) ?? "a thread"}`,
+      by: `${file.verb} by ${titleOf(file.rootId) ?? file.rootTitle ?? "a thread"}`,
       at: file.at,
       open: openMade(file, env),
     });
@@ -366,16 +352,19 @@ export function fileRows(made: readonly { env: string; file: ProjectMadeFile }[]
   return rows;
 }
 
-/** The kit's `files` (a hook): the files the project's threads made or changed, with which thread and when; Open goes to Files. */
-export function useThreadFiles(project: Pick<Project, "id" | "sector">): readonly ProjectFileEntry[] | undefined {
+/**
+ * The kit's `files` (a hook): the files the project's threads made or changed, archived threads' too, with which thread
+ * and when; Open goes to Files. While a host has not answered, the kit holds "No files yet"; a failed read is its one
+ * quiet line with Retry.
+ */
+export function useThreadFiles(project: Pick<Project, "id" | "sector">): ProjectFiles {
   const threads = useProjectRoots(project.sector).get(project.id);
-  const { made, failed, retry } = useMadeFiles(threads);
+  const mirrors = useProjectMirrors(project.sector).get(project.id);
+  const { made, pending, failed, retry } = useMadeFiles(mirrors);
   return useMemo(() => {
     const titleOf = new Map((threads ?? NO_THREADS).map((t) => [t.sessionId, t.title]));
-    const rows = fileRows(made, (root) => titleOf.get(root));
-    // One quiet line at the foot (no time, so it sorts last), so a failed read never reads as no files.
-    return failed ? [...rows, { id: "files-failed", name: "Some files didn't load", by: "Retry", at: 0, open: retry }] : rows;
-  }, [made, failed, retry, threads]);
+    return { entries: fileRows(made, (root) => titleOf.get(root)), pending, ...(failed ? { failed: { retry } } : {}) };
+  }, [made, pending, failed, retry, threads]);
 }
 
 /** A new LifeOS document in the project, opened in place at once. */

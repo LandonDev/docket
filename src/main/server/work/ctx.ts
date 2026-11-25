@@ -65,7 +65,7 @@ import { inputShapeOf } from './toolInput'
 import { inputProblemWords, unknownToolWords, WORK_OFF_WORDS } from './inputWords'
 import { threadsPart } from './threads'
 import { threadRecordsOf, threadRecordsPart } from './threads/record'
-import { mirrorRoots, projectsOverview } from './projects/overview'
+import { mirrorFiles, projectsOverview } from './projects/overview'
 import { shortHostName } from '@shared/hostNames'
 import { hostLabel } from '../../hostLabel'
 
@@ -559,7 +559,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const records = threadRecordsOf(ctx)
           if (!records) throw new Error("work: this host keeps no thread records")
-          return handled({ files: records.projectFiles(mirrorRoots(deps.registry, req.params.mirrorId)) })
+          return handled({ files: mirrorFiles(deps.registry, (roots) => records.projectFiles(roots), req.params.mirrorId) })
         }
         case 'work.threads.record': {
           if (!settings.enabled()) throw new Error('Work is off on this host')

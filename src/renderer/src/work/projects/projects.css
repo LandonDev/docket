@@ -56,18 +56,10 @@
   --pk-peek-w: clamp(560px, 44cqw, 960px);
 }
 
-/* work-kit gives the peek its room on a wide window; here the pane must be that wide, and on a
-   narrower one the peek lies over the work. */
+/* The peek's width is the pane's; where it lies (room beside it on a pane of 1280px or more, else over
+   the work) is work-kit's one rule, measured on the pane, which also moves the focus. */
 .tc-projects {
   container: tc-projects / inline-size;
-}
-.tc-projects .pk-peek-room > .pk-room {
-  padding-inline-end: 0;
-}
-@container tc-projects (min-width: 80rem) {
-  .tc-projects .pk-peek-room > .pk-room {
-    padding-inline-end: var(--pk-peek-w);
-  }
 }
 
 /* work-kit's two rules that ask for `.dark`, on tokens that follow the theme themselves. */

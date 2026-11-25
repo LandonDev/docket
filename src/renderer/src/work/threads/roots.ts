@@ -20,9 +20,7 @@ export function projectRoots(
   projects: readonly Pick<ProjectMeta, "id" | "workspaceId" | "lifeosProjectId" | "archived">[],
   sector: string,
 ): ReadonlyMap<string, TrackerThread[]> {
-  const jobs = new Set(workspaces.filter((w) => w.kind === "work" && w.sector === sector).map((w) => w.id));
-  const lifeosOf = new Map<string, string>();
-  for (const p of projects) if (p.lifeosProjectId && !p.archived && p.workspaceId && jobs.has(p.workspaceId)) lifeosOf.set(p.id, p.lifeosProjectId);
+  const lifeosOf = new Map(mirrorsIn(workspaces, projects, sector).map((p) => [p.id, p.lifeosProjectId]));
   const roots = new Map<string, TrackerThread[]>();
   for (const meta of metas) {
     if (meta.parentId || meta.archived || meta.scope !== "work" || !meta.projectId) continue;
@@ -33,6 +31,47 @@ export function projectRoots(
   }
   for (const list of roots.values()) list.sort((a, b) => b.updatedAt - a.updatedAt);
   return roots;
+}
+
+/** A sector's project mirrors: TempCode projects with a LifeOS project, not archived, in a Work workspace of the sector. */
+function mirrorsIn<P extends Pick<ProjectMeta, "id" | "workspaceId" | "lifeosProjectId" | "archived">>(
+  workspaces: readonly Pick<WorkspaceMeta, "id" | "kind" | "sector">[],
+  projects: readonly P[],
+  sector: string,
+): (P & { lifeosProjectId: string })[] {
+  const jobs = new Set(workspaces.filter((w) => w.kind === "work" && w.sector === sector).map((w) => w.id));
+  return projects.filter((p): p is P & { lifeosProjectId: string } => !!p.lifeosProjectId && !p.archived && !!p.workspaceId && jobs.has(p.workspaceId));
+}
+
+/** Where a LifeOS project's threads live: its mirror on each host, from the catalog alone, so a mirror whose threads are all archived still counts (a project's Files). */
+export type ProjectMirror = { env: string; mirrorId: string };
+
+/** Each LifeOS project's mirrors in a sector. Pure: a test hands it rows. */
+export function projectMirrors(
+  workspaces: readonly Pick<WorkspaceMeta, "id" | "kind" | "sector">[],
+  projects: readonly Pick<ProjectMeta, "id" | "workspaceId" | "lifeosProjectId" | "archived" | "environmentId">[],
+  sector: string,
+): ReadonlyMap<string, ProjectMirror[]> {
+  const by = new Map<string, ProjectMirror[]>();
+  for (const p of mirrorsIn(workspaces, projects, sector)) by.set(p.lifeosProjectId, [...(by.get(p.lifeosProjectId) ?? []), { env: p.environmentId, mirrorId: p.id }]);
+  return by;
+}
+
+const mirrorsKept = new Map<string, { key: string; value: ReadonlyMap<string, ProjectMirror[]> }>();
+function mirrorsSnapshot(sector: string): ReadonlyMap<string, ProjectMirror[]> {
+  const { workspaces, projects } = workspaceStore.getSnapshot();
+  const value = projectMirrors(workspaces, projects, sector);
+  const key = [...value].map(([id, list]) => `${id}:${list.map((m) => `${m.env}|${m.mirrorId}`).join(",")}`).join(";");
+  const was = mirrorsKept.get(sector);
+  if (was?.key === key) return was.value;
+  mirrorsKept.set(sector, { key, value });
+  return value;
+}
+const NO_MIRRORS: ReadonlyMap<string, ProjectMirror[]> = new Map();
+
+/** A sector's project mirrors, live from the catalog; the same map while none moved. */
+export function useProjectMirrors(sector: string | null | undefined): ReadonlyMap<string, ProjectMirror[]> {
+  return useSyncExternalStore(workspaceStore.subscribe, () => (sector ? mirrorsSnapshot(sector) : NO_MIRRORS), () => (sector ? mirrorsSnapshot(sector) : NO_MIRRORS));
 }
 
 /** The most pressing of a project's threads (a question, a failure, a held act, live work, then the newest). */

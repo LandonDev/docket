@@ -68,6 +68,8 @@ export interface RecordMade {
  */
 export interface ProjectMadeFile extends RecordMade {
   rootId: string
+  /** the root thread's title, which a window may not hold (an archived root); an older host leaves it out */
+  rootTitle?: string
   key: string
   itemId?: string
 }

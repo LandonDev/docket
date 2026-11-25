@@ -1,6 +1,7 @@
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { errorText } from '@shared/work/ids'
+import type { ProjectMadeFile } from '@shared/work/threadRecord'
 import { byPressing, byTarget, OPEN_PROJECT_STATES, type OpenProjectState, type TrackerJob, type TrackerOverview, type TrackerProject, type TrackerThread } from '@shared/work/tracker'
 import type { WorkCtx } from '../modules'
 
@@ -71,9 +72,22 @@ export interface OverviewRegistry {
   get(id: string): SessionMeta | null
 }
 
-/** A project mirror's Work root threads on this host, not archived: whose writes its page's Files lists. */
-export function mirrorRoots(registry: Pick<OverviewRegistry, 'listRaw'>, mirrorId: string): string[] {
-  return registry.listRaw({ archived: false, projectId: mirrorId }).flatMap((s) => (!s.parentId && s.projectId === mirrorId && s.scope === 'work' ? [s.id] : []))
+/**
+ * A project mirror's Work root threads on this host, archived ones too: whose writes its page's Files lists. A file an
+ * archived thread made is still the project's; the tracker and the thread marks keep to live roots.
+ */
+export function mirrorRoots(registry: Pick<OverviewRegistry, 'listRaw'>, mirrorId: string): Pick<SessionMeta, 'id' | 'title'>[] {
+  return registry.listRaw({ archived: undefined, projectId: mirrorId }).flatMap((s) => (!s.parentId && s.projectId === mirrorId && s.scope === 'work' ? [{ id: s.id, title: s.title }] : []))
+}
+
+/** `work.projects.files`: what a mirror's roots made, each named by its root's title, which a window may not hold (an archived root). */
+export function mirrorFiles(registry: Pick<OverviewRegistry, 'listRaw'>, projectFiles: (rootIds: readonly string[]) => ProjectMadeFile[], mirrorId: string): ProjectMadeFile[] {
+  const roots = mirrorRoots(registry, mirrorId)
+  const titleOf = new Map(roots.map((r) => [r.id, r.title]))
+  return projectFiles(roots.map((r) => r.id)).map((file) => {
+    const title = titleOf.get(file.rootId)
+    return title ? { ...file, rootTitle: title } : file
+  })
 }
 
 /** This host's jobs, or the ones named (a window asks only for the jobs it shows), for the tracker. */

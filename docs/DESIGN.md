@@ -2961,8 +2961,10 @@ Around the canvas:
     first, a 32px row each: glyph, name, then "Made by Seat map for 64"
     and the time muted at the end; a file a thread made opens in a Files
     tab of the job, a batch's files a row each. A host whose read failed
-    keeps the rows it last gave, and Files ends with one muted "Some files
-    didn't load" with Retry, never "No files yet". Log is his notes, LifeOS's changes
+    keeps the rows it last gave, and Files ends with one muted line, "Some
+    files did not load.", and a Retry button, never a file row and never "No
+    files yet"; while a host's first read is out the known rows stand and
+    "No files yet" waits. Log is his notes, LifeOS's changes
     ("You moved it from Backlog to Active") and the threads with their
     outcome under their title ("1 mail to send"), save what Files lists
     (a made outcome: the title alone), newest first, a 16px
@@ -2975,9 +2977,9 @@ Around the canvas:
   - **The peek** docks flat at the pane's edge with a hairline and no
     shadow or corner, 44% of the view's pane (560 to 960px); the work
     makes room for it on a pane of 1280px or more, and under that it lies
-    over the work. Its Open and Close float over its corner so its title
+    over the work; one rule of the pane decides both. Its Open and Close float over its corner so its title
     stands level with the page's; it is never wider than its pane. A peek
-    that fills its pane takes the focus and the work under it is inert;
+    over the work takes the focus and the work under it is inert;
     shut, the focus goes back to its row. Its
     sub-tasks are flat rows, their key
     in hand, "1 of 3" in muted numbers on a task with sub-tasks and the

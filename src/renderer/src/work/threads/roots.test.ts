@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { leadOf, projectRoots } from "./roots";
+import { leadOf, projectMirrors, projectRoots } from "./roots";
 
 /** A sector's LifeOS projects and their Work threads, from the summaries and the mirrors this window holds. */
 const meta = (id: string, over: Record<string, unknown> = {}) => ({ id, parentId: null, projectId: "m-lan", archived: false, scope: "work" as const, title: id, workOutcome: null, updatedAt: 1, ...over });
@@ -18,6 +18,16 @@ const PROJECTS = [
 ];
 
 describe("a project's threads in the window", () => {
+  it("finds a project's mirrors from the catalog alone, one a host, with no thread in them needed (Files)", () => {
+    const hosted = PROJECTS.map((p) => ({ ...p, environmentId: p.workspaceId === "ws-mac" ? "env_mac" : "env_box" }));
+    const mirrors = projectMirrors(WORKSPACES, hosted, "purdue");
+    expect([...mirrors.keys()]).toEqual(["lp-lan"]);
+    expect(mirrors.get("lp-lan")).toEqual([
+      { env: "env_box", mirrorId: "m-lan" },
+      { env: "env_mac", mirrorId: "m-lan-mac" },
+    ]);
+  });
+
   it("gathers the root Work threads of every mirror of the project in the sector, on any host, newest first", () => {
     const roots = projectRoots(
       [
