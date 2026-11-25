@@ -273,7 +273,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The iOS contract** — `ios/TempCodeContract` is generated from zod by
   `bun run gen:swift`; never edit Generated/. [docs/agents/ios-contract.md](docs/agents/ios-contract.md)
 - **The iOS client** — ios/TempCodeClient and ios/TempCode, docs/IOS-DESIGN.md,
-  the simulator proofs. [docs/agents/ios-client.md](docs/agents/ios-client.md)
+  the Work tab, sim proofs. [docs/agents/ios-client.md](docs/agents/ios-client.md)
 - **Read and unread** — the host owns a thread's read mark
   (`sessions.read_at`, `SessionMeta.readAt`; `session.markRead` and
   `session.markUnread`), the desktop and the phone lay it over their own maps.
