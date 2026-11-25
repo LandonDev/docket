@@ -125,4 +125,35 @@ describe("a deck's open box", () => {
     const edits = host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
     expect(edits).toEqual([[expect.objectContaining({ op: "runs", shape: 9, row: 1, col: 0 })]]);
   });
+
+  it("of notes he typed is kept at once, goes once the host has them, and a crash in the pause offers them to restore", async () => {
+    const before = store();
+    const first = deck();
+    const session = new HandSession(first.host, first.decks);
+    session.journalTo(before.journal);
+    session.typeNotes(3, "Thank the sponsors", "");
+    await before.s.settled();
+    expect((await before.kept()).map((d) => d.body)).toEqual([{ kind: "notes", slideId: 3, text: "Thank the sponsors", was: "" }]);
+    // The window goes in the pause: the next open offers them, and Restore sends them over the notes they were typed over.
+    const after = store(before.dir, 2);
+    const { host, decks } = deck();
+    const again = new HandSession(host, decks);
+    again.journalTo(after.journal);
+    await vi.waitFor(() => expect(again.get().offer).toEqual({ at: AT, same: true, text: "Thank the sponsors" }));
+    await again.restoreDraft();
+    expect(host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops)).toEqual([[{ op: "notes", slide: 3, text: "Thank the sponsors", was: "" }]]);
+    await after.s.settled();
+    expect(await after.kept()).toEqual([]);
+  });
+
+  it("of notes the host took is let go", async () => {
+    const before = store();
+    const { host, decks } = deck();
+    const session = new HandSession(host, decks);
+    session.journalTo(before.journal);
+    session.typeNotes(3, "Thank the sponsors", "");
+    expect(await session.keepNotes()).toBe(true);
+    await before.s.settled();
+    expect(await before.kept()).toEqual([]);
+  });
 });

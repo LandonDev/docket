@@ -27,6 +27,8 @@ export type DraftBody =
   | { kind: "text"; text: string; bom: boolean; crlf: boolean }
   | { kind: "sheet"; mutations: { id: string; params: unknown }[] }
   | { kind: "deck"; slideId: number; shapeId: number; /** a table's cell the box typed in */ cell?: { row: number; col: number }; words: string[][]; model: unknown }
+  /** a slide's speaker notes he typed: the words, and the notes they were typed over (the host's check, as the field's) */
+  | { kind: "notes"; slideId: number; text: string; was: string }
   | { kind: "document"; frames: string[] };
 export type DraftKind = DraftBody["kind"];
 
@@ -93,6 +95,11 @@ function bodyOf(v: unknown): DraftBody | null {
     if (!Number.isInteger(d.slideId) || !Number.isInteger(d.shapeId) || !words || !Array.isArray(d.model) || !fits(d)) return null;
     const cell = d.cell && Number.isInteger(d.cell.row) && Number.isInteger(d.cell.col) && d.cell.row >= 0 && d.cell.col >= 0 ? { row: d.cell.row, col: d.cell.col } : undefined;
     return { kind: "deck", slideId: d.slideId!, shapeId: d.shapeId!, ...(cell ? { cell } : {}), words: d.words!, model: d.model };
+  }
+  if (b.kind === "notes") {
+    const n = b as Partial<Extract<DraftBody, { kind: "notes" }>>;
+    if (!Number.isInteger(n.slideId) || typeof n.text !== "string" || typeof n.was !== "string" || n.text.length + n.was.length > DRAFT_MAX_CHARS) return null;
+    return { kind: "notes", slideId: n.slideId!, text: n.text, was: n.was };
   }
   if (b.kind === "document") {
     const f = (b as { frames?: unknown }).frames;

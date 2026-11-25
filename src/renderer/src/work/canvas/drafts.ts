@@ -57,6 +57,11 @@ export class DraftJournal {
     if (this.kept) this.port.release(this.kept);
   }
 
+  /** A second journal of the same file, keeping its own draft beside this one's (a deck's notes beside its box). */
+  twin(): DraftJournal {
+    return new DraftJournal(this.port, this.place, this.now);
+  }
+
   /** Whether a draft is kept for what waits now. */
   get holding(): boolean {
     return this.kept !== null;

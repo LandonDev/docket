@@ -1769,7 +1769,10 @@ refuses one whose slide's notes changed since (`handEdit`, the box's
 `CHANGED_WHILE`), and the toast says so. His words stay in the field
 (`notesPending`), and his next keep, or the close, writes them over the
 notes as they are now, the other save kept in the deck's versions. While
-his notes wait or travel the save line says saving. A slide an agent's
+his notes wait or travel the save line says saving. From his first key they
+are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
+"Drafts survive a crash"), so a crash in the pause offers them, with
+Restore, the next time the deck opens. A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
 

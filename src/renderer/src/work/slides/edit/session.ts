@@ -192,6 +192,8 @@ export class HandSession {
   private notesRefused: { slide: number; text: string } | null = null;
   /** where the open box's unsent words are kept on this computer; null where there is no store */
   private journal: DraftJournal | null = null;
+  /** where his notes not yet in the file are kept, beside the box's */
+  private notesJournal: DraftJournal | null = null;
   /** what was last kept, as its JSON: the same box said again is not written again */
   private keptJson = "";
   private offered: Draft | null = null;
@@ -231,6 +233,7 @@ export class HandSession {
   journalTo(journal: DraftJournal | null): void {
     if (this.journal || !journal) return;
     this.journal = journal;
+    this.notesJournal = journal.twin();
     void this.lookForDrafts();
   }
 
@@ -239,7 +242,15 @@ export class HandSession {
     const view = this.store.get().view;
     if (this.looked || !this.journal || !view) return;
     this.looked = true;
-    const draft = (await this.journal.offered("deck"))[0];
+    // A box's words first; else notes he typed: the slide's notes must still be what they were typed over.
+    const draft = (await this.journal.offered("deck"))[0] ?? (await this.journal.offered("notes"))[0];
+    if (draft?.body.kind === "notes") {
+      const { slideId, text, was } = draft.body;
+      const now = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.notes;
+      this.offered = draft;
+      this.set({ offer: { at: draft.at, same: now === was, text } });
+      return;
+    }
     if (!draft || draft.body.kind !== "deck") return;
     const { slideId, shapeId, cell, words, model } = draft.body;
     const found = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
@@ -251,11 +262,13 @@ export class HandSession {
   /** Restore: the kept words, over a shape that still holds what the box opened on, sent as the box's commit sends them. A shape that moved on meanwhile turns the offer to Copy. */
   async restoreDraft(): Promise<void> {
     const draft = this.offered;
-    if (!draft || draft.body.kind !== "deck" || !this.state.offer?.same) return;
-    const { slideId, shapeId, cell, words, model } = draft.body;
+    if (!draft || (draft.body.kind !== "deck" && draft.body.kind !== "notes") || !this.state.offer?.same) return;
+    const body = draft.body;
     this.set({ busy: this.state.busy + 1 });
     try {
-      this.store.view(await this.host.edit([{ ...runsOp(model as Model, slideId, shapeId, words), ...cell }]));
+      const op: SlideOp =
+        body.kind === "notes" ? { op: "notes", slide: body.slideId, text: body.text, was: body.was } : { ...runsOp(body.model as Model, body.slideId, body.shapeId, body.words), ...body.cell };
+      this.store.view(await this.host.edit([op]));
       this.journal?.drop(draft);
       this.offered = null;
       this.set({ busy: this.state.busy - 1, savedAt: Date.now(), offer: null });
@@ -741,6 +754,8 @@ export class HandSession {
     if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
     else this.set({ busy: this.state.busy + 1 });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
+    // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
+    this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
   }
 
   /** The notes waiting for the pause, sent now; resolves once every notes edit on its way has its answer. False: refused. */
@@ -752,6 +767,7 @@ export class HandSession {
     const was = this.notesHeld.get(waiting.slide) ?? waiting.began;
     if (waiting.text === was) {
       this.set({ busy: this.state.busy - 1 });
+      this.notesJournal?.clear();
       return (await this.notesSending?.done) ?? true;
     }
     // The edit counts itself on its way before the wait lets go, so the line never says saved between the two.
@@ -766,7 +782,7 @@ export class HandSession {
         if (!next) {
           this.notesHeld.set(waiting.slide, this.store.get().view?.slides.find((s) => s.id === waiting.slide)?.notes ?? was);
           this.notesRefused = { slide: waiting.slide, text: waiting.text };
-        }
+        } else if (!this.notesWaiting) this.notesJournal?.clear();
         return next !== null;
       }),
     };
