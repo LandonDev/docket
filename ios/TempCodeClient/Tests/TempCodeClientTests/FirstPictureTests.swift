@@ -53,8 +53,18 @@ struct PinnedReadTests {
         var landed: [Int] = []
         let data = try await ChunkedRead.pinned(size: 10, rev: "r1", frame: 3, read: { offset, length in
             await asks.begin(offset)
-            // The first frame lands only once the second is on its way.
-            if offset == 0 { await asks.wait(3) } else { await asks.open(offset) }
+            // The two reads overlap by force, not by the scheduler: the first, once begun, marks it (-1) and lands
+            // only after the second opens 3; the second opens 3 and ends only once the first has begun.
+            switch offset {
+            case 0:
+                await asks.open(-1)
+                await asks.wait(3)
+            case 3:
+                await asks.wait(-1)
+                await asks.open(3)
+            default:
+                break
+            }
             await asks.end()
             return frame("r1", slice(text, offset, length))
         }, landed: { landed.append($0) })
