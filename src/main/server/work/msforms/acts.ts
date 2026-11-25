@@ -2,10 +2,10 @@ import { MsFormMakeSchema, MsFormPublishSchema, type MsFormMake, type MsFormPubl
 import type { Principal } from '@shared/work/ids'
 import type { ActCtx, ActKindDef, Caller } from '../modules'
 import { ActStale } from '../outbox/kinds'
-import { CarrierRefused, CarrierStop, msCarrier, readPayload, settingsPayload, type FormRead } from './carrier/types'
-import { announce, authFor, basisOf, formWords, make, storeRead } from './forms'
+import { CarrierGone, CarrierRefused, CarrierStop, msCarrier, readPayload, settingsPayload, type FormRead } from './carrier/types'
+import { announce, authFor, basisOf, dropRow, formWords, GONE_FROM_FORMS, make, storeRead, type MsCtx } from './forms'
 import { formReach, MsformsError } from './reach'
-import { MsformsStore } from './store'
+import { MsformsStore, type MsFormRow } from './store'
 
 /**
  * The pillar's two held kinds (docs/agents/work-msforms.md "The hold"). Both
@@ -43,6 +43,7 @@ async function carryPublish(act: ActCtx, p: MsFormPublish): Promise<{ summary: s
     // a read grant of its own: the press's collect or audience grant is made for exactly what runs, after it
     fresh = await carrier.read(authFor(act, row, 'read', 'act', readPayload(row.formId)), row.formId)
   } catch (err) {
+    if (err instanceof CarrierGone) throw goneAct(act, row)
     if (err instanceof CarrierRefused || err instanceof CarrierStop) throw new ActStale(`${err.message} No one can answer yet.`)
     throw err
   }
@@ -64,6 +65,7 @@ async function carryPublish(act: ActCtx, p: MsFormPublish): Promise<{ summary: s
     announce(act, next)
     return { summary: `${p.act === 'reopen' ? 'Reopened' : 'Collecting responses to'} ${row.title}`, ref: { workspaceId: row.workspaceId, formId: row.formId, link } }
   } catch (err) {
+    if (err instanceof CarrierGone) throw goneAct(act, row)
     if (err instanceof CarrierRefused) throw new ActStale(`${err.message} No one can answer yet.`)
     if (err instanceof CarrierStop) {
       if (err.read) announce(act, storeRead(act, row, err.read, { by: principalOf(act), bump: true, stopped: err.message }))
@@ -122,4 +124,10 @@ export function settled(ctx: Pick<ActCtx, 'db' | 'push'>, item: { kind: string; 
   const store = new MsformsStore(ctx.db)
   const row = store.byHeld(item.ref.id)
   if (row) announce(ctx, store.update(row.workspaceId, row.formId, { held: null }))
+}
+
+/** His press met a form deleted in Forms: its row leaves the list and the press is stale, in one plain line. */
+function goneAct(act: MsCtx, row: MsFormRow): ActStale {
+  dropRow(act, row)
+  return new ActStale(GONE_FROM_FORMS)
 }

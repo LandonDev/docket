@@ -4,7 +4,7 @@ import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { mustBePerson } from '../outbox/person'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
-import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
+import { dropRow, get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { forgetWorkspaceAnswers } from './answers/cache'
 import { refreshAnswers, responsesOf, signInNeeded, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
@@ -104,9 +104,7 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
     case 'work.msforms.forget': {
       // His Remove from List: the row and its history go; Forms keeps the form as it is.
       const { row } = formReach(ctx, by, paramsOf('work.msforms.forget', req))
-      new MsformsStore(ctx.db).remove(row.workspaceId, row.formId)
-      ctx.tell.done(tellKey(row.formId))
-      ctx.push({ push: 'work.msforms', workspaceId: row.workspaceId, formId: row.formId, view: null })
+      dropRow(ctx, row)
       return handled({ ok: true as const })
     }
     case 'work.msforms.refresh':

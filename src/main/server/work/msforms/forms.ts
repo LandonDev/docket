@@ -4,10 +4,11 @@ import type { HeldItem } from '@shared/work/acts'
 import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
 import type { Caller, WorkCtx } from '../modules'
-import { authorize, CarrierRefused, digestOf, CarrierStop, makePayload, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
+import { authorize, CarrierGone, CarrierRefused, digestOf, CarrierStop, makePayload, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
 import { folderOf, folderPageOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
+import { tellKey } from './tell'
 
 /**
  * The Microsoft Forms pillar's logic (docs/agents/work-msforms.md): a form's
@@ -94,6 +95,27 @@ export function storeRead(ctx: MsCtx, row: MsFormRow, read: FormRead, o: { by?: 
   const state = o.state ?? (row.state === 'draft' ? 'draft' : read.settings.accepting ? 'collecting' : 'closed')
   const closedAt = state === 'closed' ? (row.state === 'closed' ? row.closedAt : Date.now()) : null
   return new MsformsStore(ctx.db).update(row.workspaceId, row.formId, { ...readPatch(read), state, closedAt, stopped: o.stopped ?? null }, { by: o.by ?? 'page', bump: o.bump })
+}
+
+/** What he reads when a carrier read met a form deleted in Forms: its row has left the list. */
+export const GONE_FROM_FORMS = 'That form is gone from Forms, so it left the list.'
+
+/** The row and its history go, its tell is done and every window drops it: his Remove from List, and a form gone from Forms. */
+export function dropRow(ctx: MsCtx, row: Pick<MsFormRow, 'workspaceId' | 'formId'>): void {
+  new MsformsStore(ctx.db).remove(row.workspaceId, row.formId)
+  ctx.tell.done(tellKey(row.formId))
+  ctx.push({ push: 'work.msforms', workspaceId: row.workspaceId, formId: row.formId, view: null })
+}
+
+/**
+ * A carrier error that says the form was deleted in Forms drops its row and is said in one plain line; any other error
+ * (a sign-in, a timeout, a page that did not load) is answered as it was, and the row stays.
+ */
+export function goneOrThrow(ctx: MsCtx, row: Pick<MsFormRow, 'workspaceId' | 'formId'>, err: unknown): void {
+  if (!(err instanceof CarrierGone) || err.formId !== row.formId) return
+  dropRow(ctx, row)
+  ctx.log('msforms: a form was gone from Forms; its row left the list')
+  throw new MsformsError(GONE_FROM_FORMS)
 }
 
 /** A carrier stop said on the row, with the page as it then stood when the stop read it. */
@@ -245,6 +267,7 @@ export async function setOpen(ctx: MsCtx, at: Reached, open: boolean, by: Carrie
     const { read } = await carrier.close(authFor(ctx, row, 'close', by, { open }), row.formId, open)
     return announce(ctx, storeRead(ctx, row, read, { by: madeBy, state: read.settings.accepting ? 'collecting' : 'closed' }))
   } catch (err) {
+    goneOrThrow(ctx, row, err)
     if (err instanceof CarrierStop) {
       announce(ctx, stopped(ctx, row, err, madeBy))
       throw new MsformsError(err.message)
@@ -286,6 +309,7 @@ export async function writeChanges(ctx: MsCtx, row: MsFormRow, changes: readonly
     const { read } = await carrier.write(authFor(ctx, row, 'write', grant, { changes, before: row.questions }), row.formId, changes, row.questions)
     return storeRead(ctx, row, read, { by: madeBy, bump: true })
   } catch (err) {
+    goneOrThrow(ctx, row, err)
     if (err instanceof CarrierStop) throw Object.assign(new MsformsError(err.message), { row: stopped(ctx, row, err, madeBy) })
     if (err instanceof CarrierRefused) throw new MsformsError(err.message)
     throw err

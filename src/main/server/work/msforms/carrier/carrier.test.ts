@@ -7,7 +7,7 @@ import { guardStep } from './guard'
 import { opsCarrier } from './ops'
 import { countOf, formOf, linkOf, settingsOf } from './read'
 import { Page } from './steps'
-import { authorize, CarrierRefused, CarrierStop, makePayload, pullPayload, readPayload, settingsPayload, type CarrierOp, type FormRead } from './types'
+import { authorize, CarrierGone, CarrierRefused, CarrierStop, makePayload, pullPayload, readPayload, settingsPayload, type CarrierOp, type FormRead } from './types'
 
 /**
  * The carrier on a fake Forms page in the trial's names: what a read says,
@@ -294,6 +294,16 @@ describe('the operations', () => {
     expect(unsaved).toBeInstanceOf(CarrierStop)
     expect(unsaved.message).toContain('Forms did not finish saving the last change')
     expect(unsaved.formId).toMatch(/^FakeFormId/)
+  })
+
+  it("names a form Forms says no longer exists as gone, apart from any other stop (P5)", async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    page.gone.add('FakeFormId00000000000001')
+    const err = await carrier.read(auth('read', readPayload('FakeFormId00000000000001')), 'FakeFormId00000000000001').catch((e) => e)
+    expect(err).toBeInstanceOf(CarrierGone)
+    expect(err).not.toBeInstanceOf(CarrierStop)
+    expect(err.formId).toBe('FakeFormId00000000000001')
   })
 
   it('collects: Accept responses on, the link read from the dialog, nothing sent or copied', async () => {

@@ -47,7 +47,8 @@ const { MsformsStore } = await import('./store')
 const { NOT_THIS_JOB } = await import('./reach')
 const { WORK_MODULES } = await import('../modules')
 const { MOVED, pollAnswers, READ_FAILED, resetAnswerReads, signInNeeded } = await import('./answers/read')
-const { CarrierBusy, CarrierSignIn, CarrierStop } = await import('./carrier/types')
+const { CarrierBusy, CarrierGone, CarrierSignIn, CarrierStop } = await import('./carrier/types')
+const { GONE_FROM_FORMS } = await import('./forms')
 const { onNewAnswers } = await import('./events')
 const { ensureDigestTables } = await import('../digest/store')
 WORK_MODULES.push(msforms)
@@ -376,6 +377,37 @@ describe('the answers read', () => {
     new MsformsStore(db).update('w1', view.formId, { answersReadAt: Date.now() - 3 * 60_000 })
     await call('work.msforms.responses', ask(view.formId))
     expect(ops()).toEqual(['count'])
+  })
+
+  it('a form gone from Forms leaves the list by itself, from a refresh, the poller or a close; any other stop keeps its row (P5)', async () => {
+    const store = new MsformsStore(db)
+    // a refresh
+    const a = await collecting(1)
+    carrier.countThrows = new CarrierGone(a.formId)
+    pushes.length = 0
+    await expect(call('work.msforms.refresh', ask(a.formId))).rejects.toThrow(GONE_FROM_FORMS)
+    expect(store.get('w1', a.formId)).toBeNull()
+    expect(pushes).toContainEqual(expect.objectContaining({ push: 'work.msforms', formId: a.formId, view: null }))
+    await expect(call('work.msforms.get', ask(a.formId))).rejects.toThrow()
+    // a sign-in, a stop or a timeout keeps the row
+    const b = await collecting(1)
+    for (const err of [new CarrierSignIn(), new CarrierStop('The form did not open in Forms.', null, b.formId), new Error('Navigation timeout of 30000 ms exceeded')]) {
+      carrier.countThrows = err
+      await call('work.msforms.refresh', ask(b.formId)).catch(() => {})
+      expect(store.get('w1', b.formId), err.message).not.toBeNull()
+    }
+    // the poller
+    carrier.countThrows = new CarrierGone(b.formId)
+    store.update('w1', b.formId, { answersReadAt: 0 })
+    await pollAnswers(work.ctx, Date.now() + 24 * 3_600_000)
+    expect(store.get('w1', b.formId)).toBeNull()
+    // his close
+    carrier.countThrows = null
+    const c = await collecting(1)
+    carrier.closeThrows = new CarrierGone(c.formId)
+    await expect(call('work.msforms.close', { ...ask(c.formId), open: false })).rejects.toThrow(GONE_FROM_FORMS)
+    expect(store.get('w1', c.formId)).toBeNull()
+    carrier.closeThrows = null
   })
 
   it('a timeout keeps the last rows, marked stale, and its own words go nowhere', async () => {

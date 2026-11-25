@@ -127,6 +127,16 @@ export class CarrierStop extends Error {
   }
 }
 
+/**
+ * Forms said the form no longer exists ("This form doesn't exist"): it was deleted in Forms. Only this page is gone;
+ * a sign-in, a timeout or a page that did not load is never taken for it (P5).
+ */
+export class CarrierGone extends Error {
+  constructor(readonly formId: string) {
+    super('That form is gone from Forms.')
+  }
+}
+
 /** The page asked for Microsoft's sign-in: Connections reads "Needs you" until a pass gets through. */
 export class CarrierSignIn extends Error {
   constructor() {

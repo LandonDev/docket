@@ -180,6 +180,11 @@ export function countOf(screen: Screen): number | null {
   return null
 }
 
+/** Forms' own page for a form deleted in Forms: its heading "This form doesn't exist" (P5). */
+export function goneOf(screen: Screen): boolean {
+  return all(screen).some((e) => (e.role === 'heading' || e.role === 'text') && /^This form doesn[’']t exist$/i.test((e.name ?? '').trim()))
+}
+
 /** The response link, from the Collect responses dialog. */
 export function linkOf(screen: Screen): string | null {
   const input = all(screen).find((e) => e.role === 'input' && /^Link for Collecting Responses$/i.test(e.name ?? ''))

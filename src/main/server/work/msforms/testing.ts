@@ -123,8 +123,11 @@ export class FakeCarrier implements MsCarrier {
     f.settings = { ...settings }
     return { read: this.readOf(f) }
   }
+  /** the next closes throw this */
+  closeThrows: Error | null = null
   async close(auth: CarrierAuth, formId: string, open: boolean) {
     this.check(auth, 'close', formId, { open })
+    if (this.closeThrows) throw this.closeThrows
     this.calls.push({ op: 'close', formId, by: auth.by })
     const f = this.form(formId)
     f.settings.accepting = open

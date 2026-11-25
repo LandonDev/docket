@@ -61,6 +61,8 @@ export class FakeForms implements FormsComputer {
   saving = 0
   /** the page never says the change is saved */
   neverSaves = false
+  /** forms deleted in Forms: their builder draws Forms' "This form doesn't exist" page (P5) */
+  gone = new Set<string>()
   /** the browser stops once a step of this name was taken (the box browser's memory cap, P5): every call after it fails */
   diesAfter: string | null = null
   private dead = false
@@ -123,6 +125,14 @@ export class FakeForms implements FormsComputer {
       el(0, `window "Site"`)
       el(1, `input "Address and search bar" = ${q(page.url)}`)
       return screenOfObservation(`app "Chromium" · window "Site" · 1280×800\n${lines.join('\n')}`, { bundleId: 'org.chromium.Chromium', name: 'Chromium' })!
+    }
+    if (page.kind === 'builder' && this.gone.has(page.formId)) {
+      el(0, 'window "Microsoft Forms"')
+      el(1, `input "Address and search bar" = ${q(builderOf(page.formId))}`)
+      el(1, `heading "This form doesn’t exist"`)
+      el(1, 'text "Please make sure the link is correct and try again."')
+      el(1, 'button "Technical details"')
+      return screenOfObservation(`app "Chromium" · window "Microsoft Forms" · 1280×800\n${lines.join('\n')}`, { bundleId: 'org.chromium.Chromium', name: 'Chromium' })!
     }
     if (page.kind === 'folder') {
       el(0, `window "RecWell - Documents"`)

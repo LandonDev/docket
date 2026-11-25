@@ -5,7 +5,7 @@ import { workspaceHere } from '../../files/policy'
 import type { Caller } from '../../modules'
 import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, pullPayload, readPayload, type CarrierBy, type PulledWorkbook } from '../carrier/types'
 import { emitNewAnswers } from '../events'
-import { announce, authFor, carrierOrRefuse, type MsCtx } from '../forms'
+import { announce, authFor, carrierOrRefuse, goneOrThrow, type MsCtx } from '../forms'
 import { folderServerPath } from '../place'
 import { LIBRARY_GONE, librariesFor, MsformsError, NO_FORM, type Reached } from '../reach'
 import { MsformsStore, type MsFormRow } from '../store'
@@ -143,6 +143,7 @@ async function readOnce(ctx: MsCtx, at: Reached, o: { by: ReadBy; rows: boolean 
       emitNewAnswers({ workspaceId: row.workspaceId, formId: row.formId, title: row.title, added: Math.max(1, answers.count - before.count), count: answers.count, fromId: before.lastId + 1, toId: answers.maxId, at: now })
     return announceRow(ctx, row)
   } catch (err) {
+    goneOrThrow(ctx, row, err)
     if (err instanceof CarrierBusy) throw new AnswersBusy(err.message)
     if (err instanceof CarrierSignIn) signIn = true
     markAnswersStale(row.workspaceId, row.formId)

@@ -2,8 +2,8 @@ import type { Screen, ScreenElement } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import { guardSteps } from './guard'
 import { formIdOf } from '@shared/work/msforms'
-import { addressOf, signInOf } from './read'
-import { CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './types'
+import { addressOf, goneOf, signInOf } from './read'
+import { CarrierGone, CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './types'
 
 /**
  * The carrier's hands on one page, under the trial's rules
@@ -85,6 +85,8 @@ export class Page {
     const address = addressOf(screen)
     if (signInOf(screen, address)) throw new CarrierSignIn()
     this.screen = null
+    // Forms' page for a deleted form is no other form: the form is gone, said apart from every other stop
+    if (this.formId !== null && goneOf(screen)) throw new CarrierGone(this.formId)
     if (this.formId !== null && (address ? formIdOf(address) : null) !== this.formId) this.stop('Forms showed another form than the one asked')
     this.screen = screen
     return screen
