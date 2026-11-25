@@ -260,7 +260,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.msforms.publish", "approve", ok, ok, refused, refused],
   ["work.msforms.refresh", "operate", ok, ok, refused, refused],
   ["work.msforms.responses", "read", ok, ok, ok, ok],
-  ["work.msforms.review", "operate", ok, ok, refused, refused],
+  ["work.msforms.review", "approve", ok, ok, refused, refused],
   ["work.msforms.seen", "operate", ok, ok, refused, refused],
   ["work.msforms.survey", "operate", ok, ok, refused, refused],
   ["work.msforms.workbook", "operate", ok, ok, refused, refused],
