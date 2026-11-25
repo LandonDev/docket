@@ -1075,8 +1075,9 @@ export function PageView({
     };
   });
   // The keys for what is selected, heard from anywhere in the page but a field he is typing in.
+  // A key the Beside seat's editor heard, or one an editor took (a deck's Delete), is the file's, never the folder's.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
+    if (event.defaultPrevented || (event.target as HTMLElement).closest("input, textarea, [contenteditable=true], [data-files-seat]")) return;
     const can = (act: EntryAct): boolean => verbs.some((row) => row.act === act && !row.refused);
     if (event.key === "a" && modOrCtrl(event) && !event.shiftKey && !event.altKey && acts && order.length) return void (event.preventDefault(), setPicked(pickAll(order)));
     // ⌘⌫ moves the selection to Trash, as in Finder (in Trash, deletes it for good, asked first); a bare ⌫ does

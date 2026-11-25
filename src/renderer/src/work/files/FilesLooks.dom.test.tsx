@@ -245,6 +245,26 @@ describe("Beside", () => {
     expect(asked("work.files.tabClose")).toEqual([{ workspaceId: "w1", tabId: `seat:${open.beside as string}` }]);
   });
 
+  it("leaves a key pressed in the seat to the file there: ⌘⌫ or a Delete the seat took trashes nothing; on the list it still does", async () => {
+    keepPageLook(PAGE.at, { shape: "beside" });
+    const trashed: string[][] = [];
+    const place = { ...PLACE, can: ["trash"] } as unknown as FilePlace;
+    const acts = { place, from: { ...COPY, place }, tabs: true, make: async () => null, rename: async () => null, carry: () => undefined, trash: (rows: FileEntry[]) => void trashed.push(rows.map((e) => e.name)), restore: () => undefined, purge: () => undefined, star: () => undefined, openTab: () => undefined, openApp: () => undefined, pickUpload: () => undefined, upload: () => undefined, drop: () => undefined, uploading: null, cancelUpload: () => undefined } as never;
+    draw({ acts });
+    fireEvent.click(row("notes.txt"));
+    await waitFor(() => expect(document.querySelector("[data-files-preview]")).not.toBeNull());
+    fireEvent.click(document.querySelector("[data-files-beside-look]")!);
+    const pane = await screen.findByTestId("pane");
+    fireEvent.keyDown(pane, { key: "Backspace", metaKey: true, ctrlKey: true });
+    // A deck's Delete removes its shape and says so with preventDefault: the page leaves it there.
+    const taken = createEvent.keyDown(list(), { key: "Delete", metaKey: true, ctrlKey: true });
+    taken.preventDefault();
+    fireEvent(list(), taken);
+    expect(trashed).toEqual([]);
+    fireEvent.keyDown(list(), { key: "Backspace", metaKey: true, ctrlKey: true });
+    expect(trashed).toEqual([["notes.txt"]]);
+  });
+
   it("never seats a file kept in the cloud, and lets go of no seat it never took", async () => {
     keepPageLook(PAGE.at, { shape: "beside" });
     const view = draw();

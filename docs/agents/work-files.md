@@ -553,7 +553,9 @@ a folder the arrows walk, Return opens, Space is Quick Look, F2 renames,
 ⌘⌫ moves the selection to Trash as in Finder (in Trash it deletes for good,
 asked first; on a PC the Delete key alone, as in Explorer), a bare ⌫ moves
 nothing (decision 2 of the files pass), the mod key with A selects all and with Up goes to the
-parent folder, `/` is Search, Escape lets go of the selection. Settings →
+parent folder, `/` is Search, Escape lets go of the selection. A key pressed in
+the Beside seat, or one an editor took (`defaultPrevented`: a deck's Delete), is
+the file's: the folder hears none of these (Page.tsx `onKeyDown`). Settings →
 Keybindings lists them under "Files (Work)". Only the port is in the first
 paint: the rule for whose focus it is, the chords, the menu map and the key table
 (`bindings.ts`, which lists itself when the view or the Keybindings page
