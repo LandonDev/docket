@@ -8,9 +8,21 @@ import TempCodeContract
 public enum MessagesRules {
     /// A reply's outcome said off its conversation (the sticky toast when he has left it), named: "Not sent to Dana Lee:
     /// TempCode left the screen". Nil while the conversation is on screen: its own field and line say it there.
+    /// What a reply read back late says off its conversation: nil when it went, or nothing is known yet.
+    public static func lateLine(_ state: PressState) -> String? {
+        switch state {
+        case .done, .sending, .checking: nil
+        case .stillWaiting, .changed, .gone: "Not sent: the host never had it"
+        case .failed(let words): words.isEmpty ? "Not sent" : "Not sent: \(words)"
+        case .mayHaveGone: "It may have gone. Check the conversation before sending it again."
+        }
+    }
+
     public static func offLine(_ line: String, name: String, shown: Bool) -> String? {
         guard !shown else { return nil }
         let prefix = "Not sent: "
+        // A name the phone no longer holds (a relaunch since the press): the reply is named instead.
+        if name.isEmpty { return line.hasPrefix(prefix) ? "Reply not sent: \(line.dropFirst(prefix.count))" : "A reply: \(line)" }
         return line.hasPrefix(prefix) ? "Not sent to \(name): \(line.dropFirst(prefix.count))" : "\(name): \(line)"
     }
 

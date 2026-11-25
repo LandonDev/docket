@@ -65,6 +65,24 @@ public struct PressGate: Sendable, Hashable {
 
     public init() {}
 
+    /// The keys each host's last press went out under, given this press: whether any of its hosts now has another key
+    /// (a re-pair, a narrowed key), which ends the pass. A press on many hosts (`host` joined with commas, `key` with
+    /// semicolons) is held host by host, so a group's first press after one member was paired again never reuses a
+    /// pass given under that member's old key.
+    public static func keys(after press: Press, known: [String: String]) -> (changed: Bool, keys: [String: String]) {
+        let hosts = press.host.split(separator: ",").map(String.init)
+        let keys = press.key.split(separator: ";").map(String.init)
+        // A press whose hosts and keys do not pair up is read as a change: no pass is reused on it.
+        guard hosts.count == keys.count else { return (true, known) }
+        var next = known
+        var changed = false
+        for (host, key) in zip(hosts, keys) {
+            if let was = known[host], was != key { changed = true }
+            next[host] = key
+        }
+        return (changed, next)
+    }
+
     /// His press, before its five seconds start.
     public mutating func begin(_ press: Press, on: Bool, device: Device, now: Double) -> Verdict {
         guard on else { return .go }

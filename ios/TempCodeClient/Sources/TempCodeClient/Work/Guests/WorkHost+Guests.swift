@@ -15,11 +15,11 @@ extension WorkHost {
     /// key, the host makes no second link and answers it with no address.
     public func makeLink(_ draft: GuestLinkDraft, source: ShareSource, title: String, attempt: String, key: String? = nil) async throws -> ShareRules.Made {
         let params = Methods.WorkGuestsCreate.Params(source: source.createSource, title: title, name: draft.trimmedName, role: draft.role.wire, expiresAt: draft.expiresAtMs, attempt: attempt)
-        let host = environment.id, ref = source.ref
+        let host = environment.id, ref = source.ref, name = draft.trimmedName
         let answer = try await presses.run(.guestLink, host: host, hostName: environment.name, ref: ref, rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
             let out = try await socket.request(Methods.WorkGuestsCreate.self, params)
             // Kept as it lands, whoever still waits for it (`GuestAttempts.unseen`): the host sends it once.
-            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ref, attempt: attempt, address: url) }
+            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ref, attempt: attempt, address: url, name: name, title: title) }
             return out
         }
         return ShareRules.made(answer)

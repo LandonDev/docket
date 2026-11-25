@@ -77,8 +77,10 @@ final class PressGates {
 
     /// True: the press may go. `reason` says the act in plain words ("Send to Dana Whitfield").
     func allow(_ press: PressGate.Press, reason: String) async -> Bool {
-        if let known = keys[press.host], known != press.key { gate.end() }
-        keys[press.host] = press.key
+        // Host by host, a group's members too: another key on any of them ends the pass (`PressGate.keys(after:)`).
+        let noted = PressGate.keys(after: press, known: keys)
+        if noted.changed { gate.end() }
+        keys = noted.keys
         readDevice()
         switch gate.begin(press, on: on, device: device, now: Self.now) {
         case .go:

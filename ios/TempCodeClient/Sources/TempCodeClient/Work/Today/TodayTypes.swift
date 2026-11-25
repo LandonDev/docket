@@ -204,6 +204,10 @@ public struct TodayRow: Hashable, Sendable, Codable, Identifiable {
     /// A LifeOS row's supplier: the host whose session read it, which may not be the host its press opens on. A
     /// sign-out there takes it out of every host's kept rows (`WorkCache.withoutLifeos`). Nil on a row kept before.
     public var suppliedBy: String?
+    /// The supplier's session that read it: the sector of that host's own job session where it read the row
+    /// narrowed, nil for its whole session. A LifeOS verb's check, its write and its Undo all go through that one
+    /// session (`TodaySources.sessionOf`), whatever the hosts read later.
+    public var suppliedScope: String?
 
     public var id: String { key }
     /// Where a press goes on the phone; nil: the row is not a button.

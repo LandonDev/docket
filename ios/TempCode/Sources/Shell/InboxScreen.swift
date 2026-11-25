@@ -48,6 +48,7 @@ struct InboxScreen: View {
         NavigationStack(path: $path) {
             InboxView(path: $path, split: false)
                 .fleetToastInset()
+                .outboxUndoFallback()
                 .navigationDestination(for: InboxRoute.self) { destination($0) }
         }
     }
@@ -74,6 +75,7 @@ struct InboxScreen: View {
         }
         .navigationSplitViewStyle(.balanced)
         .fleetToastInset()
+        .outboxUndoFallback()
     }
 
     @ViewBuilder

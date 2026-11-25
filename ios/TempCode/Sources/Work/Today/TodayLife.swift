@@ -43,18 +43,8 @@ enum TodayLife {
         held = []
     }
 
-    /// The sectors each host's narrowed session read, as the last input said: a row's writes go through the session
-    /// that read it (`store(for row:)`).
-    private static var narrowedLast: [String: [String]] = [:]
-
     /// LifeOS's lists for the jobs as they stand; nil while Today is off screen (the store keeps what it had).
     static func input(_ clients: [EnvironmentClient]) -> TodayLifeInput? {
-        let input = read(clients)
-        if let input { narrowedLast = input.narrowed }
-        return input
-    }
-
-    private static func read(_ clients: [EnvironmentClient]) -> TodayLifeInput? {
         guard onScreen else { return nil }
         let workClients = clients.filter(\.work.isOn)
         let jobs = workClients.flatMap { LifeReach.jobs(environmentId: $0.environment.id, workspaces: $0.workspaces) }
@@ -123,7 +113,7 @@ enum TodayLife {
     /// supplied it; nil while that session is not up, never another host's. A row with no supplier (a chat, an older
     /// kept row) goes by its sector.
     static func store(for row: TodayRow, _ clients: [EnvironmentClient]) -> LifeStore? {
-        guard let session = TodaySources.sessionOf(row, narrowed: narrowedLast) else { return store(for: row.sector, clients) }
+        guard let session = TodaySources.sessionOf(row) else { return store(for: row.sector, clients) }
         guard let client = clients.first(where: { $0.environment.id == session.environmentId && $0.work.isOn }) else { return nil }
         if let sector = session.sector {
             guard let workspace = client.workspaces.first(where: { $0.kind == .work && $0.sector == sector }) else { return nil }

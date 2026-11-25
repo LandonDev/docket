@@ -740,6 +740,29 @@ struct TodayStoreTests {
         #expect(rows.first { $0.key == "event:e2" }?.suppliedBy == "mac")
     }
 
+    // MARK: - fix round 14
+
+    @Test func `a row names the session that read it, scope and all, and an Undo's row keeps it when the reads change`() async {
+        let store = store(TodayBookCache(), by: ["box": HostReads()])
+        var mac = Self.on("mac")
+        mac.workspaces = [WorkspaceMeta(id: "ws-ref", name: "Refereeing", path: "/w/ref", git: false, kind: .work, sector: "ref", createdAt: 1)]
+        store.update(hosts: [Self.on("box"), mac])
+        var life = Self.emptyLife
+        life.tasks = [TodaySources.Task(id: "t1", title: "File the game report", sector: "ref", dueAt: Self.now + 3_600_000)]
+        life.narrowed = ["mac": ["ref"]]
+        store.update(life: life)
+        // Read through the Mac's own Refereeing session: that host and that scope.
+        let pressed = try? #require(TodayStore.rows(store.page).first { $0.key == "task:t1" })
+        #expect(pressed.flatMap(TodaySources.sessionOf)! == ("mac", "ref"))
+        // He pressed Tomorrow; then the Mac's job session dropped and Box's whole session took Refereeing over.
+        life.narrowed = [:]
+        store.update(life: life)
+        let now = TodayStore.rows(store.page).first { $0.key == "task:t1" }
+        #expect(now.flatMap(TodaySources.sessionOf)! == ("box", nil))
+        // The Undo holds the row he pressed: it goes through the session the act went through, never the new one.
+        #expect(pressed.flatMap(TodaySources.sessionOf)! == ("mac", "ref"))
+    }
+
     @Test func `a sign-out with no LifeOS input yet takes the session's kept rows from another host's key`() {
         // Kept under the Mac's key (its job), read by the box's whole session; Today has had no LifeOS input yet.
         var wait = TodayRow(key: "mail:w1", section: "waiting", sector: "purdue", title: "Dana Lee")

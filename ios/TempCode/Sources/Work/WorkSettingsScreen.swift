@@ -48,6 +48,9 @@ private struct WorkHostSection: View {
     @State private var stopped: [String: String] = [:]
     /// Links whose New Address is between his press and the host's answer, for the row's spinner.
     @State private var pressing: Set<String> = []
+    /// The new address the sheet shows, fixed for the sheet's life: its link, the attempt it answered and the address.
+    /// Done acknowledges that attempt alone; a second address that came meanwhile shows next, in its own sheet.
+    @State private var showing: ShownAddress?
     /// A link he chose Revoke on, asked once before it goes.
     @State private var revoking: GuestLinkRow?
     @State private var switching = false
@@ -93,9 +96,10 @@ private struct WorkHostSection: View {
                 // The new address itself, once, with Copy and Share: the guest link sheet's last step. It waits in memory
                 // by its attempt key (`GuestAttempts.unseen`) from the host's answer until this sheet closes, so Back
                 // during New Address, or an answer after the fifteen seconds, shows it on return.
-                .sheet(isPresented: Binding(get: { unseenAddress(guests.value) != nil }, set: { if !$0, let kept = unseenAddress(guests.value) { GuestAttempts.shared.shown(host: client.environment.id, ref: kept.ref) } })) {
-                    if let kept = unseenAddress(guests.value) { NewAddressSheet(address: kept.address) }
+                .sheet(item: Binding(get: { showing }, set: { if $0 == nil { acknowledge() } })) { shown in
+                    NewAddressSheet(address: shown.address, name: shown.name, title: shown.title)
                 }
+                .onChange(of: nextAddress(guests.value)?.id, initial: true) { if showing == nil { showing = nextAddress(guests.value) } }
                 .confirmationDialog("Revoke this link?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), titleVisibility: .visible, presenting: revoking) { link in
                     Button("Revoke", role: .destructive) { Task { await revoke(link) } }
                 } message: { link in
@@ -223,12 +227,18 @@ private struct WorkHostSection: View {
     }
 
     /// The first new address of this host's links that no screen has shown yet.
-    private func unseenAddress(_ links: [GuestLinkRow]?) -> (ref: String, address: String)? {
-        for link in links ?? [] {
-            let ref = ShareRules.rekeyRef(link.id)
-            if let kept = GuestAttempts.shared.unseen(host: client.environment.id, ref: ref) { return (ref, kept.address) }
-        }
-        return nil
+    /// The next new address of this host's links that no screen has shown.
+    private func nextAddress(_ links: [GuestLinkRow]?) -> ShownAddress? {
+        let refs = (links ?? []).map { ShareRules.rekeyRef($0.id) }
+        return GuestAttempts.shared.next(host: client.environment.id, refs: refs).map { ShownAddress(ref: $0.ref, attempt: $0.kept.attempt, address: $0.kept.address, name: $0.kept.name, title: $0.kept.title) }
+    }
+
+    /// The sheet closed: the attempt it showed is seen, and the next waiting address, if any, shows in its own sheet.
+    private func acknowledge() {
+        guard let shown = showing else { return }
+        GuestAttempts.shared.shown(host: client.environment.id, ref: shown.ref, attempt: shown.attempt)
+        showing = nil
+        Task { @MainActor in showing = nextAddress(guests?.value) }
     }
 
     private func rekey(_ link: GuestLinkRow) async {
@@ -425,4 +435,15 @@ private struct DigestSettingsSection: View {
         let names = Dictionary(hosts.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
         return Dictionary(refusedById.map { (names[$0.key] ?? $0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
     }
+}
+
+/// One new address on Settings → Work's sheet, as it was when the sheet opened.
+private struct ShownAddress: Identifiable, Hashable {
+    let ref: String
+    let attempt: String
+    let address: String
+    /// Whose link the address opens and to what: the sheet names both.
+    let name: String
+    let title: String
+    var id: String { attempt }
 }

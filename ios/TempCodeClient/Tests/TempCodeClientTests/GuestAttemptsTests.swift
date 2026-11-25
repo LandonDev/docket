@@ -92,4 +92,39 @@ import Testing
         #expect(attempts.unseen(host: "box", ref: a) == nil)
         #expect(attempts.unseen(host: "box", ref: b) != nil)
     }
+
+    @Test func `the sheet acknowledges the attempt it showed, and a second address that came meanwhile shows next`() {
+        let attempts = GuestAttempts()
+        let a = ShareRules.rekeyRef("link-a"), b = ShareRules.rekeyRef("link-b")
+        // B answers first and its sheet opens on B's attempt.
+        attempts.delivered(host: "box", ref: b, attempt: "phone-2-b", address: "https://x/b")
+        let open = attempts.next(host: "box", refs: [a, b])
+        #expect(open?.kept.attempt == "phone-2-b")
+        // A answers while B's sheet is up; A is above B in the list.
+        attempts.delivered(host: "box", ref: a, attempt: "phone-3-a", address: "https://x/a")
+        // Done on B's sheet acknowledges B alone, never A.
+        attempts.shown(host: "box", ref: b, attempt: "phone-2-b")
+        #expect(attempts.unseen(host: "box", ref: a)?.address == "https://x/a")
+        #expect(attempts.next(host: "box", refs: [a, b])?.kept.attempt == "phone-3-a")
+        // A stale acknowledgement for a ref whose newer address waits leaves the newer one.
+        attempts.delivered(host: "box", ref: b, attempt: "phone-4-b", address: "https://x/b2")
+        attempts.shown(host: "box", ref: b, attempt: "phone-2-b")
+        #expect(attempts.unseen(host: "box", ref: b)?.attempt == "phone-4-b")
+    }
+
+    @Test func `a kept address names whose link it opens and to what`() {
+        let attempts = GuestAttempts()
+        let a = ShareRules.rekeyRef("link-a"), b = ShareRules.rekeyRef("link-b")
+        attempts.delivered(host: "box", ref: a, attempt: "phone-1-a", address: "https://x/a", name: "Dana Lee", title: "Budget")
+        attempts.delivered(host: "box", ref: b, attempt: "phone-2-b", address: "https://x/b", name: "Sam", title: "Stage plan")
+        #expect(attempts.unseen(host: "box", ref: a)?.whose == "Dana Lee’s link to Budget")
+        // Shown in turn, each named; the first stays as it was while shown.
+        let first = attempts.next(host: "box", refs: [a, b])
+        #expect(first?.kept.whose == "Dana Lee’s link to Budget")
+        attempts.delivered(host: "box", ref: b, attempt: "phone-3-b", address: "https://x/b2", name: "Sam", title: "Stage plan")
+        #expect(first?.kept.address == "https://x/a")
+        attempts.shown(host: "box", ref: a, attempt: first!.kept.attempt)
+        #expect(attempts.next(host: "box", refs: [a, b])?.kept.whose == "Sam’s link to Stage plan")
+        #expect(GuestAttempts.Unseen(attempt: "p", address: "u").whose == "A guest link")
+    }
 }

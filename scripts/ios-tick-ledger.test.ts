@@ -64,7 +64,7 @@ describe("Work's clocks", () => {
   const files = walk(WORK).map((path) => ({ file: relative(WORK, path), source: readFileSync(path, 'utf8') }))
 
   it('are named in IOS-DESIGN', () => {
-    expect(clocks.map((c) => c.name).sort()).toEqual(['chat.shown', 'mail.foot', 'media.preparing', 'messages.hold', 'today.minute'])
+    expect(clocks.map((c) => c.name).sort()).toEqual(['chat.shown', 'mail.foot', 'media.preparing', 'messages.hold', 'outbox.surface', 'today.minute'])
   })
 
   it('are each registered by a named clock, in the file the table names', () => {

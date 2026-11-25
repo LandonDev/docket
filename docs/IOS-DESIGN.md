@@ -2666,8 +2666,10 @@ milestone 46 built, where it lives now:
 - **Settings → Work**: a tool with no rule reads "Not set" until he picks.
   On the host that serves LifeOS's documents, **Guest links**: who and
   what, the role and when it ends ("open now" while the guest is on it),
-  each with New Address (shown once, with Copy, and shown on return if he
-  went Back while it was made; a cancelled check says so on the link's row)
+  each with New Address (shown once, with Copy, in a sheet titled by the
+  guest's name, "Dana Lee’s New Address", with the item in its footer; shown
+  on return if he went Back while it was made, one sheet for each address,
+  each holding its own; a cancelled check says so on the link's row)
   and Revoke; ended ones
   muted.
 - **House rules**: a Work workspace's screen leads with a "House Rules"
@@ -3072,9 +3074,11 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   makes the job's own LifeOS session and waits for it, with Try Again, and comes back on a relaunch; the project's name is the row's line under the title, and "Project names did not load" is
   the section's one quiet line when a job's names failed), Nudge (`work.mail.nudge`: a thread that drafts the
   follow-up opens; nothing goes until he sends) and Dismiss on a mail wait (LifeOS's `mailWaits:dismiss`, fenced by
-  the send the row showed, Undo `mailWaits:putBack`). A LifeOS write goes through the session that read the row, on
-  the host that supplied it (`TodaySources.sessionOf`), and its Undo through the same one; never another host's
-  session in host order. None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
+  the send the row showed, Undo `mailWaits:putBack`). A LifeOS verb's check, its write and its Undo all name the one
+  session that read the row, stamped on it when it was built (`suppliedBy`, `suppliedScope`; `TodaySources.sessionOf`):
+  the verb shows when the key may ask that host for a token, whoever homes the job, and never goes through another
+  host's session or a scope read later. If that session has gone, nothing is written and the line says so ("LifeOS on
+  Box is not connected, so nothing changed"). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
   capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
@@ -3552,7 +3556,9 @@ TempCode's Cancel goes once Save is pressed, because the address shows once
 and only here. One press on the sheet at a time: while one is out, Create
 and every link's More wait. An address the host sent that no screen showed
 (an answer after the fifteen seconds, a New Address left by Back) is kept in
-memory by its attempt key and shows the next time Share or Settings → Work
+memory by its attempt key, with the link's name and the item's title, and
+shows named ("Dana Lee’s link to Budget. This address shows once.") at
+once if Share is open on it, else the next time Share or Settings → Work
 opens on it. A
 press whose answer was lost says "Checking whether the link was made" under
 the form, which waits; closing and opening the sheet again keeps the same
@@ -4256,6 +4262,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | `messages.hold` | Messages, a chat, People, a person | Holds the screen's LifeOS live queries; it wakes once an hour and does nothing (Messages/MessagesReads.swift) |
 | `mail.foot` | Mail for a job | Holds Mail's capsule as on screen while the place shows; it wakes once an hour and does nothing (Life/MailPresses.swift) |
 | `chat.shown` | A conversation | Holds the conversation as on screen, so a stopped reply is said there and not as a toast; it wakes once an hour and does nothing (Messages/MessagesPresses.swift) |
+| `outbox.surface` | The Outbox, a held item | Holds the Undo capsule's own surface as on screen, so another tab shows it only when none is; it wakes once an hour and does nothing (OutboxPresses.swift) |
 | `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
 
 Every other Work screen runs none.

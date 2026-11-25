@@ -32,6 +32,26 @@ public final class GuestAttempts {
     public struct Unseen: Sendable, Hashable {
         public let attempt: String
         public let address: String
+        /// Whose link it opens and to what, so a screen that shows it later names both.
+        public let name: String
+        public let title: String
+
+        public init(attempt: String, address: String, name: String = "", title: String = "") {
+            self.attempt = attempt
+            self.address = address
+            self.name = name
+            self.title = title
+        }
+
+        /// "Dana Lee’s link to Budget": the line a screen that shows it later leads with.
+        public var whose: String {
+            switch (name.isEmpty, title.isEmpty) {
+            case (false, false): "\(name)’s link to \(title)"
+            case (false, true): "\(name)’s link"
+            case (true, false): "A link to \(title)"
+            case (true, true): "A guest link"
+            }
+        }
     }
     public private(set) var unseen: [String: Unseen] = [:]
 
@@ -87,16 +107,26 @@ public final class GuestAttempts {
 
     /// The host's answer carried an address: kept until shown, whether or not the screen that pressed is still there
     /// (Back during New Address, an answer after the fifteen seconds).
-    public func delivered(host: String, ref: String, attempt: String, address: String) {
-        unseen[Self.key(host, ref)] = Unseen(attempt: attempt, address: address)
+    public func delivered(host: String, ref: String, attempt: String, address: String, name: String = "", title: String = "") {
+        unseen[Self.key(host, ref)] = Unseen(attempt: attempt, address: address, name: name, title: title)
     }
 
     /// The address waiting for this item or link, if any.
     public func unseen(host: String, ref: String) -> Unseen? { unseen[Self.key(host, ref)] }
 
-    /// A screen showed it: it goes from memory (the sheet showing it keeps its own copy until closed).
-    public func shown(host: String, ref: String) {
-        unseen[Self.key(host, ref)] = nil
+    /// A screen showed it: it goes from memory (the sheet showing it keeps its own copy until closed). With `attempt`,
+    /// only that answer goes: a newer address for the same item, kept meanwhile, still waits for its own showing.
+    public func shown(host: String, ref: String, attempt: String? = nil) {
+        let key = Self.key(host, ref)
+        if let attempt, unseen[key]?.attempt != attempt { return }
+        unseen[key] = nil
+    }
+
+    /// The next address waiting among `refs`, in their order, with its ref: what a screen shows next, fixed for that
+    /// showing's life.
+    public func next(host: String, refs: [String]) -> (ref: String, kept: Unseen)? {
+        for ref in refs { if let kept = unseen[Self.key(host, ref)] { return (ref, kept) } }
+        return nil
     }
 
     /// His New Link: whatever the last try made, the next Create is a new link.

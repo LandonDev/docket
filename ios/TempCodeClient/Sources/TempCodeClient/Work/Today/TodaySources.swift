@@ -488,14 +488,14 @@ public enum TodaySources {
         }
     }
 
-    /// The session a LifeOS row's writes go through (the desktop's `sessionOf`): the one that read it. Its supplier's
-    /// own job session where that host read the row's sector narrowed (`narrowed`, as the input that built it
-    /// said), else the supplier's whole session; nil for a row with no supplier, which falls back to the sector's
-    /// lookup. Never another host's session in host order, whose token may not cover the row.
-    public static func sessionOf(_ row: TodayRow, narrowed: [String: [String]]) -> (environmentId: String, sector: String?)? {
+    /// The session a LifeOS row's verbs go through (the desktop's `sessionOf`): the one that read it, as the row was
+    /// stamped when it was built (`suppliedBy`, `suppliedScope`): the supplier's own job session for a narrowed read,
+    /// else its whole session. The verb's check, its write and its Undo all name this one session, never another
+    /// host's in host order and never a scope read later. Nil for a row with no supplier (a chat, an older kept row),
+    /// which goes by its sector.
+    public static func sessionOf(_ row: TodayRow) -> (environmentId: String, sector: String?)? {
         guard let supplier = row.suppliedBy else { return nil }
-        if let sector = row.sector, narrowed[supplier]?.contains(sector) == true { return (supplier, sector) }
-        return (supplier, nil)
+        return (supplier, row.suppliedScope)
     }
 
     /// The tick's press for a Due row.

@@ -297,4 +297,18 @@ import TempCodeContract
         let again = out.leaving(reply, linked: true)
         #expect(!again)
     }
+
+    @Test func `a group's first press after one member was paired again reuses no pass`() {
+        let known = ["mac": "k1|approve|f0", "box": "b1|approve|f0"]
+        // The Mac's carrier paired again: its key is new, though no press under "mac,box" came before.
+        let group = PressGate.Press(host: "mac,box", key: "k2|approve|f0;b1|approve|f0", action: "work.outbox.decide", ref: "g", rev: "1")
+        let after = PressGate.keys(after: group, known: known)
+        #expect(after.changed)
+        #expect(after.keys["mac"] == "k2|approve|f0")
+        // The same keys again: the pass stands.
+        #expect(!PressGate.keys(after: group, known: after.keys).changed)
+        // One host, unchanged; and a press whose hosts and keys do not pair up is read as a change.
+        #expect(!PressGate.keys(after: .init(host: "box", key: "b1|approve|f0", action: "a", ref: "r", rev: "1"), known: known).changed)
+        #expect(PressGate.keys(after: .init(host: "mac,box", key: "k1|approve|f0", action: "a", ref: "r", rev: "1"), known: known).changed)
+    }
 }

@@ -438,7 +438,7 @@ public enum TodayModel {
     static func sameFacts(_ a: TodayRow, _ b: TodayRow) -> Bool {
         a.key == b.key && a.section == b.section && a.sector == b.sector && a.title == b.title && a.detail == b.detail
             && a.detailLate == b.detailLate && a.at == b.at && a.when == b.when && a.whenLine == b.whenLine && a.late == b.late
-            && a.past == b.past && a.lead == b.lead && a.acts.map(\.label) == b.acts.map(\.label) && a.suppliedBy == b.suppliedBy
+            && a.past == b.past && a.lead == b.lead && a.acts.map(\.label) == b.acts.map(\.label) && a.suppliedBy == b.suppliedBy && a.suppliedScope == b.suppliedScope
     }
 
     /// `next`, with each row that shows what it showed before kept as the value it was, and which keys kept it. A row

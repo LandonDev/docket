@@ -291,6 +291,18 @@ final class OutboxPresses {
     /// What the capsule says when nothing counts: the last refusal or cancel.
     var noticeLine: String? { refusal ?? wait.notice?.line }
 
+    /// How many of the capsule's own surfaces are on screen (the Outbox's list, a held item's page). With none, the
+    /// tab he is on shows it (`outboxUndoFallback`), so Undo and a group's refusal stay in view through the seconds.
+    private(set) var surfaces = 0
+
+    /// Counts a surface as on screen until the calling view's task ends.
+    func surfaceShown() async {
+        surfaces += 1
+        TickLedger.begin("outbox.surface"); defer { TickLedger.end("outbox.surface") }
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        surfaces -= 1
+    }
+
     // MARK: - the clock
 
     private static var now: Double { Date().timeIntervalSince1970 }
@@ -450,11 +462,19 @@ struct OutboxUndoInset: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
     /// False: the capsule is another surface's (an item's page beside a list that shows it).
     var enabled = true
+    /// The shell's copy on each tab: drawn only while neither the list nor an item's page shows the capsule.
+    var fallback = false
 
     func body(content: Content) -> some View {
         let presses = OutboxPresses.shared
         let notice = presses.noticeLine
+        let enabled = fallback ? presses.surfaces == 0 : enabled
         content
+            // A surface of its own counts while shown; the shell's copy steps back for it.
+            .task(id: !fallback && enabled) {
+                guard !fallback, enabled else { return }
+                await presses.surfaceShown()
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Group {
                     if !enabled {
@@ -526,5 +546,10 @@ extension View {
     /// The Outbox's undo capsule, on the list that a Send returns to.
     func outboxUndoInset(_ enabled: Bool = true) -> some View {
         modifier(OutboxUndoInset(enabled: enabled))
+    }
+
+    /// The same capsule at a tab's root, for when the Outbox's list and an item's page are both off screen.
+    func outboxUndoFallback() -> some View {
+        modifier(OutboxUndoInset(fallback: true))
     }
 }

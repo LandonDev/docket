@@ -207,8 +207,17 @@ public final class MessagesDesks {
     /// (a relaunch since: the record kept no words) still says so on its conversation's desk (`host`, `ref`).
     public func readBack(attempt: String, state: PressState, host: String? = nil, ref: String? = nil) {
         let holders = desks.filter { $0.value.out?.attempt == attempt }.map(\.key)
-        for key in holders { update(key) { $0.readBack(attempt: attempt, state: state) } }
+        for key in holders {
+            update(key) { $0.readBack(attempt: attempt, state: state) }
+            Self.heardLate?(key, state)
+        }
         guard holders.isEmpty, let host, let ref, let workspaceId = ChatPress.workspace(ofRef: ref), let chatId = ChatPress.chat(ofRef: ref) else { return }
-        update(Self.key(environmentId: host, workspaceId: workspaceId, chatId: chatId)) { $0.readBackWithoutWords(state) }
+        let key = Self.key(environmentId: host, workspaceId: workspaceId, chatId: chatId)
+        update(key) { $0.readBackWithoutWords(state) }
+        Self.heardLate?(key, state)
     }
+
+    /// A read-back said on its conversation, by desk key: the app says it off the conversation too when that one is
+    /// not on screen (`MessagesPresses`, `MessagesRules.lateLine`).
+    public static var heardLate: (@MainActor (String, PressState) -> Void)?
 }

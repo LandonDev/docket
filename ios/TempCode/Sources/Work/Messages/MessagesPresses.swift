@@ -35,6 +35,8 @@ final class MessagesPresses {
     /// The conversations on screen now, counted by desk key (ChatScreen's task): a reply put back or refused in one he
     /// left is also the sticky toast, as Mail's and the Outbox's are.
     @ObservationIgnored private var showing: [String: Int] = [:]
+    /// Each conversation's name as he last sent in it, for a line said off it after a late read-back.
+    @ObservationIgnored private var names: [String: String] = [:]
 
     private init() {
         // Leaving the screen cancels what waits: nothing goes early, nothing goes unseen.
@@ -45,6 +47,8 @@ final class MessagesPresses {
 
     func attach(_ clients: @escaping (String) -> EnvironmentClient?) {
         self.clients = clients
+        // A reply read back late (a lost answer) is said off its conversation too, as the direct answer is.
+        MessagesDesks.heardLate = { key, state in MessagesPresses.shared.heardLate(key, state) }
     }
 
     /// Counts the conversation as on screen until the calling view's task ends.
@@ -61,6 +65,12 @@ final class MessagesPresses {
     private func putBack(_ press: Press, _ line: String) {
         desks.update(press.key) { $0.putBack(line) }
         tellOff(press, line)
+    }
+
+    private func heardLate(_ key: String, _ state: PressState) {
+        guard let line = MessagesRules.lateLine(state),
+              let named = MessagesRules.offLine(line, name: names[key] ?? "", shown: showing[key, default: 0] > 0) else { return }
+        FleetToastCenter.shared.post(message: named)
     }
 
     private func tellOff(_ press: Press, _ line: String) {
@@ -91,6 +101,7 @@ final class MessagesPresses {
         let attempt = ChatPress.newAttempt()
         guard let out = desks.update(key, { $0.press(attempt: attempt) }) else { return nil }
         let press = Press(key: key, environmentId: client.environment.id, workspaceId: workspaceId, chatId: chatId, attempt: attempt, words: out.words, name: chatName)
+        names[key] = chatName
         wait.press(Wait.Press(id: attempt, host: client.environment.id, hostName: client.environment.name, rev: 0, line: "Sending to \(chatName)", payload: press, key: frozen), now: Self.now)
         if wait.counting?.id == attempt {
             AccessibilityNotification.Announcement("Sending to \(chatName). Undo for five seconds.").post()

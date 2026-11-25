@@ -171,6 +171,7 @@ struct RootView: View {
                 } destination: { destination($0) }
                 // Over the whole split, as Work's: Settings → Work pushed from Home says its outcome over that page.
                 .fleetToastInset()
+                .outboxUndoFallback()
                 .environment(home)
             }
             if showsWork {
@@ -183,6 +184,8 @@ struct RootView: View {
                     // One host for the sticky outcome over every route Work pushes (a person's page, Today, a job's
                     // place), not only the list at the stack's root: a Mail send stopped while he was there is seen.
                     .fleetToastInset()
+                    // The Outbox's Undo, while neither its list nor an item's page is on screen (another tab's, too).
+                    .outboxUndoFallback()
                     .environment(work)
                 }
             }
@@ -199,6 +202,7 @@ struct RootView: View {
                 // Over the whole split, as Work's: a Work page Search opens (a person, a job's Forms) says a stopped
                 // or refused send over that page, not behind it under Search's list.
                 .fleetToastInset()
+                .outboxUndoFallback()
                 .environment(search)
             }
         }

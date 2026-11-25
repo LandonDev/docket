@@ -873,7 +873,9 @@
   its `updatedAt`; a pass covers 60 seconds in this foreground and ends on
   background, on the phone locking
   (`protectedDataWillBecomeUnavailableNotification`), on the scene leaving
-  `.active` (except while the system's own sheet is up) and on a key change.
+  `.active` (except while the system's own sheet is up) and on a key change,
+  host by host, so a press on many hosts after one member was paired again
+  reuses no pass (`PressGate.keys(after:known:)`).
   A cancel or a failure says "Nothing was sent." With the check on and no
   passcode set, every outward press says "Set a passcode on this iPhone to
   send from here." The switch is Settings → Work's "Require Face ID to
@@ -1774,8 +1776,12 @@ The rules every press below keeps (fix round 2):
   than the Outbox (`SendUndoPlace`); a thread's held line says a cancelled
   Send itself (`OutboxPresses.notice(for:)`); from
   anywhere else the Outbox's list comes up for a press counting, queued or
-  on its way. At accessibility sizes the capsule's line wraps and Undo sits
-  under it.
+  on its way. If he then leaves for another tab or page while it counts, the
+  tab he is on shows the same capsule at its root (`outboxUndoFallback`, on
+  Home's, Work's, Search's and the Inbox's), drawn only while neither the
+  list nor an item's page shows it (`OutboxPresses.surfaces`); a group's
+  refusal is said there too. At accessibility sizes the capsule's line wraps
+  and Undo sits under it.
 - **A locked launch keeps the file.** `work-presses.json` holds ids, refs
   and times, under protection until the first unlock. A file that is there
   and will not read is never taken for none: no press leaves and nothing is
@@ -1807,7 +1813,7 @@ The rules every press below keeps (fix round 2):
 | Replace Address… in Share (`ShareLinkSheet`'s row menu, asked first) | `work.guests.rekey {linkId, attempt}` | approve | none | **Gated.** `WorkHost.replaceAddress`: one attempt key a link (`GuestAttempts`, the record's `.guestRekey`), so a repeat after a lost answer replaces nothing again and answers `again`; read back by `work.guests.attempt`; while Checking no second Replace; a fresh key only for his next press once the last one's end is known |
 | Revoke in Share (`ShareLinkSheet`'s row menu, asked first) | `work.guests.revoke` | operate | none | revoking a revoked link changes nothing |
 | The clicker's presses (Work/Clicker/HostClicker.swift over `ShowLink`) | `work.slides.show.press {showId, act, rev}` | operate | operate on the key itself (clicker.ts `refuse`) | not outward: it steps his own show on his own screen; a press made on an old `rev` is dropped by the host (`moved`) |
-| New Address (Work/WorkSettingsScreen.swift) | `work.guests.rekey {linkId, attempt}` | approve | none | **Gated.** The same as Replace Address…; a spinner in the link's menu place while it is out. The address is kept in memory by its attempt key as it lands (`GuestAttempts.unseen`, never on disk) and shown by whichever screen is open on it, so Back during the press, or an answer after the fifteen seconds, loses nothing; one press per link while one is out (`mayReplace`) |
+| New Address (Work/WorkSettingsScreen.swift) | `work.guests.rekey {linkId, attempt}` | approve | none | **Gated.** The same as Replace Address…; a spinner in the link's menu place while it is out. The address sheet holds one answer for its life (its link, attempt and address); Done acknowledges that attempt alone (`GuestAttempts.shown(attempt:)`), and another address that came meanwhile opens next in its own sheet. The address is kept in memory by its attempt key as it lands (`GuestAttempts.unseen`, never on disk) and shown by whichever screen is open on it, so Back during the press, or an answer after the fifteen seconds, loses nothing; one press per link while one is out (`mayReplace`) |
 | Revoke a guest link (Work/WorkSettingsScreen.swift, asked first) | `work.guests.revoke` | operate | none | revoking a revoked link changes nothing |
 | Upload into a folder (Work/Files/FilesNewSheet.swift) | `work.files.upload`, `attachment.chunk`, `attachment.commit` | operate; approve for a place others can open | the place's `can` | `op`, fresh per call |
 | Make, rename, delete, put back, star (Work/Files/FilesNewSheet.swift, FolderScreen.swift, FilesChange.swift) | `work.files.make`, `rename`, `trash {asked?, forGood?}`, `restore`, `star` | operate; approve where others can open | the place's `can`; a delete others will see, or on a drive with no bin, asks the desktop's question first and sends his yes (`asked`, `forGood`; the host refuses it without). Put Back and Delete's Undo ask operate on the key itself (`admitRestore`): an admin-only key is offered neither, nor a Delete (`FilesHost.caps.operate` is KeyMay's `.filesRestore`) | a fresh `op` each |
@@ -1848,7 +1854,7 @@ The rules every press below keeps (fix round 2):
 | Live computer: Stop (Work/Items/LivePicture.swift) | `computer.stop` | operate | none | none |
 | Live computer: Paste, the button and ⌘V (Work/Items/LivePicture.swift) | `video.paste` | approve; never on a relayed lane | none | none |
 | The browser item's Take Over (Work/Items/ItemKindViews.swift) | `work.browser.drive` | operate | none | sets a value |
-| Send, a conversation's composer (Work/Messages/ChatScreen.swift, `MessagesPresses`) | `work.messages.send {workspaceId, chatId, text, attempt}` after the phone's five-second wait (`SendWait`) | approve | approve | **Gated.** A fresh `attempt` a press, which the host answers once for a day (`work.messages.attempt` reads it back without sending); `PressLedger` keeps the press under the ref `chat:<workspace>:<chat>`, so a second Send there waits for its read-back (Checking…). A reply put back (the background, a lost link or key) or refused goes back into its field, and, when that conversation is not on screen (ChatScreen's task counts it), is also the sticky toast, named ("Not sent to Dana Lee: …", `MessagesRules.offLine`) |
+| Send, a conversation's composer (Work/Messages/ChatScreen.swift, `MessagesPresses`) | `work.messages.send {workspaceId, chatId, text, attempt}` after the phone's five-second wait (`SendWait`) | approve | approve | **Gated.** A fresh `attempt` a press, which the host answers once for a day (`work.messages.attempt` reads it back without sending); `PressLedger` keeps the press under the ref `chat:<workspace>:<chat>`, so a second Send there waits for its read-back (Checking…). A reply put back (the background, a lost link or key) or refused goes back into its field, and, when that conversation is not on screen (ChatScreen's task counts it), is also the sticky toast, named ("Not sent to Dana Lee: …", `MessagesRules.offLine`); so is a reply read back late as not sent (`MessagesDesks.heardLate`, `MessagesRules.lateLine`; "Reply not sent: …" once a relaunch has lost the name) |
 | Undo, under his reply while LifeOS holds it (Work/Messages/ChatScreen.swift) | `work.messages.undo {workspaceId, chatId, id}` | approve | approve | takes back nothing twice: LifeOS answers the words once, a second Undo is refused |
 | Retry, under his failed reply (Work/Messages/ChatScreen.swift) | `work.messages.retry {workspaceId, chatId, id}` | approve | approve | **Gated.** LifeOS retries a failed row only. `PressLedger.run(.chatRetry)` under LifeOS's outbox row (`ChatPress.retryRef`): while it is out or its answer was lost the row says Sending… or Checking… and offers no Retry, until LifeOS's own row, read once the host is linked again, says what became of it (`settleRetry`, `PressTruth.retry`: still failed is never taken) |
 | Copy a thread's copy-only draft (Work/Messages/ChatScreen.swift) | `work.messages.dropDraft {workspaceId, id}` after the copy | operate | operate | dropping a dropped draft changes nothing; nothing is sent |

@@ -156,8 +156,8 @@ struct TodayScreen: View {
 
     private func rowView(_ row: TodayRow) -> some View {
         let fresh = store.isFresh(row)
-        let acts = fresh ? row.acts.filter(drawn) : []
-        let tick = fresh ? TodaySources.tick(row).flatMap { drawn(TodayAct("Done", $0)) ? $0 : nil } : nil
+        let acts = fresh ? row.acts.filter { drawn($0, row) } : []
+        let tick = fresh ? TodaySources.tick(row).flatMap { drawn(TodayAct("Done", $0), row) ? $0 : nil } : nil
         return TodayRowView(
             row: row,
             job: jobName(row),
@@ -191,18 +191,20 @@ struct TodayScreen: View {
 
     // MARK: - presses
 
-    /// A verb is drawn only where it can be pressed: the key may (KeyMay), and LifeKit has the write.
-    private func drawn(_ act: TodayAct) -> Bool {
+    /// A verb is drawn only where it can be pressed: the key may (KeyMay), and LifeKit has the write. A LifeOS verb is
+    /// asked of the host whose session read the row, the one its write and its Undo go through (`TodaySources.sessionOf`).
+    private func drawn(_ act: TodayAct, _ row: TodayRow) -> Bool {
         switch act.press {
         case .done(let sector, _):
             return client(sector: sector)?.work.may(.tasksDone) == true
         case .tomorrow(let sector, _):
-            // Written through LifeKit on the host's LifeOS token: the key may ask for one.
-            return client(sector: sector)?.work.may(.lifeosJwt) == true
+            // Written through LifeKit on that host's LifeOS token: the key may ask it for one.
+            return lifeosClient(row, sector: sector)?.work.may(.lifeosJwt) == true
         case .nudge(let place, _):
             return model.registry.client(place.environmentId)?.work.may(.mailNudge) == true
         // The read mark goes through LifeKit's own write on the session that read the row (Messages' `chats:markRead`).
         case .markRead:
+            if TodaySources.sessionOf(row) != nil { return lifeosClient(row, sector: nil)?.work.may(.lifeosJwt) == true }
             return model.registry.ordered.contains { $0.work.isOn && $0.work.may(.lifeosJwt) }
         // Resolve opens the clash, which reads; its own presses ask their own keys.
         case .resolve(let environmentId, _):
@@ -210,9 +212,9 @@ struct TodayScreen: View {
         // The project's page reads through the job's own LifeOS session, as its Projects view does.
         case .openProject(let sector, _):
             return client(sector: sector)?.work.may(.lifeosJwt) == true
-        // Through LifeKit on the host's LifeOS token, as Mail's Waiting On dismisses.
+        // Through LifeKit on the reading host's LifeOS token, as Mail's Waiting On dismisses.
         case .dismiss(let sector, _, _):
-            return client(sector: sector)?.work.may(.lifeosJwt) == true
+            return lifeosClient(row, sector: sector)?.work.may(.lifeosJwt) == true
         // Prepare is the meeting's page's own verb.
         case .prepare:
             return false
@@ -273,7 +275,7 @@ struct TodayScreen: View {
 
     /// Tomorrow: `tasks:snooze` to the next morning in his zone; Undo wakes it (`tasks:unsnooze`).
     private func tomorrow(_ row: TodayRow, sector: String, taskId: String) async {
-        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return stopped(row) }
         let until = Snooze.morning(after: .now, in: life.timeZone)
         do {
             _ = try await life.mutate("tasks:snooze", ["id": Self.json(taskId), "until": String(until.timeIntervalSince1970 * 1000)])
@@ -292,7 +294,7 @@ struct TodayScreen: View {
             undo = TodayUndo(line: "Dismissed", action: nil)
             return
         }
-        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return stopped(row) }
         do {
             let before = try await life.mutate("mailWaits:dismiss", ["threadId": Self.json(threadId), "since": String(since)])
             let back: TodayUndo.Action? = if let state = before.objectValue?["state"]?.stringValue, let dueAt = before.objectValue?["dueAt"]?.numberValue {
@@ -309,7 +311,7 @@ struct TodayScreen: View {
 
     /// Mark read: LifeOS's own mark (`chats:markRead`) through LifeKit on the session that reads the row's sector.
     private func markRead(_ row: TodayRow, chatId: String, at: Double) async {
-        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return comeBack(row) }
+        guard let life = TodayLife.store(for: row, model.registry.ordered) else { return stopped(row) }
         do {
             if !TestHooks.lifeFixtures { try await MessagesReads.markRead(life, chatId: chatId) }
             // How far he read it: a host behind with an older copy brings no row back.
@@ -344,7 +346,12 @@ struct TodayScreen: View {
             }
             if TestHooks.lifeFixtures { return comeBack(row) }
             do {
-                guard let life = TodayLife.store(for: row, model.registry.ordered) else { throw CancellationError() }
+                guard let life = TodayLife.store(for: row, model.registry.ordered) else {
+                    // The session the act went through has gone: Undo tries no other, and says why.
+                    let host = TodaySources.sessionOf(row).map { hostName($0.environmentId) } ?? "this phone"
+                    undo = TodayUndo(line: "Couldn’t undo: LifeOS on \(host) is not connected", action: nil)
+                    return
+                }
                 _ = try await life.mutate(write, args)
                 comeBack(row)
             } catch {
@@ -395,6 +402,20 @@ struct TodayScreen: View {
     /// The job a row is of, said before its title to VoiceOver.
     private func jobName(_ row: TodayRow) -> String? {
         row.job ?? row.sector.flatMap { jobOf($0)?.name }
+    }
+
+    /// The host whose LifeOS session read the row; a row with no supplier goes by its job's host.
+    private func lifeosClient(_ row: TodayRow, sector: String?) -> EnvironmentClient? {
+        if let session = TodaySources.sessionOf(row) { return model.registry.client(session.environmentId) }
+        return sector.flatMap { client(sector: $0) }
+    }
+
+    /// The session that read the row has gone since (signed out, its job's session dropped): nothing was written, and
+    /// the line says why instead of trying another session.
+    private func stopped(_ row: TodayRow) {
+        comeBack(row)
+        let host = TodaySources.sessionOf(row).map { hostName($0.environmentId) } ?? "this phone"
+        undo = TodayUndo(line: "LifeOS on \(host) is not connected, so nothing changed", action: nil)
     }
 
     private func hostName(_ environmentId: String) -> String {

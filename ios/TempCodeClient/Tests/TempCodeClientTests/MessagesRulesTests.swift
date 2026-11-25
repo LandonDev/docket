@@ -155,4 +155,15 @@ import TempCodeContract
         #expect(MessagesRules.offLine("It may have gone. Check the conversation.", name: "Esports staff", shown: false) == "Esports staff: It may have gone. Check the conversation.")
         #expect(MessagesRules.offLine("Not sent: Slack's sign-in ended", name: "Dana Lee", shown: true) == nil)
     }
+
+    @Test func `a reply read back late as not sent is said off its conversation, named or not`() {
+        #expect(MessagesRules.lateLine(.done) == nil)
+        #expect(MessagesRules.lateLine(.checking) == nil)
+        #expect(MessagesRules.lateLine(.failed("Slack's sign-in ended")) == "Not sent: Slack's sign-in ended")
+        #expect(MessagesRules.offLine(MessagesRules.lateLine(.stillWaiting)!, name: "Dana Lee", shown: false) == "Not sent to Dana Lee: the host never had it")
+        // After a relaunch the name is gone: the reply is named instead.
+        #expect(MessagesRules.offLine(MessagesRules.lateLine(.failed("refused"))!, name: "", shown: false) == "Reply not sent: refused")
+        #expect(MessagesRules.offLine(MessagesRules.lateLine(.mayHaveGone)!, name: "", shown: false) == "A reply: It may have gone. Check the conversation before sending it again.")
+        #expect(MessagesRules.offLine(MessagesRules.lateLine(.failed("refused"))!, name: "Dana Lee", shown: true) == nil)
+    }
 }

@@ -297,17 +297,19 @@ struct TodayModelTests {
         #expect(TodaySources.projectOf(task, came) == nil)
     }
 
-    // MARK: - the session a row's writes go through (council 10: Sol 4)
+    // MARK: - the session a row's verbs go through (council 10 and 11: Sol 4)
 
-    @Test func `a row's writes go through the session that read it, never another host's in host order`() {
+    @Test func `a row's verbs go through the session that read it, as the row was stamped`() {
         var task = TodayRow(key: "task:1", section: "due", sector: "purdue", title: "Book the bus")
-        // The Mac's whole session read it, while Box, first in host order, came back with a narrower token.
-        task.suppliedBy = "mac"
-        #expect(TodaySources.sessionOf(task, narrowed: ["box": ["ref"]])! == ("mac", nil))
+        // Box's whole session read it, for a job homed on the Mac: Box's session, not the job's host.
+        task.suppliedBy = "box"
+        #expect(TodaySources.sessionOf(task)! == ("box", nil))
         // A sector the Mac read through its job's own session goes through that session.
-        #expect(TodaySources.sessionOf(task, narrowed: ["mac": ["purdue"]])! == ("mac", "purdue"))
+        task.suppliedBy = "mac"
+        task.suppliedScope = "purdue"
+        #expect(TodaySources.sessionOf(task)! == ("mac", "purdue"))
         // A row with no supplier (a chat, an older kept row) falls back to the sector's lookup.
         task.suppliedBy = nil
-        #expect(TodaySources.sessionOf(task, narrowed: [:]) == nil)
+        #expect(TodaySources.sessionOf(task) == nil)
     }
 }

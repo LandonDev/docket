@@ -803,7 +803,7 @@ public final class WorkHost: CaptureHost {
         let answer = try await presses.run(.guestRekey, host: host, hostName: environment.name, ref: ShareRules.rekeyRef(link.id), rev: nil, attempt: attempt, linked: linked, key: key) { [socket] in
             let out = try await socket.request(Methods.WorkGuestsRekey.self, .init(linkId: link.id, attempt: attempt))
             // Kept as it lands, whoever still waits for it (`GuestAttempts.unseen`): the host sends it once.
-            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ShareRules.rekeyRef(link.id), attempt: attempt, address: url) }
+            if out.again != true, let url = out.url { GuestAttempts.shared.delivered(host: host, ref: ShareRules.rekeyRef(link.id), attempt: attempt, address: url, name: link.name, title: link.title) }
             return out
         }
         return answer.again == true ? nil : answer.url

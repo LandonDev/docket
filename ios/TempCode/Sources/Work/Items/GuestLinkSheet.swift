@@ -24,7 +24,7 @@ struct ShareLinkSheet: View {
     @State private var made: ShareRules.Made?
     /// An address the host made for this item or one of its links that no screen showed yet (`GuestAttempts.unseen`):
     /// an answer that came after its press stopped waiting, or a press made from Settings.
-    @State private var late: String?
+    @State private var late: GuestAttempts.Unseen?
     @State private var links: [GuestLinkRow]?
     @State private var refused: String?
     @State private var listError: String?
@@ -61,7 +61,8 @@ struct ShareLinkSheet: View {
                     case .again: Section { Text(ShareRules.againWords).foregroundStyle(.secondary) }
                     }
                 } else if let late {
-                    GuestAddressSection(address: late)
+                    // Kept from an answer no screen showed: named, since the item may have several links.
+                    GuestAddressSection(address: late.address, footer: "\(late.whose). This address shows once.")
                 } else if phase == .made {
                     // A lost answer read back as made: the link is in the list below, its address shown nowhere.
                     Section { Text(ShareRules.againWords).foregroundStyle(.secondary) }
@@ -77,6 +78,9 @@ struct ShareLinkSheet: View {
         }
         // Held open from his press to the host's answer: the swipe, as Cancel and Done, waits for it.
         .interactiveDismissDisabled(!mayClose)
+        // An address kept while the sheet is open (an answer after the fifteen seconds) shows at once, not on the
+        // next open; and one that came while a press was out shows once that press has landed.
+        .onChange(of: "\(waitingAddress?.attempt ?? "")|\(mayClose)") { takeUnseen() }
         .task(id: host.work.guestsRev) { await load() }
         .confirmationDialog("Revoke this link?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), titleVisibility: .visible, presenting: revoking) { link in
             Button("Revoke", role: .destructive) { Task { await revoke(link) } }
@@ -249,14 +253,18 @@ struct ShareLinkSheet: View {
         }
     }
 
+    /// The first address waiting in memory for this item or one of its links.
+    private var waitingAddress: GuestAttempts.Unseen? {
+        attempts.next(host: host.environment.id, refs: [source.ref] + live.map { ShareRules.rekeyRef($0.id) })?.kept
+    }
+
     /// An address waiting in memory for this item or one of its links (`GuestAttempts.unseen`) shows here, once.
     private func takeUnseen() {
         guard made == nil, late == nil, mayClose else { return }
         let id = host.environment.id
-        let refs = [source.ref] + live.map { ShareRules.rekeyRef($0.id) }
-        guard let ref = refs.first(where: { attempts.unseen(host: id, ref: $0) != nil }), let kept = attempts.unseen(host: id, ref: ref) else { return }
-        late = kept.address
-        attempts.shown(host: id, ref: ref)
+        guard let next = attempts.next(host: id, refs: [source.ref] + live.map { ShareRules.rekeyRef($0.id) }) else { return }
+        late = next.kept
+        attempts.shown(host: id, ref: next.ref, attempt: next.kept.attempt)
     }
 
     private func create() async {
@@ -379,13 +387,16 @@ struct GuestAddressSection: View {
 struct NewAddressSheet: View {
     @Environment(\.dismiss) private var dismiss
     let address: String
+    /// Whose link it opens ("Dana Lee’s New Address") and to what (the footer), when kept with it.
+    var name = ""
+    var title = ""
 
     var body: some View {
         NavigationStack {
             Form {
-                GuestAddressSection(address: address, footer: "This address shows once. The one before opens nothing now.")
+                GuestAddressSection(address: address, footer: "\(title.isEmpty ? "" : "For \(title). ")This address shows once. The one before opens nothing now.")
             }
-            .navigationTitle("New Address")
+            .navigationTitle(name.isEmpty ? "New Address" : "\(name)’s New Address")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }

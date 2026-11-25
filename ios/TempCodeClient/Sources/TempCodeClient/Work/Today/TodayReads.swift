@@ -309,7 +309,9 @@ public final class TodayStore {
         var out = answer
         out.rows = rows.map { row in
             var stamped = row
-            stamped.suppliedBy = row.sector.flatMap { sector in life.narrowed.first { $0.value.contains(sector) }?.key } ?? life.host
+            let narrowed = row.sector.flatMap { sector in life.narrowed.first { $0.value.contains(sector) }?.key }
+            stamped.suppliedBy = narrowed ?? life.host
+            stamped.suppliedScope = narrowed == nil ? nil : row.sector
             return stamped
         }
         return out
