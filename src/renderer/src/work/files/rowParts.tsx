@@ -7,7 +7,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { modOrCtrl } from "../../lib/keys";
 import { Cloud } from "../icons";
 import { MiddleCut } from "../canvas/TabName";
-import { hiddenEnding, shownName, stemEnd, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
+import { hiddenEnding, shownName, stemEnd, typedEnding, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
 import type { Busy } from "./busy";
 
 /**
@@ -84,7 +84,7 @@ export function RowState({ entry, cut }: { entry: FileEntry; cut?: string }) {
  * A name typed in place: the field stands where the name was, with the part before the extension selected.
  * Return keeps it, Escape and a press elsewhere leave the name as it was (a press elsewhere keeps what was
  * typed, as a rename anywhere does). A file's name typed with no extension where it had one asks first, as Finder
- * does: Keep ".docx" (the first focus) puts it back, Remove leaves the name as typed, Cancel leaves the name as it was.
+ * does (a dot that starts no extension, "v1.2", is part of the name): Keep ".docx" (the first focus) puts it back, Remove leaves the name as typed, Cancel leaves the name as it was.
  */
 export function NameField({ name, folder = false, className, onDone }: { name: string; /** a folder's name has no extension to keep */ folder?: boolean; className?: string; onDone(next: string | null): void }) {
   // TempCode's own ending is kept, never typed or shown: the field holds the name before it.
@@ -107,7 +107,7 @@ export function NameField({ name, folder = false, className, onDone }: { name: s
     if (ending) return onDone(`${next.trim()}${ending}`);
     const was = folder ? "" : name.slice(stemEnd(name));
     const typed = next.trim();
-    if (!was || stemEnd(typed) < typed.length) return onDone(next);
+    if (!was || typedEnding(typed)) return onDone(next);
     void confirmChoice({ title: `Remove “${was}” from the name?`, body: "Without it, the file may not open in its own app.", action: "Remove", other: `Keep ${was}`, focusOther: true }).then((answer) =>
       onDone(answer === "action" ? typed : answer === "other" ? `${typed}${was}` : null),
     );

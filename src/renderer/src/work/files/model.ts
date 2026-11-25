@@ -757,6 +757,12 @@ export const stemEnd = (name: string): number => {
   return dot > 0 ? dot : name.length;
 };
 
+/** The extension a typed name ends in: a dot and up to eight letters or digits, one a letter, after it; "v1.2", "11.25" or "Dr. Lee" are words, not one. */
+export const typedEnding = (name: string): string => {
+  const end = /.\.([A-Za-z0-9]{1,8})$/.exec(name);
+  return end && /[A-Za-z]/.test(end[1]) ? `.${end[1]}` : "";
+};
+
 /** A folder its host says is gone ("That folder is not there any more."), as against one that did not load: Retry cannot bring it back. */
 export const folderGone = (error: string | null | undefined): boolean => !!error && / is not there any more\b/.test(error);
 

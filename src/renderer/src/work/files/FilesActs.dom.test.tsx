@@ -734,10 +734,16 @@ describe("a name typed over its extension", () => {
     await rename("Budget.xlsx", "Budget");
     await waitFor(() => expect(calls("work.files.rename")).toHaveLength(2));
     expect(calls("work.files.rename")[1]).toMatchObject({ name: "Budget" });
+    // A dot in the name typed is not an extension: "v1.2" still drops ".docx", so it asks.
+    world.choice = "other";
+    await rename("Plan for spring.docx", "Plan v1.2");
+    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(3));
+    expect(world.asked.at(-1)?.title).toBe("Remove “.docx” from the name?");
+    expect(calls("work.files.rename")[2]).toMatchObject({ name: "Plan v1.2.docx" });
     // A name typed with an extension, and a folder's name, ask nothing.
     const asked = world.asked.length;
     await rename("notes.txt", "notes.md");
-    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(3));
+    await waitFor(() => expect(calls("work.files.rename")).toHaveLength(4));
     expect(world.asked).toHaveLength(asked);
   });
 });

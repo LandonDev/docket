@@ -52,6 +52,7 @@ import {
   pickedAmong,
   refusedWords,
   stemEnd,
+  typedEnding,
   whereKeep,
   whereWords,
   HOME_PAGE,
@@ -518,6 +519,8 @@ describe("the verbs for what is selected", () => {
     expect(refusedWords([{ name: "a.txt", text: "A file named \"a.txt\" is already there." }])).toBe('a.txt: A file named "a.txt" is already there.');
     expect(refusedWords([{ name: "a", text: "No." }, { name: "b", text: "No." }, { name: "c", text: "No." }])).toBe("a: No. (and 2 more)");
     expect([stemEnd("Budget.xlsx"), stemEnd("Makefile"), stemEnd(".env"), stemEnd("a.tar.gz")]).toEqual([6, 8, 4, 5]);
+    // A dot in a name is an extension only when what follows looks like one.
+    expect(["Budget v1.2", "Minutes 11.25", "Dr. Lee notes", "Plan.docx", "notes.md", "Makefile"].map(typedEnding)).toEqual(["", "", "", ".docx", ".md", ""]);
     expect(whereWords({ place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] })).toBe("Dummy Esports › Events › Spring LAN");
     // Cut, it keeps the folder the file lies in; a file at a place's top is cut at its end.
     const where = { place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] };
