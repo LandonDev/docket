@@ -4,7 +4,8 @@
  * answer from memory: what each reads, what each act sends and what a
  * failure puts back (docs/agents/work-today.md "Where each row comes from").
  */
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react";
+import { memo } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const world = vi.hoisted(() => ({
@@ -185,6 +186,45 @@ describe("the due source", () => {
     { _id: "t2", title: "Order jerseys", sector: "purdue", status: "todo", dueAt: at(23, 15) },
     { _id: "t3", title: "Next week's", sector: "purdue", status: "todo", dueAt: at(30, 9) },
   ];
+
+  /**
+   * The perf pass's M12: the rows a source hands the page are kept as the same objects while they say the same
+   * (stable.ts), and TodayRowView is memoised on its row, so a row draws only when it is a new object. Counted here
+   * by a memoised probe on the same props.
+   */
+  it("a minute tick with no word change draws no row; a push changing one task draws that row alone", () => {
+    const draws = new Map<string, number>();
+    const Counted = memo(function Counted({ row }: { row: TodayRow }) {
+      draws.set(row.key, (draws.get(row.key) ?? 0) + 1);
+      return null;
+    });
+    function Page({ env }: { env: TodayEnv }) {
+      const answer = due.use(env);
+      return (
+        <>
+          {(answer.rows ?? []).map((row) => (
+            <Counted key={row.key} row={row} />
+          ))}
+        </>
+      );
+    }
+    convex.answer("tasks:list", TASKS);
+    const env = envNow();
+    render(<Page env={env} />);
+    expect([...draws]).toEqual([
+      ["task:t1", 1],
+      ["task:t2", 1],
+    ]);
+    // A minute goes by: "Nov 21" and "3:00 PM" read as they did.
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect([...draws.values()]).toEqual([1, 1]);
+    // A push: one task's title changed elsewhere.
+    act(() => void convex.answer("tasks:list", [TASKS[0], { ...TASKS[1]!, title: "Order jerseys, size 12" }, TASKS[2]]));
+    expect([...draws]).toEqual([
+      ["task:t1", 1],
+      ["task:t2", 2],
+    ]);
+  });
 
   it("reads every job's open tasks once and keeps today's", () => {
     convex.answer("tasks:list", TASKS);
