@@ -211,7 +211,7 @@ describe("the request card", () => {
     const el = await drawn();
     await act(async () => fireEvent.click(sendButton()));
     // Queued is queued, never sent: the sum says it as its rows do.
-    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Queued 1 in LifeOS, 1 not sent, 1 left out"));
+    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Queued 1 in LifeOS, 1 not sent, 1\u00a0left out"));
     const rows = [...el.querySelectorAll("[data-summary-row]")];
     expect(rows[0]!.textContent).toContain("Queued in LifeOS");
     expect(rows[1]!.querySelector("[data-summary-side]")!.textContent).toBe("Outlook did not answer in time");

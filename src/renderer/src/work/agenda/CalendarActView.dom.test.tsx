@@ -11,6 +11,8 @@ const day = vi.hoisted(() => ({
   // The session's own state: connected and on its way unless a test says it is down.
   session: { state: "connected", withheld: false } as { state: string; withheld: boolean; unanswered?: boolean },
   reopened: [] as string[],
+  // The day holds the event itself and nothing else.
+  alone: false,
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -25,6 +27,7 @@ vi.mock("../shell/lifeos", async (original) => ({
     }
     if (name !== "events:range") return { status: "ready", value: null };
     if (day.loading) return { status: "loading" };
+    if (day.alone) return { status: "ready", value: [{ _id: "ev1", title: "Kickoff call", sector: "unify", startsAt: Date.UTC(2026, 10, 21, 20), allDay: false }] };
     return day.fail ? { status: "failed", error: "Server error" } : { status: "ready", value: [{ _id: "e1", title: "Scrim night", sector: "purdue", startsAt: Date.UTC(2026, 10, 21, 15), allDay: false }] };
   },
 }));
@@ -46,6 +49,23 @@ describe("a held calendar act's day", () => {
     day.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.queryByText("Couldn't read that day")).toBeNull();
+    expect(screen.getByText("Scrim night")).toBeTruthy();
+  });
+});
+
+describe("a held reply's day", () => {
+  const reply = { id: "op3", kind: "accept", eventId: "ev1", account: "landon@unify.dev" };
+  afterEach(() => void ((day.event = "none"), (day.alone = false), (day.fail = true)));
+  it("is drawn only when something besides the event is on it, such as a clash", () => {
+    day.event = "ready";
+    day.alone = true;
+    const { unmount } = render(<View item={{ kind: "calendar.op", payload: reply, sector: "unify" } as never} env="box" />);
+    expect(screen.queryByRole("region", { name: "That day" })).toBeNull();
+    unmount();
+    day.alone = false;
+    day.fail = false;
+    render(<View item={{ kind: "calendar.op", payload: reply, sector: "unify" } as never} env="box" />);
+    expect(screen.getByRole("region", { name: "That day" })).toBeTruthy();
     expect(screen.getByText("Scrim night")).toBeTruthy();
   });
 });

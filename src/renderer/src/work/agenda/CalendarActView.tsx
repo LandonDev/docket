@@ -140,7 +140,8 @@ function Day({ op, event, session, sector, from, onRetry }: Props & { event: Day
     );
   if (day.status === "loading") return <DayBones />;
   const lines = dayLines(op, day.value, event, sector);
-  if (!lines.length) return null;
+  // A day of this event alone says nothing the fields above do not: drawn only when something else is on it.
+  if (!lines.some((line) => !line.own && line.key !== op.eventId)) return null;
   return (
     <section aria-label="That day" className="flex max-w-[440px] flex-col">
       <h3 className="mb-1 text-xs font-medium text-muted-foreground">{new Date(from).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</h3>

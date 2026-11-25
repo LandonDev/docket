@@ -199,6 +199,8 @@ async function main(): Promise<void> {
           .preview-themes { display: flex; gap: 8px; margin-bottom: 24px; font-size: 12px; }
           .preview-themes a { color: var(--muted-foreground, GrayText); }
           .preview-shot main { width: auto; }
+          /* A still is the settled state: Chrome shoots the first frame, so a mark caught growing in (glyph-in) read as a pale ring. */
+          .preview-shot *, .preview-shot *::before, .preview-shot *::after { animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition: none !important; }
           .preview-fixture + .preview-fixture { margin-top: 24px; }
           .preview-label { margin-bottom: 8px; color: var(--muted-foreground, GrayText); font-size: 11px; }
         `)),

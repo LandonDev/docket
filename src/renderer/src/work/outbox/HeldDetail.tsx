@@ -8,7 +8,8 @@ import { StatusMark } from "../../components/ui/status";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
 import { Tip } from "../../components/tip";
-import { ChevronDown, Clock, Pencil, Plug, SquareMousePointer } from "../../chrome/icons";
+import { Attachment, AttachmentContent, AttachmentMedia, AttachmentTitle } from "../../components/ui/attachment";
+import { ChevronDown, Clock, Paperclip, Pencil, Plug, SquareMousePointer } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -26,7 +27,7 @@ import { kindHeading } from "../acts/kindRows";
 import { Chat } from "../icons";
 import { ownZone, scheduleLine } from "work-kit/mail/lib/zones";
 import { itemFailWords, pressFailWords } from "./failWords";
-import { applyEdits, grantFor, lifeosWords, offerLine, pastOf, payloadView, timeOf } from "./model";
+import { applyEdits, grantFor, isAddress, isAddressList, lifeosWords, offerLine, pastOf, payloadView, timeOf, type Field as PayloadField } from "./model";
 import { canEdit, changeKind, checkWords, DetailColumn, itemTitle, KeptPicture, pictureShown, pressable, splitSummary, usePicture, VerbBar } from "./parts";
 import { undoResult } from "./results";
 import {
@@ -184,6 +185,11 @@ export function clearsByItself(error: string | null | undefined): boolean {
   return /did not answer|didn't answer|timed? ?out|try again|unavailable|offline|network|connection|rate limit|too many requests|busy|temporar/i.test(error ?? "");
 }
 
+/** Whether a refusal is about the files it carries (too large, a type refused): the editor cannot change those. */
+export function aboutFiles(error: string | null | undefined): boolean {
+  return /attach|\bfiles?\b|\.(zip|pdf|docx?|xlsx?|pptx?)\b/i.test(error ?? "");
+}
+
 /** "The thread rewrote this at 9:20 AM." / "You changed this at 9:20 AM." */
 export const changedWords = (changed: NonNullable<HostItem["changed"]>, now = Date.now()): string =>
   `${changed.by === "thread" ? "The thread rewrote this" : "You changed this"} at ${heldWhen(changed.at, now)}.`;
@@ -197,23 +203,63 @@ export const repliedWords = (replied: NonNullable<HostItem["replied"]>, now = Da
  * that moved with its old value struck before the new, then the body under its hairline with the words taken out
  * struck and the words put in tinted. It takes the thing's own slot, so the body is never drawn twice.
  */
-function ChangesInPlace({ first, now }: { first: unknown; now: unknown }) {
+/** The value a field was read from, by its path. */
+const valueAt = (value: unknown, path: readonly string[]): unknown =>
+  path.reduce<unknown>((at, key) => (at && typeof at === "object" ? (at as Record<string, unknown>)[key] : undefined), value);
+
+function ChangesInPlace({ first, now, onReady }: { first: unknown; now: unknown; onReady?: (ready: boolean) => void }) {
   const { fields: moved, body } = useMemo(() => changesOf(first, now), [first, now]);
-  const view = useMemo(() => payloadView(now), [now]);
+  // In the order the thing reads, as EditInPlace: who it is from, to whom, then the rest. Its files go under the body.
+  const { fields, files, view } = useMemo(() => {
+    const view = payloadView(now);
+    const rank = (key: string) => FIELD_ORDER.indexOf(key) + 1 || FIELD_ORDER.length + 1;
+    const fields: { field: PayloadField; people: readonly { name?: string; address: string }[] | null }[] = [];
+    const files: string[] = [];
+    for (const field of view.fields) {
+      const raw = valueAt(now, field.path);
+      const named = Array.isArray(raw) && raw.length > 0 && raw.every((x) => typeof (x as { name?: unknown })?.name === "string" && !isAddress(x));
+      if (named) files.push(...(raw as { name: string }[]).map((x) => x.name));
+      else fields.push({ field, people: isAddress(raw) ? [raw] : isAddressList(raw) ? raw : null });
+    }
+    return { fields: fields.sort((a, b) => rank(a.field.key) - rank(b.field.key)), files, view };
+  }, [now]);
   const was = new Map(moved.map((f) => [f.label, f.was]));
+  // It shows the thing, so Send waits on it as on a kind's view (ActView's `onReady`).
+  const report = useRef(onReady);
+  report.current = onReady;
+  useLayoutEffect(() => {
+    report.current?.(true);
+    return () => report.current?.(false);
+  }, []);
   return (
-    <div data-outbox-changes className="flex min-w-0 flex-col gap-4">
-      {view.fields.length ? (
+    <div data-slot="act-payload" data-outbox-changes className="flex min-w-0 flex-col gap-4">
+      {fields.length ? (
         <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
-          {view.fields.map((f) => (
-            <div key={f.path.join(".")} className="contents">
-              <dt className="truncate text-muted-foreground">{f.label}</dt>
-              <dd className="min-w-0 break-words">
-                {was.get(f.label) ? <del className="me-1 text-muted-foreground">{was.get(f.label)}</del> : null}
-                {was.has(f.label) ? <ins className="rounded-[3px] bg-accent/18 no-underline">{f.value}</ins> : f.value}
-              </dd>
-            </div>
-          ))}
+          {fields.map(({ field: f, people }) => {
+            const value = people
+              ? people.map((person, i) => (
+                  <span key={person.address}>
+                    {i > 0 ? ", " : null}
+                    {person.name?.trim() ? (
+                      <>
+                        {person.name} <span className="text-muted-foreground">{person.address}</span>
+                      </>
+                    ) : (
+                      person.address
+                    )}
+                  </span>
+                ))
+              : f.value;
+            return (
+              <div key={f.path.join(".")} className="contents">
+                <dt className="truncate text-muted-foreground">{f.label}</dt>
+                <dd className="min-w-0 break-words">
+                  {was.get(f.label) ? <del className="me-1 text-muted-foreground">{was.get(f.label)}</del> : null}
+                  {was.has(f.label) ? <ins className="rounded-[3px] bg-accent/18 no-underline">{value}</ins> : value}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       ) : null}
       {body ? (
@@ -222,6 +268,20 @@ function ChangesInPlace({ first, now }: { first: unknown; now: unknown }) {
         </div>
       ) : view.body ? (
         <div className={cn("whitespace-pre-wrap break-words text-sm leading-[22px]", view.fields.length > 0 && "border-t border-border pt-4")}>{view.body.text}</div>
+      ) : null}
+      {files.length ? (
+        <div className="flex flex-wrap gap-2">
+          {files.map((name) => (
+            <Attachment key={name} size="sm">
+              <AttachmentMedia>
+                <Paperclip className="size-3.5" />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{name}</AttachmentTitle>
+              </AttachmentContent>
+            </Attachment>
+          ))}
+        </div>
       ) : null}
     </div>
   );
@@ -336,10 +396,10 @@ const FIELDS_SHOW_WHO = new Set<string>(["mail.send", "office.mail.send"]);
 /**
  * The one sentence of what the press does, saying only what the thing below does not: a mail's From and To are in
  * its fields, so "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." reads "Goes after your 30-second
- * undo."; a send he timed says when it goes, once ("Goes Wed 8:00 AM"); an item out of date says nothing.
+ * undo."; a send he timed says when it goes, in the zone he named first and this window's after where they differ ("Goes Wed 7:04 PM Central · 8:04 PM Eastern"); an item out of date says nothing.
  */
 export function effectWords(item: Pick<HostItem, "effect" | "state" | "kind" | "scheduledFor" | "scheduledZone">): string | null {
-  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, ownZone(), item.scheduledZone)}`;
+  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, item.scheduledZone ?? ownZone(), ownZone())}`;
   if (!item.effect || item.state === "stale") return null;
   if (FIELDS_SHOW_WHO.has(item.kind)) {
     const said = /^Goes from \S+ to .+? (after .+)$/.exec(item.effect);
@@ -642,7 +702,12 @@ export function HeldDetail({
   // A failure that will not clear by itself (a file too large, a refused address) is fixed before it is tried again:
   // the fix leads (Edit where an edit can make it, else the thread that made it) and Send again steps down.
   const failedFirst = item.state === "failed" || !!refused;
-  const stuck = item.state === "failed" && !item.outcomeUnknown && !clearsByItself(item.error);
+  const editable = waiting && canEdit(item);
+  const threadable = !!item.sessionId && !!onOpenSession;
+  // The fix is the press that can change what was refused: Edit when its fields can, the thread when the refusal is
+  // about its files (the editor cannot change those), Edit as the last way in.
+  const fix = editable && (!aboutFiles(item.error) || !threadable) ? "edit" : threadable ? "thread" : null;
+  const stuck = item.state === "failed" && !item.outcomeUnknown && !clearsByItself(item.error) && fix !== null;
 
   const run = async (which: Exclude<Busy, null>, work: () => Promise<void>, fail: string) => {
     setBusy(which);
@@ -770,14 +835,13 @@ export function HeldDetail({
   };
 
   const sendOff = !waiting || !ready || busy !== null;
-  const editable = waiting && canEdit(item);
   const verbs: DetailCommands = {
       primary: () => {
         if (editing) return save();
         if (stale) return void (busy === null && again());
         if (timed) return;
-        if (stuck && editable && !editing && busy === null) return setEditing(true);
-        if (stuck && !editable && item.sessionId && onOpenSession) return onOpenSession(item.sessionId, item.environmentId);
+        if (stuck && fix === "edit" && busy === null) return setEditing(true);
+        if (stuck && fix === "thread") return onOpenSession!(item.sessionId!, item.environmentId);
         if (!sendOff) void send(item.outcomeUnknown ? "again" : "send");
       },
       edit: () => editable && !editing && busy === null && setEditing(true),
@@ -823,7 +887,7 @@ export function HeldDetail({
               <ErrorLine error={editError} />
             </>
           ) : showChanges && item.changed?.first !== undefined ? (
-            <ChangesInPlace first={item.changed.first} now={item.payload} />
+            <ChangesInPlace first={item.changed.first} now={item.payload} onReady={setViewLoaded} />
           ) : (
             <ActView item={item} env={item.environmentId} onReady={setViewLoaded} />
           )}
@@ -879,19 +943,28 @@ export function HeldDetail({
               <Button variant="secondary" size="sm" disabled={sendOff} onClick={() => void send("send")}>
                 <BusyLabel busy={busy === "send"} label={verbAgain} />
               </Button>
-              {editable ? (
+              {fix === "edit" ? (
                 <Tip label="Edit" shortcut={keyHint("mod+enter")}>
                   <Button size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
                     Edit
                   </Button>
                 </Tip>
-              ) : item.sessionId && onOpenSession ? (
-                <Tip label="Open the thread" shortcut={keyHint("mod+enter")}>
-                  <Button size="sm" onClick={() => onOpenSession(item.sessionId!, item.environmentId)}>
-                    Open the thread
-                  </Button>
-                </Tip>
-              ) : null}
+              ) : (
+                <>
+                  {editable ? (
+                    <Tip label="Edit" shortcut={shortcutFor("Work", "Edit Held Item")}>
+                      <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
+                        Edit
+                      </Button>
+                    </Tip>
+                  ) : null}
+                  <Tip label="Open the thread" shortcut={keyHint("mod+enter")}>
+                    <Button size="sm" onClick={() => onOpenSession!(item.sessionId!, item.environmentId)}>
+                      Open the thread
+                    </Button>
+                  </Tip>
+                </>
+              )}
             </>
           ) : null}
           {!stuck && editable ? (

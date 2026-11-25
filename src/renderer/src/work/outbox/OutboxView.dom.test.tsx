@@ -250,8 +250,8 @@ afterEach(() => {
   resetTestKey();
 });
 
-async function open() {
-  render(<OutboxView besideRail onClose={() => undefined} />);
+async function open(onOpenSession?: (sessionId: string, environmentId: string) => void) {
+  render(<OutboxView besideRail onClose={() => undefined} onOpenSession={onOpenSession} />);
   // the page keeps the tab it was left on; each test starts on Waiting
   fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
   await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
@@ -1162,6 +1162,15 @@ describe("the Outbox, rebuilt around how he decides", () => {
     expect(world.decides.at(-1)!.items[0]).toMatchObject({ ref: { id: "o1" }, do: "later", rev: 500 });
   });
 
+  it("a timed send leads with the zone he named it in, this window's after", async () => {
+    const { effectWords } = await import("./HeldDetail");
+    const { ownZone, scheduleLine } = await import("work-kit/mail/lib/zones");
+    const at = Date.now() + 86_400_000;
+    const words = effectWords({ kind: "mail.send", state: "scheduled", scheduledFor: at, scheduledZone: "Pacific/Auckland", effect: null } as never);
+    expect(words).toBe(`Goes ${scheduleLine(at, "Pacific/Auckland", ownZone())}`);
+    expect(words).not.toBe(`Goes ${scheduleLine(at, ownZone(), "Pacific/Auckland")}`);
+  });
+
   it("a scheduled item goes in Scheduled, says when, and its bar is Cancel send and Send now", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "scheduled", scheduledFor: Date.now() + 86_400_000, scheduledZone: "America/Chicago" })]);
     await open();
@@ -1353,10 +1362,32 @@ describe("council round 2: the detail and the list", () => {
     const changes = detail.querySelector("[data-outbox-changes]")!;
     // The body once: in the changes' place, not again under the fields.
     expect((detail.textContent!.match(/Landon/g) ?? []).length).toBe(1);
-    expect(detail.querySelector('[data-slot="act-payload"]')).toBeNull();
+    expect(detail.querySelectorAll('[data-slot="act-payload"]')).toHaveLength(1);
     const del = changes.querySelector("p del")!;
     expect(del.nextElementSibling?.tagName).toBe("INS");
     expect(del.className).toContain("me-1");
+  });
+
+  it("Show changes keeps Send on, reads in the mail's order with each address muted, and keeps its files", async () => {
+    world.items.set("box", [
+      mail("o1", "Dana Lee", "Budget", {
+        changed: { at: Date.now() - 600_000, by: "thread" },
+        payload: { id: "o1", message: { kind: "mail", from: { address: "landon@purdue.edu" }, to: [{ name: "Dana Lee", address: "dana@purdue.edu" }], subject: "Budget", text: "Hi Dana,\n\nAbout it.\n\nLandon", attachments: [{ name: "budget.xlsx" }] } },
+      }),
+    ]);
+    world.extra = { o1: { changed: { at: Date.now() - 600_000, by: "thread", first: { message: { to: [{ name: "Dana Lee", address: "dana@purdue.edu" }], subject: "Budget", text: "Hello Dana,\n\nAbout it.\n\nLandon" } } } } };
+    await open();
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    const send = () => within(detail).getAllByRole("button").find((b) => /^Send$/.test(b.textContent ?? ""))!;
+    await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false));
+    fireEvent.click(await within(detail).findByRole("button", { name: "Show changes" }));
+    const changes = detail.querySelector("[data-outbox-changes]")!;
+    expect([...changes.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["From", "To", "Subject"]);
+    const to = [...changes.querySelectorAll("dd")][1]!;
+    expect(to.textContent).toBe("Dana Lee dana@purdue.edu");
+    expect(to.querySelector(".text-muted-foreground")?.textContent).toBe("dana@purdue.edu");
+    expect(changes.textContent).toContain("budget.xlsx");
+    expect(send().hasAttribute("disabled")).toBe(false);
   });
 
   it("a failure that will repeat leads with its refusal and makes Edit the primary press, Send again stepping down", async () => {
@@ -1369,6 +1400,20 @@ describe("council round 2: the detail and the list", () => {
     const edit = within(detail).getByRole("button", { name: "Edit" });
     expect(edit.getAttribute("data-variant")).toBe("default");
     expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("secondary");
+  });
+
+  it("a refusal of its files makes Open the thread the primary press where the thread can fix it", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", sessionId: "s1", error: "Gmail refused it: the attachment is over 25 MB." })]);
+    world.items.set("mac", []);
+    const opened: string[] = [];
+    await open((id) => opened.push(id));
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    const thread = within(detail).getByRole("button", { name: "Open the thread" });
+    expect(thread.getAttribute("data-variant")).toBe("default");
+    expect(within(detail).getByRole("button", { name: "Edit" }).getAttribute("data-variant")).toBe("secondary");
+    expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("secondary");
+    fireEvent.click(thread);
+    expect(opened).toEqual(["s1"]);
   });
 
   it("a failure that may clear keeps Send again as the primary press", async () => {

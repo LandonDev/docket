@@ -411,7 +411,7 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     <OverFrame maxWidth={1100} height={640}>
       {s === "results" ? <Unsettled ms={1500} /> : s === "ticked" || s === "changed" || s === "editing" ? <Unsettled ms={900} /> : null}
       <div className="flex h-full w-full">
-        <OutboxView besideRail onClose={() => {}} />
+        <OutboxView besideRail onClose={() => {}} onOpenSession={() => {}} />
       </div>
     </OverFrame>
   );

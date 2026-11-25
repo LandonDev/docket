@@ -1083,8 +1083,11 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     rewrote this at 9:20 AM." with Show changes (`changed.first` from
     `get`; the fields that moved and the body's words out and in,
     `changesOf`, drawn in the thing's own slot in place of its view, never a
-    second copy), "<Name> wrote back at 8:12 AM, after this was made:
-    "<line>"" (`replied`, from `get`), "Goes <time>" for a timed send, and
+    second copy: the fields in the view's order, each address muted after its
+    name, the files under the body, and Send stays live while it shows),
+    "<Name> wrote back at 8:12 AM, after this was made:
+    "<line>"" (`replied`, from `get`), "Goes <time>" for a timed send (in the
+    zone he named first, this window's after where they differ), and
     a computer act's screen. Then the thing as it will arrive (the kind's
     view, "Kind views" below). Every item is read whole with `get`; only a
     LifeOS mail's Send waits on that read.
@@ -1094,9 +1097,10 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     item carries `later`) above the grant row ("Send and stop holding ›
     <grant>", only for a key that may make one). A failed item leads with
     its refusal and reads Send again; one whose failure will repeat as it
-    stands (`clearsByItself` false: too large, refused) makes the fix primary,
-    Edit where an edit can make it, else Open the thread, with Send again
-    secondary; one that may have gone keeps "Check Sent first" and his own
+    stands (`clearsByItself` false: too large, refused) makes the fix primary:
+    Open the thread when the refusal is about its files (`aboutFiles`; the
+    editor cannot change those), else Edit, else Open the thread, with Send
+    again secondary; one that may have gone keeps "Check Sent first" and his own
     Send again. An out-of-date item's bar is Discard and Ask the thread again
     (`work.outbox.askAgain`). A scheduled item's is Cancel send and Send now
     (`cancelSend`, `sendNow`; a Mail-scheduled LifeOS mail from before the

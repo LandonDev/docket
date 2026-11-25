@@ -311,10 +311,10 @@ function useRequestPress(request: HostRequest) {
   // is ticked); what the press did once answered.
   const did = new Set(request.rows.filter((r) => r.result).map((r) => r.do));
   // Each act counted as what it did: scheduled rows say Scheduled, never Sent.
-  // Once answered, the rows he left out are counted in the head too, as the phone says it ("Sent 9, 1 left out").
+  // Once answered, the rows he left out are counted in the head too, as the phone says it ("Sent 9, 1 left out"). A count keeps its word on its line.
   const leftOut = open ? 0 : rows.filter((r) => !r.result).length;
   const sum = did.size === 1 ? resultsHead(results, [...did][0]!) : (["send", "later", "discard"] as const).flatMap((d) => (did.has(d) ? [resultsHead(results.filter((_, i) => acts[i] === d), d)] : [])).filter(Boolean).join("; ");
-  const head = open ? requestName(request) : sum ? `${sum}${leftOut ? `, ${leftOut} left out` : ""}` : requestName(request);
+  const head = open ? requestName(request) : sum ? `${sum}${leftOut ? `, ${leftOut}\u00a0left out` : ""}` : requestName(request);
   // What the request asked that still waits: the press counts its ticks against it.
   const asked = request.rows.filter((r) => r.open && r.item).length;
   return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do), asked) };

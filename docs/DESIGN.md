@@ -1557,16 +1557,18 @@ Around the canvas:
   and name, "from" the thread as a link, the time), the act as a 16px title,
   one 14px sentence of what the press does that the thing below does not say
   (a mail's From and To are its fields, so its sentence is "Goes after your
-  30-second undo."; a timed send's is when it goes, once), the notes that apply
+  30-second undo."; a timed send's is when it goes, once, in the zone he named
+  first and the window's after where they differ), the notes that apply
   (one 13px muted line each behind a 14px glyph: not sent, out of date, the
   thread rewrote it with Show changes, someone wrote back),
   then the thing as it will arrive. Show changes marks what moved in the
-  thing's own slot, never a second copy of it: a field's old value muted and
+  thing's own slot, never a second copy of it, read as the view reads (its
+  order, each address muted after its name, its files) with Send still live: a field's old value muted and
   struck before the new, the body's words taken out muted and struck, 4px
   before the words put in on a light accent tint. A failed item leads with
   its refusal; when the failure will repeat as it stands (too large, refused)
-  the fix is the primary press, Edit where an edit can make it, else Open the
-  thread, and Send again steps down; a failure that may clear (a service that
+  the fix is the primary press, Open the thread for a refusal of its files
+  (the editor cannot change them), else Edit, and Send again steps down; a failure that may clear (a service that
   did not answer) keeps Send again first. A kind's view that fails is one
   quiet line, "Its details could not be read." with Retry, no bones under it.
   Rows that share an act keep what they are about before the time. The verb bar

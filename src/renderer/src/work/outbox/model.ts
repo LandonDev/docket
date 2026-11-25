@@ -153,8 +153,8 @@ export function pastOf(verb: string, kind?: string): string {
 // ── the payload, exactly as it will go ───────────────────────────────────
 
 type Address = { name?: string; address: string };
-const isAddress = (v: unknown): v is Address => !!v && typeof v === "object" && typeof (v as Address).address === "string";
-const isAddressList = (v: unknown): v is Address[] => Array.isArray(v) && v.length > 0 && v.every(isAddress);
+export const isAddress = (v: unknown): v is Address => !!v && typeof v === "object" && typeof (v as Address).address === "string";
+export const isAddressList = (v: unknown): v is Address[] => Array.isArray(v) && v.length > 0 && v.every(isAddress);
 export const addressWords = (list: readonly Address[]): string => list.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ");
 
 /** Keys that are the host's bookkeeping, never what goes: `host` is the id of the host that holds an Outlook act, which the detail's place line already names. */
