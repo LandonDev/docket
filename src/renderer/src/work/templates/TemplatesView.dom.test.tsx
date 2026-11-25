@@ -131,9 +131,14 @@ describe("the Templates view", () => {
     expect(line.textContent).toContain("The box did not answer");
     expect(screen.queryByText("No templates")).toBeNull();
     expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("disabled")).toBe(true);
-    host.answer = () => list;
+    // Council round 12 (the walk): the line went at once and the shelf drew bones. It stays, Retry spinning, until the answer.
+    let answer: () => void = () => {};
+    host.answer = () => new Promise((r) => (answer = () => r(list)));
     fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "Retry" }));
     await settle();
+    expect(line.isConnected).toBe(true);
+    expect(within(line as HTMLElement).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
     expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("disabled")).toBe(false);
   });
 

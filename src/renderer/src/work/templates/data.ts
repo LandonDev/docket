@@ -27,7 +27,7 @@ export function loadOf<T>(read: { value: T | undefined; error: string | null }):
   return read.error !== null ? { status: "error", error: read.error } : { status: "loading" };
 }
 
-export function useTemplates(env: string, workspaceId: string): [Load<TemplatesList>, () => void] {
+export function useTemplates(env: string, workspaceId: string): [Load<TemplatesList>, () => Promise<void>] {
   const link = useMemo(() => {
     try {
       return registry.linkOf(env);

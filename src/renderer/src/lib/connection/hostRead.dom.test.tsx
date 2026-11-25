@@ -60,8 +60,25 @@ describe("useHostRead", () => {
     const { result } = renderHook(() => useHostRead(link, read));
     await act(async () => {});
     expect(result.current.error).toBe("refused");
-    await act(async () => result.current.retry());
+    await act(async () => void result.current.retry());
     expect(read).toHaveBeenCalledTimes(2);
+    expect(result.current).toMatchObject({ value: "ok", error: null });
+  });
+
+  /** Council round 12 (the walk): Retry cleared the failure at once, so its page dropped to bones before the answer. */
+  it("keeps the failure while Retry's read is out, and settles Retry's promise once it answers", async () => {
+    const { link } = fakeLink(true);
+    let answer: (v: string) => void = () => {};
+    const read = vi.fn().mockRejectedValueOnce(new Error("refused")).mockImplementationOnce(() => new Promise<string>((r) => (answer = r)));
+    const { result } = renderHook(() => useHostRead(link, read));
+    await act(async () => {});
+    let settled = false;
+    await act(async () => void result.current.retry().then(() => (settled = true)));
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe("refused");
+    expect(settled).toBe(false);
+    await act(async () => answer("ok"));
+    expect(settled).toBe(true);
     expect(result.current).toMatchObject({ value: "ok", error: null });
   });
 
@@ -79,7 +96,7 @@ describe("useHostRead", () => {
     const read = vi.fn().mockResolvedValueOnce("a").mockRejectedValueOnce(new Error("busy")).mockReturnValue(new Promise(() => {}));
     const { result, rerender } = renderHook(({ k }) => useHostRead(link, read, k), { initialProps: { k: "one" } });
     await act(async () => {});
-    await act(async () => result.current.retry());
+    await act(async () => void result.current.retry());
     expect(result.current).toMatchObject({ value: "a", error: "busy" });
     rerender({ k: "two" });
     expect(result.current).toMatchObject({ value: undefined, error: null });
@@ -100,7 +117,7 @@ describe("useHostRead", () => {
     const read = vi.fn(async () => 1);
     const { result } = renderHook(() => useHostRead(link, read));
     await act(async () => {});
-    for (let i = 0; i < 3; i++) await act(async () => result.current.retry());
+    for (let i = 0; i < 3; i++) await act(async () => void result.current.retry());
     // The hook's own onOpen listener for a missing value, and one waiter for the newest read.
     expect(waiters()).toBe(2);
     await act(async () => open());

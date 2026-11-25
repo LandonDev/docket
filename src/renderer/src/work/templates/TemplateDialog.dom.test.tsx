@@ -212,9 +212,14 @@ describe("New from a template", () => {
     await settle();
     expect(screen.getByText("Templates did not load")).toBeTruthy();
     expect(screen.getByText("Work is off on this host")).toBeTruthy();
-    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO], hidden: 0 } : null);
+    // Council round 12 (the walk): Retry spins in place, the failure kept, until the shelf answers; never bones first.
+    let answer: () => void = () => {};
+    host.answer = (method) => (method === "work.templates.list" ? new Promise((r) => (answer = () => r({ templates: [MEMO], hidden: 0 }))) : null);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
+    expect(screen.getByText("Templates did not load")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
   });
 

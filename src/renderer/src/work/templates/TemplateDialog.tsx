@@ -113,6 +113,8 @@ export function TemplateSteps({
 }) {
   const close = useModalClose();
   const [load, retry] = useTemplates(env, workspaceId);
+  // His Retry spins in place, the failure kept, until the shelf answers.
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Made files whose open failed, by template: kept across Back and another template, so no retry is lost
   // and a press again opens the file, never a second one.
@@ -224,7 +226,18 @@ export function TemplateSteps({
         {load.status === "loading" ? (
           <ShelfSkeleton layout="dialog" />
         ) : load.status === "error" ? (
-          <EmptyState title="Templates did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />
+          <EmptyState
+            title="Templates did not load"
+            line={load.error}
+            action={{
+              label: "Retry",
+              busy: retrying,
+              onClick: () => {
+                setRetrying(true);
+                void retry().finally(() => setRetrying(false));
+              },
+            }}
+          />
         ) : groups.length === 0 ? (
           // A shelf he narrowed says so and offers the way back, as the page does.
           <EmptyState

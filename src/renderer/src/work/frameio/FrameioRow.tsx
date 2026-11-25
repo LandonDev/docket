@@ -47,16 +47,26 @@ export function FrameioRows({ link }: { link: Link | null | undefined }) {
 type Request = <T = FrameioStatus>(method: string, params: unknown) => Promise<T>;
 
 /** The rows as the host's answer leaves them. */
-export function FrameioRowsView({ status, error, onRetry, request }: { status: FrameioStatus | undefined; error: string | null; onRetry: () => void; request: Request }) {
+export function FrameioRowsView({ status, error, onRetry, request }: { status: FrameioStatus | undefined; error: string | null; onRetry: () => void | Promise<void>; request: Request }) {
   const [dialog, setDialog] = useState<"signIn" | "address" | null>(null);
   const [pending, setPending] = useState(false);
+  // His Retry spins in place, the failure kept, until the read answers.
+  const [retrying, setRetrying] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   if (!status) {
     if (!error) return <PageRowsSkeleton rows={1} description control="button" />;
     return (
       <PageRow title="Frame.io" error={error}>
-        <Button variant="ghost" size="sm" onClick={onRetry}>
-          Retry
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+          }}
+        >
+          <BusyLabel busy={retrying} label="Retry" />
         </Button>
       </PageRow>
     );

@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FrameioStatus } from "@shared/contract-work-frameio";
-import { FrameioRowsView } from "./FrameioRow";
+import { FrameioRows, FrameioRowsView } from "./FrameioRow";
+import type { Link } from "../../lib/connection/link";
 
 const opened = vi.hoisted(() => [] as string[]);
 vi.mock("../../lib/native", () => ({ openUrl: async (url: string) => void opened.push(url) }));
@@ -20,6 +21,23 @@ describe("Frame.io in Settings, Work", () => {
     rerender(<FrameioRowsView status={undefined} error="The host did not answer" onRetry={retry} request={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  /** Council round 12 (the walk): Retry cleared the refusal at once, so the row dropped to its bones before the answer. */
+  it("keeps the refusal with Retry spinning until the host answers, through the page's own read", async () => {
+    let answer: (s: FrameioStatus) => void = () => {};
+    const request = vi.fn().mockRejectedValueOnce(new Error("The host did not answer")).mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const link = { connected: true, request, onOpen: () => () => {}, onPush: () => () => {} } as unknown as Link;
+    render(<FrameioRows link={link} />);
+    const retry = (await screen.findByRole("button", { name: "Retry" })) as HTMLButtonElement;
+    fireEvent.click(retry);
+    await act(async () => new Promise((settle) => setTimeout(settle, 10)));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    await act(async () => answer(OUT));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("signs in through Adobe, then takes the pasted address", async () => {
