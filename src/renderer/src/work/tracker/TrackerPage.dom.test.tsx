@@ -187,4 +187,16 @@ describe("the all-clear", () => {
     render(<TrackerBody jobs={[]} loading={false} errors={[]} waitingOnly onRetry={() => {}} now={NOW} />);
     expect(screen.getByText("Nothing waits on you")).toBeTruthy();
   });
+
+  it("draws bones, not a blank page, while a pending host leaves the list empty", () => {
+    vi.useFakeTimers();
+    try {
+      render(<TrackerBody jobs={[]} loading={false} errors={[]} pending waitingOnly onRetry={() => {}} now={NOW} />);
+      act(() => void vi.advanceTimersByTime(200));
+      expect(document.querySelector("[aria-busy=true]")!.querySelectorAll(".pk-track-row").length).toBeGreaterThan(0);
+      expect(screen.queryByText("Nothing waits on you")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -105,7 +105,8 @@ export function TrackerBody({ jobs, loading, errors, pending = false, waitingOnl
             {words}
           </p>
         ))}
-        {loading ? (
+        {/* Bones while it reads, and while a pending host leaves the page empty: it says nothing until it knows. */}
+        {loading || (pending && shown.length === 0) ? (
           <>
             <ProjectFactsHeader threads />
             <ProjectFactsBones rows={6} />

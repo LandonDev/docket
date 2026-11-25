@@ -133,14 +133,14 @@ export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterabl
   const by = new Map(kept.map((a) => [a.environmentId, a]));
   return [...hosts].map((environmentId): HostAnswer => {
     const transport = transportOf(environmentId);
-    if (transport !== "open") return { environmentId, overview: null, error: closedWords(hostIn(environmentId), transport) };
-    return by.get(environmentId) ?? { environmentId, overview: null, error: null };
+    const old = by.get(environmentId);
+    if (transport !== "open") {
+      const error = closedWords(hostIn(environmentId), transport);
+      // The same line as before is the same answer: a roster that did not move is not new.
+      return old && !old.overview && old.error === error ? old : { environmentId, overview: null, error };
+    }
+    return old ?? { environmentId, overview: null, error: null };
   });
-}
-
-/** The answers with each host whose link is no longer open saying its line at once; the other hosts' groups stand. Pure. */
-export function withClosed(answers: readonly HostAnswer[], closed: ReadonlyMap<string, string>): HostAnswer[] {
-  return answers.map((a) => (closed.has(a.environmentId) ? { environmentId: a.environmentId, overview: null, error: closed.get(a.environmentId)! } : a));
 }
 
 /** Every host with Work on, asked once on show, again on focus, each minute while shown, and when a host's link opens or drops. */
@@ -153,9 +153,11 @@ export function useTracker(): TrackerView {
     // Only the newest read lands: an older one that answers late never replaces a newer answer.
     // On an object, not a let: the React Compiler does not lower `++` on a variable a closure holds.
     const reads = { latest: 0 };
+    // Only the mounted page publishes: an answer that lands after its visit ended never overwrites a newer one.
     const show = (got: HostAnswer[]): void => {
+      if (!alive) return;
       kept = got;
-      if (alive) setAnswers(got);
+      setAnswers(got);
     };
     const read = (): void => {
       reads.latest += 1;
@@ -165,21 +167,16 @@ export function useTracker(): TrackerView {
       });
     };
     read();
-    // A Work host whose link opens (the window started before the box's link was up), or a linked host whose Work
-    // comes on, is asked then, not a minute later. One whose link drops says so at once, so no all-clear stands on
-    // an answer it can no longer vouch for, and the hosts are asked again behind it.
-    const open = (): Set<string> => new Set([...workSwitch.hosts()].filter((id) => registry.statusOf(id).transport === "open"));
-    let wasOpen = open();
+    // The roster follows the hosts as they move while the page is open, by the rule a visit opens on
+    // (`reconcileKept`): a host whose link drops says so at once, a host that joins Work or whose link opens is
+    // pending (so no all-clear stands without it), a host that leaves Work goes; then every host is asked again.
     const moved = (): void => {
-      const now = open();
-      const opened = [...now].some((id) => !wasOpen.has(id));
-      const closed = new Map([...wasOpen].filter((id) => !now.has(id) && workSwitch.hosts().has(id)).map((id) => [id, closedWords(hostIn(id), registry.statusOf(id).transport)]));
-      wasOpen = now;
-      if (closed.size && kept) {
-        reads.latest += 1;
-        show(withClosed(kept, closed));
-      }
-      if (opened || closed.size) read();
+      if (!kept) return;
+      const roster = reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport)!;
+      if (roster.length === kept.length && roster.every((a, i) => a === kept![i])) return;
+      reads.latest += 1;
+      show(roster);
+      read();
     };
     const offs = [registry.subscribe(moved), workSwitch.subscribe(moved)];
     const timer = setInterval(read, TRACKER_AGAIN_MS);

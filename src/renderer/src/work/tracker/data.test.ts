@@ -109,6 +109,33 @@ describe("asking the hosts", () => {
     resetTracker();
   });
 
+  it("a host that joins Work while the page is open holds the all-clear as pending until it answers; one that leaves goes", async () => {
+    rigged();
+    resetTracker();
+    vi.spyOn(registry, "statusOf").mockImplementation(() => ({ transport: "open" }) as never);
+    let hosts = new Set(["box"]);
+    vi.spyOn(workSwitch, "hosts").mockImplementation(() => hosts);
+    let hear = (): void => {};
+    vi.spyOn(workSwitch, "subscribe").mockImplementation((fn) => ((hear = fn as () => void), () => {}));
+    const pending: ((v: unknown) => void)[] = [];
+    vi.spyOn(registry, "linkOf").mockImplementation((env) => ({ request: () => (env === "box" ? Promise.resolve({ jobs: [] }) : new Promise((resolve) => void pending.push(resolve))) }) as never);
+    const view = renderHook(() => useTracker());
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    expect(view.result.current.pending).toBe(false);
+    hosts = new Set(["box", "mac"]);
+    act(() => hear());
+    // At once: the Mac is pending, so no all-clear stands.
+    expect(view.result.current.pending).toBe(true);
+    await act(async () => pending.shift()!({ jobs: [job("m-ref", "ref", [project("games")])] }));
+    await waitFor(() => expect(view.result.current.jobs.map((j) => j.sector)).toEqual(["ref"]));
+    expect(view.result.current.pending).toBe(false);
+    hosts = new Set(["box"]);
+    act(() => hear());
+    expect(view.result.current.jobs).toEqual([]);
+    view.unmount();
+    resetTracker();
+  });
+
   it("only the newest read lands: an older read that answers late never replaces it", async () => {
     rigged();
     resetTracker();
