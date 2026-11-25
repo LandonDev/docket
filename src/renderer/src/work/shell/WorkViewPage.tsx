@@ -16,6 +16,7 @@ import { isSilence, KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, se
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
 import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
+import { retryLink } from "./linkRetry";
 import { useHostLive } from "./lifeosLive";
 import { DownEmpty } from "./DownEmpty";
 // The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
@@ -130,7 +131,9 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const signPress = useDownPress(pairing ? "pairing" : refused ? "refused" : "signed-out", environmentId);
   // A host never heard from (asleep, offline): its name and Retry, never bones that pulse for ever.
   const link = useEnvironmentStatus(environmentId);
-  const away = gated && state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
+  // His Retry on it keeps the line, spinning, while the link tries (`retryLink`), never the view's bones under it.
+  const [linkRetrying, setLinkRetrying] = useState(false);
+  const away = gated && state === null && ((link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting") || linkRetrying);
   const [signingIn, setSigningIn] = useState(false);
   const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header, as does the
@@ -210,7 +213,17 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       ) : null}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {away ? (
-          <EmptyState title={`${host} is not connected`} action={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />
+          <EmptyState
+            title={`${host} is not connected`}
+            action={{
+              label: "Retry",
+              busy: linkRetrying,
+              onClick: () => {
+                setLinkRetrying(true);
+                void retryLink(environmentId).finally(() => setLinkRetrying(false));
+              },
+            }}
+          />
         ) : off ? (
           // Open Settings, where the switch is, for a key that may turn Work on there; else who can (`useDownPress`).
           <EmptyState

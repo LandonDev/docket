@@ -5,6 +5,7 @@ import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { useDownPress } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 import { HostLine } from "../shell/DownLine";
+import { retryLink } from "../shell/linkRetry";
 import { lifeosHostName, refreshLifeos, reopenLifeos, sessionFailure, useLifeosStatus, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 
 /**
@@ -28,7 +29,9 @@ export function LifeosLine({ session, waiting, onWorkPage = false }: { session: 
   const unanswered = useLifeosUnanswered(environmentId);
   const [busy, setBusy] = useState(false);
   const state = status?.lifeos.state ?? null;
-  const away = state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
+  // His Retry on "not connected" keeps the line, spinning, while the link tries (`retryLink`), never bones under it.
+  const [linkRetrying, setLinkRetrying] = useState(false);
+  const away = state === null && ((link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting") || linkRetrying);
   const name = registry.environment(environmentId)?.name ?? "This host";
   const host = name.charAt(0).toUpperCase() + name.slice(1);
   // The computer named mid-line as the views name it ("Work is off on the box"), "this host" for one the registry does not know.
@@ -46,7 +49,20 @@ export function LifeosLine({ session, waiting, onWorkPage = false }: { session: 
       .catch(() => {})
       .finally(() => setBusy(false));
   };
-  if (away) return <Line words={`${host} is not connected`} press={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />;
+  if (away)
+    return (
+      <Line
+        words={`${host} is not connected`}
+        press={{
+          label: "Retry",
+          busy: linkRetrying,
+          onClick: () => {
+            setLinkRetrying(true);
+            void retryLink(environmentId).finally(() => setLinkRetrying(false));
+          },
+        }}
+      />
+    );
   // The link is open but the status ask went unanswered: nothing asks again until the link reopens, so no bones.
   if (state === null && unanswered) return <Failed words={`${host} did not answer`} busy={busy} onRetry={retryWith(() => refreshLifeos(environmentId))} />;
   // Work off: on Settings → Work the switch is on the page, and says who can change it, so the line has neither press
@@ -82,7 +98,7 @@ function Failed({ words, busy, onRetry }: { words: string; busy: boolean; onRetr
   );
 }
 
-function Line({ words, note, press }: { words: string; note?: string | null; press?: { label: string; onClick: () => void } | undefined }) {
+function Line({ words, note, press }: { words: string; note?: string | null; press?: { label: string; onClick: () => void; busy?: boolean } | undefined }) {
   return (
     <div data-slot="lifeos-line" className="flex items-start gap-3 py-3">
       <PageEmpty className="min-w-0 flex-1 py-0">
@@ -91,8 +107,8 @@ function Line({ words, note, press }: { words: string; note?: string | null; pre
       </PageEmpty>
       {press ? (
         <span className="-my-1.5 flex shrink-0">
-          <Button variant="ghost" size="sm" onClick={press.onClick}>
-            {press.label}
+          <Button variant="ghost" size="sm" disabled={press.busy} onClick={press.onClick}>
+            <BusyLabel busy={!!press.busy} label={press.label} />
           </Button>
         </span>
       ) : null}

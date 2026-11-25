@@ -22,7 +22,7 @@ vi.mock("../shell/lifeos", async (real) => ({
   refreshLifeos: lifeos.refresh,
 }));
 const link = vi.hoisted(() => ({ transport: "open" }));
-vi.mock("../../lib/connection", () => ({ useEnvironmentStatus: () => link, registry: { environment: () => ({ name: "the box" }), retry: vi.fn() } }));
+vi.mock("../../lib/connection", () => ({ useEnvironmentStatus: () => link, registry: { environment: () => ({ name: "the box" }), retry: vi.fn(), statusOf: () => link, subscribe: () => () => {} } }));
 
 const requestSettings = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/monaco/debugTab", () => ({ requestSettings }));
@@ -102,7 +102,10 @@ describe("Mail's settings on the Work settings page", () => {
     link.transport = "offline";
     render(<Section environmentId="local" />);
     expect(screen.getByText("The box is not connected")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // Council round 12 (the walk): Retry spins in place while the link tries; the line stays.
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("The box is not connected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
   });
 
   /** Sol round 3 P1: a first status ask that timed out while the link stayed open is said, with Retry, never bones for good. */

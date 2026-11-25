@@ -218,6 +218,9 @@ describe("what stands between a view and LifeOS", () => {
     expect(screen.getByText(/ is not connected$/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledWith("env_box");
+    // Council round 12 (the walk): the line stays while the link tries, its Retry spinning, never the view's bones.
+    expect(screen.getByText(/ is not connected$/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
   });
 });
 

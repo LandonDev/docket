@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { PAGE_SCROLLER, PAGE_WIDTH } from "../components/pageLayout";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
@@ -299,7 +299,7 @@ export function LoadingLine({ label }: { label: string }) {
 
 /** The one empty state of a panel, pane or page: a title, at most one line
  *  and one action. A picker's "no match" is a muted row, never this. */
-export function EmptyState({ title, line, action }: { title: string; line?: string; action?: { label: string; onClick: () => void } }) {
+export function EmptyState({ title, line, action }: { title: string; line?: string; action?: { label: string; onClick: () => void; /** the press is out: it spins in place, held */ busy?: boolean } }) {
   return (
     <Empty>
       <EmptyHeader>
@@ -307,8 +307,9 @@ export function EmptyState({ title, line, action }: { title: string; line?: stri
         {line ? <EmptyDescription>{line}</EmptyDescription> : null}
       </EmptyHeader>
       {action ? (
-        <Button size="sm" variant="secondary" onClick={action.onClick}>
-          {action.label}
+        <Button size="sm" variant="secondary" disabled={action.busy} onClick={action.onClick}>
+          {/* Only a press that can be out draws the busy label: every other one is the plain label it always was. */}
+          {action.busy === undefined ? action.label : <BusyLabel busy={action.busy} label={action.label} />}
         </Button>
       ) : null}
     </Empty>
