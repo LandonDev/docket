@@ -172,6 +172,8 @@ export class SheetSync {
   state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, saving: false, savedAt: null, reloading: false, stopped: null, current: 0, tick: 0, loading: null };
   /** the op the grid stands at */
   rev = 0;
+  /** a shared .csv's cache the grid drew (its load's `gen`): its edits and catch-ups name it, so the host answers for this draw */
+  private gen: string | undefined;
   private readonly mine = new Set<number>();
   private queue: SheetMutationJson[] = [];
   private chain: Promise<void> = Promise.resolve();
@@ -213,7 +215,7 @@ export class SheetSync {
    * The book as it was read, at the revision it stands at, never handed to a grid: a grid changes the workbook it draws
    * in place, so each one draws a copy (`drawn`), and a tab shown again draws this one again without reading it.
    */
-  private kept: { book: Book; rev: number } | null = null;
+  private kept: { book: Book; rev: number; gen?: string } | null = null;
   /** work under way in `run` */
   private busy = 0;
   /** its item closed while a body still held it: let go at the release */
@@ -319,14 +321,15 @@ export class SheetSync {
     // A newer load begun meanwhile (the tab shown again) has its own book: this one would replace it and drop the edits
     // made on it (sol S6).
     if (!this.isShown() || mine !== this.loads) return;
-    this.kept = { book, rev: head.rev };
-    this.reset(head.rev);
+    this.kept = { book, rev: head.rev, ...(head.gen ? { gen: head.gen } : {}) };
+    this.reset(head.rev, head.gen);
     this.set({ book: this.drawn() });
   }
 
   /** What a grid drawn afresh starts from: the revision of the book it draws, and nothing of the last grid's. */
-  private reset(rev: number): void {
+  private reset(rev: number, gen?: string): void {
     this.rev = rev;
+    this.gen = gen;
     this.mine.clear();
     this.dropQueue();
     this.detach();
@@ -353,7 +356,7 @@ export class SheetSync {
       // The kept book is the newest now: an open still out from before (a Retry he pressed and left) lands nothing
       // over it (sol S6); the grid's catch-up from the book's revision brings it current.
       ++this.loads;
-      this.reset(this.kept.rev);
+      this.reset(this.kept.rev, this.kept.gen);
       this.owed = false;
       this.behind = true;
       this.set({ book: this.drawn() });
@@ -736,7 +739,7 @@ export class SheetSync {
         // A chart or picture list is the tab's as the grid holds it at the send: one queued before a conflict's catch-up
         // goes as the grid now has it, under the names the file gave its objects.
         const sent = batch.map((m) => (isObjectList(m) ? this.fileIds.out(this.fresh(m)) : m));
-        const answer = await this.host.edit(this.rev, sent);
+        const answer = await this.host.edit(this.rev, sent, this.gen);
         if (!answer.conflict) {
           this.mine.add(answer.rev);
           // The receipt is not the grid's revision: the grid stands at it only when nothing landed between, else it
@@ -827,7 +830,7 @@ export class SheetSync {
       return false;
     }
     this.behind = false;
-    const answer = await this.host.since(this.rev);
+    const answer = await this.host.since(this.rev, this.gen);
     if ("reload" in answer) {
       // A cell still open in the editor is ended first, keeping what he typed, against the book it was typed on: it goes
       // with what waits (or is named with it below). The workbook is not yet locked, which would refuse the end.
@@ -842,6 +845,9 @@ export class SheetSync {
         if (refused) {
           // After a conflict, what waits was made on the same sheet the refused batch was: none of it is sent.
           const lost = [...refused, ...this.dropQueue()];
+          // His cells are set aside as a draft before the book is read again under them: each where he put it, over the
+          // revision and cache it was made on, which the file no longer is, so the next open offers them to copy.
+          if (lost.length) this.journal?.setAside(`${this.rev}${this.gen ? `@${this.gen}` : ""} refused`, { kind: "sheet", mutations: lost });
           this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name), n: (this.state.stopped?.n ?? 0) + 1 } });
           this.drop("the file changed before it was saved");
         } else {

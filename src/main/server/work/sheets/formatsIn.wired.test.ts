@@ -335,6 +335,30 @@ describe('a .csv in a folder others can open takes an edit, and the file holds i
     expect(readFileSync(csv, 'utf8')).toBe(`name,code\n${SECRET},x\n`)
   })
 
+  it('two windows on one item each answer for their own draw: a row inserted outside, one window reloaded, the other\'s stale edit refused', async () => {
+    const csv = join(library, 'List.csv')
+    writeFileSync(csv, 'name,code\nAda,1\nBo,2\n')
+    const itemId = open(csv)
+    const load = async () => {
+      const view = await call<SheetView>('work.sheets.open', { itemId })
+      return call<{ rev: number; gen?: string }>('work.sheets.load', { itemId, rev: view.rev, offset: 0, length: 4 * 1024 * 1024 })
+    }
+    const first = await load()
+    expect(first.gen).toMatch(/^[0-9a-f]{16}$/)
+    // A row inserted outside TempCode: the file is a new cache, whose revisions start again.
+    writeFileSync(csv, 'name,code\nNew,0\nAda,1\nBo,2\n')
+    const second = await load()
+    expect(second.gen).not.toBe(first.gen)
+    expect(second.rev).toBe(first.rev)
+    // The first window still draws the old cache: its edit of Bo's row would land on Ada's in the new one.
+    expect(await call('work.sheets.edit', { itemId, baseRev: first.rev, mutations: [typed('sheet1', 2, 1, 'mine')], gen: first.gen })).toMatchObject({ conflict: true })
+    expect(await call('work.sheets.since', { itemId, rev: first.rev, gen: first.gen })).toMatchObject({ reload: true })
+    expect(readFileSync(csv, 'utf8')).toBe('name,code\nNew,0\nAda,1\nBo,2\n')
+    // The second window's edit, made on what it drew, lands.
+    expect(await call('work.sheets.edit', { itemId, baseRev: second.rev, mutations: [typed('sheet1', 3, 1, 'mine')], gen: second.gen })).toEqual({ rev: second.rev + 1 })
+    expect(readFileSync(csv, 'utf8')).toBe('name,code\nNew,0\nAda,1\nBo,mine\n')
+  })
+
   it('a co-author\'s newer file is never written over, and one a save would damage opens to read', async () => {
     const csv = join(library, 'List.csv')
     writeFileSync(csv, 'name,code\nAda,1\n')

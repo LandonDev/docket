@@ -46,7 +46,8 @@ export type HostAsk =
 
 interface Answers {
   /** `unit` is the workbook's id in every grid of it and `sheets` its tabs in order: what a mutation made elsewhere names */
-  open: { title: string; rev: number; shared: boolean; suggestions: SheetSuggestion[]; missing?: boolean; unit: string; sheets: { id: string; name: string }[]; rules: RulesHeld }
+  /** `mark`: a .tcsheet's archive at `rev` as the service holds it (backends.ts `archiveMarkOf`); absent for any other sheet */
+  open: { title: string; rev: number; shared: boolean; suggestions: SheetSuggestion[]; missing?: boolean; unit: string; sheets: { id: string; name: string }[]; rules: RulesHeld; mark?: string | null }
   /** a frame of the workbook as Univer's JSON at `rev`, base64 */
   snapshot: { rev: number; data: string; size: number }
   since: { rev: number; ops: { rev: number; by: string; mutations: SheetMutationJson[] }[] } | { rev: number; reload: true }

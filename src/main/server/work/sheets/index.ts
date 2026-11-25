@@ -73,16 +73,22 @@ export async function announce(s: Sheets, item: CanvasItem, withView = true): Pr
 }
 
 /**
- * The cache of a shared .csv each item's grid drew (its load). A co-author's change makes a new cache, which also starts
- * at revision 0: an edit or a catch-up made on the cache drawn, once the file is another, is answered as one made on
+ * The cache of a shared .csv each grid drew (its load). A co-author's change makes a new cache, which also starts at
+ * revision 0: an edit or a catch-up made on the cache drawn, once the file is another, is answered as one made on
  * another sheet, so the grid reads the file again and the edit is said, never laid at its old address in the new cache.
+ * A load answers the cache's generation (`gen`), and a grid's edit and catch-up carry it back: two windows on one item
+ * each answer for their own draw. A caller that names none (an older window, the phone) is held to the item's last draw.
  */
 const drawnCsv = new Map<string, string>()
 const sharedCsvOf = (ctx: WorkCtx, held: Held): string | null => (held.at === 'service' && held.csv && 'tcsheet' in held.ref && isSharedCsvSheet(ctx.dataDir, held.ref) ? held.ref.tcsheet : null)
-function csvMoved(ctx: WorkCtx, item: CanvasItem, held: Held): boolean {
+/** A cache's generation as a window holds it: a short hash, never its place on disk. */
+export const csvGen = (cache: string): string => createHash('sha256').update(cache).digest('hex').slice(0, 16)
+function csvMoved(ctx: WorkCtx, item: CanvasItem, held: Held, gen?: string): boolean {
   const now = sharedCsvOf(ctx, held)
+  if (now === null) return false
+  if (gen !== undefined) return gen !== csvGen(now)
   const drawn = drawnCsv.get(item.id)
-  return now !== null && drawn !== undefined && drawn !== now
+  return drawn !== undefined && drawn !== now
 }
 
 async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number; ids?: ObjectIds } | { conflict: true; rev: number }> {
@@ -180,7 +186,7 @@ export const sheets: WorkModule = {
           const rev = held.at === 'excel' ? (await import('../office/grid')).revOf(held.ref) : (await import('../google/grid')).revOf(held.ref)
           return handled(rev === req.params.rev ? { rev, ops: [] } : { rev, reload: true as const })
         }
-        if (held.at === 'service' && csvMoved(ctx, item!, held)) return handled({ rev: (await host(ctx, 'open', { sheet: held.ref })).rev, reload: true as const })
+        if (held.at === 'service' && csvMoved(ctx, item!, held, req.params.gen)) return handled({ rev: (await host(ctx, 'open', { sheet: held.ref })).rev, reload: true as const })
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
       }
       case 'work.sheets.presence': {
@@ -194,7 +200,7 @@ export const sheets: WorkModule = {
         await approves(s, item!, by)
         const csvHeld = heldOf(item!, ctx.dataDir)
         // (made on the cache the grid drew, of a .csv that moved on since: answered as a conflict, never laid in the new cache)
-        if (csvMoved(ctx, item!, csvHeld)) return handled({ conflict: true as const, rev: (await host(ctx, 'open', { sheet: (csvHeld as Extract<Held, { at: 'service' }>).ref })).rev })
+        if (csvMoved(ctx, item!, csvHeld, req.params.gen)) return handled({ conflict: true as const, rev: (await host(ctx, 'open', { sheet: (csvHeld as Extract<Held, { at: 'service' }>).ref })).rev })
         const got = await edit(s, item!, req.params.baseRev, req.params.mutations, by)
         if (!('conflict' in got)) await announce(s, item!, false)
         return handled(got)
@@ -501,7 +507,7 @@ function free(path: string): string {
 }
 
 /** One piece of the workbook's bytes as `rev` stands (`work.sheets.load`, and the first piece `work.sheets.open {first}` carries). */
-async function loadPiece(ctx: WorkCtx, item: CanvasItem, rev: number, offset: number, length: number): Promise<{ data: string; size: number; rev: number; format: 'xlsx' | 'snapshot' }> {
+async function loadPiece(ctx: WorkCtx, item: CanvasItem, rev: number, offset: number, length: number): Promise<{ data: string; size: number; rev: number; format: 'xlsx' | 'snapshot'; gen?: string }> {
   const s = await sheetsOf(ctx)
   const held = heldOf(item, ctx.dataDir)
   if (held.at === 'package') return { ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const }
@@ -510,8 +516,9 @@ async function loadPiece(ctx: WorkCtx, item: CanvasItem, rev: number, offset: nu
     return { data: all.subarray(offset, offset + length).toString('base64'), size: all.length, rev, format: 'snapshot' as const }
   }
   const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
-  if (sharedCsvOf(ctx, held)) drawnCsv.set(item.id, sharedCsvOf(ctx, held)!)
-  return { data: got.data, size: got.size, rev, format: 'snapshot' as const }
+  const cache = sharedCsvOf(ctx, held)
+  if (cache) drawnCsv.set(item.id, cache)
+  return { data: got.data, size: got.size, rev, format: 'snapshot' as const, ...(cache ? { gen: csvGen(cache) } : {}) }
 }
 
 /** The workbook a service-held sheet stands at now (or at `at`), read in frames. */

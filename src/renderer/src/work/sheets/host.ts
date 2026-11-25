@@ -30,6 +30,8 @@ export interface LoadAnswer {
   size: number;
   rev: number;
   format: "xlsx" | "snapshot";
+  /** a shared .csv's cache as drawn: sent back with `since` and `edit` */
+  gen?: string;
 }
 export type ReviewWhich = { ids: string[] } | { changeSet: string } | "all";
 export interface SheetPushed {
@@ -45,9 +47,10 @@ export interface SheetHost {
   /** `first`: the book's first piece comes with the view (`work.sheets.open {first: true}`), where the host can read it. */
   open(first?: boolean): Promise<SheetView & { first?: LoadAnswer }>;
   load(rev: number, offset: number, length: number): Promise<LoadAnswer>;
-  since(rev: number): Promise<SinceAnswer>;
-  /** `ids`: the charts and pictures the save wrote that the file now names otherwise */
-  edit(baseRev: number, mutations: SheetMutationJson[]): Promise<{ rev: number; conflict?: boolean; ids?: ObjectIds }>;
+  /** `gen`: the cache the grid drew, where its load named one */
+  since(rev: number, gen?: string): Promise<SinceAnswer>;
+  /** `ids`: the charts and pictures the save wrote that the file now names otherwise; `gen` as for `since` */
+  edit(baseRev: number, mutations: SheetMutationJson[], gen?: string): Promise<{ rev: number; conflict?: boolean; ids?: ObjectIds }>;
   review(which: ReviewWhich, verdict: "accept" | "reject"): Promise<SheetView>;
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
@@ -73,8 +76,8 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
   return {
     open: (first) => call("work.sheets.open", first ? { first: true } : {}),
     load: (rev, offset, length) => call("work.sheets.load", { rev, offset, length }),
-    since: (rev) => call("work.sheets.since", { rev }),
-    edit: (baseRev, mutations) => call("work.sheets.edit", { baseRev, mutations }),
+    since: (rev, gen) => call("work.sheets.since", { rev, ...(gen ? { gen } : {}) }),
+    edit: (baseRev, mutations, gen) => call("work.sheets.edit", { baseRev, mutations, ...(gen ? { gen } : {}) }),
     review: (which, verdict) => call("work.sheets.review", { which, verdict }),
     mode: (mode) => call("work.sheets.mode", { mode }),
     undo: (writeId) => call("work.sheets.undo", { writeId }),

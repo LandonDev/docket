@@ -2428,7 +2428,9 @@ over a file that changed there.
   keep-both name, `copy: true`, never over the newer file) and Discard. The other kinds journal through one helper,
   `DraftJournal` (work/canvas/drafts.ts: the newest body under its base, the older base's dropped, all dropped once
   answered): a sheet, a deck's open box and a document (below; work-sheets.md "The canvas", work-slides.md
-  `edit/session.ts`, work-docs.md "The socket").
+  `edit/session.ts`, work-docs.md "The socket"). Edits the host refused for good, a sheet's batch a conflict over a
+  file that moved on dropped, are set aside apart (`setAside`: under their own base, released at once), so nothing
+  kept after drops them and the next open offers them to copy.
 - **A deck's draft** (`DraftBody` kind `deck`): the open box's model (its words, runs and the looks they carry), the
   slide and shape it is on (its base, `slide:shape`) and that shape's words as the box opened on them, kept while the
   box holds words the host has not written and dropped once written. As the deck opens: over a shape that still holds

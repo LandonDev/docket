@@ -283,6 +283,9 @@ export interface SheetExportAnswer {
   drops: string[]
 }
 
+/** A shared .csv's cache generation as a load answered it (`work.sheets.load`), carried back by a grid's `since` and `edit`. */
+const SheetGenSchema = z.string().max(64).optional()
+
 export const SheetsRequestSchemas = [
   /**
    * → SheetView. `first`: the answer also carries `first`, the book's first piece as `work.sheets.load` answers it at
@@ -290,13 +293,14 @@ export const SheetsRequestSchemas = [
    */
   request('work.sheets.open', z.object({ itemId, first: z.literal(true).optional() })),
   /**
-   * → { data: base64, size, rev, format }: the workbook's bytes as the view's `rev` stands, by range.
+   * → { data: base64, size, rev, format, gen? }: the workbook's bytes as the view's `rev` stands, by range.
    * `xlsx`: the package, for `importXlsx` (work-kit/sheet/xlsx). `snapshot`: Univer's workbook as JSON text.
-   * A load of a revision no longer held is refused, so one load never mixes two.
+   * A load of a revision no longer held is refused, so one load never mixes two. `gen`: a shared .csv's cache as drawn
+   * (a co-author's change makes a new one, whose revisions start again); the grid sends it back with `since` and `edit`.
    */
   request('work.sheets.load', z.object({ itemId, rev: z.number().int().min(0), offset: z.number().int().min(0), length: z.number().int().positive().max(SHEET_LOAD_MAX) })),
   /** → { rev, ops: [{ rev, by, mutations }] } or { rev, reload: true } when the ops since are not kept: what landed after `rev`. */
-  request('work.sheets.since', z.object({ itemId, rev: z.number().int().min(0) })),
+  request('work.sheets.since', z.object({ itemId, rev: z.number().int().min(0), gen: SheetGenSchema })),
   /**
    * → { people }: his desktop grid's selection on a sheet the Work service holds, said to everyone else on it under
    * his name, and answered with who else is on it (each `{id, name, hue, sheet, range}`, named by the service).
@@ -304,8 +308,11 @@ export const SheetsRequestSchemas = [
    * holds answers nobody.
    */
   request('work.sheets.presence', z.object({ itemId, sheet: z.string().min(1).max(200).optional(), range: SheetBoxSchema.nullable().optional() })),
-  /** → { rev } or { conflict: true, rev }: the owner's edits, made on the workbook at `baseRev`. A conflict asks the canvas to catch up with `since` and send again. */
-  request('work.sheets.edit', z.object({ itemId, baseRev: z.number().int().min(0), mutations: z.array(MutationSchema).min(1).max(SHEET_EDIT_MAX) })),
+  /**
+   * → { rev } or { conflict: true, rev }: the owner's edits, made on the workbook at `baseRev`. A conflict asks the canvas
+   * to catch up with `since` and send again. `gen`: the cache the grid drew (its load's); one no longer the file's is a conflict.
+   */
+  request('work.sheets.edit', z.object({ itemId, baseRev: z.number().int().min(0), mutations: z.array(MutationSchema).min(1).max(SHEET_EDIT_MAX), gen: SheetGenSchema })),
   /** → SheetView: takes or drops suggestions: ids, one change set, or all. */
   request(
     'work.sheets.review',

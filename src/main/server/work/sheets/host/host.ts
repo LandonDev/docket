@@ -300,7 +300,8 @@ export class SheetHost {
     return this.with(ref, async (o) => {
       o.shared = await o.backend.sharedNow()
       const sheets = o.engine.workbook.getSheets().map((sheet) => ({ id: sheet.getSheetId(), name: sheet.getSheetName() }))
-      return { title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion), unit: o.unitId, sheets, rules: this.rulesHeld(o, sheets) }
+      const mark = (o.backend as { mark?(rev: number): string | null }).mark?.(o.rev)
+      return { title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion), unit: o.unitId, sheets, rules: this.rulesHeld(o, sheets), ...(mark !== undefined ? { mark } : {}) }
     })
   }
 

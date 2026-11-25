@@ -277,6 +277,10 @@ export function archiveMarkOf(path: string): (rev: number) => string | null {
   } catch {
     return () => null
   }
+  return markOf(t)
+}
+/** The same mark, of a .tcsheet as read: the one the service holds (`TcsheetBackend.mark`), never the path's bytes now. */
+function markOf(t: Tcsheet): (rev: number) => string | null {
   const first = t.snapshots.get(0)
   const base = first ? createHash('sha256').update(first).digest('hex').slice(0, 24) : ''
   return (rev) => {
@@ -354,6 +358,17 @@ export class TcsheetBackend implements SheetBackend {
     // The same path with other bytes (OneDrive or a co-author put a newer workbook there): the one held here is older.
     if (this.bound !== null && this.stamp !== null && stampOf(this.bound) !== this.stamp) throw new Error(`${this.path} changed on disk since this sheet was opened: open it again.`)
     return this.bound ?? this.path
+  }
+  /**
+   * The mark of the archive this backend holds at `rev` (`archiveMarkOf`): a proposal made over the book the service
+   * holds names that book, even once another workbook was put at the path and not yet read.
+   */
+  mark(rev: number): string | null {
+    try {
+      return markOf(this.read())(rev)
+    } catch {
+      return null
+    }
   }
   /** The proposals' file, keyed by the workbook's real path: a link that names another workbook after a restart finds none of these. */
   private sideFile(): string | null {

@@ -41,6 +41,17 @@ export class DraftJournal {
     this.kept = null;
   }
 
+  /**
+   * Edits the host refused for good (a conflict over a file that moved on): kept apart under `base`, the version they
+   * were made on, and let go at once, so the next open offers them and what waits after never drops them.
+   */
+  setAside(base: string, body: DraftBody): void {
+    const { name, ...where } = this.place;
+    const key = { ...where, base };
+    if (this.kept && sameKey(this.kept, key)) this.kept = null;
+    this.port.put({ ...key, name, at: this.now(), body });
+    this.port.release(key);
+  }
   /** The editor goes with something unsent: it is offered on the next open. */
   release(): void {
     if (this.kept) this.port.release(this.kept);

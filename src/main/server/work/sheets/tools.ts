@@ -135,6 +135,8 @@ interface Standing {
   rules(): Promise<RulesHeld>
   /** a table's or a page's ask run by the grid's own handle on the sheet as it stands (acts.ts, in the sheet worker); throws `Unplaced` with the words where the sheet has no place for it */
   act(ask: Acted): Promise<ActMade>
+  /** a .tcsheet's archive mark at `rev`, as the service holding the book says it (backends.ts `TcsheetBackend.mark`) */
+  mark?: string | null
 }
 async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
   if (held.at === 'package') {
@@ -148,7 +150,7 @@ async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
     const { workbookOf } = await import('./index')
     return s.jobs.act({ store: 'service', snapshot: JSON.stringify(await workbookOf(s.ctx, held.ref, o.rev)), ...ask })
   })
-  return { unit: o.unit, sheets: o.sheets, rev: o.rev, rules: async () => o.rules, act }
+  return { unit: o.unit, sheets: o.sheets, rev: o.rev, rules: async () => o.rules, act, ...(o.mark !== undefined ? { mark: o.mark } : {}) }
 }
 
 /** The worker's answer for one ask, asked once for a standing: the words and the mutations come from one run. */
@@ -279,8 +281,9 @@ async function propose(s: Sheets, t: Target, ask: ChangeAsk, by: Principal, reas
   const { at, words, sheet } = await read(ask, now)
   // Made once now and thrown away, so one that cannot be made (a format that changes nothing) is refused as it is asked.
   await mutationsFor(s, t.held, ask, now)
-  // (over a .tcsheet, the archive it was made over: one put at the same path later does not take it, held.ts `settleArchive`)
-  const archive = t.held.at === 'service' && 'tcsheet' in t.held.ref ? archiveMarkOf(t.held.ref.tcsheet)(now.rev) : null
+  // (over a .tcsheet, the archive it was made over, as the service holds it, never the path's bytes now: one put at the
+  // same path later does not take it, held.ts `settleArchive`. A service that says no mark is read from the file.)
+  const archive = t.held.at === 'service' && 'tcsheet' in t.held.ref ? (now.mark !== undefined ? now.mark : archiveMarkOf(t.held.ref.tcsheet)(now.rev)) : null
   s.changes.add(storeKey(t.held), { id: randomUUID(), changeSet: randomUUID(), by, ...(reason ? { reason } : {}), sheet: at?.sheet ?? sheet ?? now.sheets[0]!.id, range: at ? at.range : null, words, ask, rev: now.rev, archive })
   return words
 }

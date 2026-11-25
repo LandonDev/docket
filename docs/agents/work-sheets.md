@@ -167,11 +167,15 @@ uses the same words when reading older restore labels.
   the bytes read before the change, so a co-author's save during the
   service's wait refuses it, never patched over). After the save the cache
   keeps its stamp only while the file holds the bytes the save sent (read
-  through one descriptor, `writtenStamp`), never from the door's receipt. A grid is bound to the cache it drew
-  (`drawnCsv`, its load): once a co-author's change has made a new cache
+  through one descriptor, `writtenStamp`), never from the door's receipt. A grid is bound to the cache it drew:
+  its load answers the cache's generation (`gen`, a short hash, `csvGen`) and
+  the grid's `edit` and `since` carry it back, so two windows on one item each
+  answer for their own draw. Once a co-author's change has made a new cache
   (which also starts at revision 0), an edit made on the old one answers a
   conflict and its catch-up a reload, so the edit is said and the grid reads
-  the file again, never laid at its old address in the new cache. The file is patched, not written again (`patchCsv`): a
+  the file again, never laid at its old address in the new cache, even when
+  another window already read the new one. A caller that names no `gen` (the
+  phone, an older window) is held to the item's last draw (`drawnCsv`). The file is patched, not written again (`patchCsv`): a
   field nobody changed keeps its own bytes (`1.50`, a quoted name), each
   row its own line break and count of fields, and the byte-order mark, the
   blank lines at the end and the last line's break stay as they were, so
@@ -763,6 +767,12 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   older sheet. It is said once as a toast, cell by cell with what he put
   there ("The file changed before this was saved: B4 1200, C5 Hotel and 2
   more. Make it again.", `notSavedWords`), and the grid shows the file.
+  His cells are set aside first as a sheet draft (canvas/drafts.ts
+  `setAside`): the refused mutations, each with its tab, row and column,
+  under the revision and cache they were made on (`<rev>@<gen> refused`),
+  released at once, so what waits after never drops them and the next open
+  offers them to copy ("Drafts survive a crash"), never Restore over the file
+  they no longer name.
 - **What reads the file waits for his last edit.** Preview's draws and
   exports, Save back, Save as Excel, Save as CSV and Save to Google Sheets
   (before its dialog opens) await `SheetSync.written`, which
@@ -1138,7 +1148,11 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   `orphaned`, to be dropped, never accepted into it. The formats and rules
   an agent proposed over a `.tcsheet` (main's `work_sheets_changes`) keep
   the same: each row names the archive it was made over (`archive`:
-  `archiveMarkOf`, its first snapshot and the op it stood at), and one read
+  `archiveMarkOf`, its first snapshot and the op it stood at), as the Work
+  service holding the book says it (its `open` answers `mark`, from the
+  archive it read, `TcsheetBackend.mark`), never the path's bytes now: a
+  workbook put at the path while the service still holds the old one is not
+  named by a proposal made over the old one. One read
   over another turns `orphaned` before it is shown or taken
   (`settleArchive`). What waited across the deploy that brought these marks
   turns `orphaned` once, to be asked for again. (A guest
