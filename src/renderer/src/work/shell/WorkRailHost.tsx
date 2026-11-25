@@ -9,6 +9,7 @@ import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useEnvironments } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
@@ -82,9 +83,12 @@ export function addMenuRows(state: AddMenuState, free: readonly string[], names?
   const top: MenuRow[] =
     state === "connected"
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
-      : state === null || state === "connecting"
+      : state === "connecting"
         ? [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">{connectingWords(host)}</span> }]
-        : down(state);
+        : state === null
+          ? // No status heard yet: the host has said nothing, so a muted bone in the sectors' place, never a wait it did not say.
+            [{ kind: "note", id: "work:reading", content: <span role="status" aria-label="Reading LifeOS" className="flex h-4 items-center"><Skeleton className="h-3 w-28" /></span> }]
+          : down(state);
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
 }
 

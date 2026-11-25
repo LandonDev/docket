@@ -51,6 +51,8 @@ describe("the Work heading's + menu", () => {
     expect(ids(addMenuRows("refused", []))).toEqual(["work:signin", "—", "work:add-unlinked"]);
     expect(ids(addMenuRows("unreachable", ["cosmic"]))).toEqual(["work:retry", "—", "work:add-unlinked"]);
     expect(ids(addMenuRows("connecting", ["cosmic"]))).toEqual(["work:connecting", "—", "work:add-unlinked"]);
+    // Council round 12 (Opus, the rest 1): no status heard yet is a muted bone, never a wait the host has not said.
+    expect(ids(addMenuRows(null, ["cosmic"]))).toEqual(["work:reading", "—", "work:add-unlinked"]);
     // Every sector taken: Without a sector alone.
     expect(ids(addMenuRows("connected", []))).toEqual(["work:add-unlinked"]);
   });
