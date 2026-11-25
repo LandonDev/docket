@@ -47,6 +47,11 @@ describe("a Word file's line", () => {
     expect(wordLine({ since: true, auto: true, at }, "Teams", "the Windows VM", at, true)).toEqual({ state: "saving", words: "Saving to the Windows VM…" });
     expect(wordLine({ since: false, auto: true, at }, "Teams", "the Windows VM", at, true)).toEqual({ state: "saved", words: "Saved to the Windows VM 9:12 PM" });
   });
+  it("says a computer that does not answer its saves as away, with his edits waiting, never Saving for hours", () => {
+    expect(wordLine({ since: true, auto: true, at, away: at }, "Teams", "MacBook", at, true)).toEqual({ state: "offline", words: "MacBook is not answering. Changes wait here", needs: true });
+    // Nothing waits: the last save stands.
+    expect(wordLine({ since: false, auto: true, at, away: at }, "Teams", "MacBook", at, false)).toEqual({ state: "saved", words: "Saved to MacBook 9:12 PM" });
+  });
   it("says a refusal or a stop at once, whatever the pause", () => {
     expect(wordLine({ since: true, auto: true, at, refused: "the share is read only" }, "Teams", "the Windows VM", at, false).state).toBe("conflict");
     expect(wordLine({ since: true, auto: true, at, stopped: at }, "Teams", "the Windows VM", at, false).state).toBe("conflict");

@@ -1289,7 +1289,7 @@ describe('a Word file saved by itself', () => {
     }
   })
 
-  it("shows a refusal of the save by itself on its line, never Saving; a drive away keeps it saving, and the save that lands clears it", async () => {
+  it("shows a refusal of the save by itself on its line, never Saving; a drive away is said as away and tried again, and the save that lands clears both", async () => {
     const { path, tabId } = await opened('Refused.docx', BLANK)
     await looks(1_000_000)
     rev = 'r1'
@@ -1301,12 +1301,13 @@ describe('a Word file saved by itself', () => {
     farSays = new NotReachable('J:').message
     await looks(3_000_000)
     expect((await tabOf(tabId))?.word?.refused).toBeUndefined()
-    expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: true, away: expect.any(Number) })
     farSays = null
     await looks(4_000_000)
     expect(readFileSync(path, 'utf8')).toBe('word export')
     expect((await tabOf(tabId))?.word).toMatchObject({ since: false })
     expect((await tabOf(tabId))?.word?.refused).toBeUndefined()
+    expect((await tabOf(tabId))?.word?.away).toBeUndefined()
   })
 
   it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {

@@ -2736,7 +2736,8 @@ over a colleague's Word file but his own press.
   and retries linked files whose place was away. It also drops Word records for documents gone from both disk
   and Files' Trash. An autosave the holder refuses (not a computer or drive that did not answer) is said on the
   tab's `word.refused` until a save lands, "MacBook refused the save." and its reason, never Saving; one that met an
-  away drive keeps saving and is tried on the next look. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
+  away computer or drive is tried on each look and said on the tab's `word.away` (since when) until a save lands:
+  "MacBook is not answering. Changes wait here", as a copy says it, never Saving for hours. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
   ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The
   choice is asked on his first Save to Teams, never as he types (above); the file's menu changes it after.
   Only his document's live text is written: a thread's change to it waits as a suggestion, and a thread or a read

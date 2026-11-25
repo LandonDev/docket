@@ -49,6 +49,8 @@ export function wordLine(word: WordBack, service: string, computer: string, now 
     const why = word.refused.trim().replace(/\.$/, "");
     return { state: "conflict", words: why ? `${who} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${who} refused the save` };
   }
+  // Its computer or drive not answering: his edits wait in the document, and it is tried again on each look.
+  if (word.away && word.since) return { state: "offline", words: `${computer[0]!.toUpperCase()}${computer.slice(1)} is not answering. Changes wait here`, needs: true };
   // Saving by itself: Saving… once his newest words have waited past Word's pause (`saving`, canvas/calm.ts); inside
   // it the last save stays, and a file never saved here says it is unchanged, never Saving with nothing typed.
   if (word.auto) {

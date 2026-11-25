@@ -478,6 +478,8 @@ export interface WordBack {
   stoppedVersion?: string
   /** the last autosave was refused, in the holder's words (a policy, a fence): no save has landed since */
   refused?: string
+  /** the autosaves since this time found its computer or drive not answering: tried again on each look, none landed since */
+  away?: number
 }
 /** What Save as Word answers: written over the file, the file changed there or went (nothing written), or kept beside it. */
 export type WordSaved = { at: number } | { conflict: { changed: number; version?: string } | { gone: true } } | { copy: { name: string } }

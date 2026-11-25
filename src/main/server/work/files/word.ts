@@ -235,7 +235,9 @@ export function wordBackOf(r: WordRow): WordBack | null {
   // A refusal stands until a save lands after it: the line never sits at Saving over one.
   const refused = refusedWords.get(keyOf(r))
   const stands = refused && !(r.saved_at && r.saved_at >= refused.at)
-  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped, ...(r.stopped_version ? { stoppedVersion: r.stopped_version } : {}) } : {}), ...(stands ? { refused: refused.words } : {}) }
+  const away = awayFrom.get(keyOf(r))
+  const awayStands = away !== undefined && !(r.saved_at && r.saved_at >= away)
+  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped, ...(r.stopped_version ? { stoppedVersion: r.stopped_version } : {}) } : {}), ...(stands ? { refused: refused.words } : {}), ...(awayStands ? { away } : {}) }
 }
 
 /** `work.files.wordAuto`: his choice for the file, kept on its record: save by itself, or ask each time. */
@@ -419,6 +421,8 @@ export const wordTiming = { pause: 3000, read: 2000 }
 const saving = new Set<string>()
 /** The last autosave's refusal of each record, and when (`wordBackOf`): kept in memory, the next look tries again. */
 const refusedWords = new Map<string, { words: string; at: number }>()
+/** Since when each Word file's autosaves found its computer or drive not answering, by `keyOf`: its line says so. */
+const awayFrom = new Map<string, number>()
 
 function wordRows(ctx: WorkCtx, doc: string): WordRow[] {
   return ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc = ?`).all(doc) as unknown as WordRow[]
@@ -501,16 +505,21 @@ async function saveDueWords(ctx: WorkCtx, rows: WordRow[], now: number, active =
           return latest?.doc === r.doc && latest.version === r.version && latest.auto === 1 && !latest.stopped
         }
       })
-      // Answered: a refusal before it no longer stands.
-      if (refusedWords.delete(key)) filesState(ctx).tabs.touch(r.workspace_id)
+      // Answered: a refusal or an away before it no longer stands.
+      if (refusedWords.delete(key) || awayFrom.delete(key)) filesState(ctx).tabs.touch(r.workspace_id)
     } catch (err) {
       const words = err instanceof Error ? err.message : String(err)
-      // A computer or drive that did not answer is tried again on the next look, the line still saving; anything else
-      // is a refusal his line says, in its own words, until a save lands.
-      const before = refusedWords.get(key)?.words
-      if (unreachable(err)) refusedWords.delete(key)
-      else refusedWords.set(key, { words: words.slice(0, 300), at: Date.now() })
-      if (before !== refusedWords.get(key)?.words) filesState(ctx).tabs.touch(r.workspace_id)
+      // A computer or drive that did not answer is tried again on the next look, and his line says it is not
+      // answering (never Saving for hours); anything else is a refusal his line says, in its own words, until a save lands.
+      const before = `${refusedWords.get(key)?.words}\0${awayFrom.has(key)}`
+      if (unreachable(err)) {
+        refusedWords.delete(key)
+        if (!awayFrom.has(key)) awayFrom.set(key, Date.now())
+      } else {
+        awayFrom.delete(key)
+        refusedWords.set(key, { words: words.slice(0, 300), at: Date.now() })
+      }
+      if (before !== `${refusedWords.get(key)?.words}\0${awayFrom.has(key)}`) filesState(ctx).tabs.touch(r.workspace_id)
       ctx.log(`files: a Word file was not saved by itself: ${words}`)
     } finally {
       saving.delete(key)
