@@ -97,6 +97,25 @@ describe("an empty placeholder", () => {
     expect(layer.querySelector("[data-slide-prompt]")).toBeNull();
   });
 
+  it("in a shape that shrinks its words to fit, shrinks them as he types past its bottom", async () => {
+    const { press } = await t.stage(blank());
+    press(0.5, 0.3);
+    const words = await t.found("[data-slide-typing] [role=textbox]");
+    const shape = words.parentElement!;
+    // The shape is 100px tall inside; the words take 150px at their own size, and less as they are drawn smaller.
+    Object.defineProperty(shape, "clientHeight", { configurable: true, get: () => 100 });
+    Object.defineProperty(shape, "scrollHeight", { configurable: true, get: () => 150 * Number(words.style.zoom || 1) });
+    (words.querySelector("[data-p]") as HTMLElement).textContent = "A title long enough to run past the shape";
+    fireEvent.input(words);
+    await waitFor(() => expect(Number(words.style.zoom)).toBeGreaterThan(0.6));
+    expect(Number(words.style.zoom)).toBeLessThan(0.68);
+    // Back within the shape, the words are their own size again.
+    Object.defineProperty(shape, "scrollHeight", { configurable: true, get: () => 80 });
+    (words.querySelector("[data-p]") as HTMLElement).textContent = "Short";
+    fireEvent.input(words);
+    await waitFor(() => expect(words.style.zoom).toBe(""));
+  });
+
   it("shows no prompt where he cannot type: a deck he cannot edit by hand", async () => {
     const { layer } = await t.stage(blank({ hand: undefined }));
     expect(layer.querySelector("[data-shape='2']")).not.toBeNull();

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
-import { paint, placeOf, pointOf, readModel, readSel, writeSel } from "./dom";
+import { paint, placeOf, pointOf, readModel, readSel, SHRINK_FLOOR, shrinkToFit, writeSel } from "./dom";
 import { modelOf, modelText, runsOp } from "./model";
 
 const FALLBACK = { font: "Calibri", size: 18, color: "000000" };
@@ -108,5 +108,17 @@ describe("the typing box in the page", () => {
     expect(readSel(root)).toEqual({ from: [0, 2], to: [1, 2] });
     document.getSelection()!.removeAllRanges();
     expect(readSel(root)).toBeNull();
+  });
+});
+
+describe("a shrink-to-fit box", () => {
+  it("keeps the words' size while they fit, and draws them at the largest scale that fits when they do not", () => {
+    expect(shrinkToFit(() => true)).toBe(1);
+    // Words that take 150% of the shape at full size fit at two thirds.
+    const scale = shrinkToFit((z) => 150 * z <= 100);
+    expect(scale).toBeLessThanOrEqual(2 / 3);
+    expect(scale).toBeGreaterThan(0.64);
+    // Never below PowerPoint's floor.
+    expect(shrinkToFit(() => false)).toBe(SHRINK_FLOOR);
   });
 });

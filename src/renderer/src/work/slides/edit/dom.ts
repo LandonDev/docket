@@ -15,6 +15,26 @@ import { DEFAULT_SIZE, normalize, type EditPara, type EditRun, type Model, type 
 const EMU_INCH = 914_400;
 const EMU_POINT = 12_700;
 
+/** The least a shrink-to-fit box draws its words at, of the size it opened on: PowerPoint's own floor is a quarter. */
+export const SHRINK_FLOOR = 0.25;
+
+/**
+ * The scale a shrink-to-fit box's words are drawn at as he types (`frame.fit === 'shrink'`): the largest, at most the
+ * size they opened at, at which `fits` says they lie within the shape, to a hundredth; never below `SHRINK_FLOOR`.
+ * `fits` lays the words out at a scale and answers whether they fit.
+ */
+export function shrinkToFit(fits: (scale: number) => boolean): number {
+  if (fits(1)) return 1;
+  let [lo, hi] = [SHRINK_FLOOR, 1];
+  if (!fits(lo)) return lo;
+  for (let i = 0; i < 7; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return Math.floor(lo * 100) / 100;
+}
+
 /** How a run is drawn at `emu` CSS pixels an EMU. */
 export function runCss(look: RunLook, emu: number): Partial<CSSStyleDeclaration> {
   return {

@@ -1601,7 +1601,12 @@ once (`work.slides.edit`), whole or not at all.
   type, and goes while a box is open on it. The box is the shape's own
   size, so words that overflow lie about its anchor as the new picture
   draws them and nothing jumps on commit; only a shape that grows to its
-  words (`fit: 'grow'`) grows with them.
+  words (`fit: 'grow'`) grows with them; one that shrinks its words to fit
+  (`fit: 'shrink'`) draws them smaller as he types past its bottom
+  (`shrinkToFit` in edit/dom.ts: the largest scale at most 1 at which the box
+  does not overflow, CSS `zoom` on the words so they wrap as the smaller
+  words will, `SHRINK_FLOOR` a quarter); the host's own shrink, already in
+  the sizes the view sends, is where it starts.
   On a table (`typesIn`) the box opens on one cell (`BoxState.cell`): the
   cell under the press (`cellAt`, from the view's `grid`, the file's column
   widths and row heights in EMU, which the deck tool reads), else the first

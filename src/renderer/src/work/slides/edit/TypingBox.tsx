@@ -4,7 +4,7 @@ import { formatKeyOf } from "work-kit/format/keys";
 import { bareKey, modKey, modOrCtrl } from "../../../lib/keys";
 import { IS_MAC } from "../../../lib/platform";
 import { keyAct, type Target } from "./DeckRow";
-import { paint, placeOf, readModel, readSel, runCss, writeSel } from "./dom";
+import { paint, placeOf, readModel, readSel, runCss, shrinkToFit, writeSel } from "./dom";
 import type { EditPara } from "./model";
 import type { BoxState, HandSession } from "./session";
 
@@ -79,6 +79,7 @@ export function TypingBox({
   onLeave(): void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const shape = useRef<HTMLDivElement>(null);
   const typing = box.phase === "typing";
   const first = useRef(true);
 
@@ -112,6 +113,20 @@ export function TypingBox({
     writeSel(el, box.sel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [box.focus]);
+
+  // A shape whose words shrink to fit it shrinks them as he types, as PowerPoint does: his words are drawn smaller
+  // (CSS zoom on the words, so they wrap as the smaller words will) until they lie within the shape again. Never
+  // larger than they opened at: the host's own shrink, in their sizes, is the start. Set on the element, not by React.
+  useLayoutEffect(() => {
+    const el = root.current;
+    const holder = shape.current;
+    if (!el || !holder || frame.fit !== "shrink") return;
+    const scale = shrinkToFit((z) => {
+      el.style.zoom = String(z);
+      return holder.scrollHeight <= holder.clientHeight + 1;
+    });
+    el.style.zoom = scale === 1 ? "" : String(scale);
+  }, [box.model, box.paint, place.height, emu, frame.fit]);
 
   // A new stage size draws the words again at the new scale, as they stand now.
   const drawnAt = useRef(emu);
@@ -247,7 +262,7 @@ export function TypingBox({
     ...(own ? { color: `#${own}` } : {}),
   };
   return (
-    <div data-slide-typing data-phase={box.phase} className={`absolute flex origin-top-left flex-col ${typing ? "" : "pointer-events-none"}`} style={style}>
+    <div ref={shape} data-slide-typing data-phase={box.phase} className={`absolute flex origin-top-left flex-col ${typing ? "" : "pointer-events-none"}`} style={style}>
       <div
         ref={root}
         role="textbox"

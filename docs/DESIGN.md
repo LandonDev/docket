@@ -4308,7 +4308,9 @@ other picked shape is the outline alone.
   press on it opens the box; the prompt goes while the box is open. The
   box is the shape's own size (only a shape that grows to its words
   grows), so words that overflow lie about its anchor as the picture will
-  draw them.
+  draw them; in a shape that shrinks its words to fit, they are drawn
+  smaller as he types past its bottom (to a quarter at least), as
+  PowerPoint does, and never larger than they opened.
   On a table the box opens on one cell: the cell pressed, else the first
   (Return, F2, Insert). It lies on that cell's corners (the file's column
   widths and row heights), with PowerPoint's cell margins, and its words
