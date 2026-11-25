@@ -387,7 +387,8 @@ others open (a library, a folder kept in OneDrive) and the VM only in the window
 only where the window's key may read (`work.files.read` is a read method, so a read-only key downloads too). A folder
 has no bytes, so none is offered with one selected, nor a file the VM keeps in the cloud. Each file goes in turn,
 its row saying "Downloading… 2.1 of 8.4 MB". Each part goes straight to the disk as it comes, never whole in the
-window: main begins the file in Downloads with the first part under a free ".download" name (`wx`), adds each part,
+window: main begins the file in Downloads with the first part under a short name of its own ("TempCode download <id>.download", `wx`: a long name that fits Downloads would not fit
+with ".download" after it), adds each part,
 and on the last names it under its own safe, free name (a link, never over a file that took the name meanwhile) and
 answers its path; a part that did not come, or the window closed or reloaded mid-file, takes the unfinished file away,
 and a part-written file never wears the real name (`partWriter`, src/main/downloads.ts;

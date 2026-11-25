@@ -19,8 +19,9 @@ export const SAVE_MAX_BYTES = 64 * 1024 * 1024
 export { freeName, safeFileName } from '@shared/fileName'
 
 /**
- * A download written part by part as the window reads it (the Files place's Download): begun under a safe, free
- * name in `dir` with ".download" after it, each part added in turn, and ended kept (named then: the file under its
+ * A download written part by part as the window reads it (the Files place's Download): begun under a short name of its
+ * own in `dir` ("TempCode download <id>.download", so a long name that fits the folder still fits while it is
+ * written), each part added in turn, and ended kept (named then: the file under its
  * own free name, its path answered) or taken away, so a file of any size never sits whole in the window, "Downloaded"
  * is said only once the file is on the disk, and a part-written file never wears the real name. `watch` hands the
  * caller the way to take it away when the window that reads it goes (closed or reloaded mid-file). A part for an id
@@ -65,10 +66,13 @@ export function partWriter(dir: () => string): {
     async begin(name, watch) {
       const at = dir()
       const safe = safeFileName(String(name ?? ''))
-      const path = join(at, freeName(`${safe}.download`, (candidate) => existsSync(join(at, candidate))))
+      const id = randomUUID()
+      // A short name of its own, never the real one with ".download" after it: a long name that fits the folder
+      // would not fit with the ending, and the download would fail before its first part.
+      const part = `TempCode download ${id.slice(0, 8)}.download`
+      const path = join(at, freeName(part, (candidate) => existsSync(join(at, candidate))))
       // `wx`: never over a file that appeared since the check.
       const file = await open(path, 'wx')
-      const id = randomUUID()
       writing.set(id, { at, name: safe, path, file })
       const unwatch = watch?.(() => void end(id, false).catch(() => undefined))
       if (unwatch) writing.get(id)!.unwatch = unwatch

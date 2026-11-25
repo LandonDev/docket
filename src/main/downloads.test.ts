@@ -112,7 +112,8 @@ describe('a download written part by part', () => {
     let close!: () => void
     const id = await parts.begin('Video.mov', (gone) => (close = gone))
     await parts.part(id, new Uint8Array(5))
-    expect(readdirSync(dir)).toEqual(['Video.mov.download'])
+    expect(readdirSync(dir)).toHaveLength(1)
+    expect(readdirSync(dir)[0]).toMatch(/^TempCode download [0-9a-f]{8}\.download$/)
     // His window closes halfway: nothing is left, under either name.
     close()
     await new Promise((ok) => setTimeout(ok, 20))
@@ -125,5 +126,22 @@ describe('a download written part by part', () => {
     expect(await parts.end(whole, true)).toBe(join(dir, 'Video (1).mov'))
     expect(readdirSync(dir).sort()).toEqual(['Video (1).mov', 'Video.mov'])
     expect(readFileSync(join(dir, 'Video.mov'), 'utf8')).toBe('came meanwhile')
+  })
+
+  it('saves a long name that fits the folder: the part-written file wears a short name of its own, so its ending never pushes the name past the limit', async () => {
+    const { mkdtempSync, readFileSync, readdirSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    // 250 bytes, under every disk's 255: legal at its destination, past it with ".download" after it.
+    const name = `${'é'.repeat(123)}.pdf`
+    expect(Buffer.byteLength(name)).toBe(250)
+    const parts = partWriter(() => dir)
+    const id = await parts.begin(name)
+    await parts.part(id, new TextEncoder().encode('whole'))
+    expect(await parts.end(id, true)).toBe(join(dir, name))
+    expect(readdirSync(dir)).toEqual([name])
+    expect(readFileSync(join(dir, name), 'utf8')).toBe('whole')
   })
 })
