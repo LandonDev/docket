@@ -5,7 +5,7 @@ import { RowMenuItem, RowMenuSeparator, RowSubmenu } from "work-kit/format";
 import { Plus } from "../../../chrome/icons";
 import { sayError } from "../../canvas/frame";
 import { Media, Shapes, Table, TextBox, Video } from "../../icons";
-import type { DeckHost, DeckStore } from "../deck";
+import { ATTACH_PIECE, type DeckHost, type DeckStore } from "../deck";
 import type { Size } from "./drag";
 import { quadOf } from "./drag";
 import { layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
@@ -107,10 +107,13 @@ export function useInsert({
     if (!on) return;
     const got = await measure(file, what);
     const box = pictureAt(size, got?.width ?? 0, got?.height ?? 0);
-    session.adding({ slideKey: on.key, quad: quadOf({ box, rot: 0, flipH: false, flipV: false }, size) });
+    const place = { slideKey: on.key, quad: quadOf({ box, rot: 0, flipH: false, flipV: false }, size) };
+    // A file that goes in more than one piece counts what the host holds, so a long video over a slow link shows it moving.
+    const counted = file.size > ATTACH_PIECE;
+    session.adding(counted ? { ...place, sent: 0, total: file.size } : place);
     let token: string;
     try {
-      token = await session.while(() => file.arrayBuffer().then((bytes) => host.attach(file.name, new Uint8Array(bytes))));
+      token = await session.while(() => file.arrayBuffer().then((bytes) => host.attach(file.name, new Uint8Array(bytes), counted ? (sent) => session.adding({ ...place, sent, total: file.size }) : undefined)));
     } catch (error) {
       session.adding(null);
       sayError(error, what === "picture" ? "Couldn't add the picture" : "Couldn't add the video");

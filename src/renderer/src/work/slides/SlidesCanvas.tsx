@@ -19,7 +19,7 @@ import { itemJournal } from "../canvas/drafts";
 import { registerFlush } from "../canvas/flush";
 import { useSaving } from "../canvas/useCalm";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
-import { OpenFailed } from "../canvas/FetchState";
+import { OpenFailed, progressWords } from "../canvas/FetchState";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore, type StageZoom } from "./deck";
@@ -1010,7 +1010,7 @@ function Main({
                 onLeave={() => buttonOf(boxShape.id)?.focus({ preventScroll: true })}
               />
             ) : null}
-            {adding ? <Adding quad={adding.quad} width={w} height={h} /> : null}
+            {adding ? <Adding quad={adding.quad} width={w} height={h} sent={adding.total ? [adding.sent ?? 0, adding.total] : null} /> : null}
             {selection && selected ? <Selection selection={selection} width={w} height={h} handles={canMove(selected)} turn={canMove(selected) && turnable(selected)} /> : null}
             {hand.mark?.slideKey === slide.key ? <MarkOn mark={hand.mark} width={w} height={h} tone={tone} /> : null}
             <Manipulate
@@ -1124,7 +1124,7 @@ function Selection({ selection, width, height, handles: withHandles, turn: withT
  * Where a picture or a video he is adding will lie, while it is on its way to the host: its box outlined in the
  * selection's line, and the one word with a spinner in its middle.
  */
-function Adding({ quad, width, height }: { quad: Quad; width: number; height: number }) {
+function Adding({ quad, width, height, sent }: { quad: Quad; width: number; height: number; /** bytes the host holds, of all: a file that goes in pieces */ sent: [number, number] | null }) {
   const xs = quad.map((p) => p[0] * width);
   const ys = quad.map((p) => p[1] * height);
   return (
@@ -1137,7 +1137,7 @@ function Adding({ quad, width, height }: { quad: Quad; width: number; height: nu
         style={{ left: (Math.min(...xs) + Math.max(...xs)) / 2, top: (Math.min(...ys) + Math.max(...ys)) / 2 }}
       >
         <Spinner className="size-3" />
-        Adding
+        {sent ? <span className="tabular-nums">{`Adding ${progressWords(sent[0], sent[1])}`}</span> : "Adding"}
       </span>
     </>
   );

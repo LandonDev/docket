@@ -1514,7 +1514,8 @@ once as a toast; `saving` and `saved` on the save line follow it.
   window (`createImageBitmap`, a video's metadata), sent in 4 MB pieces
   (`DeckHost.attach`, `ATTACH_PIECE`: 5,592,408 characters of base64 under
   the method's 5.6 million) and named by its token; meanwhile `adding` draws
-  its place. New slide adds after the slide on the stage in its layout (the
+  its place, and for a file of more than one piece what the host holds of
+  it (`attach`'s `sent`, `progressWords`). New slide adds after the slide on the stage in its layout (the
   next layout with a body after a title slide: `layoutAfter`) and goes to it.
 - **The Format sheet** (`edit/FormatSheet.tsx`): `geometry` from the X, Y,
   W, H and Rotation fields (in his units, `parseLength` reading "2.5",

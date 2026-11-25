@@ -190,6 +190,20 @@ describe("Insert", () => {
     expect(layer.querySelector('[data-shape="6"]')!.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("a video in many pieces counts what the host holds of it", async () => {
+    t.measureMedia(async () => null);
+    const { layer } = await t.stage();
+    let land!: () => void;
+    t.host.hold = new Promise<void>((done) => (land = done));
+    const input = document.querySelector<HTMLInputElement>('[data-slides-insert="video"]')!;
+    Object.defineProperty(input, "files", { value: [new File([new Uint8Array(10 * 1024 * 1024)], "intro.mp4", { type: "video/mp4" })], configurable: true });
+    fireEvent.change(input);
+    await waitFor(() => expect(layer.textContent).toContain("Adding 4.0 of 10.0 MB"));
+    act(() => land());
+    await waitFor(() => expect(t.edits()).toHaveLength(1));
+    await waitFor(() => expect(layer.querySelector("[data-slide-adding]")).toBeNull());
+  });
+
   it("a video the same way", async () => {
     t.measureMedia(async () => null);
     await t.stage();

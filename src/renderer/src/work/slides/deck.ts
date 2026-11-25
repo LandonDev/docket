@@ -35,8 +35,8 @@ export interface DeckHost {
   versions(): Promise<DeckVersion[]>;
   /** Puts a kept copy in the file's place; the deck as it is now is kept first. */
   restore(version: string): Promise<DeckView>;
-  /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. */
-  attach(name: string, data: Uint8Array): Promise<string>;
+  /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. `sent`: told the bytes the host holds after each piece. */
+  attach(name: string, data: Uint8Array, sent?: (bytes: number) => void): Promise<string>;
   onView(listener: (view: DeckView) => void): () => void;
   /** A show's step pictures and clips, by their `rev` (`work.slides.build`, `work.slides.media`), and the word that more of them is ready. */
   build?(rev: string, offset: number, length: number): Promise<Uint8Array>;
@@ -82,11 +82,12 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
     step: (dir) => call("work.slides.step", { dir }),
     versions: () => call("work.slides.versions"),
     restore: (version) => call("work.slides.restore", { version }),
-    attach: async (name, data) => {
+    attach: async (name, data, sent) => {
       let token: string | undefined;
       for (let at = 0; at < data.length || at === 0; at += ATTACH_PIECE) {
         const got = await call<{ token: string }>("work.slides.attach", { name, data: toBase64(data.subarray(at, at + ATTACH_PIECE)), ...(token ? { token } : {}) });
         token = got.token;
+        sent?.(Math.min(data.length, at + ATTACH_PIECE));
         if (data.length === 0) break;
       }
       return token!;

@@ -125,7 +125,7 @@ export interface HandState {
   /** a shape's carried picture, or the ground over a deleted one, until the new picture lands */
   land: Landing | null;
   /** where a picture or a video he is adding will lie, while it is on its way to the host */
-  adding: { slideKey: string; quad: Quad } | null;
+  adding: { slideKey: string; quad: Quad; /** bytes the host holds of the file, of `total`, where it goes in more than one piece */ sent?: number; total?: number } | null;
   /** the box's own undo and redo */
   undo: boolean;
   redo: boolean;

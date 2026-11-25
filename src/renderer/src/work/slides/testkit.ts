@@ -1,5 +1,5 @@
 import type { DeckColour, DeckParagraph, DeckShape, DeckSlide, DeckVersion, DeckView, ShowDeck, SlideChange, SlideOp } from "@shared/contract-work-slides";
-import type { DeckHost } from "./deck";
+import { ATTACH_PIECE, type DeckHost } from "./deck";
 import { OFFICE_THEME } from "work-kit/format/theme";
 
 /** A deck's view for the DOM tests and the preview, and a host that answers the canvas's calls as the host would. */
@@ -277,8 +277,13 @@ export function fakeDeckHost(initial: DeckView): DeckHost & {
       if (host.hold) await host.hold;
       return host.kept;
     },
-    async attach(name: string, data: Uint8Array) {
+    async attach(name: string, data: Uint8Array, sent?: (bytes: number) => void) {
       host.calls.push(["attach", { name, size: data.length }]);
+      // As the real host takes it: a piece at a time, the window told after each; `hold` keeps all but the first.
+      for (let at = 0; at < data.length; at += ATTACH_PIECE) {
+        if (at > 0 && host.hold) await host.hold;
+        sent?.(Math.min(data.length, at + ATTACH_PIECE));
+      }
       return `token:${name}`;
     },
     async restore(version: string) {

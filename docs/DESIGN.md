@@ -4367,7 +4367,9 @@ other picked shape is the outline alone.
   cell. Chart is not offered until a chart's data can be changed here. A picture or a video is read in the window for its
   proportions and fitted to three fifths of the slide; while it travels to
   the host its place is outlined with a 20px pill in the middle, a 12px
-  spinner and "Adding".
+  spinner and "Adding"; a file that goes in more than one piece (over
+  4 MB) counts what the host holds, "Adding 40.0 of 210.0 MB" in tabular
+  figures.
 - **Theme** is the word and its chevron: a 288px popover, 6px in, a row per
   theme (8px in, 8px radius): its ten colours as one 16px strip at 4px
   radius on `image-outline`, its name 13/20, its two fonts 12/16 muted; the
