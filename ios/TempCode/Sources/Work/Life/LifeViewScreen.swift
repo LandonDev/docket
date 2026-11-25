@@ -47,6 +47,8 @@ struct LifeViewScreen: View {
                     screen
                         .foot()
                         .lifeChrome(store: store, scene: scene)
+                        // Mail's outcomes go to this capsule only while it is on screen (`MailPresses.say`).
+                        .task(id: ObjectIdentifier(scene)) { await MailPresses.shared.footShown(scene) }
                         .environment(\.lifeSectors, host.sectors)
                 }
             }

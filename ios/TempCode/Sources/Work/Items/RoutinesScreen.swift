@@ -181,7 +181,7 @@ struct RoutinesScreen: View {
         do {
             let run = try await work.runNow(row.id)
             done += 1
-            FleetToastCenter.shared.post(message: run == nil ? "\(row.name) had nothing to run" : "Running \(row.name)")
+            FleetToastCenter.shared.post(note: run == nil ? "\(row.name) had nothing to run" : "Running \(row.name)")
             open.insert(row.id)
             await readRuns(row.id)
         } catch {

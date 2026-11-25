@@ -131,9 +131,11 @@ class Judge:
                     if run == 'list-busy' and not r.get('stillPushes', 0):
                         problems.append(f'{tag}: no push for another place arrived in the still seconds, so nothing was judged')
                 else:
-                    facts.append(f"{tag} {r.get('offsetWrites', 0)}")
+                    facts.append(f"{tag} {r.get('offsetWrites', 0)} over {r.get('scrollPushes', 0)} pushes")
                     if r.get('offsetWrites', 0):
                         problems.append(f"{tag}: {r['offsetWrites']} scrolls the app made under the finger (0)")
+                    if run == 'list-busy' and not r.get('scrollPushes', 0):
+                        problems.append(f'{tag}: no push for another place arrived while the list scrolled, so its offsets judged nothing')
         self.gate('list-rows-built', built, 'first/peak of limit: ' + ', '.join(built_facts))
         self.gate('list-rows-remade', remade, ', '.join(remade_facts))
         self.gate('list-offset-writes', offsets, ', '.join(offset_facts))

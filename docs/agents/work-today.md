@@ -474,15 +474,19 @@ The fixtures hold the two to one answer.
 and each source's pure function over a set of cases and checks
 `ios/TempCodeClient/Tests/TempCodeClientTests/Fixtures/today/<case>.json`;
 `TodayParityTests.swift` replays every file through the port field for
-field. A change to Today here fails the vitest until the files are written
-again, and the box's Swift test until the port says the same:
+field. A change to Today here that a case reaches fails the vitest until the
+files are written again, and the Swift test until the port says the same; a
+new field of a source needs a case that carries it (the Due rows' project
+went unseen until `due-projects`):
 
 ```bash
 UPDATE_FIXTURES=1 NODE_ENV=test bunx vitest run src/renderer/src/work/today/phoneFixtures.test.ts
 ```
 
 The cases include requests in Held, the guest kinds, a LifeOS that is
-connecting and a read that waits on another host's LifeOS. What the
+connecting, a read that waits on another host's LifeOS, and Due's projects
+(a name, a project gone from a job whose names came, Open project by id
+alone where a job's names failed, and the one quiet line). What the
 fixtures do not reach is held by TodayStoreTests: `snapshot()`'s states,
 a purge, a host not linked, the read-to map.
 

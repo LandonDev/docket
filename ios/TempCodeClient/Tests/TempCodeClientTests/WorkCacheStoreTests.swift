@@ -100,5 +100,69 @@ struct WorkCacheStoreTests {
         store.drop(.keyReplaced(host: host, generation: 2))
         #expect(store.keys().filter { $0.host == host }.map(\.keyGeneration) == [2])
     }
+
+    // MARK: - a LifeOS sign-out on disk (council 8: Opus 4.2, Sol 3)
+
+    private static func row(_ key: String, _ section: String, by: String?) -> TodayRow {
+        var r = TodayRow(key: key, section: section, sector: "purdue", title: key)
+        r.suppliedBy = by
+        return r
+    }
+
+    @Test func `a LifeOS sign-out rewrites every host's Today rows on disk without that session's, and moves each rewritten host's fence`() throws {
+        let store = try WorkCacheStore.inMemory()
+        let mac = "mac-\(UUID().uuidString)", box = "box-\(UUID().uuidString)", pc = "pc-\(UUID().uuidString)"
+        let macKey = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .today)
+        let boxKey = WorkCache.Key(host: box, account: "k", keyGeneration: 1, scope: .today)
+        let pcKey = WorkCache.Key(host: pc, account: "k", keyGeneration: 1, scope: .today)
+        let outbox = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .outbox)
+        try store.put(.todayRows([Self.row("mail:1", "waiting", by: box), Self.row("mail:2", "waiting", by: mac), Self.row("held:mac:1", "held", by: nil)], day: "d"), at: macKey)
+        try store.put(.todayRows([Self.row("event:1", "meetings", by: nil), Self.row("held:box:1", "held", by: nil)], day: "d"), at: boxKey)
+        try store.put(.todayRows([Self.row("task:9", "due", by: pc)], day: "d"), at: pcKey)
+        try store.put(.outbox([]), at: outbox)
+        let macStamp = WorkCacheFence.stamp(mac), pcStamp = WorkCacheFence.stamp(pc)
+        #expect(store.drop(.lifeosSignedOut(host: box)))
+        // Box's session's rows go wherever they were kept, and rows of no known supplier; the rest stays, keys and all.
+        #expect(store.get(macKey)?.todayShown(on: "d").map(\.key) == ["mail:2", "held:mac:1"])
+        #expect(store.get(boxKey)?.todayShown(on: "d").map(\.key) == ["held:box:1"])
+        #expect(store.get(pcKey)?.todayShown(on: "d").map(\.key) == ["task:9"])
+        #expect(store.get(outbox) != nil)
+        // The Mac's key was rewritten: a write stamped before refuses; the PC's was not, so its fence stands.
+        #expect(!WorkCacheFence.admits(mac, stamp: macStamp))
+        #expect(WorkCacheFence.admits(pc, stamp: pcStamp))
+    }
+
+    @Test func `a Today write queued before a sign-out reaches no disk, even for a key that held none of the rows yet`() throws {
+        let store = try WorkCacheStore.inMemory()
+        let box = "box-\(UUID().uuidString)", mac = "mac-\(UUID().uuidString)"
+        let macKey = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .today)
+        // Today queued box's wait for the Mac's key (empty on disk), and the writer is parked.
+        let hostStamp = WorkCacheFence.stamp(mac), today = store.todayStamp()
+        #expect(store.drop(.lifeosSignedOut(host: box)))
+        // The writer runs after the sign-out: refused, though no row under the Mac's key moved its host's fence.
+        try store.put(.todayRows([Self.row("mail:1", "waiting", by: box)], day: "d"), at: macKey, stamp: hostStamp, todayStamp: today)
+        #expect(store.get(macKey) == nil)
+        // A write made after it lands.
+        try store.put(.todayRows([Self.row("held:mac:1", "held", by: nil)], day: "d"), at: macKey, stamp: WorkCacheFence.stamp(mac), todayStamp: store.todayStamp())
+        #expect(store.get(macKey)?.todayShown(on: "d").map(\.key) == ["held:mac:1"])
+    }
+
+    @Test func `a purge the file refuses is kept, and runs again before the next write`() throws {
+        let suite = "work-cache-store-purges-\(UUID().uuidString)"
+        let purges = WorkCachePurges(defaults: { UserDefaults(suiteName: suite)! })
+        let store = try WorkCacheStore.inMemory(purges: purges)
+        let box = "box-\(UUID().uuidString)"
+        let boxKey = WorkCache.Key(host: box, account: "k", keyGeneration: 1, scope: .today)
+        try store.put(.todayRows([Self.row("event:1", "meetings", by: box)], day: "d"), at: boxKey)
+        // SQLite refuses the read and the write (as a file under complete protection does while the phone is locked).
+        try store.execForTests("ALTER TABLE kept RENAME TO away")
+        #expect(!store.drop(.lifeosSignedOut(host: box)))
+        #expect(purges.list() == [.lifeosSignedOut(host: box)])
+        try store.execForTests("ALTER TABLE away RENAME TO kept")
+        // The next write runs it first, then lands; nothing stays kept.
+        try store.put(.outbox([]), at: WorkCache.Key(host: box, account: "k", keyGeneration: 1, scope: .outbox))
+        #expect(store.get(boxKey)?.todayShown(on: "d").isEmpty == true)
+        #expect(purges.list().isEmpty)
+    }
 }
 #endif

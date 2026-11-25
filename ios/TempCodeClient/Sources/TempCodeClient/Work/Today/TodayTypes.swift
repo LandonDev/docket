@@ -159,6 +159,8 @@ public enum TodayPress: Hashable, Sendable, Codable {
     case markRead(chatId: String, at: Double)
     /// The Clash dialog for one clash.
     case resolve(environmentId: String, clashId: String)
+    /// A LifeOS project's page in the Projects view of the job that holds its sector (looked up when he presses).
+    case openProject(sector: String, projectId: String)
 }
 
 /// A row's verb.

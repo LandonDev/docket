@@ -42,7 +42,7 @@ import { owedRows } from "../money/today";
 import { responseRows } from "../msforms/today";
 import { prepMarks } from "../prep/today";
 import { readyRow } from "../review/today";
-import { dueRows, type DueTask } from "./due";
+import { dueRows, namesNote, projectOfTask, type DueProject, type DueTask } from "./due";
 import { heldRows, placeOf } from "./held";
 import { answerOf, type Lost } from "./lifeos";
 import { meetingRows, type MeetingEvent } from "./meetings";
@@ -69,7 +69,9 @@ type Sources = {
   /** `requests`: each thread's open request, with its thread's title beside it (`thread`, the window's session store's). */
   held?: { items: HostItem[]; requests?: (HostRequest & { thread?: string })[]; names: (JobRef & { name: string })[]; loaded: boolean; errors: { environmentId: string; error: string }[] };
   meetings?: { events: MeetingEvent[]; people: Record<string, { _id: string; name: string; emails: string[] }[]>; read: LifeosRead };
-  due?: { tasks: DueTask[]; read: LifeosRead };
+  /** `projects`: the names read beside the tasks (`rows` null while out), the sectors whose names came whole, and
+   * whether a names read failed (the hook's `projectRead`). */
+  due?: { tasks: DueTask[]; read: LifeosRead; projects?: { rows: DueProject[] | null; known?: string[]; failed?: boolean } };
   waiting?: { waits: Wait[]; read: LifeosRead; beyond?: boolean };
   messages?: Each<Chat[]>;
   clashes?: { range?: { clashes: unknown[]; leaves: unknown[] }; loading?: boolean; error?: string };
@@ -155,6 +157,25 @@ const base = { now: NOW, home: "mac", lifeos: "ok" as LifeosReach, lifeosHost: "
 const CASES: Case[] = [
   { ...base, name: "empty-day", jobs: [PURDUE, HYPIXEL], sources: emptySources() },
   { ...base, name: "no-jobs", jobs: [], sources: emptySources() },
+  {
+    ...base,
+    name: "due-projects",
+    jobs: [PURDUE, REF],
+    sources: {
+      ...emptySources(),
+      due: {
+        tasks: [
+          task("p1", "purdue", "Print the brackets", { dueAt: at(24, 15), projectId: "proj-spring" }),
+          task("p2", "purdue", "Order shirts", { dueAt: at(24, 16), projectId: "proj-gone" }),
+          task("p3", "ref", "File the game report", { dueAt: at(24, 17), projectId: "proj-ref" }),
+          task("p4", "purdue", "Call Dana", { dueAt: at(24, 18) }),
+        ],
+        read: OK,
+        // Purdue's names came whole (Order shirts' project is gone); Refereeing's failed, so its task opens its project by id.
+        projects: { rows: [{ _id: "proj-spring", name: "Spring tour" }], known: ["purdue"], failed: true },
+      },
+    },
+  },
   {
     ...base,
     name: "full-day",
@@ -541,8 +562,15 @@ function fedOf(c: Case): Fed[] {
     add("meetings", lifeosSection("meetings", "Meetings", 20, "No meetings today", undefined, "lines"), answerOf(asRead(m.read), built?.rows ?? null, session(c), "meetings", built?.note, jobName));
   }
   if (s.due) {
-    const rows = s.due.read.built ? dueRows(s.due.tasks, c.now, ways(jobs, c.home, "tasks")) : null;
-    add("due", lifeosSection("due", "Due", 30, "Nothing due today", 7, "tick"), answerOf(asRead(s.due.read), rows, session(c), "tasks", undefined, jobName));
+    // as the hook does: a task's project by name, else by its id alone while its job's names are out
+    const names = s.due.projects;
+    const projects = names?.rows ? new Map(names.rows.map((p) => [p._id, p])) : null;
+    const dueWays = names
+      ? { ...ways<Parameters<typeof dueRows>[2]>(jobs, c.home, "tasks"), projectOf: (t: DueTask) => projectOfTask(t, projects, (sector) => !names.known || names.known.includes(sector)), openProject: () => {} }
+      : ways<Parameters<typeof dueRows>[2]>(jobs, c.home, "tasks");
+    const rows = s.due.read.built ? dueRows(s.due.tasks, c.now, dueWays) : null;
+    const note = names ? namesNote(!!names.failed, rows) : undefined;
+    add("due", lifeosSection("due", "Due", 30, "Nothing due today", 7, "tick"), answerOf(asRead(s.due.read), rows, session(c), "tasks", note, jobName));
   }
   if (s.waiting) {
     const rows = s.waiting.read.built ? waitingRows(s.waiting.waits, day.from, ways(jobs, c.home, "mail")) : null;

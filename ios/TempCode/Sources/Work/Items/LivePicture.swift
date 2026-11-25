@@ -415,7 +415,7 @@ private struct FullScreenLive: View {
             do {
                 if let text = try await video.copy(), !text.isEmpty {
                     UIPasteboard.general.string = text
-                    FleetToastCenter.shared.post(message: "Copied")
+                    FleetToastCenter.shared.post(note: "Copied")
                 } else {
                     FleetToastCenter.shared.post(message: "Nothing to copy")
                 }

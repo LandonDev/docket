@@ -170,4 +170,13 @@ private func names(_ sector: String) -> String { ["ref": "Ref", "purdue": "Purdu
         #expect(MailRules.heardLate(.mayHaveGone)?.tell == true)
         #expect(MailRules.heardLate(.gone)?.tell == true)
     }
+
+    @Test func `a Mail outcome goes to the capsule only while it shows, and a success to the plain notice only when none does`() {
+        // Mail on screen: a success in its capsule alone; a refusal there and as the sticky notice.
+        #expect(MailRules.outcomePlaces(sticky: false, capsuleShown: true) == (true, nil))
+        #expect(MailRules.outcomePlaces(sticky: true, capsuleShown: true) == (true, .sticky))
+        // A person's page, or a job he left whose scene is kept: nothing to a hidden capsule.
+        #expect(MailRules.outcomePlaces(sticky: false, capsuleShown: false) == (false, .plain))
+        #expect(MailRules.outcomePlaces(sticky: true, capsuleShown: false) == (false, .sticky))
+    }
 }

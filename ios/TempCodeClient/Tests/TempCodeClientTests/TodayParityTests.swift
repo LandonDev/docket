@@ -35,7 +35,7 @@ struct TodayParityTests {
     }
     struct Held: Decodable { var items: [TodaySources.HeldItem]; var requests: [TodaySources.HeldRequest]?; var names: [Named]; var loaded: Bool; var errors: [TodaySources.HostError] }
     struct Meetings: Decodable { var events: [TodaySources.Event]; var people: [String: [TodaySources.Person]]; var read: Read }
-    struct Due: Decodable { var tasks: [TodaySources.Task]; var read: Read }
+    struct Due: Decodable { var tasks: [TodaySources.Task]; var read: Read; var projects: TodaySources.ProjectNames? }
     struct Waiting: Decodable { var waits: [TodaySources.Wait]; var read: Read; var beyond: Bool? }
     struct Clashes: Decodable { var range: TodaySources.ClashRange?; var loading: Bool?; var error: String? }
     struct Review: Decodable { var asked: [String]; var answered: [String: TodaySources.ReviewReady?] }
@@ -194,8 +194,8 @@ struct TodayParityTests {
             add("meetings", TodaySources.lifeosAnswer(m.read.lifeos, rows: built?.rows, sessionDown: down, host: c.lifeosHost, what: "meetings", note: built?.note, jobs: jobs))
         }
         if let d = s.due {
-            let rows = d.read.built ? TodaySources.dueRows(d.tasks, now: c.now, jobs: jobs, calendar: cal) : nil
-            add("due", TodaySources.lifeosAnswer(d.read.lifeos, rows: rows, sessionDown: down, host: c.lifeosHost, what: "tasks", jobs: jobs))
+            let rows = d.read.built ? TodaySources.dueRows(d.tasks, now: c.now, jobs: jobs, names: d.projects, calendar: cal) : nil
+            add("due", TodaySources.lifeosAnswer(d.read.lifeos, rows: rows, sessionDown: down, host: c.lifeosHost, what: "tasks", note: TodaySources.namesNote(d.projects, rows: rows), jobs: jobs))
         }
         if let w = s.waiting {
             let rows = w.read.built ? TodaySources.waitingRows(w.waits, today: day.from, jobs: jobs, calendar: cal) : nil

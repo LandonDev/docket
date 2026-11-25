@@ -81,6 +81,9 @@ public struct WorkListReport: Codable, Sendable, Equatable {
     public var stillSeconds = 0.0
     public var stillMade = 0
     public var stillPushes = 0
+    /// Pushes for other places that arrived during the measured scroll (`list-busy` needs one, so its offsets judged
+    /// something).
+    public var scrollPushes = 0
     /// The app's own scrolls of the list while the finger moved, and moves the finger did not make (reported).
     public var offsetWrites = 0
     public var foreignMoves = 0
@@ -107,6 +110,9 @@ public enum WorkListCheckRules {
     public static let rows = 1_000
     /// The still seconds after the scroll, while pushes for other places arrive.
     public static let stillSeconds = 6.0
+    /// How long `list-busy`'s traffic may play: past the measured scroll (at most 90 s) and the still seconds; the
+    /// check stops it when done.
+    public static let loadSeconds = 120
 
     /// The visible window plus one page (a page is a window).
     public static func rowLimit(window: Int) -> Int { window * 2 }

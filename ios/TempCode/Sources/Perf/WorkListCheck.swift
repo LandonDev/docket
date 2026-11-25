@@ -6,7 +6,7 @@ import UIKit
 /// The list check (docs/IOS-DESIGN.md "The Work perf proof"): a 1,000-row fixture list in the Files place's own frame
 /// and row (`WorkPlaceScreen`, `FilesRowLabel`), its words made once off the main actor. After the rows settle it
 /// scrolls the list down and up once to warm it, then again measured at 3,000 pt/s, then holds still for a few
-/// seconds while whatever the hosts push for other places arrives. It counts what the app owns: rows built before
+/// seconds while whatever the hosts push for other places arrives (in `list-busy`, from before the measured scroll). It counts what the app owns: rows built before
 /// the finger moved, the most alive at once, any built while still, and the app's own scrolls under the finger
 /// (`PerfCounters.offsetWrites`). Rows the scroll built twice are reported, not judged (List drops a far row's
 /// state). Frame times are reported. Settings → Diagnostics runs it on the
@@ -48,6 +48,10 @@ final class WorkListCheck {
         // Warm: every row has been on screen once before the measured pass.
         await drive(list) { _ in }
         ledger.resetPeak()
+        // Busy: other places' traffic plays from before the measured scroll to the end of the still seconds, so a push
+        // that moved the list under the finger would show in its offsets. Stopped (`/quiet`) once the check is done.
+        if busy { await PerfRunner.control("/load", ["seconds": WorkListCheckRules.loadSeconds]) }
+        let scrollPushes = Self.pushes()
         let offsets = PerfCounters.value(.offsetWrites)
         let recorder = FrameRecorder()
         recorder.start(sourceRows: rows.count, items: rows.count, scrollView: list, driver: .perf)
@@ -60,6 +64,7 @@ final class WorkListCheck {
             travel += abs(step.moved)
         }
         let frames = recorder.finish()
+        report.scrollPushes = Self.pushes() - scrollPushes
         report.offsetWrites = PerfCounters.value(.offsetWrites) - offsets
         report.window = window
         report.peakAlive = ledger.peakAlive
@@ -73,7 +78,6 @@ final class WorkListCheck {
         report.hitchMsPerS = frames.seconds > 0 ? PerfDist.round(frames.hitchMs / frames.seconds) : 0
         report.mainP95Ms = PerfDist(frames.cpu).p95
         // Still: the list stands while other places' pushes arrive. A row built now was thrown away by one of them.
-        if busy { await PerfRunner.control("/load", ["seconds": Int(WorkListCheckRules.stillSeconds) + 4]) }
         let made = ledger.made
         let pushes = Self.pushes()
         await PerfRunner.sleep(WorkListCheckRules.stillSeconds)
@@ -82,6 +86,7 @@ final class WorkListCheck {
         report.stillPushes = Self.pushes() - pushes
         report.madeAgain = ledger.madeAgain.count
         report.madeAgainKeys = Array(ledger.madeAgain.prefix(20))
+        if busy { await PerfRunner.control("/quiet", [:]) }
         if Task.isCancelled { report.note = "it was stopped" }
         return report
     }

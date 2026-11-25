@@ -13,7 +13,7 @@ const REST_GATES = ['rest-ticks', 'rest-queries', 'rest-polls', 'rest-cpu']
 const LIST_GATES = ['list-rows-built', 'list-rows-remade', 'list-offset-writes']
 const GATES = ['network-before-frame', 'rows-remade', 'first-frame', 'cached-row', 'row-hit', ...REST_GATES, ...LIST_GATES, 'editor-memory']
 /** A list check that holds: 14 rows on screen, 20 built first, 26 alive at most, nothing built again or under the finger. */
-const list = { rows: 1000, window: 14, firstPaintMade: 20, peakAlive: 26, madeAgain: 0, madeAgainKeys: [], stillSeconds: 6, stillMade: 0, stillPushes: 12, offsetWrites: 0, foreignMoves: 0, frames: 900, late: 3, frameP95Ms: 8.3, frameWorstMs: 25, hitchMsPerS: 1.2, mainP95Ms: 3.1, thermal: 'nominal' }
+const list = { rows: 1000, window: 14, firstPaintMade: 20, peakAlive: 26, madeAgain: 0, madeAgainKeys: [], stillSeconds: 6, stillMade: 0, stillPushes: 12, scrollPushes: 40, offsetWrites: 0, foreignMoves: 0, frames: 900, late: 3, frameP95Ms: 8.3, frameWorstMs: 25, hitchMsPerS: 1.2, mainP95Ms: 3.1, thermal: 'nominal' }
 const memory = { samples: 80, peakMB: 210, lastMB: 190, webLoads: 1 }
 const rest = { seconds: 10, mainCpuMs: 100, ticks: 2, ticksAllowed: 2, tickNames: ['clock'], queries: 1, queriesAllowed: 1, queryNames: ['tasks'], reads: 0 }
 const dirs: string[] = []
@@ -150,6 +150,7 @@ describe('ios_work_perf_check.py', () => {
     ['list-rows-remade', 'list-busy', { stillMade: 14 }, 'pass 2 list-busy: 14 rows built while the list stood still'],
     ['list-rows-remade', 'list-busy', { stillPushes: 0 }, 'no push for another place arrived in the still seconds'],
     ['list-offset-writes', 'list-idle', { offsetWrites: 1 }, '1 scrolls the app made under the finger (0)'],
+    ['list-offset-writes', 'list-busy', { scrollPushes: 0 }, 'no push for another place arrived while the list scrolled, so its offsets judged nothing'],
     ['list-offset-writes', 'list-busy', { note: 'the list did not load' }, 'pass 2 list-busy: the list did not load']
   ] as const)('%s fails when %s misses: %s', (gate, name, patch, words) => {
     const bad = good()

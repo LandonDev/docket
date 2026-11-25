@@ -11,6 +11,19 @@ import Synchronization
 /// `OrderedWriter`, off the main actor, in the order they were made.
 public final class WorkCacheStore: Sendable {
     private let db: Mutex<Database>
+    /// Purges that failed on the file (a read or write SQLite refused, as while the phone is locked): kept in the
+    /// defaults until one runs, so a launch never seeds rows a purge meant to take.
+    private let purges: WorkCachePurges
+    /// A purge is kept and waits for the next write, or the next purge, to run again.
+    private let retry = Atomic<Bool>(false)
+    /// Today's own epoch, over every host, moved by a LifeOS sign-out's drop: a Today row is kept under the host its
+    /// press opens on, which need not be the host whose LifeOS read it, so no host's fence alone refuses it.
+    private let todayEpoch = Atomic<Int>(0)
+
+    /// Taken when a Today write is queued (`put`'s `todayStamp`).
+    public func todayStamp() -> Int {
+        todayEpoch.load(ordering: .sequentiallyConsistent)
+    }
 
     /// The phone's one connection to the file, shared by Today's, the Outbox's, the Digest's and the folders'
     /// caches: one lock serializes every write's fence check and commit with every purge, so a write the fence let
@@ -18,8 +31,8 @@ public final class WorkCacheStore: Sendable {
     /// open or be protected; each cache then keeps its rows in memory for the run.
     public static let shared: WorkCacheStore? = {
         guard let store = try? WorkCacheStore(path: defaultPath()) else { return nil }
-        // What a run with no file purged runs first, before any cache writes.
-        for reason in WorkCachePurges().take() { store.drop(reason) }
+        // What a run with no file purged, or a purge the file refused, runs first, before any cache writes.
+        store.retryPending()
         return store
     }()
 
@@ -30,7 +43,12 @@ public final class WorkCacheStore: Sendable {
         if let host = reason.host {
             if close { WorkCacheFence.close(host) } else { WorkCacheFence.purge(host) }
         }
-        if let shared { shared.drop(reason) } else { WorkCachePurges().add(reason) }
+        if let shared {
+            shared.retryPending()
+            shared.drop(reason)
+        } else {
+            WorkCachePurges().add(reason)
+        }
     }
 
     /// Opens the file at `path`, its folder and every file of it first put under `protect` (complete protection and
@@ -48,7 +66,8 @@ public final class WorkCacheStore: Sendable {
         }
     }
 
-    init(databasePath: String) throws(CacheError) {
+    init(databasePath: String, purges: WorkCachePurges = WorkCachePurges()) throws(CacheError) {
+        self.purges = purges
         let db = try Database(path: databasePath)
         try db.exec("PRAGMA journal_mode = WAL")
         try db.exec("PRAGMA synchronous = NORMAL")
@@ -58,9 +77,22 @@ public final class WorkCacheStore: Sendable {
         self.db = Mutex(db)
     }
 
-    public static func inMemory() throws(CacheError) -> WorkCacheStore {
-        try WorkCacheStore(databasePath: ":memory:")
+    public static func inMemory(purges: WorkCachePurges = WorkCachePurges()) throws(CacheError) -> WorkCacheStore {
+        try WorkCacheStore(databasePath: ":memory:", purges: purges)
     }
+
+    /// Runs the kept purges again, in order; one the file still refuses stays kept.
+    public func retryPending() {
+        retry.store(false, ordering: .relaxed)
+        for reason in purges.take() { drop(reason) }
+    }
+
+    #if DEBUG
+    /// Tests: a statement run on the file as it is, to make SQLite refuse a purge and then take it again.
+    func execForTests(_ sql: String) throws(CacheError) {
+        try db.withLock { (db) throws(CacheError) in try db.exec(sql) }
+    }
+    #endif
 
     public static func defaultPath() -> URL {
         EnvironmentStore.defaultDirectory().appending(path: "WorkCache", directoryHint: .isDirectory).appending(path: "work-cache.sqlite")
@@ -105,14 +137,16 @@ public final class WorkCacheStore: Sendable {
     }
 
     /// Writes `value` at `key`, and drops the host's rows of any other key generation, in one transaction. A host the
-    /// fence holds closed, or a write queued before its last close (`stamp`, `WorkCacheFence`), writes nothing.
-    public func put(_ value: WorkCacheValue, at key: WorkCache.Key, stamp: Int? = nil) throws(CacheError) {
+    /// fence holds closed, a write queued before its last close (`stamp`, `WorkCacheFence`), or a Today write queued
+    /// before the last LifeOS sign-out (`todayStamp`), writes nothing. A purge the file refused runs first.
+    public func put(_ value: WorkCacheValue, at key: WorkCache.Key, stamp: Int? = nil, todayStamp: Int? = nil) throws(CacheError) {
         guard value.scope == key.scope else { throw CacheError.encoding("a value is kept under its own scope") }
         let json: Data
         do { json = try JSONEncoder().encode(value) } catch { throw CacheError.encoding(String(describing: error)) }
+        if retry.load(ordering: .relaxed) { retryPending() }
         try db.withLock { (db) throws(CacheError) in
             // Under the lock a purge takes too: the check and the commit are one step against it.
-            guard WorkCacheFence.admits(key.host, stamp: stamp) else { return }
+            guard WorkCacheFence.admits(key.host, stamp: stamp), todayStamp.map({ $0 == self.todayStamp() }) ?? true else { return }
             try db.transaction { () throws(CacheError) in
                 try db.run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(key.host), .int(key.keyGeneration)])
                 try db.run("INSERT OR REPLACE INTO kept (host, account, generation, workspace, scope, json) VALUES (?, ?, ?, ?, ?, ?)", Self.binds(key) + [.blob(json)])
@@ -120,48 +154,75 @@ public final class WorkCacheStore: Sendable {
         }
     }
 
-    /// Drops every key `reason` names, in one statement under the lock (`WorkCacheDrop.drops` is its rule).
-    public func drop(_ reason: WorkCacheDrop) {
-        if case .lifeosSignedOut(let host) = reason { return dropLifeos(suppliedBy: host) }
-        let (sql, binds): (String, [Database.Value]) = switch reason {
-        case .keyReplaced(let host, let generation): ("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
-        case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host): ("DELETE FROM kept WHERE host = ?", [.text(host)])
-        case .signedOut(let account): ("DELETE FROM kept WHERE account = ?", [.text(account)])
-        case .lifeosSignedOut(let host): ("DELETE FROM kept WHERE host = ? AND scope = ?", [.text(host), .text(WorkCache.Scope.today.text)])
+    /// Drops every key `reason` names, in one statement under the lock (`WorkCacheDrop.drops` is its rule). One the
+    /// file refuses is kept (`purges`) and runs again before the next write or purge, and at the next open; false
+    /// then.
+    @discardableResult
+    public func drop(_ reason: WorkCacheDrop) -> Bool {
+        let done: Bool
+        switch reason {
+        case .lifeosSignedOut(let host):
+            done = dropLifeos(suppliedBy: host)
+        case .keyReplaced(let host, let generation):
+            done = run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
+        case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host):
+            done = run("DELETE FROM kept WHERE host = ?", [.text(host)])
+        case .signedOut(let account):
+            done = run("DELETE FROM kept WHERE account = ?", [.text(account)])
         }
-        db.withLock { db in try? db.run(sql, binds) }
+        if !done {
+            purges.add(reason)
+            retry.store(true, ordering: .relaxed)
+        }
+        return done
+    }
+
+    private func run(_ sql: String, _ binds: [Database.Value]) -> Bool {
+        db.withLock { db in
+            do { try db.run(sql, binds) } catch { return false }
+            return true
+        }
     }
 
     /// A host's LifeOS signed out: the rows its session read go out of every host's Today rows (a row is kept under
     /// the host its press opens on, which need not be the reader), and LifeOS rows with no known supplier with them.
-    /// Each host rewritten has its fence moved under the same lock, so a Today write queued before this, with the
-    /// old rows in it, is refused.
-    private func dropLifeos(suppliedBy host: String) {
-        db.withLock { db in
+    /// Today's own fence moves first, under the same lock, so every Today write queued before this is refused,
+    /// whichever host's key it names and whether or not that key holds any of the rows yet; each host rewritten has
+    /// its fence moved too.
+    private func dropLifeos(suppliedBy host: String) -> Bool {
+        db.withLock { db -> Bool in
+            todayEpoch.add(1, ordering: .sequentiallyConsistent)
             var rewrites: [(binds: [Database.Value], json: Data, host: String)] = []
-            try? db.query("SELECT host, account, generation, workspace, scope, json FROM kept WHERE scope = ?", [.text(WorkCache.Scope.today.text)]) { row in
-                guard let value = try? JSONDecoder().decode(WorkCacheValue.self, from: row.blob(5)) else { return }
-                let next: WorkCacheValue
-                switch value {
-                case .todayOn(let day, let rows):
-                    let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
-                    guard left.count != rows.count else { return }
-                    next = .todayOn(day: day, rows: left)
-                case .today(let rows):
-                    let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
-                    guard left.count != rows.count else { return }
-                    next = .today(left)
-                default:
-                    return
+            do {
+                try db.query("SELECT host, account, generation, workspace, scope, json FROM kept WHERE scope = ?", [.text(WorkCache.Scope.today.text)]) { row in
+                    guard let value = try? JSONDecoder().decode(WorkCacheValue.self, from: row.blob(5)) else { return }
+                    let next: WorkCacheValue
+                    switch value {
+                    case .todayOn(let day, let rows):
+                        let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
+                        guard left.count != rows.count else { return }
+                        next = .todayOn(day: day, rows: left)
+                    case .today(let rows):
+                        let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
+                        guard left.count != rows.count else { return }
+                        next = .today(left)
+                    default:
+                        return
                 }
                 guard let json = try? JSONEncoder().encode(next) else { return }
                 let binds: [Database.Value] = [.text(row.text(0)), .text(row.text(1)), .int(row.int(2)), .text(row.text(3)), .text(row.text(4))]
                 rewrites.append((binds, json, row.text(0)))
+                }
+                try db.transaction { () throws(CacheError) in
+                    for one in rewrites {
+                        WorkCacheFence.purge(one.host)
+                        try db.run("UPDATE kept SET json = ? WHERE host = ? AND account = ? AND generation = ? AND workspace = ? AND scope = ?", [.blob(one.json)] + one.binds)
+                    }
+                }
+            } catch {
+                return false
             }
-            for one in rewrites {
-                WorkCacheFence.purge(one.host)
-                try? db.run("UPDATE kept SET json = ? WHERE host = ? AND account = ? AND generation = ? AND workspace = ? AND scope = ?", [.blob(one.json)] + one.binds)
-            }
+            return true
         }
     }
 }
@@ -195,8 +256,9 @@ public final class TodayDiskCache: TodayRowsCache {
 
     public func keepToday(_ rows: [WorkCache.Key: [TodayRow]], day: String) {
         let stamps = Dictionary(rows.keys.map { ($0.host, WorkCacheFence.stamp($0.host)) }, uniquingKeysWith: { a, _ in a })
+        let today = store.todayStamp()
         writer.write { store in
-            for (key, list) in rows { try? store.put(.todayRows(list, day: day), at: key, stamp: stamps[key.host]) }
+            for (key, list) in rows { try? store.put(.todayRows(list, day: day), at: key, stamp: stamps[key.host], todayStamp: today) }
         }
     }
 

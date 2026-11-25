@@ -1,0 +1,292 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "due-projects",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [
+        {
+          "_id": "p1",
+          "title": "Print the brackets",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000,
+          "projectId": "proj-spring"
+        },
+        {
+          "_id": "p2",
+          "title": "Order shirts",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795557600000,
+          "projectId": "proj-gone"
+        },
+        {
+          "_id": "p3",
+          "title": "File the game report",
+          "sector": "ref",
+          "status": "open",
+          "dueAt": 1795561200000,
+          "projectId": "proj-ref"
+        },
+        {
+          "_id": "p4",
+          "title": "Call Dana",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795564800000
+        }
+      ],
+      "read": {
+        "built": true
+      },
+      "projects": {
+        "rows": [
+          {
+            "_id": "proj-spring",
+            "name": "Spring tour"
+          }
+        ],
+        "known": [
+          "purdue"
+        ],
+        "failed": true
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": []
+    },
+    "clashes": {
+      "range": {
+        "clashes": [],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": []
+    },
+    "review": {
+      "asked": [],
+      "answered": {}
+    },
+    "prep": {
+      "answers": []
+    },
+    "msforms": {
+      "answers": []
+    },
+    "digest": {
+      "rows": [],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "task:p1",
+        "task:p2",
+        "task:p3",
+        "task:p4"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "note": "Project names did not load",
+            "failed": [],
+            "rows": [
+              {
+                "key": "task:p1",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Print the brackets",
+                "detail": "Spring tour",
+                "at": 1795554000000,
+                "when": "3:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow",
+                  "Open project"
+                ]
+              },
+              {
+                "key": "task:p2",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Order shirts",
+                "at": 1795557600000,
+                "when": "4:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:p3",
+                "section": "due",
+                "sector": "ref",
+                "title": "File the game report",
+                "at": 1795561200000,
+                "when": "5:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-ref",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow",
+                  "Open project"
+                ]
+              },
+              {
+                "key": "task:p4",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Call Dana",
+                "at": 1795564800000,
+                "when": "6:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "messages",
+            "title": "Messages",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "empty": "No one is waiting on a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        }
+      ]
+    }
+  }
+}

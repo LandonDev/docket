@@ -174,7 +174,7 @@ struct ItemPage: View {
             Task {
                 do {
                     let name = try await client.work.canvas.keep(item)
-                    FleetToastCenter.shared.post(message: MailRules.keptLine(name))
+                    FleetToastCenter.shared.post(note: MailRules.keptLine(name))
                 } catch { failure = ActionError.wrap(error).message }
             }
         case .print:

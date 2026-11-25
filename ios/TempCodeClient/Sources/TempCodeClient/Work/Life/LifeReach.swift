@@ -60,8 +60,10 @@ public enum LifeReach {
     }
 
     /// Where the places read. `home` is the Work home's host when the phone knows it; `refused` the hosts that
-    /// would not sign the whole session.
-    public static func reach(jobs: [Job], hosts: [Host], home: String? = nil, refused: Set<String> = []) -> Reach {
+    /// would not sign the whole session; `down` the hosts whose whole session is known down (LifeOS signed out
+    /// there, or out of reach): one gives way to the next host that can sign, as the desktop's Today passes a down
+    /// reader over, and only when every one is down does the first stand, to say why.
+    public static func reach(jobs: [Job], hosts: [Host], home: String? = nil, refused: Set<String> = [], down: Set<String> = []) -> Reach {
         guard !jobs.isEmpty else { return .unavailable("No job is linked to LifeOS.") }
         let holding = Set(jobs.map(\.environmentId))
         let open = hosts.filter { $0.open && holding.contains($0.environmentId) }
@@ -70,8 +72,9 @@ public enum LifeReach {
         guard !signers.isEmpty else { return .unavailable("This phone’s key can’t read LifeOS.") }
         let homeHost = hosts.first { $0.environmentId == home && $0.open && $0.mayToken }
         let order = (homeHost.map { [$0] } ?? []) + signers.filter { $0.environmentId != home }
-        if let whole = order.first(where: { !refused.contains($0.environmentId) }) {
-            return .whole(environmentId: whole.environmentId)
+        let whole = order.filter { !refused.contains($0.environmentId) }
+        if let pick = whole.first(where: { !down.contains($0.environmentId) }) ?? whole.first {
+            return .whole(environmentId: pick.environmentId)
         }
         let able = Set(signers.map(\.environmentId))
         return .perJob(jobs.filter { able.contains($0.environmentId) })

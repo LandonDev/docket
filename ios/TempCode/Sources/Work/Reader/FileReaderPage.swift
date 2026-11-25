@@ -233,7 +233,7 @@ struct FileReaderPage: View {
             Task {
                 do {
                     let name = try await client.work.canvas.keep(live ?? item)
-                    FleetToastCenter.shared.post(message: MailRules.keptLine(name))
+                    FleetToastCenter.shared.post(note: MailRules.keptLine(name))
                 } catch { failure = ActionError.wrap(error).message }
             }
         case .comments: sheet = .comments

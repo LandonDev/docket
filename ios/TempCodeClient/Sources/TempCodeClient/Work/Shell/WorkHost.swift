@@ -416,11 +416,13 @@ public final class WorkHost: CaptureHost {
 
     /// The host's LifeOS signed out: what was kept of its LifeOS session's rows goes from disk (the fence moves).
     private func lifeosSignedOut() {
-        // The app ends this host's LifeOS sessions and Today forgets what they gave, whether or not Today shows.
-        Self.heardLifeosSignOut?(environment.id)
+        // The disk first: its drop refuses every Today write queued before it, so Today's own writes after the hook
+        // below pass.
         #if canImport(SQLite3)
         WorkCacheStore.purge(.lifeosSignedOut(host: environment.id), close: false)
         #endif
+        // The app ends this host's LifeOS sessions and Today forgets what they gave, whether or not Today shows.
+        Self.heardLifeosSignOut?(environment.id)
     }
 
     /// A link to the host opened: the key stands, and its rows may be read and kept again.

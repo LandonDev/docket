@@ -76,6 +76,8 @@ public struct TodayLifeInput: Hashable, Sendable {
     public var eventsRead = TodaySources.LifeosRead()
     public var tasks: [TodaySources.Task]?
     public var tasksRead = TodaySources.LifeosRead()
+    /// The projects' names, for a Due row's second line: a row waits for none of them.
+    public var projects = TodaySources.ProjectNames(rows: nil)
     public var waits: [TodaySources.Wait]?
     public var waitsRead = TodaySources.LifeosRead()
     /// Past the fifth page LifeOS still said there was more.
@@ -270,20 +272,17 @@ public final class TodayStore {
     public func lifeosSignedOut(host: String) {
         // What that host's session gave, kept under any host's key (a row opens where its job is, not where it was
         // read), and rows kept before a supplier was known: out of memory now, whatever input comes next.
-        var dropped = false
         for source in Self.lifeosSources {
             guard var kept = whole[source], let rows = kept.rows else { continue }
             let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
             guard left.count != rows.count else { continue }
             kept.rows = left
             whole[source] = kept
-            dropped = true
         }
-        if dropped { written = [:] }
-        guard let life else {
-            if dropped { rebuild() }
-            return
-        }
+        // The disk's drop refuses every Today write queued before it, whichever host it was for
+        // (`WorkCacheStore.todayStamp`): every linked host is written again, with or without a row gone here.
+        written = [:]
+        guard let life else { return rebuild() }
         if let sectors = life.narrowed[host], !sectors.isEmpty {
             let gone = Set(sectors)
             var next = life
@@ -298,6 +297,8 @@ public final class TodayStore {
             update(life: next)
         } else if life.host == host {
             update(life: TodayLifeInput(host: host, reach: .down(.signedOut)))
+        } else {
+            rebuild()
         }
     }
 
@@ -638,8 +639,9 @@ public final class TodayStore {
             return supplied(TodaySources.lifeosAnswer(life.eventsRead, rows: built?.rows, sessionDown: life.sessionDown, host: life.host, what: "meetings", note: built?.note, jobs: byJobs), life)
         case "due":
             guard let life else { return TodayAnswer(loading: true) }
-            let rows = life.tasks.map { TodaySources.dueRows($0, now: now, jobs: byJobs, calendar: calendar) }
-            return supplied(TodaySources.lifeosAnswer(life.tasksRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "tasks", jobs: byJobs), life)
+            let rows = life.tasks.map { TodaySources.dueRows($0, now: now, jobs: byJobs, names: life.projects, calendar: calendar) }
+            let note = TodaySources.namesNote(life.projects, rows: rows)
+            return supplied(TodaySources.lifeosAnswer(life.tasksRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "tasks", note: note, jobs: byJobs), life)
         case "waiting":
             guard let life else { return TodayAnswer(loading: true) }
             let rows = life.waits.map { TodaySources.waitingRows($0, today: day.from, jobs: byJobs, calendar: calendar) }

@@ -32,6 +32,17 @@ import TempCodeContract
 
     // MARK: - where the every-job places read
 
+    @Test func `a whole session known down gives way to the next host that can sign, and the first stands when all are down`() {
+        let hosts = [LifeReach.Host(environmentId: "box", open: true, mayToken: true), LifeReach.Host(environmentId: "mac", open: true, mayToken: true)]
+        // The box signed out of LifeOS: the Mac reads the day, as the desktop passes a down reader over.
+        #expect(LifeReach.reach(jobs: box + mac, hosts: hosts, down: ["box"]) == .whole(environmentId: "mac"))
+        #expect(LifeReach.reach(jobs: box + mac, hosts: hosts, home: "box", down: ["box"]) == .whole(environmentId: "mac"))
+        // Both down: the first stays, so the page says its state, never the per-job reach.
+        #expect(LifeReach.reach(jobs: box + mac, hosts: hosts, down: ["box", "mac"]) == .whole(environmentId: "box"))
+        // A refusal still sends the places per job; a down host is no refusal.
+        #expect(LifeReach.reach(jobs: box + mac, hosts: hosts, refused: ["mac"], down: ["box"]) == .whole(environmentId: "box"))
+    }
+
     @Test func `the whole session comes from the Work home, else the first open host that holds a job and may sign`() {
         let hosts = [LifeReach.Host(environmentId: "box", open: true, mayToken: true), LifeReach.Host(environmentId: "mac", open: true, mayToken: true)]
         #expect(LifeReach.reach(jobs: box + mac, hosts: hosts) == .whole(environmentId: "box"))

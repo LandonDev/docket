@@ -56,7 +56,7 @@ struct FilesNewSheet: View {
                         ForEach(templates, id: \.id) { template in
                             NavigationLink {
                                 TemplateFillView(work: client.work, workspaceId: workspaceId, at: at, template: template) { made in
-                                    FleetToastCenter.shared.post(message: TemplateFill.madeWords(made))
+                                    FleetToastCenter.shared.post(note: TemplateFill.madeWords(made))
                                     dismiss()
                                 }
                             } label: {

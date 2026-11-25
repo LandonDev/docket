@@ -47,9 +47,17 @@ enum TodayLife {
         let jobs = workClients.flatMap { LifeReach.jobs(environmentId: $0.environment.id, workspaces: $0.workspaces) }
         let hosts = workClients.map { LifeReach.Host(environmentId: $0.environment.id, open: $0.work.linked, mayToken: $0.work.may(.lifeosJwt)) }
         let refused = Set(workClients.filter { WorkLifeHost.every($0).refusedWhole }.map(\.environment.id))
+        // A whole session known down gives way to the next host's (the desktop's `pickHost`). It is made again here when
+        // its host says LifeOS connected (`prepared`), and leads again once it is up.
+        let down = Set(workClients.filter { client in
+            let host = WorkLifeHost.every(client)
+            guard case .unavailable = host.phase, self.down(host) != nil else { return false }
+            _ = prepared(host, client)
+            return true
+        }.map(\.environment.id))
         var needed = 0
         defer { queriesNeeded = needed }
-        switch LifeReach.reach(jobs: jobs, hosts: hosts, refused: refused) {
+        switch LifeReach.reach(jobs: jobs, hosts: hosts, refused: refused, down: down) {
         case .unavailable:
             // No host linked yet, but one is on its first try (a cold launch, a return from the background): the store
             // keeps what LifeOS last gave, so no section blanks while it links.
@@ -209,6 +217,8 @@ enum TodayLife {
         var seen = (events: Set<String>(), tasks: Set<String>(), waits: Set<String>())
         var eventsRead = TodaySources.LifeosRead(), tasksRead = TodaySources.LifeosRead(), waitsRead = TodaySources.LifeosRead()
         var haveEvents = false, haveTasks = false, haveWaits = false
+        // The projects' names, for Due's second line: the first reader's list, then each other reader's sectors.
+        var projects: [TodaySources.Project]?, projectsKnown: [String] = [], projectsFailed = false
         var lost: [TodaySources.Lost] = uncovered.map { TodaySources.Lost(environmentId: host, sector: $0, error: TodaySources.notCovered) }
         var people: [String: [TodaySources.Person]] = [:]
         for (index, reader) in readers.enumerated() {
@@ -244,6 +254,16 @@ enum TodayLife {
             } else if let failure = tasksQuery.failure {
                 if first { tasksRead.error = String(describing: failure) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: String(describing: failure))) }
             } else if !first { tasksRead.pending = true }
+            let projectsQuery = store.projects
+            if let value = projectsQuery.value {
+                if first || projects != nil {
+                    let read = (recode([TodaySources.Project].self, value) ?? []).filter { keeps($0.sector) }
+                    projects = (projects ?? []) + read.filter { one in !(projects ?? []).contains { $0.id == one.id } }
+                    projectsKnown += reader.sectors.map(Array.init) ?? store.sectors.map(\.rawValue)
+                }
+            } else if projectsQuery.failure != nil {
+                projectsFailed = true
+            }
             // Mail no one answered: one page of up to a hundred; more past it is `beyond`.
             let (page, failure) = waitsOf(store, needed: &needed)
             if let page {
@@ -266,6 +286,7 @@ enum TodayLife {
         input.waits = haveWaits ? waits : nil
         input.eventsRead = eventsRead
         input.tasksRead = tasksRead
+        input.projects = TodaySources.ProjectNames(rows: projects, known: projectsKnown.sorted(), failed: projectsFailed)
         input.waitsRead = waitsRead
         input.people = people
     }

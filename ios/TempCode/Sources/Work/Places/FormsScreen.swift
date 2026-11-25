@@ -198,7 +198,7 @@ struct FormsScreen: View {
         do {
             try await call(key)
             done += 1
-            FleetToastCenter.shared.post(message: FormsList.doneWords(press, title: title))
+            FleetToastCenter.shared.post(note: FormsList.doneWords(press, title: title))
         } catch {
             FleetToastCenter.shared.post(message: "\(press == .close ? "Not closed" : "Not reopened"): \(ActionError.wrap(error).message)")
         }
@@ -349,7 +349,7 @@ struct MsFormAnswersScreen: View {
         do {
             self.form = try await client.work.setMsformOpen(workspaceId, formId: formId, open: press == .reopen, key: key)
             done += 1
-            FleetToastCenter.shared.post(message: FormsList.doneWords(press, title: form.title))
+            FleetToastCenter.shared.post(note: FormsList.doneWords(press, title: form.title))
         } catch {
             FleetToastCenter.shared.post(message: "\(press == .close ? "Not closed" : "Not reopened"): \(ActionError.wrap(error).message)")
         }

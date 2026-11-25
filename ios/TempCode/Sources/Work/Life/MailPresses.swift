@@ -55,17 +55,44 @@ final class MailPresses {
         WorkHost.mailHeard = { host, draftId, state in MailPresses.shared.heard(host: host, draftId: draftId, state: state) }
     }
 
-    /// What became of a Send that was Checking: said in the Mail place that showed Checking, and as the sticky toast
-    /// when it is one he must act on (not sent, may have gone).
+    /// What became of a Send that was Checking, said where he is (`say`): not sent and may have gone wait for his tap.
     func heard(host: String, draftId: String, state: PressState) {
         let kept = checking.removeValue(forKey: "\(host)|\(draftId)")
         guard let said = MailRules.heardLate(state, scheduled: kept?.scheduled) else { return }
-        let scene = kept?.scene
-        if let writes = scene?.writes {
-            if said.tell { writes.fail(said.line) } else { writes.record(Act("Send", "compose:send", [:], announce: said.line, failed: "Not sent")) }
+        say(said.line, sticky: said.tell, on: kept?.scene)
+    }
+
+    /// The Mail places whose own capsule is on screen now (`LifeViewScreen`, the only one with LifeKit's `.foot()`),
+    /// counted by scene: a scene kept alive for a job he left, or a person's page, draws none.
+    @ObservationIgnored private var footed: [ObjectIdentifier: Int] = [:]
+
+    /// Counts `scene` as on screen until the calling view's task ends (it disappears, or its scene is replaced).
+    func footShown(_ scene: LifeScene) async {
+        let id = ObjectIdentifier(scene)
+        footed[id, default: 0] += 1
+        TickLedger.begin("mail.foot"); defer { TickLedger.end("mail.foot") }
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        footed[id, default: 1] -= 1
+        if footed[id] == 0 { footed[id] = nil }
+    }
+
+    private func shows(_ scene: LifeScene?) -> Bool {
+        scene.map { footed[ObjectIdentifier($0), default: 0] > 0 } ?? false
+    }
+
+    /// An outcome said where he will see it. Mail's capsule when its place is on screen; and the Work notice, sticky for
+    /// what he must act on (not sent, may have gone, checking), plain and gone in four seconds for a success, which
+    /// goes there only when no Mail capsule shows.
+    private func say(_ line: String, sticky: Bool, on scene: LifeScene?) {
+        let places = MailRules.outcomePlaces(sticky: sticky, capsuleShown: shows(scene))
+        if places.capsule, let writes = scene?.writes {
+            if sticky { writes.fail(line) } else { writes.record(Act("Send", "compose:send", [:], announce: line, failed: "Not sent")) }
         }
-        // The Mail place that said Checking is gone (a relaunch, a closed job): even a success is told where he is.
-        if said.tell || scene == nil { FleetToastCenter.shared.post(message: said.line) }
+        switch places.notice {
+        case .sticky?: FleetToastCenter.shared.post(message: line)
+        case .plain?: FleetToastCenter.shared.post(note: line)
+        case nil: break
+        }
     }
 
     /// A Send of this draft already waits or is on its way.
@@ -155,7 +182,7 @@ final class MailPresses {
         let line = wait.notice?.line ?? "Not sent"
         for press in presses {
             ended[press.id] = .notSent
-            targets.removeValue(forKey: press.id)?.scene?.writes.fail(line)
+            if let scene = targets.removeValue(forKey: press.id)?.scene, shows(scene) { scene.writes.fail(line) }
         }
         FleetToastCenter.shared.post(message: line)
     }
@@ -208,11 +235,9 @@ final class MailPresses {
                 end = .notSent
             }
             ended[press.id] = end
-            if let words, let writes = target.scene?.writes {
-                if failed { writes.fail(words) } else { writes.record(Act("Send", "compose:send", [:], announce: words, failed: "Not sent")) }
-            }
-            // A refusal is also the sticky toast: he may have left Mail in the five seconds.
-            if failed, let words { FleetToastCenter.shared.post(message: words) }
+            // A refusal and Checking wait for his tap wherever he is; "Scheduled" shows in Mail's capsule, or as the
+            // plain notice when he wrote it from a page with none (a person's) or has left Mail.
+            if let words { say(words, sticky: failed || end == .unknown, on: target.scene) }
             targets[press.id] = nil
             wait.landed(press.id, now: Self.now)
             schedule()

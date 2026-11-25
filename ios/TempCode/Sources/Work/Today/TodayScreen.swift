@@ -207,6 +207,9 @@ struct TodayScreen: View {
         // Resolve opens the clash, which reads; its own presses ask their own keys.
         case .resolve(let environmentId, _):
             return model.registry.client(environmentId) != nil
+        // The project's page reads through the job's own LifeOS session, as its Projects view does.
+        case .openProject(let sector, _):
+            return client(sector: sector)?.work.may(.lifeosJwt) == true
         // LifeKit has no mail-wait write of its own (`mailWaits:dismiss`); Prepare is the meeting's page's own verb.
         case .dismiss, .prepare:
             return false
@@ -233,6 +236,9 @@ struct TodayScreen: View {
             Task { await markRead(row, chatId: chatId, at: at) }
         case .resolve(let environmentId, let clashId):
             ClashOpen.open(environmentId: environmentId, clashId: clashId, pose: pose, navigator: navigator)
+        case .openProject(let sector, let projectId):
+            // The job is looked up when he presses: a row kept from before a reopen opens in the job that holds it now.
+            if let job = jobOf(sector) { TodayProjectOpen.open(job, projectId: projectId, navigator: navigator) }
         case .dismiss, .prepare:
             break
         }
@@ -434,6 +440,7 @@ struct TodayScreen: View {
         case .markRead: "envelope.open"
         case .prepare: "sparkles"
         case .resolve: "calendar.badge.exclamationmark"
+        case .openProject: "folder"
         }
     }
 

@@ -382,18 +382,68 @@ public enum TodaySources {
         public var priority: String?
         public var dueAt: Double?
         public var pinned: Bool?
+        /// The LifeOS project it is filed under.
+        public var projectId: String?
         enum CodingKeys: String, CodingKey {
             case id = "_id"
-            case title, sector, status, priority, dueAt, pinned
+            case title, sector, status, priority, dueAt, pinned, projectId
         }
-        public init(id: String, title: String, sector: String, status: String = "open", dueAt: Double? = nil, pinned: Bool? = nil) {
+        public init(id: String, title: String, sector: String, status: String = "open", dueAt: Double? = nil, pinned: Bool? = nil, projectId: String? = nil) {
             self.id = id
             self.title = title
             self.sector = sector
             self.status = status
             self.dueAt = dueAt
             self.pinned = pinned
+            self.projectId = projectId
         }
+    }
+
+    /// A LifeOS project as `projects:list` answers it: the name a Due row's second line says.
+    public struct Project: Hashable, Sendable, Decodable {
+        public var id: String
+        public var name: String
+        public var sector: String?
+        enum CodingKeys: String, CodingKey {
+            case id = "_id"
+            case name, sector
+        }
+        public init(id: String, name: String, sector: String? = nil) {
+            self.id = id
+            self.name = name
+            self.sector = sector
+        }
+    }
+
+    /// The names a Due row's project is said by (the desktop's `projectRead`): nil `rows` while out, the sectors
+    /// whose names came whole (nil: every one), and whether a read of them failed.
+    public struct ProjectNames: Hashable, Sendable, Decodable {
+        public var rows: [Project]?
+        public var known: [String]?
+        public var failed: Bool?
+        public init(rows: [Project]?, known: [String]? = nil, failed: Bool = false) {
+            self.rows = rows
+            self.known = known
+            self.failed = failed
+        }
+    }
+
+    /// A task's project as its row knows it (the desktop's `projectOfTask`): by name once LifeOS lists it, none once
+    /// its job's names came whole without it, and by its id alone while that job's names are out or failed, so Open
+    /// project still opens it.
+    public static func projectOf(_ task: Task, _ names: ProjectNames) -> Project? {
+        guard let id = task.projectId else { return nil }
+        if let named = names.rows?.first(where: { $0.id == id }) { return named }
+        let known = names.rows != nil && (names.known.map { $0.contains(task.sector) } ?? true)
+        return known ? nil : Project(id: id, name: "")
+    }
+
+    /// The one quiet line when a job's names failed and a row shows its project by Open project alone.
+    public static let namesLost = "Project names did not load"
+
+    public static func namesNote(_ names: ProjectNames?, rows: [TodayRow]?) -> String? {
+        guard names?.failed == true, rows?.contains(where: { $0.detail == nil && $0.acts.contains { $0.label == "Open project" } }) == true else { return nil }
+        return namesLost
     }
 
     public static func taskKey(_ id: String) -> String { "task:\(id)" }
@@ -406,8 +456,9 @@ public enum TodaySources {
     }
 
     /// Today's tasks as rows: the most overdue first, then today's by time, then the pinned with no date. The tick
-    /// completes through the job's host; Tomorrow snoozes to the next morning.
-    public static func dueRows(_ tasks: [Task], now: Double, jobs: TodayJobs, calendar: Calendar) -> [TodayRow] {
+    /// completes through the job's host; Tomorrow snoozes to the next morning. With `names`, a task of a LifeOS project
+    /// names it on the second line and adds Open project, which opens it by id even while the names are out.
+    public static func dueRows(_ tasks: [Task], now: Double, jobs: TodayJobs, names: ProjectNames? = nil, calendar: Calendar) -> [TodayRow] {
         tasks.filter { isTodayTask($0, now: now, calendar) && jobs.of($0.sector) != nil }.map { task in
             let workspace = jobs.of(task.sector)!
             var row = TodayRow(key: taskKey(task.id), section: due.id, sector: task.sector, title: task.title)
@@ -420,6 +471,10 @@ public enum TodaySources {
             row.lead = .tick(label: "Mark \(task.title) done")
             row.open = .task(workspace.place, sector: task.sector, taskId: task.id)
             row.acts = [TodayAct("Tomorrow", .tomorrow(sector: task.sector, taskId: task.id))]
+            if let names, let project = projectOf(task, names) {
+                if !project.name.isEmpty { row.detail = project.name }
+                row.acts.append(TodayAct("Open project", .openProject(sector: task.sector, projectId: project.id)))
+            }
             return row
         }
     }

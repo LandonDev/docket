@@ -8,6 +8,17 @@ import TempCodeContract
 public enum MailRules {
     // MARK: - a composer Send heard late
 
+    /// How an outcome is told besides Mail's capsule: the Work notice that waits for his tap, or the plain one gone in
+    /// four seconds.
+    public enum Notice: Sendable, Hashable { case sticky, plain }
+
+    /// Where a composer Send's outcome is said. In Mail's capsule only while it is on screen (a scene kept for a job
+    /// he left, or a person's page, draws none). What he must act on is the sticky notice wherever he is. A success
+    /// is the plain notice only when no capsule shows it.
+    public static func outcomePlaces(sticky: Bool, capsuleShown: Bool) -> (capsule: Bool, notice: Notice?) {
+        (capsuleShown, sticky ? .sticky : capsuleShown ? nil : .plain)
+    }
+
     /// What Mail says of a composer Send that was Checking once its answer comes late or is read back: the line, and
     /// whether it is one he must act on (the sticky toast too). `scheduled`: the press had a time; nil when the phone
     /// no longer knows (a read-back after a relaunch), and a success then names neither. Nil while nothing is known yet.

@@ -95,7 +95,7 @@ struct JobSettingsView: View {
         defer { revealing = false }
         do {
             try await client.work.reveal(RevealTarget(settings: .work))
-            FleetToastCenter.shared.post(message: "Opened on \(client.environment.name)")
+            FleetToastCenter.shared.post(note: "Opened on \(client.environment.name)")
         } catch {
             FleetToastCenter.shared.post(message: ActionError.wrap(error).message)
         }

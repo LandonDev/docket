@@ -166,10 +166,11 @@ struct RootView: View {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 ShellSplit(navigator: home) {
                     HomeView(slots: shellSlots)
-                        .fleetToastInset()
                 } placeholder: {
                     DetailPlaceholder(title: "No Thread Selected", symbol: "bubble.left.and.bubble.right")
                 } destination: { destination($0) }
+                // Over the whole split, as Work's: Settings → Work pushed from Home says its outcome over that page.
+                .fleetToastInset()
                 .environment(home)
             }
             if showsWork {
@@ -192,10 +193,12 @@ struct RootView: View {
             Tab(value: AppTab.search, role: .search) {
                 ShellSplit(navigator: search) {
                     SearchView(initialQuery: model.launchSearch)
-                        .fleetToastInset()
                 } placeholder: {
                     DetailPlaceholder(title: "No Result Selected", symbol: "magnifyingglass")
                 } destination: { destination($0) }
+                // Over the whole split, as Work's: a Work page Search opens (a person, a job's Forms) says a stopped
+                // or refused send over that page, not behind it under Search's list.
+                .fleetToastInset()
                 .environment(search)
             }
         }

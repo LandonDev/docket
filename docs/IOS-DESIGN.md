@@ -3058,11 +3058,14 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   On the open Duo the list picks its first held row for the empty detail.
 - **The verbs** are swipe actions and the context menu, at most two, drawn only on a fresh row and for a key that
   may press them: the tick (`work.tasks.done`, Undo reopens it in LifeOS), Tomorrow (LifeKit's `tasks:snooze`,
-  Undo `tasks:unsnooze`) and Nudge (`work.mail.nudge`: a thread that drafts the follow-up opens; nothing goes
-  until he sends). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
+  Undo `tasks:unsnooze`), Open project on a task of a LifeOS project (its job's Projects view with the project's
+  page pushed over it; the project's name is the row's line under the title, and "Project names did not load" is
+  the section's one quiet line when a job's names failed) and Nudge (`work.mail.nudge`: a thread that drafts the
+  follow-up opens; nothing goes until he sends). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
   capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
-- **States.** The LifeOS sections give way to one line when no host can read LifeOS ("Not signed in to LifeOS on
-  Box"; Retry only where LifeOS was silent), or
+- **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
+  desktop passes a down reader over (`LifeReach.reach`'s `down`). The LifeOS sections give way to one line when no
+  host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
   press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
   that are offline, a Work host not yet linked this launch among them, are named once at the foot. All clear:
@@ -4198,7 +4201,9 @@ once off the main actor) in the Files place's own frame and row
 to warm, then again measured at 3,000 pt/s one display tick at a time, then
 stands still for six seconds; `list-busy` has the server play other places'
 traffic (`/load`, asked by the app at the control address the script hands
-`list-busy` alone) through them. In the proof the app shows it in a window of
+`list-busy` alone) from before the measured scroll to the end of the still
+seconds, then stops it (`/quiet`); its offsets count only with a push in the
+scroll (`scrollPushes`), its rebuilds only with one in the still seconds. In the proof the app shows it in a window of
 its own over Home (`list` split); Settings → Diagnostics pushes it.
 
 **The editor run** opens a seeded document (`Perf poster` in `Perf editor`,
@@ -4226,6 +4231,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | --- | --- | --- |
 | `today.minute` | Today | Says the minute's words, once a minute at the minute (Today/TodayScreen.swift) |
 | `messages.hold` | Messages, a chat, People, a person | Holds the screen's LifeOS live queries; it wakes once an hour and does nothing (Messages/MessagesReads.swift) |
+| `mail.foot` | Mail for a job | Holds Mail's capsule as on screen while the place shows; it wakes once an hour and does nothing (Life/MailPresses.swift) |
 | `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
 
 Every other Work screen runs none.
