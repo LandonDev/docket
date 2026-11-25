@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FACES_KEPT, facesKept, keepFaceForTests } from "./mail/face";
 import { forgetPictures, keepThumbForTests, THUMBS_CHARS, THUMBS_KEPT, thumbCharsKept } from "./files/previews";
 import { COMPARES_KEPT, comparesKept, putForTests } from "./history/store";
+import { forgetWithItems, itemsGone } from "./canvas/gone";
+import { deckStoreOf } from "./slides/deck";
 
 afterEach(() => {
   forgetPictures();
@@ -46,3 +48,23 @@ describe("history's compares", () => {
     expect(comparesKept()).toBe(20);
   });
 });
+
+describe("what a kind keeps of an item", () => {
+  it("goes when the item closes, by a bare id or an env-and-item key, and nothing else goes", () => {
+    const byItem = new Map<string, number>([["i1", 1], ["i2", 2]]);
+    const byHostItem = new Map<string, number>([["box\ni1", 1], ["box\ni2", 2], ["mac\ni1", 3]]);
+    const offs = [forgetWithItems(byItem), forgetWithItems(byHostItem)];
+    itemsGone(["i1"]);
+    expect([...byItem.keys()]).toEqual(["i2"]);
+    expect([...byHostItem.keys()]).toEqual(["box\ni2"]);
+    for (const off of offs) off();
+  });
+
+  it("a deck's store is made anew once its item closed", () => {
+    const first = deckStoreOf("deck-1");
+    expect(deckStoreOf("deck-1")).toBe(first);
+    itemsGone(["deck-1"]);
+    expect(deckStoreOf("deck-1")).not.toBe(first);
+  });
+});
+

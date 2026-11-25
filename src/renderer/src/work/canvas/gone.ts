@@ -14,3 +14,14 @@ export function onItemsGone(listener: Listener): () => void {
 export function itemsGone(itemIds: readonly string[]): void {
   if (itemIds.length) for (const listener of [...listeners]) listener(itemIds);
 }
+
+/**
+ * A kind's map of what it keeps per item, emptied of each item that closes. `itemOf` reads the item id from a key
+ * (`env\nitem` by default, a bare item id as it is).
+ */
+export function forgetWithItems(map: Map<string, unknown>, itemOf: (key: string) => string = (key) => key.slice(key.indexOf("\n") + 1)): () => void {
+  return onItemsGone((ids) => {
+    for (const key of [...map.keys()]) if (ids.includes(itemOf(key))) map.delete(key);
+  });
+}
+

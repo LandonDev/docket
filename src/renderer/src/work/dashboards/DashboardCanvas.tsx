@@ -21,6 +21,7 @@ import { downIsSilence, downWords, useDownPress } from "../shell/lifeosDown";
 import { savedOfState, useLiveDown, type LiveDown } from "../shell/lifeosLive";
 import { connectingWords } from "../shell/lifeosWords";
 import { linkDashHost, type DashHost } from "./host";
+import { forgetWithItems } from "../canvas/gone";
 
 /**
  * The dashboard kind (docs/agents/work-dashboards.md; the approved page is
@@ -60,6 +61,9 @@ const storeOf = (itemId: string): DashStore => {
   return s;
 };
 const hosts = new Map<string, DashHost>();
+// A closed item's store and host go with it.
+forgetWithItems(stores);
+forgetWithItems(hosts);
 function hostFor(props: Props): DashHost {
   if (props.host) return props.host;
   const key = `${props.env}\n${props.item.id}`;

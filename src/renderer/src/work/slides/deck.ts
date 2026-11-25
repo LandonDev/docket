@@ -5,6 +5,7 @@ import { toBase64 } from "../formats/model";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import type { ShowHost } from "./show/Show";
 import { linkShowRemote, type ShowRemote } from "./show/remote";
+import { forgetWithItems } from "../canvas/gone";
 
 /** The host's side of a deck, as its canvas uses it (src/shared/contract-work-slides.ts). */
 export interface DeckHost {
@@ -164,6 +165,8 @@ export class DeckStore {
 }
 
 const stores = new Map<string, DeckStore>();
+// A closed item's deck goes with it.
+forgetWithItems(stores);
 export function deckStoreOf(itemId: string): DeckStore {
   let store = stores.get(itemId);
   if (!store) {

@@ -42,6 +42,7 @@ import { DeckPreviewLayer } from "./preview/DeckPreview";
 import { NoticeLine, useSlideFileActions } from "./slideFileActions";
 import { Clicker, useClickerShow } from "./show/Clicker";
 import { InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
+import { forgetWithItems } from "../canvas/gone";
 
 export { freePage } from "./Picture";
 
@@ -76,6 +77,8 @@ export interface SlidesDeps {
 }
 
 const hosts = new Map<string, DeckHost>();
+// A closed item's host goes with it.
+forgetWithItems(hosts);
 function hostFor(env: string, itemId: string): DeckHost {
   const key = `${env}\n${itemId}`;
   let host = hosts.get(key);

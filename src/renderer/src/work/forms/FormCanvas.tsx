@@ -24,6 +24,7 @@ import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
 import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, TYPE_WORDS, type Pick, type Shown } from "./model";
 import { ResponsesSkeleton, ResponseTable as SharedResponseTable } from "./responses";
+import { forgetWithItems } from "../canvas/gone";
 export { responseKeys } from "./responses";
 
 /**
@@ -81,6 +82,9 @@ const storeOf = (itemId: string, half: Half = "questions"): FormStore => {
   return s;
 };
 const hosts = new Map<string, FormHost>();
+// A closed item's store and host go with it.
+forgetWithItems(stores);
+forgetWithItems(hosts);
 function hostFor(props: CanvasBodyProps<FormState> & { host?: FormHost }): FormHost {
   if (props.host) return props.host;
   const key = `${props.env}\n${props.item.id}`;
