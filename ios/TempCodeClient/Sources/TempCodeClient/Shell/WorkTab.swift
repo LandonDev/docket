@@ -49,17 +49,18 @@ public enum WorkTab {
         public init(top: Route?) { self.top = top }
 
         /// Whether the landing shows the sidebar over his saved toggle: in a split pose, with no wide route in the
-        /// detail, while the sidebar's top is still the list it landed on, or while the detail is empty, so a list he
-        /// goes on to from there (Files from the Work list) shows too, never a blank detail alone (council 17, Sol 2).
-        /// His toggle itself is never written: once he leaves the landing's list and opens something in the detail, his
-        /// saved choice decides again; his own press on the sidebar button, or a pick that closes an overlay, ends it.
+        /// detail, while the sidebar's top is the list it follows (`followed`), or while the detail is empty (council
+        /// 17, Sol 2). His toggle itself is never written; his own press on the sidebar button, or a pick that closes
+        /// an overlay, ends it, and his saved choice decides again.
         public func showsSidebar(pose: ShellPose, top now: Route?, wide: Bool, detailEmpty: Bool = false) -> Bool {
             pose.isSplit && !wide && (now == top || detailEmpty)
         }
 
-        /// Whether the landing is over: he left its list and something holds the detail.
-        public func ended(top now: Route?, detailEmpty: Bool) -> Bool {
-            now != top && !detailEmpty
+        /// He moved within the column the landing showed (a place tapped in the Work list, Back from Today): the landing
+        /// follows him, so the list he is using stays on screen (council 17, Opus 2.1). It ends only by his press on the
+        /// sidebar button, or where the pose closes the column on its own (a pick in the overlay pose).
+        public mutating func followed(to now: Route?) {
+            top = now
         }
     }
 

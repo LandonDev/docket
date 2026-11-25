@@ -83,9 +83,12 @@ The rules, all pure and tested in WorkTabTests:
   the split would show "Nothing Selected" alone. Each is a landing
   (`WorkTab.ListLanding`, `ShellNavigator.landOnList`): in a split pose the
   sidebar shows its list while that list stays on top, beside the row it
-  picks or over the empty detail, without writing his toggle. Leaving the list
-  or his own press on the sidebar button ends it, and his saved choice decides
-  again.
+  picks or over the empty detail, without writing his toggle. It follows him
+  within that column (a place tapped in the Work list, Back from Today), and is
+  kept across a same-day relaunch; his own press on the sidebar button, or a
+  pick that closes an overlay, ends it, and his saved choice decides again. A
+  job's LifeOS page on a Mac reached through the box with its screen locked says
+  "<Mac> is locked.", not that the key can't read LifeOS (`KeyMay.lifeosRefusal`).
 - **What opens where.** A route something outside a tab names opens in the
   tab `ShellPaths.tab(of:isWork:)` gives: Work's places and screens, a Work
   thread (its scope), a Work workspace and Work Chats in the Work tab, the

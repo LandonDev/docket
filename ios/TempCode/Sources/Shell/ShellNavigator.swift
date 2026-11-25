@@ -15,8 +15,8 @@ import TempCodeClient
 final class ShellNavigator {
     let tab: AppTab
     var sidebarPath: [Route] {
-        // He left the list a landing put on top, and the detail holds something: the landing is over.
-        didSet { if let landing, landing.ended(top: sidebarPath.last, detailEmpty: detailRoot == nil) { self.landing = nil } }
+        // A landing follows him within the column it showed (`WorkTab.ListLanding.followed`).
+        didSet { if landing != nil, landing?.top != sidebarPath.last { landing?.followed(to: sidebarPath.last) } }
     }
     /// The day's first place or the Work list after a tab press, shown over his hidden sidebar while it stays on top.
     private(set) var landing: WorkTab.ListLanding?
@@ -24,7 +24,6 @@ final class ShellNavigator {
         // His press on the sidebar button over a wide route is that screen's alone (`SidebarVisibility`).
         // A held write is its route's too: another route never shows it, even for the half second it waits.
         didSet {
-            if let landing, landing.ended(top: sidebarPath.last, detailEmpty: detailRoot == nil) { self.landing = nil }
             let route = ShellPaths.identity(of: detailRoot)
             if let held = sidebarOverride, held.route != route { sidebarOverride = nil }
             if let held = heldWrite, held.route != route { heldWrite = nil }
@@ -273,8 +272,8 @@ final class ShellNavigator {
     }
 
     /// A list he must see after this landing: the tab's root (a press on the tab he is on), or the day's first place
-    /// opened over it. The detail is cleared; the sidebar shows over his hidden toggle until he leaves that list or
-    /// presses the sidebar button, and his toggle is never written.
+    /// opened over it. The detail is cleared; the sidebar shows over his hidden toggle, following him within it, until
+    /// he presses the sidebar button or a pick closes an overlay, and his toggle is never written.
     func landOnList(_ route: Route? = nil) {
         popToRoot()
         if let route { open(route) }

@@ -93,4 +93,16 @@ import TempCodeContract
         #expect(!KeyMay(caps: full, lane: .of(relayed: true, locked: true))(.reveal))
         #expect(KeyMay.Lane.of(relayed: false, locked: true) == .direct)
     }
+
+    @Test func `a job's LifeOS page says the Mac is locked when the lane refuses, and the key's own state when the key does`() {
+        // A key with approve, through the box to a Mac whose screen is locked: the lane, not the key.
+        let locked = KeyMay(caps: [.read, .approve], lane: .relayedLocked)
+        #expect(locked.lifeosRefusal(hostName: "Studio Mac") == "Studio Mac is locked.")
+        // The same key once the Mac unlocks: LifeOS opens.
+        #expect(KeyMay(caps: [.read, .approve], lane: .relayed).lifeosRefusal(hostName: "Studio Mac") == nil)
+        // A key without approve: its own state, locked or not.
+        #expect(KeyMay(caps: [.read], lane: .relayedLocked).lifeosRefusal(hostName: "Studio Mac") == "This iPhone’s key can’t read LifeOS.")
+        #expect(KeyMay(caps: [.read]).lifeosRefusal(hostName: "Box") == "This iPhone’s key can’t read LifeOS.")
+        #expect(KeyMay(caps: [.read, .approve]).lifeosRefusal(hostName: "Box") == nil)
+    }
 }

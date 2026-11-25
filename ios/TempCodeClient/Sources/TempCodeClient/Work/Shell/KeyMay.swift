@@ -40,6 +40,17 @@ public struct KeyMay: Sendable, Hashable {
         self.lane = lane
     }
 
+    /// Why LifeOS cannot open through this host, in his words; nil when it can. A Mac reached through the box with its
+    /// screen locked refuses the token on the lane, not by the key: that says the Mac is locked, and reads right again
+    /// when it unlocks (council 17, Opus 3.1). A key without approve says the key can't.
+    public func lifeosRefusal(hostName: String) -> String? {
+        if self(.lifeosJwt) { return nil }
+        if lane == .relayedLocked, KeyMay(caps: caps, revoked: revoked, lane: .relayed)(.lifeosJwt) {
+            return "\(hostName) is locked."
+        }
+        return "This iPhone’s key can’t read LifeOS."
+    }
+
     /// Whether the phone may draw a press of `method` for this key.
     public func callAsFunction(_ method: KeyMethod) -> Bool {
         guard !revoked else { return false }

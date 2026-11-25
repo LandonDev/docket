@@ -262,7 +262,7 @@ import TempCodeContract
     // MARK: - the day's first place and the Work list, seen over a hidden sidebar (council 16, Sol 3)
 
     @Test(arguments: poses.map(\.name))
-    func `a landing shows its list over his hidden sidebar until he leaves it, and never writes his toggle`(_ name: String) throws {
+    func `a landing shows its list over his hidden sidebar, follows him in it, and never writes his toggle`(_ name: String) throws {
         let pose = try #require(Self.poses.first { $0.name == name }).pose
         // He hid Work's sidebar yesterday; today's first entry opens Today, the day's first place.
         let hidden = SidebarVisibility(preference: false)
@@ -272,15 +272,22 @@ import TempCodeContract
         #expect(day.showsSidebar(pose: pose, top: first, wide: false) == pose.isSplit)
         // Its first held row picked into the detail keeps Today on screen: the sidebar's top is still Today.
         #expect(day.showsSidebar(pose: pose, top: .place(.today), wide: false) == pose.isSplit)
-        // He goes on to the Outbox: the landing is over, and his own choice (hidden) decides again.
-        #expect(!day.showsSidebar(pose: pose, top: .place(.outbox), wide: false))
+        // Back from Today to the Work list, then on to the Outbox: the landing follows him within the column it showed,
+        // so the list he is using stays on screen (council 17, Opus 2.1); its first row picked beside it changes nothing.
+        var moving = day
+        moving.followed(to: nil)
+        moving.followed(to: .place(.outbox))
+        #expect(moving.showsSidebar(pose: pose, top: .place(.outbox), wide: false) == pose.isSplit)
+        #expect(moving.showsSidebar(pose: pose, top: .place(.outbox), wide: false, detailEmpty: false) == pose.isSplit)
+        // Without the landing (his press on the sidebar button ended it), his own choice, hidden, decides.
         #expect(!hidden.shown(route: "outbox-item", wide: false))
         // A wide route puts the sidebar away even on the landing.
         #expect(!day.showsSidebar(pose: pose, top: first, wide: true))
         // A press on the Work tab he is on: the Work list itself, seen the same way.
-        let list = WorkTab.ListLanding(top: nil)
+        var list = WorkTab.ListLanding(top: nil)
         #expect(list.showsSidebar(pose: pose, top: nil, wide: false) == pose.isSplit)
-        #expect(!list.showsSidebar(pose: pose, top: .place(.today), wide: false))
+        list.followed(to: .place(.today))
+        #expect(list.showsSidebar(pose: pose, top: .place(.today), wide: false) == pose.isSplit)
         // His toggle is untouched throughout.
         #expect(hidden.preference == false)
     }
@@ -291,16 +298,15 @@ import TempCodeContract
     func `a landing carries to the next list while the detail is empty, and comes back on a same-day relaunch`(_ name: String) throws {
         let pose = try #require(Self.poses.first { $0.name == name }).pose
         // He pressed the Work tab he was on, with his sidebar hidden: the Work list shows.
-        let list = WorkTab.ListLanding(top: nil)
+        var list = WorkTab.ListLanding(top: nil)
         #expect(list.showsSidebar(pose: pose, top: nil, wide: false, detailEmpty: true) == pose.isSplit)
-        // He taps Files: a list in the sidebar, the detail still empty. It shows, never the blank detail alone.
+        // He taps Files: the landing follows him there, and Files shows, never the blank detail alone.
+        list.followed(to: .place(.files))
         #expect(list.showsSidebar(pose: pose, top: .place(.files), wide: false, detailEmpty: true) == pose.isSplit)
-        #expect(!list.ended(top: .place(.files), detailEmpty: true))
-        // He opens a file: something holds the detail, and he has left the landing's list. His saved choice decides.
-        #expect(list.ended(top: .place(.files), detailEmpty: false))
-        // Today, the day's first place, keeps showing beside the row it picks (tiled): still its list on top.
+        // He opens a file beside it: Files stays, the column he is using.
+        #expect(list.showsSidebar(pose: pose, top: .place(.files), wide: false, detailEmpty: false) == pose.isSplit)
+        // Today, the day's first place, keeps showing beside the row it picks (tiled).
         let day = WorkTab.ListLanding(top: .place(.today))
-        #expect(!day.ended(top: .place(.today), detailEmpty: false))
         #expect(day.showsSidebar(pose: pose, top: .place(.today), wide: false) == pose.isSplit)
         // A same-day relaunch: the landing comes back with the Work column, and an older save reads none.
         let memory = ColumnMemory(sidebar: [.place(.today)], sidebarShown: false, landing: day)

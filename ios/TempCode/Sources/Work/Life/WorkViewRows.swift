@@ -80,13 +80,14 @@ struct WorkViewScreen: View {
     var body: some View {
         if let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) {
             if let kind = LifeViewScreen.Kind(rawValue: view) {
-                if client.work.may(.lifeosJwt) {
-                    LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind, project: project)
-                } else {
-                    // A key that may not ask for a LifeOS token: the key's own state, as the every-job places say it
-                    // (`LifeReach`), and no Try Again the host would refuse every time (council 16, Opus 3.1).
-                    ContentUnavailableView("This iPhone’s key can’t read LifeOS.", systemImage: kind.symbol)
+                if let refusal = client.work.key.lifeosRefusal(hostName: client.environment.name) {
+                    // The host's real state, a Mac's locked screen or a key without approve (`KeyMay.lifeosRefusal`), and
+                    // no Try Again the host would refuse every time; a locked Mac's page opens once it unlocks (the
+                    // lane is observed).
+                    ContentUnavailableView(refusal, systemImage: kind.symbol)
                         .navigationTitle(kind.title)
+                } else {
+                    LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind, project: project)
                 }
             } else if view == "files" {
                 FilesScreen(client: client, workspace: workspace)
