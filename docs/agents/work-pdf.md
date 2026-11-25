@@ -341,7 +341,19 @@ How it works:
   since pdf.js closes a request's reader on its first answer. One pdf.js
   worker serves every document in the window. A page that leaves the
   window is released (`page.cleanup()`), so a long scan does not hold
-  every page's images.
+  every page's images. `disableAutoFetch` is on: pdf.js already fetches
+  nothing unasked through a transport that streams, as this one does, so
+  what reads most of a file before page 1 is its check of the last page on
+  a flat page tree. Find and a selection read a page's words by range as
+  they ask (`autoFetch.test.ts`, real pdf.js in node: a 40-page file read
+  to page 1 is under a quarter of its bytes, and page 40's words still
+  come). pdf.js starts loading as the body mounts (`PdfEngine.warm`), and
+  the file's first 1 MB is asked beside pdf.js's own load (`openPdf`).
+- **A tab shown again** (perf M7, `item.ts`). The open file of the
+  `KEPT_PDFS` (3) PDF tabs left last stays open: a body that comes back
+  draws it at once and asks only `work.pdf.open` for the view, and reads
+  the file again only when the view names another revision. It goes with
+  its item (`canvas/gone.ts`). `kept.dom.test.tsx` counts it.
 - **Paper.** The page is `--paper` with `--paper-ink` in both themes, on
   `--stage`, 12px between sheets, a 24px side inset (12px under 640px),
   fit-width zoom up to 1.25 (under 0.5 only where the column is that

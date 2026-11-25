@@ -1448,6 +1448,24 @@ range at the view's rev, edits batched from the rev the grid stands on, a
 conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 `SheetCanvas`, its worker as a `?worker` chunk), `model.ts`, `host.ts`.
 
+- **A book comes in pieces at once, and is kept for a tab shown again**
+  (perf M7, sync.ts). `work.sheets.open {first: true}` carries the book's
+  first piece (`first`, as `work.sheets.load` answers it at the view's rev,
+  left out when the host cannot read it now), so a book of 4 MB or less is
+  one request; the rest come `LOAD_AT_ONCE` (3) pieces at a time, each into
+  its place, and a book of more than one piece shows a 4px bar with "2.1 of
+  8.4 MB" in the skeleton's formula bar (`SheetSkeleton`). The sync keeps
+  the book it read, never handed to a grid: each grid draws a copy
+  (`structuredClone`), since Univer changes the workbook it draws in place.
+  A body that comes back draws the kept book again and asks
+  `work.sheets.since` from the book's revision, his own edits among the ops
+  it lays, and reads the file again only on `{reload: true}` (or with edits
+  waiting to be sent, a send error, or a grid held still). The books of the
+  `KEPT_BOOKS` (2) tabs left last are kept, each following its item's
+  pushes meanwhile; an older one drops its book. A sync and its book go
+  when the host confirms its item closed (`canvas/gone.ts`, told by the
+  canvas store), a shared file's too. `kept.test.ts` counts it: one open and
+  one since on a return, no load.
 - **Only the workbook's own mutations are his edit** (`ofUnit`, sync.ts).
   The grid also reports the cell editor's own document, which each key he
   types changes (`doc.mutation.rich-text-editing` on

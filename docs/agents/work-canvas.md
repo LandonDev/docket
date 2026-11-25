@@ -83,6 +83,11 @@ neighbour (`selectedAfter`); closing the last gives the chat the whole pane. A c
 again from its chip in the thread (`work.canvas.open {itemId}`) or from Files (the same kind and
 source opens the closed item again). Proof: `scripts/e2e-canvas-close.ts`.
 
+What a kind keeps of an item outside its body (a sheet's book, a PDF's open file, a deck's
+pictures: perf M7, each kept for a tab shown again) goes once the host confirms the item closed:
+the canvas store tells `itemsGone` (canvas/gone.ts, no imports, so a kind's chunk takes it alone)
+after `work.canvas.close` answers, and for an item a push no longer lists.
+
 A subagent's `canvas_open` opens beside its root thread. A research or a
 master thread of Work scope keeps its own board; its canvas sits to the
 left of that view, which nobody has designed.

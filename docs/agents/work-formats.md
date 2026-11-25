@@ -239,6 +239,11 @@ files: `formats/pillar.ts` (the methods), `importer.ts`, `exporter.ts`,
 `print.ts`, `pdfIn.ts`, `preview.ts`, `serviceRoutes.ts`; the window's in
 `src/renderer/src/work/formats/` (`PreviewFrame.tsx`, `PagedView.tsx`, `preview.ts`, `previewContract.ts`, `command.ts`, `Import.tsx`, `model.ts`).
 
+A Files row's open starts a Word file's import as soon as `work.files.open`
+answers the item (`importAhead`, formats/importOnce.ts), beside the
+editor's code, under the one key the item's body (`ImportBody`) uses, so
+the host makes one document.
+
 **In** (`work.formats.import`, `operate`, → `ImportAnswer`): from a file on
 this host (`{at: 'source'}`: the canvas opened it; the path fence holds a
 remote key to its roots), a dropped file's bytes (`{at: 'bytes'}`: kept in the

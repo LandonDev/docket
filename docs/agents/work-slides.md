@@ -1351,6 +1351,17 @@ How it works:
   are no thumbnails to make on the host. The deck as it is and the
   proposed deck are two renders; each `DeckSlide` says which one holds its
   picture and on which page.
+- **An edit reads the slide it changed** (perf M7, `filePictures.ts`). The
+  file's slides are pictured slide by slide: the first view reads the
+  whole file render; a later one keeps each slide whose `pic.rev` is the
+  same and reads each changed slide's own one-page PDF with
+  `work.slides.slide` (`DeckHost.slide`), so a save of his typing reads one
+  slide. The whole render is read again for a slide with no `pic`, more
+  than `SLIDE_READS_MOST` (4) changed, or a host with no `slide`. A new set
+  replaces the one shown once all of it is open; a doc goes once no slide
+  shows it. The pictures of the `KEPT_DECKS` (3) decks left last are kept
+  for their tab shown again and go with their item. The proposed render is
+  read whole (`useRender`).
 - **The strip** is 140px on `sidebar`: each slide a 96px picture in a 3px
   frame at 6px radius that carries the tint (`--add-bg` for a slide a
   change rewords, adds or lands; `--del-bg` for the place a slide leaves,

@@ -58,6 +58,18 @@ holds at most 64 at once. A token is
 asked with `work.docs.token` (edit for this host's window and an operate
 key, view for a read key), always as the owner.
 
+The canvas opens a document in two requests before it syncs (perf M7):
+`work.docs.open {ready: {schema}}` also answers `ready` (`DocReady`), the
+relayed socket made as `connect {schema}` makes it and the first token,
+left out when the host cannot make them now. The window's socket class
+takes that socket once, for the same schema (`handOver`; one for another
+schema is closed on the host), and the first ask for a token uses the
+minted one while it has 10 s to run; so the open is `work.docs.open`, then
+the editor's first `work.docs.send`, with the `recv` beside it. The relay's
+send and recv are as they were. The collaboration client itself is still
+made and destroyed with the editor's body (work-kit's
+`useCollaborationSession`): keeping it across a tab switch needs work-kit.
+
 A close of the socket sends what still waits first: frames queued behind a
 send in flight go up, then `work.docs.close` closes the host's socket behind
 them. And a tab's close waits for the document to be on disk: the body
