@@ -228,7 +228,8 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const { from, to } = range;
   // A push answers every event again: each that holds what it held stays the same object, so its memoised row does not
   // draw (the perf pass's M12).
-  const events = useKeptRows(client.useEvents(from, to) ?? null, idOfEvent);
+  // (The week and month of work-kit take a plain array; nothing here changes it.)
+  const events = useKeptRows(client.useEvents(from, to) ?? null, idOfEvent) as AgendaEvent[] | null;
   // Every job's clashes over the same span, read as him: this view's own session reads one job.
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
