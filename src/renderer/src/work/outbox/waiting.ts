@@ -3,7 +3,7 @@ import type { ActKind } from "@shared/work";
 import { clockTime } from "../../lib/duration";
 import { lifeosLine, lifeosWords, pastOf, payloadView, WORK_CHATS_KEY } from "./model";
 import { heldWhen } from "./when";
-import { joinWords as join, summaryHead } from "@shared/work/outboxHead";
+import { summaryHead } from "@shared/work/outboxHead";
 
 export { summaryHead };
 
