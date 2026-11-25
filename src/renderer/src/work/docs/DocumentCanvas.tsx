@@ -22,7 +22,10 @@ import {
 } from "work-kit/editor";
 import type { DocumentPage } from "work-kit/editor/page";
 import { Skeleton } from "../../components/ui/skeleton";
+import type { Draft } from "@shared/work/drafts";
 import { loadToast } from "../../components/ui/toaster";
+import { itemJournal, type DraftJournal } from "../canvas/drafts";
+import { whenWords } from "../files/fileText";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
@@ -387,6 +390,9 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const google = useMemo(() => (own.length ? [...own, ...googleMore] : googleMore), [own, googleMore]);
   // Save As…: a document of a Work workspace, from the header, the pane's More and File → Save As… (⇧⌘S).
   const workspace = useWorkspaceOf(env, item.workspaceId);
+  // One journal for the item's life (canvas/drafts.ts): its document's unapplied updates are kept under it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const journal = useMemo(() => itemJournal(env, item), [env, item.id]);
   const savingAs = useSaveAsAsk(item.id);
   const saveAs = useCallback(() => openSaveAs(item.id), [item.id]);
   // Before paint, so History and the bone never show for a frame they should not.
@@ -451,6 +457,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   width={width}
                   more={google}
                   itemId={item.id}
+                  journal={journal}
                   root={root}
                   preview={{ slot, on: previewing, asked, set: showPreview }}
                   rowSlot={rowSlot}
@@ -579,6 +586,7 @@ function Opened({
   width,
   more = NO_MORE,
   itemId,
+  journal,
   root,
   preview,
   rowSlot,
@@ -592,6 +600,8 @@ function Opened({
   width: number;
   more?: MoreEntry[];
   itemId: string;
+  /** where his updates the service has not applied are kept on this computer; null where there is no store */
+  journal?: DraftJournal | null;
   root: React.RefObject<HTMLDivElement | null>;
   preview: PreviewSlot;
   rowSlot: HTMLElement | null;
@@ -602,6 +612,7 @@ function Opened({
   shareable?: boolean;
 }) {
   const doc = useDocument(host, open);
+  useDocDrafts(host, journal ?? null, shell);
   const margin = width >= MARGIN_FROM;
   // A tab's close waits until the host has stored what he typed (canvas/flush.ts): a Word file's document is judged by its file next.
   // A send or a store that fails is said, and fails the flush: the close is never told the file holds it.
@@ -804,6 +815,54 @@ export async function undoWritten(host: Pick<DocHost, "env" | "undo">, source: C
 export function selectionChip(text: string, open: Pick<DocOpen, "title" | "source">): ContextChip {
   const words = text.replace(/\s+/g, " ").trim();
   return { kind: "selection", label: `“${words.length > 40 ? `${words.slice(0, 40)}…` : words}”, ${open.title}`, ref: open.source, quote: text };
+}
+
+/**
+ * A document's drafts (docs/agents/work-files.md "Drafts survive a crash"): the updates the service has not said it
+ * applied are kept on this computer as they are sent (host.ts `keepDrafts`), under this open's own base so an earlier
+ * draft is never written over; as it opens, the newest unclaimed one is offered in the save line. Restore sends its
+ * updates up the open socket as his edits go and lays them on the editor's document: Yjs merges them with what the file
+ * holds now, so what changed since is kept beside them, never written over. Discard lets it go.
+ */
+export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell: CanvasShell): void {
+  const [offer, setOffer] = useState<Draft | null>(null);
+  useEffect(() => {
+    if (!journal || !host.keepDrafts) return;
+    let live = true;
+    // This open's base: unique, so the draft offered below stays as it is while he edits.
+    const base = `open-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    host.keepDrafts({ keep: (frames) => journal.keep(base, { kind: "document", frames: [...frames] }), clear: () => journal.clear() });
+    void journal.offered("document").then((found) => live && setOffer(found[0] ?? null));
+    return () => {
+      live = false;
+      host.keepDrafts?.(null);
+      // Gone with updates the service has not applied: they are offered when the document opens again.
+      journal.release();
+    };
+  }, [host, journal]);
+  useEffect(() => {
+    if (!offer || !shell.saved || offer.body.kind !== "document") return;
+    const frames = offer.body.frames;
+    shell.saved({
+      state: "conflict",
+      detail: `Edits from ${whenWords(offer.at)} were not saved`,
+      actions: [
+        {
+          id: "restore",
+          label: "Restore",
+          run: () => {
+            // Sent again, they are kept under this open's base until applied; the old record goes only once they are on their way.
+            if (host.replay?.(frames)) {
+              journal?.drop(offer);
+              setOffer(null);
+            } else void loadToast().then((toast) => toast.error("The document is not connected yet. Try Restore again in a moment"));
+          },
+        },
+        { id: "discard", label: "Discard", run: () => (journal?.drop(offer), setOffer(null)) },
+      ],
+    });
+    return () => shell.saved?.(null);
+  }, [offer, shell, host, journal]);
 }
 
 export interface DocumentHandle {

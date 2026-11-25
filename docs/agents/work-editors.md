@@ -15,7 +15,9 @@ An edit the host has not acknowledged is kept on his computer by one store main 
 as a live save; a changed base keeps both (work-files.md "Drafts survive a crash"). Each editor journals through
 `DraftJournal` (work/canvas/drafts.ts) its own `DraftBody` kind: the text file's words (`text`) and the sheet's
 unanswered mutations by the file's revision (`sheet`), the deck's open box by its slide and shape with the words
-it opened on (`deck`). The document keeps no draft yet: its kind is the next (its sync update).
+it opened on (`deck`), and the document's sync updates the service has not applied (`document`), merged by Yjs on
+Restore. Each offers itself in the save line as its file opens: Restore and Discard, or over a base that moved on,
+Keep Both (text), Copy Edits (sheet) or Copy Words (deck), never a write over the newer file.
 
 ## Who hears a key
 

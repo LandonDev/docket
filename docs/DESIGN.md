@@ -2086,7 +2086,10 @@ Around the canvas:
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
   saves, where saving stands ("Saved 1:52 PM in Events"; it takes
   `foreground` only when it needs him, with at most two presses beside
-  it: Reload and Keep Both, the one conflict press everywhere). A copy that saves back to its file on
+  it: Reload and Keep Both, the one conflict press everywhere). Edits a crash left unsent come back in the same
+  foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" with
+  Restore and Discard, or over a file that changed since, "… The file changed since" with Keep Both (a text file), Copy
+  Edits (a sheet) or Copy Words (a deck's box, "The slide changed since") beside Discard. A copy that saves back to its file on
   another computer names that computer as its tab does: "On MacBook" until
   a change goes, "Saving to MacBook…", "Saved to MacBook 1:52 PM", all
   muted; in the foreground "This file changed on MacBook" with Reload

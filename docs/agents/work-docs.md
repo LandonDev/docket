@@ -44,6 +44,10 @@ host's link instead.
 
 ## The socket
 
+His updates the service has not answered applied are kept on this computer as they go up (`keepDrafts`, `asUpdate`
+in host.ts; work-files.md "Drafts survive a crash") and offered when the document opens again; Restore sends them up
+the open socket (`replay`) and hands them to the provider, so Yjs merges them with the document as it is now.
+
 The editor's provider makes its socket with `RelaySocket` (`host.ts`), a
 WebSocket-shaped class whose socket lives on the host: `work.docs.connect`
 opens a real socket from main to its own service on loopback

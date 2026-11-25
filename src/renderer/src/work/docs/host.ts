@@ -43,6 +43,13 @@ export interface DocHost {
   flush(): Promise<void>;
   /** Wait for the service to apply this window’s edits before it reads the document for export. */
   sync(): Promise<void>;
+  /** Where the updates the service has not said it applied are kept on this computer (canvas/drafts.ts); absent in a stand-in. */
+  keepDrafts?(journal: { keep(frames: string[]): void; clear(): void } | null): void;
+  /**
+   * A kept draft's updates, sent again up the open socket as his edits are (the host's door judges them as any) and laid
+   * on the editor's document: Yjs merges them, so nothing newer is written over. False with no socket open to take them.
+   */
+  replay?(frames: string[]): boolean;
 }
 
 /** The host that serves a LifeOS document, from the refusal of one that does not ("served elsewhere: env_box"). */
@@ -101,7 +108,47 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
     socket,
     flush: () => storedAll(socket),
     sync: () => settleAll(socket, false),
+    keepDrafts: (journal) => {
+      const relayed = relayedOf.get(socket);
+      if (relayed) relayed.journal = journal;
+    },
+    replay: (frames) => {
+      const live = [...(relayedOf.get(socket)?.open ?? [])].find((s) => s.ready());
+      if (!live) return false;
+      live.inject(frames);
+      return true;
+    },
   };
+}
+
+/**
+ * An update frame the window sent (Sync or SyncReply carrying SyncStep2 or an Update), as a plain Update frame of the
+ * same document: what a socket sends again, and what the editor's provider takes in as the service's. Null for any other.
+ */
+export function asUpdate(bytes: Uint8Array): Uint8Array | null {
+  let at = 0;
+  const varUint = (): number | null => {
+    let n = 0;
+    for (let shift = 0; at < bytes.length && shift < 35; shift += 7) {
+      const b = bytes[at++]!;
+      n += (b & 0x7f) * 2 ** shift;
+      if (b < 0x80) return n;
+    }
+    return null;
+  };
+  const length = varUint();
+  if (length === null || at + length > bytes.length) return null;
+  at += length;
+  const name = bytes.subarray(0, at);
+  const type = varUint();
+  const step = varUint();
+  if ((type !== 0 && type !== 4) || (step !== 1 && step !== 2) || at >= bytes.length) return null;
+  const out = new Uint8Array(name.length + 2 + (bytes.length - at));
+  out.set(name, 0);
+  out[name.length] = 0;
+  out[name.length + 1] = 2;
+  out.set(bytes.subarray(at), name.length + 2);
+  return out;
 }
 
 const READY = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 } as const;
@@ -154,7 +201,10 @@ export const NOT_TAKEN = "The host did not take the last edits to this document"
 
 /** The sockets each relayed class has open, and the last frames one lost (a failed send, a close with frames unsent). */
 type Relayed = {
-  open: Set<{ settled(store: boolean): Promise<void> }>;
+  open: Set<{ settled(store: boolean): Promise<void>; ready(): boolean; inject(frames: string[]): void }>;
+  /** where the updates not yet applied there are kept on this computer, and those updates (`asUpdate` frames, base64) */
+  journal?: { keep(frames: string[]): void; clear(): void } | null;
+  pending: string[];
   lost: Error | null;
   /** The last socket was dropped (by the host, a failure), not closed by its own side: the provider makes another. */
   dropped: boolean;
@@ -216,7 +266,7 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
  */
 export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null };
+  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [] };
   const open = relayed.open;
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
@@ -245,6 +295,25 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
     private waiters = new Set<() => void>();
     private settle(): void {
       for (const done of this.waiters) done();
+      // Everything sent is applied there: nothing of his waits on this computer any more.
+      if (relayed.pending.length > 0 && this.applied()) {
+        relayed.pending = [];
+        relayed.journal?.clear();
+      }
+    }
+
+    /** Open, with its own state sent: a draft's updates may go up it. */
+    ready(): boolean {
+      return this.readyState === READY.OPEN && this.stateSent;
+    }
+
+    /** A kept draft's updates: each sent up as his edits are, and handed to the provider as the service's, so the editor shows it. */
+    inject(frames: string[]): void {
+      for (const frame of frames) {
+        const data = fromBase64(frame);
+        this.send(new Uint8Array(data));
+        this.dispatchEvent(new MessageEvent("message", { data }));
+      }
     }
 
     constructor(url: string) {
@@ -412,6 +481,12 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
         this.unacked++;
         this.sentCount++;
         if (head.step === 1) this.stateSent = true;
+        // His edit, kept on this computer until the service says it applied it.
+        const update = asUpdate(bytes);
+        if (update && relayed.journal) {
+          relayed.pending.push(toBase64(update));
+          relayed.journal.keep(relayed.pending);
+        }
       }
       this.outbox.push(toBase64(bytes));
       void this.flush();

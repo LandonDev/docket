@@ -21,12 +21,13 @@ export interface DraftKey {
  * What each editor keeps of an edit, by kind: a text file's words; a sheet's mutations the host has not answered (sent
  * and queued, in order), made on the file's revision; a deck's open typing box: the shape it is on, that shape's words
  * as the box opened on them (the host's check, as a commit's), and the box's model (words, runs and the looks they
- * carry).
+ * carry); a document's sync updates the service has not said it applied, each a frame as its socket sends it (base64).
  */
 export type DraftBody =
   | { kind: "text"; text: string; bom: boolean; crlf: boolean }
   | { kind: "sheet"; mutations: { id: string; params: unknown }[] }
-  | { kind: "deck"; slideId: number; shapeId: number; words: string[][]; model: unknown };
+  | { kind: "deck"; slideId: number; shapeId: number; words: string[][]; model: unknown }
+  | { kind: "document"; frames: string[] };
 export type DraftKind = DraftBody["kind"];
 
 export interface Draft extends DraftKey {
@@ -91,6 +92,11 @@ function bodyOf(v: unknown): DraftBody | null {
     const words = Array.isArray(d.words) && d.words.every((p) => Array.isArray(p) && p.every((r) => typeof r === "string"));
     if (!Number.isInteger(d.slideId) || !Number.isInteger(d.shapeId) || !words || !Array.isArray(d.model) || !fits(d)) return null;
     return { kind: "deck", slideId: d.slideId!, shapeId: d.shapeId!, words: d.words!, model: d.model };
+  }
+  if (b.kind === "document") {
+    const f = (b as { frames?: unknown }).frames;
+    if (!Array.isArray(f) || f.length === 0 || !f.every((x) => typeof x === "string" && /^[A-Za-z0-9+/]*={0,2}$/.test(x)) || !fits(f)) return null;
+    return { kind: "document", frames: f as string[] };
   }
   return null;
 }
