@@ -496,6 +496,8 @@ describe("a page", () => {
     fireEvent.doubleClick(row("Events"));
     await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
     await waitFor(() => expect(tabNames()).toEqual(["Events"]));
+    // Past what fits a tab keeps a few letters of its name, never its glyph alone (canvas/tabShrink.ts `tabMin`).
+    expect(document.querySelector<HTMLElement>("[data-files-tabrow] .group\\/dock-tab")!.style.minWidth).toBe("min(8rem, 6ch + 3.625rem)");
     await waitFor(() => expect(trail()).toBe("Dummy EsportsEvents"));
     // The steps above give way first, each to a letter or two and its ellipsis; the folder's own name is cut last.
     const [above, folder] = [...document.querySelectorAll<HTMLElement>("[data-trail-step]")];

@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { CanvasTabs } from "./CanvasTabs";
-import { tabShrink } from "./tabShrink";
+import { tabMin, tabShrink } from "./tabShrink";
 import { canvasItem, drivenKinds } from "./testkit";
 
 afterEach(cleanup);
@@ -56,6 +56,10 @@ describe("the canvas tab row past what fits", () => {
       expect(shrinkOf(sheet)).toBe(0);
       expect(shrinkOf(doc)).toBeCloseTo(tabShrink(LONG));
       expect(shrinkOf(doc)).toBeGreaterThan(0);
+      // Each keeps a few letters of its name past that (the row scrolls), never its glyph alone; a short name is not padded.
+      for (const tab of [doc, sheet]) expect(tab.closest<HTMLElement>(".group\\/dock-tab")!.style.minWidth).toBe(tabMin(tab.getAttribute("aria-label") ?? tab.textContent!.trim()));
+      expect(tabMin(LONG)).toBe(`min(8rem, ${LONG.length}ch + 3.625rem)`);
+      expect(tabMin("Events")).toBe("min(8rem, 6ch + 3.625rem)");
     } finally {
       restore();
     }

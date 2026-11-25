@@ -843,6 +843,27 @@ export function FilesSharedNames() {
   );
 }
 
+// Nine tabs, two of them folders: past what fits each keeps a few letters of its name, and the row scrolls.
+const manyTabs: FileTab[] = [
+  tabs[0]!,
+  { id: "m1", kind: "page", name: "Sponsors", page: { at: { at: "file", host: "env_box", path: "/w/Sponsors" }, name: "Sponsors" } },
+  ...["Spring LAN budget.xlsx", "Run of show.docx", "Sponsor deck.pptx", "Stage plot.pdf", "Volunteer schedule.xlsx", "Bracket rules.docx", "Venue contract.pdf"].map((name, i): FileTab => ({ id: `m${i + 2}`, kind: "file", name, itemId: `mi${i}`, key: `mk${i}` })),
+];
+
+/** Nine tabs at 864 and 400: each keeps a few letters of its name past what fits, never its glyph alone; the row scrolls. */
+export function FilesManyTabs() {
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={864} height={120} open={manyTabs}>
+        <div />
+      </Window>
+      <Window width={400} height={120} sidebarOpen={false} open={manyTabs}>
+        <div />
+      </Window>
+    </div>
+  );
+}
+
 // The sidebar's tree over a stand-in folder (a tree of its own workspace id, which no other page asks): one folder still
 // being read, one with none, one that did not load, one refused.
 const sideDirs = ["Budgets", "Contracts", "Photos", "Private"].map((name): FileEntry => ({ key: `/w/${name}`, ref: null, folder: { at: "file", host: "env_box", path: `/w/${name}` }, name, kind: "folder", changed: NOW }));

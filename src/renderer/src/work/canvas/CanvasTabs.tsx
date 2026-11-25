@@ -10,7 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
-import { tabEnds, tabShrink } from "./tabShrink";
+import { tabEnds, tabMin, tabShrink } from "./tabShrink";
 import { TabName } from "./TabName";
 
 /**
@@ -20,7 +20,7 @@ import { TabName } from "./TabName";
  * it. Each closes by its own ×, as a Files tab does: on the selected tab and on the
  * one under the pointer, and always after a lone item's name. The row is the lead of the split view's header (SplitShell `lead`), so
  * More and the conversation toggle end it. Past what fits, the tabs shrink to
- * their glyph and then scroll, as the title strip's settled row does: no bar,
+ * a few letters of their name (`tabMin`) and then scroll, as the title strip's settled row does: no bar,
  * a faded edge where there is more, a mouse wheel turned sideways, and the
  * selected tab brought into view. More and the toggle never move.
  */
@@ -122,7 +122,7 @@ export function CanvasTabs({
         const lineStart = moving && sortable.toIndex! < sortable.fromIndex!;
         const lineEnd = moving && sortable.toIndex! > sortable.fromIndex!;
         return (
-          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 min-w-9 ${dragging ? "z-10" : ""}`} style={{ flexShrink: tabShrink(item.title, active) }}>
+          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 ${dragging ? "z-10" : ""}`} style={{ flexShrink: tabShrink(item.title, active), minWidth: tabMin(item.title) }}>
             {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             <TitleTip title={item.title}>

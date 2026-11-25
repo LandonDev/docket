@@ -1332,7 +1332,8 @@ thread; nothing answers inside the canvas.
   item's name. Every tab keeps the close's room, shown or not, so a name
   is cut at one point and nothing moves under the pointer. Past what fits
   the selected tab keeps its name and every other gives up the same part
-  of its own (`tabShrink`, the Files row's rule).
+  of its own, down to 128px (`tabShrink`, `tabMin`, the Files row's rule),
+  and then the row scrolls.
 - **The kind's bar** is 32px on `background` (the editor's `FileHeader`
   row), 12px muted, in a fixed order: other people as 20px avatars, the
   mode ("Agent suggests" or "Agent writes", a quiet menu button), the
@@ -1935,9 +1936,12 @@ Around the canvas:
   dot: the save line says where each file stands (a Teams Word file's says
   what the Word file does not hold yet). Past what fits the selected tab keeps its
   name and every other gives up the same part of its own (a short name is
-  not cut first), down to its glyph: under the room of one letter and its
-  ellipsis the name gives way whole, never a sliver (`TabName`, the canvas
-  row's too); then the tabs scroll under a faded edge. Tabs whose names
+  not cut first), down to 128px, which keeps 4.5rem of its name (or its
+  whole name where that is less: `tabMin`, the canvas row's too); then the
+  tabs scroll under a faded edge. No tab is its glyph alone, so two folders'
+  tabs never look the same; under the room of one letter and its ellipsis
+  (a pane too narrow for even one tab) the name gives way whole, never a
+  sliver (`TabName`). Tabs whose names
   share a start ("Purdue Esports Spring LAN budget.xlsx", "… roster.xlsx")
   are cut in the middle from the word where they part, so the end that
   differs stays ("P…budget.xlsx"); under 4rem of name the end alone is

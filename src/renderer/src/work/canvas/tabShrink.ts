@@ -7,6 +7,14 @@
  */
 export const tabShrink = (name: string, selected = false): number => (selected ? 0 : name.length / (name.length + 9));
 
+/**
+ * The least a tab gives up to: its glyph, its close's room and 4.5rem of its name (128px: a middle cut keeps its start and its end), or its whole
+ * name where that is less, so a short name is never padded. Past that the row scrolls under its faded edges, and no
+ * tab is its glyph alone: two folders' tabs never look the same. The name's letters are counted at a `ch` each,
+ * beside the tab's own 58px (start padding, glyph, gap and the close's room).
+ */
+export const tabMin = (name: string): string => `min(8rem, ${name.length}ch + 3.625rem)`;
+
 /** Where a word starts: after a space, a dash, an underscore, a dot or a bracket. */
 const WORD_START = /[\s\-_.()[\]]/;
 /** A shared start shorter than this is no reason to cut a name in its middle. */

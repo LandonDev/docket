@@ -726,7 +726,7 @@ const fileDownloads = (entry: FileEntry, place: FilePlace | null): boolean =>
   !entry.folder && entry.ref?.at === "file" && entry.kind !== "form" && !(place?.vm && (entry.local === false || entry.state?.is === "cloud"));
 
 /** How readily a tab gives up width past what fits: one rule for Files' row and the canvas tab row (canvas/tabShrink.ts). */
-export { tabEnds, tabShrink } from "../canvas/tabShrink";
+export { tabEnds, tabMin, tabShrink } from "../canvas/tabShrink";
 
 /** Why a verb is greyed for a file on a computer this window reaches only through another host: where it can be done. */
 export const farWhy = (far: { computer: string; via: string }): string => `${far.computer} is reached through ${far.via}. Change its files on ${far.computer} itself.`;

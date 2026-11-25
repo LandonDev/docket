@@ -10,7 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { shortcutFor } from "../../lib/settings";
 import { KindGlyph } from "./KindGlyph";
-import { shownName, tabEnds, tabShrink } from "./model";
+import { shownName, tabEnds, tabMin, tabShrink } from "./model";
 import { TabName } from "../canvas/TabName";
 import { setDragLabel, setSideOver } from "./rowParts";
 
@@ -18,8 +18,8 @@ import { setDragLabel, setSideOver } from "./rowParts";
  * The Files place's tab row (docs/DESIGN.md "The Files place"): the workspace's open tabs on the canvas tab row's
  * shape, 36px on `sidebar`. A tab is a folder he is browsing or a file open as itself; each is led by its kind's
  * 14px glyph, muted as every tab row's is. The close control shows on the tab under the pointer and on the selected
- * one; a middle click closes too. Past what fits, the tabs shrink to their glyph and then scroll under a faded
- * edge. The sidebar's toggle starts the row and a quiet + ends it; neither moves.
+ * one; a middle click closes too. Past what fits, the tabs shrink to a few letters of their name (`tabMin`) and then
+ * scroll under a faded edge. The sidebar's toggle starts the row and a quiet + ends it; neither moves.
  */
 
 /** How long a drag rests on a folder's tab before the tab comes forward. */
@@ -193,8 +193,8 @@ export function TabRow({
               ref={(el) => sortable.setItemRef(tab.id, el)}
               data-menu-id={tab.id}
               data-drop-over={drop?.at === `tab:${tab.id}` || undefined}
-              className={`group/dock-tab relative flex max-w-60 min-w-9 rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
-              style={{ flexShrink: tabShrink(shownName(name), active) }}
+              className={`group/dock-tab relative flex max-w-60 rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
+              style={{ flexShrink: tabShrink(shownName(name), active), minWidth: tabMin(shownName(name)) }}
               {...(drop && tab.kind === "page"
                 ? {
                     onDragOver: (event: DragEvent) => {
