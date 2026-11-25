@@ -158,9 +158,20 @@ vi.mock("../../lib/connection", async (original) => {
 
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 // A row's words are read once a draw: the count of draws a row had (M2: one read changing one item draws one row).
-vi.mock("./parts", async (original) => {
-  const parts = await original<typeof import("./parts")>();
-  return { ...parts, rowWords: vi.fn(parts.rowWords) };
+// A list row's button, counted by the row's key on each draw: what a read draws again (M2: one read changing one item
+// draws one row). The list itself reads every row's words to find a section's repeated acts, so the words are no count.
+const rowDraws = vi.hoisted(() => new Map<string, number>());
+vi.mock("../../components/ui/item", async (original) => {
+  const item = await original<typeof import("../../components/ui/item")>();
+  const { createElement } = await import("react");
+  return {
+    ...item,
+    ItemButton: (props: Record<string, unknown>) => {
+      const key = props["data-outbox-row"];
+      if (typeof key === "string") rowDraws.set(key, (rowDraws.get(key) ?? 0) + 1);
+      return createElement(item.ItemButton as never, props as never);
+    },
+  };
 });
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 
@@ -251,10 +262,10 @@ const sends = () => world.calls.filter((c) => c.method === "work.outbox.send");
 
 describe("the list's draws", () => {
   it("a read that changed one item draws that row alone", async () => {
-    const { rowWords } = await import("./parts");
     await open();
-    const draws = (id: string) => vi.mocked(rowWords).mock.calls.filter(([item]) => (item as { ref?: { id: string } }).ref?.id === id).length;
+    const draws = (id: string) => [...rowDraws].filter(([key]) => key.endsWith(`:${id}`)).reduce((n, [, count]) => n + count, 0);
     const [o2, o3] = [draws("o2"), draws("o3")];
+    expect(o2).toBeGreaterThan(0);
     Object.assign(world.items.get("box")![1]!, { summary: "Send to Sam Ortiz: Scrims moved", updatedAt: Date.now() + 1 });
     await act(async () => void (await loadHost("box")));
     await waitFor(() => expect(draws("o2")).toBeGreaterThan(o2));
