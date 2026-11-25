@@ -340,7 +340,7 @@ export const OutboxRequestSchemas = [
   /** → OutboxItem: an item that went out of date, put away with "out of date", and its thread asked to draft it again from what is true now */
   request('work.outbox.askAgain', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */
-  request('work.outbox.edit', z.object({ ref: HeldRefSchema, payload: z.unknown() })),
+  request('work.outbox.edit', z.object({ ref: HeldRefSchema, payload: z.unknown(), /** the item's `updatedAt` as his screen read it: an edit over a newer one is refused */ rev: z.number().int().optional() })),
   /** → OutboxGrant: let later acts like this one go without a press. Only from a held item, only by a person with admin. `routine`: for the routine whose run made the item, and no other thread. */
   request('work.outbox.grant', z.object({ from: HeldRefSchema, matcher: z.unknown(), label: z.string().max(200).optional(), routine: z.boolean().optional() })),
   /** → { grants: OutboxGrant[] }: the standing ones; `all` adds the removed */

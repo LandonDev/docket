@@ -8,7 +8,7 @@ import { outbox as outboxModule, NOT_A_PERSON } from './index'
 import { adminKey, approveKey, cast, FAKE_SPEC, fakeSpec, LIFEOS_MCP, makeRig, person, readKey, until, type Rig } from './rig'
 import { ActNotSent } from './kinds'
 import { ROUTINE_UNKNOWN } from './ctx'
-import { MAY_HAVE_GONE, NO_GRANT_FROM_FORM_LINK } from './outbox'
+import { CHANGED_SINCE, MAY_HAVE_GONE, NO_GRANT_FROM_FORM_LINK } from './outbox'
 import { INTERRUPTED } from './store'
 import { REFUSED_OFF } from './words'
 
@@ -320,6 +320,21 @@ describe("the owner's press", () => {
     await rig.rpc('work.outbox.send', { ref: item!.ref })
     expect(rig.downstream).toEqual([{ addonId: slack.id, tool: 'echo', arguments: { text: 'final' } }])
     await expect(rig.rpc('work.outbox.edit', { ref: item!.ref, payload: { arguments: {} } })).rejects.toThrow('already decided')
+  })
+
+  it('refuses an edit made over a newer one: two devices, the second saves what it saw', async () => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await rig.claudeCall('t-work', slack.id, 'echo', { text: 'draft' })
+    const [seen] = await rig.waiting()
+    // The desktop changes it while the phone has Edit open on the revision it read.
+    await new Promise((r) => setTimeout(r, 2))
+    const desk = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: seen!.ref, payload: { arguments: { text: 'from the desk' } }, rev: seen!.updatedAt })
+    expect(desk.updatedAt).not.toBe(seen!.updatedAt)
+    await expect(rig.rpc('work.outbox.edit', { ref: seen!.ref, payload: { arguments: { text: 'from the phone' } }, rev: seen!.updatedAt })).rejects.toThrow(CHANGED_SINCE)
+    expect((await rig.waiting())[0]!.payload).toMatchObject({ arguments: { text: 'from the desk' } })
+    // At the revision it now shows, the phone's edit goes.
+    const phone = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: seen!.ref, payload: { arguments: { text: 'from the phone' } }, rev: desk.updatedAt })
+    expect(phone.payload).toMatchObject({ arguments: { text: 'from the phone' } })
   })
 
   it('refuses an edit to a kind whose payload is not what goes (a form publish sends the form as stored)', async () => {

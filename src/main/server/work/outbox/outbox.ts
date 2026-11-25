@@ -766,12 +766,25 @@ export class Outbox {
     return mine
   }
 
-  /** Change exactly what will go, while it waits. */
-  async edit(ref: HeldRef, payload: unknown): Promise<OutboxItem> {
+  /**
+   * Change exactly what will go, while it waits. `rev` is the item's `updatedAt` as his screen read it: an edit made
+   * over a newer one (another device's, the thread's) is refused in words, never written over it. Under the item's own
+   * lock, so a send or another edit on it runs before or after, never between the check and the write.
+   */
+  async edit(ref: HeldRef, payload: unknown, rev?: number): Promise<OutboxItem> {
+    return this.serial(this.canonical(ref), () => this.editNow(ref, payload, rev))
+  }
+
+  private async editNow(ref: HeldRef, payload: unknown, rev?: number): Promise<OutboxItem> {
     if (ref.at === 'lifeos') {
       const row = this.store.byRef(ref)
       if (row && !PRESSABLE.includes(row.state)) throw new Error('This item was already decided; it cannot be changed.')
       if (!this.lifeos) throw new Error(NO_SUCH_ITEM)
+      if (rev !== undefined) {
+        const live = await this.lifeos.read(ref)
+        if (!live) throw new Error(NO_SUCH_ITEM)
+        if (live.updatedAt !== rev) throw new Error(CHANGED_SINCE)
+      }
       const next = await this.lifeos.edit(ref, payload)
       this.markEdited(runKeyOfRef(ref), next.updatedAt)
       this.changed(null)
@@ -781,6 +794,7 @@ export class Outbox {
     if (!row) throw new Error(NO_SUCH_ITEM)
     // Only a kind whose payload is what goes may be changed here: a form's publish, say, sends the form as stored (the hold review).
     if (!EDITABLE_KINDS.includes(row.kind)) throw new Error(NOT_EDITABLE)
+    if (rev !== undefined && row.updatedAt !== rev && PRESSABLE.includes(row.state)) throw new Error(CHANGED_SINCE)
     const def = this.def(row.kind)
     const parsed = def.payload.parse(KEEPS[row.kind] ? KEEPS[row.kind]!(row.payload, payload) : payload)
     const next = def.keep ? def.keep(def.payload.parse(row.payload), parsed) : parsed

@@ -192,7 +192,7 @@ export const outbox: WorkModule = {
         return handled(await box.askAgain(req.params.ref, person(by)))
       case 'work.outbox.edit':
         mustBePerson(by, 'approve')
-        return handled(await box.edit(req.params.ref, req.params.payload))
+        return handled(await box.edit(req.params.ref, req.params.payload, req.params.rev))
       case 'work.outbox.grant':
         mustBePerson(by, 'admin')
         return handled(await box.grant(req.params.from, req.params.matcher, { ...(req.params.label ? { label: req.params.label } : {}), ...(req.params.routine ? { routine: true } : {}) }))

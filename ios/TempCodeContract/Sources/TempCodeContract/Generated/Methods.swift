@@ -2754,10 +2754,12 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let ref: HeldRef
             public let payload: JSONValue?
+            public let rev: Int?
 
-            public init(ref: HeldRef, payload: JSONValue? = nil) {
+            public init(ref: HeldRef, payload: JSONValue? = nil, rev: Int? = nil) {
                 self.ref = ref
                 self.payload = payload
+                self.rev = rev
             }
         }
 
