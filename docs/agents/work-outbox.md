@@ -1058,8 +1058,10 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
     then a check and what happened ("Queued in LifeOS", "Posted"), or the
     red mark and the host's reason (a plain send's check alone); the head
     sums them as they are, "Sent 2, queued 3 in LifeOS, 1 not sent"
-    (`resultsHead`), and Send N again takes the ones that failed and can
-    still go plainly (one that may have gone is checked in its detail). M5's
+    (`resultsHead`), and Send N again takes the ones that failed and still
+    stand at the revision their result showed (`Batch.revs`), with it; one
+    whose words moved since, or that may have gone, opens in its own detail
+    ("Open in the Outbox"), never a retry on the old result. M5's
     request card draws the same `SummaryList`.
   - **Done** (`DoneList`, `DoneDetail.tsx`): what went, what he discarded
     and what went out of date that he put away (`list({show: 'done'})`), by

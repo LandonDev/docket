@@ -1272,3 +1272,33 @@ describe("council round 1: the list, the detail and the bulk press", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Send 1 again" })).toBeNull());
   });
 });
+
+describe("the bulk press's Send again is bound to the revision its result shows (review round 5, finding 6)", () => {
+  it("a failed row whose words changed after its result opens the item's detail, and nothing is sent", async () => {
+    world.refuse = { o2: "Outlook did not answer in time" };
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send 1 again" })).toBeTruthy(), { timeout: 5000 });
+    // The thread rewrites Sam's mail while the old result is on screen.
+    Object.assign(world.items.get("box")!.find((i) => i.ref.id === "o2")!, { state: "held", updatedAt: 900 });
+    await act(async () => loadOutbox());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send 1 again" })).toBeNull());
+    const decides = world.decides.length;
+    fireEvent.click(screen.getByRole("button", { name: "Open in the Outbox" }));
+    // The item's own detail, with its new words, and no press made.
+    await waitFor(() => expect(document.querySelector("[data-outbox-detail] h1")?.textContent).toBe("Send to Sam Ortiz"));
+    expect(document.querySelector("[data-outbox-summary]")).toBeNull();
+    expect(world.decides.length).toBe(decides);
+  });
+
+  it("a failed row whose item still stands as its result showed goes again with that revision", async () => {
+    world.refuse = { o2: "Outlook did not answer in time" };
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    world.refuse = {};
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Send 1 again" })));
+    expect(world.decides.at(-1)!.items).toEqual([{ ref: { at: "lifeos", table: "outbox", id: "o2" }, do: "send", rev: 500 }]);
+  });
+});

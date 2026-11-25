@@ -18,7 +18,8 @@ import { doneWords, itemKey, openOnly, resultsHead, summaryHead, type RowResult 
  */
 
 /** A press on many, once made: what it took, what it did, and each item's result as it lands. */
-export type Batch = { items: HostItem[]; did: "send" | "discard" | "later"; results: ReadonlyMap<string, RowResult> };
+/** `revs`: the revision each row's result shows (the host's answer for it, else what was pressed): a retry is that revision's alone. */
+export type Batch = { items: HostItem[]; did: "send" | "discard" | "later"; results: ReadonlyMap<string, RowResult>; revs: ReadonlyMap<string, number> };
 
 /** LifeOS mail among these that quotes the mail it answers, read whole: those go only from their own page. */
 function useQuoted(items: readonly HostItem[]): ReadonlySet<string> {
@@ -41,7 +42,7 @@ function useQuoted(items: readonly HostItem[]): ReadonlySet<string> {
 /** One press on many: the results land on `batch` as each host answers. */
 export async function pressMany(items: readonly HostItem[], choice: DecideDo, setBatch: (update: (b: Batch | null) => Batch | null) => void): Promise<void> {
   const did = choice.do;
-  setBatch(() => ({ items: [...items], did, results: new Map(items.map((i) => [itemKey(i), { state: "working" } as RowResult])) }));
+  setBatch(() => ({ items: [...items], did, results: new Map(items.map((i) => [itemKey(i), { state: "working" } as RowResult])), revs: new Map(items.map((i) => [itemKey(i), i.updatedAt])) }));
   const byKey = new Map(items.map((i) => [itemKey(i), i]));
   await decideMany(items, choice, {
     via: "outbox",
@@ -49,8 +50,10 @@ export async function pressMany(items: readonly HostItem[], choice: DecideDo, se
       setBatch((b) => {
         if (!b) return b;
         const results = new Map(b.results);
+        const revs = new Map(b.revs);
         for (const [key, answer] of answers) {
           const item = byKey.get(key)!;
+          revs.set(key, answer.item?.updatedAt ?? item.updatedAt);
           results.set(
             key,
             answer.ok
@@ -58,7 +61,7 @@ export async function pressMany(items: readonly HostItem[], choice: DecideDo, se
               : { state: "failed", words: workErrorWords(answer.error ?? "") || (did === "discard" ? "It was not discarded" : "It did not go") },
           );
         }
-        return { ...b, results };
+        return { ...b, results, revs };
       }),
   });
 }
@@ -72,6 +75,7 @@ export function TickedDetail({
   onPress,
   onSendAgain,
   canRetry = () => true,
+  onOpenItem,
   commands,
 }: {
   /** The ticked rows (none once a press was made: `batch` shows instead). */
@@ -83,8 +87,13 @@ export function TickedDetail({
   onPress: (items: HostItem[], choice: DecideDo) => void;
   /** The failed rows of a press, sent again. */
   onSendAgain: (keys: string[]) => void;
-  /** Whether a failed row may go again from here: it still waits as it was, and did not maybe go (that one is checked in its own detail). */
-  canRetry?: (key: string) => boolean;
+  /**
+   * Whether a failed row may go again from here: it still waits at the very revision its result shows (`rev`), and
+   * did not maybe go. Any other is opened in its own detail (review round 5, finding 6).
+   */
+  canRetry?: (key: string, rev: number | undefined) => boolean;
+  /** Opens one item's own detail in the Outbox. */
+  onOpenItem?: (key: string) => void;
   commands?: RefObject<DetailCommands | null>;
 }) {
   const quoted = useQuoted(items);
@@ -95,7 +104,10 @@ export function TickedDetail({
   const goes = items.filter((i) => !only(i));
   const later = goes.length > 0 && goes.every((i) => i.later === true);
   const busy = !!batch && [...batch.results.values()].some((r) => r.state === "working");
-  const failed = batch ? [...batch.results].filter(([k, r]) => r.state === "failed" && canRetry(k)).map(([k]) => k) : [];
+  const failedKeys = batch ? [...batch.results].filter(([, r]) => r.state === "failed").map(([k]) => k) : [];
+  const failed = batch ? failedKeys.filter((k) => canRetry(k, batch.revs.get(k))) : [];
+  // A failed row whose item moved since its result, or may have gone, is looked at in its own detail, never retried here.
+  const toDetail = batch && batch.did === "send" ? failedKeys.filter((k) => !failed.includes(k)) : [];
 
   const verbs: DetailCommands = {
       primary: () => !batch && goes.length > 0 && onPress(goes, { do: "send" }),
@@ -124,6 +136,11 @@ export function TickedDetail({
             </Button>
           </Tip>
           <span className="flex-1" />
+          {!busy && toDetail.length && onOpenItem ? (
+            <Button variant="ghost" size="sm" onClick={() => onOpenItem(toDetail[0]!)}>
+              Open in the Outbox
+            </Button>
+          ) : null}
           {!busy && failed.length && batch.did === "send" ? (
             <Button variant="secondary" size="sm" onClick={() => onSendAgain(failed)}>
               Send {failed.length} again

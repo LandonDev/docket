@@ -434,10 +434,17 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 setTicked(new Set());
                 void pressMany(items, choice, setBatch);
               }}
-              canRetry={(key) => outbox.waiting.some((i) => itemKey(i) === key && tickable(i))}
+              // Only an item that still stands at the revision its result shows goes again, with that revision; one whose
+              // words moved since opens in its own detail (review round 5, finding 6).
+              canRetry={(key, rev) => outbox.waiting.some((i) => itemKey(i) === key && tickable(i) && rev !== undefined && i.updatedAt === rev)}
               onSendAgain={(keys) => {
-                const again = outbox.waiting.filter((i) => keys.includes(itemKey(i)) && tickable(i));
+                const again = outbox.waiting.filter((i) => keys.includes(itemKey(i)) && tickable(i) && batch?.revs.get(itemKey(i)) === i.updatedAt);
                 if (again.length) void pressMany(again, { do: "send" }, setBatch);
+              }}
+              onOpenItem={(key) => {
+                clearTicks();
+                setSelected(key);
+                setOpened(true);
               }}
               commands={commands}
             />
