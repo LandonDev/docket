@@ -19,4 +19,13 @@ describe("notes' line breaks", () => {
     expect(notesTyped("Thank the sponsors Doors open at six\nThen the plan", notes)).toBe("Thank the sponsors Doors open at six\nThen the plan");
     expect(notesTyped("One\nTwo", "One")).toBe("One\nTwo");
   });
+
+  it("keep each old break once: Return beside a break makes one paragraph, never a second break", () => {
+    // Council r4 (Sol 2): Return just before PowerPoint's Shift+Return came back as two breaks in one paragraph.
+    expect(notesTyped("first\n\nsecond", "first\vsecond")).toBe("first\v\nsecond");
+    expect(notesTyped("first\nmiddle\nsecond", "first\vsecond")).toBe("first\vmiddle\nsecond");
+    expect(notesTyped("a\nb\n\nc\nd", "a\vb\vc\nd")).toBe("a\vb\v\nc\nd");
+    // Lines taken out between two ends: the end after the head stays.
+    expect(notesTyped("a\nc", "a\vb\nc")).toBe("a\vc");
+  });
 });

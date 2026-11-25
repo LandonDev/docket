@@ -1851,7 +1851,10 @@ A line break inside a notes paragraph (Shift+Return in PowerPoint, `a:br`,
 which the deck tool reads as `\v`) draws as a line break in the field, the
 read-only notes and the presenter's view (`notesShown`, slides/notesText.ts),
 never as a box; the field writes it back as one where it was, and a line he
-starts with Return is a paragraph (`notesTyped`).
+starts with Return is a paragraph (`notesTyped`). Each old end is matched at
+most once, by the lines unchanged before and after his edit: Return beside a
+break keeps the break on one side and makes a paragraph on the other, never
+two breaks in one paragraph.
 
 ### Copy and paste
 
