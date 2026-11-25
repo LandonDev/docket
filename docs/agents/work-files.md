@@ -1157,7 +1157,13 @@ follows; the title shows the old name until the tab opens again).
   no `landed` is settled by the file's sha256 when the op is asked again), so a commit
   whose answer was lost is never saved twice. A commit sent again to a host
   that has not restarted answers its first answer (`AttachmentUploads`
-  keeps them a day).
+  keeps them a day). His window uses both before it calls an upload failed
+  (acts.ts `uploadTo`, `landedAfter`): a commit with no answer is sent
+  again, then the op asked again with the same `op`; only when neither says
+  it landed is it said as not uploaded, so a dropped answer is one file and
+  no second upload. An upload the host no longer knows ("unknown upload": it
+  started again before the commit, or the id expired) is sent once more
+  from the start under a new op.
 - The caller sends the bytes as `attachment.chunk` and `attachment.commit`
   (or `attachment.abort`) on that id, from the same socket: an upload
   belongs to its owner, this host's window or the key that began it

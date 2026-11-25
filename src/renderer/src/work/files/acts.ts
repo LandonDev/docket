@@ -358,10 +358,29 @@ export interface UploadProgress {
   total: number;
 }
 
+/** An upload the host no longer knows: its id expired, or the host started again since the begin. */
+const expired = (err: unknown): boolean => (err as { code?: string })?.code === "unknown-upload" || /unknown upload/i.test(err instanceof Error ? err.message : String(err));
+
+/**
+ * Whether a commit whose answer did not come made the file all the same: the commit asked again is answered as the
+ * first was (attachmentUploads.ts keeps each commit's answer a day), and across a restart of the host the upload's op
+ * says whether it landed (upload.ts `beginUpload`). Nothing is sent again before one of them answers.
+ */
+async function landedAfter(link: ReturnType<typeof registry.linkOf>, uploadId: string, begin: Record<string, unknown>, wait: { timeoutMs?: number }): Promise<boolean> {
+  try {
+    await link.request("attachment.commit", { uploadId });
+    return true;
+  } catch {
+    const again = await link.request<{ landed?: true }>("work.files.upload", begin, wait).catch(() => null);
+    return again?.landed === true;
+  }
+}
+
 /**
  * Files from this computer into a folder, one after another, each in chunks under its own upload: the host
- * checks its size and hash before it makes the file, never over anything. Answers how many landed; each that
- * did not is said once.
+ * checks its size and hash before it makes the file, never over anything. A commit whose answer was lost is asked
+ * of the host before it is called failed (`landedAfter`), and an upload the host forgot before its commit (it started
+ * again) is sent once more under a new op. Answers how many landed; each that did not is said once.
  */
 export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files: readonly File[], o: { onProgress?(progress: UploadProgress | null): void; signal?: AbortSignal } = {}): Promise<number> {
   const no = refusal(copy.place, "upload");
@@ -372,19 +391,32 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
   for (const [index, file] of files.entries()) {
     if (o.signal?.aborted) break;
     let uploadId: string | null = null;
-    try {
-      const source = await blobSource(file);
-      const begun = await link.request<{ uploadId: string; chunkBytes?: number }>("work.files.upload", { workspaceId: of.workspaceId, at, name: file.name, size: source.size, sha256: source.sha256, op: opId() }, longWait(copy));
-      uploadId = begun.uploadId;
+    const send = async (source: Awaited<ReturnType<typeof blobSource>>): Promise<void> => {
+      const begin = { workspaceId: of.workspaceId, at, name: file.name, size: source.size, sha256: source.sha256, op: opId() };
+      const begun = await link.request<{ uploadId: string; chunkBytes?: number }>("work.files.upload", begin, longWait(copy));
+      const id = (uploadId = begun.uploadId);
       const chunk = Math.min(begun.chunkBytes || ATTACHMENT_CHUNK_BYTES, ATTACHMENT_CHUNK_BYTES);
       o.onProgress?.({ name: file.name, index, count: files.length, sent: 0, total: source.size });
       for (let offset = 0, part = 0; offset < source.size; offset += chunk, part += 1) {
         o.signal?.throwIfAborted();
-        await link.request("attachment.chunk", { uploadId, index: part, dataBase64: await source.read(offset, Math.min(chunk, source.size - offset)) });
+        await link.request("attachment.chunk", { uploadId: id, index: part, dataBase64: await source.read(offset, Math.min(chunk, source.size - offset)) });
         o.onProgress?.({ name: file.name, index, count: files.length, sent: Math.min(offset + chunk, source.size), total: source.size });
       }
       o.signal?.throwIfAborted();
-      await link.request("attachment.commit", { uploadId });
+      try {
+        await link.request("attachment.commit", { uploadId: id });
+      } catch (err) {
+        if (!(await landedAfter(link, id, begin, longWait(copy)))) throw err;
+      }
+    };
+    try {
+      const source = await blobSource(file);
+      try {
+        await send(source);
+      } catch (err) {
+        if (!expired(err) || o.signal?.aborted) throw err;
+        await send(source);
+      }
       landed += 1;
     } catch (err) {
       if (uploadId) void link.request("attachment.abort", { uploadId }).catch(() => undefined);
