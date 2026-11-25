@@ -248,9 +248,14 @@ method can be given a small source here on `ask.ts`, as Files is.
 
 - `model.ts` (pure) is the list as data: generations, what is out, the rows
   in their order, the highlight. `controller.ts` runs the asks: every host
-  at once for its instant tier on each change of his words, then each
-  source a host named on its own, 120 ms after his last key and from two
-  characters, so each lands when it is ready. One ask of a host is given
+  for its instant tier, at once for words typed after a pause and
+  `TYPE_WAIT_MS` (70 ms) after the last key of a run, so a run of keys asks
+  each host for its last words alone (7 keys in 300 ms: 2 asks a host); then
+  each source a host named on its own, 120 ms after his last key and from two
+  characters, so each lands when it is ready. New words drop every ask still
+  waiting and abort the ones out (the wire has no cancel for one ask: their
+  answers are let go in the window). The same words asked again (another
+  kind or job) go at once. One ask of a host is given
   `ASK_MS` (the host's own wait and two seconds for the road); a host that
   says nothing by then is its quiet line, and the rest is not kept
   waiting. A change of scope keeps what is

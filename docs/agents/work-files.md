@@ -1685,9 +1685,10 @@ called travel" (also doc, document, deck, slides, note, text file, folder;
 Return in the window takes a row of the names for the words in the field:
 while an older answer is still drawn, it waits for the newer one.
 
-**A search** (`search {query, filter?, cursor?}`) looks for every word of
-the query in a name, case-blind, in four sources at once, each with its own
-deadline (20 s) and each giving the event loop a turn as it goes:
+**A search** (`search {query, filter?, cursor?, seen?, replaces?}`) looks
+for every word of the query in a name, case-blind, in five sources at once
+(the four below and LifeOS), each with its own deadline (20 s) and its own
+stop, each giving the event loop a turn as it goes:
 
 | Source | What it reads | Caps |
 |---|---|---|
@@ -1701,8 +1702,29 @@ over the table's). Results come newest change first, 100 a page; the cursor
 is the last row's change and key. A search is kept 30 s per caller, query
 and filter (eight at most, the least used first), so the next page runs
 nothing again; a cursor of another search answers `stale`. `more` says a
-source stopped before its end. The signal is honoured everywhere: the next
-keystroke cancels a walk between folders.
+source stopped before its end.
+
+- **In parts** (M13 of the performance pass). A search is one live run on the
+  host (`start`, search.ts): the names this host holds answer first, and each
+  place merges in as it answers, under its own deadline, so a slow or stopped
+  place never holds the rows already found. A caller that sends `seen` takes
+  it in parts: asked with 0 it answers once the names are in, with the places
+  that answer within 300 ms (`CAPS.firstMs`), naming the rest in `pending` with
+  `parts` (how many answered); asked again with those `parts` it answers once
+  another place has. A caller that sends none (a thread, the phone, a window a
+  release behind) has the whole search in one answer, as before; a later page
+  is cut from the whole search.
+- **Stopped for real.** A place's deadline stops its walk (the folder walk and
+  the library walk between folders, the VM's ask at its door), not only the
+  wait for it. `replaces` names the words of the search the same tab ran
+  before: that run stops at once; a run no one waits on any more stops too.
+  A desktop's own search (`work.office.filesSearch {replaces}`) stops the walk
+  the same caller replaces.
+- **No author read.** A search reads names, sizes and times: who last saved a
+  file (read from inside it) is read only where the filter asks who
+  (`searchLibraries {who}`); a desktop's search never reads it.
+- **The names table** is fed once a search ends, as its first page always fed
+  it: names only, no new feed.
 
 **Words inside a file** are read only where it is cheap and his own: a
 `.md`, `.markdown`, `.txt` or `.csv` of 512 KB or less in the workspace's
@@ -1723,9 +1745,14 @@ search opened) the window asks, itself, each desktop the workspace may use
 that it holds a direct link to (`desktopsFor`, work/shell/desktops.ts, shared
 with Work search), with the search Files already has there
 (`work.office.filesSearch`: names alone, its own caps; a deadline of 20 s).
-Never as he types, and never on a later page or a push that lists the page
-again. The host's rows are drawn first; a desktop's join them in the list's
-order when they land (`searchDesks` in files/store.ts, `deskRows` and
+Never as he types, and never on a later page, a part or a push that lists the
+page again (one ask a search, `deskAsks`; only Retry asks again). The host's
+rows are drawn first; a desktop's, and each later part of the host's, join
+below the rows shown (`mergeBelow`), so nothing on screen moves and nothing
+fades, while the page's line names the places still searched ("Searching
+LifeOS and the Windows VM", the spinner, nothing to press; `searchingNote`).
+New words in a tab name the ones before (`searchReplaces`), sent as
+`replaces` to the host and to each desktop. They land (`searchDesks` in files/store.ts, `deskRows` and
 `mergeFound` in files/model.ts): each keyed as its library keys it, so a file
 both sides found is one row, saying where it lies, held to the filter, and
 opening from its place as any file of that computer does. A desktop joins
