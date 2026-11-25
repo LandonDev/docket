@@ -58,7 +58,10 @@ enum RequestPresses {
         wait.toldOff = { outcome in
             switch outcome {
             case .failed(let line): FleetToastCenter.shared.post(message: line)
-            case .answered(let request): FleetToastCenter.shared.post(note: RequestSheetModel.resultsHead(request) ?? "Done")
+            case .answered(let request):
+                // A row that did not go, or may have gone, waits for his tap, as a refusal does; else it is a note.
+                let head = RequestSheetModel.resultsHead(request) ?? "Done"
+                if RequestSheetModel.resultsMissed(request) { FleetToastCenter.shared.post(message: head) } else { FleetToastCenter.shared.post(note: head) }
             case .checking: break
             }
         }
@@ -156,6 +159,9 @@ struct OutboxRequestSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
         }
+        // Another request's countdown (Send, Close, then this one opened), a reply's or the Outbox's own: their Undo
+        // over this sheet, which covers the tab's foot. This request's own is its foot's, as before.
+        .outboxUndoOverSheet()
         .tcSheet(.editor)
         .task { await load() }
         #if DEBUG
@@ -171,7 +177,12 @@ struct OutboxRequestSheet: View {
         // His press's answer, whenever it lands: in this sheet, or in one opened after the first was closed.
         .onChange(of: wait.outcomes[requestId], initial: true) { _, outcome in take(outcome) }
         // On screen while shown: closed, its press's Undo and outcome are the tab's foot's and the toast's.
-        .task(id: requestId) { await wait.sheetShown(requestId) }
+        .task(id: requestId) {
+            TickLedger.begin("request.shown"); defer { TickLedger.end("request.shown") }
+            wait.sheetOpened(requestId)
+            while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+            wait.sheetClosed(requestId)
+        }
         // A refused key: the request read under it, and every receipt opened from it, go from memory.
         .onChange(of: revoked) {
             guard revoked else { return }

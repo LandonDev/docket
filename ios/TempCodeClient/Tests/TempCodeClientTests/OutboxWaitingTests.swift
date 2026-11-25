@@ -195,6 +195,9 @@ import TempCodeContract
         let unsure = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, result: .init(ok: false, error: "timed out", unknown: true))], state: .answered, answeredAt: 1)
         #expect(RequestSheetModel.resultWords(unsure.rows[1])?.text == "May have gone")
         #expect(RequestSheetModel.resultsHead(unsure) == "Queued 1 in LifeOS, 1 may have gone")
+        // Off a closed sheet, a row that did not go or may have gone makes the answer a failure to read (sticky).
+        #expect(RequestSheetModel.resultsMissed(done))
+        #expect(RequestSheetModel.resultsMissed(unsure))
         #expect(RequestSheetModel.closedLine(done, time: { _ in "9:41 AM" }) == "By you at 9:41 AM")
     }
 
@@ -341,6 +344,8 @@ import TempCodeContract
         let posted = kinded("p", kind: .teamsPost, verb: "Post")
         let done = request("q", rows: [row(queued, result: .init(ok: true, state: "sent")), row(posted, result: .init(ok: true, state: "sent")), row(kinded("s", kind: .officeMailSend), result: .init(ok: true, state: "sent")), row(lifeosMail("c", to: "c@x.edu"), changed: true, receipt: nil)], state: .answered, answeredAt: 3)
         #expect(RequestSheetModel.resultsHead(done) == "Sent 2, queued 1 in LifeOS, 1 left out")
+        // A row he left out is his own choice, not a failure: a plain note off the sheet.
+        #expect(!RequestSheetModel.resultsMissed(done))
         #expect(RequestSheetModel.rowWords(done.rows[3], closed: true).line == "Left out")
         #expect(RequestSheetModel.head(done, ticked: []) == "Sent 2, queued 1 in LifeOS, 1 left out")
         // A row's result line only when it adds something: "Sent" beside its check would say it twice.
@@ -430,12 +435,11 @@ private actor Gate {
         var sent = 0
         wait.start(macPress, check: { _ in nil }) { _ in sent += 1; return self.answered() }
         // The sheet is open: its own capsule has the Undo, the foot has none.
-        let sheet = Task { await wait.sheetShown("q") }
-        await settle { wait.showing["q"] == 1 }
+        wait.sheetOpened("q")
         #expect(wait.offScreen.isEmpty)
         // He closes it while it counts: the press is the foot's, Undo bound to this request.
-        sheet.cancel()
-        await settle { wait.showing["q"] == nil }
+        wait.sheetClosed("q")
+        #expect(wait.showing["q"] == nil)
         #expect(wait.offScreen.map(\.requestId) == ["q"])
         // The link drops after closing: the line is said off the sheet, not only kept for it.
         wait.linkLost(host: "mac")
@@ -446,6 +450,23 @@ private actor Gate {
         await gate.release()
         try? await Task.sleep(for: .milliseconds(50))
         #expect(sent == 0)
+    }
+
+    @Test func aClosedRequestsUndoStaysReachableWhileAnotherRequestsSheetIsUp() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var sent: [String] = []
+        let a = RequestPress(environmentId: "mac", requestId: "a", receipts: ["r-a"], word: "Send 1", lines: [], hostName: "Mac")
+        wait.start(a, check: { _ in nil }) { p in sent.append(p.requestId); return self.answered() }
+        // A's sheet closed; B's sheet is open over the tab: A is off screen, B is not.
+        wait.sheetOpened("b")
+        #expect(wait.offScreen.map(\.requestId) == ["a"])
+        // Undo of A from B's sheet: bound to A, and A's decide is never sent.
+        #expect(wait.undo("a"))
+        await gate.release()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent.isEmpty)
+        wait.sheetClosed("b")
     }
 
     private var macPress: RequestPress {

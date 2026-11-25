@@ -80,7 +80,14 @@ struct WorkViewScreen: View {
     var body: some View {
         if let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) {
             if let kind = LifeViewScreen.Kind(rawValue: view) {
-                LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind, project: project)
+                if client.work.may(.lifeosJwt) {
+                    LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind, project: project)
+                } else {
+                    // A key that may not ask for a LifeOS token: the key's own state, as the every-job places say it
+                    // (`LifeReach`), and no Try Again the host would refuse every time (council 16, Opus 3.1).
+                    ContentUnavailableView("This iPhone’s key can’t read LifeOS.", systemImage: kind.symbol)
+                        .navigationTitle(kind.title)
+                }
             } else if view == "files" {
                 FilesScreen(client: client, workspace: workspace)
             } else if view == "money" {

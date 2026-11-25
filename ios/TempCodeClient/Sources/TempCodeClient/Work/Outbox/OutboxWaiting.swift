@@ -495,6 +495,12 @@ public enum RequestSheetModel {
         return line.prefix(1).uppercased() + line.dropFirst()
     }
 
+    /// A press that answered with a row that did not go or may have gone: a failure he must read, so said off the
+    /// sheet as the sticky toast, never a note that leaves on its own.
+    public nonisolated static func resultsMissed(_ request: OutboxRequest) -> Bool {
+        request.rows.contains { resultWords($0)?.ok == false }
+    }
+
     /// A settled row's line: its result when it adds something ("Queued in LifeOS", "Posted", "Discarded", a reason),
     /// else what the row is about: a check beside "Sent" would say one thing twice.
     public nonisolated static func settledLine(_ row: OutboxRequestRow) -> String? {
@@ -627,10 +633,13 @@ public final class RequestPressWait {
         return true
     }
 
-    /// Counts the request's sheet as on screen until the calling view's task ends.
-    public func sheetShown(_ requestId: String) async {
+    /// The request's sheet came on screen (the view's task holds it, the named clock `request.shown`).
+    public func sheetOpened(_ requestId: String) {
         showing[requestId, default: 0] += 1
-        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+    }
+
+    /// The request's sheet left the screen.
+    public func sheetClosed(_ requestId: String) {
         showing[requestId, default: 1] -= 1
         if showing[requestId] == 0 { showing[requestId] = nil }
     }

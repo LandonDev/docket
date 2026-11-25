@@ -258,4 +258,30 @@ import TempCodeContract
         #expect(WorkTab.entryRoute(stamp: "2026-11-25", today: "2026-11-25", saved: ColumnMemory(), draft: false) == nil)
         #expect(WorkTab.entryRoute(stamp: nil, today: "2026-11-25", saved: nil, draft: true) == nil)
     }
+
+    // MARK: - the day's first place and the Work list, seen over a hidden sidebar (council 16, Sol 3)
+
+    @Test(arguments: poses.map(\.name))
+    func `a landing shows its list over his hidden sidebar until he leaves it, and never writes his toggle`(_ name: String) throws {
+        let pose = try #require(Self.poses.first { $0.name == name }).pose
+        // He hid Work's sidebar yesterday; today's first entry opens Today, the day's first place.
+        let hidden = SidebarVisibility(preference: false)
+        let first = try #require(WorkTab.entryRoute(stamp: "2026-11-24", today: "2026-11-25", saved: ColumnMemory(), draft: false))
+        let day = WorkTab.ListLanding(top: first)
+        // In a split pose Today's list shows (tiled beside the empty detail, or over it); a stack shows it anyway.
+        #expect(day.showsSidebar(pose: pose, top: first, wide: false) == pose.isSplit)
+        // Its first held row picked into the detail keeps Today on screen: the sidebar's top is still Today.
+        #expect(day.showsSidebar(pose: pose, top: .place(.today), wide: false) == pose.isSplit)
+        // He goes on to the Outbox: the landing is over, and his own choice (hidden) decides again.
+        #expect(!day.showsSidebar(pose: pose, top: .place(.outbox), wide: false))
+        #expect(!hidden.shown(route: "outbox-item", wide: false))
+        // A wide route puts the sidebar away even on the landing.
+        #expect(!day.showsSidebar(pose: pose, top: first, wide: true))
+        // A press on the Work tab he is on: the Work list itself, seen the same way.
+        let list = WorkTab.ListLanding(top: nil)
+        #expect(list.showsSidebar(pose: pose, top: nil, wide: false) == pose.isSplit)
+        #expect(!list.showsSidebar(pose: pose, top: .place(.today), wide: false))
+        // His toggle is untouched throughout.
+        #expect(hidden.preference == false)
+    }
 }

@@ -94,7 +94,7 @@ private struct PeopleList: View {
             }
         }
         .holdingChats(store, keys: pages.map(\.query.key))
-        .task { await host.prepare() }
+        .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
     }
 
     /// A person opens in the job that holds their sector, the signer's own first.

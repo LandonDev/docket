@@ -505,18 +505,21 @@ struct OutboxUndoInset: ViewModifier {
     var enabled = true
     /// The shell's copy on each tab: drawn only while neither the list nor an item's page shows the capsule.
     var fallback = false
+    /// A sheet that covers the tab (a request's): every other countdown's Undo, the Outbox's own included, over it,
+    /// since the tab's foot is under it. It says no notice and spends none: the tab's foot keeps those.
+    var covering = false
 
     func body(content: Content) -> some View {
         let presses = OutboxPresses.shared
         let notice = presses.noticeLine
-        let enabled = fallback ? presses.surfaces == 0 : enabled
+        let enabled = covering || (fallback ? presses.surfaces == 0 : enabled)
         // The tab's foot also keeps every other countdown's Undo in reach once its own page is off screen: one capsule
         // each, its Undo bound to its own press, through its whole wait.
-        let elsewhere = fallback ? ElsewhereUndo.all : []
+        let elsewhere = fallback || covering ? ElsewhereUndo.all : []
         content
             // A surface of its own counts while shown; the shell's copy steps back for it.
-            .task(id: !fallback && enabled) {
-                guard !fallback, enabled else { return }
+            .task(id: !fallback && !covering && enabled) {
+                guard !fallback, !covering, enabled else { return }
                 await presses.surfaceShown()
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -527,7 +530,7 @@ struct OutboxUndoInset: ViewModifier {
                     if enabled, let pending = presses.pending {
                         let id = pending.id
                         UndoCapsule(line: pending.line) { presses.undo(id) }
-                    } else if enabled, elsewhere.isEmpty, let notice {
+                    } else if enabled, !covering, elsewhere.isEmpty, let notice {
                         // What did not go and why, in the capsule's own line, until it has been seen.
                         UndoCapsule(line: notice, undo: nil)
                     }
@@ -544,7 +547,7 @@ struct OutboxUndoInset: ViewModifier {
             // drops a turn later) starts its own clock, so a line carried there never stays for good.
             .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)-\(elsewhere.isEmpty)" }) {
                 // A Mail or Messages countdown drawn over it hides it too, without spending it.
-                guard enabled, elsewhere.isEmpty, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
+                guard enabled, !covering, elsewhere.isEmpty, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
                 // Spoken once as its clock starts: a sum, a refusal or a cancel, as the countdown was.
                 presses.speak(shown)
                 try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
@@ -635,5 +638,10 @@ extension View {
     /// The same capsule at a tab's root, for when the Outbox's list and an item's page are both off screen.
     func outboxUndoFallback() -> some View {
         modifier(OutboxUndoInset(fallback: true))
+    }
+
+    /// The same countdowns over a sheet that covers the tab (a request's), so no Undo goes under it.
+    func outboxUndoOverSheet() -> some View {
+        modifier(OutboxUndoInset(covering: true))
     }
 }

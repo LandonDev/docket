@@ -105,7 +105,7 @@ struct LifeViewScreen: View {
         .task(id: view == .agenda ? host.client.work.clashesRev : -1) {
             if view == .agenda { await host.loadMarks() }
         }
-        .task { await host.prepare() }
+        .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
         .onAppear { ShownLifeHost.shared.host = host }
         .accessibilityIdentifier("life-\(view.rawValue)")
     }

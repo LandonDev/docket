@@ -126,7 +126,7 @@ private struct MessagesList: View {
             }
         }
         .holdingChats(store, keys: pages.map(\.query.key))
-        .task { await host.prepare() }
+        .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
     }
 
     /// Where a conversation opens: on the host of the job that holds its sector, the signer's own first.

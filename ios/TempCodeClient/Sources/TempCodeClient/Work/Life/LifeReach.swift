@@ -69,7 +69,7 @@ public enum LifeReach {
         let open = hosts.filter { $0.open && holding.contains($0.environmentId) }
         guard !open.isEmpty else { return .unavailable("No computer that holds a job is online.") }
         let signers = open.filter(\.mayToken)
-        guard !signers.isEmpty else { return .unavailable("This phone’s key can’t read LifeOS.") }
+        guard !signers.isEmpty else { return .unavailable("This iPhone’s key can’t read LifeOS.") }
         let homeHost = hosts.first { $0.environmentId == home && $0.open && $0.mayToken }
         let order = (homeHost.map { [$0] } ?? []) + signers.filter { $0.environmentId != home }
         let whole = order.filter { !refused.contains($0.environmentId) }

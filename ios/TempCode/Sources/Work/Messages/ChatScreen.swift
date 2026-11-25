@@ -70,7 +70,7 @@ private struct ChatConversation: View {
                 }
             }
             .holdingChats(store, keys: [detailQuery?.key, pageQuery?.query.key].compactMap { $0 })
-            .task { await host.prepare() }
+            .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
             .task(id: client.work.messagesRev[workspaceId] ?? 0) { await readCopies() }
             .onChange(of: detail?.chat, initial: true) { _, chat in markRead(chat, store: store) }
             // A Retry whose answer was lost is read back by LifeOS's own row once the host is linked again.

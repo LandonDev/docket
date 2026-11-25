@@ -41,6 +41,21 @@ public enum WorkTab {
         opensFirstPlace(stamp: stamp, today: today, saved: saved, draft: draft) ? .place(firstPlace) : nil
     }
 
+    /// A landing on a list he must see: the day's first place opened by his entry, or the Work list after a press on the
+    /// tab he is on. Both clear the detail, so with his sidebar hidden the split would show "Nothing Selected" alone
+    /// (council 16, Sol 3). `top` is the sidebar's top route the landing put there (nil: the Work list itself).
+    public struct ListLanding: Hashable, Sendable {
+        public var top: Route?
+        public init(top: Route?) { self.top = top }
+
+        /// Whether the landing shows the sidebar over his saved toggle: in a split pose, while the sidebar's top is still
+        /// the list it landed on and the detail holds no wide route. His toggle itself is never written, so the routes he
+        /// opens after he leaves that list follow it again; his own press on the sidebar button ends the landing.
+        public func showsSidebar(pose: ShellPose, top now: Route?, wide: Bool) -> Bool {
+            pose.isSplit && now == top && !wide
+        }
+    }
+
     /// Whether the detail holds words he has not sent: a project's draft with text, or an open thread whose
     /// composer holds text, a chip or a photo (`UnsentThreads`). The day's first place never covers either.
     public static func holdsDraft(projectText: String?, threadUnsent: Bool) -> Bool {

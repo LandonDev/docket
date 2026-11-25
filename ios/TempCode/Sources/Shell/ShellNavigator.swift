@@ -14,7 +14,12 @@ import TempCodeClient
 @MainActor @Observable
 final class ShellNavigator {
     let tab: AppTab
-    var sidebarPath: [Route]
+    var sidebarPath: [Route] {
+        // He left the list a landing put on top: the landing is over (`WorkTab.ListLanding`).
+        didSet { if let landing, sidebarPath.last != landing.top { self.landing = nil } }
+    }
+    /// The day's first place or the Work list after a tab press, shown over his hidden sidebar while it stays on top.
+    private(set) var landing: WorkTab.ListLanding?
     var detailRoot: Route? {
         // His press on the sidebar button over a wide route is that screen's alone (`SidebarVisibility`).
         // A held write is its route's too: another route never shows it, even for the half second it waits.
@@ -100,6 +105,7 @@ final class ShellNavigator {
     /// What the split shows: a held write, else his toggle, hidden by a wide route, or his own press on that route.
     var sidebarVisible: Bool {
         if let heldWrite { return heldWrite.shown }
+        if let landing, landing.showsSidebar(pose: pose, top: sidebarPath.last, wide: wide) { return true }
         return SidebarVisibility(preference: sidebarShown, override: sidebarOverride).shown(route: ShellPaths.identity(of: detailRoot), wide: wide)
     }
 
@@ -121,6 +127,8 @@ final class ShellNavigator {
 
     /// His press on the sidebar button: the route's override on a wide route, his toggle otherwise.
     func showSidebar(_ shown: Bool) {
+        // His own choice ends a landing: from here his toggle decides.
+        landing = nil
         var visibility = SidebarVisibility(preference: sidebarShown, override: sidebarOverride)
         visibility.toggled(to: shown, route: ShellPaths.identity(of: detailRoot), wide: wide)
         sidebarShown = visibility.preference
@@ -253,6 +261,15 @@ final class ShellNavigator {
     /// A held item over the Outbox, so Send returns to the list and its Undo.
     func openHeld(_ route: Route) async {
         await open(route, over: .place(.outbox))
+    }
+
+    /// A list he must see after this landing: the tab's root (a press on the tab he is on), or the day's first place
+    /// opened over it. The detail is cleared; the sidebar shows over his hidden toggle until he leaves that list or
+    /// presses the sidebar button, and his toggle is never written.
+    func landOnList(_ route: Route? = nil) {
+        popToRoot()
+        if let route { open(route) }
+        landing = WorkTab.ListLanding(top: sidebarPath.last)
     }
 
     func popToRoot() {

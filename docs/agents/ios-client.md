@@ -1814,7 +1814,10 @@ The rules every press below keeps (fix round 2):
   capsule per countdown, each Undo bound to its own press and true only if
   that press still waited (`ElsewhereUndo.all`, `SendWait.countingOffScreen`,
   `RequestPressWait.offScreen`; Mail's page, a person's page and a request
-  sheet count themselves, as a conversation does). A request's outcome that
+  sheet count themselves, as a conversation does); a request sheet that covers
+  the tab draws the same capsules over itself (`outboxUndoOverSheet`), so Send
+  on one request, Close, then opening another never hides the first's Undo.
+  A request's outcome that
   lands with its sheet closed is the toast (`RequestPressWait.toldOff`). VoiceOver hears each line once as its clock
   starts, a sum, a refusal or a cancel, as it hears the countdown
   (`OutboxPresses.speak`). A host whose answer was lost counts as "N

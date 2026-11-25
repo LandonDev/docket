@@ -70,7 +70,8 @@ struct RootView: View {
         Binding(
             get: { tab },
             set: { pressed in
-                if WorkTab.popsToList(selected: tab, pressed: pressed) { work.popToRoot() }
+                // The Work list, seen: over a hidden sidebar too (`landOnList`).
+                if WorkTab.popsToList(selected: tab, pressed: pressed) { work.landOnList() }
                 tab = pressed
             }
         )
@@ -322,8 +323,8 @@ struct RootView: View {
         let thread = work.detailRoot.flatMap(ShellPaths.thread(of:))
         let draft = WorkTab.holdsDraft(projectText: projectText, threadUnsent: thread.map { UnsentThreads.shared.holds(environmentId: $0.environmentId, sessionId: $0.sessionId) } ?? false)
         if let first = WorkTab.entryRoute(stamp: stamp, today: today, saved: workSaved ? work.memory : nil, draft: draft) {
-            work.popToRoot()
-            work.open(first)
+            // The day's first place, seen: over a hidden sidebar too (`landOnList`).
+            work.landOnList(first)
         }
         workSaved = true
         if stamp != today { UserDefaults.standard.set(today, forKey: WorkTab.dayKey) }

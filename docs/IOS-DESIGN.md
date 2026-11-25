@@ -78,6 +78,14 @@ The rules, all pure and tested in WorkTabTests:
   is that day's first entry and stays on screen.
 - **A second press on the tab** goes back to the Work list
   (`WorkTab.popsToList`).
+- **Both landings are seen.** The day's first place and the Work list after a
+  second press clear the detail, so on the open Duo, with his sidebar hidden,
+  the split would show "Nothing Selected" alone. Each is a landing
+  (`WorkTab.ListLanding`, `ShellNavigator.landOnList`): in a split pose the
+  sidebar shows its list while that list stays on top, beside the row it
+  picks or over the empty detail, without writing his toggle. Leaving the list
+  or his own press on the sidebar button ends it, and his saved choice decides
+  again.
 - **What opens where.** A route something outside a tab names opens in the
   tab `ShellPaths.tab(of:isWork:)` gives: Work's places and screens, a Work
   thread (its scope), a Work workspace and Work Chats in the Work tab, the
@@ -2566,7 +2574,9 @@ milestone 46 built, where it lives now:
   becomes the undo capsule naming what goes ("Sending 2 mails to 2
   people", Undo), each ticked row keeps its own words (its act, and when a
   later one goes), and the rows left out dim. Closing the sheet never sends it early: the frozen press waits
-  out its five seconds (`RequestPresses`), and a sheet opened again shows it waiting, then its answer. Leaving
+  out its five seconds (`RequestPresses`) with its Undo at the tab's foot (or over another request's sheet that
+  covers it), and a sheet opened again shows it waiting, then its answer; an answer that lands with the sheet closed
+  is the toast, sticky when a row did not go or may have gone. Leaving
   the app or losing the link cancels it, as every phone Send, and the line under the head says so ("Not sent:
   TempCode left the screen"). A press whose answer was lost keeps Send busy and the line says "Checking…" until
   the request is read back; Send keeps its name for VoiceOver, its value "Sending" while the spinner shows. Then each row's result lands in its line (a muted
@@ -4273,6 +4283,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | `mail.page` | A person's page | Holds the page as showing a mail's countdown, so its Undo is drawn there and not at the tab's foot; it wakes once an hour and does nothing (Life/MailPresses.swift) |
 | `chat.shown` | A conversation | Holds the conversation as on screen, so a stopped reply is said there and not as a toast; it wakes once an hour and does nothing (Messages/MessagesPresses.swift) |
 | `outbox.surface` | The Outbox, a held item | Holds the Undo capsule's own surface as on screen, so another tab shows it only when none is; it wakes once an hour and does nothing (OutboxPresses.swift) |
+| `request.shown` | A thread's request | Holds the request's sheet as on screen, so its press's Undo is its own foot's and its outcome is said there; closed, both go to the tab's foot and the toast; it wakes once an hour and does nothing (OutboxRequestSheet.swift) |
 | `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
 
 Every other Work screen runs none.

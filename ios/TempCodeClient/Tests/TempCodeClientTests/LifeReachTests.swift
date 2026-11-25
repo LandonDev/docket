@@ -83,7 +83,7 @@ import TempCodeContract
     @Test func `with nothing that can read LifeOS the places say why in one line`() {
         #expect(LifeReach.reach(jobs: [], hosts: []) == .unavailable("No job is linked to LifeOS."))
         #expect(LifeReach.reach(jobs: box, hosts: [LifeReach.Host(environmentId: "box", open: false, mayToken: true)]) == .unavailable("No computer that holds a job is online."))
-        #expect(LifeReach.reach(jobs: box, hosts: [LifeReach.Host(environmentId: "box", open: true, mayToken: false)]) == .unavailable("This phone’s key can’t read LifeOS."))
+        #expect(LifeReach.reach(jobs: box, hosts: [LifeReach.Host(environmentId: "box", open: true, mayToken: false)]) == .unavailable("This iPhone’s key can’t read LifeOS."))
     }
 
     // MARK: - the job filter

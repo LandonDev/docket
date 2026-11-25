@@ -107,7 +107,7 @@ private struct PersonPageView: View {
                 host.started = nil
                 navigator.open(.thread(environmentId: client.environment.id, sessionId: session.id, seq: nil))
             }
-            .task { await host.prepare() }
+            .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
             .onAppear { ShownLifeHost.shared.host = host }
             .task(id: client.work.guestsRev) { await readLinks() }
             .task(id: page?.person.emails) { await readAnswered(page?.person.emails ?? []) }
