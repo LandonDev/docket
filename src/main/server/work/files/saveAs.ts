@@ -4,7 +4,7 @@ import { basename } from 'node:path'
 import type { FileOrigin, WrittenBack } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf, type CanvasSource } from '@shared/work'
 import { refKey, type FolderRef } from '@shared/work/files'
-import { linkWords, saveAsName, type DocLink, type SaveAsFormat, type SavedAs } from '@shared/work/saveAs'
+import { linkWords, saveAsName, savesLinked, type DocLink, type SaveAsFormat, type SavedAs } from '@shared/work/saveAs'
 import { attachmentDocPathOf, reserveLink, settlePrivateWrites } from '../docs/target'
 import { endGuestEditOn } from '../guests/store'
 import type { Caller, WorkCtx } from '../modules'
@@ -99,7 +99,7 @@ function attachmentFileIn(ctx: WorkCtx, workspaceId: string, source: CanvasSourc
 }
 
 /** The document's file on this host, which a link follows by its live revision; null for a LifeOS or Google document. */
-const linkableDoc = (ctx: WorkCtx, source: CanvasSource): string | null => (source.at === 'file' && source.host === ctx.host && source.path.endsWith('.tcdoc') ? source.path : null)
+const linkableDoc = (ctx: WorkCtx, source: CanvasSource): string | null => (source.at === 'file' && source.host === ctx.host && savesLinked(source) ? source.path : null)
 
 /** The document in a format, as the host writes it now from the live text: the exporter's own, and PDF its Word file drawn by the converter. */
 export async function exportBytes(ctx: WorkCtx, source: CanvasSource, format: SaveAsFormat): Promise<{ name: string; data: Buffer }> {

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { CanvasSource } from "@shared/work";
 import { refKey, type FileEntry } from "@shared/work/files";
-import { formatForFile, formatOf, SAVE_AS_FORMATS, saveAsName, saveAsOutcome, type SaveAsFormat, type SavedAs } from "@shared/work/saveAs";
+import { formatForFile, formatOf, SAVE_AS_FORMATS, saveAsName, saveAsOutcome, savesLinked, type SaveAsFormat, type SavedAs } from "@shared/work/saveAs";
 import { confirmChoice, DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronDown } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -62,6 +62,9 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   // Never the file's own path: Save As… makes another file (a Word file of Teams saves by the header's Save to Teams).
   const [stem, setStem] = useState(() => offeredStem(stemOf(title), format, origin?.name));
   const [copyOnly, setCopyOnly] = useState(false);
+  // A LifeOS or Google document is exported once: a copy, with nothing to tick.
+  const linkable = savesLinked(source);
+  const link = linkable && !copyOnly;
   const places = placeItems(sidebar, workspace.name);
   // The folders he saved to last, as the places list them now (one no longer listed is left out).
   const recent = useMemo(() => recentFolders("saveAs", workspace), [workspace]);
@@ -84,7 +87,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const save = async (exists?: "replace" | "keep", version?: string): Promise<void> => {
     if (!at || pending) return;
     setPending(true);
-    const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link: !copyOnly, place: at.folder.name, ...(exists ? { exists } : {}), ...(exists === "replace" && version ? { version } : {}) };
+    const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link, place: at.folder.name, ...(exists ? { exists } : {}), ...(exists === "replace" && version ? { version } : {}) };
     const said = JSON.stringify(asks);
     if (press.current?.said !== said) press.current = { said, op: opId() };
     try {
@@ -198,12 +201,14 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
         pending={pending}
         disabled={!at || !stem.trim()}
         start={
-          <label className="flex shrink-0 items-center gap-2 text-[13px]">
-            <Checkbox checked={copyOnly} onCheckedChange={(on) => setCopyOnly(on === true)} />
-            Just a copy
-          </label>
+          linkable ? (
+            <label className="flex shrink-0 items-center gap-2 text-[13px]">
+              <Checkbox checked={copyOnly} onCheckedChange={(on) => setCopyOnly(on === true)} />
+              Just a copy
+            </label>
+          ) : null
         }
-        note={<span className="min-w-0 truncate text-xs text-muted-foreground">{saveAsOutcome({ name, place: at?.folder.name ?? null, link: !copyOnly })}</span>}
+        note={<span className="min-w-0 truncate text-xs text-muted-foreground">{saveAsOutcome({ name, place: at?.folder.name ?? null, link })}</span>}
         onConfirm={() => void save()}
       />
     </Modal>

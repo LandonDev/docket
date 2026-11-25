@@ -4025,7 +4025,9 @@ of bar, Save As… is in More alone and Share stays in the bar.
   at the start, then one 12px muted line of what Save does, taking the free
   room and truncating there, so Cancel and Save never drop under it
   (`DialogFooter fill`): "Saves Plan.docx in General, kept up to date", "Saves
-  a copy of Plan.docx in General", "Pick a folder" while none is; Cancel and
+  a copy of Plan.docx in General", "Pick a folder" while none is (a LifeOS or
+  Google document, which no link could keep up to date, has no Just a copy and
+  always says "Saves a copy of …"); Cancel and
   Save (primary, "Saving…" with the spinner while the host works). Enter in
   the name is Save. Save is off with no folder or no name.
 - **A file of that name there** is the house confirm over the sheet:

@@ -2599,6 +2599,8 @@ picks, and stays linked to that file: each later edit is written to it.
   .docx" first on the drops line. At the right the document's first page as the host draws its Word file (`work.files.preview` on the
   document, LibreOffice), small; none for Markdown and none under 620px. The footer: Just a copy (unticked: linked),
   one line of what Save does ("Saves Plan.docx in General, kept up to date", or "Saves a copy of …"), Cancel and Save.
+  A LifeOS or Google document is exported once, never linked (`savesLinked`, src/shared/work/saveAs.ts, which the host's
+  `linkableDoc` uses too): its sheet has no Just a copy, its line says "Saves a copy of …", and it sends `link: false`.
 - **The formats are the host's own.** Word, OpenDocument, Rich Text and Markdown are the exporter's (`EXPORT_FORMATS`
   in formats/exporter.ts; saveAs.test.ts holds the list equal); PDF is the document's Word file drawn by the host's
   converter (`fileDocumentPdf`, the picture Preview shows for Word), so a linked PDF can be made again with no window

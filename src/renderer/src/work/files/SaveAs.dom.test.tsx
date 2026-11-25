@@ -215,6 +215,17 @@ describe("the Save As… sheet", () => {
     expect(world.opened).toEqual([{ page: { at: at("/cloud/General"), name: "Esports Staff, General" } }]);
   });
 
+  it("of a LifeOS document says the file is a copy made once and sends no link: nothing could keep it up to date", async () => {
+    render(<SaveAsDialog workspace={META} source={{ at: "lifeos", table: "docs", id: "d1" }} title="Run of show" itemId="i1" format={null} />);
+    const dialog = await screen.findByRole("dialog", { name: "Save As" });
+    await intoGeneral(dialog);
+    expect(within(dialog).getByText("Saves a copy of Run of show.docx in Esports Staff, General")).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]).toMatchObject({ link: false });
+  });
+
   it("opens next time in the folder he saved to last, under Recent", async () => {
     let dialog = await sheet();
     await intoGeneral(dialog);

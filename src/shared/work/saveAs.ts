@@ -1,3 +1,4 @@
+import type { CanvasSource } from './canvas'
 import { splitName } from './files'
 
 /**
@@ -77,6 +78,12 @@ export interface DocLink {
 export type SavedAs = { saved: { name: string; ref: { at: 'file'; host: string; path: string }; linked: boolean } } | { exists: { name: string; version?: string } }
 
 /** The one line under the form that says what Save will do. */
+/**
+ * Whether the file Save As makes can stay linked to the document: a TempCode document on a disk, which the host
+ * writes again after each edit. A LifeOS or Google document is exported once, a copy whatever is ticked.
+ */
+export const savesLinked = (source: CanvasSource): boolean => source.at === 'file' && source.path.endsWith('.tcdoc')
+
 export function saveAsOutcome(o: { name: string; place: string | null; link: boolean }): string {
   if (!o.place) return 'Pick a folder'
   return o.link ? `Saves ${o.name} in ${o.place}, kept up to date` : `Saves a copy of ${o.name} in ${o.place}`
