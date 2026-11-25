@@ -169,6 +169,32 @@ describe("a sheet's edits the host never answered", () => {
     expect(sync.state.offer).toMatchObject({ same: false, cells: ["Budget!A1\t42"] });
   });
 
+  it("turn to Copy as soon as a co-author's edit reaches the grid, so Restore is never left offered doing nothing", async () => {
+    const { host, state } = standIn();
+    const before = store();
+    const first = await opened(host, before.journal);
+    state.down = true;
+    first.g.type(cell(42));
+    first.sync.flush();
+    await settle(async () => (await before.kept()).length === 1);
+    await before.s.settled();
+    state.down = false;
+    let hear: ((push: SheetPushed) => void) | null = null;
+    const live = { ...host, onPush: (l: (push: SheetPushed) => void) => ((hear = l), () => (hear = null)), since: async (): Promise<SinceAnswer> => ({ rev: state.rev, ops: state.rev > 3 ? [{ rev: 4, mutations: [cell(7)] }] : [] }) } as SheetHost;
+    const after = store(before.dir, 2);
+    const { sync, g } = await opened(live, after.journal);
+    await settle(() => !!sync.state.offer);
+    expect(sync.state.offer?.same).toBe(true);
+    // Their edit lands and the catch-up lays it on the grid well before he answers the offer.
+    state.rev = 4;
+    hear!({ rev: 4 });
+    await settle(() => g.applied.length > 0);
+    expect(sync.state.offer).toMatchObject({ same: false, cells: ["Budget!A1\t42"] });
+    await sync.restoreDraft();
+    expect(state.edits).toEqual([]);
+    expect(sync.state.offer?.same).toBe(false);
+  });
+
   describe("on a shared .csv, whose new cache starts again at a revision the draft may share", () => {
     async function keptOn(gen: string) {
       const { host, state } = standIn();

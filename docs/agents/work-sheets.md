@@ -1637,7 +1637,9 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   cache (`restoreDraft`, one `work.sheets.edit` by that revision naming that `gen`, laid on the grid by the catch-up),
   Copy Edits and Discard over a newer one or another cache. The check is made again when Restore's turn with the host
   comes, and the send names the draft's own revision and cache, so an edit that landed while Restore waited behind a
-  catch-up turns the offer to Copy and nothing is written over it. The
+  catch-up turns the offer to Copy and nothing is written over it. The offer turns to Copy Edits the moment the grid
+  leaves the draft's revision (a co-author's edit caught up, the file read again, `SheetSync.set`), and a press of
+  Restore on a moved grid does the same, so Restore is never left on screen doing nothing (council round 3, Sol 6). The
   grid takes no edit until he answers. A cell still open, and the formula bar's words (work-kit `commitEditing`, Pin
   A: on the branch `pin-a-formula-commit`, needs a signed release; until the pin moves, the cell editor alone), are
   ended into the queue before a close, quit or reload.

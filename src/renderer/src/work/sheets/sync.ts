@@ -250,6 +250,10 @@ export class SheetSync {
   private set(patch: Partial<SheetSyncState>): void {
     // Nothing of his waits or is on its way: the line's clock stops.
     if (patch.saving === false) patch = { ...patch, editedAt: null, sentAt: null };
+    // An offer to Restore turns to Copy as the grid leaves the draft's revision (a co-author's edit caught up, the file
+    // read again), never left on screen as a press that does nothing.
+    const offer = "offer" in patch ? patch.offer : this.state.offer;
+    if (offer?.same && this.offered && this.offered.base !== this.base()) patch = { ...patch, offer: { ...offer, same: false } };
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
@@ -711,7 +715,8 @@ export class SheetSync {
    */
   restoreDraft(): Promise<void> {
     const draft = this.offered;
-    if (!draft || draft.body.kind !== "sheet" || draft.base !== this.base()) return Promise.resolve();
+    if (!draft || draft.body.kind !== "sheet") return Promise.resolve();
+    if (draft.base !== this.base()) return Promise.resolve(this.set({ offer: { ...this.state.offer!, same: false } }));
     const mutations = draft.body.mutations as SheetMutationJson[];
     const [rev, gen] = draft.base.split("@");
     return this.run(async () => {
