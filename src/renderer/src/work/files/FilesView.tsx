@@ -25,7 +25,7 @@ import { closeItem, useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
 import { DownLine } from "../shell/DownLine";
-import { useHostDown, useLiveDown } from "../shell/lifeosLive";
+import { useHostLive, useLiveDown } from "../shell/lifeosLive";
 import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
@@ -944,7 +944,7 @@ interface Nav {
 function HomeTab({ tab, workspace, busy, find, onOpenFound, ...nav }: Nav & { tab: FileTab; workspace: WorkspaceMeta; busy: Busy; find: PageFind | null; onOpenFound(entry: FileEntry): void }) {
   const { home, error, retry } = useHome(workspace.environmentId, workspace.id);
   // Waiting on you holds LifeOS's rows too: while the host's LifeOS is down one line says so, and Home reads again on return.
-  const hostDown = useHostDown(workspace.environmentId);
+  const hostDown = useHostLive(workspace.environmentId).down;
   const down = workspace.sector ? hostDown : null;
   useLiveDown(null, workspace.sector ? workspace.environmentId : null, retry);
   return <HomePage panelId={filesPanelId(tab.id)} home={home} error={error} busy={busy} onRetry={retry} onOpen={onOpenFound} lifeos={down ? <DownLine session={down} className="min-h-6 flex-1" /> : null} bar={<PageBar name="Home" trail={[]} find={find} {...nav} />} />;

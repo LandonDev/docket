@@ -22,7 +22,7 @@ import { BesideShape, ColumnsShape, Doc, FolderAdd, GalleryShape, GridShape, Lis
 import { ViewStateLine } from "../views/ViewStateLine";
 import { DownEmpty } from "../shell/DownEmpty";
 import { DownLine } from "../shell/DownLine";
-import { useHostDown, useLiveDown } from "../shell/lifeosLive";
+import { useHostLive, useLiveDown } from "../shell/lifeosLive";
 import { refreshLifeos } from "../shell/lifeos";
 import { readsLifeos, useLifeosPlace } from "./lifeosPlace";
 import type { UploadProgress } from "./acts";
@@ -993,7 +993,7 @@ export function PageView({
   const lifeosDown = readsLifeos(copy) && (!!lifeos.down || lifeos.waits);
   // A search of every place while the host's LifeOS is down leaves LifeOS's rows out: one line over the results says
   // why, by the rule, and the search runs again once LifeOS is back.
-  const hostDown = useHostDown(copy?.link ?? "");
+  const hostDown = useHostLive(copy?.link ?? "").down;
   const searchDown = results ? hostDown : null;
   const newestListing = useRef(listing);
   newestListing.current = listing;

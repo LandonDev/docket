@@ -7,7 +7,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LifeosStatus } from "@shared/contract-work-lifeos";
 import { resetLifeos, setLifeosStatus, setLifeosUnanswered } from "./lifeos";
-import { liveDownOf, savedOf, useLiveDown, type SavedDown } from "./lifeosLive";
+import { liveDownOf, savedOf, useHostLive, useLiveDown, type SavedDown } from "./lifeosLive";
 
 const ENV = "env_box";
 const st = (state: string): LifeosStatus => ({ lifeos: { state, ...(state === "pairing" ? { expiresAt: 1 } : {}) }, keys: [] }) as unknown as LifeosStatus;
@@ -42,6 +42,15 @@ describe("liveDownOf", () => {
   it("says the host's silence over a status that is not connected, and keeps a computer kept from LifeOS", () => {
     expect(liveDownOf(null, st("signed-out"), true, false)).toEqual({ down: "unanswered", waits: false });
     expect(liveDownOf("withheld", st("connected"), false, true)).toEqual({ down: "withheld", waits: false });
+  });
+
+  it("reads again, never the saved cause, under a connected status heard since it while the read is out", () => {
+    expect(liveDownOf("signed-out", st("connected"), false, true, true)).toEqual({ down: null, waits: false, again: true });
+    expect(liveDownOf("connecting", st("connected"), false, true, true)).toEqual({ down: null, waits: false, again: true });
+    // Settled with the same cause, or connected not heard since: the saved cause.
+    expect(liveDownOf("signed-out", st("connected"), false, true, false)).toEqual({ down: "signed-out", waits: false });
+    expect(liveDownOf("signed-out", st("connected"), false, false, true)).toEqual({ down: "signed-out", waits: false });
+    expect(liveDownOf(null, st("connected"), false, true, true)).toEqual({ down: null, waits: false });
   });
 
   it("says a saved connecting as a wait, and nothing for nothing", () => {
@@ -90,5 +99,51 @@ describe("useLiveDown", () => {
     setLifeosUnanswered(ENV);
     const { result } = renderHook(() => useLiveDown(null, ENV));
     expect(result.current).toEqual({ down: "unanswered", waits: false });
+  });
+
+  it("reads again from connected until the read settles, then says what the read gave", async () => {
+    setLifeosStatus(ENV, st("connected"));
+    let settle!: () => void;
+    const onBack = vi.fn(() => new Promise<void>((done) => (settle = done)));
+    const { result } = renderHook(() => useLiveDown("signed-out", ENV, onBack));
+    // The saved cause under a status heard before it stands until a newer status comes.
+    expect(result.current.down).toBe("signed-out");
+    act(() => setLifeosStatus(ENV, st("connected")));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(result.current).toEqual({ down: null, waits: false, again: true });
+    // The read gave the same cause again: said again once it settles.
+    await act(async () => settle());
+    expect(result.current).toEqual({ down: "signed-out", waits: false });
+  });
+
+  it("ends the read again when the reader's saved cause changes", () => {
+    setLifeosStatus(ENV, st("signed-out"));
+    const { result, rerender } = renderHook(({ saved }: { saved: SavedDown }) => useLiveDown(saved, ENV, () => new Promise(() => {})), { initialProps: { saved: "signed-out" as SavedDown } });
+    act(() => setLifeosStatus(ENV, st("connected")));
+    expect(result.current.again).toBe(true);
+    rerender({ saved: null });
+    expect(result.current).toEqual({ down: null, waits: false });
+  });
+});
+
+describe("useHostLive", () => {
+  it("is a wait while the host says connecting, down for a state that is down, and neither while it reads or is unknown", () => {
+    const { result } = renderHook(() => useHostLive(ENV));
+    expect(result.current).toEqual({ environmentId: ENV, down: null, waits: false });
+    act(() => setLifeosStatus(ENV, st("connecting")));
+    expect(result.current).toEqual({ environmentId: ENV, down: null, waits: true });
+    act(() => setLifeosStatus(ENV, st("signed-out")));
+    expect(result.current.waits).toBe(false);
+    expect(result.current.down?.state).toBe("signed-out");
+    act(() => setLifeosStatus(ENV, st("connected")));
+    expect(result.current).toEqual({ environmentId: ENV, down: null, waits: false });
+  });
+
+  it("says the host's silence over a connecting status", () => {
+    setLifeosStatus(ENV, st("connecting"));
+    setLifeosUnanswered(ENV);
+    const { result } = renderHook(() => useHostLive(ENV));
+    expect(result.current.waits).toBe(false);
+    expect(result.current.down?.unanswered).toBe(true);
   });
 });

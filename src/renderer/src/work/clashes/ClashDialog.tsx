@@ -25,7 +25,7 @@ import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSe
 import { connectingWords } from "../shell/lifeosWords";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine } from "../shell/DownLine";
-import { useHostDown } from "../shell/lifeosLive";
+import { useHostLive } from "../shell/lifeosLive";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -227,7 +227,7 @@ function Body({
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
-  const hostDown = useHostDown(environmentId);
+  const hostDown = useHostLive(environmentId).down;
   const [step, setStepState] = useState<Step | null>(null);
   const setStep = (next: Step | null) => {
     setStepState(next);
@@ -372,7 +372,7 @@ function Body({
   return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} hostDown={down} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
 }
 
-export { useHostDown } from "../shell/lifeosLive";
+export { useHostLive } from "../shell/lifeosLive";
 
 /** The two events in time order with the drive between them, the ways out under each, and the foot. */
 export function Events({

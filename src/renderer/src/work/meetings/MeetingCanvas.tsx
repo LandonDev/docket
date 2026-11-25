@@ -18,7 +18,7 @@ import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, Tu
 import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
 import { downloadRecording, saveBlob, usePlayer } from "./player";
 import { DownLine } from "../shell/DownLine";
-import { useHostDown } from "../shell/lifeosLive";
+import { useHostLive } from "../shell/lifeosLive";
 import { SpeakerName } from "./Speaker";
 
 /**
@@ -231,7 +231,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   );
   const retry = useCallback(() => loadMeeting(env, item.id), [env, item.id]);
   const { toggle } = player;
-  const hostDown = useHostDown(env);
+  const hostDown = useHostLive(env).down;
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null, !!hostDown);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);

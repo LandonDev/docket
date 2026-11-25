@@ -4,6 +4,9 @@ import { cn } from "../../lib/cn";
 import { lifeosHostName, reopenLifeos, type LifeosSession } from "./lifeos";
 import { downOf, downWords, useDownPress } from "./lifeosDown";
 import { useDownAction } from "./DownSignIn";
+import type { HostLive } from "./lifeosLive";
+import { connectingWords } from "./lifeosWords";
+import { Spinner } from "../../components/ui/spinner";
 
 /**
  * A LifeOS session that is down, said once in a part's place (a held act's details, a chat card): its state in the
@@ -44,5 +47,21 @@ export function DownLine({
       </p>
       {dialog}
     </>
+  );
+}
+
+/**
+ * The host's own LifeOS for a press it runs (`useHostLive`), said once in a part's place: `DownLine` while it is down,
+ * and while the host says it is connecting one muted line with a spinner, "LifeOS is still connecting on the box", with
+ * no press (the part holds every control that needs the session). Nothing while it reads or is not known yet.
+ */
+export function HostLine({ live, className, ...props }: Omit<ComponentProps<"p">, "children"> & { live: HostLive }) {
+  if (live.down) return <DownLine session={live.down} className={className} {...props} />;
+  if (!live.waits || !live.environmentId) return null;
+  return (
+    <p data-lifeos-waits role="status" aria-busy className={cn("flex min-h-7 min-w-0 items-center gap-2 text-[13px] text-muted-foreground", className)} {...props}>
+      <Spinner aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 text-pretty">{connectingWords(lifeosHostName(live.environmentId))}</span>
+    </p>
   );
 }
