@@ -26,6 +26,9 @@ import type { MediaActions } from "./store";
  * (a compare) play on one transport, in step by frame.
  */
 
+/** Why a Play was refused, in his words (never the browser's own message): a format this computer cannot play, else a file that did not load (an address that lapsed, bytes cut short). */
+export const playWords = (name: unknown): string => (name === "NotSupportedError" ? "Its format does not play here" : "Its file did not load");
+
 export interface PlayerHandle {
   seek(frame: number): Promise<void>;
   /** Plays again after a refused Play: the elements load their source afresh first. */
@@ -323,10 +326,10 @@ export function Player({
     void Promise.all(vs.map((v) => v.play())).then(
       () => onPlayFailed?.(null),
       (error: unknown) => {
-        // A DOMException, which is not always an Error where it is made: read its name and message as they are.
-        const { name, message } = (error ?? {}) as { name?: unknown; message?: unknown };
+        // A DOMException, which is not always an Error where it is made: read its name as it is.
+        const { name } = (error ?? {}) as { name?: unknown };
         if (name === "AbortError") return;
-        onPlayFailed?.(typeof message === "string" && message ? message : "The video did not play");
+        onPlayFailed?.(playWords(name));
       },
     );
   };

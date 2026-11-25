@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { builderOf, isFormsHost, isFormsUrl, respondOf } from "@shared/work/msforms";
 import type { LiveTicketAsk } from "@shared/work/officeLive";
+import { thisDesktopName } from "../../../lib/native";
 
 /**
  * The live Office guests of this window (docs/agents/work-office-live.md "The live tab"): Word, Excel or PowerPoint
@@ -84,10 +85,24 @@ export function stopped(state: LiveState, top = ""): LiveState {
   return state.stage === "editor" || state.site !== null || isFormsUrl(top) ? { ...state, stage: "ready" } : state;
 }
 
+/** Chromium's net codes he meets most, as his words: this desktop off the network, or Microsoft silent. Never the code. */
+const OFFLINE = /^(net::)?ERR_(INTERNET_DISCONNECTED|NETWORK_CHANGED|NETWORK_IO_SUSPENDED)$/;
+const UNREACHED = /^(net::)?ERR_(NAME_NOT_RESOLVED|NAME_RESOLUTION_FAILED|ADDRESS_UNREACHABLE|PROXY_CONNECTION_FAILED)$/;
+const SILENT = /^(net::)?ERR_(TIMED_OUT|CONNECTION_TIMED_OUT|CONNECTION_REFUSED|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_FAILED|EMPTY_RESPONSE)$/;
+
+/** Why a load failed, in one sentence: what Chromium's code means for him; a code with no plain meaning says only that it did not load. */
+export function loadWords(description: string): string {
+  const code = description.trim();
+  if (OFFLINE.test(code)) return `${thisDesktopName()} is offline.`;
+  if (UNREACHED.test(code)) return `${thisDesktopName()} could not reach Microsoft.`;
+  if (SILENT.test(code)) return "Microsoft did not answer.";
+  return "It did not load.";
+}
+
 /** A top-frame load that failed. An abort (-3) is a page replaced by the next, not a failure. */
 export function failedLoad(state: LiveState, code: number, description: string, top: boolean): LiveState {
   if (!top || code === -3) return state;
-  return { ...state, failed: description ? `It did not load (${description}).` : "It did not load." };
+  return { ...state, failed: loadWords(description) };
 }
 
 /** The tab's rectangle on the page, in CSS pixels, as `getBoundingClientRect` gives it. */

@@ -63,7 +63,7 @@ import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
 import { Bar, Body, selectionChip } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
-import { FEED_FAILED, nativeErrorWords } from "./Player";
+import { FEED_FAILED, nativeErrorWords, playWords } from "./Player";
 import { resetMediaStore } from "./store";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 3216 };
@@ -275,7 +275,8 @@ describe("the media canvas", () => {
     };
     const { shell } = await mount();
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't play this video", detail: "The element has no supported sources." })));
+    // In his words, never the browser's own message.
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't play this video", detail: "Its format does not play here" })));
     refuse = false;
     const viewsBefore = host.calls.filter((c) => c.method === "work.media.view").length;
     const line = shell.statusLine.mock.lastCall![0] as { action: { label: string; run(): Promise<void> } };
@@ -354,6 +355,12 @@ describe("the media canvas", () => {
     fireEvent.error(video);
     await act(async () => await Promise.resolve());
     expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ word: "Couldn't play this video" }));
+  });
+
+  it("says a refused Play by its kind, never the browser's message", () => {
+    expect(playWords("NotSupportedError")).toBe("Its format does not play here");
+    expect(playWords("NotAllowedError")).toBe("Its file did not load");
+    expect(playWords(undefined)).toBe("Its file did not load");
   });
 
   it("names each element error by its code", () => {

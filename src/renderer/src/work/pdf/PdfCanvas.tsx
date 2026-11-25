@@ -175,7 +175,8 @@ function useFeeds(
   useEffect(() => {
     if (!view) return shell.statusLine(null);
     if (view.missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `Moved, as of ${dayTime(view.missing.asOf)}` });
-    else if (view.xfaOnly) shell.statusLine({ tone: "failed", word: "This form can't be filled here", detail: "Its fields are XFA, which only Adobe's apps fill" });
+    // A form only Adobe's apps fill asks nothing of him here: the quiet line, as read only is, never the red of a failure.
+    else if (view.xfaOnly) shell.statusLine({ tone: "quiet", word: "Can't be filled here", detail: "Only Adobe's apps fill this form" });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

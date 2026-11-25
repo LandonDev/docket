@@ -148,7 +148,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
             ? {
                 tone: "failed",
                 word: "Couldn't show this image",
-                detail: "Its bytes did not load or could not be read",
+                detail: "Its file did not load",
                 // A fresh view first, in case the address it loads from has lapsed; then the picture loads again.
                 action: { label: "Retry", run: () => loadMedia(env, item.id).then(() => setAttempt((n) => n + 1)) },
               }

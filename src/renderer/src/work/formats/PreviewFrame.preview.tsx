@@ -57,7 +57,8 @@ function setUp(moment: PreviewMoment): { source: PreviewSource; engine: PdfEngin
     case "drawing":
       return { source: source(() => never, { setup }), engine: paper, width: 864 };
     case "failed":
-      return { source: source(() => Promise.reject(new Error("LibreOffice on tempcode-box did not answer"))), engine: paper, width: 864 };
+      // The converter's own refusal (main work/formats/jobs.ts), as the host sends it: Preview says it in his words.
+      return { source: source(() => Promise.reject(new Error("the machine that converts docx to pdf+word is asleep, and only his own press wakes it"))), engine: paper, width: 864 };
     case "markdown":
       return { source: source(async () => ({ picture: { kind: "text", text: MD }, drops: ["2 comments stay behind", "Colours stay behind"] })), engine: paper, width: 864, initial: "md" };
     case "web":

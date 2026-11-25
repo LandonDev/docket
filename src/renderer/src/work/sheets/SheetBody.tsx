@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bodyFailureWords } from "../canvas/CanvasPane";
-import { OpenFailed, progressWords } from "../canvas/FetchState";
+import { OpenFailed, progressWords, useFailedWords } from "../canvas/FetchState";
 import type { SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
@@ -143,7 +143,7 @@ export function Body(props: Props) {
     opening.current = handle;
     handle.reveal(at);
   }, [handle, change]);
-  const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback)), [sync]);
+  const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback, props.env)), [sync, props.env]);
 
   const failed = state.failed ?? (typeof prepared === "string" ? prepared : null);
   // Opened once the grid has drawn the book: until then History stays out of the bar and no Accept or Reject is offered for
@@ -181,10 +181,12 @@ export function Body(props: Props) {
   }, []);
 
   // A change this sheet's store cannot keep was taken back as he made it: said once, in a few words.
+  // In Work's words, naming the computer (`useFailedWords`): a host's raw refusal never reaches the toast.
   const stopped = state.stopped;
+  const stoppedSaid = useFailedWords(stopped?.why);
   useEffect(() => {
-    if (stopped) void loadToast().then((toast) => toast.message(stopped.why));
-  }, [stopped]);
+    if (stopped) void loadToast().then((toast) => toast.message(stoppedSaid || "That change was not saved."));
+  }, [stopped, stoppedSaid]);
 
   // The format row: only the controls whose changes this sheet's store keeps, as its host says (`view.row`); none on a sheet he cannot edit.
   const controls = view && !locked ? (view.row ?? []) : [];
@@ -458,7 +460,11 @@ function CustomFormatBody({ current, onClose, onApply }: { current: string; onCl
  * wait and the press sends them again.
  */
 function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null, offer: SheetSyncState["offer"]): void {
-  const line = view ? savedLine(view, sendError, saving, savedAt) : null;
+  const facts = view ? savedLine(view, sendError, saving, savedAt) : null;
+  // A failed save's reason is the host's: said in Work's words, naming the computer, else the line's own word.
+  const failure = facts && (facts.state === "conflict" || facts.state === "offline") ? (facts.detail ?? null) : null;
+  const said = useFailedWords(failure);
+  const line = facts && failure ? { ...facts, detail: said || "Couldn't save" } : facts;
   const key = line ? JSON.stringify([line, offer]) : "";
   useEffect(() => {
     if (!shell.saved || !line) return;
@@ -570,7 +576,7 @@ function useFeeds(
 
 /** A selection of more than one cell: Ask over it with the range named, and More's Chart while it spans two columns. */
 function useSelectionFeed(
-  { item, source, shell }: Props,
+  { item, source, shell, env }: Props,
   sync: SheetSync,
   grid: SheetGrid,
   handle: SheetHandle | null,
@@ -639,14 +645,14 @@ function useSelectionFeed(
       // Every way out is in Preview: each format drawn as it will be, with what it drops. A sheet read from a .csv still
       // saves back over it.
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
-      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync, "csv", activeName()) }] : []),
+      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync, env, "csv", activeName()) }] : []),
       ...(googleRow ? [googleRow] : []),
       // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
       ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act) : Promise.resolve())),
       ...(shareGone ? [{ id: "share", label: "Share…", icon: Share, run: () => openShare(item.id) }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow]);
+  }, [shell, sync, env, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow]);
 }
 
 const letters = (column: number): string => {
@@ -835,7 +841,7 @@ export function TabEnd(props: Props) {
         setOpening(true);
         sync.host
           .switchApp()
-          .catch((error: unknown) => sayError(error, `Couldn't open ${app}`))
+          .catch((error: unknown) => sayError(error, `Couldn't open ${app}`, props.env))
           .finally(() => setOpening(false));
       }}
       className="mx-1 shrink-0 gap-0"
@@ -855,7 +861,7 @@ export function TabEnd(props: Props) {
 
 /** Writes the sheet out on the host and says where, by the file's name: the folder is the host's. */
 /** Writes the sheet out once his last edit is in it (`written`): an edit that did not save stops it, in words. */
-async function saveAs(sync: SheetSync, format: "xlsx" | "csv", sheet?: string): Promise<void> {
+async function saveAs(sync: SheetSync, env: string, format: "xlsx" | "csv", sheet?: string): Promise<void> {
   try {
     await sync.written();
     const { path, left } = await sync.host.exportAs(format, sheet);
@@ -865,6 +871,6 @@ async function saveAs(sync: SheetSync, format: "xlsx" | "csv", sheet?: string): 
     if (left?.length) toast.message(`Saved ${name} without ${left.join(" and ")}`);
     else toast.success(`Saved ${name}`);
   } catch (error) {
-    sayError(error, "Couldn't save the sheet");
+    sayError(error, "Couldn't save the sheet", env);
   }
 }

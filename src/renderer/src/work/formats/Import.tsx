@@ -6,6 +6,8 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { DROP_MAX_BYTES, importable, isHtml, warningsLine } from "./model";
 import { blobSource, uploadFile } from "../../lib/attachmentUpload";
@@ -78,7 +80,8 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       },
       (err: unknown) => {
       if (!live) return;
-      setFailed(err instanceof Error && err.message ? err.message : "It could not be read");
+      // The reason is worded under the title by `OpenFailed` (`workErrorWords`, naming the pane's computer); none repeats the title.
+      setFailed(err instanceof Error && err.message ? err.message : "");
       answered();
       },
     );
@@ -127,7 +130,10 @@ export function DropImport({ env, sessionId, editor, children }: { env: string; 
       // A drop is his press: each one imports, however its file is named (a busy surface takes none meanwhile).
       sayWarnings(await registry.linkOf(env).request<ImportAnswer>("work.formats.import", { sessionId, from: await fromFile(env, sessionId, file, editor) }, { timeoutMs: IMPORT_MS }));
     } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : "It could not be opened");
+      // In Work's words, naming the computer that imports it; a raw line says nothing and the title stands alone.
+      const name = registry.environment?.(env)?.name;
+      const words = workErrorWords(err, name ? { host: nameInLine(name) } : {});
+      toast.error(`Couldn't open ${file.name}`, words ? { description: words } : undefined);
     } finally {
       setBusy(null);
     }

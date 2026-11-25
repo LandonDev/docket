@@ -105,14 +105,15 @@ describe("the Routines view", () => {
     render(<View {...props} />);
     await settle();
     expect(screen.queryByText("None yet")).toBeNull();
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    // The stand-in names the computer asked (workErrorWords), never "the host".
+    expect(screen.getByText(/^The .+ did not answer\. Try again once it is connected\.$/)).toBeTruthy();
     // Council round 12 (the walk): Retry spins in place, the failure kept, until the runs answer; never a bone first.
     let answer!: () => void;
     host.runs = () => new Promise((r) => (answer = () => r({ runs: [] })));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(host.asked.filter((m) => m === "work.routines.runs")).toHaveLength(2);
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByText(/did not answer\. Try again once it is connected\.$/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
     await act(async () => answer());
     expect(screen.getByText("None yet")).toBeTruthy();

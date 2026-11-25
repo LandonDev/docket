@@ -11,7 +11,7 @@ import { createKeyResolver } from "../../lib/appCommands";
 
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({
-  loadToast: async () => Object.assign((m: string) => void toasts.push(m), { error: (m: string) => void toasts.push(`error: ${m}`) }),
+  loadToast: async () => Object.assign((m: string) => void toasts.push(m), { error: (m: string, o?: { description?: string }) => void toasts.push(`error: ${m}${o?.description ? ` — ${o.description}` : ""}`) }),
 }));
 
 import { fakeDoc, fakeEngine, LETTER } from "../pdf/testkit";
@@ -226,12 +226,13 @@ describe("the frame", () => {
     expect(second.closed).toHaveBeenCalledTimes(1);
   });
 
-  it("names the failed format and its cause in one sentence and keeps Retry and Export live", async () => {
+  it("names the failed format in one sentence with its cause in his words under it, and keeps Retry and Export live", async () => {
     const f = fake();
     await show(f);
-    await f.fail("LibreOffice on tempcode-box did not answer");
+    // The converter's own line (main work/formats/jobs.ts) never reaches him: no pair's id, no "his own press".
+    await f.fail("the machine that converts docx to pdf+word is asleep, and only his own press wakes it");
     const failed = document.querySelector("[data-preview-failed]")!;
-    expect(failed.textContent).toBe("Word preview failed (LibreOffice on tempcode-box did not answer).Retry");
+    expect(failed.textContent).toBe("Word preview failed.The Windows VM is asleep. Check in Word wakes it.Retry");
     expect(count()).toBeNull();
     expect(column()).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
@@ -248,7 +249,8 @@ describe("the frame", () => {
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
     await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
     await f.fail("The document’s host could not print the page.");
-    expect(screen.getByText("PDF preview failed (The document’s host could not print the page).")).toBeTruthy();
+    expect(screen.getByText("PDF preview failed.")).toBeTruthy();
+    expect(screen.getByText("The document’s host could not print the page.")).toBeTruthy();
     expect(screen.queryByText(/^Word preview failed/)).toBeNull();
   });
 
@@ -263,7 +265,8 @@ describe("the frame", () => {
     // The same render lost again is a host that cannot keep it: said, with Retry.
     await f.answer({ picture: paged("r1"), drops: [] });
     // In Work's words, never the host's raw line.
-    expect(await screen.findByText("Word preview failed (This preview is gone. Close it and open it again from the file's tab).")).toBeTruthy();
+    expect(await screen.findByText("Word preview failed.")).toBeTruthy();
+    expect(screen.getByText("This preview is gone. Close it and open it again from the file's tab.")).toBeTruthy();
     expect(screen.queryByText(/draw it again/)).toBeNull();
     expect(f.asked).toHaveLength(2);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
@@ -305,7 +308,7 @@ describe("the frame", () => {
     const h = fake({ export: async () => Promise.reject(new Error("the disk is full")) });
     await show(h);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
-    await waitFor(() => expect(toasts).toEqual(["error: the disk is full"]));
+    await waitFor(() => expect(toasts).toEqual(["error: It could not be exported — The disk is full"]));
     expect(localStorage.getItem("work.preview.format.document")).toBe("pdf");
   });
 
@@ -512,7 +515,7 @@ describe("the real app's own picture", () => {
     await f.answer({ picture: paged("r1"), drops: [] });
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Check in Word" })));
     await f.fail("Word closed while it was drawing");
-    await waitFor(() => expect(toasts).toEqual(["error: Word closed while it was drawing"]));
+    await waitFor(() => expect(toasts).toEqual(["error: Word did not draw it — Word closed while it was drawing"]));
     expect(head()).toBe("As LibreOffice draws itCheck in Word");
     expect(document.querySelector<HTMLElement>("[data-paged-sheets]")!.style.opacity).toBe("1");
   });
@@ -641,7 +644,7 @@ describe("the Page section", () => {
     await f.answer({ picture: paged("r1"), drops: [] });
     const before = f.asked.length;
     await act(async () => fireEvent.click(within(column()!).getByRole("switch", { name: "Headers and footers" })));
-    await waitFor(() => expect(toasts).toEqual(["error: the document is read only"]));
+    await waitFor(() => expect(toasts).toEqual(["error: The page set-up could not be changed — The document is read only"]));
     expect(f.asked.length).toBe(before);
   });
 });

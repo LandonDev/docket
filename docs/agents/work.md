@@ -439,8 +439,10 @@ function, `workErrorWords(error, { host?, write? })`
 - A known raw form has its sentence (the table in that file: the fence, a
   key that may not, a request the host could not read, Work off, no answer,
   a dropped link, a part of Work not running, a workspace or tab that is
-  gone, the disk's errnos, a conversion with no output, LifeOS signed out, a
-  guest link elsewhere, a VM file's bytes).
+  gone, the disk's errnos, a conversion with no output, the converter's
+  refusals (no app for a format, a shared file drawn only where it lies, the
+  Windows VM asleep, a file too big to send), a damaged PDF, LifeOS signed
+  out, a guest link elsewhere, a VM file's bytes).
 - A refusal that is already plain passes as the host wrote it.
 - Anything else that still carries a path, a method, an id, a code or a
   stack answers "", so the caller's own line for that act shows ("Budget.xlsx
@@ -450,6 +452,12 @@ function, `workErrorWords(error, { host?, write? })`
   through"), never as failed.
 - `host` is the computer's name as the rail gives it; without it the words
   say "that computer".
+
+Preview's failure and its toasts, the sheet's save line and stop toasts, a
+file dropped on a document, and Chromium's load codes in a live Office tab
+("This Mac is offline.", "Microsoft did not answer.", office/live/layer.ts
+`loadWords`) are worded the same way; a refused Play says its kind
+(`playWords`, media/Player.tsx), never the browser's message.
 
 A canvas pane words both its failures this way, naming the pane's computer
 (`useFailedWords`, canvas/FetchState.tsx): the centred "Couldn't open this

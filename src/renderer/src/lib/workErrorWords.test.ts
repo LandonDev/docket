@@ -11,6 +11,7 @@ describe("an error as Work says it to him", () => {
     ['bad request: [{"code":"invalid_type","expected":"string","path":["workspaceId"]}]', "The box could not read this request. Open this view again and retry; if it still fails, update the app on both computers."],
     ["Work is off on this host", "Work is off on the box. Turn it on in Settings, Work."],
     ["No answer in 4 s", "The box did not answer. Try again once it is connected."],
+    ["The host did not answer", "The box did not answer. Try again once it is connected."],
     ["work.files.list timed out after 30 s", "The box did not answer. Try again once it is connected."],
     ["work.files.rename timed out after 30 s", "The box did not confirm the change. Check whether it went through before you try again.", { host: "the box", write: true }],
     ["connection closed", "The connection to the box dropped. Try again once it is back."],
@@ -70,4 +71,23 @@ describe("an error as Work says it to him", () => {
     // Told which computer, the bare word says which is away.
     expect(workErrorWords(new Error("not connected"), { host: "the box" })).toBe("The box is not connected. Try again once it is back.");
   });
+
+  // The converter's refusals (main/server/work/formats/jobs.ts), as Preview showed them raw: a pair's id, the host's id, "his own press".
+  const CONVERTER: [string, string][] = [
+    ["no converter from docx to pdf", "The box has no app that draws Word files."],
+    ["no converter from tcdoc to rtf", "The box has no app that draws this file."],
+    ["tempcode-box cannot convert docx to pdf now, and a shared library's file is never carried to another host", "A shared file is drawn only on the computer that holds it, and the box cannot draw it now."],
+    ["libreoffice is not installed on tempcode-box, and a shared library's file is never carried to another host", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
+    ["the machine that converts docx to pdf+word is asleep, and only his own press wakes it", "The Windows VM is asleep. Check in Word wakes it."],
+    ["the machine that converts xlsx to pdf is asleep, and only his own press wakes it", "The Windows VM is asleep. Check in Excel wakes it."],
+    ["the machine that converts docx to pdf+word is asleep on env_abcdef12, and only his own press at a window of that host wakes it", "The Windows VM that draws it is asleep. Wake it from a window on the computer that runs it."],
+    ["the app that converts pptx to pdf+powerpoint is not open on tempcode-box", "PowerPoint is not open on the box."],
+    ["tempcode-box cannot convert pdf to png now, and no linked host converts pdf to png", "The box cannot draw PDFs now, and no computer linked to it can."],
+    ["tempcode-box cannot convert docx to pdf now", "The box cannot draw Word files now."],
+    ["Preview.docx is 120 MB; a job carried to another host takes at most 50 MB", "Preview.docx is 120 MB, more than the 50 MB another computer is sent to draw."],
+    ["the pdf that came back is 80 MB; a job carried from another host takes at most 50 MB", "What came back from the computer that drew it was too big to bring here."],
+    ["Invalid PDF structure.", "This PDF is damaged, or only part of it arrived. Open it again from Files."],
+    ["pymupdf4llm is not installed on tempcode-box", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
+  ];
+  it.each(CONVERTER)("says the converter's %s", (raw, words) => expect(says(raw)).toBe(words));
 });

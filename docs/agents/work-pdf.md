@@ -218,7 +218,9 @@ form.ts holds the traps the research measured: save with
 ourselves (pdf-lib's own redraw is Helvetica and stops at the first field
 it cannot draw); flatten with pdf-lib's `flatten()`, never by dropping
 widgets; drop the XFA part of a hybrid form and keep its AcroForm values;
-a form that is XFA only takes no values and says so.
+a form that is XFA only takes no values and says so, on the quiet line
+("Can't be filled here", "Only Adobe's apps fill this form"): no red, no
+"XFA".
 
 ## The extract job
 

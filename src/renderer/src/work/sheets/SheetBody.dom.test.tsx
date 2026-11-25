@@ -406,6 +406,30 @@ describe("the sheet kind", () => {
     expect(toasts.said).toEqual([]);
   });
 
+  it("says a refused move in Work's words: a host's raw line never reaches the toast", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    sheetHost.edit = async () => {
+      throw new Error("work.sheets.edit timed out after 30 s");
+    };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(toasts.said).toEqual(["That computer did not answer. Try again once it is connected."]));
+  });
+
+  it("says a refusal with no plain words as the change not saved", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    sheetHost.edit = async () => {
+      throw new Error("could not write /srv/agents/temp-code-data/work/budget.xlsx.tmp");
+    };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(toasts.said).toEqual(["That change was not saved."]));
+  });
+
   it("after a refused move whose book cannot be read again, says the sheet did not open, with Retry: never a grid locked for good", async () => {
     open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
     await gridUp();
@@ -922,7 +946,8 @@ describe("the sheet kind", () => {
     };
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
-    await waitFor(() => expect(toasts.said).toContain("Couldn't accept the change / The host did not answer"));
+    // Named: the computer the sheet is on, never "the host".
+    await waitFor(() => expect(toasts.said).toContain("Couldn't accept the change / The box did not answer. Try again once it is connected."));
     await waitFor(() => expect(document.querySelectorAll("[data-mark]").length).toBeLessThan(5));
   });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, Pause, Play, SlidersHorizontal } from "../../chrome/icons";
 import { LazyPopover, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
@@ -7,8 +7,9 @@ import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { loadToast } from "../../components/ui/toaster";
-import { workErrorWords } from "../../lib/workErrorWords";
-import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { FailedHost, useFailedWords } from "../canvas/FetchState";
+import { sayError } from "../canvas/frame";
 import type { PdfEngine } from "../pdf/engine";
 import { FOLD, PAGED_ZOOMS, PagedSkeleton, PagedView, ZOOM_WORDS, type PagedZoom } from "./PagedView";
 import { MARGIN_PRESETS, marginPresetOf, NotInReach, PAPER_POINTS, PAPERS, type CommonSetup, type Drawn, type MarginPreset, type OfficeApp, type PaperName, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
@@ -116,6 +117,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
   // A render that went under the pages (drawn again elsewhere) is drawn once more by itself, once.
   const redrawn = useRef<string | null>(null);
 
+  // The computer the pane's file is on (CanvasPane's `FailedHost`): every failure here names it.
+  const env = useContext(FailedHost);
   const current = source.formats.find((f) => f.id === format) ?? source.formats[0];
   const formatId = current?.id ?? "";
 
@@ -160,7 +163,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
         },
         (error: unknown) => {
           if (job.signal.aborted) return;
-          setDraw({ status: "failed", message: messageOf(error, "It could not be drawn") });
+          setDraw({ status: "failed", message: messageOf(error, "") });
           setRetrying(false);
         },
       );
@@ -206,9 +209,9 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       (error: unknown) => {
         if (job.signal.aborted) return;
         setChecking(null);
-        // LibreOffice's picture stays; why Word's did not come is said once.
-        const words = error instanceof NotInReach ? `${error.app} is not in reach` : messageOf(error, `${office.app} could not draw it`);
-        void loadToast().then((toast) => toast.error(words));
+        // LibreOffice's picture stays; why Word's did not come is said once, in his words under the act's line.
+        if (error instanceof NotInReach) void loadToast().then((toast) => toast.error(`${error.app} is not in reach`));
+        else sayError(error, `${office.app} did not draw it`, env);
       },
     );
   };
@@ -227,7 +230,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       // the format to open on next: Export… opens on the last file he made.
       if (made.where) void loadToast().then((toast) => toast(`Saved ${made.name} to ${made.where}`));
     } catch (error) {
-      void loadToast().then((toast) => toast.error(messageOf(error, current?.verb === "Print…" ? "It could not be printed" : "It could not be exported")));
+      sayError(error, current?.verb === "Print…" ? "It could not be printed" : "It could not be exported", env);
     } finally {
       setExporting(false);
     }
@@ -239,12 +242,14 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       if (!setup) return;
       void setup.set({ common: { ...setup.common, ...next } }).then(
         () => setRun((n) => n + 1),
-        (error: unknown) => void loadToast().then((toast) => toast.error(messageOf(error, "The page set-up could not be changed"))),
+        (error: unknown) => sayError(error, "The page set-up could not be changed", env),
       );
     },
-    [setup],
+    [setup, env],
   );
 
+  // The host's words as Work says them (workErrorWords), naming the computer: one sentence under the title, never a line written for no one.
+  const reason = useFailedWords(draw.status === "failed" ? draw.message : null);
   const picture = draw.status === "drawn" ? draw.drawn.picture : null;
   const drops = draw.status === "drawn" ? draw.drawn.drops : [];
   const kindRows = current && rowsFor ? rowsFor(current) : null;
@@ -342,15 +347,13 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
 
   let body: ReactNode;
   if (draw.status === "failed") {
-    // The host's words as Work says them (workErrorWords): never a line written for no one.
-    const reason = workErrorWords(draw.message).trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
-    const failure = reason ? ` (${reason})` : "";
     body = (
       <div data-preview-failed className="flex min-h-0 min-w-0 flex-1 justify-center gap-4 overflow-auto bg-(--stage) px-6 pt-4 pb-6">
         <div className="flex min-h-[360px] w-[440px] max-w-full">
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>{`${current?.label ?? "File"} preview failed${failure}.`}</EmptyTitle>
+              <EmptyTitle>{`${current?.label ?? "File"} preview failed.`}</EmptyTitle>
+              {reason ? <EmptyDescription>{reason}</EmptyDescription> : null}
             </EmptyHeader>
             <Button
               size="sm"
@@ -436,7 +439,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       const drawn = await source.draw(formatId, { sheet, signal: job.signal });
       if (!job.signal.aborted) setDraw({ status: "drawn", drawn });
     } catch (error) {
-      if (!job.signal.aborted) setDraw({ status: "failed", message: messageOf(error, "It could not be drawn") });
+      if (!job.signal.aborted) setDraw({ status: "failed", message: messageOf(error, "") });
     }
   }
 
@@ -847,6 +850,7 @@ function VideoPicture({ picture, title }: { picture: Extract<PreviewPicture, { k
   const [at, setAt] = useState(0);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
+  const env = useContext(FailedHost);
   const facts = useMemo(() => `${clock(picture.seconds)}, ${picture.size}`, [picture.seconds, picture.size]);
 
   const toggle = async (): Promise<void> => {
@@ -862,7 +866,7 @@ function VideoPicture({ picture, title }: { picture: Extract<PreviewPicture, { k
       for (let offset = 0; offset < picture.video.size; offset += step) parts.push((await picture.video.read(offset, Math.min(step, picture.video.size - offset))) as Uint8Array<ArrayBuffer>);
       setUrl(URL.createObjectURL(new Blob(parts, { type: "video/mp4" })));
     } catch (error) {
-      void loadToast().then((toast) => toast.error(messageOf(error, "The video could not be read")));
+      sayError(error, "The video could not be read", env);
     } finally {
       setLoading(false);
     }

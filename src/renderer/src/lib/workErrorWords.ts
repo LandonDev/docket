@@ -21,6 +21,12 @@ type Rule = [RegExp, (c: { host: string; Host: string; named: boolean; write: bo
 const lost = (c: { Host: string; write: boolean }): string =>
   c.write ? `${c.Host} did not confirm the change. Check whether it went through before you try again.` : `${c.Host} did not answer. Try again once it is connected.`;
 
+/** The Office app a format belongs to: a pair's target names it when Office draws ("pdf+word"), else its source. */
+const OFFICE: Record<string, string> = { docx: "Word", doc: "Word", word: "Word", xlsx: "Excel", xls: "Excel", xlsm: "Excel", excel: "Excel", pptx: "PowerPoint", ppt: "PowerPoint", powerpoint: "PowerPoint" };
+const appOf = (from: string, to: string): string | undefined => OFFICE[to.toLowerCase().split("+")[1] ?? ""] ?? OFFICE[from.toLowerCase()];
+/** A source format as the files it is ("Word files", "PDFs"); one Work has no plain name for is "this file". */
+const filesOf = (format: string): string => (OFFICE[format.toLowerCase()] ? `${OFFICE[format.toLowerCase()]} files` : format.toLowerCase() === "pdf" ? "PDFs" : "this file");
+
 const RULES: Rule[] = [
   // The fence and the capability door (remote/fence.ts, shared/capabilities.ts).
   [/^forbidden: \S+ is outside app-managed roots/i, (c) => `${c.Host} does not let this window reach that file where it lies. Open it from Files on the computer that holds it.`],
@@ -32,6 +38,8 @@ const RULES: Rule[] = [
   [/work is off on this host/i, (c, m) => (c.named ? `Work is off on ${c.host}. Turn it on in Settings, Work.` : m.input)],
   // An answer that never came (files/store.ts, connection/transport.ts).
   [/^no answer in \d+ ?s\b|timed out after \d|\btimed out\b|^timeout\b/i, lost],
+  // A caller's own stand-in for an answer that never came (work/sheets/sync.ts): told the computer, it says which.
+  [/^the host did not answer\.?$/i, (c, m) => (c.named ? lost(c) : m.input)],
   // The link's own bare word: with a computer named it says which is away; unnamed it stands as it is.
   [/^not connected\.?$/i, (c, m) => (c.named ? `${c.Host} is not connected. Try again once it is back.` : m.input)],
   // A link closed for good rejects with its bare word (connection/transport.ts).
@@ -51,6 +59,18 @@ const RULES: Rule[] = [
   [/\b(ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EPIPE)\b/, lost],
   // Conversions and previews (work/formats).
   [/left no output$/i, () => "The conversion made no file. Open the original and export again."],
+  // The converter's four refusals (main/server/work/formats/jobs.ts `convert`, `forward`): the pair is a format's id
+  // ("docx to pdf+word"), said as the files it draws; the host's id and "his own press" never reach him.
+  [/^no converter from (\S+) to/i, (c, m) => `${c.Host} has no app that draws ${filesOf(m[1]!)}.`],
+  [/^(?!.*not installed).*never carried to another host/i, (c) => `A shared file is drawn only on the computer that holds it, and ${c.host} cannot draw it now.`],
+  [/converts (\S+) to (\S+) is asleep on /i, () => "The Windows VM that draws it is asleep. Wake it from a window on the computer that runs it."],
+  [/converts (\S+) to (\S+) is asleep\b/i, (_c, m) => `The Windows VM is asleep.${appOf(m[1]!, m[2]!) ? ` Check in ${appOf(m[1]!, m[2]!)} wakes it.` : ""}`],
+  [/the app that converts (\S+) to (\S+) is not open\b/i, (c, m) => `${appOf(m[1]!, m[2]!) ?? "The app that draws it"} is not open on ${c.host}.`],
+  [/cannot convert (\S+) to \S+ now(, and no linked host)?/i, (c, m) => `${c.Host} cannot draw ${filesOf(m[1]!)} now${m[2] ? ", and no computer linked to it can" : ""}.`],
+  [/^(.+) is (\d+ MB); a job carried to another host takes at most (\d+ MB)/i, (_c, m) => `${m[1]} is ${m[2]}, more than the ${m[3]} another computer is sent to draw.`],
+  [/came back is (\d+ MB); a job carried from another host takes at most (\d+ MB)|^a forwarded job takes at most (\d+ MB)/i, () => "What came back from the computer that drew it was too big to bring here."],
+  // pdf.js on bytes it cannot read (pdf/engine.ts): a file cut short or damaged, never the parser's own words.
+  [/^(invalid pdf structure|missing pdf\b|unexpected server response)/i, () => "This PDF is damaged, or only part of it arrived. Open it again from Files."],
   [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],
   // LifeOS, guests, the Windows VM.
   // Signed out is said only where the host said so. "Not connected" is the host's word for any state but connected
@@ -58,7 +78,7 @@ const RULES: Rule[] = [
   [/lifeos is not signed in|lifeos is signed out/i, (c) => `Not signed in to LifeOS on ${c.host}. Sign in under Settings, Connections.`],
   [/lifeos did not start|lifeos is not connected/i, (c) => `${c.Host} cannot use LifeOS now. See why under Settings, Connections.`],
   // A tool a host draws or reads files with, named by its program: what he can do, never the program's name.
-  [/\b(libreoffice|soffice|python-pptx|ffmpeg|ffprobe)\b[^.]*\bnot installed\b/i, (c) => `${c.named ? `${c.Host} is missing the tools that draw and read this file.` : "The computer that draws this file is missing the tools for it."} Install them under Settings, Connections, Conversion tools.`],
+  [/\b(libreoffice|soffice|python-pptx|ffmpeg|ffprobe|pymupdf\w*)\b[^.]*\bnot installed\b/i, (c) => `${c.named ? `${c.Host} is missing the tools that draw and read this file.` : "The computer that draws this file is missing the tools for it."} Install them under Settings, Connections, Conversion tools.`],
   [/^no such guest link\b/i, (c) => `This link is not on ${c.host}. Look for it on the computer that made it.`],
   [/its bytes go to no caller/i, () => "Open this file from its library in Files. The copy is made on the computer that runs the Windows VM."],
 ];

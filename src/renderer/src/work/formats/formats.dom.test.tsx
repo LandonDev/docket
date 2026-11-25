@@ -8,6 +8,7 @@ const requests: { env: string; method: string; params: Record<string, unknown> }
 let answer: (env: string, method: string) => Promise<unknown> = async () => ({});
 vi.mock("../../lib/connection", () => ({
   registry: {
+    environment: (env: string) => (env === "env_box" ? { id: env, name: "The box" } : undefined),
     linkOf: (env: string) => ({
       request: (method: string, params: Record<string, unknown>) => {
         requests.push({ env, method, params });
@@ -18,7 +19,7 @@ vi.mock("../../lib/connection", () => ({
 }));
 const toasts: string[] = [];
 vi.mock("../../components/ui/toaster", () => ({
-  loadToast: async () => Object.assign((m: string) => void toasts.push(m), { error: (m: string) => void toasts.push(`error: ${m}`) }),
+  loadToast: async () => Object.assign((m: string) => void toasts.push(m), { error: (m: string, o?: { description?: string }) => void toasts.push(`error: ${m}${o?.description ? ` — ${o.description}` : ""}`) }),
 }));
 
 import { DropImport, ImportBody } from "./Import";
@@ -189,5 +190,18 @@ describe("Import", () => {
     await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4, 9])], "Brief.docx")));
     await waitFor(() => expect(imports()).toHaveLength(2));
     expect(imports()[1]!.params).toEqual({ sessionId: "t1", from: { at: "source", source: { at: "file", host: "env_box", path: "/w/Brief (2).docx" } } });
+  });
+
+  it("says a drop that did not open in Work's words, naming the computer: never the host's raw line", async () => {
+    answer = async (_env, method) =>
+      method === "attachment.begin" ? { uploadId: "u1", chunkBytes: 2 * 1024 * 1024 } : method === "attachment.commit" ? { path: "/w/Brief.docx" } : method === "attachment.chunk" ? null : Promise.reject(new Error("work.formats.import timed out after 120 s"));
+    render(
+      <DropImport env="env_box" sessionId="t1" editor={null}>
+        <p>text</p>
+      </DropImport>,
+    );
+    const zone = document.querySelector("[data-drop-import]")!;
+    await act(async () => fireEvent.drop(zone, { dataTransfer: { types: ["Files"], files: [new File([new Uint8Array([80, 75, 3, 4])], "Brief.docx")] } }));
+    await waitFor(() => expect(toasts).toEqual(["error: Couldn't open Brief.docx — The box did not answer. Try again once it is connected."]));
   });
 });

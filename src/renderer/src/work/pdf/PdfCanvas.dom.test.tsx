@@ -283,6 +283,15 @@ describe("the PDF kind", () => {
     await waitFor(() => expect(pages()[0]).toBe(1));
   });
 
+  it("says a form only Adobe's apps fill on the quiet line, in plain words: no red, no XFA", async () => {
+    await open(pdfView({ xfaOnly: true }));
+    const line = await found('[data-canvas-state="quiet"]');
+    expect(line.textContent).toContain("Can't be filled here");
+    expect(line.textContent).toContain("Only Adobe's apps fill this form");
+    expect(line.textContent).not.toContain("XFA");
+    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+  });
+
   it("shows what the agent wrote directly with its Undo, in the stepper's place", async () => {
     await open(pdfView({ mode: "writes", written: { id: "w1", text: "Filled 5 fields", at: Date.UTC(2026, 10, 23, 17) } }));
     const written = await found("[data-canvas-written]");

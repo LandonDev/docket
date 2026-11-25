@@ -43,7 +43,12 @@ describe("how far the file has come", () => {
   });
 
   it("fails on a top frame's failure only, never an abort", () => {
-    expect(failedLoad(START, -105, "ERR_NAME_NOT_RESOLVED", true).failed).toBe("It did not load (ERR_NAME_NOT_RESOLVED).");
+    // Chromium's code never reaches him: what it means, naming this desktop where the fault is its own.
+    expect(failedLoad(START, -105, "ERR_NAME_NOT_RESOLVED", true).failed).toBe("This Mac could not reach Microsoft.");
+    expect(failedLoad(START, -106, "ERR_INTERNET_DISCONNECTED", true).failed).toBe("This Mac is offline.");
+    expect(failedLoad(START, -118, "ERR_CONNECTION_TIMED_OUT", true).failed).toBe("Microsoft did not answer.");
+    expect(failedLoad(START, -501, "ERR_INSECURE_RESPONSE", true).failed).toBe("It did not load.");
+    expect(failedLoad(START, -2, "", true).failed).toBe("It did not load.");
     expect(failedLoad(START, -3, "ERR_ABORTED", true).failed).toBeNull();
     expect(failedLoad(START, -105, "x", false).failed).toBeNull();
   });
