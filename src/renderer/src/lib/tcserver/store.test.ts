@@ -1085,6 +1085,21 @@ describe("a thread the live lists lack", () => {
     expect(down.calls).toHaveLength(0);
   });
 
+  it("every host listed: only once each connected host answered its whole list, archived too; one down keeps it false", async () => {
+    expect(sessionStore.everyHostListed()).toBe(false);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    expect(sessionStore.everyHostListed()).toBe(false);
+    expect(await sessionStore.ensureMeta("deleted")).toBeNull();
+    expect(sessionStore.everyHostListed()).toBe(true);
+    const down = new FakeLink();
+    down.environmentId = "down";
+    down.connected = false;
+    sessionStore.attach(down);
+    expect(await sessionStore.ensureMeta("deleted")).toBeNull();
+    expect(sessionStore.everyHostListed()).toBe(false);
+  });
+
   it("a provisional entry its host lists without is asked after, never settled as a draft: the archived meta fills it and it loads", async () => {
     const emptyLoads: number[] = [];
     // A tab restored before the host listed: an archived plan kept open.

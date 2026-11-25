@@ -1102,6 +1102,15 @@ class SessionStore {
     if (this.listedOk.has(owner) && this.archivedScopes.has(`${owner}|*`)) this.markGone(id);
   }
 
+  /**
+   * Every host this window holds is connected and answered its whole list, archived threads too: a thread none of
+   * them names, after `ensureMeta`, is gone (deleted), not merely on a host that is down.
+   */
+  everyHostListed(): boolean {
+    const ids = this.environmentIds();
+    return ids.length > 0 && ids.every((e) => !!this.attached.get(e)?.link.connected && this.listedOk.has(e) && this.archivedScopes.has(`${e}|*`));
+  }
+
   /** No host knew a provisional entry's id: its pane says so. */
   markGone(id: string): void {
     const entry = this.entries.get(id);

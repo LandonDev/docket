@@ -114,7 +114,10 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
   return { ...(await original<typeof import("../../lib/tcserver/workspaces")>()), useWorkspaces: () => ws };
 });
 
-import { useThreadRecord, waitingWords, WorkHeadView } from "./WorkHead";
+import { useThreadRecord, waitingWords, WorkHead, WorkHeadView, WORKS_RETRY_MS } from "./WorkHead";
+import { applyResult } from "../../work/outbox/results";
+import { sessionStore } from "../../lib/tcserver/store";
+import { TranscriptSessionContext } from "../transcriptSession";
 
 const NOW = new Date(2026, 10, 25, 11, 0).getTime();
 const HELD_AT = new Date(2026, 10, 25, 10, 2).getTime();
@@ -402,6 +405,101 @@ describe("the record read", () => {
     act(() => live.setSession("connected"));
     await waitFor(() => expect(probe()).toBe("t1:Borrow two switches from ITaP"));
     expect(reads()).toBe(before + 1);
+  });
+
+  const settle = async () => {
+    for (let i = 0; i < 4; i++) await act(async () => {});
+  };
+
+  it("a record whose LifeOS read failed is read again after 5, 15 and 45 seconds while its session is connected, then left", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      world.record = empty({ works: [], worksDown: "LifeOS did not answer" });
+      render(<Probe />);
+      await settle();
+      const first = reads();
+      for (const [i, wait] of WORKS_RETRY_MS.entries()) {
+        await act(async () => void vi.advanceTimersByTime(wait - 1));
+        expect(reads()).toBe(first + i);
+        await act(async () => void vi.advanceTimersByTime(1));
+        await settle();
+        expect(reads()).toBe(first + i + 1);
+      }
+      await act(async () => void vi.advanceTimersByTime(10 * 60_000));
+      await settle();
+      expect(reads()).toBe(first + WORKS_RETRY_MS.length);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a retried read that answers puts the task back, and asks no more", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      world.record = empty({ works: [], worksDown: "LifeOS did not answer" });
+      render(<Probe />);
+      await settle();
+      world.record = empty({ works: [task] });
+      await act(async () => void vi.advanceTimersByTime(WORKS_RETRY_MS[0]));
+      await settle();
+      expect(probe()).toBe("t1:Borrow two switches from ITaP");
+      const after = reads();
+      await act(async () => void vi.advanceTimersByTime(10 * 60_000));
+      await settle();
+      expect(reads()).toBe(after);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("no retry while the job's LifeOS session is not connected", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      live.setSession("unreachable");
+      world.record = empty({ works: [], worksDown: "LifeOS did not answer" });
+      render(<Probe />);
+      await settle();
+      const first = reads();
+      await act(async () => void vi.advanceTimersByTime(10 * 60_000));
+      await settle();
+      expect(reads()).toBe(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads again when one of its root's Results is made or undone, though the outcome's words stay", async () => {
+    world.record = empty({ works: [task] });
+    render(<Probe />);
+    await waitFor(() => expect(probe()).toBe("t1:Borrow two switches from ITaP"));
+    await act(async () => {});
+    const before = reads();
+    act(() => applyResult("box", { id: "r9", rootId: "t9", sessionId: "t9" } as never));
+    await act(async () => {});
+    expect(reads()).toBe(before);
+    act(() => applyResult("box", { id: "r1", rootId: "t1", sessionId: "t1" } as never));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+  });
+
+  it("the live head turns a task late on the minute clock, with nothing else drawing it", async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const host = vi.spyOn(sessionStore, "environmentOf").mockReturnValue("box");
+    try {
+      world.record = empty({ works: [{ ...task, task: { ...task.task, waitingOn: null, due: NOW + 30_000 } }] });
+      render(
+        <TranscriptSessionContext.Provider value="t1">
+          <WorkHead sessionId="t1" />
+        </TranscriptSessionContext.Provider>,
+      );
+      await settle();
+      expect(head()).toBeTruthy();
+      expect(head()!.querySelector(".text-destructive")).toBeNull();
+      await act(async () => void vi.advanceTimersByTime(60_000));
+      expect(head()!.querySelector(".text-destructive")?.textContent).toMatch(/^Due /);
+    } finally {
+      host.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("a refresh that fails keeps the last facts, marked behind", async () => {

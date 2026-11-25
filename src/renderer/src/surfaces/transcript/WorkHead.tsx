@@ -1,5 +1,5 @@
 // A Work thread's head: what it left him, at the top of its transcript (docs/DESIGN.md "A thread's head").
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { reducedMotion } from "../../lib/motion";
 import { makeFunctionReference } from "convex/server";
 import type { ThreadRecord, RecordMade, RecordWait, RecordWork } from "@shared/work/threadRecord";
@@ -22,6 +22,8 @@ import { openInFiles } from "../../work/files/openFrom";
 import { Task } from "../../work/icons";
 import { useLifeosSession } from "../../work/shell/lifeos";
 import { readThreadRecord } from "../../work/threads/record";
+import { resultsStamp, subscribeResults } from "../../work/outbox/results";
+import { useMinute } from "../../work/tasks/minute";
 import { HeldDetail, rememberOutboxTab } from "../../work/outbox/OutboxView";
 import { KindGlyph, rowWords } from "../../work/outbox/parts";
 import { useOutbox, wantOutboxItem, type HostItem } from "../../work/outbox/store";
@@ -38,17 +40,20 @@ import { useTranscriptHost } from "../transcriptSession";
  * grid, no card, held muted, amber only for a question, red for a failure.
  * The record is the host's (`work.threads.record`, work/threads/record.ts),
  * read again when the thread's folded outcome or state moves, when one of its
- * held items changes in the Outbox, and when LifeOS says one of its open tasks
- * changed. A refresh that fails keeps the last facts, with a quiet line that
- * says they may be old; so does one whose LifeOS read failed (`worksDown`),
- * which keeps the last task facts and reads again once the job's LifeOS
- * session is back.
+ * held items changes in the Outbox, when one of its root's Results is made or
+ * undone, and when LifeOS says one of its open tasks changed. A refresh that
+ * fails keeps the last facts, with a quiet line that says they may be old; so
+ * does one whose LifeOS read failed (`worksDown`), which keeps the last task
+ * facts and reads again after 5, 15 and 45 seconds while the job's LifeOS
+ * session is connected, and once it connects again. Lateness and wait ages
+ * move on the window's one minute clock.
  */
 export function WorkHead({ sessionId }: { sessionId: string }) {
   const env = useTranscriptHost();
   const head = useThreadRecord(env, sessionId);
+  const now = useMinute();
   if (!env || !head) return null;
-  return <WorkHeadView record={head.record} environmentId={env} behind={head.behind ? head.at : null} />;
+  return <WorkHeadView record={head.record} environmentId={env} now={now} behind={head.behind ? head.at : null} />;
 }
 
 /** The record the head shows: when it was read, and whether a later refresh failed while it shows. */
@@ -73,6 +78,9 @@ export function useThreadRecord(env: string | null | undefined, sessionId: strin
     .waiting.filter((item) => item.environmentId === env && (item.sessionId === sessionId || listed.has(keyOf(item))))
     .map((item) => `${keyOf(item)}:${item.state}:${item.updatedAt}`)
     .join("|");
+  // One of the root's Results made or undone (the host's push): an older one undone moves no outcome words.
+  const root = record?.sessionId ?? sessionId;
+  const stamp = useSyncExternalStore(subscribeResults, () => (env ? resultsStamp(env, root) : ""), () => "");
   const tasks = useTaskPulse(env, record);
   useEffect(() => {
     if (!env) return;
@@ -91,16 +99,20 @@ export function useThreadRecord(env: string | null | undefined, sessionId: strin
     return () => {
       live = false;
     };
-  }, [env, sessionId, key, outcome, held, tasks]);
+  }, [env, sessionId, key, outcome, held, stamp, tasks]);
   return kept?.key === key ? kept : null;
 }
 
 const taskGet = makeFunctionReference<"query">("tasks:get");
 
+/** A record whose LifeOS read failed is read again after these waits while its session is connected, then left. */
+export const WORKS_RETRY_MS = [5_000, 15_000, 45_000] as const;
+
 /**
  * A count that moves when LifeOS changes one of the record's open tasks (done, moved, waiting on someone), on the
- * job's LifeOS session, which the job's column already holds open; and once that session connects again after the
- * record's LifeOS read failed (`worksDown`), task ids or none. Nothing while the record lists no open task and read.
+ * job's LifeOS session, which the job's column already holds open; and while the record's LifeOS read failed
+ * (`worksDown`), task ids or none: once that session connects again, and on `WORKS_RETRY_MS` while it stays
+ * connected (a one-off failed read). Nothing while the record lists no open task and read.
  */
 function useTaskPulse(env: string | null | undefined, record: ThreadRecord | null): number {
   const workspaces = useWorkspaces();
@@ -119,6 +131,20 @@ function useTaskPulse(env: string | null | undefined, record: ThreadRecord | nul
     wasConnected.current = connected;
     if (down && connected && !was) setPulse((n) => n + 1);
   }, [down, connected]);
+  // Each read the retry asks lands a new record; while it is still down, the next wait starts from it.
+  const tries = useRef(0);
+  useEffect(() => {
+    if (!down) {
+      tries.current = 0;
+      return;
+    }
+    if (!connected || tries.current >= WORKS_RETRY_MS.length) return;
+    const timer = setTimeout(() => {
+      tries.current++;
+      setPulse((n) => n + 1);
+    }, WORKS_RETRY_MS[tries.current]);
+    return () => clearTimeout(timer);
+  }, [down, connected, record]);
   useEffect(() => {
     if (!client || !ids) return;
     const offs = ids.split("\n").map((id) => {

@@ -7,7 +7,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { openUrl } from "../../lib/native";
 import { formatDue } from "work-kit/views/lib/format";
 import type { Task } from "./client";
-import { openTaskThread } from "./links";
+import { openTaskThread, useLiveLink } from "./links";
 
 /**
  * A task's Open: the task in full in a sheet over the view, as LifeOS reads
@@ -49,8 +49,9 @@ export function TaskSheet({ open, ...props }: Props & { open: { id: string; row:
 
 function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
   const detail = useQuery(get, { id }) as Detail | undefined;
-  // A linked thread the window holds no meta for yet is still its thread: Open asks the hosts for it (links.ts).
-  const threadId = useThread(id);
+  // A linked thread the window holds no meta for yet is still its thread: Open asks the hosts for it (links.ts); one
+  // every host answered without (deleted) is none, so Start.
+  const threadId = useLiveLink(useThread(id));
   // LifeOS's read over the list's row; a task the list does not hold is its read alone.
   const full = row ? { ...row, ...detail?.task } : (detail?.task ?? undefined);
   // Asked for by id and not found (gone since): nothing to show, so the sheet closes, quietly.
@@ -111,7 +112,7 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread 
             Start thread
           </Button>
         ) : threadId ? (
-          <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId))}>
+          <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId, () => onStart(full)))}>
             Open thread
           </Button>
         ) : (

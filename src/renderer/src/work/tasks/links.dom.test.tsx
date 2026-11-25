@@ -40,3 +40,38 @@ describe("useLinkedThread", () => {
     expect(result.current).toBeUndefined();
   });
 });
+
+const toasts = vi.hoisted(() => [] as { words: string; options?: { action?: { label: string; onClick: () => void } } }[]);
+vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (words: string, options?: never) => void toasts.push({ words, options }) }) }));
+const { openTaskThread, useLiveLink } = await import("./links");
+const { sessionStore } = await import("../../lib/tcserver/store");
+
+describe("a link whose thread was deleted", () => {
+  it("is no link once every host answered without the thread, so the task offers Start", async () => {
+    const ensure = vi.spyOn(sessionStore, "ensureMeta").mockResolvedValue(null);
+    const listed = vi.spyOn(sessionStore, "everyHostListed").mockReturnValue(true);
+    const { result } = renderHook(() => useLiveLink("gone"));
+    expect(result.current).toBe("gone");
+    await act(async () => {});
+    expect(result.current).toBeNull();
+    ensure.mockRestore();
+    listed.mockRestore();
+  });
+
+  it("stays a link while a host could not answer, never Start; Open then says so with Start thread on the toast", async () => {
+    const ensure = vi.spyOn(sessionStore, "ensureMeta").mockResolvedValue(null);
+    const listed = vi.spyOn(sessionStore, "everyHostListed").mockReturnValue(false);
+    const { result } = renderHook(() => useLiveLink("away"));
+    await act(async () => {});
+    expect(result.current).toBe("away");
+    const start = vi.fn();
+    await openTaskThread("away", start);
+    await act(async () => {});
+    expect(toasts.at(-1)?.words).toBe("Couldn't find the thread");
+    expect(toasts.at(-1)?.options?.action?.label).toBe("Start thread");
+    toasts.at(-1)?.options?.action?.onClick();
+    expect(start).toHaveBeenCalledOnce();
+    ensure.mockRestore();
+    listed.mockRestore();
+  });
+});

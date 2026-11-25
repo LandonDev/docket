@@ -656,12 +656,15 @@ One record answers it for every screen (the thread's head, the column's outcome 
   head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`ThreadHeadSlot` in surfaces/transcriptSession.ts,
   inside that message's row so the transcript's row
   layout measures it), again whenever the folded outcome or the thread's status moves, one of its held items changes in
-  the Outbox's list (sent, discarded, edited in place), or LifeOS changes one of its open tasks (`tasks:get` watched on
+  the Outbox's list (sent, discarded, edited in place), one of its root's Results is made or undone (`resultsStamp`,
+  outbox/results.ts, the stamp a project's Files reads by), or LifeOS changes one of its open tasks (`tasks:get` watched on
   the job's LifeOS session, which the column already holds). A record read for another thread or host is never shown;
   a refresh that fails keeps the last facts with one quiet line, "Couldn't refresh. As of 10:02 AM". A record with
   `worksDown` keeps the last task facts under that line, and is read again once the job's LifeOS session connects
-  after it was not, task ids or none (`useTaskPulse`). A task is late once its due time passes, as Tasks and Today
-  say it. "Asks you" takes him to the question's card and the red failure row to the transcript's failure card
+  after it was not, task ids or none, and after 5, 15 and 45 seconds while it stays connected, then left
+  (`useTaskPulse`, `WORKS_RETRY_MS`). A task is late once its due time passes, as Tasks and Today say it, on their
+  one minute clock (`useMinute`, work/tasks/minute.ts), so an idle head turns late within the minute; `WorkHeadView`
+  keeps its fixed `now` for fixtures. "Asks you" takes him to the question's card and the red failure row to the transcript's failure card
   (`goTo`), from the keyboard with focus in it. A
   held row opens the Outbox's own `HeldDetail` in a sheet; the held call in the transcript is one quiet line.
 - **The title bar** of a Work thread in front is its crumb (`WorkCrumb`, on the `work-head` chunk so the first paint holds none of it): the job's dot, its project (a press opens

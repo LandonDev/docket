@@ -30,7 +30,7 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
-import { openTaskThread, useLinkedThread } from "./links";
+import { openTaskThread, useLinkedThread, useLiveLink } from "./links";
 import { TaskSheet } from "./TaskSheet";
 import { keepPlace, keptPlace } from "../shell/place";
 import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
@@ -128,14 +128,15 @@ const noThread = (): string | null => null;
  * A task's thread as a row draws it: its id, its state in the one vocabulary and what it left him (`workOutcome`);
  * null when no link names a thread; undefined until the link read answers, so neither Start nor Open thread is
  * offered before it is known which is right. A linked thread the window holds no meta for yet keeps its id with no
- * state (and so no mark): it offers Open thread, never Start (links.ts `openTaskThread`).
+ * state (and so no mark): it offers Open thread, never Start (links.ts `openTaskThread`), until every host answers
+ * without it (deleted): then it is null, and the task offers Start (`useLiveLink`).
  */
 export type TaskThread = { id: string; state: ReturnType<typeof rowState> | null; tone: OutcomeTone | null } | null | undefined;
 /** The thread a task's open link names; null for none; undefined while the read is out or failed. */
 type UseThread = (taskId: string) => string | null | undefined;
 
 function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
-  const id = useThread(taskId);
+  const id = useLiveLink(useThread(taskId));
   const meta = useSessionMeta(id);
   if (id === undefined) return undefined;
   if (!id) return null;
@@ -151,8 +152,8 @@ export function taskThreadMark(thread: NonNullable<TaskThread>): { key: string; 
   return thread.state && marksAtRest(thread.state) ? { key: thread.state, mark: <StatusMark state={thread.state} word={false} /> } : null;
 }
 
-/** A thread the window knows opens at once; one it holds no meta for is asked of the hosts first. */
-const openThread = (thread: NonNullable<TaskThread>): void => void (thread.state ? workOpenPort.get()?.(thread.id) : openTaskThread(thread.id));
+/** A thread the window knows opens at once; one it holds no meta for is asked of the hosts first, and not found offers `start`. */
+const openThread = (thread: NonNullable<TaskThread>, start: () => void): void => void (thread.state ? workOpenPort.get()?.(thread.id) : openTaskThread(thread.id, start));
 
 export function Tasks({
   client,
@@ -337,7 +338,7 @@ function Lead({
               Start thread
             </Button>
           ) : thread ? (
-            <Button size="sm" onClick={() => openThread(thread)}>
+            <Button size="sm" onClick={() => openThread(thread, () => onStart(task))}>
               Open thread
             </Button>
           ) : (
@@ -392,7 +393,7 @@ function TaskMenu({
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
-      {thread === undefined ? null : thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
+      {thread === undefined ? null : thread ? <ContextMenuItem onClick={() => openThread(thread, () => onStart(task))}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
       <ContextMenuItem onClick={() => onCode(task)}>Open a code thread…</ContextMenuItem>
       {runPlay ? <ContextMenuItem onClick={() => runPlay(chipOf(task))}>Run a play…</ContextMenuItem> : null}
       <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
@@ -466,7 +467,7 @@ const TaskRow = memo(function TaskRow({
         {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", ROW_SHOWS, overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
           {thread === undefined ? null : thread ? (
-            <Button size="xs" variant="ghost" onClick={() => openThread(thread)}>
+            <Button size="xs" variant="ghost" onClick={() => openThread(thread, () => onStart(task))}>
               Open thread
             </Button>
           ) : (

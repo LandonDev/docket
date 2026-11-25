@@ -205,6 +205,25 @@ describe("the Tasks view", () => {
     workOpenPort.set(null);
   });
 
+  it("a link whose thread every host answered without (deleted) is no link: the row and its sheet offer Start again", async () => {
+    const { sessionStore } = await import("../../lib/tcserver/store");
+    const ensure = vi.spyOn(sessionStore, "ensureMeta").mockResolvedValue(null);
+    const listed = vi.spyOn(sessionStore, "everyHostListed").mockReturnValue(true);
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={(id) => (id === "t3" ? "deleted" : null)} />);
+    const row = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
+    await act(async () => {});
+    expect(within(row).queryByRole("button", { name: "Open thread" })).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: "Start" }));
+    expect(startThread).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Open Approve the scrim schedule" }));
+    const sheet = await screen.findByRole("dialog");
+    await act(async () => {});
+    expect(within(sheet).getByRole("button", { name: "Start thread" })).toBeTruthy();
+    ensure.mockRestore();
+    listed.mockRestore();
+  });
+
   it("marks a task by what its thread left him first, as the project's plan does: the Outbox glyph for held, red for failed", () => {
     render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={(id) => (id === "t1" ? "th3" : id === "t2" ? "th2" : null)} />);
     const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest("[role=listitem]") as HTMLElement;

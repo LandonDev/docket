@@ -16,7 +16,10 @@ import { workOpenPort } from "../../lib/workSwitch";
  * holds one watch a query and its arguments. A link can name a thread the
  * window holds no meta for yet (an unloaded host's, an archived one): the
  * row offers Open thread all the same, and Open asks the hosts for it first
- * (`openTaskThread`), so a known thread never sprouts a second.
+ * (`openTaskThread`), so a known thread never sprouts a second. A link whose
+ * thread every host answered without (deleted, its LifeOS link left open) is no
+ * link: the task offers Start (`useLiveLink`). Open that still finds nothing
+ * says so, with Start thread on the toast, his press.
  */
 
 type Link = { threadId: string; state: "open" | "done"; at: number };
@@ -74,11 +77,34 @@ export function useLinkedThreads(taskId: string): readonly string[] {
   return useLinks(taskId, openOrNone, sameList);
 }
 
-/** Open the thread a task's link names; one this window holds no meta for is asked of the hosts first (`ensureMeta`). */
-export async function openTaskThread(id: string): Promise<void> {
-  if (!sessionStore.metaOf(id) && !(await sessionStore.ensureMeta(id))) {
-    void loadToast().then((toast) => toast.error("Couldn't find the thread"));
+/** Open the thread a task's link names; one this window holds no meta for is asked of the hosts first (`ensureMeta`). Not found: a toast, with Start thread where `start` is given. */
+export async function openTaskThread(id: string, start?: () => void): Promise<void> {
+  if (!sessionStore.metaOf(id) && !(await sessionStore.ensureMeta(id).catch(() => null))) {
+    void loadToast().then((toast) => toast.error("Couldn't find the thread", start ? { action: { label: "Start thread", onClick: start } } : undefined));
     return;
   }
   workOpenPort.get()?.(id);
+}
+
+/** True once every host answered without the thread (deleted); false while one could not answer, or it was found. */
+async function threadGone(id: string): Promise<boolean> {
+  try {
+    return !(await sessionStore.ensureMeta(id)) && sessionStore.everyHostListed();
+  } catch {
+    return false;
+  }
+}
+
+/** A task's linked thread as Tasks offers it: null (no thread, so Start) once every host answered without it; else as given. */
+export function useLiveLink(id: string | null | undefined): string | null | undefined {
+  const [gone, setGone] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id || sessionStore.metaOf(id)) return;
+    let live = true;
+    void threadGone(id).then((yes) => live && yes && setGone(id));
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return id && gone === id ? null : id;
 }
