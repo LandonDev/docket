@@ -222,6 +222,8 @@ export function cpuTicks(pid: number): number {
 
 /** The guest's folder the display driver is staged from, and where `viogpures.exe` stays. */
 export const GUEST_DRIVER_DIR = 'C:\\ProgramData\\tc-viogpu'
+/** The driver's own size tool, where tcuser may run it: a file moved into ProgramData keeps the admin profile's rights. */
+export const GUEST_SIZE_TOOL = 'C:\\Program Files\\tc-viogpu\\viogpures.exe'
 const DRIVER_FILES = ['viogpudo.inf', 'viogpudo.cat', 'viogpudo.sys', 'viogpures.exe']
 
 /**
@@ -236,6 +238,8 @@ export async function moveToVirtio(s: Scratch, driverDir: string, log: (line: st
     [
       `New-Item -ItemType Directory -Force ${psQuote(GUEST_DRIVER_DIR)} | Out-Null`,
       ...DRIVER_FILES.map((f) => `Move-Item -Force (Join-Path $env:USERPROFILE ${psQuote(f)}) ${psQuote(GUEST_DRIVER_DIR)}`),
+      `New-Item -ItemType Directory -Force ${psQuote(GUEST_SIZE_TOOL.replace(/\\[^\\]+$/, ''))} | Out-Null`,
+      `Copy-Item -Force ${psQuote(`${GUEST_DRIVER_DIR}\\viogpures.exe`)} ${psQuote(GUEST_SIZE_TOOL)}`,
       `pnputil /add-driver ${psQuote(`${GUEST_DRIVER_DIR}\\viogpudo.inf`)}`
     ].join('\n')
   )
@@ -247,7 +251,8 @@ export async function moveToVirtio(s: Scratch, driverDir: string, log: (line: st
 
 /** A clean, full shutdown of Windows (no hibernate, no Fast Startup), waited for; the plug is pulled only for a scratch machine that will not stop. */
 export async function shutDown(s: Scratch, log: (line: string) => void, device?: DisplayDevice): Promise<void> {
-  await s.guest.admin('shutdown /s /t 0').catch(() => '')
+  // /full: with Fast Startup on, a plain shutdown is a hibernate of the kernel, and the next start resumes its old mode
+  await s.guest.admin('shutdown /s /full /t 0').catch(() => '')
   if (!(await s.machine.stopped(180_000))) {
     log('Windows did not stop in 3 minutes: pulling the plug')
     await s.machine.forceStop()

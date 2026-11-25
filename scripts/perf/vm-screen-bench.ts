@@ -28,7 +28,7 @@ import { join } from 'node:path'
 import { PNG } from 'pngjs'
 import { psQuote } from '../../src/main/server/work/winvm/machine/guest'
 import type { DisplayDevice } from '../../src/main/server/work/winvm/machine/qemu'
-import { ADAPTERS_SCRIPT, cpuTicks, GUEST_DRIVER_DIR, moveToVirtio, nowUs, otherRecords, scratchMachine, shutDown, sleep, type BenchViewer, type Scratch } from '../lib/winvmScratch'
+import { ADAPTERS_SCRIPT, cpuTicks, GUEST_SIZE_TOOL, moveToVirtio, nowUs, otherRecords, scratchMachine, shutDown, sleep, type BenchViewer, type Scratch } from '../lib/winvmScratch'
 import { actRow, coresUsed, parseSizes, quantile, rateRow, traceStages, type ActRow, type RateRow } from './vmScreenRows'
 
 const arg = (name: string, d: string): string => {
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
       if (DEVICE === 'virtio' && (first.width !== w || first.height !== h)) {
         // the EDID's mode was not taken at the boot: the size is set from inside, as the door's verb will
         log(`the guest draws ${first.width}x${first.height}; asking for ${size} from inside`)
-        log((await s.guest.onDesktop([`${GUEST_DRIVER_DIR}\\viogpures.exe`, String(w), String(h)], true).catch((e: Error) => e.message)).trim())
+        log((await s.guest.onDesktop([GUEST_SIZE_TOOL, String(w), String(h)], true).catch((e: Error) => e.message)).trim())
         await sleep(3000)
         first = await dump(s, join(OUT, `boot${boot + 1}-${size}.png`))
       }
