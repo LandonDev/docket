@@ -1,5 +1,6 @@
 import { ConvexProvider } from "convex/react";
 import { memo, useEffect, useLayoutEffect, useMemo } from "react";
+import { useKeptRows, WindowedRows, type RowPlace } from "../windowed";
 import type { ContextChip } from "@shared/work";
 import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
@@ -217,6 +218,7 @@ const kit: ViewsKit = {
 };
 
 const NO_PEOPLE: DirectoryPerson[] = [];
+const idOfEvent = (event: AgendaEvent): string => event._id;
 const NO_CLASHES: readonly Clash[] = [];
 
 function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { client: AgendaClient; people?: readonly DirectoryPerson[]; workspaceId?: string; environmentId: string }) {
@@ -224,7 +226,9 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const now = useMinute();
   const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
   const { from, to } = range;
-  const events = client.useEvents(from, to);
+  // A push answers every event again: each that holds what it held stays the same object, so its memoised row does not
+  // draw (the perf pass's M12).
+  const events = useKeptRows(client.useEvents(from, to) ?? null, idOfEvent);
   // Every job's clashes over the same span, read as him: this view's own session reads one job.
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
@@ -260,9 +264,32 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
       {days.map(({ day, events: rows }) => (
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
-          {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} over={prepEndOf(event) <= now} leave={leaveOf(event)} clashes={clashesOf.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
-          ))}
+          {/* A day past 80 events mounts only the rows near the screen, each with its place in the day (work/windowed.tsx). */}
+          <WindowedRows
+            count={rows.length}
+            rowHeight={36}
+            getKey={(index) => `${day}:${rows[index]!._id}`}
+            sizeKey="work-agenda-list"
+            render={(index, place) => {
+              const event = rows[index]!;
+              return (
+                <EventRow
+                  key={event._id}
+                  event={event}
+                  past={endOf(event) < now}
+                  over={prepEndOf(event) <= now}
+                  leave={leaveOf(event)}
+                  clashes={clashesOf.get(event._id)}
+                  day={day}
+                  onPrepare={prepare}
+                  people={people}
+                  workspaceId={workspaceId}
+                  environmentId={environmentId}
+                  place={place}
+                />
+              );
+            }}
+          />
         </section>
       ))}
     </div>
@@ -283,6 +310,7 @@ export const EventRow = memo(function EventRow({
   people,
   workspaceId,
   environmentId,
+  place,
 }: {
   event: AgendaEvent;
   past: boolean;
@@ -296,6 +324,8 @@ export const EventRow = memo(function EventRow({
   people: readonly DirectoryPerson[];
   workspaceId: string | undefined;
   environmentId: string;
+  /** Its place in a windowed day, for a screen reader. */
+  place?: RowPlace;
 }) {
   const done = over ?? past;
   // The list hands a row only the clashes still his to settle: both sides' ends are the clash's own.
@@ -305,7 +335,7 @@ export const EventRow = memo(function EventRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger
-        render={<div role="listitem" className="group/row relative grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
+        render={<div role="listitem" {...place} className="group/row relative grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
       >
         <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
