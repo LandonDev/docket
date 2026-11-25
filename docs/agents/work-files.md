@@ -169,7 +169,11 @@ the first paint.
   list's line says "The rest did not load" with a Retry that asks that page
   again; a search keeps what it left out, `incomplete` for `more` and
   `asleep`, said over its results or under "Nothing found" with Retry,
-  `searchGap`; `foldersOnly` asks for folders alone, as Move to… does), and keeps
+  `searchGap`; his Retry keeps what the page said, a failure and its words or
+  a search's gap, with that Retry spinning until the answer replaces it
+  (`retrying`; `retry()` settles when the answer lands), while any other read
+  of a page with no rows draws the list's bones, never "This folder is
+  empty"; `foldersOnly` asks for folders alone, as Move to… does), and keeps
   what only this window knows in `localStorage` `work.files.view.v1`, under
   a window id kept in `sessionStorage`: the tab shown, the sidebar's fold,
   each page's order and row size. A window with nothing kept starts from
@@ -1344,10 +1348,17 @@ remote key hears only of files it could name itself. A caller the router
 did not name, and another host of his, hear of none. Work search keeps its
 own `file` source, so this one is not bridged there.
 
-While the workspace host's LifeOS is down, Home's Waiting on you and a search
-of every place leave LifeOS's rows out: one line over Home and over the
-search's results says the state by the rule (`DownLine`, `useHostDown`), Home
-claims no "Nothing here yet", and both read again once the host says connected.
+While the workspace host's LifeOS is down or on its way, Home's Waiting on you
+and a search of every place leave LifeOS's rows out: one line over Home and
+over the search's results says the state by the rule (`HostLine`,
+`useHostLive`; on its way, "LifeOS is still connecting on the box" with no
+press), and both read again once the host says connected. The Search tab
+hands the page the host it asks (`lifeosHost`), and only for a job with a
+sector whose filter lets LifeOS's rows in (`searchReadsLifeos`,
+lifeosPlace.ts). Home claims no "Nothing here yet" meanwhile, and greys a
+Starred or Recent row only LifeOS opens (a LifeOS row, a mail's file); with
+nothing else to show while LifeOS connects, Home and the search draw their
+bones.
 
 **Waiting on you and the amber count** (files/waiting.ts). A pillar that
 keeps an agent's suggestions by file registers `registerFileWaiting`
@@ -1570,7 +1581,8 @@ the rule's one press (docs/DESIGN.md "Loading and empty states"): Retry for
 silence alone, Sign in or Show the code where this window may pair the host,
 else who can; a session on its way is a wait with no press. No New and no
 other line is drawn over it. When that host's status says connected the
-folder is listed again, and the window asks the host for its places again on
+folder is listed again, with the list's bones until it lands (`useLiveDown`'s
+`again`), never the old cause and no New; the window asks the host for its places again on
 the `work.lifeos` push that moves its LifeOS places' state (`lifeosMoved`,
 store.ts). A thread and another host of his are
 given none of them; a remote key without `approve` gets no From mail.

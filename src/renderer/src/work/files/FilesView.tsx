@@ -24,8 +24,8 @@ import { openHeld } from "../canvas/held";
 import { closeItem, useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
-import { DownLine } from "../shell/DownLine";
 import { useHostLive, useLiveDown } from "../shell/lifeosLive";
+import { searchReadsLifeos } from "./lifeosPlace";
 import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
@@ -887,7 +887,7 @@ function FolderPage({
           ask: (entries) => verbs.ask(entries, copy),
           pickUpload: () => verbs.pickUpload(copy, page.at),
           // A Drive lists only what TempCode made or he picked: Add from Drive is the way more of it comes in.
-          ...(copy.place.kind === "drive" && copy.place.root.at === "drive" ? { addFromDrive: () => void addFromDrive((copy.place.root as { account: string }).account).then((added) => added && listing.retry()) } : {}),
+          ...(copy.place.kind === "drive" && copy.place.root.at === "drive" ? { addFromDrive: () => void addFromDrive((copy.place.root as { account: string }).account).then((added) => void (added && listing.retry())) } : {}),
           // A template is a file: the templates pillar's dialog makes the copy here, in the workspace's own folder.
           ...(copy.place.kind === "folder" && workTemplatePort.get() ? { fromTemplate: () => void openTemplates({ workspaceId: workspace.id, into: page.at, intoName: page.name }) } : {}),
           upload: (files, entry) => verbs.upload(copy, into(entry), files),
@@ -943,11 +943,11 @@ interface Nav {
 /** Home in a tab: what waits on him, his stars and what he opened last, from the workspace's own host. */
 function HomeTab({ tab, workspace, busy, find, onOpenFound, ...nav }: Nav & { tab: FileTab; workspace: WorkspaceMeta; busy: Busy; find: PageFind | null; onOpenFound(entry: FileEntry): void }) {
   const { home, error, retry } = useHome(workspace.environmentId, workspace.id);
-  // Waiting on you holds LifeOS's rows too: while the host's LifeOS is down one line says so, and Home reads again on return.
-  const hostDown = useHostLive(workspace.environmentId).down;
-  const down = workspace.sector ? hostDown : null;
+  // Waiting on you holds LifeOS's rows too: while the host's LifeOS is down or on its way one line says so, and Home
+  // reads again on return.
+  const live = useHostLive(workspace.environmentId);
   useLiveDown(null, workspace.sector ? workspace.environmentId : null, retry);
-  return <HomePage panelId={filesPanelId(tab.id)} home={home} error={error} busy={busy} onRetry={retry} onOpen={onOpenFound} lifeos={down ? <DownLine session={down} className="min-h-6 flex-1" /> : null} bar={<PageBar name="Home" trail={[]} find={find} {...nav} />} />;
+  return <HomePage panelId={filesPanelId(tab.id)} home={home} error={error} busy={busy} onRetry={retry} onOpen={onOpenFound} lifeos={workspace.sector ? live : null} bar={<PageBar name="Home" trail={[]} find={find} {...nav} />} />;
 }
 
 /** A page of search results: his words in every place of the workspace's host, under the filters in its own bar. */
@@ -989,6 +989,8 @@ function SearchTab({
         panelId={filesPanelId(tab.id)}
         listing={from ? listing : null}
         copy={null}
+        // The host the search is asked of reads LifeOS too, for a job with a sector, when the filter lets LifeOS's rows in.
+        lifeosHost={from && workspace.sector && searchReadsLifeos(filter) ? from.copy.link : null}
         trail={[{ name: page.name, at: page.at }]}
         busy={busy}
         fixes={fixes}

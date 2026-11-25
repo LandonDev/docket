@@ -21,7 +21,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { BesideShape, ColumnsShape, Doc, FolderAdd, GalleryShape, GridShape, ListShape, Slides, Table, Upload } from "../icons";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { DownEmpty } from "../shell/DownEmpty";
-import { DownLine } from "../shell/DownLine";
+import { HostLine } from "../shell/DownLine";
 import { useHostLive, useLiveDown } from "../shell/lifeosLive";
 import { refreshLifeos } from "../shell/lifeos";
 import { readsLifeos, useLifeosPlace } from "./lifeosPlace";
@@ -113,6 +113,26 @@ export function NoteEmpty({ note, fixes }: { note: FilesNote; fixes: NoteFixes }
       {note.fix && !elsewhere ? (
         <Button size="sm" variant="secondary" disabled={fixes.busy} onClick={() => fixes.run(note.fix!)}>
           <BusyLabel busy={fixes.busy} label={FIX_LABEL[note.fix.kind]} />
+        </Button>
+      ) : null}
+    </Empty>
+  );
+}
+
+/**
+ * An empty page's one state with its one press (`EmptyState`'s shape), whose press spins while it is out: his Retry on
+ * "This folder did not load" keeps the failure and its words until the answer replaces them.
+ */
+function FailedEmpty({ title, line, action, busy }: { title: string; line?: string | undefined; action?: { label: string; onClick(): void }; busy: boolean }) {
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyTitle>{title}</EmptyTitle>
+        {line ? <EmptyDescription>{line}</EmptyDescription> : null}
+      </EmptyHeader>
+      {action ? (
+        <Button size="sm" variant="secondary" disabled={busy} onClick={action.onClick}>
+          <BusyLabel busy={busy} label={action.label} />
         </Button>
       ) : null}
     </Empty>
@@ -761,6 +781,7 @@ export function PageView({
   find = null,
   under,
   results = false,
+  lifeosHost = null,
   drawn,
   seat = null,
   pictures = null,
@@ -774,7 +795,7 @@ export function PageView({
   page: FilePage;
   panelId: string;
   /** the folder's rows; null while its place is not known yet */
-  listing: (Listing & { loadMore(): void; retry(): void }) | null;
+  listing: (Listing & { loadMore(): void; retry(): void | Promise<void> }) | null;
   /** the copy of the place the folder is read from */
   copy: PlaceCopy | null;
   /** where the folder's rows are asked, for the shapes that list more than this folder (Columns); null where there is no host to ask */
@@ -794,6 +815,8 @@ export function PageView({
   under?: ReactNode;
   /** the rows are a search's results from many places: the second column says where each lives */
   results?: boolean;
+  /** a search's: the host whose LifeOS rows it reads (the workspace's, with LifeOS among the places searched); null where it reads none */
+  lifeosHost?: string | null;
   /** the shape and order to draw with, in place of the ones this window keeps for the folder (a preview page) */
   drawn?: PageLook & { picked?: readonly string[]; renaming?: string; quick?: boolean };
   /** the window's Beside seat, where a file of the workspace's own host opens as itself beside the list */
@@ -991,13 +1014,16 @@ export function PageView({
   // the host's live status, and lists again by itself once it is back; nothing that needs the session is offered.
   const lifeos = useLifeosPlace(copy, listing);
   const lifeosDown = readsLifeos(copy) && (!!lifeos.down || lifeos.waits);
-  // A search of every place while the host's LifeOS is down leaves LifeOS's rows out: one line over the results says
-  // why, by the rule, and the search runs again once LifeOS is back.
-  const hostDown = useHostLive(copy?.link ?? "").down;
-  const searchDown = results ? hostDown : null;
+  // Back since its last read failed, and listing again: the list's bones, never the old cause.
+  const lifeosAgain = readsLifeos(copy) && !!lifeos.again;
+  // A search that reads LifeOS while its host's LifeOS is down or on its way leaves LifeOS's rows out: one line over
+  // the results says why, by the rule, and the search runs again once LifeOS is back.
+  const searchHost = results ? lifeosHost : null;
+  const searchLive = useHostLive(searchHost ?? "");
+  const searchSays = !!searchHost && (!!searchLive.down || searchLive.waits);
   const newestListing = useRef(listing);
   newestListing.current = listing;
-  useLiveDown(null, results ? copy?.link : null, () => newestListing.current?.retry());
+  useLiveDown(null, searchHost, () => newestListing.current?.retry());
   const shapeProps: ShapeProps = {
     entries,
     picked,
@@ -1030,7 +1056,12 @@ export function PageView({
   const gap = results && listing?.loaded && !listing.error ? searchGap(listing) : null;
   // A folder that is gone cannot come back on Retry: the folder above it is the way on, else Back.
   const gone = !!listing?.error && folderGone(listing.error);
-  const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => listing?.retry() };
+  const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => void listing?.retry() };
+  // His Retry (or Wake it) keeps the state it was pressed on, spinning; any other read with no rows draws the bones, and
+  // so does a search with none while LifeOS, which it also reads, is on its way.
+  const retrying = !!listing?.retrying;
+  const pressedOn = !!listing?.error || !!gap?.fix || !!down?.fix;
+  const reading = !!listing && ((listing.loading && !(retrying && pressedOn)) || (searchSays && searchLive.waits));
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
   else if (lifeosDown)
@@ -1043,8 +1074,8 @@ export function PageView({
         onRetry={() => refreshLifeos(copy!.link).catch(() => undefined).then(() => listing?.retry())}
       />
     );
-  else if (!listing || !listing.loaded || (!entries.length && (listing.searching || !!listing.pending?.length))) body = <ListBones compact={compact} />;
-  else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
+  else if (!listing || !listing.loaded || (!entries.length && (lifeosAgain || listing.searching || !!listing.pending?.length || reading))) body = <ListBones compact={compact} />;
+  else if (listing.error && !entries.length) body = listing.away ? null : <FailedEmpty title="This folder did not load" line={listing.error} action={way} busy={retrying} />;
   else if (!entries.length && filter) body = (
       // Clear filters puts the whole folder and its trail back; Return in the field still searches every place.
       <EmptyState
@@ -1059,7 +1090,7 @@ export function PageView({
         }}
       />
     );
-  else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap?.fix ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
+  else if (!entries.length && results) body = <FailedEmpty title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap?.fix ? { action: { label: "Retry", onClick: () => void listing.retry() } } : {})} busy={retrying} />;
   else if (!entries.length)
     body =
       down && (down.fix?.kind !== "wake" || !!slept) ? (
@@ -1114,9 +1145,9 @@ export function PageView({
     );
   }
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
-  const line = lifeosDown ? null : searchDown ? (
+  const line = lifeosDown || lifeosAgain ? null : searchSays ? (
     <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
-      <DownLine session={searchDown} className="min-h-6 flex-1" />
+      <HostLine live={searchLive} className="min-h-6 flex-1" />
     </div>
   ) : acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
@@ -1199,7 +1230,7 @@ export function PageView({
             Empty Trash
           </Button>
         ) : null}
-        {acts && !inTrash && !lifeosDown ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
+        {acts && !inTrash && !lifeosDown && !lifeosAgain ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
       </PageBar>
       {under}
       {line}

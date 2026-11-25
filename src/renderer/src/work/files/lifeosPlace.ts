@@ -1,4 +1,6 @@
-import type { FilePlace } from "@shared/work/files";
+import type { FileSearchFilter } from "@shared/contract-work-files";
+import { kindOk, wants } from "@shared/work/fileSearch";
+import { PLACE, type FilePlace } from "@shared/work/files";
 import { savedOfReason } from "../shell/DownEmpty";
 import { savedOfState, useLiveDown, type LiveDown, type SavedDown } from "../shell/lifeosLive";
 import type { PlaceCopy } from "./model";
@@ -24,8 +26,12 @@ export function lifeosSaved(copy: PlaceCopy | null, listing: Pick<Listing, "load
 
 /**
  * What a LifeOS place's page says now, by the host's live status (`useLiveDown`): the state to word, or a wait, or
- * nothing. When that host says connected again the folder is listed again, with no press.
+ * `again` (connected heard since, and the folder is listed again with no press: the page draws the list's bones until
+ * that read lands, never the old cause), or nothing.
  */
-export function useLifeosPlace(copy: PlaceCopy | null, listing: (Pick<Listing, "loaded" | "loading" | "error"> & { retry(): void }) | null): LiveDown {
+export function useLifeosPlace(copy: PlaceCopy | null, listing: (Pick<Listing, "loaded" | "loading" | "error"> & { retry(): void | Promise<void> }) | null): LiveDown {
   return useLiveDown(lifeosSaved(copy, listing), readsLifeos(copy) ? copy.link : null, () => listing?.retry());
 }
+
+/** Whether a search with this filter reads LifeOS (its documents and sheets), as the host's own LifeOS source asks. */
+export const searchReadsLifeos = (filter: FileSearchFilter): boolean => wants(filter, PLACE.lifeos) && (kindOk(filter, "document") || kindOk(filter, "sheet"));

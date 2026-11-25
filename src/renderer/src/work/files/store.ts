@@ -767,6 +767,7 @@ export function resetFilesStore(): void {
   deskAsks.clear();
   tabSearches.clear();
   homes.clear();
+  homeReads.clear();
   look = null;
   windowId = null;
 }
@@ -785,6 +786,8 @@ export interface Listing {
   error: string | null;
   /** the machine did not answer, as against a refusal about the folder */
   away: boolean;
+  /** his Retry is out: the page keeps what it said (a failure and its words, a search's gap) and that Retry spins */
+  retrying?: boolean;
   /** when a kept list was read (a machine asleep) */
   asOf?: number;
   /** the error is a later page's: the rows above it stay, and its cursor is kept for Retry */
@@ -1061,7 +1064,10 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
     if (meta) meta.dirty = false;
   }
   const quiet = !more && !retry && !!was?.loaded && !was.error;
-  if (!quiet) putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
+  // His Retry keeps what the page said until the answer replaces it; any other read of a page that failed clears the
+  // failure, and the page draws its bones (never "empty" while a read is out).
+  if (retry && !more && was?.loaded) putListing(key, { ...was, loading: true, retrying: true, round });
+  else if (!quiet) putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
   const search = from.search;
   // A search's desktops are asked once a search, beside its host, and only for its first page: a push's read or a
   // part of the host's answer reuses that ask, and only his Retry asks them again.
@@ -1126,7 +1132,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   } catch (err) {
     const now = listings.get(key);
     if (!now || listingRound.get(key) !== round) return;
-    putListing(key, { ...now, loaded: true, loading: false, searching: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
+    putListing(key, { ...now, loaded: true, loading: false, searching: false, retrying: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
 
@@ -1177,7 +1183,7 @@ function pushKey(copy: PlaceCopy, at: FolderRef): string | null {
  * A folder's rows, live: the first page on first use, more as the list nears its end (`loadMore`), again from the top
  * when its host says a name in it changed, and again when the window comes back to it.
  */
-export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort = DEFAULT_SORT): Listing & { loadMore(): void; retry(): void } {
+export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort = DEFAULT_SORT): Listing & { loadMore(): void; retry(): Promise<void> } {
   const key = from ? listingKey(from, at, sort) : "";
   const value = useSyncExternalStore(
     (listener) => {
@@ -1232,8 +1238,8 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     ...value,
     ...(pending ? { pending } : { pending: undefined }),
     loadMore: () => void (from && load(key, from, at, sort, true)),
-    // Retry, and Wake it over a sleeping folder, are his press.
-    retry: () => void (from && load(key, from, at, sort, false, false, true, true)),
+    // Retry, and Wake it over a sleeping folder, are his press; it settles when the answer lands.
+    retry: () => (from ? load(key, from, at, sort, false, false, true, true) : Promise.resolve()),
   };
 }
 
@@ -1270,22 +1276,31 @@ function putHome(key: string, next: HomeKept): void {
   homes.set(key, next);
   for (const listener of homeListeners.get(key) ?? []) listener();
 }
-function readHome(link: string, workspaceId: string): void {
+/** Each Home read out, by key: a read asked while one is out settles with the one after it. */
+const homeReads = new Map<string, Promise<void>>();
+
+function readHome(link: string, workspaceId: string): Promise<void> {
   const key = homeKey(link, workspaceId);
   const was = homes.get(key) ?? NO_HOME;
-  if (was.reading) return void putHome(key, { ...was, again: true });
+  if (was.reading) {
+    putHome(key, { ...was, again: true });
+    return homeReads.get(key) ?? Promise.resolve();
+  }
   putHome(key, { ...was, reading: true, again: false });
-  void ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
+  const read = ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
     (home) => ({ home, error: null }),
     (err: unknown) => ({ home: (homes.get(key) ?? NO_HOME).home, error: workErrorWords(err) || "The host did not answer." }),
-  ).then((got) => {
+  ).then((got): Promise<void> | undefined => {
     const now = homes.get(key) ?? NO_HOME;
     putHome(key, { ...got, reading: false, again: false });
-    if (now.again) readHome(link, workspaceId);
+    if (homeReads.get(key) === read) homeReads.delete(key);
+    return now.again ? readHome(link, workspaceId) : undefined;
   });
+  homeReads.set(key, read);
+  return read;
 }
 
-export function useHome(link: string, workspaceId: string): { home: FilesHome | null; error: string | null; retry(): void } {
+export function useHome(link: string, workspaceId: string): { home: FilesHome | null; error: string | null; retry(): Promise<void> } {
   const key = homeKey(link, workspaceId);
   const state = useSyncExternalStore(
     (listener) => {

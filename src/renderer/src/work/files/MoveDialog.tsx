@@ -5,7 +5,7 @@ import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronRight } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
 import { Tip } from "../../components/tip";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { KindGlyph } from "./KindGlyph";
@@ -195,13 +195,14 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
       </nav>
       <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {first}
-        {!listing.loaded ? (
+        {/* A read with no rows is the bones, but his Retry keeps "did not load" with that Retry spinning. */}
+        {!listing.loaded || (!folders.length && listing.loading && !listing.retrying) ? (
           <RowBones />
         ) : listing.error && !folders.length ? (
           <div className="flex flex-col items-start gap-2 p-2 text-xs text-muted-foreground">
             <span>This folder did not load.</span>
-            <Button variant="ghost" size="xs" onClick={listing.retry}>
-              Retry
+            <Button variant="ghost" size="xs" disabled={!!listing.retrying} onClick={() => void listing.retry()}>
+              <BusyLabel busy={!!listing.retrying} label="Retry" />
             </Button>
           </div>
         ) : !folders.length ? (

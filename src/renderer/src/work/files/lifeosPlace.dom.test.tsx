@@ -138,42 +138,18 @@ describe("a reason kept as words (savedOfReason)", () => {
   });
 });
 
-/** Council round 10, the walk: Files' search and Home left LifeOS's rows out in silence while it was down. */
-describe("a search of every place and Home while the host's LifeOS is down", () => {
-  const found: Listed = { entries: [], trail: [], loaded: true, more: false, loading: false, error: null, away: false, loadMore: () => undefined, retry: vi.fn() } as never;
-
-  it("says over a search's results why LifeOS's rows are left out, and searches again once it is back", () => {
-    setLifeosStatus("box", st("signed-out"));
-    const retry = vi.fn();
-    const copy = { place: { ...place({ state: "ok" }), id: "folder", kind: "folder" } as FilePlace, link: "box", host: "The box", wire: "files" as const };
-    render(
-      <PageView
-        page={PAGE}
-        panelId="p1"
-        listing={{ ...found, retry }}
-        copy={copy}
-        results
-        trail={[]}
-        canBack={false}
-        canForward={false}
-        busy={null}
-        fixes={{ busy: false, run: () => undefined }}
-        onBack={() => undefined}
-        onForward={() => undefined}
-        onGo={() => undefined}
-        onOpen={() => undefined}
-      />,
-    );
-    expect(document.querySelector("[data-session-down]")?.textContent).toContain("Not signed in to LifeOS on the box");
-    act(() => setLifeosStatus("box", st("connected")));
-    expect(document.querySelector("[data-session-down]")).toBeNull();
-    expect(retry).toHaveBeenCalledTimes(1);
-  });
-
+/**
+ * Council round 10, the walk: Files' search and Home left LifeOS's rows out in silence while it was down. A search of
+ * every place is tested through the real Search tab (lifeosWaits.dom.test.tsx): the round 10 case here mounted the
+ * page with a copy the tab never gives, and so missed that the tab's line never had a host.
+ */
+describe("Home while the host's LifeOS is down", () => {
   it("puts the line over Home and claims no empty Home while LifeOS's rows are left out", async () => {
     const { HomePage } = await import("./Home");
-    render(<HomePage panelId="p1" home={{ waiting: [], starred: [], recent: [] }} error={null} busy={null} bar={null} lifeos={<span>Not signed in to LifeOS on the box</span>} onRetry={() => undefined} onOpen={() => undefined} />);
-    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    setLifeosStatus("box", st("signed-out"));
+    const down = { environmentId: "box", sector: null, client: null, state: "signed-out" as const };
+    render(<HomePage panelId="p1" home={{ waiting: [], starred: [], recent: [] }} error={null} busy={null} bar={null} lifeos={{ environmentId: "box", down, waits: false }} onRetry={() => undefined} onOpen={() => undefined} />);
+    expect(document.querySelector("[data-session-down]")?.textContent).toBe("Not signed in to LifeOS on the boxSign in");
     expect(screen.queryByText("Nothing here yet")).toBeNull();
   });
 });

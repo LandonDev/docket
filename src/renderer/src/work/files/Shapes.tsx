@@ -3,7 +3,7 @@ import type { FileCrumb, FilePage } from "@shared/contract-work-files";
 import type { FileEntry, FileSort, FolderRef } from "@shared/work/files";
 import { ChevronRight } from "../../chrome/icons";
 import { VirtualRows } from "../../chrome/railVirtualRows";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { dayTime } from "../../lib/duration";
@@ -287,7 +287,8 @@ function Column({
     );
   };
   let body: ReactNode;
-  if (!listing.loaded)
+  // A read with no rows is the bones, but his Retry keeps "did not load" with that Retry spinning.
+  if (!listing.loaded || (!listing.entries.length && listing.loading && !listing.retrying))
     body = (
       <div role="status" aria-label="Loading" aria-busy className="px-2 pt-1">
         {["w-[60%]", "w-[44%]", "w-[52%]"].map((w, i) => (
@@ -302,8 +303,8 @@ function Column({
     body = (
       <div className="flex flex-col items-start gap-2 p-3 text-xs text-muted-foreground">
         <span>This folder did not load.</span>
-        <Button variant="ghost" size="xs" onClick={listing.retry}>
-          Retry
+        <Button variant="ghost" size="xs" disabled={!!listing.retrying} onClick={() => void listing.retry()}>
+          <BusyLabel busy={!!listing.retrying} label="Retry" />
         </Button>
       </div>
     );

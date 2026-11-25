@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
-// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
+// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -443,6 +443,39 @@ export function FilesLifeosDown() {
           </Window>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * A read out (council round 11): Retry pressed on a folder that did not load, the failure kept with that Retry
+ * spinning; a search while the box's LifeOS connects (the wait, no press, the bones) and while it is signed out (the
+ * line over what came); Home while LifeOS connects, a row only LifeOS opens greyed.
+ */
+export function FilesWaits() {
+  Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  setLifeosStatus("box-connecting", { lifeos: { state: "connecting" }, keys: [] } as never);
+  setLifeosStatus("box-out", { lifeos: { state: "signed-out" }, keys: [] } as never);
+  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Results for “sponsor”", query: "sponsor" };
+  const found = entries.filter((e) => !e.folder).slice(0, 3).map((e) => ({ ...e, where: { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }));
+  const search = (host: string, rows: FileEntry[]) => (
+    <PageView {...common} acts={null} page={searchPage} copy={null} lifeosHost={host} trail={[{ name: searchPage.name, at: searchPage.at }]} listing={listing({ entries: rows, trail: [] })} results onReveal={noop} />
+  );
+  const brief: FileEntry = { key: "lifeos:docs:1", ref: { at: "lifeos", table: "docs", id: "1" } as never, folder: null, name: "Sponsor brief", kind: "document", changed: NOW - 2 * day };
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={720} height={300}>
+        <PageView {...common} listing={listing({ entries: [], error: "You may not read that folder.", loading: true, retrying: true })} />
+      </Window>
+      <Window width={720} height={300}>
+        {search("box-connecting", [])}
+      </Window>
+      <Window width={720} height={300}>
+        {search("box-out", found)}
+      </Window>
+      <Window width={720} height={360}>
+        <HomePage panelId="p" home={{ waiting: [], starred: [brief, home.starred[0]!], recent: home.recent.slice(0, 2) }} error={null} busy={null} lifeos={{ environmentId: "box-connecting", down: null, waits: true }} onRetry={noop} onOpen={noop} bar={<PageBar name="Home" trail={[]} find={find} canBack={false} canForward={false} onBack={noop} onForward={noop} onGo={noop} />} />
+      </Window>
     </div>
   );
 }

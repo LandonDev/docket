@@ -11,6 +11,8 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { ViewStateLine } from "../views/ViewStateLine";
+import { HostLine } from "../shell/DownLine";
+import type { HostLive } from "../shell/lifeosLive";
 import { KindGlyph } from "./KindGlyph";
 import { homeLists, whereWords, type Sidebar } from "./model";
 import type { Busy } from "./open";
@@ -27,7 +29,7 @@ const HELD_WORDS: Record<string, string> = { make: "New", rename: "Rename", move
 /** Under 360px of Home a state's words go from sight whole (still in the tip and read out), as the folder's list does its progress. */
 const CUT = "max-w-0 @[360px]/files-home:max-w-40";
 
-function HomeList({ title, entries, busy, onOpen }: { title: string; entries: readonly FileEntry[]; busy: Busy; onOpen(entry: FileEntry): void }) {
+function HomeList({ title, entries, busy, held, onOpen }: { title: string; entries: readonly FileEntry[]; busy: Busy; held: boolean; onOpen(entry: FileEntry): void }) {
   if (!entries.length) return null;
   return (
     <section aria-label={title} className="flex flex-col">
@@ -39,7 +41,7 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
         // gives it up first, under 400px, so the name keeps its room.
         const stated = opening || !!entry.held || !!entry.state;
         return (
-          <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
+          <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
             {/* Its own width as its basis (`flex-auto`), so a state beside it gives way first (`RowWords`). */}
             <span className="min-w-0 flex-auto truncate text-start text-foreground">{entry.name}</span>
@@ -61,31 +63,40 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
   );
 }
 
-/** The three lists, each file in the first it belongs to: one that waits on him is not starred again or recent again. */
-function HomeLists({ home, busy, onOpen }: { home: FilesHome; busy: Busy; onOpen(entry: FileEntry): void }) {
+/** A row the host opens through its LifeOS session: a LifeOS document or sheet, a mail's file (a held change opens its Outbox item). */
+const readsSession = (entry: FileEntry): boolean => !entry.held && (entry.ref?.at === "lifeos" || entry.ref?.at === "mail");
+
+/**
+ * The three lists, each file in the first it belongs to: one that waits on him is not starred again or recent again.
+ * `held`: the host's LifeOS is down or on its way (its line says so above), and a row only it opens is greyed.
+ */
+function HomeLists({ home, busy, held, onOpen }: { home: FilesHome; busy: Busy; held: boolean; onOpen(entry: FileEntry): void }) {
   const lists = homeLists(home);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
-      <HomeList title="Waiting on you" entries={lists.waiting} busy={busy} onOpen={onOpen} />
-      <HomeList title="Starred" entries={lists.starred} busy={busy} onOpen={onOpen} />
-      <HomeList title="Recent" entries={lists.recent} busy={busy} onOpen={onOpen} />
+      <HomeList title="Waiting on you" entries={lists.waiting} busy={busy} held={held} onOpen={onOpen} />
+      <HomeList title="Starred" entries={lists.starred} busy={busy} held={held} onOpen={onOpen} />
+      <HomeList title="Recent" entries={lists.recent} busy={busy} held={held} onOpen={onOpen} />
     </div>
   );
 }
 
-export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRetry, onOpen }: { panelId: string; home: FilesHome | null; error: string | null; busy: Busy; bar: ReactNode; /** the host's LifeOS down: its line, since Waiting on you leaves LifeOS's rows out */ lifeos?: ReactNode; onRetry(): void; onOpen(entry: FileEntry): void }) {
-  // "Nothing here yet" is not known while LifeOS's rows are left out: the line says why instead.
-  const empty = !!home && !home.waiting.length && !home.starred.length && !home.recent.length && !lifeos;
+export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRetry, onOpen }: { panelId: string; home: FilesHome | null; error: string | null; busy: Busy; bar: ReactNode; /** the host's own LifeOS (`useHostLive`), whose rows Waiting on you holds; null for a job with none */ lifeos?: HostLive | null; onRetry(): void; onOpen(entry: FileEntry): void }) {
+  // While the host's LifeOS is down or on its way, Waiting on you leaves its rows out: one line says why, and
+  // "Nothing here yet" is not claimed. On its way with nothing else to show, Home is still loading.
+  const says = !!lifeos && (!!lifeos.down || lifeos.waits);
+  const nothing = !!home && !home.waiting.length && !home.starred.length && !home.recent.length;
+  const loading = !home || (nothing && !!lifeos?.waits);
   return (
     <div role="tabpanel" id={panelId} data-files-home className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {bar}
-      {error ? <ViewStateLine word="Home did not load" detail={error} onRetry={onRetry} /> : lifeos ? (
+      {error ? <ViewStateLine word="Home did not load" detail={error} onRetry={onRetry} /> : says ? (
         <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
-          {lifeos}
+          <HostLine live={lifeos!} className="min-h-6 flex-1" />
         </div>
       ) : null}
       <div className="@container/files-home flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-        {!home ? (
+        {loading ? (
           error ? null : (
             <div role="status" aria-label="Loading" aria-busy className="mx-auto flex w-full max-w-3xl flex-col gap-1 p-4">
               {["w-[42%]", "w-[58%]", "w-[36%]", "w-[50%]"].map((w, i) => (
@@ -96,10 +107,10 @@ export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRet
               ))}
             </div>
           )
-        ) : empty ? (
+        ) : nothing && !says ? (
           <EmptyState title="Nothing here yet" line="Files you open and star show here." />
         ) : (
-          <HomeLists home={home} busy={busy} onOpen={onOpen} />
+          <HomeLists home={home!} busy={busy} held={says} onOpen={onOpen} />
         )}
       </div>
     </div>
