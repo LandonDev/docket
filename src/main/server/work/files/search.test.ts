@@ -86,6 +86,8 @@ describe('a search by name', () => {
     expect(by('Budget 2027.xlsx').where).toEqual({ place: id, name: 'General', trail: ['Budgets'] })
     expect(by('Budgets')).toMatchObject({ kind: 'folder', ref: null, folder: at(join(rig.team, 'General', 'Budgets')) })
     expect(got.more).toBeUndefined()
+    // A library has no content index here: its files were matched by name alone, and the answer says so.
+    expect(got.byName).toContain('General')
   })
 
   it('finds a name deep in the folder with the folders down to it, and no hidden name or link', async () => {
@@ -300,6 +302,8 @@ describe('the Windows VM', () => {
     // (Other words than the search just kept, which would answer from what it found.)
     const got = await search('vm budget', {}, thread('t1'))
     expect(calls).toEqual(['files.search'])
+    // The guest's walk matches names alone too.
+    expect(got.byName).toEqual(expect.arrayContaining(['Events', 'General']))
     expect(got.entries.find((e) => e.name === 'VM budget.xlsx')).toMatchObject({ shared: true, local: false, key: 'lib:esportsstaffgeneral:Plans/VM budget.xlsx', where: { name: 'General', trail: ['Plans'] } })
     const awake = await search('budget')
     expect(awake.asleep).toBeUndefined()

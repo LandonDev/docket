@@ -383,6 +383,8 @@ export interface FilesListing {
   more?: true
   /** a search left these places out, by name, because their machine sleeps and only his press wakes it (the Windows VM) */
   asleep?: string[]
+  /** a search matched these places' files by name alone, never the words inside them (a library has no content index here) */
+  byName?: string[]
   /** a search's first page: the places still being searched, by name (their rows join as each answers) */
   pending?: string[]
   /** a search's first page: how many of its places have answered (`seen` on the next ask) */

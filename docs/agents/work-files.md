@@ -1582,7 +1582,7 @@ while its screen is unlocked.
 | `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch`, `read`, `preview`, `thumbs` | | | declared; not built |
 | `home {workspaceId}` | read | yes | Waiting on you (held file acts, closed copies whose changes their file did not take (`unsent`, to his press alone), and this host's files with suggestions waiting: "Agents"; then LifeOS rows with suggestions waiting and mail's files not kept, and a key without `approve` gets no mail's), Starred and Recent, 12 each. Not a thread's or a peer's |
 | `names {workspaceId, text}` | read | yes | Go to's list, 20 rows at most, from the database alone ("Search and Go to") |
-| `search {workspaceId, query, filter?, cursor?}` | read | yes | a page of 100 results, newest first, each with `where`; `more` where a source stopped early, `asleep` for the places of a sleeping VM |
+| `search {workspaceId, query, filter?, cursor?}` | read | yes | a page of 100 results, newest first, each with `where`; `more` where a source stopped early, `asleep` for the places of a sleeping VM, `byName` for the places matched by name alone |
 | `searches`, `saveSearch {id?, name, query, filter?}`, `dropSearch {id}` | read; operate | yes | saved searches, the Docs view's saved views (`work_docs_views`). Not a thread's or a peer's |
 | `project {ref, projectId, on}` | operate, and `approve` where others can open the file | screen | Add to a project… and Take out of this project: `{ projects: { id, name }[] }`, the file's projects after the change ("LifeOS, From mail and Projects") |
 | `read`, `preview`, `thumbs` | | | declared; not built |
@@ -1806,6 +1806,15 @@ whoever asks (his window, a remote key, a thread its workspace lets use the
 VM, another host of his): the answer says `more` and names the VM's places
 in `asleep`, for the window's line and its Wake press.
 
+**By name only.** A library has no index of the words inside its files here:
+the walk on this disk (`searchLibraries`) and the guest's in the VM
+(`vmSearch`) match names alone. Each such source names the places it searched
+in `byName` (`SourceAnswer`, the answer's optional `FilesListing.byName`), and
+the window says so in the search's line (`searchGap`): "Events and General
+were searched by name only", muted with nothing to press, over the results
+or under "Nothing found". Only the workspace folder's small text files are
+read for words.
+
 **His desktops' folders** are theirs to walk: a host cannot walk another
 computer's folders. So on a search of every place (his Return, or a saved
 search opened) the window asks, itself, each desktop the workspace may use
@@ -1869,7 +1878,7 @@ LifeOS each time and never fed to the names table, so Go to lists a LifeOS
 row only from his recents and tabs.
 
 **A later place** (Google Drive) is one function more: a
-`PlaceSource` (`(scope) => Promise<{ hits, more?, asleep? }>`, each hit a
+`PlaceSource` (`(scope) => Promise<{ hits, more?, asleep?, byName? }>`, each hit a
 `FileEntry` with its place's id) added to `SOURCES` in `files/search.ts`. It
 honours `scope.signal`, holds to its own deadline, reads only names (and
 text where the place has an index), and checks its rows for `scope.rowsBy`.

@@ -736,15 +736,19 @@ const andList = (names: readonly string[]): string => (names.length < 2 ? (names
  * not searched (none of the window's links reaches them, or theirs is down), or a search that stopped before it
  * looked everywhere. Retry only where asking again could help. Null when it read every place.
  */
-export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[]; unsearched?: readonly string[] }): FilesNote | null {
+export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[]; unsearched?: readonly string[]; byName?: readonly string[] }): FilesNote | null {
   const asleep = found.asleep ?? [];
   const desks = found.unsearched ?? [];
+  // A place with no content index here (a library on this disk or in the VM) was searched by its files' names alone.
+  const named = found.byName ?? [];
+  const byName = named.length ? `${andList(named)} ${named.length === 1 ? "was" : "were"} searched by name only` : null;
   if (asleep.length) {
     const its = asleep.length === 1 ? "Its" : "Their";
     return { title: `${andList(asleep)} ${asleep.length === 1 ? "is" : "are"} asleep`, line: desks.length ? `${its} files and folders on ${andList(desks)} were not searched.` : found.incomplete ? "Not every place was searched." : `${its} files were not searched.`, fix: { kind: "retry" } };
   }
-  if (desks.length) return { title: `Folders on ${andList(desks)} were not searched`, ...(found.incomplete ? { fix: { kind: "retry" as const } } : {}) };
-  return found.incomplete ? { title: "Not every place was searched", fix: { kind: "retry" } } : null;
+  if (desks.length) return { title: `Folders on ${andList(desks)} were not searched`, ...(byName ? { line: `${byName}.` } : {}), ...(found.incomplete ? { fix: { kind: "retry" as const } } : {}) };
+  if (found.incomplete) return { title: "Not every place was searched", ...(byName ? { line: `${byName}.` } : {}), fix: { kind: "retry" } };
+  return byName ? { title: byName } : null;
 }
 
 // ── a desktop's own search ────────────────────────────────────────────

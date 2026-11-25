@@ -828,6 +828,8 @@ export interface Listing {
   incomplete?: boolean;
   /** a search left these places out because their machine sleeps */
   asleep?: string[];
+  /** a search matched these places' files by name alone, never the words inside them */
+  byName?: string[];
   /** a search did not search the folders on these desktops: no link of this window reaches them, or theirs is down */
   unsearched?: string[];
   /** a search's rows are in, and his desktops are still searching their folders */
@@ -1163,6 +1165,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       // What a search left out is said by every page of it alike.
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
+      ...(page.byName?.length ? { byName: page.byName } : {}),
       ...deskSays(desk),
       ...(desks || (more && now.searching) ? { searching: true, ...((deskSaid ?? now.deskPending) ? { deskPending: deskSaid ?? now.deskPending } : {}) } : {}),
       ...(desk ? { desk } : {}),
@@ -1210,6 +1213,7 @@ async function restOf(key: string, from: ListFrom, at: FolderRef, sort: FileSort
       pending: page.pending?.length ? page.pending : undefined,
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
+      ...(page.byName?.length ? { byName: page.byName } : {}),
     });
     if (!page.pending?.length || page.parts === undefined || page.parts <= seen) return;
     seen = page.parts;

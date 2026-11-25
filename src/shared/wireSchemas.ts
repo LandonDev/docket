@@ -1614,6 +1614,7 @@ export const FilesListingSchema = z.object({
   asOf: z.number().optional(),
   more: z.literal(true).optional(),
   asleep: z.array(z.string()).optional(),
+  byName: z.array(z.string()).optional(),
   sleeping: z.enum(['asleep', 'waking']).optional(),
   pending: z.array(z.string()).optional(),
   parts: z.number().optional()

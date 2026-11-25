@@ -9042,11 +9042,12 @@ public struct FilesListing: Codable, Hashable, Sendable {
     public let asOf: Double?
     public let more: Bool?
     public let asleep: [String]?
+    public let byName: [String]?
     public let sleeping: Sleeping?
     public let pending: [String]?
     public let parts: Double?
 
-    public init(entries: [FileEntry], next: String? = nil, stale: Bool? = nil, place: String? = nil, trail: [Trail]? = nil, asOf: Double? = nil, more: Bool? = nil, asleep: [String]? = nil, sleeping: Sleeping? = nil, pending: [String]? = nil, parts: Double? = nil) {
+    public init(entries: [FileEntry], next: String? = nil, stale: Bool? = nil, place: String? = nil, trail: [Trail]? = nil, asOf: Double? = nil, more: Bool? = nil, asleep: [String]? = nil, byName: [String]? = nil, sleeping: Sleeping? = nil, pending: [String]? = nil, parts: Double? = nil) {
         self.entries = entries
         self.next = next
         self.stale = stale
@@ -9055,6 +9056,7 @@ public struct FilesListing: Codable, Hashable, Sendable {
         self.asOf = asOf
         self.more = more
         self.asleep = asleep
+        self.byName = byName
         self.sleeping = sleeping
         self.pending = pending
         self.parts = parts

@@ -58,11 +58,13 @@ export interface Hit {
   place: string
 }
 
-/** What one source answers: its rows, whether it stopped before its end, and the places it left asleep. */
+/** What one source answers: its rows, whether it stopped before its end, the places it left asleep, and those it searched by name only. */
 export interface SourceAnswer {
   hits: Hit[]
   more?: boolean
   asleep?: string[]
+  /** places whose files it matched by name alone, never the words inside them (a library has no content index here) */
+  byName?: string[]
 }
 
 /** What every source is told: who asks, the words, the filter, the places it may search, the signal. */
@@ -282,6 +284,9 @@ function libraryHit(s: SearchScope, e: TeamsEntry, library: TeamsLibrary): Hit |
   return { entry: { ...entryOfRow(row, library.host, e.path, libraryKey(place, e.path)), shared: true, ...(where ? { where } : {}), ...(e.by ? { by: e.by } : {}) }, place: place.place.id }
 }
 
+/** The names of the library places a source searches, for its `byName`. */
+const libraryNames = (s: SearchScope, vm: boolean): string[] => [...new Set(s.libraries.filter((l) => !!l.library.vm === vm && wants(s.filter, l.place.id)).map((l) => l.place.name))]
+
 const librariesOfScope = (s: SearchScope, vm: boolean): TeamsLibrary[] => {
   const out = new Map<string, TeamsLibrary>()
   for (const l of s.libraries) if (!!l.library.vm === vm && wants(s.filter, l.place.id)) out.set(l.library.id, l.library)
@@ -300,7 +305,7 @@ const librarySource: PlaceSource = async (s) => {
     // A key's reach is judged by the real path of each row, not the library alone.
     return library && reachesPath(s.ctx, s.rowsBy, e.path) ? (libraryHit(s, e, library) ?? []) : []
   })
-  return { hits, more: got.more }
+  return { hits, more: got.more, byName: libraryNames(s, false) }
 }
 
 /**
@@ -318,7 +323,7 @@ const vmSource: PlaceSource = async (s) => {
   const got = await bounded(s.ctx, 'the Windows VM', vmSearch(libs, s.words.join(' '), undefined, s.signal), s.signal)
   if (!got) return { hits: [], more: true }
   const byId = new Map(libs.map((l) => [l.id, l]))
-  return { hits: got.entries.flatMap((e) => (byId.has(e.library) ? (libraryHit(s, e, byId.get(e.library)!) ?? []) : [])), more: got.more }
+  return { hits: got.entries.flatMap((e) => (byId.has(e.library) ? (libraryHit(s, e, byId.get(e.library)!) ?? []) : [])), more: got.more, byName: libraryNames(s, true) }
 }
 
 /** What this host listed or found before (`work_files_names`), each row checked for the caller as Go to checks it. */
@@ -374,6 +379,8 @@ interface Live {
   hits: Map<string, Hit>
   more: boolean
   asleep: Set<string>
+  /** the places searched by name only */
+  byName: Set<string>
   /** the places still searched, by their index in `SOURCES` */
   pending: Map<number, string>
   parts: number
@@ -403,7 +410,7 @@ function ownerName(ctx: Pick<WorkCtx, 'db'>): string | null {
 function start(s: SearchScope): Live {
   searchCounts.runs++
   const controller = new AbortController()
-  const live: Live = { hits: new Map(), more: false, asleep: new Set(), pending: new Map(), parts: 0, named: false, done: false, finished: Promise.resolve(), controller, listeners: new Set(), waiters: 0 }
+  const live: Live = { hits: new Map(), more: false, asleep: new Set(), byName: new Set(), pending: new Map(), parts: 0, named: false, done: false, finished: Promise.resolve(), controller, listeners: new Set(), waiters: 0 }
   const tell = (): void => {
     for (const listener of [...live.listeners]) listener()
   }
@@ -435,6 +442,7 @@ function start(s: SearchScope): Live {
       for (const hit of answer.hits) if (i !== 0 || !live.hits.has(hit.entry.key)) live.hits.set(hit.entry.key, hit)
       if (answer.more) live.more = true
       for (const name of answer.asleep ?? []) live.asleep.add(name)
+      for (const name of answer.byName ?? []) live.byName.add(name)
     }
     if (i === 0) live.named = true
     live.pending.delete(i)
@@ -652,6 +660,7 @@ export async function searchFiles(
     ...(next ? { next } : {}),
     ...(live.more ? { more: true as const } : {}),
     ...(live.asleep.size ? { asleep: [...live.asleep] } : {}),
+    ...(live.byName.size ? { byName: [...live.byName] } : {}),
     ...(!p.cursor ? { parts: live.parts, ...(pending.length ? { pending } : {}) } : {})
   }
 }

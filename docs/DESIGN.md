@@ -2193,7 +2193,9 @@ Around the canvas:
   did not load", Retry asks that page again); a search that left a place
   out says so in one line over its results, or under "Nothing found",
   with Retry (with nothing to press, "Folders on Purdue laptop were not
-  searched" is muted, a fact about the list and no heading); a machine
+  searched" is muted, a fact about the list and no heading; so is a
+  place whose files were matched by name alone, the words inside them
+  not read: "Events and General were searched by name only"); a machine
   asleep is one
   line over the list it kept ("The Windows VM is asleep", "This is the
   list from 1:40 PM.", Wake it) in the state line's shape with no failed

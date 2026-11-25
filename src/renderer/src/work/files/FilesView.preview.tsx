@@ -353,7 +353,7 @@ export function FilesSearch() {
   const found = entries.filter((e) => !e.folder).slice(0, 7).map((e, i) => ({ ...e, where: i % 2 ? { place: "folder", name: "Dummy Esports", trail: ["Events"] } : { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }));
   const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Results for “sponsor”", query: "sponsor" };
   return (
-    <div className="p-6">
+    <div className="flex flex-col gap-8 p-6">
       <Window width={900} height={560}>
         <PageView
           {...common}
@@ -361,11 +361,15 @@ export function FilesSearch() {
           page={searchPage}
           copy={null}
           trail={[{ name: searchPage.name, at: searchPage.at }]}
-          listing={listing({ entries: found, trail: [] })}
+          listing={listing({ entries: found, trail: [], byName: ["Events", "General"] })}
           results
           onReveal={noop}
           under={<SearchFilters filter={{ kinds: ["sheet", "pdf"], within: "month" }} choices={{ places: [], projects: [] }} saved={false} onFilter={noop} onSave={noop} onRemove={noop} />}
         />
+      </Window>
+      {/* Words that are only inside his library's files: nothing found, and why the words inside were not read. */}
+      <Window width={900} height={300}>
+        <PageView {...common} acts={null} page={searchPage} copy={null} trail={[{ name: searchPage.name, at: searchPage.at }]} listing={listing({ entries: [], trail: [], byName: ["Events", "General"] })} results onReveal={noop} />
       </Window>
     </div>
   );

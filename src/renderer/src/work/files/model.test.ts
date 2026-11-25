@@ -774,6 +774,14 @@ describe("the list's rules of round 1", () => {
     expect(searchGap({ unsearched: ["MacBook", "Purdue laptop"], incomplete: true })).toEqual({ title: "Folders on MacBook and Purdue laptop were not searched", fix: { kind: "retry" } });
     expect(searchGap({ asleep: ["The Windows VM"], unsearched: ["Purdue laptop"] })).toEqual({ title: "The Windows VM is asleep", line: "Its files and folders on Purdue laptop were not searched.", fix: { kind: "retry" } });
   });
+
+  it("says which places were searched by their files' names alone, the words inside them not searched", async () => {
+    const { searchGap } = await import("./model");
+    // Nothing to press: a fact about the list.
+    expect(searchGap({ byName: ["General"] })).toEqual({ title: "General was searched by name only" });
+    expect(searchGap({ byName: ["Events", "General"], unsearched: ["Purdue laptop"] })).toEqual({ title: "Folders on Purdue laptop were not searched", line: "Events and General were searched by name only." });
+    expect(searchGap({ byName: ["General"], incomplete: true })).toEqual({ title: "Not every place was searched", line: "General was searched by name only.", fix: { kind: "retry" } });
+  });
 });
 
 describe("a desktop's own search in a search of every place", () => {
