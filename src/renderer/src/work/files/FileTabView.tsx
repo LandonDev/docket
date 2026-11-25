@@ -37,14 +37,16 @@ import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, shownName, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
-import { askAutosave, saveAsWord, serviceOf, wordLine, wordPress, wordWaitsWords } from "./wordSave";
+import { saveAsWord, serviceOf, wordLine, wordPress, wordWaitsWords } from "./wordSave";
+import { wordDefault } from "./wordDefault";
+import { importLosses } from "../formats/importOnce";
 import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
 import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
-import { openSaveAs } from "./saveAsPort";
+import { dropsOf, openSaveAs } from "./saveAsPort";
 import { useWorkspaceOf } from "./workspaceOf";
 
 /**
@@ -132,6 +134,13 @@ function frameLine(copy: CopyWords | null, item: CanvasItem | null, env: string,
  * line, or where the file is kept while its kind says nothing of saving), then the line's presses, the file's
  * menu and Ask.
  */
+/** What saving over a Word file loses: its import's losses with what Preview counts for Word; null where this window did not import it. */
+function wordLosses(item: CanvasItem | null | undefined): string[] | null {
+  if (!item) return null;
+  const imported = importLosses(item.source);
+  return imported === null ? null : [...imported, ...dropsOf(item.id, "docx")];
+}
+
 /**
  * The end of a file tab's ⋯ (docs/DESIGN.md "The Files place"): the ways the file leaves or is saved (Download, Save
  * As…, Save as Template…, and a Word file's own choice, save by itself or ask each time), then Full Window and Close
@@ -370,23 +379,29 @@ export function FileTabView({
     [copySend, workspace.environmentId, workspace.id, tab.id],
   );
   const back = tab.back ? newestBack(tab.back, sendAsk.got) : undefined;
-  // A Word file opened as its document: whether the Word file holds his changes, and Save as Word (wordSave.ts).
+  // A Word file opened as its document: whether the Word file holds his changes, and Save to Teams (wordSave.ts). Its
+  // question names only what this file loses: what its import did not keep, and what Preview counts for Word.
+  const word = tab.word;
   const saveWord = (): Promise<void> =>
     saveAsWord(tab, {
       choose: confirmChoice,
       confirm: confirmAction,
       save: (keep, replace, version) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version),
       said: (text) => void loadToast().then((toast) => toast.message(text)),
+      losses: wordLosses(item),
+      ...(word && word.auto === undefined ? { first: { set: (on: boolean) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) } } : {}),
     }).then(() => undefined);
-  // The first time a Word file holds edits not in it: one notice, and his choice for the file (wordSave.ts).
-  const asked = useRef(false);
-  const word = tab.word;
+  // Nothing asks while he types (decision 4). A file with no choice of its own takes Settings → Work's, once, when that
+  // is not to ask: saved as he works, or on his press alone.
+  const defaulted = useRef(false);
   useEffect(() => {
-    if (!copy || !word || word.auto !== undefined || !word.since || asked.current) return;
-    asked.current = true;
-    void askAutosave(tab, { choose: confirmChoice, set: (on) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) }).catch((err: unknown) => sayError(err, "The choice was not kept", workspace.environmentId));
+    if (!copy || !word || word.auto !== undefined || defaulted.current) return;
+    const chosen = wordDefault();
+    if (chosen === "ask") return;
+    defaulted.current = true;
+    setWordAuto(workspace.environmentId, workspace.id, tab.id, chosen === "auto").catch((err: unknown) => sayError(err, "The choice was not kept", workspace.environmentId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [copy, word?.auto, word?.since]);
+  }, [copy, word?.auto]);
   const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
     const save = (keep: boolean, replace = false, version?: string): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version).then(() => undefined);
     // Replace goes over the change the line names (its version); a newer one there stops it again, and the line says so.

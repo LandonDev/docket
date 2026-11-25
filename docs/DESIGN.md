@@ -2145,10 +2145,18 @@ Around the canvas:
   changed", "Changes since 9:12 PM are not in the Word file", "Saved to
   MacBook as Word 9:12 PM", all muted; a save names the computer that
   holds the file, as a copy's line does), with one press while it does not,
-  Save to Teams as Word, asked in the house confirm ("Replace Plan.docx in
-  Teams?", what Word formatting may change, Replace and Keep Both; over a
-  file that changed there, one line says when, Keep Both holds the focus and
-  Replace stays his press; over one gone, Keep Both alone). A save into a Teams or OneDrive library never says it is
+  Save to Teams (the file is Word already). Nothing asks while he types. His
+  first press on a file asks once in the house confirm ("Save Plan.docx to
+  Teams as you work?", Save automatically and Ask me each time; either saves
+  it now), unless Settings → Work, Word files, says how new files save (Ask
+  the first time, the default; As I work; When I press Save); after Ask me
+  each time each press asks "Replace Plan.docx in Teams?" with Replace and
+  Keep Both. Each question names only what this file loses (what its import
+  did not keep and Preview's count for Word, in one sentence; none when it
+  has none); over a file that changed there, one line says when, Keep Both
+  holds the focus and Replace stays his press; over one gone, Keep Both
+  alone. Save As… on it never offers the file's own path ("Plan copy"): the
+  header's Save to Teams is saving, Save As… makes another file. A save into a Teams or OneDrive library never says it is
   in Teams before OneDrive has uploaded it: "Saved, uploading to Teams…" while that computer holds the bytes and OneDrive
   has not, "In Teams 1:52 PM" once it has (OneDrive in place of Teams for his own), "Saved to MacBook. OneDrive uploads
   it" where that computer cannot say, all muted; past a minute, in the foreground, "Not uploaded to Teams yet." with
@@ -3339,8 +3347,7 @@ Print… and Export… are docs/agents/work-editors.md.
 **Two keys every editor shares** (decision 11). ⌘S saves now what holds the
 focus: a Work file sends the edits it still holds, and its line says Saved
 only on that send's receipt; a Word file of Teams whose save is his press
-says so in a toast ("Plan.docx changes when you press Save to Teams as
-  Word."); a
+says so in a toast ("Plan.docx changes when you press Save to Teams."); a
 code editor saves on ⌘S only when the focus is in it. The menu's row is
 File → Save. ⌘P is Print inside an editor, and Go to everywhere else in
 the Files place.

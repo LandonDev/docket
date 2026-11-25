@@ -2671,9 +2671,18 @@ over a colleague's Word file but his own press.
   the Word file", "Saved to MacBook as Word 9:12 PM": a save names the computer that holds the file, as a copy's
   line does, and reads as in Teams only once OneDrive there says it has it (`wordLine`, then `cloudLine`). Before,
   it said "Saved to Teams" while only that computer had the file (W-18).
-- **Save to Teams as Word** (`work.files.wordSave`, the header's one press while the Word file lacks his edits): one
-  confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version, that Teams keeps its own
-  version history, and what Word formatting the editor does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. The file as it is
+- **Save to Teams** (`work.files.wordSave`, the header's one press while the Word file lacks his edits; "Save to
+  OneDrive" for his own; decision 4): nothing asks while he types. His first press on a file with no choice kept
+  asks once, "Save Plan.docx to Teams as you work?", with Save automatically and Ask me each time
+  (`work.files.wordAuto`), and either answer saves it now; after Ask me each time each press asks "Replace Plan.docx
+  in Teams?" with Replace and Keep Both. Each question names only what this file loses (`lossesLine`, renderer
+  files/wordSave.ts): what the import that made the document did not keep (its warnings, kept in the window by the
+  document's file, formats/importOnce.ts `importLosses`) and Preview's count for Word (`dropsOf`), none when it has
+  none, and the list of what this editor never keeps (`WORD_LOSSES`) where this window did not import it. Settings →
+  Work, Word files, "Save to Teams" holds the default for a file with no choice (work/files/wordDefault.ts: Ask the
+  first time, the default; As I work; When I press Save), which a tab sets on the file's record when it is not to
+  ask. Save As… on such a document never offers the file's own path: its name starts as "Plan copy" (SaveAs.tsx
+  `offeredStem`). The file as it is
   there now is read first (`freshBytes`): unchanged since it was read, by its version or, when only the version moved
   (a sync's touch, a copy an older build left with no version on record), by its bytes' sha256 against the bytes it
   was read with (`sha`, or the copy beside the document: `knownSha`), it is written over by that version. Changed
@@ -2703,9 +2712,8 @@ over a colleague's Word file but his own press.
   and Files' Trash. An autosave the holder refuses (not a computer or drive that did not answer) is said on the
   tab's `word.refused` until a save lands, "MacBook refused the save." and its reason, never Saving; one that met an
   away drive keeps saving and is tried on the next look. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
-  ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
-  file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
-  Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.
+  ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The
+  choice is asked on his first Save to Teams, never as he types (above); the file's menu changes it after.
   Only his document's live text is written: a thread's change to it waits as a suggestion, and a thread or a read
   key can neither save nor set the choice.
 - **New → Document in a library** makes Files' own blank Word file (resources/work-files/blank/blank.docx) in every

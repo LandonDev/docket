@@ -317,12 +317,16 @@ async function wordCase(): Promise<void> {
   }
   const wordsIn = (n: string): string => partOf(bytesInVm(n), 'word/document.xml')
   const one = `Agenda ${STAMP.slice(-4)} doors`
-  // One letter, then the notice the first change brings; his words after it is answered.
+  // One letter: nothing asks while he types (decision 4). His first press of the header's Save to OneDrive asks once.
   await typeIn('A')
-  const asked = await until('the notice', 60_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  const interrupted = await until('no question while he types', 8_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  check('nothing asks while he types', !interrupted)
+  await until('the header press', 60_000, async () => !!(await centre('button', 'Save to OneDrive')))
+  await press('button', 'Save to OneDrive', { starts: true })
+  const asked = await until('the question', 20_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
   const said = asked ? await ev<string>(`document.querySelector('[role="alertdialog"]').textContent`) : ''
   await shot('9-word-first-notice')
-  check('the first time, one notice names what Word may change, with Save automatically and Ask me each time', asked && said.includes('Save automatically') && said.includes('Ask me each time') && said.includes('nested tables'), said)
+  check('his first press asks once, with Save automatically and Ask me each time', asked && said.includes('Save automatically') && said.includes('Ask me each time'), said)
   await press('[role="alertdialog"] button', 'Save automatically', { starts: true })
   await until('the notice goes', 10_000, async () => !(await ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`)))
   await typeIn(` ${one}`)

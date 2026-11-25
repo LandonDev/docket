@@ -237,6 +237,14 @@ describe("the sheet for a document made of a file", () => {
     expect(saved()[0]).toMatchObject({ at: at("/cloud/General"), format: "docx", name: "Run of show.docx" });
   });
 
+  it("never offers the file's own path: a document of Run of show.docx starts as Run of show copy", async () => {
+    fromFile("Run of show.docx");
+    const dialog = await sheet();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]).toMatchObject({ at: at("/cloud/General"), format: "docx", name: "Run of show copy.docx" });
+  });
+
   it("sends Save again after a failure as the same press, so a file it made is answered, never made twice", async () => {
     fromFile("Budget.docx");
     world.fail = 1;

@@ -269,6 +269,10 @@ function newHost(over: { places?: FilePlace[]; sources?: FilesPlaces["sources"];
           return {};
         case "session.send":
           return {};
+        case "work.files.wordAuto":
+          return list();
+        case "work.files.wordSave":
+          return { at: 9 };
       }
       if (method.startsWith("session.")) return {};
       throw new Error(`unknown method: ${method}`);
@@ -850,6 +854,37 @@ describe("tabs", () => {
     expect(confirms.asked[1]).toMatchObject({ title: "Changes to Budget.xlsx have not reached another computer.", action: "Keep trying" });
     expect(calls(host, "work.files.tabClose")).toEqual([]);
     off();
+  });
+
+  it("never asks while he types in a Teams Word file; his first Save to Teams asks once how to save it, and saves it (decision 4)", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tab = host.tabs().find((t) => t.kind === "file")!;
+    // The host says the Word file lacks his edits, and he has not chosen for it: nothing asks.
+    await act(async () => host.change(tab.id, { key: "lib:events:Plan.docx", copyOf: { host: "env_mac", path: "/Users/l/Plan.docx" }, word: { since: true, at: 5 } }));
+    const press = await screen.findByRole("button", { name: "Save to Teams" });
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(confirms.asked).toEqual([]);
+    confirms.choice = "other";
+    await act(async () => fireEvent.click(press));
+    await waitFor(() => expect(calls(host, "work.files.wordSave")).toHaveLength(1));
+    expect(confirms.asked).toEqual([expect.objectContaining({ title: "Save Plan.docx to Teams as you work?", action: "Save automatically", other: "Ask me each time" })]);
+    expect(calls(host, "work.files.wordAuto")).toMatchObject([{ params: { tabId: tab.id, on: false } }]);
+  });
+
+  it("gives a Teams Word file Settings → Work's default when it is not to ask, once, with no question", async () => {
+    localStorage.setItem("tc.work.wordSave", "auto");
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tab = host.tabs().find((t) => t.kind === "file")!;
+    await act(async () => host.change(tab.id, { key: "lib:events:Plan.docx", copyOf: { host: "env_mac", path: "/Users/l/Plan.docx" }, word: { since: true } }));
+    await waitFor(() => expect(calls(host, "work.files.wordAuto")).toMatchObject([{ params: { tabId: tab.id, on: true } }]));
+    expect(confirms.asked).toEqual([]);
+    localStorage.removeItem("tc.work.wordSave");
   });
 
   it("follows a close made in another window: the tab goes and the tab it came from shows", async () => {

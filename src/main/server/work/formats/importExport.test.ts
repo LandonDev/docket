@@ -456,6 +456,8 @@ describe('names and words', () => {
     writeFileSync(join(dir, 'Plan.tcdoc'), '')
     expect(freePath(dir, 'Plan', '.tcdoc')).toBe(join(dir, 'Plan 2.tcdoc'))
     expect(droppedWords({ imageInCell: 1, nestedTable: 2, zero: 0 })).toEqual(['1 picture inside a table cell left out', '2 tables inside a table kept as text'])
+    // The page's own losses, what Save to Teams names for the file: never the reader's key.
+    expect(droppedWords({ exactLineSpacing: 2, bandVariant: 1, customPaper: 1 })).toEqual(['2 fixed line heights kept as line spacing', '1 first-page or even-page header or footer not kept', 'A custom paper size kept as the nearest standard one'])
   })
 })
 

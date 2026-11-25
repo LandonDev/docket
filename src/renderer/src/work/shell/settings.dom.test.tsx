@@ -71,6 +71,14 @@ describe("Settings → Work", () => {
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
+  it("holds how a Teams Word file with no choice of its own saves, set to ask the first time", () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({})), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    setWorkOn("env_box", true);
+    render(<WorkSettingsBody />);
+    expect(screen.getByText("Word files")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Save to Teams" }).textContent).toContain("Ask the first time");
+  });
+
   it("a workspace page whose settings did not load offers Retry, which reads them again", async () => {
     reads.fail = true;
     reads.asked = 0;

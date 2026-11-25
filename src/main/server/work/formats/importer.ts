@@ -48,7 +48,15 @@ const DROPPED: Record<string, (n: number) => string> = {
   overlappingChange: (n) => `${n} ${n === 1 ? 'suggestion' : 'suggestions'} on a paragraph another suggestion changes left out`,
   blockFormatChange: (n) => `${n} ${n === 1 ? 'change' : 'changes'} of a block's kind or look written as they stand`,
   move: (n) => `${n} moved ${n === 1 ? 'block' : 'blocks'} written in ${n === 1 ? 'its' : 'their'} new place`,
-  tableChange: (n) => `${n} suggested ${n === 1 ? 'change' : 'changes'} to a table's shape written as ${n === 1 ? 'it stands' : 'they stand'}`
+  tableChange: (n) => `${n} suggested ${n === 1 ? 'change' : 'changes'} to a table's shape written as ${n === 1 ? 'it stands' : 'they stand'}`,
+  // The page's own (work-kit docx/read-page.ts): said as what it is, never the reader's key ("1 × bandVariant not kept").
+  exactLineSpacing: (n) => `${n} fixed line ${n === 1 ? 'height' : 'heights'} kept as line spacing`,
+  bandVariant: (n) => `${n} first-page or even-page ${n === 1 ? 'header or footer' : 'headers or footers'} not kept`,
+  bandDrawing: (n) => `${n} ${n === 1 ? 'picture' : 'pictures'} in a header or footer left out`,
+  bandField: (n) => `${n} ${n === 1 ? 'field' : 'fields'} in a header or footer left out`,
+  bandDistance: (n) => `${n} header or footer ${n === 1 ? 'distance' : 'distances'} from the page's edge not kept`,
+  customPaper: () => 'A custom paper size kept as the nearest standard one',
+  automaticColourOverride: (n) => `${n} automatic text ${n === 1 ? 'colour' : 'colours'} kept as the style's colour`
 }
 export const droppedWords = (dropped: Record<string, number>): string[] =>
   Object.entries(dropped)

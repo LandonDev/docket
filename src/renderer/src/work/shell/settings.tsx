@@ -23,6 +23,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { workDigestChunk } from "../../surfaces/chunks";
+import { setWordDefault, WORD_DEFAULTS, wordDefault, type WordDefault } from "../files/wordDefault";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
@@ -94,6 +95,7 @@ export function WorkSettingsBody() {
           </PageRow>
         </PageSection>
       ) : null}
+      <WordFilesSection />
       {/* A section a host, as the Windows VM's are: a second host's heading never reads as one more folder. */}
       {hosts
         .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
@@ -105,6 +107,27 @@ export function WorkSettingsBody() {
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
       {home ? <MailSettingsSection environmentId={home} /> : null}
     </>
+  );
+}
+
+/** How a Teams Word file saves before he chose for it (work/files/wordDefault.ts): a file he chose for keeps its choice. */
+function WordFilesSection() {
+  const [value, setValue] = useState<WordDefault>(wordDefault);
+  return (
+    <PageSection title="Word files">
+      <PageRow title="Save to Teams">
+        <ChoiceSelect
+          size="sm"
+          label="Save to Teams"
+          value={value}
+          options={WORD_DEFAULTS}
+          onChange={(next) => {
+            setWordDefault(next);
+            setValue(next);
+          }}
+        />
+      </PageRow>
+    </PageSection>
   );
 }
 

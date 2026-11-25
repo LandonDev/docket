@@ -105,7 +105,7 @@ records the refusal as a failure when the window offers that action.
 | J26 | A | The document, sheet and deck previews show the expected page counts, and the PDFs handed to Electron's viewer have Letter pages. |
 | J71 | A, B1 | 42, 3.5, 007 and =A1*2 typed across A1 to D1, then the tab closed: the holder's workbook holds 42 and 3.5 as numbers, 007 as text and D1 as a formula (`cells.json`). |
 | J72 | B1 | Save As… of a library Word file opens in its own folder; the holder gets one `TempCode proof agenda copy.docx`, the sheet closes with no "Not saved", and Save pressed again after any failure makes no "copy 2". |
-| J73 | B1 | A library Word file opened, typed into, saved with Save to Teams as Word and Replace, and closed: the holder's file has the line, the workspace folder holds no new file, and the host's record names its document and its "before" copy under `<userData>/work-files/word` (`word-store.json`). |
+| J73 | B1 | A library Word file opened, typed into, saved with Save to Teams and, on that first press, Ask me each time, and closed: the holder's file has the line, the workspace folder holds no new file, and the host's record names its document and its "before" copy under `<userData>/work-files/word` (`word-store.json`). |
 | J74 | A, B1 | He types a slide title and presses Escape before the 2 s keep, then closes the tab. The holder's slide XML has the typed title. |
 
 Use `--only J03,J04,J09,J11,J12,J14,J16,J22,J23,J25,J26,J71,J72,J73,J74 --shape A,B1` for the

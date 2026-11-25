@@ -4,8 +4,8 @@ import { whenWords, type HeaderLine } from "./fileText";
 
 /**
  * A Word file of another computer opened as its document (docs/agents/work-files.md "A Word file from another
- * computer"): his edits are kept in the document, and the Word file changes only by Save as Word, asked once with what
- * Word may lose, never over a file that changed there.
+ * computer"): his edits are kept in the document, and the Word file changes only by Save to Teams (his press, or by
+ * itself once he chose so on his first press), never over a file that changed there. Nothing asks while he types.
  */
 
 /** What Word formatting this editor does not keep (docs/agents/work-docs.md, work-formats.md "A Word file keeps its look"). */
@@ -17,8 +17,20 @@ export const serviceOf = (tab: Pick<FileTab, "key">): string => (tab.key?.starts
 /** The Word file's name, from where it lies. */
 export const wordName = (tab: Pick<FileTab, "copyOf" | "name">): string => tab.copyOf?.path.split(/[\\/]/).pop() || tab.name;
 
-/** The header's press that writes his changes into the Word file. */
-export const wordPress = (tab: Pick<FileTab, "key">): string => `Save to ${serviceOf(tab)} as Word`;
+/** The header's press that writes his changes into the Word file: the file is Word already, so the act is the place. */
+export const wordPress = (tab: Pick<FileTab, "key">): string => `Save to ${serviceOf(tab)}`;
+
+/**
+ * What saving over the Word file loses, as one sentence: the losses this file has (what its import did not keep, and
+ * what Preview counts for Word, `dropsOf`), none when it has none, and the list of what this editor never keeps when
+ * the file's own count is not known in this window (`null`: another window imported it).
+ */
+export function lossesLine(losses: readonly string[] | null): string {
+  if (losses === null) return `Word formatting this editor does not keep may change: ${WORD_LOSSES}.`;
+  if (losses.length === 0) return "";
+  const said = losses.map((line, i) => (i === 0 ? line : `${line.charAt(0).toLowerCase()}${line.slice(1)}`));
+  return `The Word file loses what this editor did not keep: ${said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said.at(-1)}` : said[0]}.`;
+}
 
 /** ⌘S on a Word file whose save is his press: his edits are kept in the document, and the Word file waits for that press. */
 export const wordWaitsWords = (tab: Pick<FileTab, "copyOf" | "name" | "key">): string => `${wordName(tab)} changes when you press ${wordPress(tab)}.`;
@@ -45,35 +57,60 @@ export function wordLine(word: WordBack, service: string, computer: string, now 
 }
 
 /**
- * Save as Word: one confirm with what Word may lose, Replace and Keep Both. Over a file that changed there since he
- * opened it, one plain line says when, Keep Both holds the focus, and Replace still writes over it on his press. Answers
- * what was done.
+ * Save to Teams: one question, naming only the losses this file has (`lossesLine`). His first press on a file
+ * (`first`, no choice kept for it yet) asks once whether to save it as he works from then on, and either answer saves
+ * it now; after "Ask me each time", each press asks Replace or Keep Both. Over a file that changed there since he
+ * opened it, one plain line says when, Keep Both holds the focus, and Replace still writes over it on his press.
+ * Answers what was done.
  */
 export async function saveAsWord(
   tab: Pick<FileTab, "copyOf" | "name" | "key">,
-  deps: { choose: typeof confirmChoice; confirm: typeof confirmAction; save(keep: boolean, replace?: boolean, version?: string): Promise<WordSaved>; said(text: string): void },
+  deps: {
+    choose: typeof confirmChoice;
+    confirm: typeof confirmAction;
+    save(keep: boolean, replace?: boolean, version?: string): Promise<WordSaved>;
+    said(text: string): void;
+    /** what saving over the Word file loses, counted for this file; null where this window does not know */
+    losses?: readonly string[] | null;
+    /** his first press on the file: his choice from then on is kept for it */
+    first?: { set(on: boolean): Promise<unknown> };
+  },
   now = Date.now(),
 ): Promise<"saved" | "kept" | null> {
   const name = wordName(tab);
   const service = serviceOf(tab);
+  const losses = lossesLine(deps.losses === undefined ? null : deps.losses);
   const kept = (got: WordSaved): "kept" | null => {
     if (!("copy" in got)) return null;
     deps.said(`Saved beside it as ${got.copy.name}`);
     return "kept";
   };
-  const choice = await deps.choose({
-    title: `Replace ${name} in ${service}?`,
-    body: `Everyone who opens it sees your version. ${service} keeps its own version history. Word formatting this editor does not keep may change: ${WORD_LOSSES}.`,
-    action: "Replace",
-    other: "Keep Both",
-  });
-  if (choice === null) return null;
-  const got = await deps.save(choice === "other");
+  let keep = false;
+  if (deps.first) {
+    const choice = await deps.choose({
+      title: `Save ${name} to ${service} as you work?`,
+      body: `Everyone who opens it sees your version, and ${service} keeps its own version history.${losses ? ` ${losses}` : ""}`,
+      action: "Save automatically",
+      other: "Ask me each time",
+    });
+    if (choice === null) return null;
+    await deps.first.set(choice === "action");
+  } else {
+    const choice = await deps.choose({
+      title: `Replace ${name} in ${service}?`,
+      body: `Everyone who opens it sees your version.${losses ? ` ${losses}` : ""}`,
+      action: "Replace",
+      other: "Keep Both",
+    });
+    if (choice === null) return null;
+    keep = choice === "other";
+  }
+  const got = await deps.save(keep);
   if ("at" in got) return "saved";
   if ("copy" in got) return kept(got);
   if ("gone" in got.conflict) {
-    const keep = await deps.confirm({ title: `${name} was moved or deleted in ${service}.`, body: "Keep Both puts your version where it was.", action: "Keep Both" });
-    return keep ? kept(await deps.save(true)) : null;
+    const again = await deps.confirm({ title: `${name} was moved or deleted in ${service}.`, body: "Keep Both puts your version where it was.", action: "Keep Both" });
+    return again ? kept(await deps.save(true)) : null;
   }
   const again = await deps.choose({
     title: `${name} changed in ${service} ${whenWords(got.conflict.changed, now)}, after you opened it.`,
@@ -86,18 +123,4 @@ export async function saveAsWord(
   if (again === "other") return kept(await deps.save(true));
   // Replace goes over the change the line named, by its version, and no later one: a newer change there is said again.
   return "at" in (await deps.save(false, true, got.conflict.version)) ? "saved" : null;
-}
-
-/** The first time a Word file would be saved by itself: one notice, what Word may lose, and his choice for the file. */
-export async function askAutosave(tab: Pick<FileTab, "copyOf" | "name" | "key">, deps: { choose: typeof confirmChoice; set(on: boolean): Promise<unknown> }): Promise<boolean | null> {
-  const service = serviceOf(tab);
-  const choice = await deps.choose({
-    title: `Save ${wordName(tab)} to ${service} as you work?`,
-    body: `Word formatting this editor does not keep may change: ${WORD_LOSSES}. ${service} keeps its own version history.`,
-    action: "Save automatically",
-    other: "Ask me each time",
-  });
-  if (choice === null) return null;
-  await deps.set(choice === "action");
-  return choice === "action";
 }

@@ -41,14 +41,20 @@ type Folder = MoveTarget & { where: string };
 /** The document's stem as a file's name: its title with any extension of ours dropped. */
 const stemOf = (title: string): string => saveAsName(title || "Untitled", "docx").replace(/\.docx$/, "");
 
+/** The name the sheet offers first: the document's, or "<name> copy" where that is the very file it was opened from. */
+export function offeredStem(stem: string, format: SaveAsFormat, own: string | undefined): string {
+  return own && saveAsName(stem || "Untitled", format).toLowerCase() === own.toLowerCase() ? `${stem} copy` : stem;
+}
+
 export function SaveAsDialog({ workspace, source, title, itemId, format: asked }: { workspace: WorkspaceMeta; source: CanvasSource; title: string; itemId: string; format: SaveAsFormat | null }) {
   const reach = useReach(workspace, 0);
   const sidebar = reach?.sidebar ?? NO_PLACES;
-  const [stem, setStem] = useState(() => stemOf(title));
   // The document's own file, where a Files tab knows it: the sheet opens in its folder, in its format where one is written.
   const [origin] = useState(() => originOf(itemId));
   const own = origin ? formatForFile(origin.name) : null;
   const [format, setFormat] = useState<SaveAsFormat>(() => asked ?? own?.format ?? lastFormat() ?? "docx");
+  // Never the file's own path: Save As… makes another file (a Word file of Teams saves by the header's Save to Teams).
+  const [stem, setStem] = useState(() => offeredStem(stemOf(title), format, origin?.name));
   const [copyOnly, setCopyOnly] = useState(false);
   const places = placeItems(sidebar, workspace.name);
   // The folders he saved to last, as the places list them now (one no longer listed is left out).

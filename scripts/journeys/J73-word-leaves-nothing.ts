@@ -1,6 +1,6 @@
 import { copyFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative, isAbsolute } from 'node:path'
-import { focusDocument } from './lib/edit'
+import { answerFirstSave, focusDocument } from './lib/edit'
 import { closeSelectedFile, holds, openRow } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
@@ -42,14 +42,12 @@ export default journey({
       await focusDocument(page)
       await waitForWordRevision(context, NAME)
       await page.typeKeys(WORDS)
-      // The first time a Word file holds edits not in it, the window may ask once how to save it; the header's press
-      // saves it either way, over a file TempCode never wrote, so its "before" copy is kept first.
-      const press = 'Save to Teams as Word'
-      await page.until('the header press or the first-time question', 25_000, async () =>
-        !!(await page.centre('button', 'Ask me each time')) || !!(await page.centre('button', press)))
-      if (await page.centre('button', 'Ask me each time')) await page.press('button', 'Ask me each time')
+      // Nothing asks while he types. His first press of the header's Save to Teams asks once how to save the file from
+      // then on; "Ask me each time" saves it this once, over a file TempCode never wrote, so its "before" copy is kept first.
+      const press = 'Save to Teams'
+      await page.until('the header press', 25_000, async () => !!(await page.centre('button', press)))
       await page.press('button', press)
-      await page.press('button', 'Replace')
+      await answerFirstSave(page)
       await page.until('the typed line in the Word file on its holder', 40_000, () => holds(fileAt(context, NAME), WORDS))
     }),
     step('end: closed, the workspace folder holds no new file; the document and the backup are in the Word store', async (context) => {

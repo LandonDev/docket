@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudLine } from "./fileText";
-import { askAutosave, saveAsWord, serviceOf, WORD_LOSSES, wordLine, wordWaitsWords } from "./wordSave";
+import { lossesLine, saveAsWord, serviceOf, WORD_LOSSES, wordLine, wordPress, wordWaitsWords } from "./wordSave";
 
 /** A Word file of another computer opened as its document: the header's words, and Save as Word's one confirm. */
 
@@ -32,12 +32,47 @@ describe("Save as Word", () => {
     said: vi.fn(),
   });
 
-  it("asks once, naming what Word may lose, and writes over the file on Replace", async () => {
+  it("asks once and writes over the file on Replace; where this window does not know the file's losses, it names what this editor never keeps", async () => {
     const d = deps("action", [{ at: AT }]);
     expect(await saveAsWord(TAB, d)).toBe("saved");
     expect(d.choose).toHaveBeenCalledWith(expect.objectContaining({ title: "Replace AD Screening 9-2.docx in Teams?", action: "Replace", other: "Keep Both" }));
     expect(d.choose.mock.calls[0]![0].body).toContain(WORD_LOSSES);
     expect(d.save).toHaveBeenCalledWith(false);
+  });
+
+  it("names only the losses this file has, and none where it has none (decision 4)", async () => {
+    const some = deps("action", [{ at: AT }]);
+    await saveAsWord(TAB, { ...some, losses: ["1 table inside a table kept as text", "2 suggestions go as tracked changes"] });
+    expect(some.choose.mock.calls[0]![0].body).toBe("Everyone who opens it sees your version. The Word file loses what this editor did not keep: 1 table inside a table kept as text and 2 suggestions go as tracked changes.");
+    const none = deps("action", [{ at: AT }]);
+    await saveAsWord(TAB, { ...none, losses: [] });
+    expect(none.choose.mock.calls[0]![0].body).toBe("Everyone who opens it sees your version.");
+    expect(lossesLine(["A", "B", "C"])).toBe("The Word file loses what this editor did not keep: A, b and c.");
+  });
+
+  it("his first press on a file asks once whether to save as he works, keeps his choice, and saves now either way", async () => {
+    const set = vi.fn(async () => undefined);
+    const auto = deps("action", [{ at: AT }]);
+    expect(await saveAsWord(TAB, { ...auto, losses: [], first: { set } })).toBe("saved");
+    expect(auto.choose.mock.calls[0]![0]).toMatchObject({ title: "Save AD Screening 9-2.docx to Teams as you work?", action: "Save automatically", other: "Ask me each time" });
+    expect(auto.choose.mock.calls[0]![0].body).toBe("Everyone who opens it sees your version, and Teams keeps its own version history.");
+    expect(set).toHaveBeenCalledWith(true);
+    expect(auto.save).toHaveBeenCalledWith(false);
+    // "Ask me each time" saves this once, over the file: his press was the save.
+    const each = deps("other", [{ at: AT }]);
+    expect(await saveAsWord(TAB, { ...each, first: { set } })).toBe("saved");
+    expect(set).toHaveBeenLastCalledWith(false);
+    expect(each.save).toHaveBeenCalledWith(false);
+    // Cancel keeps no choice and writes nothing.
+    const none = deps(null, []);
+    expect(await saveAsWord(TAB, { ...none, first: { set } })).toBeNull();
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(none.save).not.toHaveBeenCalled();
+  });
+
+  it("the header's press names the place, the file being Word already", () => {
+    expect(wordPress(TAB)).toBe("Save to Teams");
+    expect(wordPress({ key: "lib:mine:Plan.docx" })).toBe("Save to OneDrive");
   });
 
   it("Keep Both puts his version beside it; Cancel writes nothing", async () => {
@@ -82,22 +117,10 @@ describe("a Word file saved by itself", () => {
     expect(cloudLine(line, { is: "uploading", at: AT }, "Teams", "MacBook", NOW).words).toBe("Saved, uploading to Teams…");
     expect(cloudLine(line, { is: "uploaded", at: AT }, "Teams", "MacBook", NOW).words).toBe("In Teams 9:12 PM");
   });
-
-  it("asks once, naming what Word may change, and keeps his choice", async () => {
-    const set = vi.fn(async () => undefined);
-    const choose = vi.fn(async () => "action" as const);
-    expect(await askAutosave(TAB, { choose, set })).toBe(true);
-    expect(choose.mock.calls[0]![0]).toMatchObject({ action: "Save automatically", other: "Ask me each time" });
-    expect(choose.mock.calls[0]![0].body).toContain(WORD_LOSSES);
-    expect(set).toHaveBeenCalledWith(true);
-    const later = vi.fn(async () => null);
-    expect(await askAutosave(TAB, { choose: later, set })).toBeNull();
-    expect(set).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe("⌘S on a Word file whose save is his press", () => {
   it("says the Word file changes on that press, by its own name and service", () => {
-    expect(wordWaitsWords(TAB)).toBe("AD Screening 9-2.docx changes when you press Save to Teams as Word.");
+    expect(wordWaitsWords(TAB)).toBe("AD Screening 9-2.docx changes when you press Save to Teams.");
   });
 });

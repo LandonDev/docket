@@ -57,8 +57,9 @@ holds the focus (`data-canvas-item`, or with the focus on nothing the file a
 Files tab shows) sends what its kind holds, the same send a close makes
 (canvas/flush.ts), and its save line says Saved only on that send's receipt.
 A file whose save is his own press registers its own ⌘S (`saveKeyPort`): a
-Teams Word file that asks sends its edits to the document and toasts that the
-Word file changes on his press (wordSave.ts `wordWaitsWords`).
+Teams Word file whose save is his press sends its edits to the document and
+toasts that the Word file changes on his Save to Teams (wordSave.ts
+`wordWaitsWords`).
 
 How it is built:
 

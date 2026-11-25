@@ -35,16 +35,23 @@ export async function replaceText(page: Window, text: string): Promise<void> {
 
 export const DOC_EDITOR = '[data-doc-scroller] [contenteditable="true"]'
 
-/** A Word file of Teams asks once whether to save as he works: the walks keep the explicit presses. */
+/**
+ * A Word file of Teams asks how to save it only on his first Save to Teams (decision 4), never while he types or as it
+ * opens: a walk that saves answers it there, with the explicit press kept (`answerFirstSave`).
+ */
 export const AUTOSAVE_ASK = '[role="alertdialog"] button, [role="dialog"] button'
+
+/** After his first Save to Teams on a file: "Ask me each time", which saves it this once and keeps the press his. */
+export async function answerFirstSave(page: Window): Promise<void> {
+  await page.until('the first-save question', 15_000, async () => {
+    const ask = await page.centre(AUTOSAVE_ASK, 'Ask me each time')
+    if (ask) await page.click(ask)
+    return !!ask
+  })
+}
 
 export async function focusDocument(page: Window): Promise<void> {
   await page.until('the document to take focus', 35_000, async () => {
-    const ask = await page.centre(AUTOSAVE_ASK, 'Ask me each time')
-    if (ask) {
-      await page.click(ask)
-      return false
-    }
     const at = await page.centre(DOC_EDITOR)
     if (!at) return false
     await page.click(at)

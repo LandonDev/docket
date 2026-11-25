@@ -17,7 +17,7 @@ export function importOnce(env: string, key: string, params: Record<string, unkn
   const known = imports.get(key);
   if (known) return known;
   const p = registry.linkOf(env).request<ImportAnswer>("work.formats.import", params, { timeoutMs: IMPORT_MS });
-  p.catch(() => imports.delete(key));
+  p.then(keepLosses, () => imports.delete(key));
   imports.set(key, p);
   return p;
 }
@@ -40,4 +40,40 @@ export function importAhead(env: string, item: Pick<CanvasItem, "id" | "sessionI
 /** For tests: every import forgotten. */
 export function resetImports(): void {
   imports.clear();
+}
+
+/**
+ * What each import did not keep, by the document it made (its file on its host): Save to Teams names these, and only
+ * these, as what the Word file loses (wordSave.ts `lossesLine`). Kept in this window across a reload; a document this
+ * window never imported is not known here (null), and its question names what this editor never keeps.
+ */
+const LOSSES = "tc.work.importLosses";
+const KEPT_LOSSES = 100;
+const lossKey = (source: ImportAnswer["source"]): string | null => (source.at === "file" ? `${source.host}\n${source.path}` : null);
+
+function readLosses(): [string, string[]][] {
+  try {
+    const kept = JSON.parse(globalThis.localStorage?.getItem(LOSSES) ?? "[]") as unknown;
+    return Array.isArray(kept) ? (kept as [string, string[]][]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function keepLosses(answer: ImportAnswer): void {
+  const key = lossKey(answer.source);
+  if (!key) return;
+  const rows = readLosses().filter(([k]) => k !== key);
+  rows.push([key, answer.warnings ?? []]);
+  try {
+    globalThis.localStorage?.setItem(LOSSES, JSON.stringify(rows.slice(-KEPT_LOSSES)));
+  } catch {
+    // A window that keeps nothing asks with the list of what this editor never keeps.
+  }
+}
+
+/** What the import that made this document did not keep; null where this window did not import it. */
+export function importLosses(source: ImportAnswer["source"]): string[] | null {
+  const key = lossKey(source);
+  return key ? (readLosses().find(([k]) => k === key)?.[1] ?? null) : null;
 }
