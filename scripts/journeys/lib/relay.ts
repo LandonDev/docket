@@ -42,7 +42,8 @@ export async function relay(host: string, target: number) {
 
 /** The same hop with a delay and a rate each way (scripts/lib/slowLink.ts): his tunnel, for the perf kit. */
 export async function shapedRelay(target: number, shape: Shape) {
-  const link = await startSlowLink({ listen: 0, target, shape })
+  // The box sees its own address, as it does behind his tunnel: a page's socket with another Host is refused.
+  const link = await startSlowLink({ listen: 0, target, hostHeader: `127.0.0.1:${target}`, shape })
   return {
     port: link.port,
     cut: (on: boolean) => link.cut(on),

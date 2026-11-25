@@ -91,3 +91,19 @@ describe('slowLink', () => {
     expect(performance.now() - t0).toBeGreaterThanOrEqual(98)
   })
 })
+
+describe('the Host a relay presents', () => {
+  it("says the target's address in the first request's head, the head split over two writes, and leaves the rest untouched", async () => {
+    const target = await echoServer()
+    link = await startSlowLink({ listen: 0, target, hostHeader: `127.0.0.1:${target}`, shape: { delayMs: 0, rateMbit: 1000 } })
+    const { socket, read } = await client(link.port)
+    const first = `GET /ws HTTP/1.1\r\nUpgrade: websocket\r\nHost: 127.0.0.1:${link.port}\r\nOrigin: tempcode-app://app\r\n`
+    socket.write(first)
+    socket.write('\r\nbody Host: kept')
+    const said = `GET /ws HTTP/1.1\r\nUpgrade: websocket\r\nHost: 127.0.0.1:${target}\r\nOrigin: tempcode-app://app\r\n\r\nbody Host: kept`
+    expect((await read(Buffer.byteLength(said))).toString()).toBe(said)
+    // What follows on the connection goes as sent.
+    socket.write('Host: later')
+    expect((await read(11)).toString()).toBe('Host: later')
+  })
+})

@@ -112,7 +112,12 @@ class Lane {
   }
 }
 
-export function startSlowLink(opts: { listen: number; target: number; host?: string; shape?: Partial<Shape> }): Promise<SlowLink> {
+/**
+ * `hostHeader`: the Host each connection's first request presents to the target, as a tunnel's front door does. A host
+ * refuses a page's socket whose Host is not its own (remote/listener.ts), so a relay on a port of its own says the
+ * target's address in place of its own.
+ */
+export function startSlowLink(opts: { listen: number; target: number; host?: string; hostHeader?: string; shape?: Partial<Shape> }): Promise<SlowLink> {
   const shape: Shape = { delayMs: opts.shape?.delayMs ?? 20, rateMbit: opts.shape?.rateMbit ?? 8 }
   const upWire = new Wire(shape)
   const downWire = new Wire(shape)
@@ -134,10 +139,19 @@ export function startSlowLink(opts: { listen: number; target: number; host?: str
     const down = new Lane(downWire, upstream, client)
     // A connection's last direction: a client burst after the server spoke is the next round trip.
     let last: 'up' | 'down' | null = null
+    // The first request's head, held until it is whole when its Host is to be said again.
+    let head: Buffer | null = opts.hostHeader ? Buffer.alloc(0) : null
     client.on('data', (d: Buffer) => {
       count.up += d.length
       if (last !== 'up') count.turns++
       last = 'up'
+      if (head) {
+        head = Buffer.concat([head, d])
+        const end = head.indexOf('\r\n\r\n')
+        if (end < 0 && head.length < 64 * 1024) return
+        d = end < 0 ? head : withHost(head, end, opts.hostHeader!)
+        head = null
+      }
       up.push(d)
     })
     upstream.on('data', (d: Buffer) => {
@@ -187,6 +201,12 @@ export function startSlowLink(opts: { listen: number; target: number; host?: str
       })
     })
   })
+}
+
+/** A request head (up to `end`, the blank line) with its Host line said as `host`, the body after it untouched. */
+export function withHost(bytes: Buffer, end: number, host: string): Buffer {
+  const said = bytes.subarray(0, end).toString('latin1').replace(/^host:[^\r\n]*$/im, `Host: ${host}`)
+  return Buffer.concat([Buffer.from(said, 'latin1'), bytes.subarray(end)])
 }
 
 /** The control port: GET /counters, POST /reset, POST /shape?delay=&rate=. */
