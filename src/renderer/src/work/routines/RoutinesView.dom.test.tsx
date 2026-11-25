@@ -89,9 +89,14 @@ describe("the Routines view", () => {
     expect(starts.textContent).toContain("When a mail arrives");
     expect(starts.textContent).toContain("Not signed in to LifeOS on the box");
     expect(starts.textContent).not.toContain("waiting on LifeOS");
+    // Council round 11, the walk: on its way, the one wait with the computer named and no press.
     act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] }));
-    expect(starts.textContent).toContain("When a mail arrives, waiting on LifeOS");
+    expect(starts.textContent).toContain("LifeOS is still connecting on the box");
+    expect(starts.textContent).not.toContain("waiting on LifeOS");
     expect(starts.textContent).not.toContain("Not signed in");
+    expect(starts.querySelector("[data-lifeos-waits] button")).toBeNull();
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] }));
+    expect(starts.textContent).not.toContain("LifeOS is still connecting");
     resetLifeos();
   });
 
