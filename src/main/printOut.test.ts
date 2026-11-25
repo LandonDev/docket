@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NO_VIEWER, PRINT_KEEP, PRINT_MAX_BYTES, XDG_SETTLE_MS, answerPrint, printDir, printName, printPdf, sweepPrints, xdgOpen } from './printOut'
+import { NO_VIEWER, PREVIEW_PRINT_SCRIPT, PRINT_KEEP, PRINT_MAX_BYTES, XDG_SETTLE_MS, answerPrint, previewPrint, printDir, printName, printPdf, sweepPrints, xdgOpen } from './printOut'
 
 /** Print… hands the previewed PDF to the system's own viewer (docs/agents/work-editors.md "Print"). */
 const dirs: string[] = []
@@ -125,6 +125,50 @@ describe('Print…', () => {
       const printed = printPdf({ temp: t, open: (path) => xdgOpen(path, spawn) }, 'Run of show', PDF)
       await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
       expect(await printed).toEqual({ ok: true, via: 'viewer' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('on macOS asks Preview.app for the system print dialog in front, and opens the viewer only when that fails', async () => {
+    const t = temp()
+    const opened: string[] = []
+    const asked: string[] = []
+    const open = async (path: string): Promise<string> => (opened.push(path), '')
+    // The dialog came up: the viewer is not opened as well.
+    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), true) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'dialog' })
+    expect(opened).toEqual([])
+    expect(asked[0]!.endsWith('/Run of show.pdf')).toBe(true)
+    // Preview could not be asked (no Automation grant, no Preview): the same file goes to the viewer.
+    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), false) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer' })
+    expect(opened).toEqual([asked[1]])
+    expect(await printPdf({ temp: t, open, print: () => Promise.reject(new Error('spawn EACCES')) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer' })
+    expect(opened).toHaveLength(2)
+  })
+
+  it('runs osascript with the path as its own argument, never inside the script, and hears it for a moment', async () => {
+    vi.useFakeTimers()
+    try {
+      const runs: Array<{ args: unknown[]; child: EventEmitter & { unref(): void } }> = []
+      const spawn = ((...args: unknown[]) => {
+        const child = Object.assign(new EventEmitter(), { unref: () => {} })
+        runs.push({ args, child })
+        return child
+      }) as unknown as Parameters<typeof previewPrint>[1]
+      const at = (p: Promise<boolean>, act: () => void): Promise<boolean> => (act(), p)
+      const path = '/t/a "quoted" name.pdf'
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('exit', 0))).toBe(true)
+      expect(runs[0]!.args).toEqual(['/usr/bin/osascript', [...PREVIEW_PRINT_SCRIPT.flatMap((line) => ['-e', line]), path], { detached: true, stdio: 'ignore' }])
+      expect(PREVIEW_PRINT_SCRIPT.join('\n')).not.toContain('quoted')
+      // Preview is brought in front and asked for its print dialog on the file it was handed.
+      expect(PREVIEW_PRINT_SCRIPT.join('\n')).toMatch(/tell application "Preview"[\s\S]*activate[\s\S]*print [\s\S]*with print dialog/)
+      // A refusal (no Automation grant: -1743) or no osascript is a failure the viewer stands in for.
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('exit', 1))).toBe(false)
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('error', new Error('spawn ENOENT')))).toBe(false)
+      // The dialog holds osascript until he answers it: still running is the dialog up.
+      const waiting = previewPrint(path, spawn)
+      await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
+      expect(await waiting).toBe(true)
     } finally {
       vi.useRealTimers()
     }

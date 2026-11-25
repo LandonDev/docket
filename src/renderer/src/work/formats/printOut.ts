@@ -3,15 +3,16 @@ import { isWebMode, printPdfFile } from "../../lib/native";
 /**
  * Print… from the window (docs/agents/work-editors.md "Print"): the PDF that
  * Preview drew, printed where he is. In the desktop app its bytes go to
- * main, which hands them to this computer's own PDF viewer
- * (src/main/printOut.ts: the system's print dialog is one key away there,
- * with or without a printer set up). In a browser (`/ui`) the PDF opens in
- * a tab of its own on his press, where the browser's viewer prints it.
+ * main (src/main/printOut.ts), which on macOS brings up the system's print
+ * dialog in front through Preview.app, and otherwise hands them to this
+ * computer's own PDF viewer (its print dialog is one key away there, with or
+ * without a printer set up). In a browser (`/ui`) the PDF opens in a tab of
+ * its own on his press, where the browser's viewer prints it.
  *
  * Every kind prints through here: hand it the previewed PDF's own bytes.
  */
 
-export type Printed = "viewer" | "tab";
+export type Printed = "dialog" | "viewer" | "tab";
 
 /** What he is told, and the one press it may carry. */
 export type PrintSay = (words: string, action?: { label: string; run(): void }) => void;
@@ -42,6 +43,7 @@ export async function printPdf(name: string, bytes: Uint8Array, say: PrintSay = 
   }
   const answer = await printPdfFile(name, bytes);
   if (!answer.ok) throw new Error(answer.error);
-  say(PRINT_WORDS.viewer);
+  // The dialog in front is the answer; the viewer's file needs the words.
+  if (answer.via === "viewer") say(PRINT_WORDS.viewer);
   return answer.via;
 }

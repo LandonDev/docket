@@ -256,9 +256,19 @@ await printPdf(name, bytes); // says where it went; rejects with the reason
   `src/main/printOut.ts`), which answers only a window's own page, checks
   the bytes are a PDF, writes them to `<temp>/TempCode-print/<uuid>/<name>.pdf`
   (a file only he can read, named by `safeFileName` and short enough for any
-  file system) and opens that file in this computer's own PDF viewer. The
-  toast says "Opened in your PDF viewer to print"; he prints from there with
-  the viewer's own Print. Copies older than a day go at the next print and at
+  file system) and hands that file on.
+- **On macOS** main asks Preview.app, through `/usr/bin/osascript`
+  (`previewPrint`, `PREVIEW_PRINT_SCRIPT`), to come in front and print the
+  file with the system's print dialog: one press, the dialog, and nothing
+  said, since the dialog is the answer (`via: 'dialog'`). The path rides as
+  the script's one argument, never inside its text. osascript is heard for 3
+  s: a refusal (no Automation grant, -1743), or no osascript, falls back to
+  the viewer below; still running is the dialog up, since Preview answers
+  only when he closes it. A grant he refuses after those 3 s leaves nothing
+  open, and his next Print… opens the viewer. Not yet proven on his Mac (M11).
+- **Elsewhere, and as macOS's fallback,** the file opens in this computer's
+  own PDF viewer. The toast says "Opened in your PDF viewer to print"; he
+  prints from there with the viewer's own Print. Copies older than a day go at the next print and at
   launch, and no more than twenty are kept. A folder that is not a real one
   of his own where the copies should be (a link, a file) is never written
   through or swept.
@@ -283,9 +293,11 @@ await printPdf(name, bytes); // says where it went; rejects with the reason
   `webContents.print` failed before any dialog with "No printers available on
   the network" from a hidden window, from a shown one and from a window of
   page pictures; only the system's viewer printed, and saved as PDF, with or
-  without a printer. If a later Electron prints with none set up, the change
-  is in `src/main/printOut.ts` alone: `PrintAnswer.via` already names how it
-  went, and `PRINT_WORDS` holds what is said for each.
+  without a printer. On macOS Preview.app's own print dialog now comes up in
+  front, which is the system's dialog without Electron's. If a later Electron
+  prints with none set up, the change is in `src/main/printOut.ts` alone:
+  `PrintAnswer.via` already names how it went, and `PRINT_WORDS` holds what
+  is said for each.
 - A print is not held: nothing leaves the computer. It is not remembered as
   the format to open next either, so Export… still opens on the last file he
   made.

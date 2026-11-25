@@ -42,6 +42,13 @@ describe("Print… from the window", () => {
     expect(said).toEqual([["Opened in your PDF viewer to print", undefined]]);
   });
 
+  it("says nothing when the system's print dialog came up in front: the dialog is the answer", async () => {
+    (window as unknown as { api: unknown }).api = { printPdf: async () => ({ ok: true, via: "dialog" }) };
+    const { say, said } = sayer();
+    expect(await printPdf("Plan.pdf", PDF, say)).toBe("dialog");
+    expect(said).toEqual([]);
+  });
+
   it("says why when this computer could not open it, and nothing else", async () => {
     (window as unknown as { api: unknown }).api = { printPdf: async () => ({ ok: false, error: "No application knows how to open this file" }) };
     const { say, said } = sayer();

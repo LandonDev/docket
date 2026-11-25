@@ -6,9 +6,10 @@ import { safeFileName } from '@shared/fileName'
 
 /**
  * Print… (docs/agents/work-editors.md "Print"): the PDF Preview drew, handed
- * to this computer's own PDF viewer, where the system's print dialog is one
- * key away. The window sends the previewed bytes; this writes them to a file
- * of its own and opens it.
+ * to this computer's own PDF viewer. On macOS Preview.app is asked to print it
+ * with the system's print dialog in front; elsewhere, or when Preview cannot
+ * be asked, the viewer opens the file and its print dialog is one key away.
+ * The window sends the previewed bytes; this writes them to a file of its own.
  *
  * Why not Electron's own print: on the owner's Mac (macOS 27.2, Electron
  * 39.8.10, no printer set up) `webContents.print` refuses before any dialog
@@ -26,10 +27,12 @@ export interface PrintDeps {
   temp: string
   /** opens a file in the system's own app for it; answers an error's words, or '' */
   open(path: string): Promise<string>
+  /** macOS: asks the system's print dialog for a file, in front; answers whether it was asked */
+  print?(path: string): Promise<boolean>
   now?(): number
 }
 
-export type PrintAnswer = { ok: true; via: 'viewer' } | { ok: false; error: string }
+export type PrintAnswer = { ok: true; via: 'dialog' | 'viewer' } | { ok: false; error: string }
 
 /** The most a print may be: what a preview's PDF can reach, and no more than a window should hand over. */
 export const PRINT_MAX_BYTES = 256 * 1024 * 1024
@@ -134,6 +137,7 @@ export async function printPdf(deps: PrintDeps, name: unknown, bytes: unknown): 
     rmSync(dir, { recursive: true, force: true })
     return { ok: false, error: 'The file could not be written' }
   }
+  if (deps.print && (await deps.print(path).catch(() => false))) return { ok: true, via: 'dialog' }
   const error = await deps.open(path).catch((err: unknown) => (err instanceof Error ? err.message : String(err)) || 'The file could not be opened')
   if (error) {
     rmSync(dir, { recursive: true, force: true })
@@ -154,9 +158,32 @@ export function answerPrint(deps: PrintDeps, event: PrintSender, name: unknown, 
   return printPdf(deps, name, bytes)
 }
 
-/** How long xdg-open is heard before the PDF counts as handed over. */
+/** How long xdg-open, or osascript, is heard before the PDF counts as handed over. */
 export const XDG_SETTLE_MS = 3_000
 export const NO_VIEWER = 'No app on this computer opens a PDF'
+
+/**
+ * Runs a command and hears it for `settleMs`: '' when it exits well or is
+ * still running then, 'failed' when it exits badly or cannot start.
+ */
+function settled(command: string, args: string[], spawn: typeof nodeSpawn, settleMs: number): Promise<'' | 'failed'> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const answer = (result: '' | 'failed'): void => {
+      clearTimeout(timer)
+      resolve(result)
+    }
+    try {
+      const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+      child.once('error', () => answer('failed'))
+      child.once('exit', (code) => answer(code === 0 ? '' : 'failed'))
+      child.unref()
+      timer = setTimeout(() => answer(''), settleMs)
+    } catch {
+      answer('failed')
+    }
+  })
+}
 
 /**
  * Opens a file on Linux through xdg-open, heard only for a moment. Electron's
@@ -168,28 +195,47 @@ export const NO_VIEWER = 'No app on this computer opens a PDF'
  * holding the file.
  */
 export function xdgOpen(path: string, spawn: typeof nodeSpawn = nodeSpawn, settleMs = XDG_SETTLE_MS): Promise<string> {
-  return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const answer = (error: string): void => {
-      clearTimeout(timer)
-      resolve(error)
-    }
-    try {
-      const child = spawn('xdg-open', [path], { detached: true, stdio: 'ignore' })
-      child.once('error', () => answer(NO_VIEWER))
-      child.once('exit', (code) => answer(code === 0 ? '' : NO_VIEWER))
-      child.unref()
-      timer = setTimeout(() => answer(''), settleMs)
-    } catch {
-      answer(NO_VIEWER)
-    }
-  })
+  return settled('xdg-open', [path], spawn, settleMs).then((result) => (result ? NO_VIEWER : ''))
+}
+
+/**
+ * The AppleScript that brings Preview.app in front and asks it to print the
+ * file it is handed (its one argument, never written into the script) with
+ * the system's print dialog. The wait is long: Preview answers only once he
+ * closes the dialog.
+ */
+export const PREVIEW_PRINT_SCRIPT = [
+  'on run argv',
+  'set f to POSIX file (item 1 of argv)',
+  'tell application "Preview"',
+  'activate',
+  'with timeout of 86400 seconds',
+  'print f with print dialog',
+  'end timeout',
+  'end tell',
+  'end run'
+] as const
+
+/**
+ * macOS: Print… in one step, the system's print dialog in front through
+ * Preview.app. osascript is heard for a moment: a refusal (no Automation
+ * grant, -1743) or no osascript answers false, and the viewer stands in;
+ * still running is the dialog up, waiting on him. A grant he refuses after
+ * the moment leaves nothing open, and his next Print… opens the viewer.
+ */
+export function previewPrint(path: string, spawn: typeof nodeSpawn = nodeSpawn, settleMs = XDG_SETTLE_MS): Promise<boolean> {
+  const args = [...PREVIEW_PRINT_SCRIPT.flatMap((line) => ['-e', line]), path]
+  return settled('/usr/bin/osascript', args, spawn, settleMs).then((result) => result === '')
 }
 
 /** `print:pdf` for every window, then a sweep of what an earlier run left. */
 export async function registerPrintOut(): Promise<void> {
   const { app, ipcMain, shell } = await import('electron')
-  const deps: PrintDeps = { temp: app.getPath('temp'), open: (path) => (process.platform === 'linux' ? xdgOpen(path) : shell.openPath(path)) }
+  const deps: PrintDeps = {
+    temp: app.getPath('temp'),
+    open: (path) => (process.platform === 'linux' ? xdgOpen(path) : shell.openPath(path)),
+    ...(process.platform === 'darwin' ? { print: (path: string) => previewPrint(path) } : {})
+  }
   ipcMain.handle('print:pdf', (event, name: unknown, bytes: unknown) => answerPrint(deps, event, name, bytes))
   sweepPrints(deps.temp)
 }
