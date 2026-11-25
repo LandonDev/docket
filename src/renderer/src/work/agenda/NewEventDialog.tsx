@@ -11,7 +11,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { jobNameNow } from "../jobName";
 import { tellAdded } from "./added";
-import { eventPayload, type EventForm, pad } from "./newEvent";
+import { defaultTimes, eventPayload, type EventForm } from "./newEvent";
 import type { LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
@@ -96,15 +96,6 @@ export function NewEventDialog({
   );
 }
 
-const dayOf = (ms: number) => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const timeOf = (ms: number) => {
-  const d = new Date(ms);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
 function Body({
   sector,
   startsAt,
@@ -133,7 +124,7 @@ function Body({
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
-  const [form, setForm] = useState<EventForm>({ title: "", day: dayOf(start), from: timeOf(start), to: timeOf(start + 3_600_000), where: "", invite: "", ...initial });
+  const [form, setForm] = useState<EventForm>({ title: "", ...defaultTimes(start), where: "", invite: "", ...initial });
   const [calendar, setCalendar] = useState("");
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<EventForm>) => setForm((f) => ({ ...f, ...p }));

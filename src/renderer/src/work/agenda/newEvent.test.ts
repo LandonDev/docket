@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nextToday } from "../tasks/facts";
-import { eventPayload } from "./newEvent";
+import { defaultTimes, eventPayload } from "./newEvent";
 
 const form = { title: "Walk the ballroom", day: "2026-11-20", from: "09:00", to: "10:30", where: "", invite: "" };
 
@@ -36,3 +36,17 @@ describe("the Agenda row's fact", () => {
     expect(nextToday(events, at(15) + 1)).toBeNull();
   });
 });
+
+describe("the form's first times", () => {
+  const at = (h: number, m = 0) => new Date(2026, 10, 24, h, m).getTime();
+  it("are an hour long", () => {
+    expect(defaultTimes(at(14))).toEqual({ day: "2026-11-24", from: "14:00", to: "15:00" });
+  });
+  it("end by 11:59 PM the same day when the hour would cross midnight, so the form takes its own default", () => {
+    const late = defaultTimes(at(23));
+    expect(late).toEqual({ day: "2026-11-24", from: "23:00", to: "23:59" });
+    expect(typeof eventPayload({ title: "Late call", ...late, where: "", invite: "" })).toBe("object");
+    expect(defaultTimes(at(23, 30)).to).toBe("23:59");
+  });
+});
+
