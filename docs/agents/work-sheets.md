@@ -319,7 +319,8 @@ uses the same words when reading older restore labels.
   41 workbooks, no repair, 2,696 checks:
   `.temp-code/plans/landed/E-sheets/sheets-charts-writer-report.md`). The
   canvas reads a file's charts and pictures with the workbook
-  (`importXlsx(...).objects`, grid.ts `decode`) and keeps each picture's
+  (`importXlsx(...).objects`, grid.ts `decode`, run in a worker with the
+  package's buffer transferred: sheets/xlsxDecode.worker.ts, perf M9) and keeps each picture's
   bytes from the bytes it loaded, by part (`readMedia`), so no wire carries
   them; it hands both to work-kit's grid (`SheetCanvas objects`, `media`),
   which draws, selects, makes and edits them (Insert → Chart and Picture, the

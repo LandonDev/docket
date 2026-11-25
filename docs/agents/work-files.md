@@ -1536,7 +1536,8 @@ while its screen is unlocked.
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
 | `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent, `approve` for a key |
-| `writeBack {ref, data, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
+| `writeBackPiece {upload, index, data}` | operate; another host of his only | screen | one piece (at most 4 MiB) of the bytes the next `writeBack` names by `pieces`, kept for that write (files/pieces.ts) |
+| `writeBack {ref, data, pieces?, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
 | `saveAs {source, at, name?, format, link?, place?, computer?, exists?, op}` | operate, and `approve` where others can open the folder | screen | a document saved in a format as a new file in the folder, or over the one of that name on his Replace, linked unless `link` is false ("Save As…"): `SavedAs` |
 | `links {source}`, `linkAct {id, act}` | read; operate and his own edit there | screen | the files a document is linked to (`DocLink[]`); Unlink, Retry, Replace or Keep Both on one |
 | `saveAsWord {source, at, name?, op}` | operate, as `saveAs` | screen | an older window's Save as Word to…: `saveAs` with Word, Keep Both and no link (`SavedAsWord {name, ref}`) |
@@ -2126,7 +2127,12 @@ over a file that changed there.
   once. Another host: the peer verb `work.files.writeBack {ref, data, version, origin: {from: 'window'}}`, admitted
   there as his own save of that library file (`admitChange` as `edit`, a peer only with its origin, a file of a
   library of that host, never its VM), then `saveFile` by the version. The VM: `vmSave`, the guest's versioned
-  `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set.
+  `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set. A copy over 4 MiB goes
+  to another host in pieces (perf M9, files/pieces.ts): `work.files.writeBackPiece {upload, index, data}` two at
+  once, then `writeBack {pieces: {upload, count, sha256}}` with no `data`; that host keeps a write's pieces in memory
+  for that write alone (from the workspace's own host, one workspace, at most four writes, two minutes), joins and
+  checks them, and admits and writes exactly as before. A host a release behind gets the whole file as before. Save as
+  Word to another computer sends the same way.
 - **The receipt is of the bytes sent.** `saveFile` answers the version of the bytes it wrote, read off the staged
   file before its rename (size, time, sha256), never a look after the rename, which a sync's own write coming right
   after would have answered as ours, so the next send would have gone over it. And it takes a file whose time alone

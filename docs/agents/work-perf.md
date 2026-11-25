@@ -197,3 +197,20 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
 - **A live Office tab's place** is read when something may have moved it (a ResizeObserver on the body, everything
   above it and what sits beside that; a scroll anywhere; the window's resize) and once a second otherwise
   (`watchPlace`, work/office/live/LiveBody.tsx); it was every 200 ms.
+
+## Bytes on a path of their own (perf M9)
+
+- **No file as one frame.** A file dropped on a document goes up in the upload's 2 MB chunks and is imported by its
+  path (formats/Import.tsx `fromFile`); a copy sent back to another host goes in 4 MiB pieces, two in flight
+  (files/pieces.ts), checked by count and SHA-256 there. Both were one frame of up to about 64 MB.
+- **Reads overlap.** Another host's file for a copy was already read two pieces at once (`farBytes`); a fetched item's
+  Download now reads three at once after its first piece (canvas/fetched.ts). A sheet's pieces come three at once
+  since M7.
+- **No deflate on bytes.** A frame with a base64 run of 256 KB or more goes with `compress: false`
+  (wire.ts `carriesBytes`; the server's `sendFrame` and a peer link's request): zips deflate by about a quarter, for a
+  pass through libuv's pool on both hosts.
+- **An Excel file is read in a worker** (sheets/xlsxDecode.worker.ts), its buffer transferred both ways.
+- **Not built: a ticketed byte route by range.** What it would remove beyond the above is the base64 of pieces of at
+  most about 5.6 MB on the shared socket. The proof that would say whether that still holds a token back (B21 while
+  a 20 MB file opens) has not been run.
+

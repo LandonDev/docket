@@ -244,6 +244,12 @@ answers the item (`importAhead`, formats/importOnce.ts), beside the
 editor's code, under the one key the item's body (`ImportBody`) uses, so
 the host makes one document.
 
+A file dropped on a document (`DropImport`, perf M9) is kept in the
+workspace's folder first, through the chunked upload the canvas's own drops
+use (`attachment.begin` with `into: 'workspace'`, 2 MB chunks), and imported
+from there as `{at: 'source'}`; HTML is still read into blocks in the window.
+The window no longer sends `{at: 'bytes'}`, which the host still takes.
+
 **In** (`work.formats.import`, `operate`, → `ImportAnswer`): from a file on
 this host (`{at: 'source'}`: the canvas opened it; the path fence holds a
 remote key to its roots), a dropped file's bytes (`{at: 'bytes'}`: kept in the
