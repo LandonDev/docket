@@ -207,9 +207,11 @@ export async function agentChange(ctx: Ctx, item: CanvasItem, changes: Omit<Form
 // ── publishing ───────────────────────────────────────────────────────
 
 /** Holds the publish for his press. A publish already held at this rev is the one. */
-export function hold(ctx: Ctx, item: CanvasItem): { view: FormView; held: HeldItem | null } {
+export function hold(ctx: Ctx, item: CanvasItem, seen?: number): { view: FormView; held: HeldItem | null } {
   const store = new FormsStore(ctx.db)
   const row = rowOf(ctx, item)
+  // What he pressed Publish on is what is held: a form a thread changed since his canvas drew it waits for him to look again.
+  if (seen !== undefined && row.rev !== seen) throw new FormError('The form changed since you saw it. Look at it again, then Publish.')
   if (row.state === 'open') throw new FormError(`${row.body.title} is published already.`)
   if (!answerable(row.body.questions).length) throw new FormError('A form needs a question before it is published.')
   if (row.held && row.held.rev === row.rev) return { view: viewOf(ctx, row), held: null }

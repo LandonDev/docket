@@ -86,7 +86,7 @@ export const forms: WorkModule = {
       case 'work.forms.mode':
         return handled(announce(ctx, new FormsStore(ctx.db).update(item.id, { mode: req.params.mode })))
       case 'work.forms.publish':
-        return handled(hold(ctx, item).view)
+        return handled(hold(ctx, item, req.params.rev).view)
       case 'work.forms.close':
         return handled(setOpen(ctx, item, req.params.open))
       case 'work.forms.responses':

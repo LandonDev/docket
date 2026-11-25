@@ -502,6 +502,8 @@ export class Outbox {
           if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
           if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
           if (opts.many && quotesItsMail(live)) throw new Error(OPEN_TO_SEND)
+          // A draft whose thread is gone takes no time: nothing would be left here to take it back from LifeOS.
+          if (!live.sessionId) throw new Error(SCOPE_GONE)
           row = row ? (this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? this.store.get(row.id)) : this.adopt(live)
         }
       }
@@ -625,7 +627,7 @@ export class Outbox {
   async drainCancels(): Promise<void> {
     try {
       // A stop between a removal and its hook leaves a schedule unmarked whose thread or workspace is gone: found here.
-      for (const row of this.store.scheduledInLifeos()) if (!row.cancelWanted && row.sessionId && !this.deps.scopeKeyOf(row.sessionId)) this.store.markCancel(row.id)
+      for (const row of this.store.unmarkedLifeosSchedules()) if (!row.sessionId || !this.deps.scopeKeyOf(row.sessionId)) this.store.markCancel(row.id)
       for (const row of this.store.cancelsWanted()) await this.cancelOne(row, 'The thread that made this was deleted.')
     } catch (err) {
       this.deps.ctx.log(`outbox: the cancels still wanted were not asked: ${errorText(err)}`)

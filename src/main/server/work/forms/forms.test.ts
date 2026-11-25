@@ -290,6 +290,14 @@ describe('a form', () => {
     expect((await call<FormResponses>('work.forms.responses', { itemId })).rows[0][0]).toBe('Late')
   })
 
+  it('holds a publish only for the form his canvas drew: one a thread changed since is refused', async () => {
+    const { itemId } = await made()
+    const view = await call<FormView>('work.forms.open', { itemId })
+    await expect(call('work.forms.publish', { itemId, rev: view.rev + 1 })).rejects.toThrow('The form changed since you saw it')
+    const held = await call<FormView>('work.forms.publish', { itemId, rev: view.rev })
+    expect(held.held).not.toBeNull()
+  })
+
   it('keeps an agent\'s change to a published form waiting, and its new question gets a column of its own', async () => {
     const { itemId } = await made()
     await call('work.forms.mode', { itemId, mode: 'writes' })

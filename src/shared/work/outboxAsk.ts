@@ -98,8 +98,8 @@ export function ownWords(text: string): { words: string; held: string[] } {
   let inChip = false
   let inCode = false
   for (const line of text.split('\n')) {
-    // A fenced code block is pasted text, never his command.
-    if (/^\s*```/.test(line)) {
+    // A fenced code block (``` or ~~~) is pasted text, never his command.
+    if (/^\s*(```|~~~)/.test(line)) {
       inCode = !inCode
       continue
     }
@@ -173,7 +173,7 @@ function countsIn(clause: string): number[] {
 
 /** Words that put a send at a time: a day, a part of a day, a clock. */
 function timeWords(clause: string): boolean {
-  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause)
+  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause) || /\bin (an?|\d+|a few|a couple of) (minute|minutes|hour|hours|mins|hrs)\b/.test(clause) || has(clause, 'in a bit') || has(clause, 'soon')
 }
 
 const FILLERS = /^(?:(?:please|ok|okay|yes|yeah|sure|now|then|and|so|just|alright|right|great|thanks|go ahead and|you can|feel free to|can you|could you|would you|will you)[\s,]+)*/
@@ -226,8 +226,9 @@ export function laterTimeIn(clause: string, from: number, zone: string): number 
   let h: number
   let min = 0
   const all = [...clause.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/g)]
-  // Two clock times, noon beside another, or midnight, are no one time.
-  if (has(clause, 'midnight') || all.length + (has(clause, 'noon') ? 1 : 0) !== 1) return null
+  // Two clock times (a 24-hour one too), noon beside another, or midnight, are no one time.
+  const plain24 = [...clause.matchAll(/\b\d{1,2}:\d{2}\b(?!\s*(am|pm|a\.m\.|p\.m\.))/g)].length
+  if (has(clause, 'midnight') || plain24 > 0 || all.length + (has(clause, 'noon') ? 1 : 0) !== 1) return null
   if (has(clause, 'noon')) h = 12
   else {
     const t = all[0]!
@@ -243,7 +244,8 @@ export function laterTimeIn(clause: string, from: number, zone: string): number 
   const hh = Number(read.find((p) => p.type === 'hour')?.value) % 24
   const mm = Number(read.find((p) => p.type === 'minute')?.value)
   if (hh !== h || mm !== min) return null
-  if (wall(at - 3_600_000) === wall(at) || wall(at + 3_600_000) === wall(at)) return null
+  // A wall time a clock change repeats (by an hour or a half) is no one moment.
+  if ([1_800_000, 3_600_000].some((d) => wall(at - d) === wall(at) || wall(at + d) === wall(at))) return null
   return at
 }
 

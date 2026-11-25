@@ -235,7 +235,9 @@ export class OutboxRequests {
     const messages = this.deps.ctx.threads.ownerRecent(sessionId, OWNER_MESSAGES).filter((m) => m.at <= now && now - m.at <= REQUEST_TTL_MS)
     const items: AskItem[] = reach.map(({ item, own }) => ({ ref: toolRef(item), n: item.n, kind: item.kind, names: namesOf(item), own, heldAt: item.createdAt, ...(item.ref.at === 'host' ? { chipId: item.ref.id } : {}), ...(opOf(item) ? { op: opOf(item)! } : {}) }))
     const root = this.deps.rootOf(sessionId)
-    const verdict = judgeAsk({ quote: args.quote, messages, items, asked: args.items, zone: this.deps.zone(), decidedSince: (at) => this.decidedSince(root, job.workspaceId ?? null, at) })
+    // A LifeOS draft with no row here keeps no history: one of the tree's edited after his words makes "all" unprovable.
+    const lifeosSince = (at: number): number => reach.filter(({ item, own }) => own && item.ref.at === 'lifeos' && item.updatedAt > at).length
+    const verdict = judgeAsk({ quote: args.quote, messages, items, asked: args.items, zone: this.deps.zone(), decidedSince: (at) => this.decidedSince(root, job.workspaceId ?? null, at) + lifeosSince(at) })
     if (!verdict.ok) return refuse(verdict.refusal)
     const digest = createHash('sha256').update(verdict.clause).digest('hex').slice(0, 32)
     // One message of his gives one request per thread: the same ask again answers the one it made.
@@ -401,8 +403,12 @@ export class OutboxRequests {
   private settleIfDone(row: Row): OutboxRequest {
     if (row.expires_at <= this.now()) return this.view(this.void(row, 'It ran out.'))
     if (!this.placed(row, [])) return this.view(this.void(row, 'Its thread moved to another job, or was archived.'))
-    const items = json<Asked[]>(row.items, []).map((a) => this.itemOf(a.ref))
-    if (items.every((i) => !i || !needsHim(i))) return this.view(this.void(row, 'Every item was decided elsewhere.'))
+    const asked = json<Asked[]>(row.items, [])
+    // An item LifeOS holds is unknown here until its list has arrived: absent then is not decided.
+    const loaded = this.deps.outbox.lifeos?.loadedTables?.() ?? null
+    const unknown = asked.some((a) => a.ref.at === 'lifeos' && !this.itemOf(a.ref) && !(a.ref.table === 'outbox' ? loaded?.outbox : loaded?.calendarOps))
+    const items = asked.map((a) => this.itemOf(a.ref))
+    if (!unknown && items.every((i) => !i || !needsHim(i))) return this.view(this.void(row, 'Every item was decided elsewhere.'))
     return this.view(row)
   }
 

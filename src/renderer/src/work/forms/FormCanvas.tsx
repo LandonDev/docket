@@ -257,7 +257,7 @@ export function Bar(props: Props) {
   if (!view) return error ? null : <Skeleton data-form-bar-bone className="h-3 w-30" />;
   const publish = (): void => {
     store.set({ publishing: true });
-    void run(host.publish(), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
+    void run(host.publish(view.rev), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
   };
   // While changes wait the switch gives way whole in a narrow bar: on Questions to the stepper, on Responses to one compact
   // Questions control that leads back to them. Never both: the control shows only where the switch has gone.

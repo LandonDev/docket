@@ -225,6 +225,14 @@ describe('Send later for a mail LifeOS holds', () => {
     expect(outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
   })
 
+  it('a draft whose thread is gone takes no time', async () => {
+    const item = await draft()
+    rig.sessions.delete('t-work')
+    const { results } = await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])
+    expect(results[0]).toMatchObject({ ok: false, error: expect.stringMatching(/thread or workspace it belonged to is gone/) })
+    expect(rig.lifeos.calls.filter((c) => c.fn === 'compose:send')).toEqual([])
+  })
+
   it('a listing read before his Send later never puts the row back: only a fresh read does', async () => {
     const item = await draft()
     await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])

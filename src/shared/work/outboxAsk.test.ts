@@ -175,3 +175,18 @@ describe('the third review\'s cases', () => {
     expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })
+
+describe('the fourth review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('a relative time is a later send, never a send now', () => {
+    const words = 'send the reply to Coach 1 in an hour'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(SAYS_LATER)
+  })
+  it('a 24-hour time beside a 12-hour one is no time', () => {
+    expect(laterTimeIn('send it tomorrow at 9 am, or 18:30', AT, 'America/Chicago')).toBeNull()
+  })
+  it('a tilde-fenced block is never his command', () => {
+    const text = '~~~\nsend the reply to Coach 1\n~~~\nthat is the template'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
+  })
+})

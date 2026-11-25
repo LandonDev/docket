@@ -88,7 +88,8 @@ export class DigestStore {
       workspaceId: r.workspace_id,
       sector: r.sector,
       title: r.title,
-      ...(r.detail ? { detail: r.detail } : {}),
+      // A thread's request once kept his quote here: never read out of the ledger, whatever row survived.
+      ...(r.detail && r.kind !== 'outbox.request' ? { detail: r.detail } : {}),
       ...(openOf(r.open) ? { open: openOf(r.open) } : {}),
       ...(r.by_at != null ? { by: r.by_at } : {}),
       ...(r.key ? { key: r.key } : {}),

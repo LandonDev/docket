@@ -123,7 +123,7 @@ export const FormsRequestSchemas = [
   request('work.forms.review', z.object({ itemId, which: z.union([z.object({ ids: z.array(z.string().max(100)).min(1).max(200) }), z.literal('all')]), verdict: z.enum(['accept', 'reject']) })),
   request('work.forms.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** Holds the publish; the press is `work.outbox.send` on the answer's `held.ref`. */
-  request('work.forms.publish', z.object({ itemId })),
+  request('work.forms.publish', z.object({ itemId, /** the form's revision as the canvas drew it: a form changed since is not held for publish on this press */ rev: z.number().int().min(0).optional() })),
   /** Close (open: false) or reopen the published form. Not held: it stops or restarts answers on his own form. */
   request('work.forms.close', z.object({ itemId, open: z.boolean() })),
   /** The answers, read from the sheet; `{ same: true }` when the sheet is still at `rev`. */

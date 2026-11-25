@@ -588,6 +588,11 @@ export class HeldStore {
     this.db.prepare(`UPDATE ${HELD_TABLE} SET updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled' AND cancel_wanted = 1`).run(this.now(), id)
   }
 
+  /** Every scheduled LifeOS mail not yet marked, whole, with no cap: what the drain checks for a thread that is gone. */
+  unmarkedLifeosSchedules(): { id: string; sessionId: string | null }[] {
+    return (this.db.prepare(`SELECT id, session_id FROM ${HELD_TABLE} WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' AND cancel_wanted = 0`).all() as { id: string; session_id: string | null }[]).map((r) => ({ id: r.id, sessionId: r.session_id }))
+  }
+
   /** Mark one scheduled LifeOS mail to be taken back (its thread or workspace is gone, found at the drain). */
   markCancel(id: string): void {
     this.db.prepare(`UPDATE ${HELD_TABLE} SET cancel_wanted = 1 WHERE id = ? AND state = 'scheduled'`).run(id)

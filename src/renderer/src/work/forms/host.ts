@@ -15,7 +15,8 @@ export interface FormHost {
   review(which: { ids: string[] } | "all", verdict: "accept" | "reject"): Promise<FormView & { cleared?: string[] }>;
   mode(mode: FormMode): Promise<FormView>;
   /** Holds the publish, then presses it: the button is his press. */
-  publish(): Promise<FormView>;
+  /** `rev`: the form's revision as the canvas drew it */
+  publish(rev?: number): Promise<FormView>;
   close(open: boolean): Promise<FormView>;
   responses(rev?: number): Promise<FormResponses | { same: true; rev: number }>;
   openSheet(sheet: CanvasSource, title: string): Promise<void>;
@@ -31,8 +32,8 @@ export function linkFormHost(env: string, item: CanvasItem): FormHost {
     save: (rev, body) => ask("work.forms.save", { rev, body }),
     review: (which, verdict) => ask("work.forms.review", { which, verdict }),
     mode: (mode) => ask("work.forms.mode", { mode }),
-    async publish() {
-      const view = await ask<FormView>("work.forms.publish");
+    async publish(rev) {
+      const view = await ask<FormView>("work.forms.publish", rev !== undefined ? { rev } : {});
       if (!view.held) return view;
       // The held item as the host holds it now, and its revision with the press: a row that moved since is refused, not sent.
       const held = await link().request<OutboxItem>("work.outbox.get", { ref: view.held.ref });

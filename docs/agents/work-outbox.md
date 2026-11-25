@@ -480,7 +480,21 @@ like a held chip can name an item (it never makes a command); LifeOS's
 `compose:discard` takes an id alone, so its delete is not bound to
 LifeOS's revision; a press cut off before its first result reads every
 chosen row as not started; a Work Chat's reach is capped before its tree
-is chosen.
+is chosen; a host that stops between a thread's deletion and its cancel and
+stays down past the mail's time cannot stop LifeOS's own timer (the drain
+takes it back if the host is up first); Mail's own scheduled controls
+(work-kit's) name no revision, so Send now, Move and Cancel from an older
+Mail window act on the schedule as it stands.
+
+Each round of the hold's review also closed: a later send refused on a
+LifeOS draft whose thread is gone; every unmarked LifeOS schedule checked
+by the drain, with no cap; relative times ("in an hour", "soon") as later
+sends; a 24-hour clock beside a 12-hour one, or a half-hour clock change,
+as no time; a tilde fence as pasted text; an "all" refused when one of the
+tree's LifeOS drafts changed after his words; a request never voided
+before LifeOS's list arrived; and the digest never reading a request's
+detail out of its ledger. Forms' Publish names the form revision its canvas
+drew (`work.forms.publish {rev}`), refused when a thread changed it since.
 
 **His Send.** One check of the whole press (open, not run out, the
 generation, every receipt this request's and none twice, each the action
