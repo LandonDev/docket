@@ -17,7 +17,7 @@ const shipped = readdirSync(DIR).filter((f) => /\.tsx?$/.test(f) && !/\.(test|do
 const read = (file: string): string => readFileSync(join(DIR, file), "utf8");
 /** The shared modules the canvas takes values from: plain words, no zod, no imports (held below). */
 const WORDS = "@shared/work/sheets";
-const PLAIN = [WORDS, "@shared/work/sheetFormats"];
+const PLAIN = [WORDS, "@shared/work/sheetFormats", "@shared/work/cellInput"];
 
 describe("the sheet canvas and the first paint", () => {
   it("imports no value from a module with zod schemas", () => {
@@ -25,10 +25,12 @@ describe("the sheet canvas and the first paint", () => {
     for (const file of shipped) for (const [, from] of read(file).matchAll(VALUE_IMPORT)) expect((from.startsWith("@shared") && !PLAIN.includes(from)) || from === "zod", `${file} imports a value from ${from}`).toBe(false);
   });
 
-  it("takes the words the host says too from a shared file that imports nothing", () => {
+  it("takes the words the host says too from shared files that import nothing but each other", () => {
     for (const from of PLAIN) {
       const words = readFileSync(join(DIR, "../../../../shared", `${from.slice("@shared/".length)}.ts`), "utf8");
-      expect(/^\s*import\b/m.test(words), from).toBe(false);
+      const imports = [...words.matchAll(/^\s*import\b[^;]*?from\s+["']([^"']+)["']/gm)].map((m) => m[1]);
+      for (const at of imports) expect(at.startsWith("./") && PLAIN.includes(`@shared/work/${at.slice(2)}`), `${from} imports ${at}`).toBe(true);
+      expect((words.match(/^\s*import\b/gm) ?? []).length, from).toBe(imports.length);
     }
     expect(read("sync.ts")).toContain(`from "${WORDS}"`);
   });

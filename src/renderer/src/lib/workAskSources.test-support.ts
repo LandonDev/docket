@@ -29,6 +29,7 @@ const NATIVE = new Map([
   ["printPdfFile", "printPdf"],
   ["openFullEditor", "app.openFullEditor"],
   ["systemNotice", "app.notice"],
+  ["draftStore", "drafts"],
   ["pickFiles", "dialog.open"],
   ["pickFolder", "dialog.open"],
   ["revealPath", "revealInFinder"],

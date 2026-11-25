@@ -652,6 +652,11 @@ export const appshots = {
     api().appshots.permissions(prompt),
 };
 
+/** His unacknowledged edits, kept by this computer's main process (src/main/drafts.ts); none in a browser, which keeps no draft. */
+export function draftStore(): typeof window.api.drafts | undefined {
+  return isWebMode() ? undefined : window.api?.drafts;
+}
+
 /** System notifications while no app window is in front (src/main/notice.ts): Work's digest, and a thing that cannot
  *  wait. `onOpen` hears the key of the one he clicked. A browser at /ui raises none. */
 export const systemNotice = {

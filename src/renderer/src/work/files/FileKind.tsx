@@ -5,7 +5,7 @@ import { extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
-import { openUrl } from "../../lib/native";
+import { draftStore, openUrl } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -52,12 +52,13 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
     const back = kept.get(keptKey(env, item.id, workspaceId));
     if (back) return back.session;
     const link = registry.linkOf(env);
+    const drafts = draftStore();
     return new FileSession(
       {
         request: (method, params) => link.request(method, params),
         saved: (line) => shellNow.current.saved?.(line),
         say: (text) => void loadToast().then((toast) => toast.message(text)),
-        ...(window.api?.drafts ? { drafts: window.api.drafts } : {}),
+        ...(drafts ? { drafts } : {}),
       },
       { workspaceId, itemId: item.id, source, name: item.title, holder: env },
     );
@@ -97,7 +98,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
         await session.flush();
         if (session.dirty) throw new Error("Your words are not in the file yet");
       },
-      { keeps: !!window.api?.drafts },
+      { keeps: !!draftStore() },
     );
     return () => {
       off();

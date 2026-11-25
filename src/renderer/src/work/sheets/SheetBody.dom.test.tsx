@@ -76,7 +76,8 @@ const BOOK = workbookOf([
 ]);
 /** What a host sends for a sheet whose store keeps formatting. */
 const ROW_ALL: NonNullable<SheetView["row"]> = ["undo", "style", "font", "size", "bold", "italic", "underline", "colour", "fill", "align", "vertical", "wrap", "merge", "borders", "number"];
-const set = (row: number, col: number, v: number | string): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { [row]: { [col]: { v } } } } });
+// Typed words go out as the cell he meant (`typedCell`, decision 15): words held as text (t 1), a number as a number.
+const set = (row: number, col: number, v: number | string): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { [row]: { [col]: { v, ...(typeof v === "string" ? { t: 1 } : {}) } } } } });
 
 let sheetHost: FakeSheetHost;
 let grid: FakeGrid;

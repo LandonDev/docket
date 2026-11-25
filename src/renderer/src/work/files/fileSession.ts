@@ -37,7 +37,7 @@ export interface FileSessionHost {
   /** said once, outside the line: his text was kept as a copy */
   say?(text: string): void;
   now?(): number;
-  /** this computer's draft store (window.api.drafts); absent where there is none (a browser) */
+  /** this computer's draft store (native.ts `draftStore`); absent where there is none (a browser) */
   drafts?: DraftsPort;
   setTimeout?(fn: () => void, ms: number): unknown;
   clearTimeout?(id: unknown): void;
