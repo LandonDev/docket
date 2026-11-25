@@ -155,7 +155,17 @@ describe("Import", () => {
   });
 
   it("a file dropped on a document opens as a document; a picture is left to the editor", async () => {
-    answer = async () => ({ source: SOURCE, title: "Plan", itemId: "i3", warnings: [], outsiders: false });
+    // The upload answers as the host does: the file kept in the workspace's folder under its own name, then each import.
+    let kept = 0;
+    answer = async (_env, method) =>
+      method === "attachment.begin"
+        ? { uploadId: `u${++kept}`, chunkBytes: 2 * 1024 * 1024 }
+        : method === "attachment.commit"
+          ? { path: `/w/Brief${kept > 1 ? ` (${kept})` : ""}.docx` }
+          : method === "attachment.chunk"
+            ? null
+            : { source: SOURCE, title: "Plan", itemId: "i3", warnings: [], outsiders: false };
+    const imports = () => requests.filter((r) => r.method === "work.formats.import");
     render(
       <DropImport env="env_box" sessionId="t1" editor={null}>
         <p>text</p>
@@ -169,12 +179,15 @@ describe("Import", () => {
     expect(requests).toEqual([]);
     expect(toasts).toEqual([]);
     await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4])], "Brief.docx")));
-    await waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0]!.params).toEqual({ sessionId: "t1", from: { at: "bytes", name: "Brief.docx", data: toBase64(new Uint8Array([80, 75, 3, 4])) } });
+    await waitFor(() => expect(imports()).toHaveLength(1));
+    // Its bytes go up in the upload's chunk, kept in the workspace's folder, and it is imported from there.
+    expect(requests.map((r) => r.method)).toEqual(["attachment.begin", "attachment.chunk", "attachment.commit", "work.formats.import"]);
+    expect(requests[1]!.params).toMatchObject({ uploadId: "u1", index: 0, dataBase64: toBase64(new Uint8Array([80, 75, 3, 4])) });
+    expect(imports()[0]!.params).toEqual({ sessionId: "t1", from: { at: "source", source: { at: "file", host: "env_box", path: "/w/Brief.docx" } } });
     // A later file of the same name is another drop: it opens too, with its own bytes.
     await waitFor(() => expect(screen.queryByText("Opening Brief.docx")).toBeNull());
     await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4, 9])], "Brief.docx")));
-    await waitFor(() => expect(requests).toHaveLength(2));
-    expect(requests[1]!.params).toEqual({ sessionId: "t1", from: { at: "bytes", name: "Brief.docx", data: toBase64(new Uint8Array([80, 75, 3, 4, 9])) } });
+    await waitFor(() => expect(imports()).toHaveLength(2));
+    expect(imports()[1]!.params).toEqual({ sessionId: "t1", from: { at: "source", source: { at: "file", host: "env_box", path: "/w/Brief (2).docx" } } });
   });
 });

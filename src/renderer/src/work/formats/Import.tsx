@@ -7,7 +7,8 @@ import { registry } from "../../lib/connection";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
-import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./model";
+import { DROP_MAX_BYTES, importable, isHtml, warningsLine } from "./model";
+import { blobSource, uploadFile } from "../../lib/attachmentUpload";
 import { IMPORT_MS, importItem, importOnce } from "./importOnce";
 
 /**
@@ -88,14 +89,19 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   return failed !== null ? <OpenFailed kind="document" why={failed} onRetry={() => new Promise<void>((done) => ((pressed.current = done), setAttempt((n) => n + 1)))} /> : <ItemSkeleton />;
 }
 
-/** A dropped file as the import's `from`: HTML read into blocks here, anything else its bytes. */
-async function fromFile(file: File, editor: AnyEditor | null): Promise<Record<string, unknown>> {
+/**
+ * A dropped file as the import's `from`: HTML read into blocks here; anything else kept in the workspace's folder first,
+ * through the chunked upload the canvas's own drops use (`attachment.begin`, 2 MB a chunk: perf M9), and imported from
+ * there by its path. It went up as one frame of up to 64 MB before, and the chat's tokens and pushes waited behind it.
+ */
+export async function fromFile(env: string, sessionId: string, file: File, editor: AnyEditor | null): Promise<Record<string, unknown>> {
   if (isHtml(file.name)) {
     const { readHtml } = await import("work-kit/formats/html");
     const reader = editor ?? (await import("work-kit/editor")).createHeadlessEditor();
     return { at: "blocks", name: file.name, blocks: readHtml(reader, await file.text()) };
   }
-  return { at: "bytes", name: file.name, data: toBase64(new Uint8Array(await file.arrayBuffer())) };
+  const landed = await uploadFile({ threadEnv: env, sessionId, name: file.name, ...(file.type ? { mime: file.type } : {}), source: await blobSource(file), into: "workspace" });
+  return { at: "source", source: { at: "file", host: env, path: landed.path } };
 }
 
 const hasFiles = (e: React.DragEvent): boolean => Array.from(e.dataTransfer.types).includes("Files");
@@ -119,7 +125,7 @@ export function DropImport({ env, sessionId, editor, children }: { env: string; 
     setBusy(file.name);
     try {
       // A drop is his press: each one imports, however its file is named (a busy surface takes none meanwhile).
-      sayWarnings(await registry.linkOf(env).request<ImportAnswer>("work.formats.import", { sessionId, from: await fromFile(file, editor) }, { timeoutMs: IMPORT_MS }));
+      sayWarnings(await registry.linkOf(env).request<ImportAnswer>("work.formats.import", { sessionId, from: await fromFile(env, sessionId, file, editor) }, { timeoutMs: IMPORT_MS }));
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "It could not be opened");
     } finally {
