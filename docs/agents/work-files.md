@@ -2687,7 +2687,8 @@ picks, and stays linked to that file: each later edit is written to it.
   Teams or OneDrive library says Saved to it only once OneDrive has the bytes (`DocLink.upload`, read from the upload
   record `makeIn`, `putOver` and `deliver` keep, uploads.ts): "Saved, uploading to General…", "Not uploaded to
   General yet" (a minute on; it takes the foreground), "Saved. OneDrive uploads it to General" (the VM's older
-  helper cannot say), then "Saved to General 9:12 PM". Its menu holds, for each link: Keep Both and Replace for a Word file changed there, Save Again
+  helper cannot say), then "Saved to General 9:12 PM". Its uploading stage is said once it has lasted 600 ms, as a
+  copy's line holds it; until then the button keeps what it said last (DocLinks.tsx, `useStage`, `useLast`). Its menu holds, for each link: Keep Both and Replace for a Word file changed there, Save Again
   for another format changed or gone (`replace`, `keep`), Retry for one waiting or refused, then Open, Show in Files
   and Unlink. A copy made once (Just a copy) is said in one toast with Show; a linked one by the header alone.
 - **The fence.** `saveAs` is in `GUEST_METHODS` and `ELSEWHERE_METHODS`, as `saveAsWord` was.
@@ -2818,10 +2819,14 @@ workbooks, text and Word alike (files/uploads.ts):
   it is out, nor after a refusal or a conflict, until its own write is followed. An answer settles only the record it
   was asked of: one about an earlier write or from before a send now under way is dropped (a newer write is a new
   record). The window holds the same rule (fileText.ts `cloudOfBack`): a send's answer newer than the tab's back is
-  said as the computer's receipt alone, never with the tab's older cloud. Neither holder's read names the version its
-  flag is of: a Mac's File Provider keys are of the path (and lag a write by about 0.6 s, hence the 2 s wait), and
-  the VM helper's `synced` is a second `FindFirstFileW` beside the one its size and change time come from, with no
-  hash. So In Teams still comes from the path as it lies, as on 1.0.373, and nothing new says it from that alone. The
+  said as the computer's receipt alone, never with the tab's older cloud. A Mac's File Provider keys are of the path
+  (and lag a write by about 0.6 s, hence the 2 s wait), so each ask of another host carries the version our write
+  left there (`work.files.uploaded {ours}`, the write's receipt kept on the record): the holder reads the file's
+  version before and after the flag and answers `matched` only where both are ours, and the box counts the flag only
+  with that proof, so a colleague's version synced down over ours is never told as In Teams; an answer with no proof
+  (the file changed, a host a build behind) keeps the computer's own line. The VM helper's `synced` is a second
+  `FindFirstFileW` beside the one its size and change time come from, with no hash, so a VM library's In Teams
+  still comes from the path as it lies. The
   helper change that would bind it, waiting for a VM YES: `files.stat` reads the placeholder state from the same
   find data as its size and change time (thread compatibility mode set before that one `FindFirstFileW`) and answers
   them together; the box then says In Teams only when `synced` comes with the size and change time of the version its

@@ -175,7 +175,7 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
   })) as WrittenBack
   if (!('copy' in got)) throw new Error('The file was not made.')
   // That host says whether it lies in a folder OneDrive syncs; until then nothing is told of the cloud.
-  uploadWrote(ctx, { workspace_id: p.workspaceId, host: p.at.host, path: got.copy.path, vm: false })
+  uploadWrote(ctx, { workspace_id: p.workspaceId, host: p.at.host, path: got.copy.path, vm: false }, got.copy.version)
   return { path: got.copy.path, name: got.copy.name, version: got.copy.version }
 }
 

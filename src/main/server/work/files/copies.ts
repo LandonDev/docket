@@ -186,10 +186,10 @@ export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'h
   // What that computer holds now is not yet the file in Teams: OneDrive's upload is followed from here (uploads.ts).
   if ('version' in got) {
     keepBody(ctx, r, data)
-    uploadWrote(ctx, r)
+    uploadWrote(ctx, r, got.version)
   } else if ('copy' in got) {
     keepBody(ctx, { ...r, path: got.copy.path }, data)
-    uploadWrote(ctx, { ...r, path: got.copy.path })
+    uploadWrote(ctx, { ...r, path: got.copy.path }, got.copy.version)
   }
   return got
 }

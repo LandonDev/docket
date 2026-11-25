@@ -8,6 +8,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { useLast, useSince, useStage } from "../canvas/useCalm";
 import { KindGlyph } from "./KindGlyph";
 import { openSaveAs } from "./saveAsPort";
 import { kindOfEntry } from "@shared/work/files";
@@ -92,7 +93,13 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
     else run(l, act as Act);
   };
   const needs = links.some(linkNeedsHim);
-  const shown = needs ? (links.find(linkNeedsHim) ?? first) : first;
+  const now = needs ? (links.find(linkNeedsHim) ?? first) : first;
+  // An upload is said once it has lasted 600 ms (canvas/calm.ts), as a copy's line says it; until then the button keeps
+  // what it said last, never a stage that a quick upload would take back.
+  const uploading = now?.upload === "uploading";
+  const uploadShown = useStage(useSince(uploading));
+  const steady = useLast(now ?? null, !uploading, (l) => linkWords(l, clock));
+  const shown = uploading && !uploadShown && steady ? steady : now;
   return (
     <>
       {/* Read out only when a link needs him (a file changed there, a place that did not answer), never at each save. */}

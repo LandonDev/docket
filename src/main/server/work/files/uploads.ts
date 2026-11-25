@@ -8,6 +8,8 @@ import { vmState } from '../office/vm/office'
 import { setUploadsOwed } from '../winvm/owed'
 import { filesState } from './handle'
 import { locate } from './policy'
+import { sameWord, versionWord } from './save'
+import { versionOf } from './write'
 
 /**
  * Saved is not uploaded (docs/agents/work-files.md "Saved is not uploaded"). A save of ours into a folder OneDrive
@@ -20,8 +22,10 @@ import { locate } from './policy'
  *
  * In Teams is told only of our bytes (decision 18 of plan-cBclQIRDtvVS): a send that leaves drops what was known of the
  * last one (`uploadPending`), and an answer settles only the record it was asked about, never one a newer write or
- * send made since. Neither holder's read names the version its flag is of yet (a Mac's File Provider keys, the VM
- * helper's `synced`), so what a look says is still of the path as it lies; no new In Teams comes from that alone. A
+ * send made since. Another host's flag counts only for our own bytes: each ask carries the version our write left
+ * (`ours`, its receipt), and the holder answers `matched` only where the file is still that version before and after
+ * it read the flag, so a colleague's save synced down over ours is never told as In Teams; an answer with no proof
+ * (an older host, the file changed) keeps the computer's own line. The VM helper's `synced` names no version yet. A
  * computer that cannot say (a PC, an older host) leaves the computer's own line, no record of the cloud.
  */
 
@@ -48,16 +52,18 @@ interface Upload {
   looking: boolean
   /** found on a tab after a restart, not seen written: a sleeping VM leaves it unknown, never late */
   seeded?: boolean
+  /** the version our write left there (its receipt): another host's flag counts only while the file is still it */
+  ours?: string
 }
 const uploads = new Map<string, Upload>()
 const keyOf = (workspaceId: string, host: string, path: string): string => `${workspaceId}\0${host}\0${path}`
 let timer: ReturnType<typeof setTimeout> | null = null
 let queue: Promise<void> = Promise.resolve()
 
-/** A save of ours wrote the file: it is looked at until OneDrive has it. */
-export function uploadWrote(ctx: WorkCtx, r: { workspace_id: string; host: string; path: string; vm: number | boolean }, now = Date.now()): void {
+/** A save of ours wrote the file (`ours`: the version it left there, as its host answered): it is looked at until OneDrive has it. */
+export function uploadWrote(ctx: WorkCtx, r: { workspace_id: string; host: string; path: string; vm: number | boolean }, ours?: string, now = Date.now()): void {
   const vm = !!r.vm
-  uploads.set(keyOf(r.workspace_id, r.host, r.path), { workspaceId: r.workspace_id, host: r.host, path: r.path, vm, wrote: now, saved: now, looking: true, ...(vm ? { cloud: { is: 'uploading', at: now } } : {}) })
+  uploads.set(keyOf(r.workspace_id, r.host, r.path), { workspaceId: r.workspace_id, host: r.host, path: r.path, vm, wrote: now, saved: now, looking: true, ...(vm ? { cloud: { is: 'uploading', at: now } } : {}), ...(ours ? { ours } : {}) })
   filesState(ctx).tabs.touch(r.workspace_id)
   soon(ctx, vm ? 0 : uploadTiming.every)
 }
@@ -211,9 +217,10 @@ async function askHostAll(ctx: WorkCtx, group: Upload[]): Promise<(boolean | nul
   if (group.length === 1) return [await askHost(ctx, u)]
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(u.workspaceId), workspaceId: u.workspaceId } } as never, u.host)
   const refs = group.map((g) => ({ at: 'file' as const, host: g.host, path: g.path }))
+  const ours = group.map((g) => g.ours ?? '')
   let got: FileUploaded | { results: FileUploaded[] }
   try {
-    got = (await far.call('files', 'uploaded', { workspaceId: u.workspaceId, ref: refs[0], refs })) as FileUploaded | { results: FileUploaded[] }
+    got = (await far.call('files', 'uploaded', { workspaceId: u.workspaceId, ref: refs[0], refs, ours })) as FileUploaded | { results: FileUploaded[] }
   } catch (err) {
     if (/unknown method|no such method|not handled/i.test(err instanceof Error ? err.message : String(err))) return group.map(() => null)
     throw err
@@ -223,15 +230,18 @@ async function askHostAll(ctx: WorkCtx, group: Upload[]): Promise<(boolean | nul
     for (const g of group) out.push(await askHost(ctx, g).catch(() => null))
     return out
   }
-  return got.results.map((r) => (r.outside ? 'outside' : r.uploaded))
+  return got.results.map((r, i) => said(group[i]!, r))
 }
+
+/** A holder's answer for one file: its flag, counted only with its proof that the file is still our write's version. */
+const said = (u: Upload, r: FileUploaded): boolean | null | 'outside' => (r.outside ? 'outside' : u.ours && !r.matched ? null : r.uploaded)
 
 /** Another host of his: its own reading of the file it holds (`work.files.uploaded`); an older one that has no such verb cannot say. */
 async function askHost(ctx: WorkCtx, u: Upload): Promise<boolean | null | 'outside'> {
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(u.workspaceId), workspaceId: u.workspaceId } } as never, u.host)
   try {
-    const got = (await far.call('files', 'uploaded', { workspaceId: u.workspaceId, ref: { at: 'file', host: u.host, path: u.path } })) as FileUploaded
-    return got.outside ? 'outside' : got.uploaded
+    const got = (await far.call('files', 'uploaded', { workspaceId: u.workspaceId, ref: { at: 'file', host: u.host, path: u.path }, ...(u.ours ? { ours: [u.ours] } : {}) })) as FileUploaded
+    return said(u, got)
   } catch (err) {
     if (/unknown method|no such method|not handled/i.test(err instanceof Error ? err.message : String(err))) return null
     throw err
@@ -245,9 +255,9 @@ async function askHost(ctx: WorkCtx, u: Upload): Promise<boolean | null | 'outsi
  * the file of a library here as it lies. On a Mac, the File Provider item's own keys (uploaded, and not uploading); a
  * computer that cannot read them says null.
  */
-export async function uploadedHere(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; refs?: CanvasSource[] }, method: string): Promise<FileUploaded | { results: FileUploaded[] }> {
+export async function uploadedHere(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; refs?: CanvasSource[]; ours?: string[] }, method: string): Promise<FileUploaded | { results: FileUploaded[] }> {
   if (by.kind !== 'remote' || !by.peer) throw new Error("Only the workspace's own host asks this.")
-  const one = async (ref: CanvasSource): Promise<FileUploaded> => {
+  const one = async (ref: CanvasSource, ours?: string): Promise<FileUploaded> => {
     if (ref.at !== 'file') return { uploaded: null, outside: true }
     // Each file passes the door on its own: one the caller may not name is refused alone, never the sweep.
     let at
@@ -258,11 +268,17 @@ export async function uploadedHere(ctx: WorkCtx, by: Caller, p: { workspaceId: s
       throw err
     }
     if (at.in !== 'library' || at.library.vm) return { uploaded: null, outside: true }
-    return { uploaded: await uploadReader(ref.path) }
+    if (!ours) return { uploaded: await uploadReader(ref.path) }
+    // The flag is of the path: it counts for our write only while the file is that version on both sides of the read.
+    const before = await versionOf(ref.path).catch(() => null)
+    const uploaded = await uploadReader(ref.path)
+    const after = await versionOf(ref.path).catch(() => null)
+    const matched = !!before && !!after && sameWord(versionWord(before), ours) && sameWord(versionWord(after), ours)
+    return { uploaded, matched }
   }
-  if (!p.refs) return one(p.ref)
+  if (!p.refs) return one(p.ref, p.ours?.[0] || undefined)
   const results: FileUploaded[] = []
-  for (const ref of p.refs) results.push(await one(ref))
+  for (const [i, ref] of p.refs.entries()) results.push(await one(ref, p.ours?.[i] || undefined))
   return { results }
 }
 

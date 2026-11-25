@@ -12,7 +12,7 @@ import type { CanvasItem } from "@shared/work";
 import type { FilePlace } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
-const world = vi.hoisted(() => ({ fail: 0, refuse: null as string | null, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
+const world = vi.hoisted(() => ({ fail: 0, refuse: null as string | null, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown>, push: null as null | ((push: Record<string, unknown>) => void) }));
 
 const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
 const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
@@ -43,7 +43,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.wordSave") return { at: 1 };
       throw new Error(`unexpected ${method}`);
     },
-    onPush: () => () => undefined,
+    onPush: (fn: (push: Record<string, unknown>) => void) => ((world.push = fn), () => undefined),
     onOpen: () => () => undefined,
     onClose: () => () => undefined,
   });
@@ -329,6 +329,17 @@ describe("the header's linked files", () => {
     expect(within(menu).getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Keep Both", "Replace", "Open", "Show in Files", "Unlink"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Unlink" }));
     await waitFor(() => expect(world.calls.find((c) => c.method === "work.files.linkAct")?.params).toMatchObject({ id: "l1", act: "unlink" }));
+  });
+
+  it("says a save's upload only once it has lasted 600 ms, keeping what it said before until then", async () => {
+    world.links = [link()];
+    controls();
+    await screen.findByRole("button", { name: /Saved to General 9:12 PM/ });
+    world.links = [link({ upload: "uploading", at: new Date(2026, 10, 24, 21, 20).getTime() })];
+    await act(async () => world.push?.({ push: "work.files", workspaceId: "w1", tabs: 2 }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole("button", { name: /Saved to General 9:12 PM/ })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Saved, uploading to General/ }, { timeout: 1500 })).toBeTruthy();
   });
 
   it("reads out the link's words only when it needs him, never at each save", async () => {

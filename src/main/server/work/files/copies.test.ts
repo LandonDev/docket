@@ -1686,6 +1686,17 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
   })
 
+  it("never says In Teams of a colleague's version that synced down over our write: the Mac's flag counts only for our own bytes", async () => {
+    setUploadReader(async () => true)
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    // A colleague's save comes down from OneDrive before the first look: the file's flag is of their bytes.
+    writeFileSync(path, 'a colleague saved, synced down')
+    await lookAll(box.ctx, swept)
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+  })
+
   it("keeps the computer's own line where its holder cannot read OneDrive (a PC), and asks no more", async () => {
     let asks = 0
     setUploadReader(async () => (asks++, null))
