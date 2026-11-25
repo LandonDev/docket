@@ -1147,7 +1147,7 @@ export function PageView({
       ) : (
         // The list's columns leave by the list's own width, with the details pane beside it or not.
         <div className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
-          <Head sort={sort} second={inTrash ? "Was in" : results ? "Where" : "Last change by"} onSort={(next) => setLook({ ...look, sort: next })} />
+          <Head sort={sort} second={inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by"} onSort={(next) => setLook({ ...look, sort: next })} />
           <FileList {...shapeProps} compact={compact} heads={heads} onParent={toParent} bulk={!!acts && chosen.length >= 2} />
         </div>
       );

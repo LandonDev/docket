@@ -24,6 +24,8 @@ interface Host {
   answer(method: string, params: Record<string, unknown>, link?: string): unknown;
 }
 const world = vi.hoisted(() => ({
+  /** Starred rows carry where each lives (a LifeOS row in a lens does). */
+  starredWhere: false,
   host: null as unknown,
   toasts: [] as { kind: string; title: string; description?: string; undo?: () => void }[],
   asked: [] as { title: string; action: string }[],
@@ -188,7 +190,7 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
           if (ref.at === "place" && ref.id === "trash") {
             return { entries: trashed.map((t) => ({ key: `trash:${t.id}`, ref: null, folder: null, name: name(t.path), kind: t.dir ? "folder" : kindOfEntry(name(t.path)).kind, changed: 1_700_000_100_000, where: { place: "folder", name: "Dummy Esports", trail: parent(t.path).split("/").slice(2) } })), place: "trash", trail: [{ name: "Trash", at: ref }] } satisfies FilesListing;
           }
-          if (ref.at === "place" && ref.id === "starred") return { entries: [...stars].map(entry), place: "starred", trail: [{ name: "Starred", at: ref }] } satisfies FilesListing;
+          if (ref.at === "place" && ref.id === "starred") return { entries: [...stars].map((p) => ({ ...entry(p), ...(world.starredWhere ? { where: { place: "folder", name: "Dummy Esports", trail: [] } } : {}) })), place: "starred", trail: [{ name: "Starred", at: ref }] } satisfies FilesListing;
           const dir = pathOf(ref);
           const top = dir.startsWith("/cloud") ? "/cloud/General" : "/w";
           const rest = dir.slice(top.length).split("/").filter(Boolean);
@@ -460,6 +462,19 @@ describe("a row's menu", () => {
     fireEvent.click(await menuItem("Delete"));
     await waitFor(() => expect(world.asked).toHaveLength(1));
     expect(calls("work.files.trash")).toEqual([]);
+  });
+
+  /** Council round 14 (Opus, Files 1): a lens whose rows say where each lives heads that column Where, never "Last change by". */
+  it("heads the Starred lens's second column by what its rows say", async () => {
+    world.starredWhere = true;
+    await mount();
+    fireEvent.contextMenu(row("Budget.xlsx"));
+    fireEvent.click(await menuItem("Star"));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Starred" }));
+    await waitFor(() => expect(rows()).toEqual(["Budget.xlsx"]));
+    expect(screen.getByRole("columnheader", { name: "Where" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Last change by" })).toBeNull();
+    world.starredWhere = false;
   });
 
   it("stars and unstars, and the Starred lens lists it", async () => {
