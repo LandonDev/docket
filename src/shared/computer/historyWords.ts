@@ -388,6 +388,7 @@ export function failureWords(error: ComputerError, ctx: ErrorContext = {}): stri
   if (error.kind === 'focus_moved' && error.reason && FOCUS_WHY[error.reason]) return FOCUS_WHY[error.reason]
   if (error.kind === 'named_target' && error.reason === 'several') return 'Several elements had that name'
   if (error.kind === 'stale_element' && error.reason === 'service-restarted') return COMPUTER_REFUSAL_WORDS.service_restarted
+  if (error.kind === 'browser_refused' && error.reason === 'browser-proof-expired') return 'The browser check expired before the step ran'
   return COMPUTER_FAILURE_WORDS[error.kind] ?? firstSentence(errorLine(error, ctx))
 }
 

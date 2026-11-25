@@ -197,7 +197,8 @@ export const COMPUTER_FAILURE_WORDS: Readonly<Record<string, string>> = {
   tab_in_use: 'You had another tab in front',
   not_committed: 'Nothing reached the disk',
   file_exists: 'The file already exists',
-  named_target: 'Nothing by that name was found'
+  named_target: 'Nothing by that name was found',
+  browser_refused: 'The browser tab was off limits'
 }
 
 /** Why a call never ran, by the host's refusal kind (shared/computer/hostErrors.ts). */

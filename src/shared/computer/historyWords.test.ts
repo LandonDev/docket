@@ -283,6 +283,8 @@ describe('failureWords and refusalWords', () => {
     expect(COMPUTER_FAILURE_WORDS.not_initialized).toBeUndefined()
     expect(failureWords({ kind: 'not_initialized', message: 'x' })).toBe('The computer service is not ready')
     expect(failureWords({ kind: 'already_running', message: 'x' })).toBe('Another computer service is still stopping')
+    expect(failureWords({ kind: 'browser_refused', message: 'x' })).toBe('The browser tab was off limits')
+    expect(failureWords({ kind: 'browser_refused', message: 'x', reason: 'browser-proof-expired' })).toBe('The browser check expired before the step ran')
   })
 
   it('says the three the plan names, and what the data tells apart', () => {
