@@ -18,7 +18,8 @@ describe('the macOS build may send Apple Events', () => {
       NSMicrophoneUsageDescription: "Application requests access to the device's microphone.",
       NSDocumentsFolderUsageDescription: "Application requests access to the user's Documents folder.",
       NSDownloadsFolderUsageDescription: "Application requests access to the user's Downloads folder.",
-      NSAppleEventsUsageDescription: 'TempCode drives Excel, Word, PowerPoint and Outlook for your agents, and restarts your terminal sessions after switching accounts.',
+      // The first Print… asks for Preview: the reason names it, never Office alone.
+      NSAppleEventsUsageDescription: 'TempCode drives Excel, Word, PowerPoint and Outlook for your agents, asks Preview to print what you print, and restarts your terminal sessions after switching accounts.',
       NSUserActivityTypes: ['dev.landon.tempcode.open']
     })
   })

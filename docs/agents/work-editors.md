@@ -268,10 +268,15 @@ await printPdf(name, bytes); // says where it went; rejects with the reason
   file with the system's print dialog: one press, the dialog, and nothing
   said, since the dialog is the answer (`via: 'dialog'`). The path rides as
   the script's one argument, never inside its text. osascript is heard for 3
-  s: a refusal (no Automation grant, -1743), or no osascript, falls back to
-  the viewer below; still running is the dialog up, since Preview answers
-  only when he closes it. A grant he refuses after those 3 s leaves nothing
-  open, and his next Print… opens the viewer. Not yet proven on his Mac (M11).
+  s: a refusal (no Automation grant, -1743, read from its error words), or
+  no osascript, falls back to the viewer below; still running is the dialog
+  up, or the first Print's Automation ask, since Preview answers only when
+  he closes it. A grant he refuses after those 3 s opens the viewer then
+  (`onLateRefusal`); a dialog he cancels (-128) opens nothing. After a
+  refusal the viewer's toast says once a window's life where to allow it
+  (`PRINT_WORDS.allow`, `refused` on the answer). The ask's reason is
+  `NSAppleEventsUsageDescription` (electron-builder.yml), which names
+  Preview's printing beside Office. Not yet proven on his Mac (M11).
 - **Elsewhere, and as macOS's fallback,** the file opens in this computer's
   own PDF viewer. The toast says "Opened in your PDF viewer to print"; he
   prints from there with the viewer's own Print. Copies older than a day go at the next print and at

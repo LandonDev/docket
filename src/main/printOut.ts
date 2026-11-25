@@ -27,12 +27,16 @@ export interface PrintDeps {
   temp: string
   /** opens a file in the system's own app for it; answers an error's words, or '' */
   open(path: string): Promise<string>
-  /** macOS: asks the system's print dialog for a file, in front; answers whether it was asked */
-  print?(path: string): Promise<boolean>
+  /** macOS: asks the system's print dialog for a file, in front; `onLateRefusal` hears an Automation grant he refused after the answer */
+  print?(path: string, onLateRefusal: () => void): Promise<PrintAsk>
   now?(): number
 }
 
-export type PrintAnswer = { ok: true; via: 'dialog' | 'viewer' } | { ok: false; error: string }
+/** `refused`: the viewer stands in because he refused TempCode the Automation grant for Preview; the window says where to allow it. */
+export type PrintAnswer = { ok: true; via: 'dialog' | 'viewer'; refused?: true } | { ok: false; error: string }
+
+/** What asking Preview for its print dialog came to: up (or still asking), the Automation grant refused, or another failure. */
+export type PrintAsk = 'dialog' | 'refused' | 'failed'
 
 /** The most a print may be: what a preview's PDF can reach, and no more than a window should hand over. */
 export const PRINT_MAX_BYTES = 256 * 1024 * 1024
@@ -137,13 +141,15 @@ export async function printPdf(deps: PrintDeps, name: unknown, bytes: unknown): 
     rmSync(dir, { recursive: true, force: true })
     return { ok: false, error: 'The file could not be written' }
   }
-  if (deps.print && (await deps.print(path).catch(() => false))) return { ok: true, via: 'dialog' }
+  // A refusal of the first Print's Automation ask can come after the answer (he read it past the moment): the viewer then.
+  const asked = deps.print ? await deps.print(path, () => void deps.open(path).catch(() => '')).catch((): PrintAsk => 'failed') : 'failed'
+  if (asked === 'dialog') return { ok: true, via: 'dialog' }
   const error = await deps.open(path).catch((err: unknown) => (err instanceof Error ? err.message : String(err)) || 'The file could not be opened')
   if (error) {
     rmSync(dir, { recursive: true, force: true })
     return { ok: false, error }
   }
-  return { ok: true, via: 'viewer' }
+  return asked === 'refused' ? { ok: true, via: 'viewer', refused: true } : { ok: true, via: 'viewer' }
 }
 
 /** What `print:pdf` is told of who asked: only a window's own page may print, never a frame inside it. */
@@ -216,16 +222,48 @@ export const PREVIEW_PRINT_SCRIPT = [
   'end run'
 ] as const
 
+/** osascript's words when macOS refused TempCode its Automation grant for Preview (errAEEventNotPermitted). */
+const REFUSED = /\(-1743\)/
+
 /**
  * macOS: Print… in one step, the system's print dialog in front through
  * Preview.app. osascript is heard for a moment: a refusal (no Automation
- * grant, -1743) or no osascript answers false, and the viewer stands in;
- * still running is the dialog up, waiting on him. A grant he refuses after
- * the moment leaves nothing open, and his next Print… opens the viewer.
+ * grant, -1743, read from its error words) answers 'refused', no osascript
+ * or another failure 'failed', and the viewer stands in; still running is
+ * the dialog up, or the first Print's Automation ask, waiting on him. A
+ * grant he refuses after the moment calls `onLateRefusal`, which opens the
+ * viewer; a dialog he cancels (-128) does not.
  */
-export function previewPrint(path: string, spawn: typeof nodeSpawn = nodeSpawn, settleMs = XDG_SETTLE_MS): Promise<boolean> {
+export function previewPrint(path: string, spawn: typeof nodeSpawn = nodeSpawn, settleMs = XDG_SETTLE_MS, onLateRefusal?: () => void): Promise<PrintAsk> {
   const args = [...PREVIEW_PRINT_SCRIPT.flatMap((line) => ['-e', line]), path]
-  return settled('/usr/bin/osascript', args, spawn, settleMs).then((result) => result === '')
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let answered = false
+    let said = ''
+    const answer = (result: PrintAsk): void => {
+      clearTimeout(timer)
+      if (!answered) resolve(result)
+      answered = true
+    }
+    try {
+      const child = spawn('/usr/bin/osascript', args, { detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+      child.stderr?.on('data', (chunk) => (said += String(chunk)))
+      child.once('error', () => answer('failed'))
+      // 'close', not 'exit': its error words are read whole by then.
+      child.once('close', (code) => {
+        const refused = code !== 0 && REFUSED.test(said)
+        if (answered) {
+          if (refused) onLateRefusal?.()
+          return
+        }
+        answer(code === 0 ? 'dialog' : refused ? 'refused' : 'failed')
+      })
+      child.unref()
+      timer = setTimeout(() => answer('dialog'), settleMs)
+    } catch {
+      answer('failed')
+    }
+  })
 }
 
 /** `print:pdf` for every window, then a sweep of what an earlier run left. */
@@ -234,7 +272,7 @@ export async function registerPrintOut(): Promise<void> {
   const deps: PrintDeps = {
     temp: app.getPath('temp'),
     open: (path) => (process.platform === 'linux' ? xdgOpen(path) : shell.openPath(path)),
-    ...(process.platform === 'darwin' ? { print: (path: string) => previewPrint(path) } : {})
+    ...(process.platform === 'darwin' ? { print: (path: string, onLateRefusal: () => void) => previewPrint(path, nodeSpawn, XDG_SETTLE_MS, onLateRefusal) } : {})
   }
   ipcMain.handle('print:pdf', (event, name: unknown, bytes: unknown) => answerPrint(deps, event, name, bytes))
   sweepPrints(deps.temp)

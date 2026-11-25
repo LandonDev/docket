@@ -17,7 +17,16 @@ export type Printed = "dialog" | "viewer" | "tab";
 /** What he is told, and the one press it may carry. */
 export type PrintSay = (words: string, action?: { label: string; run(): void }) => void;
 
-export const PRINT_WORDS = { viewer: "Opened in your PDF viewer to print", tab: "The PDF is ready to print", open: "Open" } as const;
+export const PRINT_WORDS = {
+  viewer: "Opened in your PDF viewer to print",
+  // Said once a window's life, when the viewer stands in for a refused Automation grant.
+  allow: "Opened in your PDF viewer to print. To print in one step, allow TempCode to control Preview in System Settings, Privacy & Security, Automation.",
+  tab: "The PDF is ready to print",
+  open: "Open",
+} as const;
+
+/** Where to allow Preview is said once: he may have refused it on purpose. */
+let toldAllow = false;
 
 /** How long a browser's copy of the PDF stays, and its toast with it: long enough to find the press. */
 export const TAB_MS = 10 * 60_000;
@@ -44,6 +53,10 @@ export async function printPdf(name: string, bytes: Uint8Array, say: PrintSay = 
   const answer = await printPdfFile(name, bytes);
   if (!answer.ok) throw new Error(answer.error);
   // The dialog in front is the answer; the viewer's file needs the words.
-  if (answer.via === "viewer") say(PRINT_WORDS.viewer);
+  if (answer.via === "viewer") {
+    const allow = !!answer.refused && !toldAllow;
+    if (allow) toldAllow = true;
+    say(allow ? PRINT_WORDS.allow : PRINT_WORDS.viewer);
+  }
   return answer.via;
 }

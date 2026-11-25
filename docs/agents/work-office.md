@@ -125,7 +125,8 @@ What the apps answer, as found live:
 
 macOS charges osascript's Apple Events to TempCode, so the Automation prompt
 reads "TempCode wants to control Microsoft Excel", once per app. The
-packaged app carries `NSAppleEventsUsageDescription` (electron-builder.yml)
+packaged app carries `NSAppleEventsUsageDescription` (electron-builder.yml;
+one string for Office, Preview's Print… and Terminal)
 and the `com.apple.security.automation.apple-events` entitlement
 (build/entitlements.mac.plist): without them, under the hardened runtime,
 macOS refuses its Apple Events (-1743) without asking, and every Office call

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NO_VIEWER, PREVIEW_PRINT_SCRIPT, PRINT_KEEP, PRINT_MAX_BYTES, XDG_SETTLE_MS, answerPrint, previewPrint, printDir, printName, printPdf, sweepPrints, xdgOpen } from './printOut'
+import { NO_VIEWER, PREVIEW_PRINT_SCRIPT, type PrintAsk, PRINT_KEEP, PRINT_MAX_BYTES, XDG_SETTLE_MS, answerPrint, previewPrint, printDir, printName, printPdf, sweepPrints, xdgOpen } from './printOut'
 
 /** Print… hands the previewed PDF to the system's own viewer (docs/agents/work-editors.md "Print"). */
 const dirs: string[] = []
@@ -136,39 +136,71 @@ describe('Print…', () => {
     const asked: string[] = []
     const open = async (path: string): Promise<string> => (opened.push(path), '')
     // The dialog came up: the viewer is not opened as well.
-    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), true) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'dialog' })
+    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), 'dialog' as const) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'dialog' })
     expect(opened).toEqual([])
     expect(asked[0]!.endsWith('/Run of show.pdf')).toBe(true)
     // Preview could not be asked (no Automation grant, no Preview): the same file goes to the viewer.
-    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), false) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer' })
+    expect(await printPdf({ temp: t, open, print: async (path) => (asked.push(path), 'failed' as const) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer' })
     expect(opened).toEqual([asked[1]])
     expect(await printPdf({ temp: t, open, print: () => Promise.reject(new Error('spawn EACCES')) }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer' })
     expect(opened).toHaveLength(2)
+    // He refused the grant before: the viewer, and the window is told where to allow it.
+    expect(await printPdf({ temp: t, open, print: async () => 'refused' as const }, 'Run of show', PDF)).toEqual({ ok: true, via: 'viewer', refused: true })
+    expect(opened).toHaveLength(3)
+  })
+
+  it('opens the viewer when he refuses the Automation ask after the moment, never on a cancelled dialog', async () => {
+    const t = temp()
+    const opened: string[] = []
+    const open = async (path: string): Promise<string> => (opened.push(path), '')
+    let late: (() => void) | undefined
+    const print = async (_path: string, onLateRefusal: () => void) => ((late = onLateRefusal), 'dialog' as const)
+    expect(await printPdf({ temp: t, open, print }, 'Run of show', PDF)).toEqual({ ok: true, via: 'dialog' })
+    expect(opened).toEqual([])
+    late!()
+    await Promise.resolve()
+    expect(opened).toHaveLength(1)
+    expect(opened[0]!.endsWith('/Run of show.pdf')).toBe(true)
   })
 
   it('runs osascript with the path as its own argument, never inside the script, and hears it for a moment', async () => {
     vi.useFakeTimers()
     try {
-      const runs: Array<{ args: unknown[]; child: EventEmitter & { unref(): void } }> = []
+      const runs: Array<{ args: unknown[]; child: EventEmitter & { unref(): void; stderr: EventEmitter } }> = []
       const spawn = ((...args: unknown[]) => {
-        const child = Object.assign(new EventEmitter(), { unref: () => {} })
+        const child = Object.assign(new EventEmitter(), { unref: () => {}, stderr: new EventEmitter() })
         runs.push({ args, child })
         return child
       }) as unknown as Parameters<typeof previewPrint>[1]
-      const at = (p: Promise<boolean>, act: () => void): Promise<boolean> => (act(), p)
+      const at = (p: Promise<PrintAsk>, act: () => void): Promise<PrintAsk> => (act(), p)
       const path = '/t/a "quoted" name.pdf'
-      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('exit', 0))).toBe(true)
-      expect(runs[0]!.args).toEqual(['/usr/bin/osascript', [...PREVIEW_PRINT_SCRIPT.flatMap((line) => ['-e', line]), path], { detached: true, stdio: 'ignore' }])
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('close', 0))).toBe('dialog')
+      expect(runs[0]!.args).toEqual(['/usr/bin/osascript', [...PREVIEW_PRINT_SCRIPT.flatMap((line) => ['-e', line]), path], { detached: true, stdio: ['ignore', 'ignore', 'pipe'] }])
       expect(PREVIEW_PRINT_SCRIPT.join('\n')).not.toContain('quoted')
       // Preview is brought in front and asked for its print dialog on the file it was handed.
       expect(PREVIEW_PRINT_SCRIPT.join('\n')).toMatch(/tell application "Preview"[\s\S]*activate[\s\S]*print [\s\S]*with print dialog/)
-      // A refusal (no Automation grant: -1743) or no osascript is a failure the viewer stands in for.
-      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('exit', 1))).toBe(false)
-      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('error', new Error('spawn ENOENT')))).toBe(false)
+      // A refusal (no Automation grant: -1743) is said as one; another failure, or no osascript, is a failure. The viewer stands in for both.
+      const refuse = (child: EventEmitter & { stderr: EventEmitter }): void => {
+        child.stderr.emit('data', 'execution error: Not authorized to send Apple events to Preview. (-1743)\n')
+        child.emit('close', 1)
+      }
+      expect(await at(previewPrint(path, spawn), () => refuse(runs.at(-1)!.child))).toBe('refused')
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('close', 1))).toBe('failed')
+      expect(await at(previewPrint(path, spawn), () => runs.at(-1)!.child.emit('error', new Error('spawn ENOENT')))).toBe('failed')
       // The dialog holds osascript until he answers it: still running is the dialog up.
-      const waiting = previewPrint(path, spawn)
+      let late = 0
+      const waiting = previewPrint(path, spawn, XDG_SETTLE_MS, () => late++)
       await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
-      expect(await waiting).toBe(true)
+      expect(await waiting).toBe('dialog')
+      // The first Print's ask was up past the moment: a refusal then is heard, and its viewer opened; a cancel is not.
+      refuse(runs.at(-1)!.child)
+      expect(late).toBe(1)
+      const cancelled = previewPrint(path, spawn, XDG_SETTLE_MS, () => late++)
+      await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
+      expect(await cancelled).toBe('dialog')
+      runs.at(-1)!.child.stderr.emit('data', 'execution error: User canceled. (-128)\n')
+      runs.at(-1)!.child.emit('close', 1)
+      expect(late).toBe(1)
     } finally {
       vi.useRealTimers()
     }

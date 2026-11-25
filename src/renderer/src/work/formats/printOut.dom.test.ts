@@ -42,6 +42,15 @@ describe("Print… from the window", () => {
     expect(said).toEqual([["Opened in your PDF viewer to print", undefined]]);
   });
 
+  it("says once where to allow Preview when he refused it, then the viewer's words alone", async () => {
+    (window as unknown as { api: unknown }).api = { printPdf: async () => ({ ok: true, via: "viewer", refused: true }) };
+    const { say, said } = sayer();
+    expect(await printPdf("Plan.pdf", PDF, say)).toBe("viewer");
+    expect(await printPdf("Plan.pdf", PDF, say)).toBe("viewer");
+    expect(said).toEqual([[PRINT_WORDS.allow, undefined], [PRINT_WORDS.viewer, undefined]]);
+    expect(PRINT_WORDS.allow).toContain("Privacy & Security");
+  });
+
   it("says nothing when the system's print dialog came up in front: the dialog is the answer", async () => {
     (window as unknown as { api: unknown }).api = { printPdf: async () => ({ ok: true, via: "dialog" }) };
     const { say, said } = sayer();
