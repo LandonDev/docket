@@ -29,7 +29,7 @@ private final class WorkRig {
     func open() async -> FakeWebSocket {
         await client.start()
         let fake = await sockets.socket(0)
-        fake.hello(caps: ["read", "approve"])
+        fake.hello(environmentId: client.environment.id, caps: ["read", "approve"])
         _ = await until { await self.client.socket.isOpen }
         await answerShell(fake)
         return fake
