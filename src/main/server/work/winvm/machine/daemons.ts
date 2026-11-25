@@ -156,7 +156,9 @@ export async function keepLiveTpm(c: RigConfig, p: RigPaths): Promise<boolean> {
  */
 export function qemuCommand(c: RigConfig, p: RigPaths, m: Machine, opts: DaemonOpts = {}, kvmOpen?: boolean): [string, string[]] {
   const extra = Object.entries(opts.env ?? {}).map(([k, v]) => `${k}=${v}`)
-  const argv: [string, string[]] = extra.length ? ['env', [...extra, 'qemu-system-x86_64', ...qemuArgs(c, p, m)]] : ['qemu-system-x86_64', qemuArgs(c, p, m)]
+  const plain: [string, string[]] = extra.length ? ['env', [...extra, 'qemu-system-x86_64', ...qemuArgs(c, p, m)]] : ['qemu-system-x86_64', qemuArgs(c, p, m)]
+  // a throwaway machine takes the disk only when nothing else wants it, and the lowest turn at a core
+  const argv: [string, string[]] = m.throwaway ? ['ionice', ['-c', '3', 'nice', '-n', '19', plain[0], ...plain[1]]] : plain
   return kvmWrapped(...(opts.blockStop ? stopBlocked(...argv) : argv), kvmOpen)
 }
 

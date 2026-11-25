@@ -8,6 +8,14 @@ export interface Machine {
   window?: VmWindow
   /** the display device the guest runs on; std VGA by default */
   device?: DisplayDevice
+  /**
+   * A bench's or a proof's machine, deleted when its run ends: its disk is attached with `cache=unsafe`, so a
+   * flush in the guest is never a flush of the box's one disk (a booting Windows froze the live app for 82 s,
+   * 2026-11-24), and QEMU takes the idle I/O class. Never the standing machine: its disk must survive a crash.
+   */
+  throwaway?: boolean
+  /** more of QEMU's own arguments for one run: a proof's trace */
+  extra?: string[]
   /** Guest-to-box forwards for one run (`up.sh --guestfwd`): a connection to `guest` reaches 127.0.0.1:`port` on the box. */
   guestfwd?: GuestFwd[]
 }
@@ -87,7 +95,7 @@ export interface InstallMedia {
  * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots) unless
  * it is given a window.
  */
-export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window, device = 'vga', guestfwd = [] }: Machine): string[] {
+export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window, device = 'vga', throwaway = false, extra = [], guestfwd = [] }: Machine): string[] {
   const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`]), ...guestfwd.map(guestFwdArg)]
   const args = [
     '-name', `${c.process},process=${c.process}`,
@@ -102,7 +110,7 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, windo
     '-chardev', `socket,id=chrtpm,path=${p.tpmSock}`,
     '-tpmdev', 'emulator,id=tpm0,chardev=chrtpm',
     '-device', 'tpm-crb,tpmdev=tpm0',
-    '-drive', `file=${disk},if=none,id=disk0,format=qcow2,discard=unmap${c.diskCache ? `,cache=${c.diskCache}` : ''}`,
+    '-drive', `file=${disk},if=none,id=disk0,format=qcow2,discard=unmap${throwaway ? ',cache=unsafe' : c.diskCache ? `,cache=${c.diskCache}` : ''}`,
     '-device', 'ide-hd,drive=disk0,bus=ide.0,bootindex=0',
     '-netdev', `user,id=n0,${fwd.join(',')}`,
     '-device', 'e1000e,netdev=n0',
@@ -112,7 +120,8 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, windo
     '-monitor', 'none',
     '-qmp', `unix:${p.qmp},server=on,wait=off`,
     '-pidfile', p.pid,
-    '-daemonize'
+    '-daemonize',
+    ...extra
   ]
   if (install) {
     args.push(

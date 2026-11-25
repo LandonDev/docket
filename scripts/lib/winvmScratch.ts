@@ -2,7 +2,8 @@
  * A scratch Windows VM for a bench or a proof: the standing machine's own code (StandingMachine with its
  * VmScreen, the picture's source and a relay) on a root, a TPM folder and a port that are not the owner's.
  * `scratchMachineRefusal` stands in front: with WINVM_DIR, WINVM_TPM_DIR or WINVM_SSH_PORT unset, the machine
- * would be his.
+ * would be his. The live app comes first: the disk is an overlay kept in memory (/dev/shm) and attached with
+ * `cache=unsafe`, QEMU runs in the idle I/O class, and a watch pulls the machine down the moment the app slows.
  */
 import { dlopen, FFIType, ptr } from 'bun:ffi'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
@@ -72,12 +73,31 @@ export class BenchViewer implements ViewerSocket {
   }
 }
 
+/**
+ * The live app comes first (the master's rule, 2026-11-24: a bench's boot froze it for 82 s). While a scratch
+ * machine exists the app is timed every few seconds and the disk's pressure read; past either line the machine is
+ * pulled down at once and the script ends. Answers why the run may not go on, or null.
+ */
+export const LIVE_APP_MAX_MS = 800
+export const IO_PRESSURE_MAX = 30
+export function liveAppTrouble(): string | null {
+  const t0 = performance.now()
+  const r = Bun.spawnSync(['tc-local', 'admission.get', '{}'], { stdout: 'ignore', stderr: 'ignore', timeout: 5000 })
+  const ms = performance.now() - t0
+  if (r.exitCode !== 0 || ms > LIVE_APP_MAX_MS) return `the live app answered in ${Math.round(ms)} ms (exit ${r.exitCode})`
+  const some = /^some avg10=([\d.]+)/m.exec(readFileSync('/proc/pressure/io', 'utf8'))
+  if (some && Number(some[1]) > IO_PRESSURE_MAX) return `the disk's pressure is ${some[1]}%`
+  return null
+}
+
 export interface Scratch {
   machine: StandingMachine
   guest: SshGuest
   screen: VmScreen
   /** the size the next start's display takes */
   setSize(size: [number, number]): void
+  /** QEMU arguments of the run's own for the next start (a trace) */
+  setExtra(args: string[]): void
   /** Opens one stream of the VM, its engine pinned to `cores`; `end` closes it. */
   view(cores: string): Promise<{ viewer: BenchViewer; engines: number[]; end(): Promise<void> }>
   /** One QMP call on a connection of its own. */
@@ -93,6 +113,9 @@ export interface Scratch {
 export function scratchMachine(o: { data: string; size: [number, number]; log: (line: string) => void }): Scratch {
   requireScratchMachine()
   const root = process.env.WINVM_DIR!
+  if (!root.startsWith('/dev/shm/')) throw new Error(`WINVM_DIR ${root}: a scratch machine's disk lives in memory, under /dev/shm, never on the box's one disk`)
+  const trouble = liveAppTrouble()
+  if (trouble) throw new Error(`not starting a machine: ${trouble}`)
   mkdirSync(root, { recursive: true })
   for (const name of ['base', 'keys']) if (!existsSync(join(root, name))) symlinkSync(join(SHARED, name), join(root, name))
   const tools = pictureToolsAt(o.data)
@@ -101,7 +124,8 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
   symlinkSync(join(o.data, 'work-tools'), join(own, 'work-tools'))
   let size = o.size
   const screen = new VmScreen({ root: join(own, 'winvm', 'picture'), tools: () => pictureToolsAt(own), size: () => ({ width: size[0], height: size[1] }), log: o.log })
-  const machine = new StandingMachine('standing', process.env, screen, o.log)
+  let extra: string[] = []
+  const machine = new StandingMachine('standing', process.env, screen, o.log, { throwaway: true, extra: () => extra })
   if (machine.cannot()) throw new Error(machine.cannot()!)
   if (machine.hasDisk() || machine.running()) throw new Error(`${machine.c.dir} has a disk already: another run's`)
   const guest = new SshGuest(machine.c, machine.p)
@@ -111,11 +135,29 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
   const state: WinvmState = { state: 'awake', step: null, error: null, cannot: null, sleepAfter: '30m', since: Date.now() }
   const picture = new VmPicture({ state: () => state, onState: () => () => {}, setViewers: () => {}, screen, relay, screenshot: async () => Buffer.alloc(0), jpeg: async () => ({ data: '', width: 1, height: 1 }) })
   rpc.addSource(picture)
+  const remove = async (): Promise<void> => {
+    clearInterval(watch)
+    await machine.forceStop().catch(() => {})
+    await screen.down()
+    picture.close()
+    rmSync(machine.c.dir, { recursive: true, force: true })
+    rmSync(own, { recursive: true, force: true })
+    o.log(`removed the scratch disk (${machine.c.dir})`)
+  }
+  let stopping = false
+  const watch = setInterval(() => {
+    const why = stopping ? null : liveAppTrouble()
+    if (!why) return
+    stopping = true
+    o.log(`STOPPING: ${why}`)
+    void remove().finally(() => process.exit(3))
+  }, 4000)
   return {
     machine,
     guest,
     screen,
     setSize: (s) => (size = s),
+    setExtra: (args) => (extra = args),
     async view(cores) {
       const answer = await rpc.open({ threadId: 'bench', computer: VM_COMPUTER, maxEdge: 3840 }, { principal: LOCAL_PRINCIPAL, connection: {}, connectionId: '1' })
       if (!answer.ok) throw new Error(`video.open refused: ${answer.reason}`)
@@ -140,14 +182,7 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
         q.destroy()
       }
     },
-    async remove() {
-      await machine.forceStop().catch(() => {})
-      await screen.down()
-      picture.close()
-      rmSync(machine.c.dir, { recursive: true, force: true })
-      rmSync(own, { recursive: true, force: true })
-      o.log(`removed the scratch disk (${machine.c.dir})`)
-    }
+    remove
   }
 }
 

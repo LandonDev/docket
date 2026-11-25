@@ -32,7 +32,9 @@ export class StandingMachine implements VmMachine {
     instance: Instance = 'standing',
     env: NodeJS.ProcessEnv = process.env,
     private readonly screen: VmScreen | null = null,
-    private readonly log: (line: string) => void = () => {}
+    private readonly log: (line: string) => void = () => {},
+    /** a bench's or a proof's scratch machine (qemu.ts `throwaway`), and QEMU arguments of its own for a run */
+    private readonly scratch: { throwaway?: boolean; extra?: () => string[] } = {}
   ) {
     this.c = rigConfig(env, undefined, instance)
     this.p = rigPaths(this.c)
@@ -72,7 +74,7 @@ export class StandingMachine implements VmMachine {
     const device = readMachineDevice(this.p.run)
     const boot = async (shown: Awaited<ReturnType<VmScreen['up']>>): Promise<number | null> => {
       await startTpm(this.c, this.p, existsSync(this.p.runTpm) ? this.p.runTpm : this.p.baseTpm, { blockStop: true })
-      const machine = { disk: this.p.runDisk, vars: this.p.runVars, device, ...(shown ? { window: shown.window } : {}) }
+      const machine = { disk: this.p.runDisk, vars: this.p.runVars, device, ...(shown ? { window: shown.window } : {}), ...(this.scratch.throwaway ? { throwaway: true } : {}), extra: this.scratch.extra?.() ?? [] }
       return startQemu(this.c, this.p, machine, { blockStop: true, ...(shown ? { env: shown.env } : {}) })
     }
     // the window's display first: QEMU opens its window as it starts

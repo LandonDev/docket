@@ -104,3 +104,49 @@ export function parseSizes(text: string): [number, number][] {
     return [w, h]
   })
 }
+
+export interface TraceStages {
+  /** acts found: a pointer event after `quietMs` with none */
+  n: number
+  /** the event reaching QEMU to the guest taking the HID report, ms */
+  usbP50: number
+  usbMax: number
+  /** the event reaching QEMU to the guest's screen changing, ms */
+  drawP50: number
+  drawP95: number
+}
+
+/**
+ * Where a pointer move's time goes, from QEMU's own trace (`-trace input_event_abs -trace usb_xhci_xfer_success
+ * -trace gd_update`, the log backend's `pid@seconds.micros:event` lines): for each pointer event that came after a
+ * quiet moment, how long until the guest took the USB report and until its screen changed. A report taken in a
+ * millisecond with the change far behind is Windows' own drawing; a report taken late is the USB path.
+ */
+export function traceStages(trace: string, quietMs: number): TraceStages {
+  const events = { input_event_abs: [] as number[], usb_xhci_xfer_success: [] as number[], gd_update: [] as number[] }
+  for (const m of trace.matchAll(/(\d+\.\d+):(input_event_abs|usb_xhci_xfer_success|gd_update)\b/g)) events[m[2] as keyof typeof events].push(Number(m[1]) * 1000)
+  const after = (xs: number[], t: number): number | null => {
+    // the lists are in time order
+    let lo = 0
+    let hi = xs.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (xs[mid]! > t) hi = mid
+      else lo = mid + 1
+    }
+    return lo < xs.length ? xs[lo]! - t : null
+  }
+  const usb: number[] = []
+  const draw: number[] = []
+  let n = 0
+  events.input_event_abs.forEach((t, i) => {
+    const prev = events.input_event_abs[i - 1]
+    // an x and a y arrive together: the first of the pair after the quiet is the act
+    if (prev !== undefined && t - prev < quietMs) return
+    n++
+    const [u, d] = [after(events.usb_xhci_xfer_success, t), after(events.gd_update, t)]
+    if (u !== null) usb.push(u)
+    if (d !== null) draw.push(d)
+  })
+  return { n, usbP50: quantile(usb, 0.5), usbMax: usb.length ? Math.max(...usb) : NaN, drawP50: quantile(draw, 0.5), drawP95: quantile(draw, 0.95) }
+}

@@ -15,18 +15,21 @@
  * virtio-vga first (`--driver` names the unpacked `viogpudo\w11\amd64` folder of virtio-win). It runs only on a
  * machine that is not the owner's (`scratchMachineRefusal`), and deletes the disk it made:
  *
- *   WINVM_DIR=/tmp/vm-screen-rig-a WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-a WINVM_SSH_PORT=22241 \
- *     taskset -c 24-31 nice -n 10 bun scripts/perf/vm-screen-bench.ts --sizes 1280x800,2560x1600 \
- *     [--device vga|virtio] [--driver <dir>] [--boots 2] [--runs 3] [--secs 10] [--out <dir>]
+ *   WINVM_DIR=/dev/shm/vm-screen-rig-a WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-a WINVM_SSH_PORT=22241 \
+ *     taskset -c 24-31 ionice -c 3 nice -n 19 bun scripts/perf/vm-screen-bench.ts --sizes 1280x800,2560x1600 \
+ *     [--device vga|virtio] [--driver <dir>] [--boots 2] [--runs 3] [--secs 10] [--out <dir>] [--trace]
+ *
+ * `--trace` starts QEMU with its own trace of the pointer's path (the event in, the USB report taken, the
+ * guest's screen changed), kept in memory beside the disk, and adds one row a boot: where a move's time goes.
  */
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { loadavg } from 'node:os'
 import { join } from 'node:path'
 import { PNG } from 'pngjs'
 import { psQuote } from '../../src/main/server/work/winvm/machine/guest'
 import type { DisplayDevice } from '../../src/main/server/work/winvm/machine/qemu'
 import { ADAPTERS_SCRIPT, cpuTicks, GUEST_DRIVER_DIR, moveToVirtio, nowUs, otherRecords, scratchMachine, shutDown, sleep, type BenchViewer, type Scratch } from '../lib/winvmScratch'
-import { actRow, coresUsed, parseSizes, quantile, rateRow, type ActRow, type RateRow } from './vmScreenRows'
+import { actRow, coresUsed, parseSizes, quantile, rateRow, traceStages, type ActRow, type RateRow } from './vmScreenRows'
 
 const arg = (name: string, d: string): string => {
   const i = process.argv.indexOf(`--${name}`)
@@ -42,6 +45,7 @@ const SECS = Number(arg('secs', '10'))
 const ENGINE_CORES = arg('engine-cores', '24-31')
 const DATA = arg('data', process.env.TEMP_CODE_USER_DATA ?? '/srv/agents/temp-code-data')
 const OUT = arg('out', '/tmp/vm-screen-bench')
+const TRACE = process.argv.includes('--trace') ? `${process.env.WINVM_DIR}/qemu-trace.log` : null
 if (DEVICE !== 'vga' && DEVICE !== 'virtio') throw new Error('--device vga or virtio')
 if (DEVICE === 'virtio' && !DRIVER) throw new Error('--device virtio needs --driver <the unpacked viogpudo folder>')
 
@@ -250,6 +254,10 @@ async function main(): Promise<void> {
       const [w, h] = SIZES[boot % SIZES.length]!
       const size = `${w}x${h}`
       s.setSize([w, h])
+      if (TRACE) {
+        rmSync(TRACE, { force: true })
+        s.setExtra(['-trace', 'input_event_abs', '-trace', 'usb_xhci_xfer_success', '-trace', 'gd_update', '-D', TRACE, '-msg', 'timestamp=on'])
+      }
       const t0 = Date.now()
       await s.machine.start()
       await s.guest.ready(300_000)
@@ -291,6 +299,11 @@ async function main(): Promise<void> {
         const pointer = await acts(v.viewer, 30, (i) => hand.move(w * 0.5 + (i % 2 ? 60 : -60), h * 0.4 + (i % 3) * 20))
         const cursorRecords = otherRecords.slice(before).filter((r) => r.type === 6).length
         row('pointer after 400 ms quiet', { ...pointer, note: `cursor records ${cursorRecords}` })
+        if (TRACE) {
+          const st = traceStages(readFileSync(TRACE, 'utf8'), 300)
+          row("QEMU's trace of a move after a quiet moment", { note: `${st.n} acts: the USB report taken p50 ${st.usbP50.toFixed(1)} max ${st.usbMax.toFixed(1)} ms after the event; the guest's screen changed p50 ${st.drawP50.toFixed(1)} p95 ${st.drawP95.toFixed(1)} ms after it` })
+          log(`${size} trace: ${JSON.stringify(st)}`)
+        }
         log(`${size} pointer after quiet: first frame p50 ${pointer.firstP50.toFixed(1)} p95 ${pointer.firstP95.toFixed(1)} ms, ${pointer.seen}/${pointer.n} seen, capture to viewer p50 ${pointer.captureP50.toFixed(1)} ms, cursor records ${cursorRecords}`)
         for (const gap of [30, 60, 120, 250, 500, 1000, 2000]) {
           const sent: number[] = []

@@ -48,6 +48,20 @@ describe("QEMU's window", () => {
     expect(a).not.toContain('VGA.')
   })
 
+  it('attaches a throwaway machine\'s disk with cache=unsafe and starts it in the idle I/O class; no other machine', () => {
+    const disk = (a: string[]) => a[a.findIndex((x) => x.includes('id=disk0'))]!
+    expect(disk(qemuArgs(cfg, paths, m))).not.toContain('cache=')
+    expect(disk(qemuArgs(cfg, paths, { ...m, throwaway: true }))).toMatch(/,cache=unsafe$/)
+    const [cmd, args] = qemuCommand(cfg, paths, { ...m, throwaway: true }, { blockStop: true }, true)
+    expect(cmd).toBe('perl')
+    expect(args.slice(2, 9)).toEqual(['ionice', '-c', '3', 'nice', '-n', '19', 'qemu-system-x86_64'])
+    expect(qemuCommand(cfg, paths, m, {}, true)[0]).toBe('qemu-system-x86_64')
+  })
+
+  it('takes a run\'s own QEMU arguments last', () => {
+    expect(qemuArgs(cfg, paths, { ...m, extra: ['-trace', 'gd_update'] }).slice(-2)).toEqual(['-trace', 'gd_update'])
+  })
+
   it('reaches QEMU through env, with the stop signals blocked, inside sg where the group is missing', () => {
     const env = { DISPLAY: ':3', LD_LIBRARY_PATH: '/t/libs' }
     const [cmd, args] = qemuCommand(cfg, paths, m, { blockStop: true, env }, true)

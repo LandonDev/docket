@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { actRow, coresUsed, parseSizes, quantile, rateRow, type SeenFrame } from './vmScreenRows'
+import { actRow, coresUsed, parseSizes, quantile, rateRow, traceStages, type SeenFrame } from './vmScreenRows'
 
 /** Frames 16 ms apart from `from` (ms), each captured `lag` ms before it arrived. */
 const steady = (from: number, n: number, lag = 5, bytes = 1000): SeenFrame[] => Array.from({ length: n }, (_, i) => ({ us: (from + i * 16) * 1000, ts: (from + i * 16 - lag) * 1000, bytes }))
@@ -53,5 +53,28 @@ describe("the VM screen bench's rows", () => {
   it('reads sizes, and refuses an odd or a tiny one', () => {
     expect(parseSizes('1280x800, 3456x2234')).toEqual([[1280, 800], [3456, 2234]])
     for (const bad of ['1281x800', '320x200', 'x', '1280']) expect(() => parseSizes(bad)).toThrow('--sizes')
+  })
+
+  it("reads a pointer move's stages from QEMU's trace: the report taken, the screen changed", () => {
+    const line = (ms: number, event: string) => `4242@${(1795560000 + ms / 1000).toFixed(6)}:${event} con 0, axis x, value 100`
+    const trace = [
+      // an act at 1000 ms (x then y), the report taken 1 ms later, the screen changed 150 ms later
+      line(1000, 'input_event_abs'), line(1000.02, 'input_event_abs'), line(1001, 'usb_xhci_xfer_success'), line(1150, 'gd_update'),
+      // a move 8 ms after another is no act of its own
+      line(1158, 'input_event_abs'),
+      // an act at 2000 ms: 2 ms and 30 ms
+      line(2000, 'input_event_abs'), line(2002, 'usb_xhci_xfer_success'), line(2030, 'gd_update'),
+      'a line of something else'
+    ].join('\n')
+    const r = traceStages(trace, 300)
+    expect(r.n).toBe(2)
+    expect(r.usbP50).toBeCloseTo(2, 0)
+    expect(r.usbMax).toBeCloseTo(2, 0)
+    expect(r.drawP50).toBeCloseTo(150, 0)
+    expect(traceStages(trace.split('\n').slice(5).join('\n'), 300)).toMatchObject({ n: 1 })
+  })
+
+  it('answers no stage for a trace with no pointer event', () => {
+    expect(traceStages('nothing', 300)).toMatchObject({ n: 0 })
   })
 })

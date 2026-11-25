@@ -2,7 +2,7 @@
 /**
  * A scratch Windows VM held up for trying the display device by hand (virtio-vga with Red Hat's viogpudo), and
  * taken away again. It makes a fresh disk, moves it to virtio-vga as the keeper's Turn on will (`--device vga`
- * leaves it on std VGA), and then answers on a local port until it is told `down` or its minutes run out:
+ * leaves it on std VGA), and then answers on a socket file until it is told `down` or its minutes run out:
  *
  *   POST /admin        a PowerShell script as tcadmin; its output
  *   POST /desktop      a JSON argv run on tcuser's desktop, waited for; its output
@@ -16,9 +16,10 @@
  *   GET  /down         Windows shut down, everything removed, the script ends
  *
  * Scratch only (`scratchMachineRefusal`):
- *   WINVM_DIR=/tmp/vm-screen-rig-s WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-s WINVM_SSH_PORT=22242 \
- *     taskset -c 24-31 nice -n 10 bun scripts/perf/vm-virtio-spike.ts --driver <dir> [--size 1280x800] [--port 22342] [--minutes 50]
+ *   WINVM_DIR=/dev/shm/vm-screen-rig-s WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-s WINVM_SSH_PORT=22242 \
+ *     taskset -c 24-31 ionice -c 3 nice -n 19 bun scripts/perf/vm-virtio-spike.ts --driver <dir> [--size 1280x800] [--socket /tmp/vm-virtio-spike.sock] [--minutes 50]
  */
+import { rmSync } from 'node:fs'
 import { writeMachineDevice } from '../../src/main/server/work/winvm/guestScreen'
 import type { DisplayDevice } from '../../src/main/server/work/winvm/machine/qemu'
 import { ADAPTERS_SCRIPT, moveToVirtio, otherRecords, scratchMachine, shutDown, sleep, type Scratch } from '../lib/winvmScratch'
@@ -30,7 +31,8 @@ const arg = (name: string, d: string): string => {
 }
 const DEVICE = arg('device', 'virtio') as DisplayDevice
 const DRIVER = arg('driver', '')
-const PORT = Number(arg('port', '22342'))
+/** a socket file, not a port: nothing on the box takes it for a dev server and passes it on */
+const SOCKET = arg('socket', '/tmp/vm-virtio-spike.sock')
 const MINUTES = Number(arg('minutes', '50'))
 const DATA = arg('data', process.env.TEMP_CODE_USER_DATA ?? '/srv/agents/temp-code-data')
 if (!DRIVER) throw new Error('--driver <the unpacked viogpudo folder>')
@@ -129,9 +131,9 @@ async function main(): Promise<void> {
     log(await up())
   } else writeMachineDevice(s.machine.p.run, 'vga')
   const end = setTimeout(() => void down().then(() => process.exit(0)), MINUTES * 60_000)
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: PORT,
+  rmSync(SOCKET, { force: true })
+  Bun.serve({
+    unix: SOCKET,
     idleTimeout: 255,
     async fetch(req) {
       const url = new URL(req.url)
@@ -154,7 +156,7 @@ async function main(): Promise<void> {
       }
     }
   })
-  log(`ready on http://127.0.0.1:${server.port} for ${MINUTES} minutes`)
+  log(`ready on ${SOCKET} for ${MINUTES} minutes (curl --unix-socket ${SOCKET} http://x/shot)`)
 }
 
 main().catch(async (e) => {
