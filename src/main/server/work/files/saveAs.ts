@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { writeBackInPieces } from './pieces'
 import { basename } from 'node:path'
 import type { FileOrigin, WrittenBack } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf, type CanvasSource } from '@shared/work'
@@ -152,7 +153,7 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
   const origin: FileOrigin = { from: 'window' }
   const peer = ctx.peer.call({ scope: { sessionId: filesPaneOf(p.workspaceId), workspaceId: p.workspaceId } } as never, p.at.host)
   const ref: CanvasSource = { at: 'file', host: p.at.host, path: join2(p.at.path, p.name, false) }
-  const got = (await peer.call('files', 'writeBack', { workspaceId: p.workspaceId, ref, data: p.data.toString('base64'), version: '', origin, into: true })) as WrittenBack
+  const got = (await writeBackInPieces((method, params) => peer.call('files', method, params), { workspaceId: p.workspaceId, ref, version: '', origin, into: true }, p.data)) as WrittenBack
   if (!('copy' in got)) throw new Error('The file was not made.')
   return { path: got.copy.path, name: got.copy.name, version: got.copy.version }
 }

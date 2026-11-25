@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { stagePiece } from './pieces'
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -865,7 +866,7 @@ const held = (verdict: 'run' | 'hold'): void => {
 const MAY_NOT = (what: string): string => `This key may not ${what}.`
 /** A thread changes files only through the `files_*` tools (files/tools.ts), which give a run its Result and Undo and hold a shared change: never by the wire. */
 export const THREADS_BY_TOOLS = 'A thread changes files with the files_* tools.'
-const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copiesMoved', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'saveAsWord', 'saveAs', 'linkAct'].map((v) => `work.files.${v}`))
+const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copiesMoved', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'writeBackPiece', 'saveAsWord', 'saveAs', 'linkAct'].map((v) => `work.files.${v}`))
 /** Whether an operation id is in the journal already (`runOp` then answers it, and checks it is the same change). */
 const journalled = (db: DatabaseSync, op: string, workspaceId: string, verb: FileVerb): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = ?`).get(op, workspaceId, verb)
 /** How many rows each of Home's lists shows. */
@@ -1242,6 +1243,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       ownRows(ctx, by, p.workspaceId)
       await copyKeep(ctx, by, p as never)
       return handled(tabsFor(ctx, by, p.workspaceId))
+    case 'work.files.writeBackPiece':
+      return handled(stagePiece(by, p as never))
     case 'work.files.writeBack':
       return handled(await writeBack(ctx, by, p as never, m))
     case 'work.files.uploaded':

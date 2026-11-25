@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { takePieces, writeBackInPieces, type PieceRef } from './pieces'
 import { constants, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { open, readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -192,7 +193,8 @@ async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host
   // Another host of his: its own module runs the save, as his window's press there would (`writeBack`).
   const origin: FileOrigin = { from: 'window' }
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id } } as never, r.host)
-  return (await far.call('files', 'writeBack', { workspaceId: r.workspace_id, ref, data: data.toString('base64'), version: r.version, origin, ...(keep ? { copy: true } : {}) })) as WrittenBack
+  // In pieces when it is over one (pieces.ts): never the whole file as one frame of the peer link.
+  return (await writeBackInPieces((method, params) => far.call('files', method, params), { workspaceId: r.workspace_id, ref, version: r.version, origin, ...(keep ? { copy: true } : {}) }, data)) as WrittenBack
 }
 
 /** One look: the copy's bytes as they lie, sent when they differ from what the file holds. */
@@ -527,9 +529,10 @@ export function reopened(ctx: Pick<WorkCtx, 'db'>, r: CopyRow): void {
  * keep-both name, never over anything. `into`: Save as Word to… a library folder here: `ref` names the new file,
  * made in its folder under a free name through New's door (`make`), never over anything.
  */
-export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; version: string; copy?: boolean; into?: boolean; origin: FileOrigin }, method: string): Promise<WrittenBack> {
+export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; pieces?: PieceRef; version: string; copy?: boolean; into?: boolean; origin: FileOrigin }, method: string): Promise<WrittenBack> {
   if (by.kind !== 'remote' || !by.peer) throw new Error(ONLY_HOST)
-  const data = Buffer.from(p.data, 'base64')
+  // Sent in pieces (pieces.ts), kept here for this write alone; the door below admits the write as it always did.
+  const data = p.pieces ? takePieces(by, p.workspaceId, p.pieces) : Buffer.from(p.data, 'base64')
   if (data.length > COPY_ACROSS_MAX) throw new Error(TOO_BIG(basename(p.ref.at === 'file' ? p.ref.path : 'This file')))
   if (p.ref.at !== 'file') throw new Error('A copy goes back to a file on a disk.')
   const path = p.ref.path

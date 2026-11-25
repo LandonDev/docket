@@ -266,7 +266,10 @@ export const FilesRequestSchemas = [
   /** → FileUploaded: whether OneDrive here has uploaded a file of a library here as it lies; the workspace's host asks after its write (files/uploads.ts). */
   /** `refs`: every file one sweep asks of this host at once, answered `{ results: FileUploaded[] }` in their order (`ref` then stands for the first). */
   request('work.files.uploaded', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, refs: z.array(CanvasSourceSchema).min(1).max(50).optional() })),
-  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), origin: FileOriginSchema })),
+  /** `pieces`: the bytes came before it as `work.files.writeBackPiece` (`data` is then empty), named by `upload`, their count and the whole's SHA-256 */
+  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), pieces: z.object({ upload: z.string().uuid(), count: z.number().int().min(1).max(64), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).optional(), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), origin: FileOriginSchema })),
+  /** → { ok: true }: one piece (at most 4 MiB) of the bytes a `work.files.writeBack` names next, from the workspace's host alone (its peer verb), kept for that write */
+  request('work.files.writeBackPiece', z.object({ workspaceId: Workspace, upload: z.string().uuid(), index: z.number().int().min(0).max(63), data: z.string().max(Math.ceil((4 * 1024 * 1024 * 4) / 3) + 4) })),
   /**
    * → SavedAsWord: Save as Word to…: the document `source` (a .tcdoc, a LifeOS document, a Google Doc) exported as
    * Word from its live text and written as a NEW file into the folder `at` (the workspace's folder, a library here or
@@ -592,6 +595,7 @@ export const FILES_CAPS = {
   'work.files.wordAuto': 'operate',
   // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
   'work.files.writeBack': 'operate',
+  'work.files.writeBackPiece': 'operate',
   // Another host of his only: whether OneDrive here uploaded what that write left.
   'work.files.uploaded': 'read',
   'work.files.saveAsWord': 'operate',
@@ -638,6 +642,7 @@ export const FILES_RELAY = {
   'work.files.wordSave': 'screen',
   'work.files.wordAuto': 'screen',
   'work.files.writeBack': 'screen',
+  'work.files.writeBackPiece': 'screen',
   'work.files.saveAsWord': 'screen',
   'work.files.saveAs': 'screen',
   'work.files.links': 'screen',
