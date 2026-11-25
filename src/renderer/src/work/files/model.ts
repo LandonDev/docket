@@ -674,7 +674,7 @@ export function actsFor(
 }
 
 /** How readily a tab gives up width past what fits: one rule for Files' row and the canvas tab row (canvas/tabShrink.ts). */
-export { tabShrink } from "../canvas/tabShrink";
+export { tabEnds, tabShrink } from "../canvas/tabShrink";
 
 /** Why a verb is greyed for a file on a computer this window reaches only through another host: where it can be done. */
 export const farWhy = (far: { computer: string; via: string }): string => `${far.computer} is reached through ${far.via}. Change its files on ${far.computer} itself.`;
@@ -789,6 +789,8 @@ export function searchingNote(places: readonly string[]): FilesNote | null {
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */
 export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [where.name, ...where.trail].join(" › ");
+/** Where `whereWords` keeps its end when cut: the folder the file lies in stays, the place and the folders above it give way first. */
+export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null => (where.trail.length ? whereWords(where).length - where.trail[where.trail.length - 1]!.length : null);
 // ── the chat docked beside a file ─────────────────────────────────────
 
 /**

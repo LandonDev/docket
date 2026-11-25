@@ -10,7 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { shortcutFor } from "../../lib/settings";
 import { KindGlyph } from "./KindGlyph";
-import { tabShrink } from "./model";
+import { tabEnds, tabShrink } from "./model";
 import { TabName } from "../canvas/TabName";
 import { setDragLabel, setSideOver } from "./rowParts";
 
@@ -68,6 +68,8 @@ export function TabRow({
   onNew(): void;
 }) {
   const ids = tabs.map((tab) => tab.id);
+  // Tabs that share a start keep the ends that differ.
+  const ends = tabEnds(tabs.map((tab) => tab.name || "File"));
   // A folder's tab comes forward when a drag rests on it, so the folder can be dropped into.
   const spring = useRef<{ tab: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const rest = (tabId: string | null): void => {
@@ -244,7 +246,7 @@ export function TabRow({
                     className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                   >
                     <KindGlyph kind={tab.kind === "page" ? "folder" : kindOfEntry(name).kind} tinted={false} className="size-3.5 shrink-0" />
-                    <TabName name={name} titleRef={titleRef} />
+                    <TabName name={name} keep={ends[index]} titleRef={titleRef} />
                   </Button>
                 )}
               </TitleTip>

@@ -386,6 +386,26 @@ describe("the window", () => {
     await waitFor(() => expect(places.getByRole("button", { name: "Hide the folders of Dummy Esports" }).querySelector("svg")!.getAttribute("class")).toContain("rotate-90"));
   });
 
+  it("cuts places that share a start in their middle, keeping the ends that differ", async () => {
+    await mount(
+      newHost({
+        places: [
+          ...PLACES.slice(0, 3),
+          place({ id: "b1/Events", kind: "teams", name: "Events", group: "Purdue Esports Staff", key: "staffevents", root: at("/cloud/Staff/Events") }),
+          place({ id: "b1/General", kind: "teams", name: "General", group: "Purdue Esports Staff", key: "staffgeneral", root: at("/cloud/Staff/General") }),
+          place({ id: "b2/Events", kind: "teams", name: "Events", group: "Purdue Esports Club", key: "clubevents", root: at("/cloud/Club/Events") }),
+          place({ id: "b2/General", kind: "teams", name: "General", group: "Purdue Esports Club", key: "clubgeneral", root: at("/cloud/Club/General") }),
+        ],
+      }),
+    );
+    const places = within(screen.getByRole("navigation", { name: "Places" }));
+    const ends = (name: string): string | null => places.getByRole("button", { name }).querySelector("[data-middle-cut]")?.lastElementChild?.textContent ?? null;
+    await waitFor(() => expect(ends("Purdue Esports Staff")).toBe("Staff"));
+    expect(ends("Purdue Esports Club")).toBe("Club");
+    // A name that shares no start is cut at its end, as before.
+    expect(ends("Dummy Esports")).toBeNull();
+  });
+
   it("gives a place's name cut in the sidebar its whole text in a tooltip", async () => {
     const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
       return this.textContent === "Esports Staff" && this.classList.contains("truncate") ? 400 : 0;
@@ -429,6 +449,16 @@ describe("a page", () => {
     await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
     await waitFor(() => expect(tabNames()).toEqual(["Events"]));
     await waitFor(() => expect(trail()).toBe("Dummy EsportsEvents"));
+    // The steps above give way first, each to a letter or two and its ellipsis; the folder's own name is cut last.
+    const [above, folder] = [...document.querySelectorAll<HTMLElement>("[data-trail-step]")];
+    expect(above!.getAttribute("data-trail-step")).toBe("above");
+    expect(above!.className.split(" ")).toEqual(expect.arrayContaining(["overflow-hidden", "min-w-9"]));
+    expect(within(above!).getByRole("button").className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "shrink"]));
+    expect(within(above!).getByRole("button").className.split(" ")).not.toContain("shrink-0");
+    // The folder never shrinks; it may take all the bar but the room the one step above keeps at its least.
+    expect(folder!.getAttribute("data-trail-step")).toBe("folder");
+    expect(folder!.className.split(" ")).toEqual(expect.arrayContaining(["shrink-0", "@[520px]/files-bar:max-w-[calc(100%-var(--trail-above))]"]));
+    expect(folder!.style.getPropertyValue("--trail-above")).toBe("38px");
     expect(calls(host, "work.files.tabSet")).toMatchObject([{ params: { page: { at: { at: "file", path: "/w/Events" }, name: "Events" } } }]);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));

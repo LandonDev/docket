@@ -28,3 +28,36 @@ describe("a tab's name", () => {
     expect(screen.getByRole("tab", { name: "Ballroom contract.pdf" })).toBeTruthy();
   });
 });
+
+describe("a tab's name among tabs that share a start", () => {
+  it("is cut in its middle: the start gives way first and the end that differs stays", () => {
+    render(
+      <button role="tab">
+        <TabName name="Purdue Esports Budget.xlsx" keep={15} titleRef={() => undefined} />
+      </button>,
+    );
+    // Still one name to a reader, and in the tip.
+    const tab = screen.getByRole("tab", { name: "Purdue Esports Budget.xlsx" });
+    const end = screen.getByText("Budget.xlsx");
+    const start = end.previousElementSibling as HTMLElement;
+    expect(start.textContent).toBe("Purdue Esports\u00a0");
+    expect(start.className.split(" ")).toEqual(expect.arrayContaining(["truncate", "min-w-[1.5em]"]));
+    // The end never shrinks: it is cut only where it alone is wider than the room less the start's ellipsis.
+    expect(end.className.split(" ")).toEqual(expect.arrayContaining(["truncate", "shrink-0", "max-w-[calc(100%-1.5em)]"]));
+    expect(end.parentElement!.className.split(" ")).toContain("@max-[1.25rem]/tab-name:sr-only");
+    // In a tab too narrow for both, the end alone is drawn, never a sliver after the start's ellipsis.
+    expect(start.className.split(" ")).toContain("@max-[4rem]/tab-name:hidden");
+    expect(end.className.split(" ")).toContain("@max-[4rem]/tab-name:max-w-full");
+    expect(start.getAttribute("aria-hidden")).toBe("true");
+    expect(end.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("is cut at its end when nothing is shared", () => {
+    render(
+      <button role="tab">
+        <TabName name="Events" keep={null} titleRef={() => undefined} />
+      </button>,
+    );
+    expect(screen.getByText("Events").className.split(" ")).toContain("block");
+  });
+});

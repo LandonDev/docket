@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { FileCrumb, FilePage, FileTab } from "@shared/contract-work-files";
 import { matchesName, nameWords } from "@shared/work/fileSearch";
 import { canDo, DEFAULT_SORT, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileSort, type FileSortBy, type FolderRef, type MakeKind } from "@shared/work/files";
@@ -63,7 +63,7 @@ import {
   type PlaceCopy,
 } from "./model";
 import type { Busy } from "./open";
-import { dragging, dragProps, dropVerb, heldRow, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragging, dragProps, dropVerb, heldRow, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, WhereWords, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
 import { FileColumns, FileGrid } from "./Shapes";
@@ -197,6 +197,10 @@ export function BarBones() {
 /** The trail over a folder: each step above it a press, the folder itself the medium last step. */
 function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; name: string; onGo(page: FilePage): void; onEmpty?(): void }) {
   const steps = trail.length ? trail : [{ name, at: null as FolderRef | null }];
+  // The folder never shrinks (an ellipsis shows at any part of a pixel lost): it may take all the bar but the room
+  // the steps above keep at their least, a letter or two and an ellipsis each, with their chevrons and gaps.
+  const above = steps.length - 1;
+  const aboveLeast = above ? 36 + 52 * (above - 1) + 2 * above : 0;
   return (
     <nav
       aria-label="Folder"
@@ -207,8 +211,14 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
       }}
     >
       {steps.map((crumb, i) => (
-        // The steps above the folder give way first: under 520px of bar the folder alone is named.
-        <span key={i} className={`items-center gap-0.5 ${i === steps.length - 1 ? "flex min-w-0" : "hidden min-w-0 shrink-[2] overflow-hidden @[520px]/files-bar:flex"}`}>
+        // The steps above the folder give way first, each to a letter or two and its ellipsis, before the folder's
+        // own name is cut; under 520px of bar the folder alone is named, cut only where it alone is wider than the bar.
+        <span
+          key={i}
+          data-trail-step={i === steps.length - 1 ? "folder" : "above"}
+          className={`items-center gap-0.5 ${i === steps.length - 1 ? "flex max-w-full shrink-0 @[520px]/files-bar:max-w-[calc(100%-var(--trail-above))]" : `hidden overflow-hidden @[520px]/files-bar:flex ${i > 0 ? "min-w-13" : "min-w-9"}`}`}
+          style={i === steps.length - 1 ? ({ "--trail-above": `${aboveLeast}px` } as CSSProperties) : undefined}
+        >
           {i > 0 ? <ChevronRight aria-hidden className={`size-3.5 shrink-0 text-muted-foreground ${i === steps.length - 1 ? "hidden @[520px]/files-bar:block" : ""}`} /> : null}
           {i === steps.length - 1 || !crumb.at ? (
             // Cut in a narrow bar, the folder's whole name is in its tooltip.
@@ -218,7 +228,7 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
               </span>
             </TruncateTip>
           ) : (
-            <Button variant="ghost" size="xs" className="min-w-0 text-[13px] text-muted-foreground" onClick={() => onGo({ at: crumb.at!, name: crumb.name })}>
+            <Button variant="ghost" size="xs" className="min-w-0 shrink text-[13px] text-muted-foreground" onClick={() => onGo({ at: crumb.at!, name: crumb.name })}>
               <span className="truncate">{crumb.name}</span>
             </Button>
           )}
@@ -351,7 +361,7 @@ const FileRow = memo(function FileRow({
           <RowState entry={entry} />
         )}
       </span>
-      <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? whereWords(entry.where) : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
+      <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? <WhereWords where={entry.where} /> : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
       <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
     </div>
   );

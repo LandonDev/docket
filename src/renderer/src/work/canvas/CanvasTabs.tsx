@@ -10,7 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
-import { tabShrink } from "./tabShrink";
+import { tabEnds, tabShrink } from "./tabShrink";
 import { TabName } from "./TabName";
 
 /**
@@ -53,6 +53,8 @@ export function CanvasTabs({
   kinds?: Record<CanvasKind, CanvasKindDef>;
 }) {
   const ids = items.map((item) => item.id);
+  // Tabs that share a start keep the ends that differ.
+  const ends = tabEnds(items.map((item) => item.title));
   const sortable = useSortable(ids, onReorder);
   const edges = useOverflowEdges<HTMLDivElement>();
   const list = useRef<HTMLDivElement | null>(null);
@@ -152,7 +154,7 @@ export function CanvasTabs({
                   className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                 >
                   <Glyph className="size-3.5" />
-                  <TabName name={item.title} titleRef={titleRef} />
+                  <TabName name={item.title} keep={ends[index]} titleRef={titleRef} />
                 </Button>
               )}
             </TitleTip>

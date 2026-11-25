@@ -35,7 +35,8 @@ import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
-import { carryRefusal, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { cutsMiddle, MiddleCut } from "../canvas/TabName";
+import { carryRefusal, tabEnds, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
@@ -95,6 +96,7 @@ function SideRow({
   down,
   count,
   depth = 0,
+  keep,
   fold,
   target,
   drop,
@@ -109,6 +111,8 @@ function SideRow({
   count?: number;
   /** how deep under its place: 16px a level */
   depth?: number;
+  /** where the name keeps its end when places share a start (`tabEnds`): cut in its middle */
+  keep?: number | null;
   /** the quiet chevron at the row's end, always drawn where the row has folders to show */
   fold?: { open: boolean; toggle(): void };
   /** where a drop on this row puts things */
@@ -150,7 +154,11 @@ function SideRow({
         <span className={`flex shrink-0 text-muted-foreground ${down ? "opacity-50" : ""}`}>{icon}</span>
         {/* A name cut in the 200px sidebar has its whole text in a tooltip, as the trail's folder does. */}
         <TruncateTip text={name}>
-          <span className="min-w-0 flex-1 truncate text-start text-foreground">{name}</span>
+          {cutsMiddle(name, keep) ? (
+            <MiddleCut text={name} keep={keep} className="flex-1 text-start text-foreground" />
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-start text-foreground">{name}</span>
+          )}
         </TruncateTip>
         {count ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count}</span> : null}
       </ItemButton>
@@ -223,8 +231,11 @@ export function SidebarView({
 }) {
   const here = at ? placeOfRef(model, at) : null;
   const team = at ? teamOfPage(at) : null;
+  // Places and projects that share a start keep the ends that differ ("OneDrive - Purdue…", "OneDrive - Personal").
+  const named = [...(model.folder ? [workspace.name] : []), ...model.places.map((p) => (p.is === "team" ? p.name : p.row.name)), ...model.drives.map((d) => placePage(d).name), ...model.projects.map((p) => placePage(p).name)];
+  const ends = new Map(tabEnds(named).map((keep, i) => [named[i]!, keep]));
   const row = (page: FilePage, icon: ReactNode, on: boolean, down = false, count?: number): ReactNode => (
-    <SideRow key={page.name + JSON.stringify(page.at)} icon={icon} name={page.name} on={on} down={down} {...(count ? { count } : {})} onClick={() => onGo(page)} onAuxClick={() => onNewTab(page)} />
+    <SideRow key={page.name + JSON.stringify(page.at)} icon={icon} name={page.name} keep={ends.get(page.name)} on={on} down={down} {...(count ? { count } : {})} onClick={() => onGo(page)} onAuxClick={() => onNewTab(page)} />
   );
   const lensIcon = (kind: PlaceCopy["place"]["kind"]): ReactNode => (kind === "mail" ? <Mail className="size-4" /> : kind === "made" ? <Ask className="size-4" /> : <Trash2 className="size-4" />);
   /** A place that is itself and not a folder of a disk: standing on it, or on a folder of it. */
@@ -240,6 +251,7 @@ export function SidebarView({
         <SideRow
           icon={icon}
           name={name}
+          keep={ends.get(name)}
           on={on}
           down={down}
           {...(listed ? { fold: { open, toggle: () => tree!.toggle(key, !open) }, target: { key, to: { copy, at: page.at, name } }, drop } : {})}

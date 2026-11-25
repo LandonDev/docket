@@ -51,6 +51,7 @@ import {
   pickedAmong,
   refusedWords,
   stemEnd,
+  whereKeep,
   whereWords,
   HOME_PAGE,
   isHomePage,
@@ -487,6 +488,10 @@ describe("the verbs for what is selected", () => {
     expect(refusedWords([{ name: "a", text: "No." }, { name: "b", text: "No." }, { name: "c", text: "No." }])).toBe("a: No. (and 2 more)");
     expect([stemEnd("Budget.xlsx"), stemEnd("Makefile"), stemEnd(".env"), stemEnd("a.tar.gz")]).toEqual([6, 8, 4, 5]);
     expect(whereWords({ place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] })).toBe("Dummy Esports › Events › Spring LAN");
+    // Cut, it keeps the folder the file lies in; a file at a place's top is cut at its end.
+    const where = { place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] };
+    expect(whereWords(where).slice(whereKeep(where)!)).toBe("Spring LAN");
+    expect(whereKeep({ place: "folder", name: "Dummy Esports", trail: [] })).toBeNull();
   });
 });
 

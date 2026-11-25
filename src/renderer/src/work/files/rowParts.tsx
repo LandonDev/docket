@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { FileEntry, FolderRef } from "@shared/work/files";
-import { Tip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { modOrCtrl } from "../../lib/keys";
 import { Cloud } from "../icons";
-import { stemEnd, type Picked, type PickHow, type PlaceCopy } from "./model";
+import { MiddleCut } from "../canvas/TabName";
+import { stemEnd, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
 import type { Busy } from "./open";
 
 /**
@@ -252,5 +253,19 @@ export function DragLabelLayer() {
     <div data-files-drag-label aria-hidden className="pointer-events-none fixed z-50 rounded-md bg-popover px-2 py-1 text-xs font-medium whitespace-nowrap text-foreground shadow-overlay ring-1 ring-border" style={{ left: label.x + 14, top: label.y + 16 }}>
       {label.text}
     </div>
+  );
+}
+
+/**
+ * Where a found file lives ("Dummy Esports › Events › Spring LAN"), in a column too narrow for it: the folder it lies
+ * in stays and the place and the folders above it give way first, the whole of it on hover.
+ */
+export function WhereWords({ where }: { where: NonNullable<FileEntry["where"]> }) {
+  const words = whereWords(where);
+  const keep = whereKeep(where);
+  return (
+    <TruncateTip text={words}>
+      {keep === null ? <span className="block min-w-0 truncate">{words}</span> : <MiddleCut text={words} keep={keep} />}
+    </TruncateTip>
   );
 }

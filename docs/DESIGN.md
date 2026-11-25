@@ -1900,14 +1900,21 @@ Around the canvas:
   name and every other gives up the same part of its own (a short name is
   not cut first), down to its glyph: under the room of one letter and its
   ellipsis the name gives way whole, never a sliver (`TabName`, the canvas
-  row's too); then the tabs scroll under a faded edge.
+  row's too); then the tabs scroll under a faded edge. Tabs whose names
+  share a start ("Purdue Esports Spring LAN budget.xlsx", "… roster.xlsx")
+  are cut in the middle from the word where they part, so the end that
+  differs stays ("P…budget.xlsx"); under 4rem of name the end alone is
+  drawn ("budg…"). Places and projects of the sidebar that share a start
+  are cut the same way.
   While a place loads, the bar's bones stand where it will: Back and
   Forward greyed and a bone for the trail, over the list's bones, so
   nothing moves when the page lands.
   A **page's bar** is 44px: Back and Forward for this tab (28px ghost
   glyphs), then the trail, each step above the folder a ghost press in
   `muted-foreground` and the folder itself in medium `foreground` (its
-  whole name in a tooltip where the bar cuts it), 14px chevrons between; then Go to and Search (28px ghost glyphs), the view
+  whole name in a tooltip where the bar cuts it), 14px chevrons between;
+  the steps above give way first, each down to a letter and its ellipsis,
+  before the folder's own name is cut; then Go to and Search (28px ghost glyphs), the view
   switch, the page's options (⋯) and the one primary button, New. A press
   on the trail's empty part, or ⌘P, turns the trail into **Go to**'s
   field: a panel under it (the popover's own depth, 32px rows, at least
@@ -1928,7 +1935,8 @@ Around the canvas:
   or ⌘F) is a field in the trail's place that filters the folder shown as
   he types (a filter that leaves nothing says "Nothing here by that name"
   with Clear filters, which puts the folder and the trail back); Return searches every place as a page of results whose second
-  column says where each file lives, under a 36px bar of filters (Kind,
+  column says where each file lives (cut from its start: the folder it
+  lies in stays, the place and the folders above give way), under a 36px bar of filters (Kind,
   When it changed, Others can open, then More, a menu of Place, Project and
   Changed by as submenus and Needs review, its count in `muted-foreground`
   beside its name while any is set), each a 24px ghost press whose words

@@ -191,6 +191,16 @@ the first paint.
   header over the kind's own `CanvasPane`, its second file (`SideFile.tsx`)
   and its docked chat (`Dock.tsx`, `dockThread.ts`); `KindGlyph.tsx` a
   kind's glyph in its tint; `chords.ts` and `bindings.ts` the keys.
+- Names that share a start are cut in their middle (decision 13 of the files
+  pass): `tabEnds` (canvas/tabShrink.ts) finds, for each open tab, the word
+  where its name parts from its nearest neighbour's, and `MiddleCut`
+  (canvas/TabName.tsx) draws the start cut and the end kept, read whole. The
+  same rule cuts the sidebar's places and projects (`SidebarView`), and a
+  search's Where keeps its last folder (`whereKeep`, `WhereWords` in
+  rowParts.tsx). The end never shrinks (an ellipsis shows at any part of a
+  pixel lost); it takes the room it needs but 1.5em, and the trail's folder
+  likewise takes the bar but the least its steps above keep
+  (`--trail-above`, Page.tsx `Trail`).
 - An empty place gets its first tab from `tabOpen {first: true}`: the host
   makes it only while there is none, so two windows that open the place
   together make one tab between them.

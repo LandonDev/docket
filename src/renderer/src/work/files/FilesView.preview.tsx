@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesNarrowSidebar, #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
-// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
+// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesSharedNames, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -101,13 +101,13 @@ const tabs: FileTab[] = [
 const eventsCopy = sidebar.rows.find((r) => r.name === "Events")!.copies[0]!;
 const trail = [{ name: "Esports Staff", at: { at: "place" as const, id: "team:Esports Staff" } }, { name: "Events", at: { at: "file" as const, host: "env_box", path: "/cloud/Esports Staff/Events" } }];
 
-function Window({ width, height = 560, children, sidebarOpen = true, over = false, model = sidebar, job = workspace }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean; over?: boolean; model?: Sidebar; job?: WorkspaceMeta }) {
+function Window({ width, height = 560, children, sidebarOpen = true, over = false, model = sidebar, job = workspace, open = tabs }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean; over?: boolean; model?: Sidebar; job?: WorkspaceMeta; open?: FileTab[] }) {
   const side = sidebarOpen ? <SidebarView model={model} workspace={job} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null;
   return (
     <div data-files-view style={{ maxWidth: width, height }} className="@container/files relative flex w-full overflow-hidden rounded-lg border border-border bg-background">
       {side && over ? <div className={SIDEBAR_OVER}>{side}</div> : side}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TabRow tabs={tabs} selected="t1" sidebarOpen={sidebarOpen} onSidebar={noop} onSelect={noop} onClose={noop} onReorder={noop} onNew={noop} />
+        <TabRow tabs={open} selected="t1" sidebarOpen={sidebarOpen} onSidebar={noop} onSelect={noop} onClose={noop} onReorder={noop} onNew={noop} />
         {children}
       </div>
     </div>
@@ -743,6 +743,55 @@ export function FilesLongNames() {
         <FileHeader name={LONG_FILE} line={{ state: "saved", at: NOW - 13 * 60_000 }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
         <FileHeader name={LONG_FILE} line={{ ...copyLine(null, { is: "changed" }, "MacBook Pro", NOW), actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
       </div>
+    </div>
+  );
+}
+
+// Names that share a start: his tabs, his teams, a deep folder and where found files live.
+const sharedTabs: FileTab[] = [
+  tabs[0]!,
+  ...["Purdue Esports Spring LAN budget.xlsx", "Purdue Esports Spring LAN roster.xlsx", "Purdue Esports Spring LAN run of show.docx", "Purdue Esports Spring LAN sponsors.pptx"].map((name, i): FileTab => ({ id: `s${i}`, kind: "file", name, itemId: `si${i}`, key: `sk${i}` })),
+];
+const sharedSidebar = sidebarOf(
+  [
+    {
+      ...reads[0]!,
+      answer: {
+        ...reads[0]!.answer!,
+        places: [
+          ...reads[0]!.answer!.places.filter((p) => p.kind !== "teams" && p.kind !== "onedrive"),
+          lib("c1/Events", "Events", "Purdue Esports Staff", "staffevents"),
+          lib("c1/General", "General", "Purdue Esports Staff", "staffgeneral"),
+          lib("c2/Events", "Events", "Purdue Esports Club Officers", "clubevents"),
+          lib("c2/General", "General", "Purdue Esports Club Officers", "clubgeneral"),
+        ],
+      },
+    },
+  ],
+  "box",
+);
+const deepTrail = [
+  { name: "Purdue Esports Staff", at: { at: "place" as const, id: "team:Purdue Esports Staff" } },
+  { name: "Spring LAN 2027 planning", at: { at: "file" as const, host: "env_box", path: "/cloud/Staff/Events/Spring LAN 2027 planning" } },
+  { name: "Vendors and contracts", at: { at: "file" as const, host: "env_box", path: "/cloud/Staff/Events/Spring LAN 2027 planning/Vendors and contracts" } },
+  { name: "Ballroom", at: { at: "file" as const, host: "env_box", path: "/cloud/Staff/Events/Spring LAN 2027 planning/Vendors and contracts/Ballroom" } },
+];
+
+/** Names that share a start: the tabs keep the ends that differ, the trail gives up its parents before the folder, the sidebar's teams and a search's Where keep their ends. */
+export function FilesSharedNames() {
+  const found = entries.filter((e) => !e.folder).slice(0, 5).map((e, i) => ({ ...e, where: { place: "b1/Events", name: "Purdue Esports Staff", trail: i % 2 ? ["Spring LAN 2027 planning", "Ballroom"] : ["Spring LAN 2027 planning", "Sponsors"] } }));
+  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Results for “sponsor”", query: "sponsor" };
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={720} height={240} sidebarOpen={false} open={sharedTabs}>
+        <PageView {...common} trail={deepTrail} page={{ at: deepTrail[3]!.at, name: "Ballroom" }} listing={listing({ entries: entries.slice(1, 3) })} />
+      </Window>
+      <Window width={720} height={300} model={sharedSidebar} open={sharedTabs}>
+        <div />
+      </Window>
+      <Window width={800} height={300} sidebarOpen={false}>
+        <PageView {...common} acts={null} page={searchPage} copy={null} trail={[{ name: searchPage.name, at: searchPage.at }]} listing={listing({ entries: found, trail: [] })} results onReveal={noop} />
+      </Window>
     </div>
   );
 }

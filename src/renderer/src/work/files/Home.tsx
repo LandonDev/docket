@@ -15,9 +15,9 @@ import { HostLine } from "../shell/DownLine";
 import type { HostLive } from "../shell/lifeosLive";
 import { KindGlyph } from "./KindGlyph";
 import { readsSession } from "./lifeosPlace";
-import { homeLists, whereWords, type Sidebar } from "./model";
+import { homeLists, type Sidebar } from "./model";
 import type { Busy } from "./open";
-import { RowState, RowWords } from "./rowParts";
+import { RowState, RowWords, WhereWords } from "./rowParts";
 
 /**
  * Home (docs/DESIGN.md "The Files place"): the page a new tab opens on. Three short lists from the workspace's
@@ -58,7 +58,11 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
             ) : (
               <RowState entry={entry} cut={CUT} />
             )}
-            {entry.where ? <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">{whereWords(entry.where)}</span> : null}
+            {entry.where ? (
+              <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">
+                <WhereWords where={entry.where} />
+              </span>
+            ) : null}
             {entry.changed ? <span className={`w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums hidden ${stated ? "@[400px]/files-home:block" : "@[360px]/files-home:block"}`}>{dayTime(entry.changed)}</span> : null}
           </Button>
         );
