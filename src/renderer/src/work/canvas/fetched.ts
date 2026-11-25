@@ -74,27 +74,40 @@ export function useItemFetch(env: string, item: Pick<CanvasItem, "id" | "source"
 
 /** Bytes per read: the host's ranged read takes at most 8 MB. */
 const CHUNK = 4 * 1024 * 1024;
+/** Reads after the first on their way at once (perf M9): the link's round trip is paid once for a few pieces. */
+export const DOWNLOAD_AT_ONCE = 3;
 
-/** Reads the host's copy of a fetched item and saves it into this computer's Downloads under its own name. */
+/**
+ * Reads the host's copy of a fetched item and saves it into this computer's Downloads under its own name: the first
+ * piece says the size, and the rest come `DOWNLOAD_AT_ONCE` at a time, each into its place.
+ */
 export async function downloadItem(env: string, item: Pick<CanvasItem, "id" | "title" | "source">): Promise<void> {
   const link = registry.linkOf(env);
-  const parts: Uint8Array[] = [];
-  let offset = 0;
-  let size = Number.POSITIVE_INFINITY;
-  while (offset < size) {
-    const got = await link.request<{ data: string; size: number }>("work.canvas.read", { itemId: item.id, offset, length: CHUNK });
-    size = got.size;
-    const bytes = Uint8Array.from(atob(got.data), (c) => c.charCodeAt(0));
-    if (!bytes.length) break;
-    parts.push(bytes);
-    offset += bytes.length;
-  }
-  const whole = new Uint8Array(offset);
-  let at = 0;
-  for (const part of parts) {
-    whole.set(part, at);
-    at += part.length;
-  }
+  const read = async (offset: number, length = CHUNK): Promise<{ bytes: Uint8Array; size: number }> => {
+    const got = await link.request<{ data: string; size: number }>("work.canvas.read", { itemId: item.id, offset, length });
+    return { bytes: Uint8Array.from(atob(got.data), (c) => c.charCodeAt(0)), size: got.size };
+  };
+  const first = await read(0);
+  const size = first.bytes.length ? first.size : 0;
+  const whole = new Uint8Array(size);
+  whole.set(first.bytes.subarray(0, size), 0);
+  const offsets: number[] = [];
+  for (let at = first.bytes.length; at < size; at += CHUNK) offsets.push(at);
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < offsets.length) {
+      const start = offsets[next++]!;
+      const end = Math.min(start + CHUNK, size);
+      // (a host that answers less than was asked is read on from where it stopped)
+      for (let at = start; at < end; ) {
+        const { bytes } = await read(at, end - at);
+        if (!bytes.length) throw new Error(`${item.title} did not come whole. Try again.`);
+        whole.set(bytes.subarray(0, end - at), at);
+        at += bytes.length;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(DOWNLOAD_AT_ONCE, offsets.length) }, lane));
   await saveDownload(item.source.at === "mail" ? item.source.name : item.title, whole);
 }
 
