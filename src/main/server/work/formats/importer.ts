@@ -157,9 +157,10 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
     // A Word file of a Teams library opened in a Files tab: Files keeps the document in the workspace's own folder.
     const placed = importPlaceFor(original, params.itemId)
     if (placed) folder = placed
-    // A file a drop kept in the thread's own attachments (a Work Chat with no workspace folder): its document goes where
-    // a dropped file's always went (`folderFor`), never into a folder the thread's deletion or cleanup empties.
-    else if (params.sessionId && inAttachments(original, params.sessionId)) folder = folderFor(ctx, params.sessionId)
+    // A file a drop kept in a Work Chat's own attachments (it has no workspace folder): its document goes where a dropped
+    // file's always went (`folderFor`, Work's imports), never into a folder the thread's deletion or cleanup empties. Only
+    // a Work Chat's (sol S15): a thread of a workspace keeps the rules below, a synced workspace's privacy among them.
+    else if (params.sessionId && workspaceOfOwner(ctx, params.sessionId) === null && inAttachments(original, params.sessionId)) folder = folderFor(ctx, params.sessionId)
     // Never beside a file others can open: the document would sync to them. It goes under this host's data instead.
     else if (sharedOf(ctx, { at: 'file', host: ctx.host, path: original })) {
       folder = importFolderOf(ctx.dataDir, { host: ctx.host, path: original })

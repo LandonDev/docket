@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -10,6 +10,7 @@ import type { ClientRequest } from '@shared/contract'
 import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
 import type { CanvasSource } from '@shared/work'
 import { attachmentDir, setAttachmentDirContext } from '../../attachmentDir'
+import { setCloudDir } from '../office/files/library'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { servicePaths } from '../service/config'
@@ -144,6 +145,28 @@ describe("a Word file dropped on a document in a Work Chat (sol S2)", () => {
       expect(existsSync(doc)).toBe(true)
     } finally {
       setAttachmentDirContext(null)
+    }
+  }, 60_000)
+})
+
+describe("a Word attachment of a thread in a synced workspace (sol S15)", () => {
+  it("keeps its document under this host's data, never in the workspace's folder others can open", async () => {
+    const r = await rig()
+    const data = join(r.dir, 'data')
+    // The workspace's folder lies in the cloud folder: others can open what is in it.
+    setCloudDir(() => join(r.dir, 'Work'))
+    setAttachmentDirContext({ session: (id) => (id === 't1' ? { id: 't1', projectId: null, workspaceId: 'w1' } : null), projectCwd: () => null, workspacePath: (id) => (id === 'w1' ? r.work : null), dataDir: data })
+    try {
+      const attached = join(attachmentDir('t1'), 'review.docx')
+      mkdirSync(dirname(attached), { recursive: true })
+      copyFileSync(join(CORPUS, 'review.docx'), attached)
+      const got = await r.ask<ImportAnswer>('work.formats.import', { sessionId: 't1', from: { at: 'source', source: { at: 'file', host: 'env_box', path: attached } } })
+      const doc = (got.source as { path: string }).path
+      expect(doc.startsWith(realpathSync(r.work))).toBe(false)
+      expect(doc.startsWith(realpathSync(data))).toBe(true)
+    } finally {
+      setAttachmentDirContext(null)
+      setCloudDir(() => join(homedir(), 'Library', 'CloudStorage'))
     }
   }, 60_000)
 })
