@@ -146,6 +146,43 @@ describe("a deck's open box", () => {
     expect(await after.kept()).toEqual([]);
   });
 
+  it("of later notes stay kept when an earlier send of them lands; refused, the line says Not saved with Retry", async () => {
+    const before = store();
+    const { host, decks } = deck();
+    const session = new HandSession(host, decks);
+    session.journalTo(before.journal);
+    // The first send lands only once the second is on its way; the second is refused after it.
+    let land!: () => void;
+    const landed = new Promise<void>((r) => (land = r));
+    const edit = host.edit.bind(host);
+    let sends = 0;
+    host.edit = async (ops) => {
+      const mine = ++sends;
+      await landed;
+      if (mine === 1) return edit(ops);
+      await new Promise((r) => setTimeout(r, 0));
+      throw new Error("No room");
+    };
+    session.typeNotes(3, "Thank", "");
+    const one = session.keepNotes();
+    session.typeNotes(3, "Thank the sponsors", "");
+    const two = session.keepNotes();
+    land();
+    expect(await one).toBe(true);
+    await before.s.settled();
+    expect((await before.kept()).map((d) => d.body)).toEqual([{ kind: "notes", slideId: 3, text: "Thank the sponsors", was: "Thank" }]);
+    expect(await two).toBe(false);
+    const line = session.saved(() => undefined);
+    expect(line).toMatchObject({ state: "conflict", detail: "Not saved. No room.", actions: [{ id: "retry", label: "Retry" }] });
+    // Retry sends them over the notes as the deck has them now, and the line is saved again.
+    host.edit = edit;
+    line.actions![0].run();
+    await vi.waitFor(() => expect(session.saved(() => undefined).state).toBe("saved"));
+    expect(host.view.slides[0].notes).toBe("Thank the sponsors");
+    await before.s.settled();
+    expect(await before.kept()).toEqual([]);
+  });
+
   it("of notes the host took is let go", async () => {
     const before = store();
     const { host, decks } = deck();

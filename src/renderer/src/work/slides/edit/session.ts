@@ -120,6 +120,8 @@ export interface HandState {
   busySince?: number | null;
   /** why the last edit did not go in, for the pane's one state line */
   failure: Failure | null;
+  /** why the host refused his notes, said in the save line with Retry until he types in them again or they go in */
+  notesFailure?: string | null;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
   shapeLook: { shapeId: number; set: RunLook & ParaLook } | null;
   /** a shape's carried picture, or the ground over a deleted one, until the new picture lands */
@@ -634,9 +636,7 @@ export class HandSession {
     // His notes go first, and a close waits for them as for the box. Notes refused before (changed elsewhere, said
     // then) go once more over the notes as they are now, the other save kept in the deck's versions; refused again,
     // the tab stays with them in the field.
-    const refused = this.notesRefused;
-    if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
-    if (!(await this.keepNotes())) throw new CloseRefused("Your notes are not in the file yet");
+    if (!(await this.retryNotes())) throw new CloseRefused("Your notes are not in the file yet");
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = await Promise.race([
       (async () => {
@@ -752,7 +752,7 @@ export class HandSession {
     if (waiting && waiting.slide !== slide) void this.keepNotes();
     this.notesRefused = null;
     if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
-    else this.set({ busy: this.state.busy + 1 });
+    this.set({ busy: this.state.busy + (this.notesWaiting ? 0 : 1), notesFailure: null });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
     this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
@@ -767,29 +767,45 @@ export class HandSession {
     const was = this.notesHeld.get(waiting.slide) ?? waiting.began;
     if (waiting.text === was) {
       this.set({ busy: this.state.busy - 1 });
-      this.notesJournal?.clear();
+      // (a send on its way holds the same words: its answer lets the draft go)
+      if (!this.notesSending) this.notesJournal?.clear();
       return (await this.notesSending?.done) ?? true;
     }
-    // The edit counts itself on its way before the wait lets go, so the line never says saved between the two.
+    // The wait's count goes on as the send's, so the line never says saved between the two.
     this.notesHeld.set(waiting.slide, waiting.text);
-    const sent = this.edit([{ op: "notes", slide: waiting.slide, text: waiting.text, was }], "Couldn't save the notes");
-    this.set({ busy: this.state.busy - 1 });
-    const sending = {
+    const sending: { slide: number; done: Promise<boolean> } = {
       slide: waiting.slide,
-      done: sent.then((next) => {
-        // Refused (the notes changed elsewhere, said as a toast): his words stay in the field, and his next keep writes
-        // over the notes as the deck has them now.
-        if (!next) {
+      done: this.host.edit([{ op: "notes", slide: waiting.slide, text: waiting.text, was }]).then(
+        (next) => {
+          this.store.view(next);
+          this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
+          // Kept until this send's own answer: a later send's draft stays while it is on its way or waits.
+          if (!this.notesWaiting && this.notesSending === sending) this.notesJournal?.clear();
+          return true;
+        },
+        (error) => {
+          // Refused (the notes changed elsewhere, or the host would not take them): said in the save line with Retry,
+          // his words stay in the field and kept on this computer, and his next keep writes over the notes as the
+          // deck has them now.
+          const said = message(error, "Couldn't save the notes");
           this.notesHeld.set(waiting.slide, this.store.get().view?.slides.find((s) => s.id === waiting.slide)?.notes ?? was);
           this.notesRefused = { slide: waiting.slide, text: waiting.text };
-        } else if (!this.notesWaiting) this.notesJournal?.clear();
-        return next !== null;
-      }),
+          this.set({ busy: this.state.busy - 1, notesFailure: MOVED.test(said) ? CONFLICT_WORD : said });
+          return false;
+        },
+      ),
     };
     this.notesSending = sending;
     const ok = await sending.done;
     if (this.notesSending === sending) this.notesSending = null;
     return ok;
+  }
+
+  /** His refused notes sent once more, over the notes as the deck has them now; resolves as `keepNotes` does. */
+  retryNotes(): Promise<boolean> {
+    const refused = this.notesRefused;
+    if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
+    return this.keepNotes();
   }
 
   /** Whether his notes for a slide are not yet the deck's: waiting, on their way or refused. The field keeps them over a view that comes meanwhile. */
@@ -857,6 +873,8 @@ export class HandSession {
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
     // A save that did not go in is said at once, never as saving: his words wait in the box, and Retry sends them again.
     if (failure) return { state: "conflict", detail: notSavedWords(failure.message), actions: [{ id: "retry", label: "Retry", run: () => void this.commit() }] };
+    const { notesFailure } = this.state;
+    if (notesFailure) return { state: "conflict", detail: notSavedWords(notesFailure), actions: [{ id: "retry", label: "Retry", run: () => void this.retryNotes() }] };
     if (saving) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
   }

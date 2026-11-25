@@ -1789,13 +1789,17 @@ slide), the stage leaves the slide or the tab closes (`flush` waits for
 them). Each edit names the notes it was written over (`was`: what the host
 last took from the field, else what the field began from); the host
 refuses one whose slide's notes changed since (`handEdit`, the box's
-`CHANGED_WHILE`), and the toast says so. His words stay in the field
-(`notesPending`), and his next keep, or the close, writes them over the
+`CHANGED_WHILE`). A refusal, that one or any other, is said in the save
+line, "Not saved." and why, with Retry (`notesFailure`, `retryNotes`),
+until he types in the field again or they go in. His words stay in the field
+(`notesPending`), and Retry, his next keep or the close writes them over the
 notes as they are now, the other save kept in the deck's versions. While
 his notes wait or travel past 600 ms the save line says saving. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
 "Drafts survive a crash"), so a crash in the pause offers them, with
-Restore, the next time the deck opens. A slide an agent's
+Restore, the next time the deck opens; each draft is let go only by its own
+send's answer, so an earlier send landing never drops the words of a later
+one still waiting or on its way. A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
 
