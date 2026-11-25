@@ -190,8 +190,19 @@ describe("the media canvas", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(document.body.textContent).not.toContain("Making a copy");
     expect(document.querySelector("[data-media-loading]")).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
+    // Council round 12 (the walk): Retry spins in place, the failure kept, while the host has not answered.
+    host.hold = true;
+    try {
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+      await act(async () => new Promise((settle) => setTimeout(settle, 10)));
+      expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
+      const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+      expect(retry.disabled).toBe(true);
+      expect(retry.querySelector("[data-busy]")).not.toBeNull();
+      expect(document.querySelector("[data-media-failed]")).not.toBeNull();
+    } finally {
+      host.hold = false;
+    }
   });
 
 

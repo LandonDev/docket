@@ -206,9 +206,10 @@ export function Body(props: Props) {
 
   // A sheet that did not open says so once, in the body: the bar keeps no line about it.
   // Retry tries again what failed: the grid's own code (fetched afresh), the host's open, or both.
-  const retry = (): void => {
+  const retry = (): Promise<void> | undefined => {
     if (typeof prepared === "string") setTries((n) => n + 1);
-    if (state.failed) void sync.open();
+    // The host's open again is handed back, so Retry spins with the failure kept until it answers.
+    return state.failed ? sync.open() : undefined;
   };
   if (failed) return <OpenFailed kind="sheet" why={failed} onRetry={retry} />;
   if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} />;

@@ -185,8 +185,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   );
 
   // A host that did not answer, or a version that cannot be shown, is the centred failure with Retry: no bones under it.
-  if (!view && error) return <Failed why={error} onRetry={() => void loadMedia(env, item.id)} />;
-  if (shown && blank(shown)) return <Failed why={unshowable(shown)} onRetry={() => void loadMedia(env, item.id, { retry: true })} />;
+  // Retry hands its read back: the failure stays, Retry spinning, until the host answers.
+  if (!view && error) return <Failed why={error} onRetry={() => loadMedia(env, item.id)} />;
+  if (shown && blank(shown)) return <Failed why={unshowable(shown)} onRetry={() => loadMedia(env, item.id, { retry: true })} />;
   if (!view || !shown) return <Loading kind={IMAGE_EXT.test(item.source.at === "file" ? item.source.path : item.title) ? "image" : "video"} />;
 
   const play = shownPlay(shown);
@@ -272,7 +273,7 @@ function blank(v: MediaVersion): boolean {
 }
 
 /** A failure that leaves nothing to show (docs/DESIGN.md "The canvas pane"): the centred `Empty`, its reason and Retry. */
-function Failed({ why, onRetry }: { why: string | undefined; onRetry(): void }) {
+function Failed({ why, onRetry }: { why: string | undefined; onRetry(): Promise<void> }) {
   return (
     <div data-media-failed className="flex size-full">
       <OpenFailed kind="media" why={why} onRetry={onRetry} />

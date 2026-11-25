@@ -1334,6 +1334,37 @@ describe("the sheet kind", () => {
     expect(failed.textContent).not.toContain("assets");
   });
 
+  /** Council round 12 (the walk): Retry on a host's failed open cleared the failure to bones before the host answered. */
+  it("keeps a failed open with Retry spinning until the host answers, then opens the grid", async () => {
+    sheetHost = fakeSheetHost(sheetView(), BOOK);
+    const open = sheetHost.open.bind(sheetHost);
+    let fails = true;
+    let release: (() => void) | null = null;
+    sheetHost.open = async (first) => {
+      if (fails) throw new Error("The box did not answer");
+      await new Promise<void>((go) => (release = go));
+      return open(first);
+    };
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet", undefined, { timeout: 3000 })).toBeTruthy();
+    fails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(release).not.toBeNull());
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.getByText("Couldn't open this sheet")).toBeTruthy();
+    await act(async () => release!());
+    await gridUp();
+    expect(screen.queryByText("Couldn't open this sheet")).toBeNull();
+  });
+
   it("Retry after the grid's own code failed to load fetches it again, and the grid then opens", async () => {
     sheetHost = fakeSheetHost(sheetView(), BOOK);
     grid = fakeGrid();

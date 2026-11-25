@@ -242,10 +242,11 @@ export class SheetSync {
 
   /** Opens again from nothing: Retry after a failure. */
   async open(): Promise<void> {
-    this.set({ failed: null });
     try {
-      // The first piece of the book comes with the view (`first`), so a book of one piece is one request.
+      // The first piece of the book comes with the view (`first`), so a book of one piece is one request. A failure
+      // already said stays until the host answers (his Retry spins meanwhile), never bones in its place.
       const { first, ...view } = await this.host.open(true);
+      this.set({ failed: null });
       this.view(view);
       await this.load(view.rev, first);
     } catch (error) {
