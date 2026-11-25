@@ -40,7 +40,9 @@ Three things make the pair his shape:
 
 - **The link** (`--link 60/10`, the default; `none` to tell our time from the link's): a relay between `win`
   and `box` with a delay and a rate each way (`startSlowLink`, scripts/lib/slowLink.ts): 60 ms there and back,
-  10 Mbit/s. It also counts the wire's own bytes and round trips for each press.
+  10 Mbit/s. It also counts the wire's own bytes and round trips for each press. It presents the box's own address
+  as each connection's Host, as his tunnel's front door does: the box refuses a page's socket whose Host is not its
+  own (remote/listener.ts), and without it the window never links.
 - **The load** (`--load 24`): stand-in Work threads inside `box`, each a real thread streaming five deltas a
   second from the run's loopback provider (`scripts/perf/lib/load.ts`). It is load inside the isolated
   instance; the run records this machine's own load and the agents' slice beside every number.
@@ -83,6 +85,13 @@ The rows: `launch`, `return`, `switch-workspace`, `view-<View>` for each view an
 workspace's folder, in a library on the window's machine, in one on a third machine), `open-<kind>-<shape>` for
 a document, a Word file, a workbook, a deck, a PDF, a picture and a video, `tab-<kind>-A` (back to an open
 file's tab), `saved-text-<shape>`, `ask-box`, `ask-first-content`, `reconnect`.
+
+## The pass's numbers
+
+Before (Nov 24, 7633505ea) and after (Nov 25, 49bedd5e8 with the kit's Host fix) sit side by side in
+`.temp-code/plans/perf/BASELINE.md` ("before-slowed", "after-slowed"); `.temp-code/plans/landed/PERF-work.md` sets
+each budget's before beside its after. Three far rows did not time after: the driver's close of a far Word tab
+(`closeSelectedFile`, scripts/journeys/lib/files.ts) times out since the Files tabs changed on Nov 24.
 
 ## The live box, read only
 
