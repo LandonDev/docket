@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture/desktopClick",
+  "params": {
+    "at": [
+      110,
+      70
+    ]
+  }
+}
