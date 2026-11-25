@@ -3,6 +3,7 @@ import { errorText } from "@shared/work";
 import { isSilence, lifeosHostName, lifeosStateOf } from "../shell/lifeos";
 import { downIsSilence, downOf, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
+import { useLiveDown } from "../shell/lifeosLive";
 
 /**
  * Why a held LifeOS mail could not be read whole, by the read's own cause: the host's LifeOS state, said by the rule
@@ -28,12 +29,17 @@ export interface MailUnreadSaid {
   dialog: ReactNode;
 }
 
-/** The unread note's words and press; null with no failed read, or while LifeOS is still connecting (a wait). Hooks run on every render. */
+/**
+ * The unread note's words and press; null with no failed read, or while LifeOS is still connecting (a wait). The cause
+ * is the host's live status's over the one the read saved (`useLiveDown`): a sign-in begun elsewhere is Show the code at
+ * once. The detail reads the mail again once that host says connected. Hooks run on every render.
+ */
 export function useMailUnread(error: unknown, failed: boolean, environmentId: string, onRetry: () => void): MailUnreadSaid | null {
-  const down = failed ? unreadDown(error) : "wait";
-  const cause = down === "wait" ? null : down;
+  const was = failed ? unreadDown(error) : null;
+  const live = useLiveDown(was === "wait" ? "connecting" : was, environmentId);
+  const cause = live.down;
   const { press, elsewhere } = useDownPress(cause, environmentId);
   const { action, dialog } = useDownAction(cause ? press : "retry", environmentId, onRetry);
-  if (down === "wait") return null;
+  if (!failed || live.waits) return null;
   return { words: cause ? downWords(cause, lifeosHostName(environmentId)) : "The mail did not load", red: !cause || downIsSilence(cause), cause, elsewhere, action, dialog };
 }

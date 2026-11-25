@@ -399,6 +399,10 @@ describe("the Outbox", () => {
       expect(line.closest("[data-outbox-note]")?.getAttribute("role")).toBeNull();
       expect(line.querySelector("button")?.textContent).not.toBe("Retry");
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      // Council round 10 (Sol Outbox 1): a sign-in begun elsewhere changes the note at once, from the live status.
+      act(() => setLifeosStatus("box", { lifeos: { state: "pairing", expiresAt: Date.now() + 600_000 }, keys: [] } as never));
+      await waitFor(() => expect(document.querySelector("[data-mail-unread]")?.getAttribute("data-mail-unread")).toBe("pairing"));
+      expect(document.querySelector("[data-mail-unread]")!.textContent).toContain("The LifeOS sign-in on the box waits for your approval");
       // The box signs in: its status says connected, and the mail is read again with no press.
       world.getCause = null;
       act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
