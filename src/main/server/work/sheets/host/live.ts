@@ -1,8 +1,11 @@
-import type { ICellData } from '@univerjs/core'
-import { formulaLexer, rebase, type SuggestionCell } from 'work-kit/sheet/suggest'
+import { MOVES_AS_IS, moveThrough as move } from 'work-kit/sheet/collab'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
-import { SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
+import { SET_RANGE_VALUES } from '../mutations'
 import { WORKBOOK_MUTATIONS } from './rules'
+// (by its path: the Work service reaches this file, and its bundle resolves no alias for a value)
+import { guestSize, INDEX_KEY, SIZE_MAX, STRUCTURAL_MAX } from '../../../../../shared/work/sheetGuest'
+
+export { INDEX_KEY, MOVES_AS_IS, SIZE_MAX, STRUCTURAL_MAX }
 
 /**
  * The rules of the live sheet route (architecture §7, docs/agents/work-sheets.md
@@ -43,22 +46,15 @@ export const GUEST_OPS = new Set([
   ROW_HEIGHT
 ])
 
-/** The most ranges one merge or size change names, and the widest column and tallest row a guest may set (px). */
+/** The most ranges one merge or size change names. */
 export const FORMAT_RANGES_MAX = 1000
-export const SIZE_MAX = 2000
 /** The most rows one fitted-height list names. */
 export const AUTO_ROWS_MAX = 10_000
-/** A row or column key as a grid writes one: a whole number with no sign, no fraction and no leading zero. */
-export const INDEX_KEY = /^(0|[1-9]\d{0,6})$/
 /** Excel's own limits: the characters a cell holds, and a formula's length. */
 export const CELL_TEXT_MAX = 32_767
 export const FORMULA_MAX = 8_192
 /** The most one send of a guest's may weigh, as JSON. One press of the page is a few thousand bytes; a paste of a few thousand styled cells is under a megabyte. */
 export const GUEST_SEND_MAX = 2 * 1024 * 1024
-/** The longest string a guest's style may hold (a number format's code is at most 255 characters in Excel). */
-const STYLE_TEXT_MAX = 255
-/** The largest number a guest's style may hold: a theme colour's tag (work-kit `themeTag`) is the largest the grid writes, under 400,000. */
-const STYLE_NUMBER_MAX = 1_000_000
 const ROWS = 1_048_576
 const COLUMNS = 16_384
 
@@ -67,7 +63,7 @@ const box = (r: unknown): boolean => {
   return !!b && typeof b === 'object' && int(b.startRow) && int(b.endRow) && int(b.startColumn) && int(b.endColumn) && b.startRow <= b.endRow && b.startColumn <= b.endColumn && b.endRow < ROWS && b.endColumn < COLUMNS
 }
 const boxes = (ranges: unknown): boolean => Array.isArray(ranges) && ranges.length > 0 && ranges.length <= FORMAT_RANGES_MAX && ranges.every(box)
-const size = (n: unknown): boolean => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= SIZE_MAX
+const size = guestSize
 /** One size for every range, or one a row or column by its index (how an undo gives each its own back; null gives the default back). */
 const sizes = (v: unknown, most: number): boolean => {
   if (size(v)) return true
@@ -100,8 +96,6 @@ function formatShape(m: SheetMutationJson): string | null {
 /** Rows and columns inserted or deleted: each names its range. */
 const ROWS_AND_COLUMNS = new Set(['sheet.mutation.insert-row', 'sheet.mutation.remove-rows', 'sheet.mutation.insert-col', 'sheet.mutation.remove-col'])
 
-/** The most rows or columns one insert or delete may span. */
-export const STRUCTURAL_MAX = 1000
 
 const int = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < 2_000_000
 const text = (v: unknown, max = 8192): v is string => typeof v === 'string' && v.length > 0 && v.length <= max
@@ -168,8 +162,9 @@ export function refusal(mutations: readonly SheetMutationJson[], role: string, g
       if (!text(p.sheetId, 200) || !int(at?.row) || !int(at?.col)) return 'a note names its sheet, row and column'
       continue
     }
-    if (typeof (m.params as { subUnitId?: unknown }).subUnitId !== 'string') return 'a mutation names its sheet'
+    // What a guest may not send is said as that first: a tab added names no sheet yet, and "a mutation names its sheet" says nothing to a guest.
     if (guest && !GUEST_OPS.has(m.id)) return `a guest cannot ${m.id.replace(/^sheet\.mutation\./, '').replace(/-/g, ' ')}`
+    if (typeof (m.params as { subUnitId?: unknown }).subUnitId !== 'string') return 'a mutation names its sheet'
     if (guest) {
       const shape = formatShape(m)
       if (shape) return shape
@@ -186,130 +181,16 @@ export function refusal(mutations: readonly SheetMutationJson[], role: string, g
   return null
 }
 
-const NEVER_A_KEY = new Set(['__proto__', 'constructor', 'prototype'])
+export { guestCells, plainFormula } from '../../../../../shared/work/sheetGuest'
 
 /**
- * A guest's style as the grid's own: short keys, numbers, flags and short strings, a few levels
- * deep. Univer drops a key it does not know but keeps any value whole, so a string of a hundred
- * thousand characters in a colour would stay in the workbook's styles for good.
- */
-function guestStyle(style: unknown, depth = 0): unknown {
-  if (style === null) return null
-  if (typeof style === 'string') return style.length <= 64 ? style : undefined
-  if (typeof style !== 'object' || Array.isArray(style) || depth > 4) return undefined
-  const out: Record<string, unknown> = {}
-  let kept = 0
-  for (const [k, v] of Object.entries(style)) {
-    if (!/^[A-Za-z_]{1,12}$/.test(k) || NEVER_A_KEY.has(k) || kept >= 24) continue
-    let value: unknown
-    if (v === null || typeof v === 'boolean' || (typeof v === 'number' && Math.abs(v) <= STYLE_NUMBER_MAX)) value = v
-    else if (typeof v === 'string') value = v.length <= STYLE_TEXT_MAX ? v : undefined
-    else value = guestStyle(v, depth + 1)
-    if (value === undefined) continue
-    out[k] = value
-    kept++
-  }
-  return out
-}
-
-/** A formula without the prefixes Excel's files give newer functions and a lambda's own names (`_xlfn.`, `_xlws.`, `_xlpm.`, `_xludf.`): the engine reads the plain names, and throws on the prefixed ones. Text in quotes is left as it is. */
-export const plainFormula = (f: string): string =>
-  f.includes('_xl')
-    ? f
-        .split('"')
-        .map((part, i) => (i % 2 ? part : part.replace(/_xl(?:fn|ws|pm|udf)\./gi, '')))
-        .join('"')
-    : f
-
-/** What an inserted row or column may carry beside its place: its height or its width, nothing else (not hidden, no other key). */
-function sizesOnly(info: unknown, key: 'h' | 'w'): Record<string, Record<string, number>> | undefined {
-  if (!info || typeof info !== 'object') return undefined
-  const out: Record<string, Record<string, number>> = {}
-  let kept = 0
-  for (const [k, v] of Object.entries(info)) {
-    const n = (v as Record<string, unknown> | null)?.[key]
-    if (!INDEX_KEY.test(k) || kept >= STRUCTURAL_MAX || !size(n)) continue
-    out[k] = { [key]: n as number }
-    kept++
-  }
-  return kept ? out : undefined
-}
-
-/**
- * A guest's ops cut to what a guest may send: cells as values, formulas, styles and types only (no
- * rich text, no custom data), named by indexes, a style held to the grid's own shape, a formula in
- * plain names; an inserted row or column with its size and nothing else.
- */
-export function guestCells(mutations: readonly SheetMutationJson[]): SheetMutationJson[] {
-  return mutations.map((m) => {
-    if (m.id === 'sheet.mutation.insert-row' || m.id === 'sheet.mutation.insert-col') {
-      const p = m.params as { unitId?: unknown; subUnitId?: unknown; range?: unknown; rowInfo?: unknown; colInfo?: unknown }
-      const rows = m.id.endsWith('row')
-      const info = rows ? sizesOnly(p.rowInfo, 'h') : sizesOnly(p.colInfo, 'w')
-      return { id: m.id, params: { unitId: p.unitId, subUnitId: p.subUnitId, range: p.range, ...(info ? { [rows ? 'rowInfo' : 'colInfo']: info } : {}) } }
-    }
-    if (m.id !== SET_RANGE_VALUES) return m
-    const p = m.params as { cellValue?: Matrix }
-    const cellValue: Matrix = {}
-    for (const [r, cols] of Object.entries(p.cellValue ?? {})) {
-      if (!INDEX_KEY.test(r)) continue
-      const row: Record<string, ICellData | null> = (cellValue[r] = {})
-      for (const [c, cell] of Object.entries(cols ?? {})) {
-        if (!INDEX_KEY.test(c)) continue
-        if (cell === null) row[c] = null
-        else {
-          const kept: Record<string, unknown> = {}
-          for (const k of ['v', 'f', 't'] as const) if (k in cell) kept[k] = cell[k]
-          if (typeof kept.f === 'string') kept.f = plainFormula(kept.f)
-          if ('s' in cell) {
-            const style = guestStyle(cell.s)
-            if (style !== undefined) kept.s = style
-          }
-          row[c] = kept as ICellData
-        }
-      }
-    }
-    return { id: m.id, params: { ...p, cellValue } }
-  })
-}
-
-type Matrix = Record<string, Record<string, ICellData | null>>
-
-/**
- * Rule mutations that name their rule by id and hold no cell, range or reference: a row or column
- * inserted or deleted cannot make them wrong, so they pass a structural op as they are. Every other
- * rule mutation holds ranges (a conditional format's, a validation's, a filter's, a sort's
- * reorder), a setting that may hold a reference (a validation's list from a range), or a formula
- * (a defined name): moved wrong it would corrupt the rule, so it answers null.
- */
-export const MOVES_AS_IS: ReadonlySet<string> = new Set([
-  'sheet.mutation.delete-conditional-rule',
-  'sheet.mutation.move-conditional-rule',
-  'data-validation.mutation.removeRule',
-  'formula.mutation.remove-defined-name'
-])
-
-/**
- * An edit made on an older revision, moved through the ops it missed: its cells follow rows and
- * columns inserted or deleted before them (a cell whose row went is dropped), with their formulas
- * moved too, and a rule named only by its id passes as it is (`MOVES_AS_IS`). Null when it cannot
- * be moved (it is itself structural, a format over a moved range, or a rule with a range or a
- * formula): the client reloads and makes it again.
+ * An edit made on an older revision, moved through the ops it missed (work-kit/sheet/collab, the move the page's
+ * session runs too): cells, formats, sizes and merges follow rows and columns inserted or deleted before them (a
+ * cell whose row went is dropped, a formula's references move), two row or column changes are shifted by index, and
+ * a rule named only by its id passes as it is (`MOVES_AS_IS`). Null when it cannot be moved (a rule with a range or
+ * a formula, a sheet op, a row change that cuts a merge made beside it): the client takes the sheet as it stands and
+ * says so. An empty answer is not a refusal: nothing of the edit is left to commit.
  */
 export function moveThrough(mutations: readonly SheetMutationJson[], missed: readonly SheetMutationJson[]): SheetMutationJson[] | null {
-  if (!missed.some((m) => STRUCTURAL.has(m.id))) return [...mutations]
-  if (mutations.some((m) => m.id !== SET_RANGE_VALUES && !MOVES_AS_IS.has(m.id))) return null
-  const lexer = formulaLexer()
-  return mutations.map((m) => {
-    if (m.id !== SET_RANGE_VALUES) return m
-    const p = m.params as { unitId: string; subUnitId: string; cellValue?: Matrix }
-    const cells: SuggestionCell[] = []
-    for (const [r, cols] of Object.entries(p.cellValue ?? {}))
-      for (const [c, cell] of Object.entries(cols ?? {})) cells.push({ id: `${r}:${c}`, changeSet: 'live', sheet: p.subUnitId, row: Number(r), column: Number(c), base: null, proposed: cell, state: 'pending' })
-    // The base is empty and so is what "current" reads: nothing here can conflict, the cells only move.
-    const moved = rebase(cells, missed, () => null, lexer, { sheetId: () => undefined })
-    const cellValue: Matrix = {}
-    for (const cell of moved) if (cell.state !== 'orphaned') (cellValue[cell.row] ??= {})[cell.column] = cell.proposed
-    return { id: m.id, params: { ...p, cellValue } }
-  })
+  return move(mutations as readonly { id: string; params: Record<string, unknown> }[], missed as readonly { id: string; params: Record<string, unknown> }[], 'after') as SheetMutationJson[] | null
 }

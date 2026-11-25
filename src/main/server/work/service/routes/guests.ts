@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { isAbsolute, join } from 'node:path'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
-import { knownSchema, SCHEMA_PARAM } from 'work-kit/collab'
+import { DOCUMENT_FRAGMENT, findQuote, knownSchema, SCHEMA_PARAM, setThreadMark } from 'work-kit/collab'
 import { projectionLists } from '../../../../../shared/work/guestProjection'
 import { ensureDocUid, fileUid } from '../../guests/fileIdent'
 import type { GuestServiceLink } from '../../guests/wire'
@@ -12,6 +12,7 @@ import { BUDGET, Bucket, Buckets, CLOSE_FULL, CLOSE_TOO_MUCH, tooMuchWords } fro
 import { HOSTED_CSP } from './hosted'
 import { hostOf as sheetHost } from './internalSheet'
 import { BASE_HEADERS, refuseUpgrade, RouteError, sendText, type InternalRoute, type PublicRoute, type RouteCtx } from './route'
+import { noteOpened, noteSockets, noteWrote, seen } from './seen'
 import { sheetRoute } from './sheet'
 
 /**
@@ -115,7 +116,7 @@ function docBytes(ctx: RouteCtx, doc: string, now = Date.now()): number {
 
 /**
  * Whether a frame of the collaboration wire adds to the document: a change, or a sync answer that carries one
- * (after the document's name: kind 0, then 1 or 2, then the update, which is two bytes when it holds nothing).
+ * (after the document's name: kind 0 or 4, then 1 or 2, then the update, which is two bytes when it holds nothing).
  */
 export function addsContent(bytes: Uint8Array): boolean {
   let at = 0
@@ -131,7 +132,9 @@ export function addsContent(bytes: Uint8Array): boolean {
   const name = varUint()
   if (name === null) return false
   at += name
-  if (varUint() !== 0) return false
+  // Sync (0) and its reply (4) both carry a change: Hocuspocus applies either.
+  const kind = varUint()
+  if (kind !== 0 && kind !== 4) return false
   const step = varUint()
   if (step !== 1 && step !== 2) return false
   const size = varUint()
@@ -154,13 +157,6 @@ export function callerKey(address: string): string {
 }
 
 // ── what the service saw ───────────────────────────────────────────────
-
-const seen = new Map<string, { at: number; open: number }>()
-const opened = (id: string): void => void seen.set(id, { at: Date.now(), open: seen.get(id)?.open ?? 0 })
-const sockets = (id: string, by: number): void => {
-  const s = seen.get(id) ?? { at: Date.now(), open: 0 }
-  seen.set(id, { at: Date.now(), open: Math.max(0, s.open + by) })
-}
 
 /** Main asks it for the audit list: when each link was last opened and how many sockets it holds. */
 export const internalGuestRoutes: InternalRoute[] = [
@@ -367,7 +363,7 @@ async function open(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
     LIMITS.failures.take(caller)
     return json(res, 403, { error: 'gone' })
   }
-  opened(id)
+  noteOpened(id)
   if ('project' in link.item) {
     // The projection is main's last read of LifeOS's cut; until it lands (a service just started) the page tries again.
     const shown = ctx.projects().get(id)
@@ -421,10 +417,56 @@ async function item(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
   json(res, 200, { ...facts, kind: 'sheet', title: p.sheets.find((s) => s.id === itemId)!.title, token: token.token, tokenExp: token.exp, sheet: itemId })
 }
 
+/** Whether a live document holds these words on one line; a document kept as a file is opened as that file. */
+async function quoteIn(ctx: RouteCtx, doc: string, quote: string, file?: { path: string }): Promise<boolean> {
+  if (!file) return ctx.collab.hasQuote(doc, quote)
+  let found = false
+  await ctx.collab.edit(doc, 'owner', (d) => void (found = findQuote(d.getXmlFragment(DOCUMENT_FRAGMENT), quote) !== null), { path: file.path })
+  return found
+}
+
+/** A thread's mark put on those words as `principal` (the service's write for a guest who may not write the text). */
+async function markIn(ctx: RouteCtx, doc: string, principal: string, quote: string, threadId: string, file?: { path: string }): Promise<boolean> {
+  if (!file) return ctx.collab.markThread(doc, principal, quote, threadId)
+  let marked = false
+  await ctx.collab.edit(
+    doc,
+    principal,
+    (d) => {
+      const fragment = d.getXmlFragment(DOCUMENT_FRAGMENT)
+      d.transact(() => {
+        const range = findQuote(fragment, quote)
+        marked = !!range && setThreadMark(fragment, range, threadId)
+      })
+    },
+    { path: file.path }
+  )
+  return marked
+}
+
+/** What main answered about a file document, as the route's answer: its words when it refused, 503 when it could not be asked. */
+async function askMain(res: ServerResponse, ctx: RouteCtx, ask: Parameters<NonNullable<RouteCtx['guestAsk']>>[0]): Promise<unknown | undefined> {
+  if (!ctx.guestAsk) return void json(res, 503, { error: 'This page cannot be reached right now.' })
+  try {
+    return await ctx.guestAsk(ask)
+  } catch (err) {
+    const words = err instanceof Error ? err.message : ''
+    if (words === 'gone') return void json(res, 403, { error: 'gone' })
+    if (words === 'That comment is gone.') return void json(res, 404, { error: words })
+    if (words === 'This link can view, not comment.') return void json(res, 403, { error: words })
+    ctx.log(`[guests] a file document's comments: ${words}`)
+    return void json(res, 503, { error: 'This page cannot be reached right now.' })
+  }
+}
+
 async function threads(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id: string): Promise<void> {
   const got = await bearer(req, ctx, id)
   if (!got || !('doc' in got.link.item)) return json(res, 403, { error: 'gone' })
-  if (got.link.guest.comments === false) return json(res, 200, { rows: [], names: {} })
+  // A document kept as a file: its comments are rows only main holds (guests/comments.ts).
+  if (got.link.item.doc.startsWith('file:')) {
+    const answer = await askMain(res, ctx, { what: 'threads', linkId: id })
+    return answer === undefined ? undefined : json(res, 200, answer)
+  }
   const docId = got.link.item.doc
   const rows = (await ctx.convex('query', 'docs:threads', { docId })) as LifeosThread[]
   json(res, 200, guestThreads(rows, `guest:${id}`, got.link.guest.owner))
@@ -435,28 +477,48 @@ async function comment(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx,
   if (!got || !('doc' in got.link.item)) return json(res, 403, { error: 'gone' })
   // A view link writes nothing at all, comments included.
   if (got.link.role === 'view') return json(res, 403, { error: 'This link can view, not comment.' })
-  if (got.link.guest.comments === false) return json(res, 403, { error: 'This document takes no comments by link.' })
   if (!LIMITS.comments.take(id)) return json(res, 429, { error: 'Too many comments at once. Try again in a minute.' })
   const body = await readJson(req)
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
   if (!text || text.length > COMMENT_MAX) return json(res, 400, { error: `A comment is 1 to ${COMMENT_MAX} characters.` })
-  if (!ctx.config().lifeos.here) return json(res, 503, { error: 'This page cannot be reached right now.' })
   const docId = got.link.item.doc
   const author = `guest:${id}`
+  const file = docId.startsWith('file:')
+  // Asked again right before anything is written: a link revoked, ended, given a new address or a new role while the body was read writes nothing.
+  const stands = (): boolean => {
+    const now = guestLink(ctx, id)
+    return !!now && now.role !== 'view' && now.role === got.link.role && ctx.claimLive(got.claims)
+  }
+  if (!file && !ctx.config().lifeos.here) return json(res, 503, { error: 'This page cannot be reached right now.' })
   if (typeof body?.threadId === 'string') {
+    if (!stands()) return json(res, 403, { error: 'gone' })
+    if (file) {
+      const made = await askMain(res, ctx, { what: 'comment', linkId: id, body: plainBody(text), threadId: body.threadId.slice(0, 64) })
+      return made === undefined ? undefined : json(res, 200, made)
+    }
     // A reply goes only on a thread of this document.
     const rows = (await ctx.convex('query', 'docs:threads', { docId })) as LifeosThread[]
     const thread = rows.find((r) => r.thread._id === body.threadId && !r.thread.deletedAt)
     if (!thread) return json(res, 404, { error: 'That comment is gone.' })
+    if (!stands()) return json(res, 403, { error: 'gone' })
     const made = (await ctx.convex('mutation', 'docs:addComment', { threadId: thread.thread._id, body: plainBody(text), author })) as string | { commentId: string }
     return json(res, 200, { commentId: typeof made === 'string' ? made : made.commentId })
   }
   const quote = typeof body?.quote === 'string' ? body.quote : ''
   if (!quote || quote.length > 2000) return json(res, 400, { error: 'Pick the words the comment is about.' })
-  if (!(await ctx.collab.hasQuote(docId, quote))) return json(res, 400, { error: 'Those words are no longer in the document.' })
-  const { threadId } = (await ctx.convex('mutation', 'docs:createThread', { docId, body: plainBody(text), quote, author })) as { threadId: string }
+  // The words are looked for in the live document; a file's is opened as its file (the link's own, by its resolved path).
+  const at = file ? got.link.guest.file : undefined
+  if (file && !at) return json(res, 503, { error: 'This page cannot be reached right now.' })
+  if (!(await quoteIn(ctx, docId, quote, at).catch(() => false))) return json(res, 400, { error: 'Those words are no longer in the document.' })
+  if (!stands()) return json(res, 403, { error: 'gone' })
+  let threadId: string
+  if (file) {
+    const made = (await askMain(res, ctx, { what: 'comment', linkId: id, body: plainBody(text), quote })) as { threadId: string } | undefined
+    if (made === undefined) return
+    threadId = made.threadId
+  } else threadId = ((await ctx.convex('mutation', 'docs:createThread', { docId, body: plainBody(text), quote, author })) as { threadId: string }).threadId
   // The guest may not write the document, so the service marks the words; an edit link's editor marks them itself.
-  if (got.link.role === 'comment' && !(await ctx.collab.markThread(docId, author, quote, threadId))) ctx.log(`[guests] ${docId}: thread ${threadId} was made but its words could not be marked`)
+  if (got.link.role === 'comment' && !(await markIn(ctx, docId, author, quote, threadId, at).catch(() => false))) ctx.log(`[guests] ${docId}: thread ${threadId} was made but its words could not be marked`)
   json(res, 200, { threadId })
 }
 
@@ -485,8 +547,8 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
   // A link holds a few sockets at a time, and none while it waits out what it overdrew (budget.ts).
   if ((seen.get(id)?.open ?? 0) >= BUDGET.sockets) return refuseUpgrade(socket, 429, 'too many pages are open on this link')
   if (DOC_BYTES.of(id).held() > 0) return refuseUpgrade(socket, 429, 'too much at once: wait a minute')
-  sockets(id, 1)
-  socket.once('close', () => sockets(id, -1))
+  noteSockets(id, 1)
+  socket.once('close', () => noteSockets(id, -1))
   if ('sheet' in item) {
     // The sheet's own route, on the link's sheet: it checks the token, the link each second and every op,
     // and takes only a token of the link this address names.
@@ -509,7 +571,9 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
       const wait = DOC_BYTES.of(id).take(frame.byteLength)
       if (wait > 0) return ws.close(CLOSE_TOO_MUCH, tooMuchWords(wait))
       // A guest adds nothing to a document that is as large as a guest may make it; reading it, and the owner's own edits, go on.
-      if (link.role === 'edit' && addsContent(frame) && docBytes(ctx, doc) > BUDGET.docBytes) return ws.close(CLOSE_FULL, 'the document is as large as a guest can make it')
+      const adds = link.role === 'edit' && addsContent(frame)
+      if (adds && docBytes(ctx, doc) > BUDGET.docBytes) return ws.close(CLOSE_FULL, 'the document is as large as a guest can make it')
+      if (adds) noteWrote(id)
       accepted.message(frame)
     })
     ws.on('close', (code: number, reason: Buffer) => {

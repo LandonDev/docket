@@ -223,6 +223,9 @@ export interface SheetCellDiff {
 }
 
 const itemId = z.string().min(1).max(100)
+/** A box of cells on a tab, by index. */
+const cellIndex = z.number().int().min(0).max(1_999_999)
+const SheetBoxSchema = z.object({ startRow: cellIndex, endRow: cellIndex, startColumn: cellIndex, endColumn: cellIndex })
 /** A load is one frame: at most this many bytes a call. */
 export const SHEET_LOAD_MAX = 4 * 1024 * 1024
 /** The most mutations one edit carries. */
@@ -292,6 +295,13 @@ export const SheetsRequestSchemas = [
   request('work.sheets.load', z.object({ itemId, rev: z.number().int().min(0), offset: z.number().int().min(0), length: z.number().int().positive().max(SHEET_LOAD_MAX) })),
   /** → { rev, ops: [{ rev, by, mutations }] } or { rev, reload: true } when the ops since are not kept: what landed after `rev`. */
   request('work.sheets.since', z.object({ itemId, rev: z.number().int().min(0) })),
+  /**
+   * → { people }: his desktop grid's selection on a sheet the Work service holds, said to everyone else on it under
+   * his name, and answered with who else is on it (each `{id, name, hue, sheet, range}`, named by the service).
+   * `range: null` takes his selection away (the canvas closed); neither field only reads. A sheet no service
+   * holds answers nobody.
+   */
+  request('work.sheets.presence', z.object({ itemId, sheet: z.string().min(1).max(200).optional(), range: SheetBoxSchema.nullable().optional() })),
   /** → { rev } or { conflict: true, rev }: the owner's edits, made on the workbook at `baseRev`. A conflict asks the canvas to catch up with `since` and send again. */
   request('work.sheets.edit', z.object({ itemId, baseRev: z.number().int().min(0), mutations: z.array(MutationSchema).min(1).max(SHEET_EDIT_MAX) })),
   /** → SheetView: takes or drops suggestions: ids, one change set, or all. */
@@ -307,7 +317,7 @@ export const SheetsRequestSchemas = [
   request('work.sheets.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** → SheetView: takes back what the agent wrote directly */
   request('work.sheets.undo', z.object({ itemId, writeId: z.string().max(100) })),
-  /** → { revisions: SheetRevision[] }, newest first */
+  /** → { revisions: SheetRevision[], names }, newest first; `names` says who each `by` is in words (a guest by their link's name) */
   request('work.sheets.history', z.object({ itemId })),
   /** → { cells: SheetCellDiff[], truncated: boolean } */
   request('work.sheets.compare', z.object({ itemId, from: z.number().int().min(0), to: z.number().int().min(0) })),
@@ -364,12 +374,25 @@ export const SheetsRequestSchemas = [
  * view changed and is not sent, because the sheet is one others can open and what waits on it is
  * answered caller by caller: read it again with `work.sheets.open`.
  */
-export type SheetsPush = { push: 'work.sheets'; sessionId: string; itemId: string; rev: number; view?: SheetView; stale?: true }
+/** Another person on a live sheet and the cells they hold, as the Work service names them (never as their page does). */
+export interface SheetPerson {
+  id: string
+  name: string
+  /** 1 to 8: the presence hue (`--presence-N`) */
+  hue: number
+  /** the tab's id */
+  sheet: string
+  range: z.infer<typeof SheetBoxSchema>
+}
+
+/** `presence`: who else is on the sheet now; such a push says no revision (`rev` 0), and a canvas reads `presence` alone. */
+export type SheetsPush = { push: 'work.sheets'; sessionId: string; itemId: string; rev: number; view?: SheetView; stale?: true; presence?: SheetPerson[] }
 
 export const SHEETS_CAPS = {
   'work.sheets.open': 'read',
   'work.sheets.load': 'read',
   'work.sheets.since': 'read',
+  'work.sheets.presence': 'operate',
   'work.sheets.edit': 'operate',
   'work.sheets.review': 'operate',
   'work.sheets.mode': 'operate',

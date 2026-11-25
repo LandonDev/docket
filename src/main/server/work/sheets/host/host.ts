@@ -68,6 +68,7 @@ class Lane {
 }
 
 export const refKey = (ref: SheetRef): string => ('lifeos' in ref ? `lifeos:${ref.lifeos}` : `tcsheet:${ref.tcsheet}`)
+const refOfKey = (key: string): SheetRef => (key.startsWith('lifeos:') ? { lifeos: key.slice(7) } : { tcsheet: key.slice(8) })
 
 const content = (c: ICellData | null | undefined): SheetCellJson | null => {
   if (!c) return null
@@ -90,8 +91,30 @@ const toSuggestion = (s: StoredSuggestion): SheetSuggestion => ({
   ...(s.reason ? { reason: s.reason } : {})
 })
 
-/** Ops that landed on a sheet, by whoever wrote them: what the live route sends to the sockets on it. */
-export type Committed = { key: string; rev: number; by: string; mutations: SheetMutationJson[] }
+/**
+ * Ops that landed on a sheet, by whoever wrote them: what the live route sends to the sockets on it. `tag` is
+ * whatever the caller of `apply` handed in with the batch: the live route's own mark of which socket's batch it was.
+ */
+export type Committed = { key: string; rev: number; by: string; mutations: SheetMutationJson[]; tag?: unknown }
+
+/** The most ops, and the most of them as JSON, a client that fell behind is sent in place of the whole workbook. */
+export const SINCE_OPS_MAX = 2000
+export const SINCE_BYTES_MAX = 4 * 1024 * 1024
+
+/** An edit waiting for its sheet's lane. */
+interface Queued {
+  baseRev: number
+  mutations: SheetMutationJson[]
+  by: string
+  tag?: unknown
+  resolve(answer: HostAnswer<'apply'>): void
+  reject(err: unknown): void
+}
+/** What a commit moves the waiting suggestions by: them, and the sheets' names, before its mutations. */
+interface Before {
+  open: StoredSuggestion[]
+  names: Map<string, string>
+}
 
 export class SheetHost {
   private sheets = new Map<string, Promise<Open>>()
@@ -202,21 +225,18 @@ export class SheetHost {
    * the rows and columns inserted or removed before it, and turns `conflict` when its cell no longer
    * holds what the agent saw, `orphaned` when its cell is gone.
    */
-  private async commit(o: Open, baseRev: number, ops: { by: string; mutations: SheetMutationJson[] }[]): Promise<{ rev: number } | { conflict: true; rev: number }> {
+  /**
+   * `laid`: the ops are in the engine already (a group commit laid each as it was checked), with the suggestions and
+   * the sheets' names as they stood before the first of them.
+   */
+  private async commit(o: Open, baseRev: number, ops: { by: string; mutations: SheetMutationJson[]; tag?: unknown }[], laid?: Before): Promise<{ rev: number } | { conflict: true; rev: number }> {
     if (baseRev !== o.rev) return { conflict: true, rev: o.rev }
     const all = ops.flatMap((op) => op.mutations)
-    const open = await this.suggestionsOf(o)
-    // Names as the formulas being moved wrote them: the sheets before these mutations.
-    const names = new Map(o.engine.workbook.getSheets().map((s) => [s.getSheetName(), s.getSheetId()]))
+    const { open, names } = laid ?? (await this.before(o))
     // Into the engine first: an op it cannot apply is never stored, so it can never stop the sheet
     // from loading. The engine then holds an op the store may refuse, so any failure from here on
     // drops it, and the next call loads the sheet again from the store.
-    try {
-      this.applyTo(o.engine, o.unitId, all)
-    } catch (err) {
-      this.drop(o)
-      throw new Error(`That change could not be applied: ${err instanceof Error ? err.message : String(err)}`)
-    }
+    if (!laid) this.lay(o, all)
     let got: { rev: number } | { stale: number }
     try {
       got = await o.backend.append(baseRev, ops)
@@ -230,7 +250,10 @@ export class SheetHost {
     }
     o.rev = got.rev
     let at = baseRev
-    for (const op of ops) for (const fn of this.listeners) fn({ key: o.key, rev: ++at, by: op.by, mutations: op.mutations })
+    for (const op of ops) {
+      at++
+      for (const fn of this.listeners) fn({ key: o.key, rev: at, by: op.by, mutations: op.mutations, ...(op.tag !== undefined ? { tag: op.tag } : {}) })
+    }
     if (open.length) {
       const cells: SuggestionCell[] = open.map((s) => ({ id: s.id, changeSet: s.changeSet, sheet: s.sheet, row: s.row, column: s.col, base: s.base as ICellData | null, proposed: s.proposed as ICellData | null, state: s.state }))
       const moved = rebase(cells, all, (sheet, row, col) => this.cell(o, sheet, row, col), formulaLexer(), { sheetId: (name) => names.get(name) })
@@ -252,6 +275,22 @@ export class SheetHost {
       o.snapRev = o.rev
     }
     return { rev: o.rev }
+  }
+
+  /** The suggestions waiting and the sheets' names, as they stand before a commit's mutations: what the suggestions are moved by. */
+  private async before(o: Open): Promise<Before> {
+    // Names as the formulas being moved wrote them: the sheets before these mutations.
+    return { open: await this.suggestionsOf(o), names: new Map(o.engine.workbook.getSheets().map((s) => [s.getSheetName(), s.getSheetId()])) }
+  }
+
+  /** Mutations into the engine; one it cannot apply drops the engine (the next call loads the sheet from the store) and is refused. */
+  private lay(o: Open, mutations: SheetMutationJson[]): void {
+    try {
+      this.applyTo(o.engine, o.unitId, mutations)
+    } catch (err) {
+      this.drop(o)
+      throw new Error(`That change could not be applied: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   // ── what main and the routes ask ─────────────────────────────────
@@ -302,6 +341,27 @@ export class SheetHost {
     })
   }
 
+  /**
+   * What a live client is sent as it joins or comes back, read in one turn of the sheet's lane so nothing lands
+   * between its parts: the newest revision, the ops after `since` when the client says where it stands and they are
+   * few enough to send, and the whole workbook when it asks for it or the ops cannot be given.
+   */
+  catchUp(ref: SheetRef, want: { since?: number; snapshot: boolean }): Promise<{ rev: number; ops?: { rev: number; by: string; mutations: SheetMutationJson[] }[]; json?: string }> {
+    return this.with(ref, async (o) => {
+      let ops: { rev: number; by: string; mutations: SheetMutationJson[] }[] | undefined
+      if (want.since !== undefined && want.since >= 0 && want.since <= o.rev) {
+        const after = await o.backend.opsAfter(want.since)
+        if (after.length <= SINCE_OPS_MAX) {
+          const given = after.map((op) => ({ rev: op.rev, by: op.by, mutations: op.mutations }))
+          if (JSON.stringify(given).length <= SINCE_BYTES_MAX) ops = given
+        }
+      }
+      if (!want.snapshot && ops) return { rev: o.rev, ops }
+      await o.engine.settled()
+      return { rev: o.rev, ...(ops ? { ops } : {}), json: JSON.stringify(savedOf(o.engine)) }
+    })
+  }
+
   since(ref: SheetRef, rev: number): Promise<HostAnswer<'since'>> {
     return this.with(ref, async (o) => {
       if (rev > o.rev) return { rev: o.rev, reload: true as const }
@@ -315,31 +375,121 @@ export class SheetHost {
    * revision is moved through the ops it missed (rows and columns inserted or deleted before it);
    * one that cannot be moved answers a conflict, and the editor reloads.
    */
-  apply(ref: SheetRef, baseRev: number, mutations: SheetMutationJson[], by: string): Promise<HostAnswer<'apply'>> {
-    return this.with(ref, async (o) => {
-      if (baseRev > o.rev) return { conflict: true as const, rev: o.rev }
-      let ops = mutations
-      if (baseRev < o.rev) {
-        const moved = moveThrough(mutations, (await o.backend.opsAfter(baseRev)).flatMap((op) => op.mutations))
-        if (!moved) return { conflict: true as const, rev: o.rev }
-        ops = moved
-      }
-      // A guest's ops are held to the sheet as it stands: the route checks their shape, only the engine knows the sheet.
-      if (by.startsWith('guest:')) {
-        const why = guestMisfit(ops, (id) => {
-          const sheet = o.engine.workbook.getSheetBySheetId(id)?.getSheet()
-          return sheet ? { rows: sheet.getRowCount(), columns: sheet.getColumnCount(), merges: sheet.getMergeData() } : null
-        })
-        if (why) throw new Error(why)
-      }
-      // A tab's chart or picture list is held to its shape and a made picture's bytes to their bounds, before anything is kept.
-      const held = kept.get(o.engine)
-      for (const m of ops) {
-        const why = held && isObjectList(m) ? listMisfit(held, m, (id) => o.engine.workbook.getSheetBySheetId(id)?.getSheetName()) : null
-        if (why) throw new Error(why)
-      }
-      return this.commit(o, o.rev, [{ by, mutations: ops }])
+  apply(ref: SheetRef, baseRev: number, mutations: SheetMutationJson[], by: string, tag?: unknown): Promise<HostAnswer<'apply'>> {
+    return new Promise((resolve, reject) => {
+      const key = refKey(ref)
+      const waiting = this.queued.get(key)
+      if (waiting) return void waiting.push({ baseRev, mutations, by, tag, resolve, reject })
+      this.queued.set(key, [{ baseRev, mutations, by, tag, resolve, reject }])
+      this.turn(ref, key)
     })
+  }
+
+  /** A turn of the sheet's lane for the edits waiting on it (one is asked for whenever a first edit starts a queue). */
+  private turn(ref: SheetRef, key: string): void {
+    this.with(ref, (o) => this.drain(o, key)).catch((err: unknown) => {
+      // The sheet did not open: every edit waiting on it is refused with the reason.
+      for (const q of this.queued.get(key) ?? []) q.reject(err)
+      this.queued.delete(key)
+    })
+  }
+
+  /** Edits waiting for a turn of their sheet's lane, by the host's key for it. */
+  private queued = new Map<string, Queued[]>()
+
+  /**
+   * One turn of a sheet's lane takes every edit waiting on it and writes them to the store as one (a `.tcsheet` is
+   * rewritten whole on every write: about a quarter of a second at 5 MB, M3.md). Each is checked and laid in the
+   * engine in the order it came, moved through what it missed, those before it in the turn included; then one write;
+   * and no edit is answered before that write. An edit the engine cannot lay is refused and ends the turn: the engine
+   * is dropped, and every other edit of the turn goes again, in order, on the sheet loaded afresh from the store.
+   */
+  private async drain(o: Open, key: string): Promise<void> {
+    const items = this.queued.get(key) ?? []
+    this.queued.delete(key)
+    const batch: { by: string; mutations: SheetMutationJson[]; tag?: unknown }[] = []
+    const answers: { q: Queued; answer: HostAnswer<'apply'> }[] = []
+    const prior = await this.before(o)
+    for (let i = 0; i < items.length; i++) {
+      const q = items[i]!
+      const head = o.rev + batch.length
+      let ops = q.mutations
+      try {
+        if (q.baseRev > head) {
+          answers.push({ q, answer: { conflict: true as const, rev: head } })
+          continue
+        }
+        if (q.baseRev < head) {
+          const stored = q.baseRev < o.rev ? (await o.backend.opsAfter(q.baseRev)).flatMap((op) => op.mutations) : []
+          const here = batch.slice(Math.max(0, q.baseRev - o.rev)).flatMap((b) => b.mutations)
+          const moved = moveThrough(ops, [...stored, ...here])
+          if (!moved) {
+            answers.push({ q, answer: { conflict: true as const, rev: head } })
+            continue
+          }
+          // Moved to nothing (every cell it wrote went with a row someone removed): nothing to commit, and no refusal.
+          if (!moved.length) {
+            answers.push({ q, answer: { rev: head } })
+            continue
+          }
+          ops = moved
+        }
+        this.fits(o, q.by, ops)
+      } catch (err) {
+        q.reject(err)
+        continue
+      }
+      try {
+        this.lay(o, ops)
+      } catch (err) {
+        // The engine is dropped with what this turn laid in it: this edit is refused, and every other goes again, in
+        // order, on the sheet loaded afresh from the store.
+        q.reject(err)
+        return this.again(key, [...answers.map((a) => a.q), ...items.slice(i + 1)])
+      }
+      batch.push({ by: q.by, mutations: ops, ...(q.tag !== undefined ? { tag: q.tag } : {}) })
+      answers.push({ q, answer: { rev: o.rev + batch.length } })
+    }
+    if (batch.length) {
+      let got: { rev: number } | { conflict: true; rev: number }
+      try {
+        got = await this.commit(o, o.rev, batch, prior)
+      } catch (err) {
+        this.drop(o)
+        for (const a of answers) a.q.reject(err)
+        return
+      }
+      // The store moved under the engine (another writer): none of the turn landed.
+      if ('conflict' in got) for (const a of answers) a.answer = { conflict: true as const, rev: got.rev }
+    }
+    for (const a of answers) a.q.resolve(a.answer)
+  }
+
+  /** Edits a turn did not reach go first in the next one. */
+  private again(key: string, rest: Queued[]): void {
+    if (!rest.length) return
+    const waiting = this.queued.get(key)
+    if (waiting) return void waiting.unshift(...rest)
+    this.queued.set(key, rest)
+    this.turn(refOfKey(key), key)
+  }
+
+  /** A guest's ops held to the sheet as it stands, and a tab's chart or picture list to its shape: thrown in words. */
+  private fits(o: Open, by: string, ops: SheetMutationJson[]): void {
+    // A guest's ops are held to the sheet as it stands: the route checks their shape, only the engine knows the sheet.
+    if (by.startsWith('guest:')) {
+      const why = guestMisfit(ops, (id) => {
+        const sheet = o.engine.workbook.getSheetBySheetId(id)?.getSheet()
+        return sheet ? { rows: sheet.getRowCount(), columns: sheet.getColumnCount(), merges: sheet.getMergeData() } : null
+      })
+      if (why) throw new Error(why)
+    }
+    // A tab's chart or picture list is held to its shape and a made picture's bytes to their bounds, before anything is kept.
+    const held = kept.get(o.engine)
+    for (const m of ops) {
+      const why = held && isObjectList(m) ? listMisfit(held, m, (id) => o.engine.workbook.getSheetBySheetId(id)?.getSheetName()) : null
+      if (why) throw new Error(why)
+    }
   }
 
   /** The names, filters and validated ranges the sheet holds now, read from the engine's own models (work-kit's `createRules`). */

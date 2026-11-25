@@ -9,7 +9,6 @@ import { projectionLists, type GuestProjection } from "@shared/work/guestProject
 import { wipeOffline } from "./offline";
 import { endWords, modeOf, OpenFailed, openWhenUp, Session, untilDay, type ChildItem, type Failure, type Opened, type Remembered } from "./session";
 // The type alone: the sheet stays in its own lazy chunk.
-import type { Refusal } from "./SheetPage";
 
 /**
  * The hosted page (architecture §8.6; docs/DESIGN.md "The guest's page"):
@@ -112,12 +111,8 @@ export function GuestApp() {
   }, [session, gone]);
   useEffect(load, [load]);
   const [people, setPeople] = useState<readonly Person[]>([]);
-  // A sheet that ran out of tries hands over the refusal that stood: the screen keeps its warning, and so does the grid after Retry.
-  const [left, setLeft] = useState<Refusal | null>(null);
-  const down = useCallback((standing: Refusal | null = null) => {
-    setLeft(standing);
-    setState({ at: "failed", why: "down" });
-  }, []);
+  // A sheet that never came: out of reach, with Retry. (One that has its sheet keeps trying under its own line.)
+  const down = useCallback(() => setState({ at: "failed", why: "down" }), []);
   // A project's link: the document or sheet open over the project, and where the screens' controls go in the line.
   const [child, setChild] = useState<(ChildItem & { title: string }) | null>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -127,7 +122,7 @@ export function GuestApp() {
   // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
   const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
 
-  if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={load} />;
+  if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
   const TitleTag = opened?.kind === "doc" ? "h1" : "span";
   return (
@@ -178,7 +173,7 @@ export function GuestApp() {
             ) : opened.kind === "doc" ? (
               <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} onPeople={setPeople} />
             ) : (
-              <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} carried={left} />
+              <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} onPeople={setPeople} />
             )}
           </Suspense>
         ) : (
@@ -298,16 +293,10 @@ const ENDED: Record<Exclude<Failure, "gone" | "starting">, { title: string; deta
   down: { title: "This page cannot be reached right now", detail: "Try again in a minute." },
 };
 
-/** The unreachable screen with an edit the item refused: the warning the grid showed stays. */
-const DOWN_UNSAVED = { title: "This page cannot be reached right now", detail: "Your last edit was not saved. Try again in a minute, then make it again." };
-/** With an edit whose answer never came: it may or may not have landed. */
-const DOWN_UNCONFIRMED = { title: "This page cannot be reached right now", detail: "Your last edit could not be confirmed. Try again in a minute, then check the cell." };
-
-export function Ended({ why, left = null, owner, kept = null, retry }: { why: Failure; left?: Refusal | null; owner: boolean; kept?: Remembered | null; retry(): void }) {
-  const downWords = left ? (left.unconfirmed ? DOWN_UNCONFIRMED : DOWN_UNSAVED) : ENDED.down;
+export function Ended({ why, owner, kept = null, retry }: { why: Failure; owner: boolean; kept?: Remembered | null; retry(): void }) {
   // A host that is still starting after the wait is out of reach, said as that: never as an end.
   const out = why === "down" || why === "starting";
-  const words = out ? downWords : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : endWords(kept);
+  const words = out ? ENDED.down : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : endWords(kept);
   return (
     <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
       <Empty>

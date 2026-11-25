@@ -14,13 +14,14 @@ export function guestTableOf(source: { at: 'lifeos'; table: 'docs' | 'sheets' | 
 }
 
 /**
- * The roles a link to this item can have: a project's views; a sheet's and a file's document view or edit (sheets keep
- * no comments, and a `.tcdoc` keeps its own on the computer that has it, where a guest's page cannot reach).
+ * The roles a link to this item can have: a project's views; a sheet's view or edit (sheets keep no comments); a
+ * document's all three, kept in LifeOS or as a file (a `.tcdoc`'s comments are on the computer that has it, and the
+ * Work service asks that computer's app for them: guests/comments.ts).
  */
 export function guestRolesOf(source: Parameters<typeof guestTableOf>[0]): readonly GuestRole[] {
   const table = guestTableOf(source)
   if (table === 'projects') return ['view']
-  if (table === 'sheets' || source.at === 'file') return ['view', 'edit']
+  if (table === 'sheets') return ['view', 'edit']
   return GUEST_ROLES
 }
 

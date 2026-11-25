@@ -32,6 +32,9 @@ export function ensureGuestTables(db: DatabaseSync): void {
   // A file link's file, by the id inside it (fileIdent.ts); null for a LifeOS row's link, and for a file's made before the rule.
   const columns = new Set((db.prepare(`PRAGMA table_info(${GUEST_LINKS_TABLE})`).all() as { name: string }[]).map((c) => c.name))
   if (!columns.has('file_uid')) db.exec(`ALTER TABLE ${GUEST_LINKS_TABLE} ADD COLUMN file_uid TEXT`)
+  // When the link was first opened, and when its guest last changed the item: what the owner has been told of (tells.ts).
+  if (!columns.has('first_opened_at')) db.exec(`ALTER TABLE ${GUEST_LINKS_TABLE} ADD COLUMN first_opened_at INTEGER`)
+  if (!columns.has('last_wrote_at')) db.exec(`ALTER TABLE ${GUEST_LINKS_TABLE} ADD COLUMN last_wrote_at INTEGER`)
 }
 
 /** A link's row as main keeps it: the public row and what only the host may read. */
@@ -41,6 +44,10 @@ export interface StoredLink extends Omit<GuestLinkRow, 'lastOpenedAt' | 'open'> 
   bySession: string | null
   /** a file link's file, by the id inside it; null for any other link, and until an older file link's is read */
   fileUid: string | null
+  /** when the link was first opened, as the owner was told; null until it is */
+  firstOpenedAt: number | null
+  /** when its guest last changed the item, as last told; null until they do */
+  lastWroteAt: number | null
 }
 
 type Raw = {
@@ -55,6 +62,8 @@ type Raw = {
   revoked_at: number | null
   by_session: string | null
   file_uid?: string | null
+  first_opened_at?: number | null
+  last_wrote_at?: number | null
 }
 
 const rowOf = (r: Raw): StoredLink => ({
@@ -69,7 +78,9 @@ const rowOf = (r: Raw): StoredLink => ({
   revokedAt: r.revoked_at,
   by: r.by_session ? 'agent' : 'owner',
   bySession: r.by_session,
-  fileUid: r.file_uid ?? null
+  fileUid: r.file_uid ?? null,
+  firstOpenedAt: r.first_opened_at ?? null,
+  lastWroteAt: r.last_wrote_at ?? null
 })
 
 export const hashSecret = (secret: string): string => createHash('sha256').update(secret, 'utf8').digest('hex')
@@ -93,6 +104,12 @@ export class GuestStore {
       .prepare(`INSERT INTO ${GUEST_LINKS_TABLE} (id, secret_hash, name, source, title, role, created_at, expires_at, revoked_at, by_session, file_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`)
       .run(id, hashSecret(secret), o.name, JSON.stringify(o.source), o.title, o.role, now, o.expiresAt, o.bySession, o.fileUid ?? null)
     return { link: this.get(id)!, secret }
+  }
+
+  /** What the owner has been told of a link: its first open, its guest's last change (tells.ts). */
+  setSeen(id: string, o: { firstOpenedAt?: number; lastWroteAt?: number }): void {
+    if (o.firstOpenedAt !== undefined) this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET first_opened_at = ? WHERE id = ? AND first_opened_at IS NULL`).run(o.firstOpenedAt, id)
+    if (o.lastWroteAt !== undefined) this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET last_wrote_at = ? WHERE id = ?`).run(o.lastWroteAt, id)
   }
 
   /** A file link made before links knew their file by its id: the id its file carries now is taken as its own, once. */
@@ -187,6 +204,29 @@ export const setEditEnder = (db: DatabaseSync, end: (resolved: string) => Promis
  */
 export async function endGuestEditOn(db: DatabaseSync | undefined, resolved: string): Promise<void> {
   if (db && fileLinked(db, resolved)) await editEnders.get(db)?.(resolved)
+}
+
+/** Which guests have a file open now, by the file's link id, per host database: what the guests runtime last read from the service (links.ts). */
+const present = new WeakMap<object, Map<string, string>>()
+
+/** "Dana Lee", "Dana Lee and Sam Ito", "Dana Lee and 2 others": who is in a file, in the words a row says before "is in it". */
+export function whoWords(names: readonly string[]): string {
+  const [first, second, ...rest] = names
+  if (first === undefined) return ''
+  if (second === undefined) return first
+  return rest.length ? `${first} and ${rest.length + 1} others` : `${first} and ${second}`
+}
+
+/** The guests runtime says who is in which file now (every live file link with a socket open). */
+export function setGuestsPresent(db: DatabaseSync, links: readonly { source: { at: string; id: string }; name: string; open: number }[]): void {
+  const names = new Map<string, string[]>()
+  for (const l of links) if (l.source.at === 'file' && l.open > 0) names.set(l.source.id, [...(names.get(l.source.id) ?? []), l.name])
+  present.set(db, new Map([...names].map(([id, who]) => [id, whoWords(who)])))
+}
+
+/** Who of his guests has this file open now, as last read (within half a minute); null for nobody. The Files place says it in the file's row. */
+export function guestsPresentIn(db: DatabaseSync | undefined, resolved: string): string | null {
+  return (db && present.get(db)?.get(fileLinkId(resolved))) || null
 }
 
 /** `fileLinked` for a canvas source: a file on this disk, by its resolved path. */

@@ -25,9 +25,9 @@ with a test.
 - **Roles.** `view` reads. `comment` reads, comments on words it selects and
   replies; the service makes the comment and marks the words. `edit` writes
   the document or the sheet's cells live. A sheet's link is `view` or `edit`
-  (sheets keep no comments); a file's document's is `view` or `edit` (a
-  `.tcdoc` keeps its comments in this host's database, which the service
-  cannot reach); a project's is `view` (`guestRolesOf`,
+  (sheets keep no comments); a document's is any of the three, kept in
+  LifeOS or as a file ("Comments on a file's link" below); a project's is
+  `view` (`guestRolesOf`,
   src/shared/work/guestRoles.ts). His role change on a live link
   (`work.guests.setRole`, approve) keeps the address: the link's tokens from
   before stop opening anything, as a new address's do (`retoken`), its open
@@ -362,9 +362,21 @@ updates); a comment link's too. A sheet guest is held to `GUEST_OPS`
 and removed, rows and columns inserted or removed (1,000 at a time), merges
 made and parted, a column's width, a row's height and its fit. Nothing
 else: no sheet added, removed, renamed or moved, no name, note, rule,
-filter, sort, table, chart or picture. `guestCells` keeps a cell's value,
-formula, style and type only.
+filter, sort, table, chart or picture; one of those is refused as "a guest
+cannot …" before any other check. `guestCells` keeps a cell's value, formula,
+style and type only, and the page cuts its own writes the same way before it
+sends (`src/shared/work/sheetGuest.ts`). A sheet link's sends are held to 600
+a minute and 20 MiB an hour (routes/sheet.ts `SHEET_BUDGET`), past which a
+batch is refused "too many edits at once: wait a minute". A message on a
+sheet socket that is not an object with its kind closes that socket alone.
 Nothing on these routes links to `/w/full/` or mints a full-editor token.
+
+**A file link is the file it was made for, every moment.** The service reads
+the file's id again when a token signs in and on every live check (the sheet
+route's each second and before each batch), and a guest's document socket on a
+file replaced since is let go within two seconds; main's comment relay checks
+it too (guests/comments.ts). A comment is written only if, after its words are
+read, the link still stands with the same role and the token is still good.
 
 **A link's budget** (routes/budget.ts, counted in routes/guests.ts where a
 link's frames pass, before the document sees them). A guest with an Edit
@@ -389,6 +401,51 @@ his client's word stands.
 An edit link's guest leaving a document cuts a `guest-end` version.
 History and the document's comments name a guest by their link's name
 (`guestNameOf`).
+
+## Comments on a file's link
+
+A `.tcdoc`'s comment threads are rows in the app's database
+(`work_docs_threads`, docs/threads.ts), which the Work service never opens.
+So the service asks main over its wire (`{t: 'guest-ask'}` with `what:
+'threads'` or `'comment'`, answered by `{t: 'guest-answer'}`; the
+supervisor's `setGuestAsks`), and main answers for that link's own file
+alone (guests/comments.ts `answerGuestAsk`): a link that is not live, or is
+not a document kept as a file, is gone. The rules are the LifeOS
+document's: plain words the service builds into the comment, 4,000
+characters, 20 a minute a link, a reply only on a thread of this document
+that still stands, a view link writes nothing (refused by the service and by
+main), and a guest learns no other guest's name (`guestRows`: ids are
+stand-ins made for the answer, and reactions, which name who reacted, are
+left out). The words a new comment is about are looked for in the live
+document opened as its file, and for a comment link the service marks them
+(`quoteIn`, `markIn` in routes/guests.ts). His open editor hears of each at
+once (`work.docs` push, `threads`), and History and the margin name the
+guest by their link (`guestNameOf`). The page draws the same margin as for a
+LifeOS document.
+
+## Tells
+
+Through the digest (`ctx.tell`, [work-digest.md](work-digest.md)), never a
+thread, and with no deadline, so both wait for the day's digest
+(guests/tells.ts):
+
+- `guests.opened`: the first time a link is opened, "Dana Lee opened Spring
+  LAN run of show", key `guest-open:<link>`.
+- `guests.edited`: once a day for each link whose guest changed the item,
+  "Dana Lee edited Spring LAN run of show", key `guest-edit:<link>:<day>`
+  (the day in his zone).
+
+A title holds the name he gave the link and the item's title as it was when
+he made it: never a word a guest typed. A press opens the document or sheet
+in its job (a file's job by its folder, a LifeOS row's by its sector), else
+Settings → Work, where the links are listed. The service says what it saw
+(`routes/seen.ts`: `at`, `open`, and `wrote`, set when a guest's document
+frame that adds content is passed on or a guest's sheet batch is
+acknowledged), main reads it on its 30 s pass (`tellSeen`), and what he was
+told is kept in the link's row (`first_opened_at`, `last_wrote_at`), so a
+restart tells nothing twice. The service's memory of an edit made in the
+half minute before it restarts is lost with it: that day's tell then waits
+for the guest's next edit.
 
 ## The page
 
@@ -444,9 +501,19 @@ said once in the text's place, "That is too much to add at once. It was not
 saved." with Reload, and the editor is gone: sent again it would be cut
 again. After a reload an Edit link's caret is back in the text, at its start.
 Under 640px every comment control keeps its drawn size and takes a 44px hit
-area (guest.css). The sheet sends one
-batch of its own `sheet.mutation.*` ops at a time from the acknowledged
-revision, typed text as plain values.
+area (guest.css).
+
+**A sheet's page** runs work-kit's sheet session (`sheetLine.ts`; the account
+is work-sheets.md "Live editing"): its own unanswered edits kept apart, one
+batch in flight, everyone else's moved through them, and the grid editable
+while the line is down under "Offline. Your edits are kept on this device
+until the sheet is back." An Edit link's unsent edits live in IndexedDB
+(`tempcode-guest:<link id>:sheet`, sheetQueue.ts: one tab a link, a day at
+most), wiped with the document copies when the link ends. A refusal says
+"Edit not saved" and why in plain words; edits that could not be kept are
+said once ("3 edits made offline could not be kept. The sheet changed under
+them."). Others' selections are drawn on the grid in their hue with the
+service's name for them, and their faces in the line.
 
 ## The owner's hosted editor
 
@@ -576,6 +643,24 @@ His comments are made in TempCode: on the phone, Comment in the edit menu.
   held view, the list, and a guest's `javascript:` link and hostile paste in
   the owner's editor (the link's `href` is emptied, the paste keeps words
   only, nothing runs, a press opens nothing).
+- `bun run script:e2e-guest-live` (scripts/e2e-guest-live.ts, through `heavy`):
+  an isolated instance of the built tree and a clean Chromium as the guest,
+  through a TCP proxy it can cut. The default run (`F-live-guest/M1/`) is a
+  `.tcdoc` by an Edit link: both type and see each other with names, faces,
+  the guest types with his document closed, History under the guest's name,
+  a reload, 20 s offline, the host restarted with the page open (live again
+  1.1 s after the service's port answered), revoke. `--restart` (`M2/`): two
+  guests and his window, three restarts while one types, every character
+  kept. `--sheet` (`M3/`): a `.tcsheet`: cells and selections both ways, a row
+  inserted while the other types below it in both orders, a formula across,
+  20 s offline with three edits, a restart, a refused act in words, History,
+  revoke.
+- `guests/linkedWrites.test.ts`: with a live link an agent's own write to a
+  LifeOS document, a LifeOS sheet, a `.tcdoc` and a `.tcsheet` waits as a
+  suggestion and the item's bytes do not change; revoked, it writes again.
+  `guests/awayHold.test.ts`: a thread's `guest_link` is held and stays held
+  under Away, and its own call to create, setRole, rekey, revoke or setOrigin
+  is refused, Away on or off.
 - The tunnel rule (`scripts/box/ingress.yml`, `^/(g|w|f)/`) is live: checked
   on 2026-11-24, `https://tempcode.landonhale.com/g/<id>` answers this
   service's page, and its sockets upgrade through Cloudflare. A guest link

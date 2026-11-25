@@ -1,8 +1,9 @@
 import { isAbsolute, join } from 'node:path'
 import { LifeosBackend, TcsheetBackend } from '../../sheets/host/backends'
-import { SheetHost } from '../../sheets/host/host'
+import { refKey, SheetHost } from '../../sheets/host/host'
 import type { A1Cell, HostAsk, SheetRef, Which } from '../../sheets/host/wire'
 import { RouteError, type InternalRoute, type RouteCtx } from './route'
+import { dropPresence, peopleOn, selectionOf, setPresence } from './sheetRooms'
 
 /**
  * The internal sheet routes (docs/agents/work-sheets.md "Sheets the service
@@ -23,6 +24,8 @@ import { RouteError, type InternalRoute, type RouteCtx } from './route'
 type Fence = { sectors: string[] | 'all' }
 const SAFE = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_CELLS = 1000
+/** A presence main says for his desktop grid: the canvas item it is. */
+const DESKTOP_ID = /^desktop:[A-Za-z0-9_-]{1,80}$/
 
 let made: { host: SheetHost; ctx: RouteCtx } | null = null
 /** The service's one sheet host, made on first use; the live route (sheet.ts) shares it. */
@@ -187,6 +190,24 @@ export const internalSheetRoutes: InternalRoute[] = [
       const origin = body.origin && typeof body.origin === 'object' ? body.origin : undefined
       const got = await said(() => host.cells(ref, cells, by, suggest, undefined, origin))
       return suggest ? { mode: 'suggest', changeSetId: got.changeSetId } : { mode: 'direct', rev: got.rev }
+    }
+  },
+  {
+    // His desktop grid's selection on a sheet (it is on no socket): said under the owner's name, as his phone's page is,
+    // and answered with everyone else on the sheet. `at: null` takes it away; no `at` only reads.
+    path: '/internal/sheet/presence',
+    milestone: 27,
+    async run(body, ctx) {
+      const key = refKey(refOf(body, ctx))
+      const id = body.id
+      if (typeof id !== 'string' || !DESKTOP_ID.test(id)) throw new RouteError(400, 'id is desktop:<item>')
+      if (body.at === null) dropPresence(key, id)
+      else if (body.at !== undefined) {
+        const at = selectionOf((body.at as { sheet?: unknown }).sheet, (body.at as { range?: unknown }).range)
+        if (!at) throw new RouteError(400, 'at is a tab and a range')
+        setPresence(key, id, { principal: 'owner', name: ctx.config().owner ?? 'The owner' }, at)
+      }
+      return { people: peopleOn(key).filter((p) => p.id !== id) }
     }
   },
   ...(Object.keys(OPS) as HostAsk['op'][]).map(

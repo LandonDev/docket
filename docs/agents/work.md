@@ -925,13 +925,13 @@ module's `mentions` for a kind still untaken (`listSources`, search/run.ts).
 | messages | yes: Chat | `messages.new` | `message`, `chat` | `chat` |
 | tasks | — (lifeos) | — | — (the search pillar's `task`) | — (lifeos's `task`) |
 | agenda | — (lifeos) | — | — (the search pillar's `event`) | — (lifeos's `event`) |
-| docs | — (guests' Work service) | — (the digest's: a guest's edit) | — (the search pillar's `doc` and `file`) | — (lifeos's `doc`, files' `file`) |
+| docs | — (guests' Work service) | — (the guests pillar's: a guest's edit) | — (the search pillar's `doc` and `file`) | — (lifeos's `doc`, files' `file`) |
 | history | — | — | — | — |
 | formats | yes: Tools | — | — | — |
 | sheets | — (guests' Work service) | — | — (the search pillar's `file`) | — (files' `file`) |
 | office | yes: Office (the add-in, Office in the VM, Office for the web), Files (OneDrive, OneDrive in the VM) | — | — (Files' sources) | — |
 | google | yes: Google | — | — | — |
-| guests | yes: Work service | — (the digest's: a guest's edit) | — | — |
+| guests | yes: Work service | `guests.opened`, `guests.edited` | — | — |
 | pdf | — | — | — | — |
 | slides | — | — | — | — |
 | media | — | — | — | — |

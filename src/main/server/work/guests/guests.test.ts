@@ -382,6 +382,9 @@ describe("a link's budget", () => {
     const frame = (...after: number[]) => new Uint8Array([4, 107, 100, 111, 99, ...after])
     expect(addsContent(frame(0, 2, 5, 1, 2, 3, 4, 5))).toBe(true)
     expect(addsContent(frame(0, 1, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9))).toBe(true)
+    // A sync reply (4) carries a change as a sync does, and Hocuspocus applies it.
+    expect(addsContent(frame(4, 2, 5, 1, 2, 3, 4, 5))).toBe(true)
+    expect(addsContent(frame(1, 2, 5, 1, 2, 3, 4, 5))).toBe(false)
     // A sync answer with nothing in it, a first ask, presence, a token.
     expect(addsContent(frame(0, 1, 2, 0, 0))).toBe(false)
     expect(addsContent(frame(0, 0, 1, 0))).toBe(false)
@@ -596,6 +599,31 @@ describe('a guest link', () => {
     expect(listed.names[`guest:${a.id}`]).toBe('You')
     expect(listed.rows[0]!.comments.map((c) => c.authorMemberId)).toEqual([`guest:${a.id}`, `guest:${a.id}`])
     expect(plainBody('a\nb')).toBe(JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: 'a', styles: {} }] }, { type: 'paragraph', content: [{ type: 'text', text: 'b', styles: {} }] }]))
+  })
+
+  it('a comment whose link is revoked while its words are on the way writes nothing', async () => {
+    const r = await rig()
+    await r.service.collab.writeMarkdown(DOC, 'owner', 'Check-in opens at the north doors')
+    const a = await make(r, 'comment')
+    const { body } = await opened(r, a.id, a.secret)
+    const threads = r.convex.threads.length
+    const { request } = await import('node:http')
+    const url = new URL(`${r.base}/g/${a.id}/comment`)
+    const words = JSON.stringify({ quote: 'north doors', text: 'Late words' })
+    const status = new Promise<number>((resolve, reject) => {
+      const req = request({ host: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(words), Authorization: `Bearer ${body.token}` } }, (res) => {
+        res.resume()
+        resolve(res.statusCode ?? 0)
+      })
+      req.on('error', reject)
+      // The headers go first, and the token passes; the link is revoked before the words arrive.
+      req.flushHeaders()
+      void sleep(200)
+        .then(() => r.rt.revoke(a.id))
+        .then(() => req.end(words))
+    })
+    expect(await status).toBe(403)
+    expect(r.convex.threads.length).toBe(threads)
   })
 
   it("reaches its own item and nothing else: another link's endpoints, another document, the owner's routes", async () => {

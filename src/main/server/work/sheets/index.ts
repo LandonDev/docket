@@ -10,8 +10,11 @@ import { canvasItemDir } from '../canvas/store'
 import { pressesFor, sharedOf, workspaceHere } from '../files/policy'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer, registerFileWaiting, type FileMaker } from '../files/hooks'
 import { registerUploadBytes } from '../google/uploads'
+import { namesFor } from '../history'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { checkInExcel, excelReach } from './checkExcel'
+import { followCommits, watchSheet } from './commits'
+import { followPresence, sayPresence } from './presence'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
@@ -49,6 +52,14 @@ function itemOf(ctx: WorkCtx, itemId: string): CanvasItem {
   if (!item) throw new Error(`There is no canvas item ${itemId}.`)
   if (item.kind !== 'sheet') throw new Error(`${item.title} is not a sheet.`)
   return item
+}
+
+/**
+ * A sheet's history with the words a screen shows for who made each revision (history/index.ts `namesFor`): a guest
+ * by the name of their link, one that has ended too, never by `guest:<link id>`; "You" for his own.
+ */
+export function namedHistory<T extends { revisions: readonly { by: string }[] }>(ctx: WorkCtx, got: T): T & { names: Record<string, string> } {
+  return { ...got, names: namesFor(ctx, got.revisions.flatMap((r) => (r.by === 'file' ? [] : [r.by]))) }
 }
 
 /** Something landed on the item's sheet: its canvases catch up (`work.sheets.since`). */
@@ -145,6 +156,11 @@ export const sheets: WorkModule = {
       // An .xls, .ods or .tsv is read through its Excel copy, made the first time it is asked for.
       await ensureImported(ctx, held)
     }
+    // His canvas on a sheet the service holds hears every op that lands on it from now (commits.ts).
+    if (item && (req.method === 'work.sheets.open' || req.method === 'work.sheets.load' || req.method === 'work.sheets.since')) {
+      const held = heldOf(item, ctx.dataDir)
+      if (held.at === 'service') watchSheet(ctx, item, held.ref)
+    }
     switch (req.method) {
       case 'work.sheets.open': {
         const view = viewFor(await viewOf(s, item!), by)
@@ -166,6 +182,13 @@ export const sheets: WorkModule = {
         }
         if (held.at === 'service' && csvMoved(ctx, item!, held)) return handled({ rev: (await host(ctx, 'open', { sheet: held.ref })).rev, reload: true as const })
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
+      }
+      case 'work.sheets.presence': {
+        // A selection is a person's: his desktop grid says it, never a thread.
+        if (by.kind === 'model') throw new Error('Only a person on the sheet has a selection to say.')
+        const held = heldOf(item!, ctx.dataDir)
+        if (held.at !== 'service') return handled({ people: [] })
+        return handled(await sayPresence(ctx, item!, held.ref, req.params))
       }
       case 'work.sheets.edit': {
         await approves(s, item!, by)
@@ -242,7 +265,7 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.history': {
         const held = notExcel(heldOf(item!, ctx.dataDir))
-        return handled(held.at === 'package' ? { revisions: s.packages.history(held.path) } : await host(ctx, 'history', { sheet: held.ref }))
+        return handled(namedHistory(ctx, held.at === 'package' ? { revisions: s.packages.history(held.path) } : await host(ctx, 'history', { sheet: held.ref })))
       }
       case 'work.sheets.compare': {
         const held = notExcel(heldOf(item!, ctx.dataDir))
@@ -317,7 +340,11 @@ export const sheets: WorkModule = {
     const offPreviewer = registerFilePreviewer('sheet', sheetFilePreviewer(ctx))
     // Save to Google Sheets: the google pillar's upload asks this pillar for the workbook's bytes (toGoogle.ts).
     const offGoogle = registerUploadBytes('sheet', sheetUploadBytes)
+    const offCommits = followCommits(ctx)
+    const offPresence = followPresence(ctx)
     const off = (): void => {
+      offCommits()
+      offPresence()
       offWaiting()
       offMoved()
       offMaker()

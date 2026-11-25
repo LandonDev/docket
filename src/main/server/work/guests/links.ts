@@ -8,15 +8,19 @@ import { fileDocName, type CollabClaims as KitClaims } from 'work-kit/collab-ser
 import { FenceError } from '../../remote/fence'
 import { linkedOut, madeFromShared } from '../docs/target'
 import { pressesFor, sharedOf, within, workspaceHere } from '../files/policy'
+import { hisZone } from '../clock'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { GUEST_ORIGIN_SETTING, isIsolatedInstance, servesPublic } from '../service/config'
 import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
-import type { ServiceProject } from '../service/wire'
+import type { LinkSeen } from '../service/routes/seen'
+import type { GuestAsk, ServiceProject } from '../service/wire'
+import { answerGuestAsk } from './comments'
 import { fileUid } from './fileIdent'
-import { fileLinkId, GuestStore, hashSecret, isLive, setEditEnder, sourceKey, type StoredLink } from './store'
+import { fileLinkId, GuestStore, hashSecret, isLive, setEditEnder, setGuestsPresent, sourceKey, type StoredLink } from './store'
+import { EDITED_TELL, editedKey, editedTitle, OPENED_TELL, openedKey, openedTitle, openOf, seenTells, workspaceOfLink } from './tells'
 import { PASS_PREFIX, type GuestServiceLink } from './wire'
 
 /**
@@ -128,7 +132,7 @@ export const TICKET_REFUSALS = {
 
 export { SHARE_REFUSALS }
 
-type Seen = Record<string, { at: number; open: number }>
+type Seen = Record<string, LinkSeen>
 
 interface Pass {
   id: string
@@ -434,14 +438,18 @@ export class GuestRuntime {
   }
 
   private rowOf(l: StoredLink, seen: Seen | null): GuestLinkRow {
-    const { secretHash: _h, bySession: _s, fileUid: _u, ...row } = l
-    return { ...row, lastOpenedAt: seen ? (seen[l.id]?.at ?? null) : null, open: seen?.[l.id]?.open ?? 0 }
+    const { secretHash: _h, bySession: _s, fileUid: _u, firstOpenedAt: _o, lastWroteAt: _w, ...row } = l
+    // The service forgets what it saw when it restarts; the row remembers the first open.
+    return { ...row, lastOpenedAt: seen?.[l.id]?.at ?? l.firstOpenedAt, open: seen?.[l.id]?.open ?? 0 }
   }
 
   /** When each link was last opened and how many sockets it holds, as the service counts them; null when it does not answer. */
   private async seen(): Promise<Seen | null> {
     try {
-      return ((await this.ctx.service.internal('/internal/guests/seen', {})) as { seen?: Seen }).seen ?? {}
+      const seen = ((await this.ctx.service.internal('/internal/guests/seen', {})) as { seen?: Seen }).seen ?? {}
+      // Who is in which file now, for the Files place's rows (store.ts `guestsPresentIn`).
+      setGuestsPresent(this.ctx.db, this.store.live().map((l) => ({ source: l.source, name: l.name, open: seen[l.id]?.open ?? 0 })))
+      return seen
     } catch {
       return null
     }
@@ -768,7 +776,6 @@ export class GuestRuntime {
           ...(l.source.at === 'file' && l.source.table === 'sheets' ? { sheetFile: l.source.path } : {}),
           // The file it was made for, which the service checks as it opens it (fileIdent.ts).
           ...(l.source.at === 'file' && l.fileUid ? { file: { path: canonicalPath(l.source.path), uid: l.fileUid } } : {}),
-          ...(l.source.at === 'file' && l.source.table === 'docs' ? { comments: false } : {})
         }
       })
     }
@@ -840,11 +847,40 @@ export class GuestRuntime {
     return { projection, tokens }
   }
 
-  /** Every 30 s: links that ended, rows LifeOS has not marked yet, tokens near their end (`settle`). */
+  /** What the service asks of a link's own item that only main holds (comments.ts): a file document's comments. */
+  answerAsk(ask: GuestAsk): Promise<unknown> {
+    return answerGuestAsk(this.ctx, this.store, this.ownerName(), ask)
+  }
+
+  /** Every 30 s: links that ended, rows LifeOS has not marked yet, tokens near their end (`settle`), and what the owner is told of. */
   async tick(): Promise<void> {
     await this.dropShared()
     const { changed } = await this.settle()
     if (changed) this.ctx.push({ push: 'work.guests' })
+    await this.tellSeen().catch((err: Error) => this.ctx.log(`guests: tells: ${err.message}`))
+  }
+
+  /**
+   * Tells him of a link's first open and of a day's edits by its guest (tells.ts), from what the service saw since
+   * the last pass. What he was told is kept in the link's row, so a restart tells nothing twice.
+   */
+  async tellSeen(): Promise<void> {
+    const seen = await this.seen()
+    if (!seen || !this.ctx.tell) return
+    const due = seenTells(this.store.live(), seen, hisZone(this.ctx))
+    const job = (link: StoredLink): Promise<string | null> => workspaceOfLink(this.ctx, link, async (l) => (l.source.at === 'lifeos' ? (await this.itemRow(l.source)).sector : null))
+    for (const { link, at } of due.opened) {
+      const workspaceId = await job(link)
+      this.ctx.tell({ kind: OPENED_TELL.kind, workspaceId, title: openedTitle(link), key: openedKey(link.id), open: openOf(link, workspaceId) })
+      this.store.setSeen(link.id, { firstOpenedAt: at })
+    }
+    for (const { link, at, day, tell } of due.wrote) {
+      if (tell) {
+        const workspaceId = await job(link)
+        this.ctx.tell({ kind: EDITED_TELL.kind, workspaceId, title: editedTitle(link), key: editedKey(link.id, day), open: openOf(link, workspaceId) })
+      }
+      this.store.setSeen(link.id, { lastWroteAt: at })
+    }
   }
 }
 

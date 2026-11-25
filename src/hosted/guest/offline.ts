@@ -8,11 +8,12 @@
 /** The prefix the editor's copy is kept under; the editor adds the document's name. */
 export const offlinePrefix = (linkId: string): string => `tempcode-guest:${linkId}`;
 
-/** Deletes every copy kept for a link: the one named, and any other this browser lists under the link's prefix. */
+/** Deletes every copy kept for a link: the document named, a sheet's unsent edits, and any other this browser lists under the link's prefix. */
 export async function wipeOffline(linkId: string, doc?: string, idb: IDBFactory | undefined = typeof indexedDB === "undefined" ? undefined : indexedDB): Promise<void> {
   if (!idb) return;
   const prefix = `${offlinePrefix(linkId)}:`;
-  const names = new Set<string>(doc ? [`${prefix}${doc}`] : []);
+  // A sheet's unsent edits are kept under one name a link (sheetQueue.ts `queueName`).
+  const names = new Set<string>([`${prefix}sheet`, ...(doc ? [`${prefix}${doc}`] : [])]);
   try {
     for (const db of (await idb.databases?.()) ?? []) if (db.name?.startsWith(prefix)) names.add(db.name);
   } catch {

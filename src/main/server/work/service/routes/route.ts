@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { CollabServer, ConvexCall } from 'work-kit/collab-server'
 import type { WebSocketServer } from 'ws'
-import type { ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject } from '../wire'
+import type { GuestAsk, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject } from '../wire'
 import type { QueuedHistory } from '../../history/hostQueue'
 import type { StoreBook } from '../../docs/storeBook'
 
@@ -33,6 +33,8 @@ export interface RouteCtx {
   origins(): ServiceOrigins
   /** a socket on a live document closed: its compaction may be due (service/compaction.ts) */
   docLeft(doc: string): void
+  /** main, asked about a guest link's own item (a file document's comments); absent where it cannot be asked */
+  guestAsk?(ask: GuestAsk): Promise<unknown>
   /** what each live document's last store came to (docs/storeBook.ts); absent in a test's context */
   stores?: StoreBook
   log(line: string): void

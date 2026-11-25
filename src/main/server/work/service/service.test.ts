@@ -47,7 +47,7 @@ interface Rig {
   dir: string
 }
 
-async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; convex?: FakeConvex; keys?: Awaited<ReturnType<typeof generateCollabKeys>>; origins?: ServiceOrigins; owner?: string; log?: (line: string) => void } = {}): Promise<Rig> {
+async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; convex?: FakeConvex; keys?: Awaited<ReturnType<typeof generateCollabKeys>>; origins?: ServiceOrigins; owner?: string; log?: (line: string) => void; sheetCommit?: (c: { key: string; rev: number }) => void } = {}): Promise<Rig> {
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'm18-svc-'))
   if (!o.dir) open.dirs.push(dir)
   const convex = o.convex ?? (await startFakeConvex())
@@ -75,7 +75,7 @@ async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; con
     ...(o.origins ? { origins: o.origins } : {}),
     ...(o.owner ? { owner: o.owner } : {})
   }
-  const service = await startWorkService(config, { jwt: async () => 'owner-jwt', log: o.log ?? (() => {}) })
+  const service = await startWorkService(config, { jwt: async () => 'owner-jwt', log: o.log ?? (() => {}), ...(o.sheetCommit ? { sheetCommit: o.sheetCommit } : {}) })
   open.services.push(service)
   const sign = await createCollabSigner({ privateJwk: keys.privateJwk, iss: 'tempcode:env_box' })
   return { keys, service, config, convex, sign, dir }
@@ -504,6 +504,21 @@ describe('live documents', () => {
     const { unzipSync } = await import('fflate')
     const { readFileSync } = await import('node:fs')
     expect(Object.keys(unzipSync(new Uint8Array(readFileSync(path)))).sort()).toEqual(['preview.md', 'sidecar.json', 'state.yjs', 'threads.json'])
+  })
+})
+
+describe('a sheet the service holds', () => {
+  it('tells main of every op that lands on it, whoever wrote it: the key main knows the sheet by, and its revision', async () => {
+    const { TcsheetBackend } = await import('../sheets/host/backends')
+    const commits: { key: string; rev: number }[] = []
+    const r = await rig({ sheetCommit: (c) => commits.push(c) })
+    const path = join(r.dir, 'Budget.tcsheet')
+    TcsheetBackend.create(path, 'Budget')
+    for (const [at, by] of [['A1', 'owner'], ['A2', 'guest:L1']] as const) expect((await call(r.config.socketPath, '/internal/sheet/cells', { sheet: { tcsheet: path }, cells: [{ at, v: 1 }], by })).status).toBe(200)
+    expect(commits).toEqual([
+      { key: `tcsheet:${path}`, rev: 1 },
+      { key: `tcsheet:${path}`, rev: 2 }
+    ])
   })
 })
 

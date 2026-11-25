@@ -138,14 +138,56 @@ describe('the sheet host', () => {
     expect((await host.open(REF)).suggestions).toEqual([])
   })
 
-  it('moves an edit made on an older revision through the row insert it missed; a stale insert answers a conflict', async () => {
+  it('edits that wait for one turn of the sheet are written as one, each moved through those before it, none answered before the write', async () => {
+    const store = new MemoryBackend(budget())
+    const writes: number[] = []
+    const append = store.append.bind(store)
+    let release: () => void = () => {}
+    const held = new Promise<void>((done) => (release = done))
+    store.append = async (baseRev, ops) => {
+      writes.push(ops.length)
+      // The first write is slow, as a large file's is: the edits sent meanwhile wait for the next turn.
+      if (writes.length === 1) await held
+      return append(baseRev, ops)
+    }
+    const host = hostOf(store)
+    const answered: string[] = []
+    const first = host.apply(REF, 0, [setCell(1, 1, { v: 1 })], 'owner').then((a) => (answered.push('first'), a))
+    while (!writes.length) await new Promise((r) => setTimeout(r, 5))
+    // More while the first is being written: one the engine cannot lay, a row insert, one a guest may not send, a cell
+    // made below the row before it was seen, and one more after them.
+    const bad = host.apply(REF, 1, [{ id: 'nobody.mutation.at-all', params: {} }], 'owner')
+    const insert = host.apply(REF, 1, [insertRow('book', 0)], 'guest:L')
+    const misfit = host.apply(REF, 1, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'guest:M')
+    const below = host.apply(REF, 1, [setCell(2, 1, { v: 2 })], 'guest:M')
+    const after = host.apply(REF, 1, [setCell(9, 1, { v: 9 })], 'owner')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(answered).toEqual([])
+    release()
+    expect(await first).toEqual({ rev: 1 })
+    await expect(misfit).rejects.toThrow('that sheet is not in the workbook')
+    await expect(bad).rejects.toThrow(/could not be applied/)
+    // The engine was dropped with the turn; the rest went again, in order, on the sheet as stored, in one write.
+    expect(await insert).toEqual({ rev: 2 })
+    // Made on revision 1 below the row that went in at revision 2: it lands a row lower.
+    expect(await below).toEqual({ rev: 3 })
+    expect(await after).toEqual({ rev: 4 })
+    expect((await host.range(REF, 'B4')).cells[0][0].v).toBe(2)
+    expect(writes).toEqual([1, 3])
+    expect(store.ops.map((op) => op.by)).toEqual(['owner', 'guest:L', 'guest:M', 'owner'])
+  })
+
+  it('moves an edit made on an older revision through the row insert it missed, a stale insert too; a sheet op that missed one answers a conflict', async () => {
     const store = new MemoryBackend(budget())
     const host = hostOf(store)
     await host.apply(REF, 0, [insertRow('book', 0)], 'owner')
     expect(await host.apply(REF, 0, [setCell(2, 1, { v: 2 })], 'guest:L')).toEqual({ rev: 2 })
     expect((await host.range(REF, 'B4')).cells[0][0].v).toBe(2)
-    expect(await host.apply(REF, 0, [insertRow('book', 3)], 'owner')).toEqual({ conflict: true, rev: 2 })
-    expect(await host.since(REF, 0)).toMatchObject({ rev: 2, ops: [{ rev: 1, by: 'owner' }, { rev: 2, by: 'guest:L' }] })
+    // Made on revision 0 below row 3: the row inserted above it since moved that place down one.
+    expect(await host.apply(REF, 0, [insertRow('book', 3)], 'owner')).toEqual({ rev: 3 })
+    expect((await host.range(REF, 'B4')).cells[0][0].v).toBe(2)
+    expect(await host.apply(REF, 0, [{ id: 'sheet.mutation.set-worksheet-name', params: { unitId: 'book', subUnitId: 'sheet1', name: 'Plan' } }], 'owner')).toEqual({ conflict: true, rev: 3 })
+    expect(await host.since(REF, 0)).toMatchObject({ rev: 3, ops: [{ rev: 1, by: 'owner' }, { rev: 2, by: 'guest:L' }, { rev: 3, by: 'owner', mutations: [{ params: { range: { startRow: 4, endRow: 4 } } }] }] })
   })
 
   it('a formula the engine cannot read does not take the sheet down: it is stored, replayed by a cold host, and both still answer', async () => {

@@ -33,6 +33,7 @@ import { useWorkspaceOf } from "../files/workspaceOf";
 import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { sheetPreviewSource } from "./preview";
+import { useSheetPresence } from "./presence";
 import { ExcelWaits } from "./excelWaits";
 import { reachHere } from "./fullHere";
 import { useSaveToGoogle } from "./toGoogle";
@@ -99,6 +100,15 @@ export function Body(props: Props) {
     };
   }, [grid, tries]);
   useEffect(() => (handle ? sync.attach(grid.link(handle)) : undefined), [sync, grid, handle]);
+  // Who else is on the sheet, where the Work service holds it live (a LifeOS sheet, a .tcsheet): their cells on the grid, their faces in the bar.
+  const others = useSheetPresence(sync.host, !!handle && (view?.store === "lifeos" || view?.store === "tcsheet"), shell);
+  const onSelection = useCallback(
+    (next: GridSelection | null) => {
+      setSelection(next);
+      others.onSelection(next);
+    },
+    [others.onSelection],
+  );
   // The book's fonts are read before the grid draws it: `faces` is the book they were read for.
   const [faces, setFaces] = useState<number | null>(null);
   useEffect(() => {
@@ -259,6 +269,7 @@ export function Body(props: Props) {
           // What a note's pop-over offers: what this store keeps, as its host says (`view.notes`); none on a sheet he cannot edit.
           {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
           marks={marks}
+          presence={others.presence}
           was={was}
           // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
           // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
@@ -266,7 +277,7 @@ export function Body(props: Props) {
           media={sync.media}
           onObjects={(change) => sync.object(change)}
           onReady={setHandle}
-          onSelection={setSelection}
+          onSelection={onSelection}
           labels={LABELS}
           className="min-h-0 min-w-0 flex-1"
         />

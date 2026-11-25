@@ -85,16 +85,42 @@ export type ToService =
   | { t: 'trusted'; trusted: TrustedIssuer[] }
   | { t: 'origins'; origins: ServiceOrigins }
   | { t: 'jwt'; id: number; jwt?: string; error?: string }
+  | { t: 'guest-answer'; id: number; value?: unknown; error?: string }
   | { t: 'stop' }
 
 /** A file-backed document's live revision. The first notice is from loading it. */
 export type DocRevision = { doc: string; rev: string; loaded?: true }
+
+/**
+ * An op landed on a sheet the service holds, whoever wrote it (a guest's page, his phone's, main itself): the host's
+ * key for the sheet (`lifeos:<id>` or `tcsheet:<path>`, sheets/host/host.ts `refKey`) and the revision it is at now.
+ * Main tells his open canvases on that sheet, which then ask for what they miss.
+ */
+export type SheetCommit = { key: string; rev: number }
+
+/**
+ * Who is on a sheet the service holds, each time it changes: everyone with a selection on it, under the name and
+ * hue the service gives (routes/sheetRooms.ts `SheetPerson`). Main tells his open desktop grid on that sheet, which
+ * is on no socket of its own.
+ */
+export type SheetPresent = { key: string; people: { id: string; name: string; hue: number; sheet: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number } }[] }
+
+/**
+ * What the service asks main of a guest link whose item only main holds: a `.tcdoc`'s comments are rows in the
+ * app's database (docs/threads.ts), which this process never opens. `body` is the comment as the service built it
+ * from a guest's plain words. Main answers for that link's own file alone (guests/comments.ts).
+ */
+export type GuestAsk = { what: 'threads'; linkId: string } | { what: 'comment'; linkId: string; body: string; quote?: string; threadId?: string }
 
 /** Service → main. */
 export type FromService =
   /** `mark`: a random value this run of the service made at its start, what `/w/healthz` answers */
   | { t: 'ready'; port: number; mark?: string }
   | ({ t: 'doc-revision' } & DocRevision)
+  | ({ t: 'sheet-commit' } & SheetCommit)
+  | ({ t: 'sheet-presence' } & SheetPresent)
+  /** answered with `guest-answer` of the same id */
+  | { t: 'guest-ask'; id: number; ask: GuestAsk }
   | { t: 'jwt?'; id: number }
   | { t: 'log'; line: string }
   | { t: 'fault'; message: string }

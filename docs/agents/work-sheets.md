@@ -1202,8 +1202,9 @@ name, no filter, no sort and no sheet added or removed.
 A calculation that throws does not take a sheet or the service down: the
 headless engine catches it (work-kit `headlessSheet`, `failures()`), the
 sheet still answers and the next calculation runs; the cells of that
-calculation keep what they had. What is not bounded: how many sends a guest
-makes over time (each is kept in the store's op log), the styles a workbook
+calculation keep what they had. What is not bounded: a sheet's total size (a guest's
+sends are held to 600 a minute and 20 MiB an hour a link, past which a batch
+is refused "too many edits at once: wait a minute"), the styles a workbook
 gathers as cells are restyled (nothing prunes one no cell uses), and a guest
 may delete every row and write to a hidden sheet (it is sent the whole
 workbook). An Edit link's page draws the format row with
@@ -1213,11 +1214,79 @@ guest check and into the host). Every
 mutation names its sheet but a defined name's (`WORKBOOK_MUTATIONS`), which
 an editor may send and a guest may not. An editor here is the owner's own
 page of the full editor: it may also add or remove a sheet and part a merge,
-with no cap, as his canvas may. An edit that missed a row or column
-insert is moved through it (`moveThrough`, the rebase's code); a rule named
-only by its id passes as it is (`MOVES_AS_IS`); a stale structural edit, or
-a rule with a range or a formula, is refused and the client reloads.
-Our own canvas does not use the socket: it calls the pillar's methods.
+with no cap, as his canvas may. An edit made on an older revision is
+moved through what it missed by work-kit's `moveThrough` (`work-kit/sheet/collab`,
+the same code every client runs): cells, formats, sizes and merges follow rows
+and columns inserted or deleted before them (a cell whose row went is dropped,
+a formula's references move), two row or column changes are shifted by index,
+and a rule named only by its id passes as it is (`MOVES_AS_IS`). What cannot be
+moved (a sheet op through a row change, a rule with a range or a formula, a row
+change that cuts a merge another client made at the same moment) is refused in
+words. A batch moved to nothing is acknowledged with no op of its own.
+
+**The wire.** Client → `{t: 'hello', token, cid?, since?, snapshot?}`, then
+`{t: 'ops', id, baseRev, mutations}` and `{t: 'presence', sheet, range}`
+(`range: null` when it has none); server → one `{t: 'state', rev, mark, last?,
+ops?, snapshot?}` (the ops after `since` when the log still has them, at most
+2,000 or 4 MiB; the workbook when asked or when they cannot be given), `{t:
+'ops', rev, by, mutations, own?}` to everyone (`own` the batch id, on the
+sender's socket alone), `{t: 'ack', id, rev}` or `{t: 'refused', id, reason}`,
+and `{t: 'presence', id, name, hue, sheet, range}` / `{t: 'left', id}` to
+everyone else. `cid` is a random id a page keeps with its unsent edits; a batch
+is known by its sender, its `cid` and its id, so one sent again after a dropped
+line is acknowledged again and applied once, and `last` names the newest of a
+client's batches that landed (the newest 64 a client, 500 clients and 500
+sheets remembered). `mark` is the service's start mark: a new one tells a page
+the memory of its batches is gone. A page that sends no `cid` (one built
+before this wire) gets the workbook as before. A socket may ask for the sheet
+again at most 12 times a minute; a message that is not an object with its kind
+closes that socket (1007).
+
+**The client half** (`work-kit/sheet/collab` `createSheetSession`, its README
+has the account): a page keeps its own unanswered edits apart, one batch in
+flight, every op from elsewhere moved through them before it is laid and its
+own cell writes laid again over it, so the later writer by the server's order
+wins a cell on every grid; a refusal, a gap or a move that answers null
+rebuilds the grid from the server. The guest's page (`src/hosted/guest/
+SheetPage.tsx` on `sheetLine.ts`) stays editable while the line is down,
+under "Offline. Your edits are kept on this device until the sheet is back."
+(an Edit link; "…in this tab" where another tab of the link holds the queue,
+"Changes will show when the sheet is back." for a reader). An Edit link's
+unsent edits are kept in IndexedDB (`tempcode-guest:<link>:sheet`,
+`sheetQueue.ts`), at most 500 batches or 2 MiB, a day, one tab a link (a
+browser lock), wiped when the link ends. What could not be kept is said once:
+"3 edits made offline could not be kept. The sheet changed under them." The
+line tries again every second for half a minute, then every five, for as long
+as it takes; only a page that never got its sheet is shown as out of reach.
+A page cuts a guest's write as the service will (`src/shared/work/
+sheetGuest.ts` `guestCells`, with each value's type, `typedCells`) and lays the
+cut on its own grid (`cutFix`): the session never lays its own op again, so
+what the service commits is what the grid holds.
+
+**Who is on the sheet.** A presence is said at most ten times a second a
+socket and told to everyone else under the service's name and hue (the
+link's name for a guest, the owner's for him; `routes/sheetRooms.ts`), never
+the page's; a guest whose link went says nothing more. His desktop grid is on
+no socket: it says its selection through `work.sheets.presence` (operate;
+`/internal/sheet/presence`, kept as `desktop:<item>`, let go after half an
+hour with no word) when it changed, four a second at most, and hears the
+others in the `work.sheets` push's `presence` (the service tells main through
+`sheet-presence`, gathered a tenth of a second a sheet). Each is drawn on the
+grid as a 2 px outline in their hue with their name (SheetCanvas `presence`),
+and their faces go to the pane's bar. The guest's page draws the same, and the
+faces in its line.
+
+**His open grid hears every op.** The service tells main of every op that
+lands (`sheet-commit`), and main pushes each open canvas item on that sheet
+its revision; the canvas's own catch-up (`work.sheets.since`) lays it (`sheets/
+commits.ts`). Undo on any grid takes back that grid's own edits alone: what
+others wrote is laid as the sheet's own (`fromCollab`), which Univer's undo
+never holds, and an undo goes out as one more edit (`undoOwn.test.ts`).
+
+**One write a turn.** A `.tcsheet` is rewritten whole on every write, about a
+quarter of a second at 5 MB (F-live-guest/M3-timing.md). Every edit waiting on
+a sheet's lane is checked, moved and laid in the engine in order, then written
+to the store as one, and none is answered before that write (`SheetHost.drain`).
 
 ## Agents: the tools and the rule
 
@@ -1866,7 +1935,6 @@ The harness corpus also keeps the workbooks the editors plan measured with
   Check in Excel for a macro workbook, and for a workbook others can open.
 - Excel's own picture of a page range: Check in Excel draws the whole
   workbook.
-- Presence on the canvas.
 - Keeping IronCalc's model in memory between saves: a save that needs the
   engine loads the package afresh (1.3 s on the 100,000-row file, 22 s on
   the dense one); formatting, rules and a value nothing reads need no

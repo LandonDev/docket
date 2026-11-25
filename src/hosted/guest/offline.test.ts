@@ -24,15 +24,15 @@ describe("the copy an Edit link's page keeps on the guest's device", () => {
   it("is wiped whole when the link is over: the document named, and any other copy this browser lists for the link, and no other link's", async () => {
     const { idb, deleted } = browser(["tempcode-guest:L1:kdocrun", "tempcode-guest:L1:file:abc", "tempcode-guest:L10:kdocrun", "tempcode-guest:L2:kdocrun", "something-else"]);
     await wipeOffline("L1", "kdocrun", idb);
-    expect(deleted.sort()).toEqual(["tempcode-guest:L1:file:abc", "tempcode-guest:L1:kdocrun"]);
+    expect(deleted.sort()).toEqual(["tempcode-guest:L1:file:abc", "tempcode-guest:L1:kdocrun", "tempcode-guest:L1:sheet"]);
   });
 
-  it("wipes the document it was told of in a browser that lists nothing, and does nothing where there is no IndexedDB", async () => {
+  it("wipes the document it was told of and a sheet's unsent edits in a browser that lists nothing, and does nothing where there is no IndexedDB", async () => {
     const { idb, deleted } = browser([], false);
     await wipeOffline("L1", "kdocrun", idb);
-    expect(deleted).toEqual(["tempcode-guest:L1:kdocrun"]);
+    expect(deleted.sort()).toEqual(["tempcode-guest:L1:kdocrun", "tempcode-guest:L1:sheet"]);
     await wipeOffline("L1", undefined, idb);
-    expect(deleted).toHaveLength(1);
+    expect(deleted).toHaveLength(3);
     await expect(wipeOffline("L1", "kdocrun", undefined)).resolves.toBeUndefined();
   });
 });

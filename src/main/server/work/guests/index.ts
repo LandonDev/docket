@@ -8,6 +8,7 @@ import { ActStale } from '../outbox/kinds'
 import { serviceOf } from '../service/ctx'
 import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
+import { EDITED_TELL, OPENED_TELL } from './tells'
 import { guestsHealth } from './health'
 import { hisZone } from '../clock'
 import { heldReceipt } from '../outbox/words'
@@ -146,7 +147,7 @@ export const guests: WorkModule = {
   async handle(req, ctx, by) {
     if (!METHODS.has(req.method)) return NOT_HANDLED
     // His screens' methods: a thread asks through `guest_link`, where the hold applies.
-    if (by.kind === 'model' && req.method !== 'work.guests.list' && req.method !== 'work.guests.forItem') throw new Error('Only the owner makes or revokes a guest link; a thread asks with guest_link.')
+    if (by.kind === 'model' && req.method !== 'work.guests.list' && req.method !== 'work.guests.forItem') throw new Error('Only the owner makes or changes a guest link; a thread asks with guest_link.')
     const rt = guestRuntime(ctx)
     switch (req.method) {
       case 'work.guests.list':
@@ -177,10 +178,13 @@ export const guests: WorkModule = {
   },
   tools: () => guestsTools,
   acts: [guestLinkKind as ActKindDef],
+  tells: [OPENED_TELL, EDITED_TELL],
   preamble: () =>
     "To let someone outside open one of the owner's LifeOS documents or sheets, ask with `guest_link` (one named person, view, comment or edit, a number of days): it waits for his press, and he sends the address himself; you never see it. Sending one of his documents means such a link unless he asks for a file. A whole project can be shown the same way (`guest_link` with `projectId`, view only): the guest sees its tasks as they stand, and its documents and sheets read-only.",
   start(ctx) {
     const rt = guestRuntime(ctx)
+    // A file document's comments are rows only main holds: the service asks, and the runtime answers for the link's own file.
+    serviceOf(ctx)?.setGuestAsks((ask) => rt.answerAsk(ask))
     const tick = (): void => void rt.tick().catch((err: Error) => ctx.log(`guests: ${err.message}`))
     tick()
     // The signer is made as the service starts: tell it the links as soon as it answers.
@@ -189,6 +193,7 @@ export const guests: WorkModule = {
     timer.unref?.()
     return () => {
       clearInterval(timer)
+      serviceOf(ctx)?.setGuestAsks(null)
       rt.stop()
     }
   }

@@ -76,6 +76,9 @@ function internal(socketPath: string, path: string, body: unknown): Promise<unkn
   })
 }
 
+/** The runtime the service's asks go to, set once the rig has made it. */
+const asked: { rt: GuestRuntime | null } = { rt: null }
+
 async function rig() {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'share-')))
   open.dirs.push(dir)
@@ -101,7 +104,8 @@ async function rig() {
       trusted: [{ by: 'host', iss: 'tempcode:env_box', aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }],
       links: []
     },
-    { jwt: async () => 'owner-jwt', log: (line) => void (process.env.SHARE_LOG && console.error(line)) }
+    // The service asks main about a file document's comments: the runtime answers, as the supervisor wires it.
+    { jwt: async () => 'owner-jwt', log: (line) => void (process.env.SHARE_LOG && console.error(line)), guestAsk: (ask) => asked.rt!.answerAsk(ask) }
   )
   open.services.push(service)
   const db = new DatabaseSync(':memory:')
@@ -124,7 +128,7 @@ async function rig() {
     service: { url: (route: string) => `${base}${route}`, token: async () => 'ok', internal: (route: string, body: unknown) => internal(servicePaths(join(dir, 'data')).socketPath, route, body) },
     lifeos: { owner: () => ({ query: async () => null, mutation: async (name: string, args: unknown) => void told.push({ name, args }) }) }
   } as unknown as WorkCtx
-  const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) }))
+  const rt = (asked.rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) })))
   const doc = join(folder, 'Field trip plan.tcdoc')
   const sheet = join(folder, 'Field trip budget.tcsheet')
   TcsheetBackend.create(sheet, 'Field trip budget')
@@ -172,8 +176,8 @@ describe('what a file link can be for', () => {
     // A remote key reaches the workspace's folder alone.
     writeFileSync(join(r.outside, 'Private.tcdoc'), '')
     await expect(make(file(join(r.outside, 'Private.tcdoc')), PHONE)).rejects.toBeInstanceOf(FenceError)
-    // A .tcdoc keeps its comments on this computer: its link views or edits.
-    await expect(make(file(r.doc), LOCAL, 'comment')).rejects.toThrow('A link to this document can view or edit.')
+    // A sheet keeps no comments: its link views or edits. A document takes all three, kept as a file too.
+    expect(guestRefusal({ source: file(r.doc), role: 'comment', expiresAt: days(1) })).toBeNull()
     expect(guestRefusal({ source: file(r.sheet), role: 'comment', expiresAt: days(1) })).toBe('A sheet link can view or edit.')
     // A host whose pages no guest can reach (a Mac, an isolated instance) says so.
     vi.stubEnv('TEMP_CODE_WORK_PUBLIC_ORIGIN', '')
@@ -249,6 +253,22 @@ describe('a file link is for one file, not for a path', () => {
       await r.rt.tick()
       expect(r.rt.store.get(made.link.id)?.revokedAt, path).not.toBeNull()
     }
+  })
+
+  it('a guest already in the document is let go within seconds of another file being saved over its path, before main hears of it', async () => {
+    const r = await rig()
+    const made = await r.rt.create({ source: file(r.doc), title: 'T', name: 'Dana', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const opened = await openLink(r, made.link.id, secretOf(made.url))
+    const guest = client(`${r.base.replace('http', 'ws')}/g/ws/${made.link.id}`, opened.body.doc!, opened.body.token!)
+    await until('synced', () => guest.provider.isSynced)
+    const other = join(r.folder, 'Private notes.tcdoc')
+    copyFileSync(r.doc, other)
+    writeFileSync(other, readWithout(other))
+    await internal(servicePaths(join(r.folder, '..', 'data')).socketPath, '/internal/guests/ident', { path: other })
+    renameSync(other, r.doc)
+    const at = Date.now()
+    await until('the guest is let go', () => !guest.provider.isSynced, 4000)
+    expect(Date.now() - at).toBeLessThan(3500)
   })
 
   it("the app's own saves keep the file's id, so a guest's edits never end their own link", async () => {
@@ -392,7 +412,9 @@ describe('a guest on a .tcdoc', () => {
     const made = await r.rt.create({ source: file(r.doc), title: 'Field trip plan', name: 'Dana', role: 'edit', expiresAt: days(30), bySession: null, by: LOCAL })
     const opened = await openLink(r, made.link.id, secretOf(made.url))
     expect(opened.status).toBe(200)
-    expect(opened.body).toMatchObject({ kind: 'doc', role: 'edit', doc: fileDocName(r.doc), comments: false, name: 'Dana' })
+    expect(opened.body).toMatchObject({ kind: 'doc', role: 'edit', doc: fileDocName(r.doc), name: 'Dana' })
+    // Its comments are reachable now (through main), so the page is not told to draw none.
+    expect(opened.body.comments).toBeUndefined()
     const ws = r.base.replace('http', 'ws')
     const guest = client(`${ws}/g/ws/${made.link.id}`, opened.body.doc!, opened.body.token!)
     // His desktop editor's own token for the file, as the docs pillar signs it.
@@ -443,7 +465,97 @@ describe('a guest on a .tcdoc', () => {
     await until('the reader sees his words', () => reader.document.getText('proof').toString().includes('his words'))
     await new Promise((res) => setTimeout(res, 300))
     expect(owner.document.getText('proof').toString()).not.toContain('not taken')
-    await expect(r.rt.setRole(made.link.id, 'comment')).rejects.toThrow('A link to this document can view or edit.')
+  })
+})
+
+describe("a guest's comments on a .tcdoc", () => {
+  const threadsOf = async (r: Rig, id: string, token: string) => {
+    const res = await fetch(`${r.base}/g/${id}/threads`, { headers: { Authorization: `Bearer ${token}` } })
+    return { status: res.status, body: (await res.json()) as { rows?: { thread: { publicId: string; quote?: string }; comments: { authorMemberId: string; body: string }[] }[]; names?: Record<string, string> } }
+  }
+  const say = async (r: Rig, id: string, token: string, body: unknown) => {
+    const res = await fetch(`${r.base}/g/${id}/comment`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) })
+    return { status: res.status, body: (await res.json()) as { threadId?: string; commentId?: string; error?: string } }
+  }
+  /** The document open by its owner with real words in it, so a quote can be found; the guest's link beside it. */
+  async function withWords(role: 'view' | 'comment' | 'edit') {
+    const r = await rig()
+    r.db.exec('CREATE TABLE IF NOT EXISTS work_docs_threads (doc TEXT PRIMARY KEY, rows TEXT NOT NULL)')
+    const pushes: unknown[] = []
+    ;(r.ctx as unknown as { push(p: unknown): void }).push = (p) => void pushes.push(p)
+    const made = await r.rt.create({ source: file(r.doc), title: 'Field trip plan', name: 'Dana Lee', role, expiresAt: days(7), bySession: null, by: LOCAL })
+    const opened = await openLink(r, made.link.id, secretOf(made.url))
+    const ws = r.base.replace('http', 'ws')
+    const own = (await r.signer.sign({ doc: fileDocName(r.doc), file: { path: r.doc }, role: 'edit', principal: 'owner' }, 300)).token
+    const owner = client(`${ws}/w/doc/${encodeURIComponent(fileDocName(r.doc))}`, fileDocName(r.doc), own)
+    await until('the owner is in', () => owner.provider.isSynced)
+    return { r, made, opened, owner, pushes }
+  }
+
+  it('a comment link reads the threads, starts one on words of the document and replies; the owner is told, and the rows are in his own database under the guest', async () => {
+    const { r, made, opened, pushes } = await withWords('comment')
+    const id = made.link.id
+    const token = opened.body.token!
+    expect(opened.body.role).toBe('comment')
+    expect(await threadsOf(r, id, token)).toEqual({ status: 200, body: { rows: [], names: { owner: 'The owner', [`guest:${id}`]: 'You' } } })
+    // The owner's own thread, and another guest's: this guest reads them with no other guest named.
+    const doc = fileDocName(r.doc)
+    const { changeThread } = await import('../docs/threads')
+    const target = { at: 'file', doc, path: r.doc, source: file(r.doc) } as never
+    const his = (await changeThread(r.ctx, target, { op: 'create', body: '[{"type":"paragraph","content":[{"type":"text","text":"Check the bus time","styles":{}}]}]', quote: 'Plan' }, 'owner')) as { thread: { publicId: string } }
+    await changeThread(r.ctx, target, { op: 'reply', threadId: his.thread.publicId, body: '[]' }, 'guest:someoneElse')
+    const read = await threadsOf(r, id, token)
+    expect(read.body.rows).toHaveLength(1)
+    expect(read.body.rows![0]!.comments.map((c) => c.authorMemberId)).toEqual(['owner', 'p2'])
+    expect(read.body.names).toEqual({ owner: 'The owner', [`guest:${id}`]: 'You', p2: 'A guest' })
+    expect(JSON.stringify(read.body)).not.toContain('someoneElse')
+    // A reply: plain words only, built into the comment by the service, written under this guest.
+    const reply = await say(r, id, token, { threadId: his.thread.publicId, text: 'Bus leaves at 7:30' })
+    expect(reply.status).toBe(200)
+    const kept = JSON.parse((r.db.prepare('SELECT rows FROM work_docs_threads WHERE doc = ?').get(doc) as { rows: string }).rows) as { comments: { authorMemberId: string; body: string }[] }[]
+    expect(kept[0]!.comments.at(-1)).toMatchObject({ authorMemberId: `guest:${id}`, body: JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: 'Bus leaves at 7:30', styles: {} }] }]) })
+    expect(pushes).toContainEqual({ push: 'work.docs', doc, threads: true })
+    // A new comment on words of the document: looked for in the live text, kept by main, and the words marked by the service (a comment link cannot write them).
+    await r.service.collab.writeMarkdown(doc, 'owner', 'Meet at the north doors at 7:15.', { path: r.doc })
+    const started = await say(r, id, token, { quote: 'north doors', text: 'Which doors exactly?' })
+    expect(started.status).toBe(200)
+    const after = JSON.parse((r.db.prepare('SELECT rows FROM work_docs_threads WHERE doc = ?').get(doc) as { rows: string }).rows) as { thread: { publicId: string; quote?: string }; comments: { authorMemberId: string }[] }[]
+    expect(after.at(-1)).toMatchObject({ thread: { publicId: started.body.threadId, quote: 'north doors' }, comments: [{ authorMemberId: `guest:${id}` }] })
+    expect((await threadsOf(r, id, token)).body.rows!.at(-1)!.comments[0]!.authorMemberId).toBe(`guest:${id}`)
+    // The words carry the thread's mark in the document itself, where his editor draws it.
+    const { threadAnchors, DOCUMENT_FRAGMENT } = await import('work-kit/collab')
+    let anchors: string[] = []
+    await r.service.collab.edit(doc, 'owner', (d) => void (anchors = threadAnchors(d.getXmlFragment(DOCUMENT_FRAGMENT)).map((x) => x.threadId)), { path: r.doc })
+    expect(anchors).toContain(started.body.threadId)
+    // A reply on a thread that is not this document's, and words that are not in it, are refused in words.
+    expect(await say(r, id, token, { threadId: 'not-a-thread', text: 'x' })).toMatchObject({ status: 404, body: { error: 'That comment is gone.' } })
+    expect(await say(r, id, token, { quote: 'words that are nowhere in it', text: 'x' })).toMatchObject({ status: 400, body: { error: 'Those words are no longer in the document.' } })
+    expect(await say(r, id, token, { quote: 'Plan', text: 'x'.repeat(4001) })).toMatchObject({ status: 400 })
+  })
+
+  it('a view link reads no thread it may not and writes none; a link that is revoked, or another file link, reaches nothing', async () => {
+    const { r, made, opened } = await withWords('view')
+    const id = made.link.id
+    expect((await say(r, id, opened.body.token!, { quote: 'Plan', text: 'hello' })).status).toBe(403)
+    expect(r.db.prepare('SELECT count(*) AS n FROM work_docs_threads').get()).toEqual({ n: 0 })
+    // Main itself holds a view link to it too, whatever the service passed on.
+    await expect(r.rt.answerAsk({ what: 'comment', linkId: id, body: '[]', quote: 'Plan' })).rejects.toThrow('This link can view, not comment.')
+    // A sheet's link, a link that never was and a revoked one are gone to main: no rows of any document are read for them.
+    const sheet = await r.rt.create({ source: file(r.sheet), title: 'Budget', name: 'Sam', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    for (const linkId of [sheet.link.id, 'neverMade']) await expect(r.rt.answerAsk({ what: 'threads', linkId })).rejects.toThrow('gone')
+    await r.rt.revoke(id)
+    await expect(r.rt.answerAsk({ what: 'threads', linkId: id })).rejects.toThrow('gone')
+    expect((await threadsOf(r, id, opened.body.token!)).status).toBe(403)
+  })
+
+  it('a link to a .tcdoc can be for view, comment or edit, and a sheet link for view or edit', async () => {
+    const { guestRolesOf } = await import('@shared/work/guestRoles')
+    const r = await rig()
+    expect(guestRolesOf(file(r.doc))).toEqual(['view', 'comment', 'edit'])
+    expect(guestRolesOf(file(r.sheet))).toEqual(['view', 'edit'])
+    const made = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    expect(await r.rt.setRole(made.link.id, 'comment')).toBe(true)
+    expect(r.rt.store.get(made.link.id)!.role).toBe('comment')
   })
 })
 

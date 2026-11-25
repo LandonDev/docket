@@ -142,7 +142,6 @@ export function guestRefusal(p: { source: GuestSource; role: GuestRole; expiresA
   if (!table) return SHARE_REFUSALS.other
   if (table === 'projects' && p.role !== 'view') return 'A project link can view.'
   if (table === 'sheets' && p.role === 'comment') return 'A sheet link can view or edit.'
-  if (p.role === 'comment' && p.source.at === 'file') return 'A link to this document can view or edit.'
   if (p.expiresAt < now + GUEST_MIN_MS) return 'A link ends at least an hour from now.'
   if (p.expiresAt > now + GUEST_MAX_MS) return 'A link ends within a year.'
   return null

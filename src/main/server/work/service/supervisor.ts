@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner, type TrustedIssuer } from 'work-kit/collab-server'
-import type { DocRevision, FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject, ToService } from './wire'
+import type { DocRevision, FromService, GuestAsk, LifeosServer, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject, SheetCommit, SheetPresent, ToService } from './wire'
 
 /**
  * Main's side of the Work service (docs/agents/work-service.md): forks the
@@ -49,6 +49,9 @@ const MAX_BACKOFF = 30_000
 
 export class ServiceSupervisor {
   private readonly docListeners = new Set<(notice: DocRevision) => void>()
+  private readonly sheetListeners = new Set<(notice: SheetCommit) => void>()
+  private readonly presenceListeners = new Set<(notice: SheetPresent) => void>()
+  private guestAsks: ((ask: GuestAsk) => Promise<unknown>) | null = null
   private child: ServiceChild | null = null
   private wanted = false
   private stateNow: ServiceState = 'off'
@@ -149,6 +152,23 @@ export class ServiceSupervisor {
     return () => void this.docListeners.delete(listener)
   }
 
+  /** Who answers what the service asks of a guest link's own item (the guests pillar); none: every ask is refused. */
+  setGuestAsks(answer: ((ask: GuestAsk) => Promise<unknown>) | null): void {
+    this.guestAsks = answer
+  }
+
+  /** Hears each op that lands on a sheet the service holds (wire.ts `SheetCommit`); returns its off. */
+  onSheetCommit(listener: (notice: SheetCommit) => void): () => void {
+    this.sheetListeners.add(listener)
+    return () => void this.sheetListeners.delete(listener)
+  }
+
+  /** Hears who is on a sheet the service holds each time it changes (wire.ts `SheetPresent`); returns its off. */
+  onSheetPresence(listener: (notice: SheetPresent) => void): () => void {
+    this.presenceListeners.add(listener)
+    return () => void this.presenceListeners.delete(listener)
+  }
+
   private fork(): void {
     if (!this.wanted || !this.signer) return
     const epoch = ++this.epoch
@@ -194,6 +214,26 @@ export class ServiceSupervisor {
       } else if (m.t === 'doc-revision' && this.child === child && this.wanted) {
         const { doc, rev, loaded } = m
         for (const listener of this.docListeners) listener({ doc, rev, loaded })
+      } else if (m.t === 'guest-ask') {
+        const reply = (answer: ToService): void => {
+          if (epoch !== this.epoch) return
+          try {
+            child.post(answer)
+          } catch {
+            // the child went while main answered
+          }
+        }
+        const asked = this.guestAsks
+        if (!asked) reply({ t: 'guest-answer', id: m.id, error: 'not served here' })
+        else
+          asked(m.ask).then(
+            (value) => reply({ t: 'guest-answer', id: m.id, value }),
+            (err: Error) => reply({ t: 'guest-answer', id: m.id, error: err.message })
+          )
+      } else if (m.t === 'sheet-commit' && this.child === child && this.wanted) {
+        for (const listener of this.sheetListeners) listener({ key: m.key, rev: m.rev })
+      } else if (m.t === 'sheet-presence' && this.child === child && this.wanted) {
+        for (const listener of this.presenceListeners) listener({ key: m.key, people: m.people })
       } else if (m.t === 'log') this.deps.log(`[work-service] ${m.line}`)
       else if (m.t === 'fault') this.deps.log(`[work-service] fault: ${m.message}`)
     })

@@ -47,6 +47,7 @@ import { driveOf, googleSeated, googleSeatOf } from '../google/drive'
 import { accountOfPlace, driveAccounts, driveList, drivePlace, driveStat, driveTop, itemShared } from './places/drive'
 import { admitDrive, DRIVE_APART, driveMake, driveMove, driveRename, driveTrash, namesDrive } from './driveVerbs'
 import { archiveListing } from './zipdir'
+import { withPresent } from './present'
 import { waitingFiles, withWaiting } from './waiting'
 import { readOnlyOf } from './readOnly'
 import { noteRequest } from '../../stalls'
@@ -924,7 +925,7 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
               }
             }
           : undefined
-      return handled({ ...got, entries: withWaiting(ctx, await withProjects(ctx, ws, got.entries, { wait: 0, ...(filled ? { filled } : {}) })) })
+      return handled({ ...got, entries: withPresent(ctx, withWaiting(ctx, await withProjects(ctx, ws, got.entries, { wait: 0, ...(filled ? { filled } : {}) }))) })
     }
     case 'work.files.home': {
       const ws = ownRows(ctx, by, p.workspaceId)

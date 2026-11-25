@@ -1,4 +1,4 @@
-import type { SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
+import type { SheetMutationJson, SheetPerson, SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import type { ObjectIds } from "@shared/work/sheets";
 import { isLightScheme } from "../../lib/appearance";
@@ -37,6 +37,8 @@ export interface SheetPushed {
   view?: SheetView;
   /** The view changed and was not sent (a sheet others can open): read it again. */
   stale?: true;
+  /** Who else is on the sheet now (a live sheet the Work service holds); such a push says no revision. */
+  presence?: SheetPerson[];
 }
 
 export interface SheetHost {
@@ -55,6 +57,11 @@ export interface SheetHost {
   imported(act: SheetImportAct): Promise<SheetImportDone>;
   /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. The full editor answers its page, opened in the browser. */
   switchApp(): Promise<void>;
+  /**
+   * This grid's selection on a live sheet, said to everyone else on it (`work.sheets.presence`): a tab and a range,
+   * `range: null` when it leaves, neither to only read. Answers who else is on the sheet. A host with no live sheets has none.
+   */
+  presence?(said: { sheet?: string; range?: SheetPerson["range"] | null }): Promise<{ people: SheetPerson[] }>;
   /** Something landed on this item. */
   onPush(listener: (push: SheetPushed) => void): () => void;
 }
@@ -82,9 +89,10 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
       if (url) await openUrl(url);
       else if (address) await openFullEditor(address);
     },
+    presence: (said) => call("work.sheets.presence", said),
     onPush: (listener) =>
       link().onPush((push) => {
-        if (push.push === "work.sheets" && push.itemId === itemId) listener({ rev: push.rev, ...(push.view ? { view: push.view } : {}), ...(push.stale ? { stale: true as const } : {}) });
+        if (push.push === "work.sheets" && push.itemId === itemId) listener({ rev: push.rev, ...(push.view ? { view: push.view } : {}), ...(push.stale ? { stale: true as const } : {}), ...(push.presence ? { presence: push.presence } : {}) });
       }),
   };
 }

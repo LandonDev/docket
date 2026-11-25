@@ -346,18 +346,12 @@ day's count.
   due, read from LifeOS's `mailWaits:list` for the sector as `mail_waiting`
   reads it, at digest time; `mail-waiting:<workspaceId>:<day>`, "3 sent
   mails have no answer", opens Mail. A new row each day it is true.
-- `guests` (docs): each document whose last edit since the last digest (a
-  day, before the first) was a guest's, from `work.docs.find`'s `lastBy`, at
-  digest time, each job from its own last whole read (`kept`, in the
-  digest's settings as `source:guests.since:<workspaceId>`, moved only once
-  every tell of that job's read was kept by the ledger, else written at the
-  time it read from): a job whose list failed, came back in part,
-  or came back with LifeOS's error beside it (`FindAnswer.lifeos`) is read
-  from the same time at the next digest, so its edit is told late, not
-  lost; `guest-edit:<entry key>:<editedAt>`, the document and its edit, so
-  the same edit read twice is one row; "A guest edited Pricing
-  notes" (the list names no guest), opens the document or sheet itself in
-  Files (`open.at` is the entry key, `lifeos:docs:<id>`).
+- A guest's edit is no longer a source. It was read from the documents list
+  ("A guest edited Pricing notes": the list names no guest, and knows no
+  file). The guests pillar now tells it itself, by the guest's name and for
+  files too: `guests.opened` and `guests.edited`
+  ([work-guests.md](work-guests.md) "Tells"). Rows of the old kind,
+  `docs.guest`, stay readable in days already told.
 - `capture`: captures waiting in Life's "Unsorted", one row a day,
   `capture-unsorted:<day>`, "4 captures to sort", opening Tasks in the
   Life workspace, at digest time. The capture pillar files and reads

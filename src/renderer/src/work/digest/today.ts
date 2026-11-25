@@ -18,7 +18,7 @@ import { loadHost, openTell, useDigest, type DigestView } from "./store";
 
 /** The groups no section of Today reads. `people` is Today's own (waiting mail, chat) but for a guest's edit. */
 export const ALSO_GROUPS: readonly TellGroup[] = ["results", "ending", "system"];
-const ALSO_KINDS: readonly string[] = ["docs.guest"];
+const ALSO_KINDS: readonly string[] = ["docs.guest", "guests.edited", "guests.opened"];
 
 /** Kinds a section of Today reads for itself, whatever day they were told: held items and failed sends, mail and chat waiting, the review. */
 const TODAY_OWN: readonly string[] = ["outbox.held", "outbox.failed", "mail.waiting", "messages.new", "review.ready"];

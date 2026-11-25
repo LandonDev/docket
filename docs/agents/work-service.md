@@ -50,6 +50,10 @@ responses it writes to sheets.
 The service posts `doc-revision` to main with a file-backed document's path and
 live revision. It sends the revision on load and when a Yjs edit changes it.
 Word and linked-file autosaves use those notices and a 30-second sweep.
+It posts `sheet-commit` (a sheet's key and revision) for every op that lands
+on a sheet it holds, and `sheet-presence` (who is on a sheet, by the
+service's names) a tenth of a second after it changes; main pushes both to
+his open canvases on that sheet (sheets/commits.ts, sheets/presence.ts).
 
 ## Where it listens
 
@@ -77,14 +81,14 @@ built. A route still to come is a `stubRoute` (route.ts): it answers
 |---|---|---|
 | `wss …/w/doc/<docId>` | `routes/doc.ts` | 18, built |
 | `GET …/w/hosted/*` (`out/hosted`) | `routes/hosted.ts` | 18, built |
-| `wss …/w/sheet/<sheetId>` | `routes/sheet.ts` | **27, built** |
+| `wss …/w/sheet/<sheetId>` (work-kit's sheet session on the wire, presence in `routes/sheetRooms.ts`; work-sheets.md "Live editing") | `routes/sheet.ts` | **27, built** |
 | `GET`/`POST …/w/open` (the owner's hosted editor) | `routes/item.ts` | **31, built** ([work-guests.md](work-guests.md)) |
 | `…/g/*` (guest links) and internal `/internal/guests/seen` | `routes/guests.ts` | **31, built** ([work-guests.md](work-guests.md)) |
 | `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | **29, built** (work-office.md, "The add-in") |
 | `GET`/`POST …/f/<publicId>` (published forms; [work-forms.md](work-forms.md)) | `routes/form.ts` | **36, built** |
 | `…/w/full/<token>/*` | `routes/fullEditor.ts` | **40, built** ([work-sheets.md](work-sheets.md) "The full editor") |
 | internal `/internal/doc/{read,write,create,comment}` | `routes/internal.ts` | 18, built |
-| internal `/internal/sheet/{read,write}` and main's `/internal/sheet/<op>` | `routes/internalSheet.ts` | **27, built** |
+| internal `/internal/sheet/{read,write}`, main's `/internal/sheet/<op>` and `/internal/sheet/presence` (his desktop grid's selection, kept as `desktop:<item>`) | `routes/internalSheet.ts` | **27, built** |
 
 A socket upgrade is refused (503) past 512 open sockets, or 48 from one
 caller, counted by the tunnel's `CF-Connecting-IP`, else the peer's address:

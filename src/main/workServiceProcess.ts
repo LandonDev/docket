@@ -37,6 +37,18 @@ const jwt = (): Promise<string> =>
     }, 30_000)
   })
 
+/** Asks main about a guest link's own item, and waits for its answer (wire.ts `GuestAsk`). */
+const guestAsks = new Map<number, { resolve(value: unknown): void; reject(err: Error): void }>()
+const guestAsk = (ask: Extract<FromService, { t: 'guest-ask' }>['ask']): Promise<unknown> =>
+  new Promise((resolve, reject) => {
+    const id = nextAsk++
+    guestAsks.set(id, { resolve, reject })
+    send({ t: 'guest-ask', id, ask })
+    setTimeout(() => {
+      if (guestAsks.delete(id)) reject(new Error('main did not answer'))
+    }, 15_000)
+  })
+
 const fault = (err: unknown): void => {
   send({ t: 'fault', message: err instanceof Error ? (err.stack ?? err.message) : String(err) })
   // A service in an unknown state serves nothing: main starts a fresh one, and the journal keeps every acknowledged edit.
@@ -50,7 +62,7 @@ parent.on('message', (event: { data: unknown }) => {
   if (m.t === 'config') {
     if (running || starting) return
     starting = true
-    startWorkService(m.config, { jwt, log: (line) => send({ t: 'log', line }), docRevision: (notice) => send({ t: 'doc-revision', ...notice }) }).then(
+    startWorkService(m.config, { jwt, log: (line) => send({ t: 'log', line }), docRevision: (notice) => send({ t: 'doc-revision', ...notice }), sheetCommit: (notice) => send({ t: 'sheet-commit', ...notice }), sheetPresence: (notice) => send({ t: 'sheet-presence', ...notice }), guestAsk }).then(
       (service) => {
         running = service
         if (heldLinks) service.setLinks(heldLinks)
@@ -84,6 +96,11 @@ parent.on('message', (event: { data: unknown }) => {
     asked.delete(m.id)
     if (m.jwt) waiter?.resolve(m.jwt)
     else waiter?.reject(new Error(m.error ?? 'no JWT'))
+  } else if (m.t === 'guest-answer') {
+    const waiter = guestAsks.get(m.id)
+    guestAsks.delete(m.id)
+    if (m.error !== undefined) waiter?.reject(new Error(m.error))
+    else waiter?.resolve(m.value)
   } else if (m.t === 'stop') {
     void (running?.stop() ?? Promise.resolve()).finally(() => {
       send({ t: 'stopped' })

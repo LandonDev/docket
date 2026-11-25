@@ -2842,7 +2842,13 @@ Around the canvas:
   words ("Offline. Your edits are kept on this device until the connection
   is back."); it is a status, never a warning, takes no glyph and no colour,
   and wraps to two lines on a phone rather than cut. An update too large to
-  send is the same line in the text's place with a ghost Reload. A link that
+  send is the same line in the text's place with a ghost Reload. A sheet's
+  page has the same muted line over the grid ("Offline. Your edits are kept
+  on this device until the sheet is back."), the grid still editable under
+  it; a refused edit is the `failed` state mark "Edit not saved" with its
+  reason, and edits that could not be kept one plain line ("3 edits made
+  offline could not be kept. The sheet changed under them."), each until
+  the next edit the sheet takes. A link that
   opens nothing is the page's one empty state: past its own end "This link
   ended Dec 18" over "Ask Landon Hale for a new one if you still need it.",
   else "This link no longer opens anything"; out of reach, "This page cannot

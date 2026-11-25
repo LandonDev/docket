@@ -23,10 +23,13 @@ import { notServedWords } from './config'
 import { storeBook } from '../docs/storeBook'
 import { docStateRev } from './docRevision'
 import { INTERNAL_ROUTES, routeFor } from './routes'
+import { hostOf as sheetHost } from './routes/internalSheet'
+import { onPresence, peopleOn, sweepPresence } from './routes/sheetRooms'
+import { fileUid } from '../guests/fileIdent'
 import { originAllowed, refuseUpgrade, RouteError, sendJson, sendText, TEST_ORIGINS, type RouteCtx } from './routes/route'
 // By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
 import { projectionLists } from '../../../../shared/work/guestProjection'
-import type { DocRevision, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject } from './wire'
+import type { DocRevision, GuestAsk, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject, SheetCommit, SheetPresent } from './wire'
 import { queuedHistory } from '../history/hostQueue'
 
 /**
@@ -41,11 +44,20 @@ import { queuedHistory } from '../history/hostQueue'
  * source, the keys and the link rows over its wire.
  */
 
+/** How long changes of who is on a sheet are gathered before main is told. */
+export const PRESENCE_GATHER_MS = 100
+
 export interface ServiceIo {
   /** An unfenced LifeOS device JWT for the owner, from main. */
   jwt(): Promise<string>
   log(line: string): void
   docRevision?(notice: DocRevision): void
+  /** an op landed on a sheet this service holds */
+  sheetCommit?(notice: SheetCommit): void
+  /** who is on a sheet changed (wire.ts `SheetPresent`) */
+  sheetPresence?(notice: SheetPresent): void
+  /** main's answer about a guest link's own item (wire.ts `GuestAsk`); absent where main cannot be asked (a test) */
+  guestAsk?(ask: GuestAsk): Promise<unknown>
 }
 
 export interface RunningService {
@@ -156,6 +168,9 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     if (keyed && (claims.iat ?? 0) < keyed) return false
     // A token says what its holder may do: one signed for a role the link does not have now opens nothing, whenever it was signed.
     if (claims.role !== undefined && claims.role !== link.role) return false
+    // A file link opens the file it was made for: another file saved over its path since opens for nobody (fileIdent.ts).
+    const file = (link as { guest?: { file?: { path: string; uid: string } } }).guest?.file
+    if (file && fileUid(file.path) !== file.uid) return false
     if (!('project' in link.item)) return true
     const shown = projects.get(claims.link)?.projection
     if (!shown) return false
@@ -232,7 +247,36 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   compacting.unref()
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
-  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, mark, settled: () => settled, origins: () => origins, docLeft: (doc) => compaction.left(doc), stores, log: io.log }
+  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, mark, settled: () => settled, origins: () => origins, docLeft: (doc) => compaction.left(doc), ...(io.guestAsk ? { guestAsk: io.guestAsk } : {}), stores, log: io.log }
+
+  // Every op that lands on a sheet, whoever wrote it, is told to main: his open desktop grid on that sheet asks for it.
+  if (io.sheetCommit) {
+    const post = io.sheetCommit
+    sheetHost(ctx).onCommit((c) => post({ key: c.key, rev: c.rev }))
+  }
+
+  // Who is on a sheet, to main for his desktop grid: gathered a tenth of a second a sheet, so ten selections a second are a few messages.
+  const presenceWaiting = new Map<string, NodeJS.Timeout>()
+  const offPresence = io.sheetPresence
+    ? onPresence((key) => {
+        if (presenceWaiting.has(key)) return
+        presenceWaiting.set(
+          key,
+          setTimeout(() => {
+            presenceWaiting.delete(key)
+            io.sheetPresence!({ key, people: peopleOn(key) })
+          }, PRESENCE_GATHER_MS)
+        )
+      })
+    : null
+  // A desktop grid that went without saying so is let go.
+  const sweeping = setInterval(() => sweepPresence(), 60_000)
+  sweeping.unref()
+  // A document socket of a file's link whose file was replaced since it signed in is let go, before its room saves over the new file.
+  const fileWatch = setInterval(() => {
+    for (const [id, l] of links) if ((l as { guest?: { file?: unknown } }).guest?.file && !claimLive({ link: id })) collab.closeWhere((c) => c.link === id, 'the file is not the one shared')
+  }, 2000)
+  fileWatch.unref()
 
   // ── public ────────────────────────────────────────────────────────────
   const pathOf = (req: IncomingMessage): string | null => {
@@ -376,6 +420,11 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     async stop() {
       clearInterval(recovery)
       clearInterval(compacting)
+      clearInterval(sweeping)
+      clearInterval(fileWatch)
+      offPresence?.()
+      for (const t of presenceWaiting.values()) clearTimeout(t)
+      presenceWaiting.clear()
       history.stop()
       // Every page hears why before its socket goes: a restart, so it waits and tries again (the guest's page, the phone's).
       for (const client of wss.clients) client.close(CLOSE_RESTARTING, 'the service is restarting')

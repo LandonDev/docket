@@ -53,25 +53,27 @@ import { createProcScan, hasEnv } from './lib/procScan'
 
 // ── flags: which run ─────────────────────────────────────────────────────
 const FLAGS = process.argv.slice(2)
-if (FLAGS.includes('--sheet')) {
-  console.error("e2e-guest-live: --sheet is a later milestone's run and is not built yet")
-  process.exit(2)
-}
 /** `--restart`: milestone 2's run (two guests, three restarts while one types), into F-live-guest/M2. */
 const RESTART = FLAGS.includes('--restart')
+/** `--sheet`: milestone 3's run (a .tcsheet, his desktop grid and a guest's), into F-live-guest/M3. */
+const SHEET = FLAGS.includes('--sheet')
+if (RESTART && SHEET) {
+  console.error('e2e-guest-live: --restart and --sheet are separate runs')
+  process.exit(2)
+}
 
 const REPO = resolve(import.meta.dir, '..')
 const mainCheckout = (): string => {
   const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: REPO, encoding: 'utf8' }).stdout.trim()
   return common ? dirname(common) : REPO
 }
-const OUT = process.env.TC_PROOF_OUT ?? join(mainCheckout(), '.temp-code/plans/landed/F-live-guest', RESTART ? 'M2' : 'M1')
+const OUT = process.env.TC_PROOF_OUT ?? join(mainCheckout(), '.temp-code/plans/landed/F-live-guest', RESTART ? 'M2' : SHEET ? 'M3' : 'M1')
 const SCRATCH = process.env.TC_PROOF_DIR ?? '/tmp/tc-guest-live'
 const KEEP = process.env.TC_PROOF_KEEP === '1'
 const OWNER = 'Landon Hale'
 const GUEST = 'Dana Lee'
 const GUEST2 = 'Riley Fox'
-const TITLE = 'Field trip plan'
+const TITLE = SHEET ? 'Field trip budget' : 'Field trip plan'
 const OFFLINE_WORDS = 'Offline. Your edits are kept on this device until the connection is back.'
 const ENDED_WORDS = 'This link no longer opens anything'
 const SEED = ['The bus leaves the school at 8:15 and is back by 3:30.', 'Every student brings a packed lunch and a water bottle.', 'Two parents ride along on each bus.']
@@ -410,7 +412,8 @@ const mark = (what: string): string => `${what}-${++serial}${randomBytes(2).toSt
 const openGuest = async (url = rig.url): Promise<Page> => {
   const p = await Page.open(rig.debug)
   await p.go(url)
-  await p.until('the guest editor', `!!${EDITOR} && ${EDITOR}.isContentEditable && ${EDITOR}.innerText.length > 0`, 60_000)
+  if (SHEET) await p.until('the guest grid', `!!document.querySelector('canvas') && ${FIND_GRID}`, 60_000)
+  else await p.until('the guest editor', `!!${EDITOR} && ${EDITOR}.isContentEditable && ${EDITOR}.innerText.length > 0`, 60_000)
   return p
 }
 const guestType = async (text: string, after: string | null = null): Promise<void> => {
@@ -419,7 +422,7 @@ const guestType = async (text: string, after: string | null = null): Promise<voi
 }
 const showThread = async (): Promise<boolean> => {
   await page(`window.__monocode.open(${JSON.stringify(rig.sessionId)})`)
-  return until(60_000, () => page<boolean>(`!!${WIN_EDITOR} && ${WIN_EDITOR}.isContentEditable`), 250)
+  return until(60_000, () => page<boolean>(SHEET ? `!!document.querySelector('canvas') && ${FIND_GRID}` : `!!${WIN_EDITOR} && ${WIN_EDITOR}.isContentEditable`), 250)
 }
 /** What the host's document holds, read through the host's own document read (`doc_read`, as a thread reads it). */
 const hostText = (): Promise<string> => tool(rig.sessionId, 'doc_read', { item: rig.itemId })
@@ -467,19 +470,22 @@ const STEPS: Step[] = [
       const made = await call<{ entries: { ref: { at: string; host?: string; path?: string } | null; name: string }[]; refused: { text: string }[] }>('work.files.make', {
         workspaceId: ws.id,
         at: { at: 'file', host, path: ws.path },
-        kind: 'document',
+        kind: SHEET ? 'sheet' : 'document',
         name: TITLE,
         op: `e2e-guest-live-make-${randomBytes(4).toString('hex')}`
       })
       const path = made.entries[0]?.ref?.path ?? ''
-      if (!check(`"${TITLE}" made as a .tcdoc in the workspace's folder (work.files.make)`, path.endsWith('.tcdoc') && existsSync(path), made.refused.map((r) => r.text).join('; ') || path)) throw new Error('no document')
+      const ext = SHEET ? '.tcsheet' : '.tcdoc'
+      if (!check(`"${TITLE}" made as a ${ext} in the workspace's folder (work.files.make)`, path.endsWith(ext) && existsSync(path), made.refused.map((r) => r.text).join('; ') || path)) throw new Error('no item to share')
       rig.source = { at: 'file', host, path }
       const thread = await call<{ id: string; scope?: string }>('session.create', { provider: 'claude', workspaceId: ws.id, threadType: 'chat', permission: 'auto', title: TITLE })
       rig.sessionId = thread.id
       check('a Work thread to hold it', thread.scope === 'work', thread.scope)
-      const item = await call<{ id: string; kind: string }>('work.canvas.open', { sessionId: thread.id, kind: 'document', source: rig.source, title: TITLE })
+      const kind = SHEET ? 'sheet' : 'document'
+      const item = await call<{ id: string; kind: string }>('work.canvas.open', { sessionId: thread.id, kind, source: rig.source, title: TITLE })
       rig.itemId = item.id
-      if (!check("the document open in the window's canvas, editable", (await showThread()) && item.kind === 'document', item.kind)) throw new Error('no editor in the window')
+      if (!check(`the ${kind} open in the window's canvas`, (await showThread()) && item.kind === kind, item.kind)) throw new Error('nothing open in the window')
+      if (SHEET) return sheetSetUp()
       await page(caretJs(WIN_EDITOR, null))
       for (const [i, sentence] of SEED.entries()) {
         if (i > 0) await winEnter()
@@ -697,6 +703,361 @@ const STEPS: Step[] = [
   }
 ]
 
+// ── --sheet: milestone 3's run ───────────────────────────────────────────
+/** Finds the grid's SheetHandle (the format row's `sheet` prop, on his window and on the guest's page alike) as `window.__h`. */
+const FIND_GRID = `(() => { for (const el of document.querySelectorAll('*')) { const k = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); if (!k) continue; let f = el[k]; while (f) { const s = f.memoizedProps && f.memoizedProps.sheet; if (s && s.api) { window.__h = s; return true } f = f.return } } return false })()`
+const ACTIVE = `(${FIND_GRID}, window.__h.api.getActiveWorkbook().getActiveSheet())`
+const SHEET_OFFLINE = 'Offline. Your edits are kept on this device until the sheet is back.'
+const ROWS = 20
+const COLS = 12
+/** A1 from zero-based row and column (the run stays within A–Z). */
+const a1 = (r: number, c: number): string => `${String.fromCharCode(65 + c)}${r + 1}`
+
+/** One grid: his window's or the guest's page, driven alike. */
+interface Grid {
+  side: 'window' | 'guest'
+  eval<T>(js: string): Promise<T>
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>
+}
+const winGrid: Grid = { side: 'window', eval: (js) => page(js), send: (m, p = {}) => win!.send(m, p) }
+const guestGrid = (): Grid => ({ side: 'guest', eval: (js) => rig.guest!.eval(js), send: (m, p = {}) => rig.guest!.send(m, p) })
+/** What a cell shows (a formula's value). */
+const shows = (g: Grid, r: number, c: number): Promise<string> => g.eval<string>(`(() => { const v = ${ACTIVE}.getRange(${r}, ${c}).getDisplayValue(); return v == null ? '' : String(v) })()`)
+/** The first ROWS × COLS cells as the grid shows them. */
+const area = (g: Grid): Promise<string[][]> =>
+  g.eval<string[][]>(`(() => { const s = ${ACTIVE}; const out = []; for (let r = 0; r < ${ROWS}; r++) { const row = []; for (let c = 0; c < ${COLS}; c++) { const v = s.getRange(r, c).getDisplayValue(); row.push(v == null ? '' : String(v)) } out.push(row) } return out })()`)
+/** His selection, or the guest's, on one cell (the grid tells its line, as a click does). */
+const select = (g: Grid, r: number, c: number): Promise<boolean> =>
+  g.eval<boolean>(`(() => { const s = ${ACTIVE}; const x = s.getRange(${r}, ${c}); if (x.activate) x.activate(); else s.setActiveRange(x); return true })()`)
+let viaApi = 0
+/**
+ * Types into a cell as a person does: a click in the grid gives it the keys, the cell is made the active one, the
+ * first character starts the cell's editor and Enter ends it. Where the keys did not reach the cell (a rig fault, not
+ * the sheet's), the value goes through the grid's own API instead, so the edit still travels the grid's own path; the
+ * run says how often.
+ */
+async function typeCell(g: Grid, r: number, c: number, text: string, fallback = true): Promise<number> {
+  const box = await g.eval<{ x: number; y: number; w: number; h: number }>(`(() => { const c = [...document.querySelectorAll('canvas')].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0].getBoundingClientRect(); return { x: c.x, y: c.y, w: c.width, h: c.height } })()`)
+  const x = box.x + Math.min(box.w - 20, 46 + 88 * 10 + 40)
+  const y = box.y + Math.min(box.h - 20, 20 + 24 * 16 + 10)
+  for (const type of ['mousePressed', 'mouseReleased']) await g.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 })
+  await sleep(120)
+  await select(g, r, c)
+  await sleep(250)
+  const first = text[0]!
+  await g.send('Input.dispatchKeyEvent', { type: 'keyDown', key: first, text: first, windowsVirtualKeyCode: first.toUpperCase().charCodeAt(0) })
+  await g.send('Input.dispatchKeyEvent', { type: 'keyUp', key: first, windowsVirtualKeyCode: first.toUpperCase().charCodeAt(0) })
+  if (text.length > 1) await g.send('Input.insertText', { text: text.slice(1) })
+  await sleep(80)
+  const enteredAt = Date.now()
+  await g.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
+  await g.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  const took = await until(2000, async () => {
+    const f = await g.eval<string>(`${ACTIVE}.getRange(${r}, ${c}).getFormula() || ''`)
+    return text.startsWith('=') ? f.replace(/\s/g, '').toUpperCase() === text.replace(/\s/g, '').toUpperCase() : (await shows(g, r, c)) === text
+  }, 50)
+  // Beside a concurrent row change the cell may have moved before it was looked at: no second write there.
+  if (took || !fallback) return enteredAt
+  viaApi++
+  note(`the keys did not reach ${a1(r, c)} on the ${g.side}'s grid; set through the grid's API`)
+  const setAt = Date.now()
+  await g.eval(`(${ACTIVE}.getRange(${r}, ${c}).setValue(${JSON.stringify(/^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text)}), true)`)
+  return setAt
+}
+/** Seen on the other side within `budget` of the edit's Enter. */
+async function seenWithin(label: string, budget: number, from: number, test: () => Promise<boolean>): Promise<boolean> {
+  const seen = await until(Math.max(budget * 10, 10_000), test, 25)
+  const ms = Date.now() - from
+  timed(label, seen ? `${ms} ms` : 'never')
+  return check(`${label} within ${budget / 1000} s`, seen && ms <= budget, seen ? `${ms} ms` : 'never')
+}
+const insertRow = (g: Grid, at: number): Promise<unknown> => g.eval(`(${ACTIVE}.insertRowBefore(${at}), true)`)
+const labels = (g: Grid): Promise<string[]> => g.eval<string[]>(`[...document.querySelectorAll('[data-slot=sheet-presence]')].map((e) => e.textContent.trim())`)
+const sheetLine = (sel: string): Promise<string | null> => rig.guest!.eval<string | null>(`document.querySelector('${sel}')?.innerText?.trim() ?? null`).catch(() => null)
+
+/** The stored sheet, read through the host's own read (`sheet_read`, as a thread reads it): A1 → what the cell holds (a formula's value). */
+async function stored(range = `A1:${a1(ROWS - 1, COLS - 1)}`): Promise<Map<string, string>> {
+  const text = await tool(rig.sessionId, 'sheet_read', { item: rig.itemId, range })
+  const out = new Map<string, string>()
+  for (const part of text.split('\n').flatMap((l) => l.split('  |  '))) {
+    const m = /^([A-Z]+\d+) (.*)$/.exec(part.trim())
+    if (!m) continue
+    let rest = m[2]!.replace(/ note ".*"$/, '')
+    if (rest.startsWith('note ')) continue
+    if (rest.startsWith('=')) rest = rest.includes(' = ') ? rest.slice(rest.lastIndexOf(' = ') + 3) : '""'
+    let v: unknown = rest
+    try {
+      v = JSON.parse(rest)
+    } catch {
+      /* as it is */
+    }
+    out.set(m[1]!, v === null || v === undefined ? '' : String(v))
+  }
+  return out
+}
+const storedArea = async (): Promise<string[][]> => {
+  const got = await stored()
+  return Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLS }, (_, c) => got.get(a1(r, c)) ?? ''))
+}
+/** The cells where two areas differ, as "A3: x | y". */
+const differ = (a: string[][], b: string[][]): string[] => a.flatMap((row, r) => row.flatMap((v, c) => (v === (b[r]?.[c] ?? '') ? [] : [`${a1(r, c)}: ${JSON.stringify(v)} | ${JSON.stringify(b[r]?.[c] ?? '')}`])))
+const shotsOf = async (name: string): Promise<void> => {
+  await winShot(`${step}-${name}-window`)
+  if (rig.guest) await guestShot(rig.guest, `${step}-${name}-guest`)
+}
+
+/** The text frames the guest's tab receives on its sockets from now, over a CDP session of its own; `stop` ends it and hands them back. */
+async function socketFrames(debug: number): Promise<{ stop(): string[] }> {
+  const targets = (await (await fetch(`http://127.0.0.1:${debug}/json/list`)).json()) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
+  const tab = targets.find((t) => t.type === 'page' && t.url.includes('/g/') && t.webSocketDebuggerUrl)
+  const got: string[] = []
+  if (!tab) return { stop: () => got }
+  const ws = new WebSocket(tab.webSocketDebuggerUrl!)
+  await new Promise((r) => (ws.onopen = r))
+  ws.onmessage = (e) => {
+    const m = JSON.parse(String(e.data)) as { method?: string; params?: { response?: { payloadData?: string } } }
+    if (m.method === 'Network.webSocketFrameReceived' && m.params?.response?.payloadData) got.push(m.params.response.payloadData.slice(0, 400))
+  }
+  ws.send(JSON.stringify({ id: 1, method: 'Network.enable', params: {} }))
+  await sleep(200)
+  return {
+    stop: () => {
+      ws.close()
+      return got
+    }
+  }
+}
+
+/** The set-up's end for a sheet: the guest's link and page. */
+async function sheetSetUp(): Promise<void> {
+  const created = await call<{ link: { id: string }; url: string }>('work.guests.create', { source: rig.source, title: TITLE, name: GUEST, role: 'edit', expiresAt: Date.now() + 7 * 24 * 3600_000 })
+  rig.linkId = created.link.id
+  rig.url = created.url
+  check(`an Edit link for ${GUEST}, at the guest line's address`, created.url.startsWith(`${rig.origin}/g/${created.link.id}#`), new URL(created.url).origin)
+  rig.debug = await startChrome()
+  Page.shots = OUT
+  rig.guest = await openGuest()
+  check("the guest's page opens the sheet's grid, editable", await rig.guest.eval<boolean>(`!!document.querySelector('[data-slot=sheet-toolbar], [role=toolbar]') || ${FIND_GRID}`))
+  await shotsOf('setup')
+}
+
+const SHEET_STEPS: Step[] = [
+  {
+    n: '01',
+    id: 'both-type',
+    title: "both type and see each other's cells, with names on the selections",
+    async run() {
+      const g = guestGrid()
+      const sent = await typeCell(g, 1, 1, 'guest-hello')
+      await seenWithin("the guest's cell B2 in his grid", 1000, sent, async () => (await shows(winGrid, 1, 1)) === 'guest-hello')
+      const his = await typeCell(winGrid, 1, 2, 'owner-hello')
+      await seenWithin("his cell C2 on the guest's grid", 1000, his, async () => (await shows(g, 1, 2)) === 'owner-hello')
+      await select(g, 4, 1)
+      await select(winGrid, 4, 3)
+      const named = await until(5000, async () => (await labels(winGrid)).includes(GUEST))
+      check(`his grid draws the guest's selection named "${GUEST}"`, named, JSON.stringify(await labels(winGrid)))
+      const hisNamed = await until(5000, async () => (await labels(g)).includes(OWNER))
+      check(`the guest's grid draws his selection named "${OWNER}"`, hisNamed, JSON.stringify(await labels(g)))
+      const inBar = await until(5000, () => page<boolean>(`[...document.querySelectorAll('[data-canvas-bar] [data-person]')].some((e) => e.textContent.trim() === 'D' && (e.closest('[role=group]')?.getAttribute('aria-label') ?? '').includes(${JSON.stringify(GUEST)}))`))
+      check(`the guest's face ("D", ${GUEST}) in his canvas bar`, inBar)
+      const inLine = await until(5000, () => rig.guest!.eval<boolean>(`[...document.querySelectorAll('[data-guest-faces] [data-person]')].some((e) => e.title === ${JSON.stringify(OWNER)})`))
+      check(`his face (titled ${OWNER}) in the guest's line`, inLine)
+      await shotsOf('both-type')
+    }
+  },
+  {
+    n: '02',
+    id: 'insert-while-typing',
+    title: 'a row inserted while the other types below it, both orders',
+    async run() {
+      const g = guestGrid()
+      // He inserts a row above while the guest types below it.
+      await Promise.all([typeCell(g, 9, 0, 'below-a', false), sleep(200).then(() => insertRow(winGrid, 1))])
+      await sleep(3000)
+      // The guest inserts a row above while he types below it.
+      await Promise.all([typeCell(winGrid, 12, 0, 'below-b', false), sleep(200).then(() => insertRow(g, 1))])
+      let last = { guest: [] as string[][], window: [] as string[][], kept: [] as string[][] }
+      const same = await until(20_000, async () => {
+        last = { guest: await area(g), window: await area(winGrid), kept: await storedArea() }
+        return differ(last.guest, last.window).length === 0 && differ(last.window, last.kept).length === 0
+      }, 500)
+      const where = (word: string, a: string[][]): string[] => a.flatMap((row, r) => row.flatMap((v, c) => (v === word ? [a1(r, c)] : [])))
+      check(
+        'the two grids and the stored sheet are equal cell for cell',
+        same,
+        same ? `below-a at ${where('below-a', last.kept).join(',')}, below-b at ${where('below-b', last.kept).join(',')}` : `guest|window: ${differ(last.guest, last.window).slice(0, 6).join('; ')}; window|stored: ${differ(last.window, last.kept).slice(0, 6).join('; ')}`
+      )
+      check('each typed word is there once', ['below-a', 'below-b'].every((w) => where(w, last.kept).length === 1), JSON.stringify({ a: where('below-a', last.kept), b: where('below-b', last.kept) }))
+      await shotsOf('insert')
+    }
+  },
+  {
+    n: '03',
+    id: 'formula',
+    title: 'a formula on one side follows an input changed on the other',
+    async run() {
+      const g = guestGrid()
+      for (const [r, v] of [[1, '1'], [2, '2'], [3, '3']] as const) await typeCell(winGrid, r, 7, v)
+      await until(5000, async () => (await shows(g, 3, 7)) === '3')
+      await typeCell(g, 5, 7, '=SUM(H2:H4)')
+      const six = await until(5000, async () => (await shows(g, 5, 7)) === '6' && (await shows(winGrid, 5, 7)) === '6')
+      check("the guest's =SUM(H2:H4) reads 6 on both grids", six, `${await shows(g, 5, 7)} | ${await shows(winGrid, 5, 7)}`)
+      const changed = await typeCell(winGrid, 2, 7, '10')
+      await seenWithin("the guest's formula follows his input (14 on the guest's grid)", 1000, changed, async () => (await shows(g, 5, 7)) === '14')
+      const kept = await until(10_000, async () => (await stored(`H6:H6`)).get('H6') === '14')
+      check('the stored sheet holds 14 in H6', kept, JSON.stringify([...(await stored('H6:H6')).entries()]))
+      check('his grid shows 14 in H6', (await shows(winGrid, 5, 7)) === '14')
+      await shotsOf('formula')
+    }
+  },
+  {
+    n: '04',
+    id: 'offline',
+    title: '20 s cut: three edits kept and sent',
+    async run() {
+      const g = guestGrid()
+      rig.line.cut()
+      const cutAt = Date.now()
+      const words = ['off-1', 'off-2', 'off-3']
+      try {
+        const shown = within('the offline line after the cut', 3000, async () => (await sheetLine('[data-sheet-offline]')) === SHEET_OFFLINE)
+        await sleep(400)
+        for (const [i, w] of words.entries()) await typeCell(g, 1 + i, 9, w)
+        await shown
+        check("the guest's grid holds the three edits while cut off", (await Promise.all(words.map((_, i) => shows(g, 1 + i, 9)))).join() === words.join())
+        await shotsOf('offline')
+        await sleep(Math.max(0, 20_000 - (Date.now() - cutAt)))
+      } finally {
+        // Whatever happened, the line is healed: the steps after it need it.
+        rig.line.heal()
+      }
+      const healAt = Date.now()
+      const gone = await until(60_000, async () => (await sheetLine('[data-sheet-offline]')) === null, 100)
+      timed('heal to the offline line gone', gone ? `${Date.now() - healAt} ms` : 'never (60 s)')
+      check('healed: the offline line goes', gone)
+      const inGrid = await until(30_000, async () => (await Promise.all(words.map((_, i) => shows(winGrid, 1 + i, 9)))).join() === words.join(), 100)
+      timed('heal to the three in his grid', inGrid ? `${Date.now() - healAt} ms` : 'never (30 s)')
+      check('healed: the three edits are in his grid', inGrid)
+      const kept = await until(15_000, async () => {
+        const got = await stored('J2:J4')
+        return words.every((w, i) => got.get(`J${2 + i}`) === w)
+      }, 250)
+      check('healed: the three edits are in the stored sheet', kept, JSON.stringify([...(await stored('J2:J4')).entries()]))
+      check('no edit was said to be lost', (await sheetLine('[data-sheet-dropped]')) === null, (await sheetLine('[data-sheet-dropped]')) ?? '')
+      await shotsOf('healed')
+    }
+  },
+  {
+    n: '05',
+    id: 'host-restart',
+    title: 'the host restarted with the page open',
+    async run() {
+      const g = guestGrid()
+      let endedSeen = false
+      let watching = true
+      const watch = (async () => {
+        while (watching) {
+          if (rig.guest && (await ended(rig.guest))) endedSeen = true
+          await sleep(200)
+        }
+      })()
+      try {
+        const downAt = Date.now()
+        check('the whole instance stopped (its group, then its userData marker)', await stopInstance())
+        const gap = mark('gap').toLowerCase()
+        await typeCell(g, 1, 10, gap)
+        const shown = await until(5000, async () => (await sheetLine('[data-sheet-offline]')) === SHEET_OFFLINE)
+        check('the page shows the offline line while the host is down', shown, JSON.stringify(await sheetLine('[data-sheet-offline]')))
+        await guestShot(rig.guest!, '05-host-down-guest')
+        const again = await startInstance(rig.origin)
+        const upAt = await startTimes('restart', again)
+        if (!check('the Work service answers again (/w/healthz)', upAt !== null)) return
+        const cleared = await until(180_000, async () => (await sheetLine('[data-sheet-offline]')) === null && !(await ended(rig.guest!)), 100)
+        timed('service answering to the offline line gone', cleared ? `${((Date.now() - upAt!) / 1000).toFixed(1)} s` : 'never (180 s)')
+        const probe = mark('live').toLowerCase()
+        let arrived = false
+        if (cleared) {
+          await typeCell(g, 2, 10, probe)
+          arrived = await until(120_000, async () => (await stored('K3:K3')).get('K3') === probe, 250)
+        }
+        const liveAt = Date.now()
+        timed('the restart gap: service answering to the page live again (line gone, a new edit stored)', arrived ? `${((liveAt - upAt!) / 1000).toFixed(1)} s` : 'never')
+        timed('the page away in all: the instance stopped to the page live again', arrived ? `${((liveAt - downAt) / 1000).toFixed(1)} s` : 'never')
+        check('the page comes back by itself: the line goes and a new edit is stored', cleared && arrived)
+        check('it is live within about 15 s of the service answering', arrived && liveAt - upAt! <= 15_000, `${((liveAt - upAt!) / 1000).toFixed(1)} s`)
+        const kept = await stored('K2:K2')
+        check('the edit typed in the gap landed', kept.get('K2') === gap, JSON.stringify([...kept.entries()]))
+      } finally {
+        watching = false
+        await watch
+      }
+      check(`the page never ended ("${ENDED_WORDS}")`, !endedSeen)
+      await showThread()
+      await shotsOf('host-restart')
+    }
+  },
+  {
+    n: '06',
+    id: 'refused',
+    title: 'a refused act said in words',
+    async run() {
+      // A guest may not add a tab: the grid's own command makes the mutation, the page's session sends it, the service refuses it.
+      // What the service answers is read off the page's own socket (a second CDP session on the guest's tab).
+      const frames = await socketFrames(rig.debug)
+      const err = await rig.guest!.eval<string | null>(`(() => { try { ${FIND_GRID}; window.__h.api.getActiveWorkbook().insertSheet('Guest tab'); return null } catch (e) { return String(e).slice(0, 200) } })()`)
+      if (err) note(`the grid threw on insertSheet: ${err}`)
+      let said: string | null = null
+      const refused = await until(10_000, async () => (said = await sheetLine('[data-sheet-refused]')) !== null && said.includes('Edit not saved'), 100)
+      check('the page says "Edit not saved"', refused, said ?? 'nothing')
+      await sleep(500)
+      const answers = frames.stop().filter((f) => f.includes('"refused"'))
+      note(`the service answered: ${answers.join(' ') || '(no refused frame seen)'}`)
+      check('…and why, in plain words', !!said && said.replace('Edit not saved', '').trim().length > 0 && !/sheet\.mutation|insert sheet/i.test(said), said ?? '')
+      const tabs = await until(10_000, async () => (await rig.guest!.eval<number>(`(${FIND_GRID}, window.__h.api.getActiveWorkbook().getSheets().length)`)) === 1, 250)
+      check("the guest's grid is back to the sheet's one tab", tabs)
+      const kept = await storedArea()
+      const off = differ(await area(guestGrid()), kept)
+      check('the page goes on: not ended, its grid equal to the stored sheet', !(await ended(rig.guest!)) && off.length === 0, off.slice(0, 4).join('; '))
+      await shotsOf('refused')
+    }
+  },
+  {
+    n: '07',
+    id: 'history',
+    title: "History names the guest's edits",
+    async run() {
+      type Got = { revisions: { rev: number; by: string; label: string }[]; names: Record<string, string> }
+      let got: Got = { revisions: [], names: {} }
+      const named = await until(15_000, async () => {
+        got = await call<Got>('work.sheets.history', { itemId: rig.itemId })
+        return got.revisions.some((r) => got.names[r.by] === GUEST)
+      }, 500)
+      const mine = got.revisions.filter((r) => got.names[r.by] === GUEST)
+      check(`History lists the guest's edits under "${GUEST}"`, named, `${mine.length} of ${got.revisions.length} revisions: ${mine.slice(0, 3).map((r) => r.label).join('; ')}`)
+      check('…and none under a bare principal', !got.revisions.some((r) => r.by.startsWith('guest:') && !got.names[r.by]), JSON.stringify(got.revisions.filter((r) => r.by.startsWith('guest:')).slice(0, 2)))
+      await shotsOf('history')
+    }
+  },
+  {
+    n: '08',
+    id: 'revoke',
+    title: 'revoke ends the page',
+    async run() {
+      const before = await rig.guest!.eval<string[]>(`indexedDB.databases().then((d) => d.map((x) => x.name))`).catch(() => [])
+      note(`databases before the revoke: ${JSON.stringify(before)}`)
+      await call('work.guests.revoke', { linkId: rig.linkId })
+      await within('the page ends after the revoke', 2000, () => ended(rig.guest!))
+      let names: string[] = []
+      const wiped = await until(5000, async () => {
+        names = await rig.guest!.eval<string[]>(`indexedDB.databases().then((d) => d.map((x) => x.name))`)
+        return !names.some((n) => n.startsWith('tempcode-guest:'))
+      }, 200)
+      check('no tempcode-guest: database is left in the tab', wiped, JSON.stringify(names))
+      await shotsOf('revoke')
+    }
+  }
+]
+
 // ── --restart: milestone 2's run ─────────────────────────────────────────
 /** What the typing guest types, one character about every 150 ms: 3,120 characters, about eight minutes, long enough to type right through three restarts. */
 const KNOWN = 'abcdefghijklmnopqrstuvwxyz'.repeat(120)
@@ -791,7 +1152,7 @@ const RESTART_STEP: Step = {
 }
 
 // ── the run ──────────────────────────────────────────────────────────────
-const PLAN: Step[] = RESTART ? [STEPS[0]!, RESTART_STEP] : STEPS
+const PLAN: Step[] = RESTART ? [STEPS[0]!, RESTART_STEP] : SHEET ? [{ ...STEPS[0]!, n: '00' }, ...SHEET_STEPS] : STEPS
 const startedAt = new Date()
 try {
   for (const s of PLAN) {
@@ -806,6 +1167,7 @@ try {
   }
 } finally {
   step = '99'
+  if (SHEET) note(`edits set through the grid's API because the keys did not reach the cell: ${viaApi}`)
   await closeTab(rig.guest)
   await closeTab(rig.guest2)
   await stopChrome().catch((e: unknown) => check('Chromium stopped', false, String(e)))
@@ -816,7 +1178,7 @@ try {
   const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout.split('\n').filter(Boolean).length
   const pictures = readdirSync(OUT).filter((f) => /^\d\d-.*\.png$/.test(f)).sort()
   const report = [
-    `# Live editing by guest link: the milestone ${RESTART ? '2' : '1'} proof${RESTART ? ' (--restart)' : ''}`,
+    `# Live editing by guest link: the milestone ${RESTART ? '2' : SHEET ? '3' : '1'} proof${RESTART ? ' (--restart)' : SHEET ? ' (--sheet)' : ''}`,
     '',
     `Run ${startedAt.toISOString()} on the box: \`bun scripts/e2e-guest-live.ts${FLAGS.length ? ` ${FLAGS.join(' ')}` : ''}\` in \`${REPO}\`, the built tree of ${commit}${dirty ? ` with ${dirty} files changed beside it` : ''}. One windowed instance under xvfb, one headless Chromium (${CHROME}) as the guest, through a TCP proxy that can be cut.`,
     '',

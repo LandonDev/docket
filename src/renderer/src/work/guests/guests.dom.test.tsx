@@ -130,13 +130,12 @@ describe("Share", () => {
     await waitFor(() => expect(calls.list.find((c) => c.method === "work.guests.revoke")?.params).toEqual({ linkId: "abc" }));
   });
 
-  it("shares a TempCode document kept as a file, View or Edit: its comments stay on the computer that has it", async () => {
+  it("shares a TempCode document kept as a file to view, comment or edit, as a LifeOS document: its comments are asked of the computer that has it", async () => {
     const { ShareButton } = await import("./Share");
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByPlaceholderText("Name");
-    expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    for (const can of ["View", "Comment", "Edit"]) expect(screen.getByRole("button", { name: can })).toBeTruthy();
     expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "file", host: "box", path: "/w/Plan.tcdoc" } } });
   });
 
@@ -322,6 +321,16 @@ describe("the held request and the audit list", () => {
     await act(async () => open());
     await waitFor(() => expect(screen.getByText(/The link was already opened elsewhere/)).toBeTruthy());
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
+  });
+
+  it("lists a file's link with the file's name and the folder it is in, by the folder's name alone, and says who is in it now", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [{ ...LINK, id: "file1", name: "Dana Lee", title: "Field trip plan", open: 2, source: { at: "file", table: "docs", id: "f".repeat(40), host: "box", path: "/srv/work/purdue/Trips/Field trip plan.tcdoc" } }];
+    render(<GuestLinksSection hosts={["box"]} />);
+    await screen.findByText("Dana Lee");
+    expect(screen.getByText(/^Edit, Field trip plan in Trips, until .*, in it now$/)).toBeTruthy();
+    // No path is shown in a row.
+    expect(document.body.textContent).not.toContain("/srv/work");
   });
 
   it("lists every link, live first, a revoked one muted with no Revoke", async () => {
