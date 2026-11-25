@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMinute } from "../tasks/minute";
 import type { TellRow } from "@shared/work/tell";
 import { useToastSync } from "../../chrome/toastSync";
 import { requestSettings } from "../../lib/monaco/debugTab";
@@ -78,11 +79,7 @@ export function DigestHost() {
   // What he has heard here, as marks: a telling sounds once (`marked`).
   const heard = useRef(new Set<string>());
   // The minute hand: an interrupt a day old leaves on its own.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const now = useMinute();
   // Another window closed one: this window's goes too.
   useEffect(() => {
     const onStorage = (e: StorageEvent): void => {

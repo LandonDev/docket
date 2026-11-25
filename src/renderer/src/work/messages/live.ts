@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMinute } from "../tasks/minute";
 import { makeFunctionReference } from "convex/server";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import { messagesPaneOf, type SectorKey } from "@shared/work";
@@ -68,16 +69,6 @@ function usePaged<T>(session: LifeosSession, name: string, args: Record<string, 
   return kept ? { status: "ready", value: kept } : { status: "loading" };
 }
 
-/** The minute, moved on as it turns. */
-function useMinute(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = (): void => setNow(Date.now());
-    const timer = setInterval(tick, 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 
 /** The source rows of this job that are chat, as the sync line and the empty list read them. */
