@@ -110,7 +110,7 @@ describe("the Tasks view", () => {
   });
 
   it("opens the sheet of a task a person's page asks for", async () => {
-    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask="t3" />);
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "t3" }} />);
     const dialog = await screen.findByRole("dialog");
     // The sheet reads the task from LifeOS (`tasks:get`): here its notes stand in.
     expect(within(dialog).getByText("Ask for the east hall")).toBeTruthy();
@@ -298,7 +298,7 @@ describe("Tasks coming back", () => {
     expect(within(await screen.findByRole("dialog")).getByText("Ask for the east hall")).toBeTruthy();
     cleanup();
     localStorage.clear();
-    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask="t1" workspaceId="ws2" />);
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "t1" }} workspaceId="ws2" />);
     await screen.findByRole("dialog");
     expect(returnOf("ws2").places?.tasks).toEqual({ task: "t1" });
   });

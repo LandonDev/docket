@@ -172,6 +172,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Added to ${jobNameNow(sector)}`", "answer"],
   ],
   [`${R}/tasks/TaskSheet.tsx`]: [
+    ["Done", "read"],
     ["Done", "local"],
   ],
   [`${R}/tasks/TasksView.tsx`]: [

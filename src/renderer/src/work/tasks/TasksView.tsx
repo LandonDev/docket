@@ -79,23 +79,34 @@ export function Kept({ sector, lifeos }: WorkViewProps) {
 
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  // A task asked for from elsewhere (a person's page) opens in its sheet: taken once, then cleared.
+  // A task asked for from elsewhere (a person's page, Work Search) opens in its sheet: taken once, then cleared. Each
+  // request is a fresh object, so the same task asked for twice opens its sheet twice.
   const wanted = useWorkView();
   const asked = wanted?.workspaceId === workspace.id && wanted.view === "tasks" ? wanted.task : undefined;
-  const [openTask, setOpenTask] = useState<string | undefined>(undefined);
+  const [openTask, setOpenTask] = useState<OpenRequest | undefined>(undefined);
   useEffect(() => {
     if (!asked) return;
-    setOpenTask(asked);
+    setOpenTask({ id: asked });
     openWorkView({ workspaceId: workspace.id, view: "tasks" });
   }, [asked, workspace.id]);
+  const taken = useMemo(() => () => setOpenTask(undefined), []);
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} workspaceId={workspace.id} />
+      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} onOpenTaken={taken} workspaceId={workspace.id} />
     </ConvexProvider>
   );
 }
+
+/** A request to open a task's sheet: one object a request, so asking for the same task again is a new request. */
+export type OpenRequest = { id: string };
+
+/**
+ * The task whose sheet is open. `listed`: opened from the open list (a row, the lead, the kept place), so the sheet
+ * closes once the task leaves it; a task asked for by id (Work Search's done task) is read by id alone and stays.
+ */
+type Opened = { id: string; listed: boolean } | null;
 
 const chipOf = (task: Task): ContextChip => ({ kind: "task", label: task.title, ref: { at: "lifeos", table: "tasks", id: task._id } });
 
@@ -120,13 +131,16 @@ export function Tasks({
   startThread,
   useThread = noThread,
   openTask,
+  onOpenTaken,
   workspaceId,
 }: {
   client: TasksClient;
   /** The workspace whose record keeps the open sheet; absent (a test, a preview), nothing is kept. */
   workspaceId?: string;
-  /** A task whose sheet opens when it is given (a person's page asked for it). */
-  openTask?: string | undefined;
+  /** A task whose sheet opens when it is given (a person's page or Work Search asked for it), done tasks too. */
+  openTask?: OpenRequest | undefined;
+  /** Told once the sheet took `openTask`, so the request is cleared. */
+  onOpenTaken?: () => void;
   /** The workspace's sector: a code workspace linked to it reads the task in LifeOS. */
   sector?: string | null;
   startThread: (about: ContextChip, at?: { cwd: string; projectId: string | null }) => void;
@@ -144,16 +158,23 @@ export function Tasks({
   const start = useMemo(() => (task: Task) => latest.current(chipOf(task)), []);
   const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
   // The task whose sheet is open, kept in the workspace's record (lib/workReturn.ts) so coming back opens it again.
-  const [opened, setOpened] = useState<string | null>(() => (workspaceId ? (keptPlace<{ task: string }>(workspaceId, "tasks", { task: "string" }).task ?? null) : null));
-  const open = useMemo(() => (task: Task) => setOpened(task._id), []);
+  const [opened, setOpened] = useState<Opened>(() => {
+    const kept = workspaceId ? keptPlace<{ task: string }>(workspaceId, "tasks", { task: "string" }).task : undefined;
+    return kept ? { id: kept, listed: true } : null;
+  });
+  const open = useMemo(() => (task: Task) => setOpened({ id: task._id, listed: true }), []);
+  const takenRef = useRef(onOpenTaken);
+  takenRef.current = onOpenTaken;
   useEffect(() => {
-    if (openTask) setOpened(openTask);
+    if (!openTask) return;
+    setOpened({ id: openTask.id, listed: false });
+    takenRef.current?.();
   }, [openTask]);
   useEffect(() => {
-    if (workspaceId) keepPlace(workspaceId, "tasks", { task: opened ?? undefined });
+    if (workspaceId) keepPlace(workspaceId, "tasks", { task: opened?.id });
   }, [workspaceId, opened]);
-  // A task done or dropped since (here or on another computer) is no longer open: its sheet closes, quietly.
-  const missing = !!opened && !!tasks && !tasks.some((t) => t._id === opened);
+  // A task opened from the list and done or dropped since (here or on another computer) is no longer open: its sheet closes, quietly.
+  const missing = !!opened?.listed && !!tasks && !tasks.some((t) => t._id === opened.id);
   useEffect(() => {
     if (missing) setOpened(null);
   }, [missing]);
@@ -161,12 +182,26 @@ export function Tasks({
   const code = useMemo(() => (task: Task) => setCoding(task), []);
   const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);
   if (!groups) return <TasksSkeleton />;
-  // The open task as the list has it now; a task that left the list (done elsewhere) closes its sheet.
-  const shown = opened ? (tasks?.find((t) => t._id === opened) ?? null) : null;
+  // The open task as the list has it now, its own row; a task asked for by id that the list does not hold is read by id.
+  const row = opened ? (tasks?.find((t) => t._id === opened.id) ?? null) : null;
+  const sheetOf = opened && (row || !opened.listed) ? { id: opened.id, row } : null;
   const lead = groups.today[0] ?? null;
   const rest = TASK_GROUPS.map((g) => ({ g, rows: g === "today" ? groups.today.slice(1) : groups[g] })).filter((x) => x.rows.length);
-  if (!lead && !rest.length) return <EmptyState title="Nothing open" />;
-  const meta = (task: Task) => metaOf(task, projects?.get(task.projectId ?? "")?.name);
+  const projectOf = (task: Task | null | undefined): string | undefined => (task ? projects?.get(task.projectId ?? "")?.name : undefined);
+  const sheet = (
+    <>
+      <TaskSheet open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
+      {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
+    </>
+  );
+  if (!lead && !rest.length)
+    return (
+      <>
+        <EmptyState title="Nothing open" />
+        {sheet}
+      </>
+    );
+  const meta = (task: Task) => metaOf(task, projectOf(task));
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
       {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
@@ -201,8 +236,7 @@ export function Tasks({
           />
         </section>
       ))}
-      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
-      {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
+      {sheet}
     </div>
   );
 }

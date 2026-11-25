@@ -197,7 +197,7 @@ read yet" is its quiet line. A Purdue routine's thread gets no answer hit. `@` o
 |---|---|---|---|
 | person | instant from the mirror, else network | `people:list`, kept by a name or an address; a person is in a job when one of `sectors` is | `{ view: 'people', with: { person } }` |
 | mail | network | `mail:search { text }`, each thread kept by the sector it sits in; a snippet only when the words are in neither its subject nor its sender | `{ view: 'mail', with: { mail } }` |
-| task | open tasks instant from the mirror; network for all | a key he typed (`PUR-41`) through `tasks:byKeys` first, then `tasks:search { text, sector? }` | `{ view: 'tasks', with: { task } }` |
+| task | open tasks instant from the mirror; network for all | a key he typed (`PUR-41`) through `tasks:byKeys` first, then `tasks:search { text, sector? }` | `{ view: 'tasks', with: { task } }`: its sheet, a done task's read by id and only reading |
 | event | instant from the mirror, else network | `events:range` from 30 days back to 120 days ahead (`EVENTS_BACK_DAYS`, `EVENTS_AHEAD_DAYS`), kept by title and place, what is coming first | `{ view: 'agenda', with: { event } }` |
 | doc | network | a sector at a time: `docs:list` by title, a page at a time up to 300 documents, kept 30 s (`docTitles`), then `catalog:search { sector, text }` with its line (a title past those read with `docs:get`) | `{ to: 'file', ref: { at: 'lifeos', table: 'docs', id }, name }`: a Files tab (a hit kept from before, `{ view: 'docs' }`, opens there too) |
 | project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
