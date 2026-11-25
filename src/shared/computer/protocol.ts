@@ -80,21 +80,7 @@ export const AX_WALK = {
   intoViewMaxNodes: 400
 } as const
 
-/** Observation text (§4.1, §4.5). */
-export const OBSERVATION_TEXT = {
-  indentSpaces: 2,
-  maxDepth: 10,
-  /** Unicode scalars of a name before `…` */
-  nameMaxChars: 100,
-  /** Unicode scalars of a value before `…(+<n> chars)` */
-  valueMaxChars: 160,
-  /** a run of this many unnamed, stateless siblings of one role folds into a range line */
-  rangeFoldRun: 6,
-  /** thin: fewer elements with a role-default action than this… */
-  thinActionable: 3,
-  /** …and fewer bytes of names and values than this */
-  thinTextBytes: 200
-} as const
+export { OBSERVATION_TEXT } from './protocolValues'
 
 /** The observation's size budget (§4.5). */
 export const OBSERVATION_BUDGET = {
@@ -462,31 +448,8 @@ export type ElementBrief = z.infer<typeof ElementBriefSchema>
 
 // ── actions (§5.1) ──────────────────────────────────────────────────────
 
-/** The first 17 are Anthropic's `computer_toolset_20260801` member names; the last five are ours. */
-export const COMPUTER_ACTION_NAMES = [
-  'screenshot',
-  'zoom',
-  'left_click',
-  'right_click',
-  'middle_click',
-  'double_click',
-  'triple_click',
-  'left_click_drag',
-  'mouse_move',
-  'left_mouse_down',
-  'left_mouse_up',
-  'cursor_position',
-  'scroll',
-  'type',
-  'key',
-  'hold_key',
-  'wait',
-  'set_value',
-  'perform',
-  'select_text',
-  'paste',
-  'save_as'
-] as const
+export { COMPUTER_ACTION_NAMES } from './protocolValues'
+import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTION_NAMES } from './protocolValues'
 export const ComputerActionNameSchema = z.enum(COMPUTER_ACTION_NAMES)
 export type ComputerActionName = z.infer<typeof ComputerActionNameSchema>
 
@@ -651,7 +614,7 @@ export function actionElements(action: Pick<ComputerAction, 'element' | 'start_e
 }
 
 /** Actions that send no input: their step's `tier` is null. */
-export const NO_INPUT_ACTIONS: readonly ComputerActionName[] = ['screenshot', 'zoom', 'cursor_position', 'wait']
+export const NO_INPUT_ACTIONS: readonly ComputerActionName[] = NO_INPUT_ACTION_NAMES
 
 /** Actions after which a batch takes no `stepWait`: they cannot change the screen. */
 export const STILL_ACTIONS: readonly ComputerActionName[] = NO_INPUT_ACTIONS

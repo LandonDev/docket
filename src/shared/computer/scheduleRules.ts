@@ -11,6 +11,8 @@
 import type { PermissionPolicy } from '../events'
 import type { StepResult } from './protocol'
 import { hostWords, localComputerPlatform } from './descriptions'
+import { waitedWords } from './waitedWords'
+export { waitedWords } from './waitedWords'
 
 /**
  * Whether a call's steps touched the session tier, so the host puts the person's front app and pointer back with
@@ -130,15 +132,6 @@ export interface ClipboardQuietInput {
 /** `now − max(foreignChangeAt ?? 0, watchingSince) ≥ quietMs`: a copy made before the watch began counts as made at its start. */
 export function clipboardQuiet(state: ClipboardQuietInput, now: number, quietMs: number = SCHEDULE.recentCopyMs): boolean {
   return now - Math.max(state.foreignChangeAt ?? 0, state.watchingSince) >= quietMs
-}
-
-/** 4s, 2m 14s, 3m, 1h 2m: a wait as the held line says it. */
-export function waitedWords(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000))
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`
-  return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 60)}h`
 }
 
 /** The line before a held step's own line in the tool result; null under 1 s. */

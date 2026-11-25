@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CONFIRM_KINDS, CONFIRM_KIND_INFO, CONFIRM_TITLE_MAX, ConfirmSchema, HOST_CONFIRM_KINDS, confirmInput, confirmTitle } from './policy'
+import { CONFIRM_KINDS, CONFIRM_KIND_INFO, CONFIRM_TITLE_MAX, HOST_CONFIRM_KINDS, confirmInput, confirmTitle } from './policy'
+import { ConfirmSchema } from './confirmSchema'
 
 describe('the confirm flag', () => {
   it('takes a kind of the policy and one line of what happens', () => {

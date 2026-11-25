@@ -109,6 +109,10 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   carries no recharts (667 kB), and the year's section keeps the chart's box while it loads, so nothing moves.
   scripts/viewGraphs.test.ts holds it on the source.
 - **The orchestration rules as plain values** (src/shared/rulesValues.ts): the window's two readers of them no
-  longer reach the zod schemas in src/shared/rules.ts. zod itself is still in the first paint by 17 other
+  longer reach the zod schemas in src/shared/rules.ts. The same for the computer step words the transcript draws:
+  `computer/protocolValues.ts` (the action names, the no-input actions, the observation's text limits),
+  `computer/confirmSchema.ts` (the confirmation's schema, apart from policy.ts) and `computer/waitedWords.ts` keep
+  protocol.ts, descriptions.ts and their schemas out of the first paint; all four schema files are on
+  `NEVER_IN_ENTRY` (scripts/check-bundle-size.ts), held on the source by scripts/entryGraph.test.ts. zod itself is still in the first paint by 17 other
   modules (listed in `.temp-code/plans/landed/PERF-work.md` "For the owner").
 

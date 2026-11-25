@@ -1,4 +1,4 @@
-import { waitedWords } from './scheduleRules'
+import { waitedWords } from './waitedWords'
 
 /**
  * A held computer call on the bridge (docs/computer-protocol.md §17 "A held

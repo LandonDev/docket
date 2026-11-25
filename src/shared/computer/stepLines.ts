@@ -6,17 +6,16 @@
  * tools' schemas and descriptions into the first paint.
  */
 import { parseElementLine } from './observation'
-import {
-  COMPUTER_ACTION_NAMES,
-  NO_INPUT_ACTIONS,
-  type ComputerAction,
-  type ComputerActionName,
-  type DiskChange,
-  type ElementBrief,
-  type InputVia,
-  type StepEffect,
-  type StepResult,
-  type WaitReport
+import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTION_NAMES as NO_INPUT_ACTIONS } from './protocolValues'
+import type {
+  ComputerAction,
+  ComputerActionName,
+  DiskChange,
+  ElementBrief,
+  InputVia,
+  StepEffect,
+  StepResult,
+  WaitReport
 } from './protocol'
 
 export const STEP_SEPARATOR = ' · '

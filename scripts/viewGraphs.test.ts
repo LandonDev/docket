@@ -23,6 +23,14 @@ describe('the window reads the orchestration rules as plain values', () => {
   })
 })
 
+describe("the first paint's computer step words", () => {
+  it('reach the plain values, never the protocol\'s or the confirmations\' schemas', () => {
+    const graph = entryGraph(root, 'src/renderer/src/surfaces/computerShots.ts')
+    expect(graph.has('src/shared/computer/protocolValues.ts')).toBe(true)
+    for (const schema of ['src/shared/computer/protocol.ts', 'src/shared/computer/confirmSchema.ts', 'src/shared/computer/descriptions.ts']) expect(graph.has(schema), schema).toBe(false)
+  })
+})
+
 describe("a view's own chunk", () => {
   it("Connections holds none of Work's settings page: its sign-in dialog loads on the press", () => {
     expect(reaches('src/renderer/src/work/connections/ConnectionsPage.tsx', 'src/renderer/src/work/shell/settings.tsx')).toEqual([])

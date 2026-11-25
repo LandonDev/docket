@@ -11,7 +11,7 @@ import { PermissionPolicySchema } from '../events'
 import { fieldWords, hostWords, perVerbDescription, toolDescription, type ComputerPlatform, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
 import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseKeyCombo } from './observation'
-import { ConfirmSchema } from './policy'
+import { ConfirmSchema } from './confirmSchema'
 import {
   ACTION_PARAMS,
   ActionClassSchema,

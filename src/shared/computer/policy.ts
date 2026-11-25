@@ -7,8 +7,6 @@
  * is the host's own kind: it asks before text goes into a password field,
  * whatever the model flagged.
  */
-import { z } from 'zod'
-
 export const CONFIRM_KINDS = [
   'delete',
   'send',
@@ -65,12 +63,11 @@ export const CONFIRM_KIND_INFO: Readonly<Record<HostConfirmKind, ConfirmKindInfo
 /** What a flag says happens and to whom, in one line. */
 export const CONFIRM_WHAT_MAX = 200
 
-/** The flag on `computer_act` and `computer_batch`; undescribed here, descriptions.ts gives the tools described copies. */
-export const ConfirmSchema = z.object({
-  kind: z.enum(CONFIRM_KINDS),
-  what: z.string().min(1).max(CONFIRM_WHAT_MAX)
-})
-export type Confirm = z.infer<typeof ConfirmSchema>
+/** The flag on `computer_act` and `computer_batch` (its schema is confirmSchema.ts, so this file carries no zod). */
+export interface Confirm {
+  kind: ConfirmKind
+  what: string
+}
 
 /** What a card asks for: a model's flag, or the host's own password rule (whose `what` is empty: the steps say it). */
 export interface ConfirmNeed {

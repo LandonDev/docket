@@ -58,6 +58,12 @@ export const NEVER_IN_ENTRY = [
   'node_modules/@base-ui/react/select/root/SelectRoot.mjs',
   'src/renderer/src/components/ui/select.tsx',
   'src/renderer/src/chrome/composerSelects.tsx',
+  // Schemas the first paint's readers no longer reach: their plain values are rulesValues.ts and
+  // computer/protocolValues.ts (the Work performance pass, docs/agents/work-perf.md).
+  'src/shared/rules.ts',
+  'src/shared/computer/protocol.ts',
+  'src/shared/computer/descriptions.ts',
+  'src/shared/computer/confirmSchema.ts',
   // surfaces
   'src/renderer/src/surfaces/SettingsView.tsx',
   'src/renderer/src/surfaces/AliaxPagesView.tsx',

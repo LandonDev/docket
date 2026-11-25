@@ -10,7 +10,7 @@
  * lower-case `\u00xx`, nothing else (never `\/`, never non-ASCII). Lengths
  * count Unicode scalars.
  */
-import { OBSERVATION_TEXT } from './protocol'
+import { OBSERVATION_TEXT } from './protocolValues'
 
 // ── roles ───────────────────────────────────────────────────────────────
 
