@@ -410,7 +410,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   const [width, setWidth] = useState(0);
   // The rows his acts are changing, each with its own words (busy.ts).
   const [busy, setBusy] = useState<Busy>(null);
-  const markBusy = useCallback<MarkBusy>((keys, next) => setBusy((now) => marked(now, keys, next)), []);
+  const markBusy = useCallback<MarkBusy>((keys, next, by) => setBusy((now) => marked(now, keys, next, by)), []);
   const [copyOn, setCopyOn] = useState(reach.copy);
   useEffect(() => setCopyOn(reach.copy), [reach.copy]);
   const root = useRef<HTMLDivElement>(null);

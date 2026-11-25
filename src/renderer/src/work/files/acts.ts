@@ -12,7 +12,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { flushItem } from "../canvas/flush";
 import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
 import { filesLink } from "./farLink";
-import { openingWords, type MarkBusy, type RowBusy } from "./busy";
+import { openingWords, rowMarks, type MarkBusy, type RowBusy } from "./busy";
 import { closeTab, tabsNow } from "./store";
 
 /**
@@ -65,15 +65,16 @@ export const SETTLE_MS = 2000;
 
 /** The rows marked while `work` runs; let go at its end, or a little after where `went` says it changed them. */
 async function marking<T>(of: ActsOf, keys: readonly string[], busy: RowBusy, work: () => Promise<T>, went: (out: T) => boolean = () => false): Promise<T> {
-  of.busy?.(keys, busy);
+  const marks = rowMarks(of.busy, keys);
+  marks.say(busy);
   let changed = false;
   try {
     const out = await work();
     changed = went(out);
     return out;
   } finally {
-    if (changed) setTimeout(() => of.busy?.(keys, null), SETTLE_MS);
-    else of.busy?.(keys, null);
+    if (changed) setTimeout(marks.done, SETTLE_MS);
+    else marks.done();
   }
 }
 
@@ -550,7 +551,8 @@ export async function downloadAll(of: ActsOf, copy: PlaceCopy, entries: readonly
 async function fetchOne(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<string | null> {
   if (!entry.ref) return null;
   const far = (got: number): RowBusy => ({ word: entry.size ? openingWords(got, entry.size, "Downloading…") : "Downloading…" });
-  of.busy?.([entry.key], far(0));
+  const marks = rowMarks(of.busy, [entry.key]);
+  marks.say(far(0));
   const disk = downloadParts();
   let id: string | null = null;
   let kept = false;
@@ -568,13 +570,13 @@ async function fetchOne(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: 
       version = got.version;
       offset += bytes.length;
       if (got.end || bytes.length === 0) break;
-      of.busy?.([entry.key], far(offset));
+      marks.say(far(offset));
     }
     const path = await disk.end(id!, true);
     kept = true;
     return path ?? entry.name;
   } finally {
     if (id && !kept) await disk.end(id, false).catch(() => undefined);
-    of.busy?.([entry.key], null);
+    marks.done();
   }
 }

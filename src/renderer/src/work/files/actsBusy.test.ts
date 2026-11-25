@@ -19,6 +19,7 @@ vi.mock("../../lib/connection", () => ({
         world.seen.push({ method, marks: words() });
         if (world.fail === method) throw new Error("No.");
         if (method === "work.files.read") {
+          if (world.answers[method]) return world.answers[method];
           const offset = params.offset as number;
           const end = offset >= 4 * 1024 * 1024;
           return { data: btoa("x".repeat(8)), version: "v1", end };
@@ -37,13 +38,16 @@ vi.mock("../../lib/native", () => ({ isWebMode: () => false, downloadParts: () =
 vi.mock("../../lib/fs", () => ({ revealPath: async () => undefined }));
 
 const { renameTo, carryTo, trash, download, SETTLE_MS } = await import("./acts");
+const { marked } = await import("./busy");
 
 const file = (name: string, over: Partial<FileEntry> = {}): FileEntry => ({ key: `file:box:/w/${name}`, ref: { at: "file", host: "box", path: `/w/${name}` }, folder: null, name, kind: "sheet", ...over }) as FileEntry;
 const of = {
   workspaceId: "w1",
   home: "box",
-  busy: (keys: readonly string[], next: RowBusy | null) => {
-    for (const key of keys) next ? marks.set(key, next) : marks.delete(key);
+  busy: (keys: readonly string[], next: RowBusy | null, by?: symbol) => {
+    const now = marked(marks, keys, next, by)!;
+    marks.clear();
+    for (const [key, busy] of now) marks.set(key, busy);
   },
 };
 const copy = { link: "box", place: { id: "folder", kind: "folder", name: "Dummy", host: "box", env: "box", shared: false, can: ["rename", "move", "copy", "trash"], state: { state: "ok" }, root: { at: "file", host: "box", path: "/w" } } } as never;
@@ -93,6 +97,23 @@ describe("a row his act is changing", () => {
     ]);
   });
 
+  it("keeps a newer act's words when an older act on the same row lets go", async () => {
+    world.answers["work.files.rename"] = { entries: [file("Budget 2027.xlsx")], refused: [] };
+    await renameTo(of, copy, file("Budget.xlsx"), "Budget 2027.xlsx");
+    // While the rename's mark waits for the list's read, he downloads the same row: its read is still out.
+    let answer: (value: unknown) => void = () => undefined;
+    world.answers["work.files.read"] = new Promise((done) => (answer = done));
+    const going = download(of, copy, file("Budget.xlsx", { size: 8.4 * 1024 * 1024 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(words()).toBe("Budget.xlsx=Downloading… 0.0 of 8.4 MB");
+    // The rename's own let-go comes after: the download's spinner stays.
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(words()).toBe("Budget.xlsx=Downloading… 0.0 of 8.4 MB");
+    answer({ data: btoa("x"), version: "v1", end: true });
+    await going;
+    expect(words()).toBe("");
+  });
+
   it("says how far a download has come where the file's size is known, and lets the row go at its end", async () => {
     world.answers = {};
     // Each read answers 8 bytes here; the stand-in host ends past 4 MB, so the second read is the last.
@@ -100,7 +121,7 @@ describe("a row his act is changing", () => {
     const seenAt = world.seen.length;
     const reads: string[] = [];
     const real = of.busy;
-    await download({ ...of, busy: (keys, next) => (next && reads.push(next.word), real(keys, next)) }, copy, big);
+    await download({ ...of, busy: (keys, next, by) => (next && reads.push(next.word), real(keys, next, by)) }, copy, big);
     expect(reads[0]).toBe("Downloading… 0.0 of 8.4 MB");
     expect(world.seen.slice(seenAt).every((s) => s.marks.startsWith("Roster.xlsx=Downloading…"))).toBe(true);
     expect(words()).toBe("");

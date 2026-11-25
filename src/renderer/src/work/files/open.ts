@@ -13,7 +13,7 @@ import { CANVAS } from "../canvas/registry";
 import { importAhead } from "../formats/importOnce";
 import { noteSlidesOpenedByHand } from "../slides/openShow";
 import { appOpens, openWay, type PlaceCopy } from "./model";
-import { openingWords, type MarkBusy } from "./busy";
+import { openingWords, rowMarks, type MarkBusy } from "./busy";
 import { openFileTab } from "./store";
 
 /**
@@ -67,20 +67,21 @@ export function opensInApp(copy: PlaceCopy): boolean {
 export async function openInApp(entry: Pick<FileEntry, "name" | "key" | "ref">, copy: PlaceCopy, from: Pick<OpenFrom, "busy">): Promise<void> {
   if (!entry.ref) return;
   if (copy.place.kind !== "teams" && copy.place.kind !== "onedrive") return void loadToast().then((toast) => toast.message(`${entry.name} has no viewer here yet`));
+  const marks = rowMarks(from.busy, [entry.key]);
   try {
-    from.busy([entry.key], { word: "Opening…" });
+    marks.say({ word: "Opening…" });
     await registry.linkOf(copy.link).request("work.office.filesOpen", { source: entry.ref }, readMs(copy, 120_000));
   } catch (err) {
     failed(`${entry.name} did not open`, err);
   } finally {
-    from.busy([entry.key], null);
+    marks.done();
   }
 }
 
 /** The file as it is once its bytes are here: its place downloads one it keeps in the cloud, on its own host. */
-async function fetched(entry: FileEntry, copy: PlaceCopy, from: OpenFrom): Promise<void> {
+async function fetched(entry: FileEntry, copy: PlaceCopy, from: OpenFrom, marks: ReturnType<typeof rowMarks>): Promise<void> {
   if (entry.local !== false || !entry.ref) return;
-  from.busy([entry.key], { word: "Downloading…" });
+  marks.say({ word: "Downloading…" });
   if (copy.wire === "files") await registry.linkOf(copy.link).request("work.files.fetch", { workspaceId: from.workspace.id, ref: entry.ref }, readMs(copy, 660_000));
   else await registry.linkOf(copy.link).request("work.office.filesFetch", { source: entry.ref }, readMs(copy, 660_000));
 }
@@ -131,18 +132,19 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
   // The kind's code loads beside the open (and a download before it), not after: the tab draws its body once the host has answered.
   preloadKind(entry.name);
   let stopHearing: (() => void) | null = null;
+  const marks = rowMarks(from.busy, [entry.key]);
   try {
     if (here) {
-      await fetched(entry, copy, from);
-      from.busy([entry.key], { word: "Opening…" });
-    } else from.busy([entry.key], { word: entry.local === false ? "Downloading…" : "Opening…" });
+      await fetched(entry, copy, from, marks);
+      marks.say({ word: "Opening…" });
+    } else marks.say({ word: entry.local === false ? "Downloading…" : "Opening…" });
     const ref = entry.ref;
     // A file of another computer is copied to the workspace's host a piece at a time: the row says how far it has got.
     const tag = openingTag(entry.key);
     stopHearing = here
       ? null
       : registry.linkOf(workspaceLink).onPush((push) => {
-          if (push.push === "work.files" && push.workspaceId === from.workspace.id && push.opening?.of === tag) from.busy([entry.key], { word: openingWords(push.opening.done, push.opening.total) });
+          if (push.push === "work.files" && push.workspaceId === from.workspace.id && push.opening?.of === tag) marks.say({ word: openingWords(push.opening.done, push.opening.total) });
         });
     const answer: FilesOpened = await openFileTab(workspaceLink, from.workspace.id, { ref, name: entry.name, key: entry.key }, from.opener, {
       ...(here ? {} : { timeoutMs: 660_000 }),
@@ -164,7 +166,7 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     return null;
   } finally {
     stopHearing?.();
-    from.busy([entry.key], null);
+    marks.done();
   }
 }
 
