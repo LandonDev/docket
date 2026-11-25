@@ -280,6 +280,12 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
     expect(xml).toContain('type="slidenum"')
     // The changed paragraph keeps its own level, bullet and look; nothing else of it moved.
     expect(xml).toMatch(/<a:p><a:pPr lvl="1"><a:buChar char="•"\/><\/a:pPr><a:r><a:rPr lang="en-US" i="1" dirty="0"\/><a:t>Thank them all<\/a:t><\/a:r><\/a:p>/)
+    // A word put in a line of mixed runs, and one beside a field: only the runs his change touched are rewritten.
+    const again = await apply(output, [{ op: 'notes', slide: first.id, text: 'Say the big budget source\nOpen with the dates\nThank them all\nThis is slide 1' }], true)
+    expect((await inspect(again.output)).slides[0].notes).toBe('Say the big budget source\nOpen with the dates\nThank them all\nThis is slide 1')
+    const after = await (await JSZip.loadAsync(readFileSync(again.output))).file(notes)!.async('string')
+    expect(after).toContain(runs.replace('<a:t>Say the </a:t>', '<a:t>Say the big </a:t>'))
+    expect(after).toContain('<a:r><a:rPr lang="en-US" dirty="0"/><a:t>This is slide </a:t></a:r><a:fld id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}" type="slidenum">')
   })
 
   it('notes: refuses an edit of notes longer than the outline carries, so their cut tail is never written over', async () => {

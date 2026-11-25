@@ -1148,9 +1148,14 @@ slide's.
 - A `notes` edit sends the notes whole as words, but the script rewrites only
   the paragraphs whose words changed (`keep_paragraphs`: the paragraphs matched
   by their words, Python's `difflib`): one with the same words keeps its XML as
-  it was (bold in one run, a link, a slide-number field), a changed one is
-  written in its own look and level, a new one takes its neighbour's, one gone
-  is removed. A key in the field never strips a colleague's looks from the rest.
+  it was (bold in one run, a link, a slide-number field), a changed one keeps
+  its level and rewrites only the runs his change touched (`edit_paragraph`:
+  the words before and after the change keep their runs, links and fields;
+  words put in at a run's edge go to the run before, unless it is a link or
+  a field, where they get a run of their own in its look without the link),
+  a new one takes its neighbour's look, one gone is removed. Only a change
+  that puts in a line break rewrites the paragraph in its first run's look.
+  A key in the field never strips a colleague's looks from the rest.
 
 ### Tests
 

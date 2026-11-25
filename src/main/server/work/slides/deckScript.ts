@@ -861,6 +861,101 @@ def set_paragraph(p, text):
             p.append(el)
 
 
+def segments(p):
+    """A paragraph's words by element, (element, start, end, words), a break as one vertical tab, as p.text reads them."""
+    out, at = [], 0
+    for el in p:
+        if el.tag in (qn('a:r'), qn('a:fld')):
+            t = el.find(qn('a:t'))
+            s = (t.text or '') if t is not None else ''
+        elif el.tag == qn('a:br'):
+            s = '\v'
+        else:
+            continue
+        out.append((el, at, at + len(s), s))
+        at += len(s)
+    return out
+
+
+def put_words(el, s, near=None, lead=False):
+    """Words in a run's place, its look kept: none, it goes; a field becomes a run, as its words are no longer the
+    field's; a break, or no element, gives a new run in a neighbour's look without its link."""
+    if not s:
+        if el is not None:
+            el.getparent().remove(el)
+        return
+    if el is not None and el.tag == qn('a:r'):
+        t = el.find(qn('a:t'))
+        if t is None:
+            t = OxmlElement('a:t')
+            el.append(t)
+        t.text = clean(s)
+        return
+    look = el if el is not None else near
+    r = OxmlElement('a:r')
+    src = look.find(qn('a:rPr')) if look is not None else None
+    if src is not None:
+        rpr = copy.deepcopy(src)
+        for link in rpr.findall(qn('a:hlinkClick')) + rpr.findall(qn('a:hlinkMouseOver')):
+            rpr.remove(link)
+        r.append(rpr)
+    t = OxmlElement('a:t')
+    t.text = clean(s)
+    r.append(t)
+    if el is not None:
+        el.addprevious(r)
+        el.getparent().remove(el)
+    elif lead:
+        near.addprevious(r)
+    else:
+        near.addnext(r)
+
+
+def edit_paragraph(p, text):
+    """His words over one paragraph, rewriting only the runs his change touched: the words before and after it keep
+    their runs, links and fields. One that puts in a line break is rewritten in its first run's look."""
+    segs = segments(p)
+    old = ''.join(s for _, _, _, s in segs)
+    if old == text:
+        return
+    lo = 0
+    while lo < min(len(old), len(text)) and old[lo] == text[lo]:
+        lo += 1
+    tail = 0
+    while tail < min(len(old), len(text)) - lo and old[-1 - tail] == text[-1 - tail]:
+        tail += 1
+    hi, mid = len(old) - tail, text[lo:len(text) - tail]
+    if not segs or '\v' in mid or '\n' in mid:
+        return set_paragraph(p, text)
+    # Words only put in, or only taken out, may lie further left: on a run's edge, if one is there.
+    edges = {a for _, a, _, _ in segs} | {b for _, _, b, _ in segs}
+    if (lo == hi) != (not mid) and lo not in edges:
+        i, j, m = lo, hi, mid
+        while i > 0 and (old[i - 1] == m[-1] if m else old[i - 1] == old[j - 1]):
+            i, j, m = i - 1, j - 1, (old[i - 1] + m[:-1] if m else m)
+            if i in edges:
+                lo, hi, mid = i, j, m
+                break
+    if lo == hi:
+        # Put in: into the run they follow, else the one they lead; after a link or a field, a run of their own.
+        before = next((e for e, a, b, _ in segs if a < lo <= b), None)
+        after = next((e for e, a, _, _ in segs if a == lo), None)
+        linked = before is not None and before.find(qn('a:rPr') + '/' + qn('a:hlinkClick')) is not None
+        host = before if before is not None and before.tag == qn('a:r') and not linked else after if after is not None and after.tag == qn('a:r') else None
+        if host is not None:
+            a, s = next((a, s) for e, a, _, s in segs if e is host)
+            return put_words(host, s[:lo - a] + mid + s[lo - a:])
+        return put_words(None, mid, near=before) if before is not None else put_words(None, mid, near=after, lead=True)
+    touched = [(e, a, b, s) for e, a, b, s in segs if a < hi and b > lo]
+    (first, fa, _, fs), (last, la, _, ls) = touched[0], touched[-1]
+    for el, _, _, _ in touched[1:-1]:
+        p.remove(el)
+    if first is last:
+        return put_words(first, fs[:max(0, lo - fa)] + mid + ls[max(0, hi - la):])
+    put_words(last, ls[max(0, hi - la):])
+    put_words(first, fs[:max(0, lo - fa)] + mid)
+
+
 def set_paragraphs(txBody, paragraphs):
     """Paragraph i takes paragraph i's look; extra ones copy the last; surplus ones go."""
     ps = txBody.findall(qn('a:p'))
@@ -880,8 +975,8 @@ def set_paragraphs(txBody, paragraphs):
 
 def keep_paragraphs(tf, texts):
     """His words over a text frame's paragraphs, rewriting only what changed: paragraphs matched by their words, one
-    whose words are the same left as it is (its runs' looks, links and fields), one changed rewritten in its own look,
-    one put in taking its neighbour's, one gone removed."""
+    whose words are the same left as it is (its runs' looks, links and fields), one changed rewritten only in the runs
+    the change touched (edit_paragraph), one put in taking its neighbour's look, one gone removed."""
     txBody = tf._txBody
     paras = list(tf.paragraphs)
     if not paras:
@@ -895,9 +990,10 @@ def keep_paragraphs(tf, texts):
         for k in range(j2 - j1):
             if i1 + k < i2:
                 p = ps[i1 + k]
+                edit_paragraph(p, texts[j1 + k])
             else:
                 p = copy.deepcopy(ps[i2 - 1] if i2 > i1 else (out[-1] if out else ps[min(i1, len(ps) - 1)]))
-            set_paragraph(p, texts[j1 + k])
+                set_paragraph(p, texts[j1 + k])
             out.append(p)
     for p in ps:
         txBody.remove(p)
