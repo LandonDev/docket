@@ -14,7 +14,8 @@ import { workSwitch } from "../../lib/workSwitch";
  * is kept for the window's life, so a visit draws it at once while the hosts are asked again.
  */
 
-export type HostAnswer = { environmentId: string; overview: TrackerOverview | null; error: string | null };
+/** `closed`: the error is the host's link not being open, not an answer: when the link opens again the host is pending. */
+export type HostAnswer = { environmentId: string; overview: TrackerOverview | null; error: string | null; closed?: true };
 
 /** A project as the page draws it: its row, and the host whose lead thread it shows. */
 export type MergedProject = TrackerProject & { leadHost: string | null };
@@ -112,7 +113,7 @@ export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview
   return Promise.all(
     [...hosts].map((environmentId): Promise<HostAnswer> => {
       const transport = registry.statusOf(environmentId).transport;
-      if (transport !== "open") return Promise.resolve({ environmentId, overview: null, error: closedWords(hostIn(environmentId), transport) });
+      if (transport !== "open") return Promise.resolve({ environmentId, overview: null, error: closedWords(hostIn(environmentId), transport), closed: true });
       return ask(environmentId).then(
         (overview) => ({ environmentId, overview: plain(overview, environmentId), error: null }),
         (err: unknown) => ({ environmentId, overview: null, error: hostWords(err, environmentId) }),
@@ -137,9 +138,10 @@ export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterabl
     if (transport !== "open") {
       const error = closedWords(hostIn(environmentId), transport);
       // The same line as before is the same answer: a roster that did not move is not new.
-      return old && !old.overview && old.error === error ? old : { environmentId, overview: null, error };
+      return old && !old.overview && old.error === error ? old : { environmentId, overview: null, error, closed: true };
     }
-    return old ?? { environmentId, overview: null, error: null };
+    // A host whose link is open again is pending: its closed line says nothing of it now.
+    return old && !old.closed ? old : { environmentId, overview: null, error: null };
   });
 }
 
@@ -170,12 +172,17 @@ export function useTracker(): TrackerView {
     // The roster follows the hosts as they move while the page is open, by the rule a visit opens on
     // (`reconcileKept`): a host whose link drops says so at once, a host that joins Work or whose link opens is
     // pending (so no all-clear stands without it), a host that leaves Work goes; then every host is asked again.
+    // The roster is the Work hosts and whether each link is open, tracked from the first read on: any change (a host
+    // joins or leaves Work, a link drops or opens again) drops the read in flight, shows the roster at once (from the
+    // answers on screen, or none yet) and asks it again.
+    const rosterKey = (): string => [...workSwitch.hosts()].sort().map((id) => `${id}:${registry.statusOf(id).transport === "open"}`).join(",");
+    let was = rosterKey();
     const moved = (): void => {
-      if (!kept) return;
-      const roster = reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport)!;
-      if (roster.length === kept.length && roster.every((a, i) => a === kept![i])) return;
+      const now = rosterKey();
+      if (now === was) return;
+      was = now;
       reads.latest += 1;
-      show(roster);
+      show(reconcileKept(kept ?? [], workSwitch.hosts(), (id) => registry.statusOf(id).transport)!);
       read();
     };
     const offs = [registry.subscribe(moved), workSwitch.subscribe(moved)];

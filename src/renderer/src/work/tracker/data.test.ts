@@ -136,6 +136,49 @@ describe("asking the hosts", () => {
     resetTracker();
   });
 
+  it("a host whose link opens again is pending and asked at once, never left on its offline line", async () => {
+    rigged();
+    resetTracker();
+    const state: Record<string, string> = { box: "open", mac: "offline" };
+    vi.spyOn(registry, "statusOf").mockImplementation((id) => ({ transport: state[id] }) as never);
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box", "mac"]));
+    let hear = (): void => {};
+    vi.spyOn(registry, "subscribe").mockImplementation((fn) => ((hear = fn as () => void), () => {}));
+    const asked: string[] = [];
+    vi.spyOn(registry, "linkOf").mockImplementation((env) => ({ request: () => (asked.push(env), Promise.resolve({ jobs: env === "mac" ? [job("m-ref", "ref", [project("games")])] : [] })) }) as never);
+    const view = renderHook(() => useTracker());
+    await waitFor(() => expect(view.result.current.errors).toEqual(["This Mac is not connected."]));
+    state.mac = "open";
+    act(() => hear());
+    // At once: the Mac's offline line goes and it is pending; then its answer lands.
+    expect(view.result.current.errors).toEqual([]);
+    expect(view.result.current.pending).toBe(true);
+    await waitFor(() => expect(view.result.current.jobs.map((j) => j.sector)).toEqual(["ref"]));
+    expect(asked.filter((id) => id === "mac").length).toBeGreaterThan(0);
+    view.unmount();
+    resetTracker();
+  });
+
+  it("a host that joins Work during the first read is asked too: the first read's roster never stands as an all-clear", async () => {
+    rigged();
+    resetTracker();
+    vi.spyOn(registry, "statusOf").mockImplementation(() => ({ transport: "open" }) as never);
+    let hosts = new Set(["box"]);
+    vi.spyOn(workSwitch, "hosts").mockImplementation(() => hosts);
+    let hear = (): void => {};
+    vi.spyOn(workSwitch, "subscribe").mockImplementation((fn) => ((hear = fn as () => void), () => {}));
+    const slow: ((v: unknown) => void)[] = [];
+    vi.spyOn(registry, "linkOf").mockImplementation((env) => ({ request: () => (env === "box" ? new Promise((resolve) => void slow.push(resolve)) : new Promise(() => {})) }) as never);
+    const view = renderHook(() => useTracker());
+    hosts = new Set(["box", "mac"]);
+    act(() => hear());
+    // The first read answers late: it is dropped; the roster holds the Mac pending.
+    await act(async () => slow.shift()!({ jobs: [] }));
+    expect(view.result.current.pending).toBe(true);
+    view.unmount();
+    resetTracker();
+  });
+
   it("only the newest read lands: an older read that answers late never replaces it", async () => {
     rigged();
     resetTracker();
