@@ -8,7 +8,7 @@ import { fenceItem, itemDir, ItemFileError, itemOf, readRange } from './file'
 import type { FormRead } from './form'
 import { ensurePdfTables, PDF_KEYED, PdfStore } from './store'
 import { pdfTools } from './tools'
-import { announce, exportCopy, formOf, lastExport, signedDate, snapshot, viewOf } from './view'
+import { announce, exportCopy, firstPage, formOf, lastExport, signedDate, snapshot, viewOf } from './view'
 import { hisZone } from '../clock'
 
 /**
@@ -63,6 +63,11 @@ export const pdf: WorkModule = {
         // The version the view named, never a newer one: one load reads one version.
         const { stamp } = await snapshot(ctx, item, req.params.rev ? { rev: req.params.rev } : {})
         return handled({ ...readRange(stamp.path, req.params.offset, req.params.length), rev: stamp.rev })
+      }
+      case 'work.pdf.first': {
+        // Fenced above as every item's method is: a key that may not read the item's pages gets no picture of them.
+        const item = itemOf(ctx, req.params.itemId, 'pdf')
+        return handled(await firstPage(ctx, item, { rev: req.params.rev, width: req.params.width }))
       }
       case 'work.pdf.review': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')

@@ -1323,6 +1323,8 @@ export const CanvasItemsSchema = z.object({ items: z.array(CanvasItemSchema) })
 export const WorkCanvasPushSchema = push('work.canvas', { sessionId: z.string(), items: z.array(CanvasItemSchema), opened: z.string().optional() })
 /** Bytes of a file the phone draws itself (a PDF, a deck's render), a frame at a time. */
 export const FileBytesSchema = z.object({ data: z.string(), size: z.number(), rev: z.string() })
+/** `work.pdf.first`: the first page as one picture of the version the view named. */
+export const PdfFirstPageSchema = z.object({ png: z.string(), rev: z.string(), width: z.number(), pages: z.number().int().optional() })
 export const Base64DataSchema = z.object({ data: z.string() })
 /** A slice of a media file by its token (`media.read`, admin): the phone's path to a proxy, an original or a picture. */
 export const MediaRangeSchema = z.object({ dataBase64: z.string(), mime: z.string(), size: z.number(), mtimeMs: z.number() })
@@ -1334,6 +1336,8 @@ export const DeckPhoneViewSchema = z.object({
   slides: z.array(
     z.object({
       key: z.string(),
+      /** the slide's id, by which one slide's own picture is read first (`work.slides.slide`) */
+      id: z.number().int().optional(),
       number: z.number().int().nullable(),
       title: z.string(),
       /** the speaker notes, under the slide in the phone's reader */

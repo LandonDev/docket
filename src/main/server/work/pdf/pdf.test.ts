@@ -634,6 +634,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     const calls: Array<[string, Record<string, unknown>]> = [
       ['work.pdf.open', {}],
       ['work.pdf.read', { offset: 0, length: 10 }],
+      ['work.pdf.first', { rev: 'r', width: 400 }],
       ['work.pdf.review', { keys: 'all', verdict: 'accept' }],
       ['work.pdf.setField', { key: NAME, value: 'Mallory' }],
       ['work.pdf.mark', { page: 1, quads: [[0, 0, 1, 0.1]], text: 'y' }],
@@ -790,3 +791,48 @@ describe('a Files tab and a thread on one file', () => {
 function hostFence(db: DatabaseSync): { roots(): string[]; denied(): string[] } {
   return { roots: () => (db.prepare(`SELECT cwd AS p FROM projects UNION SELECT path AS p FROM workspaces`).all() as Array<{ p: string }>).map((r) => r.p), denied: () => [] }
 }
+
+describe('the first page as one picture', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')
+  let draws: { input: string; width: unknown; page: unknown }[]
+  beforeEach(() => {
+    draws = []
+    Object.assign(work.ctx, {
+      convert: async (job: { input: string; output: string; options?: { page?: number; width?: number } }) => {
+        draws.push({ input: job.input, width: job.options?.width, page: job.options?.page })
+        writeFileSync(job.output, PNG)
+        return { output: job.output, ranOn: 'env_test', warnings: [] }
+      }
+    })
+  })
+
+  it('is drawn once a version and width from the copy the view named, its width held, and refused for a version gone', async () => {
+    const path = put('fw9.pdf', W9)
+    const id = openItem(path)
+    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const first = await call<{ png: string; rev: string; width: number }>('work.pdf.first', { itemId: id, rev: view.rev, width: 2400 })
+    expect(first).toMatchObject({ rev: view.rev, width: 1600 })
+    expect(Buffer.from(first.png, 'base64').equals(PNG)).toBe(true)
+    // From the kept copy of that version, its first page.
+    expect(draws).toHaveLength(1)
+    expect(draws[0]).toMatchObject({ page: 1, width: 1600 })
+    expect(draws[0]!.input).toContain(`kept-${view.rev}.pdf`)
+    // A second open of the same version draws nothing again.
+    await call('work.pdf.first', { itemId: id, rev: view.rev, width: 1600 })
+    expect(draws).toHaveLength(1)
+    // A version no longer kept is refused as a read is: no picture of another version stands in.
+    await expect(call('work.pdf.first', { itemId: id, rev: 'ffffffffffffffff', width: 800 })).rejects.toThrow('This file changed since it was opened')
+  })
+
+  it('keeps one version\'s pictures in the item\'s own folder, so they go with the item', async () => {
+    const path = put('fw9.pdf', W9)
+    const id = openItem(path)
+    const one = await call<PdfView>('work.pdf.open', { itemId: id })
+    await call('work.pdf.first', { itemId: id, rev: one.rev, width: 800 })
+    appendFileSync(path, '\n% a new version\n')
+    const two = await call<PdfView>('work.pdf.open', { itemId: id })
+    await call('work.pdf.first', { itemId: id, rev: two.rev, width: 800 })
+    const kept = readdirSync(join(canvasItemDir(dir, 't1', id), 'first'))
+    expect(kept).toEqual([`${two.rev}-800.png`])
+  })
+})

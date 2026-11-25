@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { copyFile, rename, utimes } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
-import type { PdfView } from '@shared/contract-work-pdf'
+import { PDF_FIRST_BYTES_MAX, PDF_FIRST_WIDTH_MAX, type PdfFirstPage, type PdfView } from '@shared/contract-work-pdf'
 import type { CanvasItem } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { runnerOf } from '../formats/jobs'
@@ -193,7 +193,38 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean;
   }
 }
 
-/** The other open PDF items of the workspace whose rows are the item's (a Files tab and a thread on one file). */
+/** How many first pages were drawn: what a test counts (a second ask of one version and width draws none). */
+export const firstDraws = { count: 0 }
+
+/**
+ * The file's first page as one picture (`work.pdf.first`), drawn from the copy the view named (`rev`, refused when no
+ * longer kept, as a read is): a reader shows it while the file's own bytes still come. Kept in the item's own folder,
+ * one version at a time, so it goes with the item, and drawn once a version and width. Its width is held to
+ * `PDF_FIRST_WIDTH_MAX`; a picture past `PDF_FIRST_BYTES_MAX` is not sent (the reader waits for the file).
+ */
+export async function firstPage(ctx: Ctx & Pick<WorkCtx, 'convert'>, item: CanvasItem, o: { rev: string; width: number }): Promise<PdfFirstPage> {
+  const snap = await snapshot(ctx, item, { rev: o.rev })
+  const width = Math.max(64, Math.min(PDF_FIRST_WIDTH_MAX, Math.round(o.width)))
+  const dir = await itemDir(ctx, item, 'first')
+  const path = join(dir, `${snap.stamp.rev}-${width}.png`)
+  if (!existsSync(path)) {
+    firstDraws.count++
+    const tmp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
+    try {
+      const done = await ctx.convert({ from: 'pdf', to: 'png', input: snap.stamp.path, output: tmp, options: { page: 1, width } })
+      await rename(done.output, path)
+    } finally {
+      rmSync(tmp, { force: true })
+    }
+    // One version's pictures at a time: an older version's go as a newer one is drawn.
+    for (const f of readdirSync(dir)) if (!f.startsWith(`${snap.stamp.rev}-`)) rmSync(join(dir, f), { force: true })
+  }
+  const png = readFileSync(path)
+  if (png.length > PDF_FIRST_BYTES_MAX) throw new ItemFileError('The first page is too large a picture to send: the file itself is read.', 'not-here')
+  return { png: png.toString('base64'), rev: snap.stamp.rev, width }
+}
+
+/** The other open PDF items of the workspace whose rows are the item's/** The other open PDF items of the workspace whose rows are the item's (a Files tab and a thread on one file). */
 export function sharing(ctx: Ctx, item: CanvasItem): CanvasItem[] {
   if (!item.workspaceId) return []
   const store = new PdfStore(ctx.db)

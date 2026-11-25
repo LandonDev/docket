@@ -6392,6 +6392,20 @@ public struct FileBytes: Codable, Hashable, Sendable {
     }
 }
 
+public struct PdfFirstPage: Codable, Hashable, Sendable {
+    public let png: String
+    public let rev: String
+    public let width: Double
+    public let pages: Int?
+
+    public init(png: String, rev: String, width: Double, pages: Int? = nil) {
+        self.png = png
+        self.rev = rev
+        self.width = width
+        self.pages = pages
+    }
+}
+
 public struct DeckPhoneView: Codable, Hashable, Sendable {
     public struct Slide: Codable, Hashable, Sendable {
         public enum From: RawRepresentable, Codable, Hashable, Sendable {
@@ -6440,6 +6454,7 @@ public struct DeckPhoneView: Codable, Hashable, Sendable {
         }
 
         public let key: String
+        public let id: Int?
         public let number: Int?
         public let title: String
         public let notes: String?
@@ -6449,8 +6464,9 @@ public struct DeckPhoneView: Codable, Hashable, Sendable {
         public let change: String?
         public let tint: Tint?
 
-        public init(key: String, number: Int?, title: String, notes: String? = nil, hidden: Bool, from: From, page: Int, change: String?, tint: Tint?) {
+        public init(key: String, id: Int? = nil, number: Int?, title: String, notes: String? = nil, hidden: Bool, from: From, page: Int, change: String?, tint: Tint?) {
             self.key = key
+            self.id = id
             self.number = number
             self.title = title
             self.notes = notes
@@ -6462,12 +6478,13 @@ public struct DeckPhoneView: Codable, Hashable, Sendable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case key, number, title, notes, hidden, from, page, change, tint
+            case key, id, number, title, notes, hidden, from, page, change, tint
         }
 
         public func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(key, forKey: .key)
+            try container.encodeIfPresent(id, forKey: .id)
             try container.encode(number, forKey: .number)
             try container.encode(title, forKey: .title)
             try container.encodeIfPresent(notes, forKey: .notes)

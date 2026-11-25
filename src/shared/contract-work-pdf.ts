@@ -141,6 +141,18 @@ export interface PdfView {
 }
 
 const itemId = z.string().min(1).max(100)
+/** The widest first-page picture drawn; a wider ask is drawn at this. */
+export const PDF_FIRST_WIDTH_MAX = 1600
+/** A first-page picture past this many bytes is not sent: the reader waits for the file. */
+export const PDF_FIRST_BYTES_MAX = 3 * 1024 * 1024
+
+/** `work.pdf.first`: page one as a PNG of the version `rev`, `width` px wide. */
+export interface PdfFirstPage {
+  png: string
+  rev: string
+  width: number
+  pages?: number
+}
 /** A read is one frame: at most this many bytes of the file a call. */
 export const PDF_READ_MAX = 4 * 1024 * 1024
 
@@ -159,6 +171,12 @@ export const PdfRequestSchemas = [
       length: z.number().int().positive().max(PDF_READ_MAX)
     })
   ),
+  /**
+   * → PdfFirstPage: the file's first page as one picture (PNG, `width` px wide at most `PDF_FIRST_WIDTH_MAX`), drawn from
+   * the copy the view named (`rev`), so a reader can show it while the file's bytes still come; refused for a version
+   * no longer kept, as a read is. Kept with the item and drawn once a version and width.
+   */
+  request('work.pdf.first', z.object({ itemId, rev: z.string().max(64), width: z.number().int().min(64).max(4096) })),
   /** → PdfView: takes or drops an agent's values. */
   request('work.pdf.review', z.object({ itemId, keys: z.union([z.array(z.string()).max(2000), z.literal('all')]), verdict: z.enum(['accept', 'reject']) })),
   /** → PdfView: the owner's own value for a field; null empties it. */
@@ -190,6 +208,7 @@ export type PdfPush = { push: 'work.pdf'; sessionId: string; view: PdfView }
 export const PDF_CAPS = {
   'work.pdf.open': 'read',
   'work.pdf.read': 'read',
+  'work.pdf.first': 'read',
   'work.pdf.review': 'operate',
   'work.pdf.setField': 'operate',
   'work.pdf.mark': 'operate',

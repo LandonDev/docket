@@ -4047,6 +4047,24 @@ public enum Methods {
         public typealias Output = FileBytes
     }
 
+    public enum WorkPdfFirst: ContractMethod {
+        public static let name = "work.pdf.first"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+            public let rev: String
+            public let width: Int
+
+            public init(itemId: String, rev: String, width: Int) {
+                self.itemId = itemId
+                self.rev = rev
+                self.width = width
+            }
+        }
+
+        public typealias Output = PdfFirstPage
+    }
+
     public enum WorkSlidesOpen: ContractMethod {
         public static let name = "work.slides.open"
 
@@ -4099,6 +4117,51 @@ public enum Methods {
             public init(itemId: String, which: Which, offset: Int, length: Int) {
                 self.itemId = itemId
                 self.which = which
+                self.offset = offset
+                self.length = length
+            }
+        }
+
+        public typealias Output = FileBytes
+    }
+
+    public enum WorkSlidesSlide: ContractMethod {
+        public static let name = "work.slides.slide"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Which: RawRepresentable, Codable, Hashable, Sendable {
+                case file
+                case proposed
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "file": self = .file
+                    case "proposed": self = .proposed
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .file: "file"
+                    case .proposed: "proposed"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let which: Which
+            public let slide: Int
+            public let offset: Int
+            public let length: Int
+
+            public init(itemId: String, which: Which, slide: Int, offset: Int, length: Int) {
+                self.itemId = itemId
+                self.which = which
+                self.slide = slide
                 self.offset = offset
                 self.length = length
             }
