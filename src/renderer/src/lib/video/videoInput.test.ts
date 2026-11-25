@@ -287,6 +287,20 @@ describe("the full-screen map", () => {
   const W = K.MetaLeft;
   const C = K.ControlLeft;
 
+  it("leaves full screen on ⌃⌘F that reaches the picture, and never sends it to the guest (it reached Windows as Ctrl+F from his Mac)", () => {
+    const sent: InputEvent[] = [];
+    let leaves = 0;
+    const input = new VideoInput((e) => sent.push(e), { mac: true, paste: () => undefined, screen: "vm", leaveFullScreen: () => void leaves++ });
+    input.fullScreen = true;
+    input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    input.keyDown({ code: "MetaLeft", command: true, ctrlKey: true });
+    expect(input.keyDown({ code: "KeyF", command: true, ctrlKey: true })).toBe(true);
+    expect(leaves).toBe(1);
+    // nothing of F went down, and whatever was held was let go
+    expect(sent.some((e) => "key" in e && e.key === K.KeyF)).toBe(false);
+    expect(sent.at(-1)?.type).toBe("releaseAll");
+  });
+
   it("makes ⌘ Ctrl for every letter: ⌘S, ⌘F, ⌘T and ⌘W reach Windows as Ctrl+S, Ctrl+F, Ctrl+T and Ctrl+W", () => {
     for (const code of ["KeyS", "KeyF", "KeyT", "KeyW", "KeyK", "KeyL"]) {
       const r = full();

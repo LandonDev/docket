@@ -21,6 +21,7 @@ import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
 import { attachKeyboardHold } from "../../../lib/video/keyboardHold";
+import { closeFullWindow } from "../../../lib/fullWindow";
 import { pixelRatioOf, sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import { reducedMotion } from "../../../lib/motion";
@@ -394,7 +395,7 @@ export function useDrivingInput(
       leaveSaid = true;
       void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`, { className: LEAVE_TOAST_CLASS }));
     }
-    const input = new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied });
+    const input = new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied, leaveFullScreen: closeFullWindow });
     const detach = attachInput(el, input);
     const unhold = fullScreen ? attachKeyboardHold(el, input, () => leavePicture(el)) : undefined;
     return () => {

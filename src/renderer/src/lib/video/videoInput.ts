@@ -134,7 +134,7 @@ export class VideoInput {
   constructor(
     private readonly send: (event: InputEvent) => void,
     /** `copied`: a copy chord went to the Windows VM, whose clipboard is not his: the caller fetches it for his own */
-    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void; screen?: DrivenScreen; copied?: () => void },
+    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void; screen?: DrivenScreen; copied?: () => void; leaveFullScreen?: () => void },
   ) {}
 
   private emit(event: InputEvent): void {
@@ -206,6 +206,14 @@ export class VideoInput {
     }
     const command = this.opts.mac && !!e.command;
     if (full && command && MAC_KEEPS.has(e.code)) return false;
+    // ⌃⌘F is the way out of full screen: main hears it first; should it reach the picture, it still leaves, and never the guest
+    if (full && command && (!!e.ctrlKey || (this.modifiers & CONTROL_BITS) !== 0) && e.code === "KeyF") {
+      if (!e.repeat) {
+        this.release();
+        this.opts.leaveFullScreen?.();
+      }
+      return true;
+    }
     if (full && !e.repeat) this.releaseCommandKeys();
     if (this.fullScreen && !e.repeat && !this.held.has(code)) this.sendWithheld();
     if (full && command && e.code !== "KeyV" && !this.commandCtrl && (this.modifiers & CONTROL_BITS) === 0) {
