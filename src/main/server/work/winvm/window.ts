@@ -3,7 +3,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { BoxXDisplay, type BoxDisplay } from '../browser/box/display'
-import { BoxEngines } from '../browser/box/engine'
+import { BoxEngines, type EngineTune } from '../browser/box/engine'
 import { VIDEO_TOOL, videoToolsAt, type VideoTools } from '../browser/box/videoSetting'
 import { Toolchain } from '../formats/tools'
 import { stopBlocked } from './machine/daemons'
@@ -27,6 +27,20 @@ import { VGA_DEFAULT, type VmWindow } from './machine/qemu'
 export const WINDOW_TOOL = 'qemu-window'
 /** Viewers of the VM at once: each has an engine of its own. */
 export const VM_ENGINES = 3
+
+/** The CPUs every VM engine is pinned to: whatever is watched, the VM's encoding takes six of the box's 32 at most. */
+export const VM_ENGINE_CPUS = '26-31'
+/** Up to this many pixels an engine starts at 8 Mbit/s and tops at 20; past it at 12 and 40. */
+const VM_RATE_STEP = 2560 * 1600
+
+/**
+ * How a VM engine starts (plan stage 8): 60 fps, since the guest never draws faster (it halves the H.264 level and
+ * doubles each frame's share of the rate), its rate by the display's pixels, on VM_ENGINE_CPUS.
+ */
+export function vmEngineTune(size: VmWindow): EngineTune {
+  const big = size.width * size.height > VM_RATE_STEP
+  return { fps: 60, bitrateStart: big ? 12_000_000 : 8_000_000, bitrateMax: big ? 40_000_000 : 20_000_000, cpus: VM_ENGINE_CPUS }
+}
 
 /** QEMU's window modules: the folder QEMU_MODULE_DIR names (ui-gtk and ui-opengl alone) and the libraries they load. */
 export interface WindowTools {
@@ -145,6 +159,7 @@ export class VmScreen {
         return t.missing === null ? t.video : null
       },
       display: () => this.env,
+      tune: () => vmEngineTune(this.size ?? VGA_DEFAULT),
       max: VM_ENGINES,
       log: (line) => o.log?.(`winvm ${line}`)
     })

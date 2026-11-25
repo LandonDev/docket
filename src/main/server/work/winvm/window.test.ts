@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rigConfig, rigPaths } from './machine/config'
 import { qemuCommand } from './machine/daemons'
 import { displayArgs, qemuArgs, windowArgs } from './machine/qemu'
-import { pictureToolsAt, VmScreen, windowEnv, WINDOW_TOOL, type PictureTools } from './window'
+import { pictureToolsAt, VM_ENGINE_CPUS, vmEngineTune, VmScreen, windowEnv, WINDOW_TOOL, type PictureTools } from './window'
 
 /** QEMU's window on the VM's own display: its arguments, its environment, and when the machine runs with none. */
 
@@ -133,5 +133,12 @@ describe("the VM's screen", () => {
     screen.adopt()
     expect(screen.env).toBeNull()
     expect(screen.pid).toBeNull()
+  })
+
+  it("starts its engines at 60 fps on six CPUs of their own, their rate by the display's pixels", () => {
+    expect(VM_ENGINE_CPUS).toBe('26-31')
+    expect(vmEngineTune({ width: 1280, height: 800 })).toEqual({ fps: 60, bitrateStart: 8_000_000, bitrateMax: 20_000_000, cpus: '26-31' })
+    expect(vmEngineTune({ width: 2560, height: 1600 })).toEqual({ fps: 60, bitrateStart: 8_000_000, bitrateMax: 20_000_000, cpus: '26-31' })
+    expect(vmEngineTune({ width: 3456, height: 2234 })).toEqual({ fps: 60, bitrateStart: 12_000_000, bitrateMax: 40_000_000, cpus: '26-31' })
   })
 })
