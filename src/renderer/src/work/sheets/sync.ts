@@ -668,7 +668,15 @@ export class SheetSync {
   /** What the host has not answered, kept on this computer by the revision it was made on; nothing once all is answered. */
   private note(): void {
     const all = [...this.inflight, ...this.queue];
-    this.journal?.keep(String(this.rev), all.length ? { kind: "sheet", mutations: all } : null);
+    this.journal?.keep(this.base(), all.length ? { kind: "sheet", mutations: all } : null);
+  }
+
+  /**
+   * What a draft is kept by: the revision, and on a shared .csv the cache too (`rev@gen`), since a co-author's change makes
+   * a new cache that starts again at a revision an old draft may share.
+   */
+  private base(): string {
+    return this.gen ? `${this.rev}@${this.gen}` : String(this.rev);
   }
 
   /** Where his unanswered edits are kept (SheetBody, as the item is drawn); a book already read asks for an earlier draft now. */
@@ -685,17 +693,21 @@ export class SheetSync {
     const draft = (await this.journal.offered("sheet"))[0];
     if (!draft || draft.body.kind !== "sheet") return;
     this.offered = draft;
-    this.set({ offer: { at: draft.at, same: draft.base === String(this.rev), cells: draftCellLines(draft.body.mutations, (id) => this.state.book?.workbook.sheets?.[id]?.name) } });
+    this.set({ offer: { at: draft.at, same: draft.base === this.base(), cells: draftCellLines(draft.body.mutations, (id) => this.state.book?.workbook.sheets?.[id]?.name) } });
   }
 
-  /** Restore: the offered edits, made on the revision the file still stands at, sent as a live edit is and laid on the grid. A file that moved on meanwhile turns the offer to Copy. */
+  /**
+   * Restore: the offered edits, made on the revision (and cache) the file still stands at, sent as a live edit is, naming
+   * that cache, and laid on the grid. A file that moved on meanwhile turns the offer to Copy, his values kept; so does a
+   * shared .csv's draft that named no cache.
+   */
   restoreDraft(): Promise<void> {
     const draft = this.offered;
-    if (!draft || draft.body.kind !== "sheet" || draft.base !== String(this.rev)) return Promise.resolve();
+    if (!draft || draft.body.kind !== "sheet" || draft.base !== this.base()) return Promise.resolve();
     const mutations = draft.body.mutations as SheetMutationJson[];
     return this.run(async () => {
       try {
-        const answer = await this.host.edit(this.rev, mutations);
+        const answer = await this.host.edit(this.rev, mutations, this.gen);
         if (answer.conflict) return this.set({ offer: { ...this.state.offer!, same: false } });
         this.journal?.drop(draft);
         this.offered = null;

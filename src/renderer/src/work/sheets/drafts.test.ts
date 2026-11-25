@@ -21,16 +21,17 @@ const decode = async (bytes: Uint8Array) => ({ workbook: JSON.parse(new TextDeco
 const cell = (v: number): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "a", cellValue: { 0: { 0: { v } } } } });
 
 function standIn() {
-  const state = { rev: 3, down: false, edits: [] as { baseRev: number; mutations: SheetMutationJson[] }[] };
-  const piece = (rev: number, offset: number, length: number): LoadAnswer => ({ data: btoa(text.slice(offset, offset + length)), size: text.length, rev, format: "snapshot" });
+  const state = { rev: 3, down: false, gen: undefined as string | undefined, edits: [] as { baseRev: number; mutations: SheetMutationJson[]; gen?: string }[] };
+  const piece = (rev: number, offset: number, length: number): LoadAnswer => ({ data: btoa(text.slice(offset, offset + length)), size: text.length, rev, format: "snapshot", ...(state.gen ? { gen: state.gen } : {}) });
   const host: SheetHost = {
     open: async (first) => (first ? { ...view(state.rev), first: piece(state.rev, 0, LOAD_MAX) } : view(state.rev)),
     load: async (rev, offset, length) => piece(rev, offset, length),
     since: async (): Promise<SinceAnswer> => ({ rev: state.rev, ops: [] }),
-    edit: async (baseRev, mutations) => {
+    edit: async (baseRev, mutations, gen) => {
       if (state.down) throw new Error("not connected");
-      if (baseRev !== state.rev) return { rev: state.rev, conflict: true };
-      state.edits.push({ baseRev, mutations });
+      // (the host's `csvMoved`: an edit made on another cache of a shared .csv is a conflict, whatever its revision)
+      if (baseRev !== state.rev || (gen !== undefined && gen !== state.gen)) return { rev: state.rev, conflict: true };
+      state.edits.push({ baseRev, mutations, ...(gen ? { gen } : {}) });
       return { rev: ++state.rev };
     },
     review: async () => view(state.rev),
@@ -141,5 +142,71 @@ describe("a sheet's edits the host never answered", () => {
     expect(sync.state.offer).toBeNull();
     await after.s.settled();
     expect(await after.kept()).toEqual([]);
+  });
+
+  describe("on a shared .csv, whose new cache starts again at a revision the draft may share", () => {
+    async function keptOn(gen: string) {
+      const { host, state } = standIn();
+      state.gen = gen;
+      const before = store();
+      const first = await opened(host, before.journal);
+      state.down = true;
+      first.g.type(cell(42));
+      first.sync.flush();
+      await settle(async () => (await before.kept()).length === 1);
+      await before.s.settled();
+      state.down = false;
+      return { host, state, before };
+    }
+
+    it("are kept by the cache they were made on, and Restore names it", async () => {
+      const { host, state, before } = await keptOn("g1");
+      expect((await before.kept())[0]).toMatchObject({ base: "3@g1" });
+      const after = store(before.dir, 2);
+      const { sync } = await opened(host, after.journal);
+      await settle(() => !!sync.state.offer);
+      expect(sync.state.offer?.same).toBe(true);
+      await sync.restoreDraft();
+      expect(state.edits).toEqual([{ baseRev: 3, mutations: [cell(42)], gen: "g1" }]);
+    });
+
+    it("are offered as Copy over a new cache at the same revision, and Restore sends nothing", async () => {
+      const { host, state, before } = await keptOn("g1");
+      // A co-author's change: a new cache, at revision 3 again.
+      state.gen = "g2";
+      const after = store(before.dir, 2);
+      const { sync } = await opened(host, after.journal);
+      await settle(() => !!sync.state.offer);
+      expect(sync.state.offer).toMatchObject({ same: false, cells: ["Budget!A1\t42"] });
+      await sync.restoreDraft();
+      expect(state.edits).toEqual([]);
+      expect(sync.state.offer?.cells).toEqual(["Budget!A1\t42"]);
+    });
+
+    it("turn to Copy, his values kept, when the cache moves between the offer and his Restore", async () => {
+      const { host, state, before } = await keptOn("g1");
+      const after = store(before.dir, 2);
+      const { sync } = await opened(host, after.journal);
+      await settle(() => !!sync.state.offer);
+      expect(sync.state.offer?.same).toBe(true);
+      state.gen = "g2";
+      await sync.restoreDraft();
+      expect(state.edits).toEqual([]);
+      expect(sync.state.offer).toMatchObject({ same: false, cells: ["Budget!A1\t42"] });
+    });
+
+    it("made with no cache named (an older window) are Copy, never Restore", async () => {
+      const { host, state, before } = await keptOn("g1");
+      const [kept] = await before.kept();
+      await before.s.put({ ...kept, base: "3" } as never, 1);
+      await before.s.drop({ ...kept } as never);
+      await before.s.settled();
+      const after = store(before.dir, 2);
+      const { sync } = await opened(host, after.journal);
+      await settle(() => !!sync.state.offer);
+      expect(sync.state.offer?.same).toBe(false);
+      await sync.restoreDraft();
+      expect(state.edits).toEqual([]);
+    });
   });
 });

@@ -2498,10 +2498,13 @@ over a file that changed there.
   provider, so Yjs merges them with what the document holds now; what changed since is kept beside them, never
   written over. With no socket ready yet, Restore says so and the draft stays.
 - **A sheet's draft** (`DraftBody` kind `sheet`): the mutations the host has not answered, the batch on its way and
-  the queue after it, under the file's revision (`SheetSync.note`, after each push into the queue, each send's end and
-  each drop). As the book is read the newest unclaimed draft is offered in the same line with the grid read only:
-  at the revision it was made on, Restore sends it through `work.sheets.edit` by that revision, as a live edit, and
-  lays it on the grid as anyone's op is laid; at another revision, "The file changed since" with Copy Edits (each
+  the queue after it, under the file's revision, and on a shared .csv its cache too (`3@<gen>`: a co-author's change
+  makes a new cache that starts again at a revision the draft may share) (`SheetSync.note`, after each push into the
+  queue, each send's end and each drop). As the book is read the newest unclaimed draft is offered in the same line
+  with the grid read only: at the revision (and cache) it was made on, Restore sends it through `work.sheets.edit` by
+  that revision and that cache's `gen`, as a live edit, and lays it on the grid as anyone's op is laid; at another
+  revision or cache, a shared .csv's draft that named none, or a host that refuses the cache as Restore lands,
+  "The file changed since" with Copy Edits (each
   cell as "Budget!A1", a tab, what he put; the draft stays) and Discard. Nothing is laid over a newer workbook. An open
   cell, and the formula bar's words where the pinned work-kit has `SheetHandle.commitEditing` (Pin A, work-kit branch
   `pin-a-formula-commit`, needs a signed release), are ended into the queue before a close, a quit or a reload.
