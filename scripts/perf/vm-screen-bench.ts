@@ -147,23 +147,25 @@ async function hands(s: Scratch, w: number, h: number) {
       ]),
     button: (down: boolean) => ev([{ type: 'btn', data: { down, button: 'left' } }]),
     key: (down: boolean) => ev([{ type: 'key', data: { down, key: { type: 'qcode', data: 'a' } } }]),
+    /** any QMP call on this one connection: QMP serves one client, so nothing else may open another while it lives */
+    run: <T = unknown>(execute: string, args?: Record<string, unknown>) => q.run({ execute, ...(args ? { arguments: args } : {}) }) as Promise<T>,
     close: () => q.destroy()
   }
 }
 type Hands = Awaited<ReturnType<typeof hands>>
 
-/** QMP's picture of the guest's screen, its size, and how long the dump took. */
-async function dump(s: Scratch, file: string): Promise<{ ms: number; bytes: number; width: number; height: number }> {
+/** QMP's picture of the guest's screen, its size, and how long the dump took; on `hand`'s connection while one is open. */
+async function dump(s: Scratch, file: string, hand?: Hands): Promise<{ ms: number; bytes: number; width: number; height: number }> {
   const t0 = performance.now()
-  await s.qmp('screendump', { filename: file, format: 'png' })
+  await (hand ? hand.run('screendump', { filename: file, format: 'png' }) : s.qmp('screendump', { filename: file, format: 'png' }))
   const ms = performance.now() - t0
   const png = readFileSync(file)
   return { ms, bytes: statSync(file).size, width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
 }
 
 /** The scene window's title bar, from QMP's picture: just above the box of its magenta client area (a colour no wallpaper has), at its middle. */
-async function titleBar(s: Scratch, file: string): Promise<{ x: number; y: number }> {
-  await dump(s, file)
+async function titleBar(s: Scratch, file: string, hand: Hands): Promise<{ x: number; y: number }> {
+  await dump(s, file, hand)
   const png = PNG.sync.read(readFileSync(file))
   let [x0, y0, x1] = [Infinity, Infinity, -1]
   for (let y = 0; y < png.height; y++)
@@ -370,7 +372,7 @@ async function main(): Promise<void> {
         for (const kind of ['drag', 'redraw'] as const) {
           await startScript(s, kind, scene(kind, w, h))
           // where the window really is: Windows scales a large screen, so it is found in QMP's picture
-          const grab = kind === 'drag' ? await titleBar(s, join(OUT, `drag-${size}-boot${boot + 1}.png`)) : null
+          const grab = kind === 'drag' ? await titleBar(s, join(OUT, `drag-${size}-boot${boot + 1}.png`), hand) : null
           for (let run = 1; run <= RUNS; run++) {
             const r = await rate(s, SECS, grab ? (until) => drag(hand, w, h, grab, until) : undefined)
             row(kind, { run, ...r })
