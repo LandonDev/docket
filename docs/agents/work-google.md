@@ -134,8 +134,10 @@ loaded as a Univer snapshot from `spreadsheets.get` with grid data (sheet
 ids are tab names), at most 200,000 cells. Every write is compared first:
 the cells are read again and if any holds something other than what the
 grid or the agent saw, nothing goes (`conflict`). What passes goes as one
-`values:batchUpdate`, `USER_ENTERED` (text that looks like a formula is
-written as text). The Sheets API has no conditional write, so a change
+`values:batchUpdate`, `USER_ENTERED`, every string behind Google's
+apostrophe, so text stays text: `007`, `3/4` and `=x` are never read as a
+number, a date or a formula (what he types is typed first:
+work-sheets.md "Typed words"). The Sheets API has no conditional write, so a change
 landing between the compare and the write is not caught. A spreadsheet past
 the cell cap refuses writes. An agent's cells are suggestions in
 `work_sheets_suggestions` under `google:<fileId>` (`google_sheet_suggest`);

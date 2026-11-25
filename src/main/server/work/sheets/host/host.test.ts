@@ -328,6 +328,31 @@ describe('a .tcsheet', () => {
   })
 })
 
+describe('his typing in a sheet the service holds (decision 15)', () => {
+  it('is kept as the cells he meant: a number a formula can add, "007" as words, through a cold load of the .tcsheet', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tcsheet-typed-'))
+    try {
+      const path = join(dir, 'TempCode proof typed.tcsheet')
+      TcsheetBackend.create(path, 'Typed')
+      const ref = { tcsheet: path }
+      const host = hostOf(new TcsheetBackend(path))
+      const { unit: unitId, sheets } = await host.open(ref)
+      // the grid's cell editor hands back its own document, a run a key, each in its font
+      const ts = { ff: 'system-ui', fs: 9.75 }
+      const typed = (words: string) => ({ v: null, f: null, si: null, p: { body: { dataStream: `${words}\r\n`, textRuns: [...words].map((_, i) => ({ st: i, ed: i + 1, ts })) } } })
+      const sheet = sheets[0]!.id
+      const at = (row: number, col: number, cell: unknown) => ({ id: SET_RANGE_VALUES, params: { unitId, subUnitId: sheet, cellValue: { [row]: { [col]: cell } } } })
+      await host.apply(ref, 0, [at(0, 0, typed('42')), at(0, 1, typed('3.5')), at(0, 2, typed('007')), at(0, 3, { v: null, f: '=A1*2', si: null, p: null })], 'owner')
+      const again = new SheetHost(() => new TcsheetBackend(path))
+      hosts.push(again)
+      const row = (await again.range(ref, 'A1:D1')).cells[0]
+      expect(row.map((c) => c.v)).toEqual([42, 3.5, '007', 84])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("a sheet's shared, after it was loaded", () => {
   it('reads afresh on every open: a guest link made since the load is what an agent\'s write is decided by', async () => {
     const store = new MemoryBackend(budget(), false)

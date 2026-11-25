@@ -72,6 +72,21 @@ describe('a workbook in Excel, in the sheet canvas', () => {
     expect((await office.readRange(BOOK, 'Sheet1', 'B2')).formulas).toEqual([['=B1*12']])
   })
 
+  it('writes his typing as he meant it (decision 15): numbers as numbers, "007" and a date-like string as text, a formula as one', async () => {
+    const rev = follow(ctx, ref, 'i1', () => {})
+    await new Promise((r) => setTimeout(r, 0))
+    // the grid's cell editor hands back its own document, a run a key, each in its font
+    const ts = { ff: 'system-ui', fs: 9.75 }
+    const typed = (words: string) => ({ v: null, p: { body: { dataStream: `${words}\r\n`, textRuns: [...words].map((_, i) => ({ st: i, ed: i + 1, ts })) } } })
+    const row = { 0: { 3: typed('42'), 4: typed('3.5'), 5: typed('007'), 6: { f: '=D1*2' }, 7: typed('TRUE'), 8: typed('3/4/2025') } }
+    await edit(ctx, ref, rev, [{ id: SET_RANGE_VALUES, params: { unitId: 'u', subUnitId: 'Sheet1', cellValue: row } }], 'owner')
+    // Excel keeps text behind its own apostrophe (the fake types what it is given as Excel does)
+    expect(office.log.filter((c) => c.verb === 'writeRange').flatMap((c) => (c.args[3] as unknown[][]).flat())).toEqual([42, 3.5, "'007", '=D1*2', true, "'3/4/2025"])
+    const got = await office.readRange(BOOK, 'Sheet1', 'D1:I1')
+    expect(got.values).toEqual([[42, 3.5, '007', null, true, '3/4/2025']])
+    expect(got.formulas[0][3]).toBe('=D1*2')
+  })
+
   it('accepts a suggestion only while its cell holds what the agent saw', async () => {
     const store = new SuggestionStore(ctx.db)
     store.add(excelStore(BOOK), 'cs', 'agent:env_mac:t1', undefined, [

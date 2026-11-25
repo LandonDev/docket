@@ -7,7 +7,7 @@ import type { SheetCellJson, SheetMutationJson, SheetRevision, SheetSuggestion }
 import type { Principal } from '@shared/work/ids'
 import { colName, parseA1, rangeCells, READ_MAX_CELLS } from '../a1'
 import { diffWorkbooks } from '../diff'
-import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL, type CellWrite } from '../mutations'
+import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL, typedMutations, type CellWrite } from '../mutations'
 import { moveThrough } from './live'
 import { NOTES_RESOURCE, noteMutations, ruleMutations, sheetNotes } from './rules'
 import { heldOf, layOn, listMisfit, objectMutations, withHeld, type HeldObjects } from './objects'
@@ -375,7 +375,9 @@ export class SheetHost {
    * revision is moved through the ops it missed (rows and columns inserted or deleted before it);
    * one that cannot be moved answers a conflict, and the editor reloads.
    */
-  apply(ref: SheetRef, baseRev: number, mutations: SheetMutationJson[], by: string, tag?: unknown): Promise<HostAnswer<'apply'>> {
+  apply(ref: SheetRef, baseRev: number, typing: SheetMutationJson[], by: string, tag?: unknown): Promise<HostAnswer<'apply'>> {
+    // His typing as the cells he meant (decision 15): "42" kept as a number, "007" as text.
+    const mutations = typedMutations(typing)
     return new Promise((resolve, reject) => {
       const key = refKey(ref)
       const waiting = this.queued.get(key)

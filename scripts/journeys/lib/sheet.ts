@@ -41,6 +41,14 @@ export function cellValue(sheet: string, strings: string, ref: string): string |
   return value
 }
 
+/** A cell of a sheet's XML as Excel reads it: its type (`t`, none for a number), its value as shown, its formula. */
+export function cellOf(sheet: string, strings: string, ref: string): { t: string | null; value: string | undefined; formula: string | undefined } | undefined {
+  const cell = [...sheet.matchAll(/<c\s([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)]
+    .find(([, attributes]) => attributes?.match(/\br="([^"]+)"/)?.[1] === ref)
+  if (!cell) return undefined
+  return { t: cell[1]?.match(/\bt="([^"]+)"/)?.[1] ?? null, value: cellValue(sheet, strings, ref), formula: (cell[2] ?? '').match(/<f(?:\s[^>]*)?>([^<]*)<\/f>/)?.[1] }
+}
+
 export function falseSaveLine(line: string | null, committed: boolean, landed: boolean): boolean {
   if (!committed || !line) return false
   // The holder's disk settles whether "Saved" is true. OneDrive sync can still be pending.

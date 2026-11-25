@@ -128,7 +128,9 @@ export async function edit(ctx: WorkCtx, ref: ExcelRef, baseRev: number, mutatio
   if (baseRev !== revOf(ref)) return { conflict: true, rev: revOf(ref) }
   const cells = editsOf(mutations, (id) => id).map((e) => {
     const at = parseAddress(e.cell)
-    return { sheet: e.sheet, row: at.startRow, col: at.startColumn, v: (e.formula ?? e.value ?? null) as OfficeCell }
+    // Excel types what it is given: text he typed ("007", "3/4") goes with Excel's own apostrophe, which it keeps as no character.
+    const v = e.literal && typeof e.value === 'string' ? `'${e.value}` : (e.formula ?? e.value ?? null)
+    return { sheet: e.sheet, row: at.startRow, col: at.startColumn, v: v as OfficeCell }
   })
   if ((await h.excel.writeCells(ref.book, cells, by)) === 'conflict') {
     // Excel moved under the edit before the safety pass saw it: the grid reads the workbook again.

@@ -3,6 +3,7 @@ import { runsOf, type Run } from 'work-kit/sheet/xlsx'
 import type { SheetCellJson, SheetMutationJson } from '@shared/contract-work-sheets'
 // (by its path: the Work service reaches this file, and its bundle resolves no alias for a value)
 import { NOTE_STOP, RULES_SET, sheetStopWords, spillingIn, spillStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
+import { CELL_BOOLEAN, typedCell } from '../../../../shared/work/cellInput'
 import { cellName } from './a1'
 import type { EditSpec } from './patch/patch'
 
@@ -109,7 +110,9 @@ export function editsOf(mutations: readonly SheetMutationJson[], sheetName: (id:
     const sheet = sheetName(p.subUnitId)
     if (!sheet) throw new NotSaved('That sheet is not in the file.')
     for (const [r, cols] of Object.entries(p.cellValue ?? {})) {
-      for (const [c, cell] of Object.entries(cols ?? {})) {
+      for (const [c, typed] of Object.entries(cols ?? {})) {
+        // His typing as the cell he meant (decision 15): "42" a number, "007" text, TRUE true.
+        const cell = typed === null ? null : typedCell(typed, { runs: !!opts.rich })
         const at = cellName(Number(r), Number(c))
         const key = `${sheet}\u0000${at}`
         out.delete(key)
@@ -137,9 +140,10 @@ export function editsOf(mutations: readonly SheetMutationJson[], sheetName: (id:
         }
         if (cell.si && !cell.f) throw new NotSaved(UNSAVED.fill)
         if ('v' in cell) {
-          const v = cell.v
-          // A cell held as text (Univer's STRING or FORCE_STRING) keeps its words as they are: "007" is not 7, "=x" no
-          // formula. One with no type is what he typed, which the writer reads as Excel reads typing.
+          // True and false are held as 1 and 0 (Univer's BOOLEAN).
+          const v = cell.t === CELL_BOOLEAN && typeof cell.v === 'number' ? cell.v !== 0 : cell.v
+          // A cell held as text (Univer's STRING or FORCE_STRING, as `typedCell` leaves every string) keeps its words as
+          // they are: "007" is not 7, "=x" no formula.
           const text = typeof v === 'string' && (cell.t === TEXT || cell.t === FORCE_TEXT)
           out.set(key, { sheet, cell: at, value: v === undefined || v === null || v === '' ? null : v, ...(text ? { literal: true } : {}) })
           continue
@@ -197,7 +201,9 @@ export function formatsOf(mutations: readonly SheetMutationJson[], sheetName: (i
     const text: SheetTextParams['cells'] = []
     let any = false
     for (const [r, cols] of Object.entries(p.cellValue ?? {}))
-      for (const [c, cell] of Object.entries(cols ?? {})) {
+      for (const [c, typed] of Object.entries(cols ?? {})) {
+        // (a number typed as the editor's styled words has no runs: `editsOf` writes it as the number)
+        const cell = typed === null ? null : typedCell(typed)
         // A rich cell's runs, as the grid holds them after this change (the canvas adds them to a style set over one).
         if (rich(cell) && !(typeof cell!.f === 'string' && cell!.f.startsWith('='))) {
           const runs = runsOfCell(cell!)
@@ -238,4 +244,33 @@ export function mutationsOf(unitId: string, writes: readonly CellWrite[]): Sheet
     bySheet.set(w.sheet, m)
   }
   return [...bySheet].map(([subUnitId, cellValue]) => ({ id: SET_RANGE_VALUES, params: { unitId, subUnitId, cellValue } }))
+}
+
+/**
+ * His typing in a list of mutations as the cells he meant (`typedCell`, decision 15): what a sheet the Work service
+ * holds (a `.tcsheet`, a LifeOS sheet) lays in its engine and keeps in its op log. Anything not a set-range-values,
+ * or of a shape it does not know, passes as it came (`refusal` judges shapes).
+ */
+export function typedMutations(mutations: SheetMutationJson[]): SheetMutationJson[] {
+  if (!Array.isArray(mutations)) return mutations
+  return mutations.map((m) => {
+    const p = m?.id === SET_RANGE_VALUES ? (m.params as RangeValuesParams | null) : null
+    if (!p?.cellValue || typeof p.cellValue !== 'object') return m
+    let changed = false
+    const cellValue: CellMatrix = {}
+    for (const [r, cols] of Object.entries(p.cellValue)) {
+      if (!cols || typeof cols !== 'object') {
+        cellValue[r] = cols
+        continue
+      }
+      const row: CellMatrix[string] = {}
+      for (const [c, cell] of Object.entries(cols)) {
+        const typed = cell && typeof cell === 'object' ? typedCell(cell) : cell
+        if (typed !== cell) changed = true
+        row[c] = typed
+      }
+      cellValue[r] = row
+    }
+    return changed ? { ...m, params: { ...p, cellValue } } : m
+  })
 }

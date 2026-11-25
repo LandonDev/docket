@@ -215,8 +215,8 @@ uses the same words when reading older restore labels.
   STRING or FORCE_STRING type), a rich cell's words and every string the app
   writes (`mutationsOf` types it text: an agent's, a suggestion taken, a cell
   put back) are written as they stand (`EditSpec.literal`): `007` stays
-  `007`, `=x` is no formula; a value he typed with no type is read as Excel
-  reads typing. A formula with a function that can spill (`SPILLING`,
+  `007`, `=x` is no formula; a value he typed with no type is typed by the
+  one rule ("Typed words", below). A formula with a function that can spill (`SPILLING`,
   `spillingIn` in shared/work/sheets.ts) is refused at his press and at the
   host in the same words ("A formula with SEQUENCE is not saved in an Excel
   file yet. Make it in Excel"): the writer cannot make Excel's dynamic-array
@@ -458,6 +458,47 @@ uses the same words when reading older restore labels.
   here. Edits are sent as he makes them and flushed when the body goes. An
   opened Excel file's refused batch keeps its line after a later edit lands
   (the refused one is still not in the file) until Reload.
+
+## Typed words
+
+What he types into a cell is kept as the cell he meant, by one rule for
+every writer: an opened Excel file, a `.tcsheet`, a LifeOS sheet, a workbook
+in Excel and a Google spreadsheet (decision 15 of the Files plan). The rule is
+`typedWords` in `src/shared/work/cellInput.ts`:
+
+- a plain decimal number is that number: `42`, `-7`, `3.5`, `0.5`, `0`; no
+  leading zero, no exponent, no `+`, at most 15 significant digits (all Excel
+  keeps: a longer card or account number stays text);
+- words that start with `=` are a formula;
+- `TRUE` and `FALSE` (in any case) are true and false;
+- everything else is text as it stands: `007`, `1e5`, `3/4/2025`, `$5`,
+  `10%`. No date is guessed. A leading apostrophe makes the rest text, as in
+  Excel; a cell whose format is text keeps text (Univer types both STRING or
+  FORCE_STRING, and `typedCell` leaves such a cell alone).
+
+The fault it closes: the grid's cell editor hands back its own document, a
+run a key in the editor's font and colour, and Univer calls any styled run
+rich text, so `42` reached the file as the words "42" (a shared string Excel
+flags, that SUM reads as 0). `plainWords` reads a document whose runs share
+one style (no link, list, picture or second paragraph) as plain words;
+`typedCell` turns such a cell, or a string value with no text type, into
+Univer's NUMBER or BOOLEAN (true as 1), a formula, or text held as STRING.
+Text he styled keeps its runs where the store keeps runs; where it keeps
+none (Excel, Google) plain words in the editor's style are their words and
+a styled one is still stopped.
+
+It runs at the boundary of each writer: `forPackage` (shared/work/sheets.ts)
+as the canvas sends, `editsOf` and `formatsOf` (sheets/mutations.ts) for an
+opened Excel file and the Excel and Google grids (a number typed so carries
+no runs), and `typedMutations` in the sheets host's `apply`, so a `.tcsheet`
+and a LifeOS sheet lay and log the cells he meant. Excel's and Google's
+writers then keep text as text: each string goes behind the apostrophe both
+apps keep as no character (`office/grid.ts` `edit`, `google/grid.ts`
+`typed`), never read again as a number, a date or a formula. The grid he
+typed in still draws what Univer made of it until the sheet is next read.
+Tests: shared/work/cellInput.test.ts, sheets/typedWords.test.ts (an .xlsx
+from the patch writer read back by each cell's `t`), office/grid.test.ts,
+google/grid.test.ts, sheets/host/host.test.ts; journey J71.
 
 ## Other formats in
 

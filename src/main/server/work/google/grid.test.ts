@@ -57,6 +57,15 @@ describe('a Google Sheet in the grid', () => {
     expect([cells()[1][1], cells()[2][1]]).toEqual([1300, 350])
   })
 
+  it('writes his typing as he meant it (decision 15): numbers as numbers, "007" and a date-like string as text behind the apostrophe', async () => {
+    await snapshot(ctx, ref, revOf(ref))
+    const ts = { ff: 'system-ui', fs: 9.75 }
+    const typed = (words: string) => ({ v: null, p: { body: { dataStream: `${words}\r\n`, textRuns: [...words].map((_, i) => ({ st: i, ed: i + 1, ts })) } } })
+    await edit(ctx, ref, revOf(ref), [set('Q1', { 5: { 0: typed('42'), 1: typed('3.5'), 2: typed('007'), 3: { f: '=A6*2' }, 4: typed('TRUE'), 5: typed('3/4/2025') } })], 'owner')
+    // (the fake reads what it is sent as USER_ENTERED does: "007" sent bare would be 7, "3/4/2025" a date)
+    expect(cells()[5]).toEqual([42, 3.5, '007', '=A6*2', true, '3/4/2025'])
+  })
+
   it('refuses his edit over a cell someone changed in Google, and writes nothing', async () => {
     await snapshot(ctx, ref, revOf(ref))
     cells()[1][1] = 999

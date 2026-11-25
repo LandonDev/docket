@@ -291,7 +291,8 @@ export class FakeGoogle {
         d.values.forEach((vals, dy) =>
           vals.forEach((v, dx) => {
             const line = (tab.cells[row + dy] ??= [])
-            line[col + dx] = v === '' ? null : (v as string | number | boolean)
+            // As USER_ENTERED reads it: a leading apostrophe text (kept as no character), a number's digits a number.
+            line[col + dx] = v === '' ? null : typeof v !== 'string' ? (v as number | boolean) : v.startsWith("'") ? v.slice(1) : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v
           })
         )
       }

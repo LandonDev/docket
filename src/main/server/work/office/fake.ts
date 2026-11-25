@@ -141,7 +141,9 @@ export class FakeOffice implements OfficeCarrier {
       row.forEach((v, j) => {
         const k = at(r.startRow + i, r.startColumn + j)
         if (v === null) s.delete(k)
-        else s.set(k, typeof v === 'string' && v.startsWith('=') ? { v: null, f: v, z: s.get(k)?.z ?? 'General' } : { v, f: '', z: s.get(k)?.z ?? 'General' })
+        // As Excel types what it is given: "=" a formula, a leading apostrophe text (kept as no character), a number's digits a number.
+        else if (typeof v === 'string' && v.startsWith('=')) s.set(k, { v: null, f: v, z: s.get(k)?.z ?? 'General' })
+        else s.set(k, { v: typeof v !== 'string' ? v : v.startsWith("'") ? v.slice(1) : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v, f: '', z: s.get(k)?.z ?? 'General' })
       })
     )
   }

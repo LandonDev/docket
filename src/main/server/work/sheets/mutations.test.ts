@@ -46,13 +46,13 @@ describe('what our writer is told a cell holds', () => {
   const name = (id: string): string | undefined => (id === 's1' ? 'Data' : undefined)
   const cells = (cellValue: unknown) => [{ id: 'sheet.mutation.set-range-values', params: { subUnitId: 's1', cellValue } }]
 
-  it('a cell held as text keeps its words as they are; one he typed with no type is read as Excel reads typing', () => {
+  it('a cell held as text keeps its words as they are; one he typed with no type is typed by the one rule (decision 15)', () => {
     // Council r1 (Sol 6): "007" came back as 7, and text starting with "=" went in as a formula.
     expect(editsOf(cells({ 0: { 0: { v: '007', t: 1 }, 1: { v: '=not a formula', t: 4 }, 2: { v: '1200' }, 3: { v: '1200', t: 2 } } }), name, { rich: true })).toEqual([
       { sheet: 'Data', cell: 'A1', value: '007', literal: true },
       { sheet: 'Data', cell: 'B1', value: '=not a formula', literal: true },
-      { sheet: 'Data', cell: 'C1', value: '1200' },
-      { sheet: 'Data', cell: 'D1', value: '1200' }
+      { sheet: 'Data', cell: 'C1', value: 1200 },
+      { sheet: 'Data', cell: 'D1', value: 1200 }
     ])
   })
 

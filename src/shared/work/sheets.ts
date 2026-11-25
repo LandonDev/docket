@@ -1,4 +1,5 @@
 /** The sheet kind's words and rules that the host and the canvas both say. No zod: the canvas imports values from here. */
+import { typedCell } from './cellInput'
 /**
  * Why a change cannot be saved into an opened workbook, in the words he reads as it is stopped: the
  * canvas says them at the press and the host says the same if one reaches it. `google`: the workbook
@@ -262,9 +263,10 @@ export function forPackage(
     for (const [c, cell] of Object.entries(row)) {
       let out = cell;
       if (cell !== null) {
-        let next: Record<string, unknown> = cell;
+        // His typing as the cell he meant (decision 15, `typedCell`): 42 a number, never words in the editor's style.
+        let next: Record<string, unknown> = typedCell(cell, { runs: !!opts.formats });
         // Text in more than one style is saved as runs where the host keeps formatting; a workbook Excel or Google holds keeps none.
-        if (cell.p != null && !opts.formats) return { stop: sheetStopWords("rich", opts.google) };
+        if (next.p != null && !opts.formats) return { stop: sheetStopWords("rich", opts.google) };
         if (cell.si != null && cell.f == null) {
           const f = formula(params.subUnitId ?? "", Number(r), Number(c));
           if (!f) return { stop: sheetStopWords("fill", opts.google) };

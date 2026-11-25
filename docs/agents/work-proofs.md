@@ -103,10 +103,11 @@ records the refusal as a failure when the window offers that action.
 | J23 | A, B1 | The copies take an edit and the four originals keep their SHA-256 hashes. |
 | J25 | A | Compare marks the changed words. Restore changes the live document and History keeps the newer version. |
 | J26 | A | The document, sheet and deck previews show the expected page counts, and the PDFs handed to Electron's viewer have Letter pages. |
+| J71 | A, B1 | 42, 3.5, 007 and =A1*2 typed across A1 to D1, then the tab closed: the holder's workbook holds 42 and 3.5 as numbers, 007 as text and D1 as a formula (`cells.json`). |
 | J72 | B1 | Save As… of a library Word file opens in its own folder; the holder gets one `TempCode proof agenda copy.docx`, the sheet closes with no "Not saved", and Save pressed again after any failure makes no "copy 2". |
 | J74 | A, B1 | He types a slide title and presses Escape before the 2 s keep, then closes the tab. The holder's slide XML has the typed title. |
 
-Use `--only J03,J04,J09,J11,J12,J14,J16,J22,J23,J25,J26,J72,J74 --shape A,B1` for the
+Use `--only J03,J04,J09,J11,J12,J14,J16,J22,J23,J25,J26,J71,J72,J74 --shape A,B1` for the
 first run and `--only J03 --shape B2 --desk` for the far library. Run the
 commands through `heavy`. LibreOffice and ffmpeg prepare dummy fixtures
 inside the run. J16 uses the dev picker hook for the native menu and a

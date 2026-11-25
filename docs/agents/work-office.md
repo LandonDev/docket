@@ -727,6 +727,9 @@ connected and Outlook is installed (checked every 5 minutes):
   types what it is given, so its copy is the truth. Writes, undos and the
   safety pass's re-reads run one at a time per workbook, so the pass never
   takes the helper's own write for someone else's.
+- **His typing** from the grid is typed first (work-sheets.md "Typed
+  words"); a cell that is text goes behind Excel's apostrophe, which Excel
+  keeps as no character, so `007` and `3/4` are not made a number or a date.
 - **Single cells** (`writeCells`, used by the grid, accepted suggestions and
   `SheetSource.write`) are written alone, or as one block only when they
   fill it, so the cells between are never written back as a read gave them.

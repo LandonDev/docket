@@ -75,7 +75,7 @@ describe('planning a structural edit', () => {
           { op: 'addSheet', name: 'Notes', at: 2 }
         ]
       },
-      { kind: 'cells', edits: [{ sheet: 'Notes', cell: 'A1', value: 'hi' }], formats: [] },
+      { kind: 'cells', edits: [{ sheet: 'Notes', cell: 'A1', value: 'hi', literal: true }], formats: [] },
       {
         kind: 'structural',
         ops: [

@@ -165,12 +165,16 @@ export async function snapshot(ctx: WorkCtx, ref: GoogleSheetRef, rev: number): 
   return got.data
 }
 
-/** What Google's USER_ENTERED takes for a cell: a formula as typed, a value as itself, text that looks like a formula kept as text. */
+/**
+ * What Google's USER_ENTERED takes for a cell: a formula as typed, a number or true or false as itself, and text kept
+ * as text behind Google's apostrophe, which it keeps as no character: "007", "3/4" and "=x" are never read again as a
+ * number, a date or a formula (the grid's typing is typed before it comes here, `typedCell`).
+ */
 const typed = (c: SheetCell | null): string | number | boolean => {
   if (c === null) return ''
   if (c.f) return c.f
   const v = c.v ?? ''
-  return typeof v === 'string' && /^[=+\-@']/.test(v) ? `'${v}` : (v as string | number | boolean)
+  return typeof v === 'string' && v !== '' ? `'${v}` : (v as string | number | boolean)
 }
 const same = (a: SheetCell | null | undefined, b: SheetCell | null | undefined): boolean => (a?.f ?? null) === (b?.f ?? null) && (a?.f ? true : (a?.v ?? null) === (b?.v ?? null))
 
