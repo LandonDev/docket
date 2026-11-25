@@ -109,6 +109,10 @@ export class FileSession {
   private journalOwed = false;
   /** edits since the last save */
   private pending = 0;
+  /** every edit he made, never reset: a read that saw it move kept his text */
+  private edits = 0;
+  /** why the last send failed, said until a send is answered (a key after it never turns the line back to Saved) */
+  private failure: string | null = null;
   private timer: unknown = null;
   private saving: Promise<void> | null = null;
   /** when his last unsent edit was made, and when the send now out began (calm.ts): the save line's clock */
@@ -205,8 +209,17 @@ export class FileSession {
     try {
       // A Drive file that is no Google file has no bytes here to read: it is its facts, with Open in Drive.
       if (this.of.source.at === "google" || !triedAsText(this.of.name, undefined)) return await this.facts();
+      const edits = this.edits;
       const got = await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: this.of.itemId, offset: 0, length: FILE_TEXT_MAX });
       if (this.disposed) return;
+      // He typed while it was read (a change made elsewhere, read again): his words stay, on the version they were
+      // made on, and the line says the file changed, with Reload and Keep Both.
+      if (this.edits !== edits && this.view.is === "text") {
+        this.conflicted = true;
+        this.gone = false;
+        this.changed = got.changed;
+        return this.line();
+      }
       if (!got.end) return await this.facts(`Over ${FILE_TEXT_MAX / 1024 / 1024} MB, too big to edit here.`);
       const text = decodeText(bytesOfBase64(got.data));
       if (!text) return await this.facts();
@@ -216,6 +229,7 @@ export class FileSession {
       this.changed = got.changed;
       this.draft = null;
       this.pending = 0;
+      this.failure = null;
       this.conflicted = false;
       this.gone = false;
       await this.lookForDrafts(text.text);
@@ -262,15 +276,17 @@ export class FileSession {
     }
     // A copy says nothing of its own: the frame names the computer the file is on.
     if (this.view.locked !== null) return this.host.saved(this.view.locked.startsWith("This is a copy") ? null : { state: "readonly", detail: this.view.locked });
-    // A link that dropped: the edits wait here. A refusal (the host's own no) is not saved, with its reason: never Offline.
-    if (failed !== undefined) {
-      const retry = [{ id: "retry", label: "Retry", run: () => this.flush() }];
-      return this.host.saved(linkDropped(failed) ? { state: "offline", pending: this.pending, detail: failed, actions: retry } : { state: "conflict", detail: notSavedWords(failed), actions: retry });
-    }
     // Saved names the last save the host answered; Saving… only once a send has been out a while, or his edits waited
     // past the pause with nothing sent (calm.ts). Inside that, the last Saved line stays.
     const { saving, again } = savingNow({ edited: this.dirty && !this.saving ? this.editedAt : null, pause: SAVE_AFTER_MS, sent: this.saving ? this.sentAt : null }, this.now());
     this.later(again);
+    // A link that dropped: the edits wait here. A refusal (the host's own no) is not saved, with its reason: never Offline.
+    // Said until a send is answered, a new send out a while being Saving…; nothing waiting, nothing is said of it.
+    const failure = failed ?? (this.dirty ? this.failure : null);
+    if (failure !== null && !(this.saving && saving)) {
+      const retry = [{ id: "retry", label: "Retry", run: () => this.flush() }];
+      return this.host.saved(linkDropped(failure) ? { state: "offline", pending: this.pending, detail: failure, actions: retry } : { state: "conflict", detail: notSavedWords(failure), actions: retry });
+    }
     if (saving) return this.host.saved({ state: "saving" });
     this.host.saved({ state: "saved", at: this.changed });
   }
@@ -290,6 +306,7 @@ export class FileSession {
     if (typeof text === "string") this.draft = text;
     else this.reader = text;
     this.pending += 1;
+    this.edits += 1;
     this.editedAt = this.now();
     this.journalSoon(text.length);
     if (this.conflicted) return this.line();
@@ -340,6 +357,7 @@ export class FileSession {
       try {
         const got = await this.host.request<FileSaved>("work.files.write", { ...this.ref(), text: encoded, version: this.version, ...(this.tried.length ? { tried: this.tried } : {}) });
         this.tried = [];
+        this.failure = null;
         if ("conflict" in got) {
           this.conflicted = true;
           this.gone = "gone" in got.conflict;
@@ -359,9 +377,10 @@ export class FileSession {
       } catch (err) {
         const lost = await digest;
         if (lost && !this.tried.includes(lost)) this.tried = [...this.tried, lost].slice(-8);
+        this.failure = textOf(err);
         this.saving = null;
         this.sentAt = null;
-        this.line(textOf(err));
+        this.line();
       }
     })();
     // Under way: a line that said the words wait says they are going (a copy's send-back follows its saving to saved).

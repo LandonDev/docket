@@ -31,10 +31,17 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
   let down = false;
   /** the next write lands, and its answer is lost on the way back */
   let lose = false;
+  /** what happens while the next read is out (he types) */
+  let duringRead: (() => void) | null = null;
   const host: FileSessionHost = {
     async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       calls.push({ method, params });
       if (down) throw new Error("not connected");
+      if (method === "work.files.read") {
+        const typing = duringRead;
+        duringRead = null;
+        typing?.();
+      }
       if (method === "work.files.read") return { data: b64(file.text), size: Buffer.byteLength(file.text), version: `v${file.version}`, changed: file.changed, end: true, ...(o.locked ? { locked: o.locked } : {}) } as T;
       if (method === "work.files.stat") return { entries: [goneFrom(params) ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
       if (method === "work.files.write") {
@@ -83,7 +90,7 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
       fn();
     }
   };
-  return { session, file, lines, said, calls, timers, theirs, words, fire, tick, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true) };
+  return { session, file, lines, said, calls, timers, theirs, words, fire, tick, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true), whileReading: (fn: () => void) => void (duringRead = fn) };
 }
 
 describe("a text file open", () => {
@@ -207,8 +214,8 @@ describe("a text file open", () => {
     expect(h.words()).toBe("Offline. 1 change waits here");
     h.setDown(false);
     const sent = h.session.reopened();
-    // A failure said at once; the send that follows says Saving… only once it has been out a while.
-    expect(h.words()).toBe("Saved 1:52 PM in Events");
+    // The send that follows says Saving… only once it has been out a while; until then the words still wait, never Saved.
+    expect(h.words()).toBe("Offline. 1 change waits here");
     h.tick(600);
     expect(h.words()).toBe("Saving…");
     await sent;
@@ -262,6 +269,46 @@ describe("a text file open", () => {
     await h.session.check();
     expect(savedWords(h.lines.at(-1)!, null, NOW)).toBe("This file changed at 2:05 PM");
     expect(h.session.getSnapshot()).toMatchObject({ text: "theirs\n" });
+  });
+
+  it("keeps keys typed while a change made elsewhere is read: nothing he typed is thrown away, and the line says the file changed", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.theirs("theirs\n");
+    // Ask is fixing the file while he types: his key lands while the session reads their version.
+    h.whileReading(() => h.session.edit("first, mine\n"));
+    await h.session.check();
+    expect(h.session.getSnapshot()).toMatchObject({ is: "text", text: "first\n", rev: 0 });
+    expect(h.session.dirty).toBe(true);
+    const line = h.lines.at(-1)!;
+    expect(savedWords(line, null, NOW)).toBe("This file changed at 2:04 PM");
+    expect(line.actions?.map((a) => a.label)).toEqual(["Reload", "Keep Both"]);
+    // Nothing is sent over theirs; Keep Both puts his words beside the file.
+    await h.fire();
+    expect(h.file.text).toBe("theirs\n");
+    await line.actions![1]!.run();
+    expect(h.calls.find((c) => c.method === "work.files.write")?.params).toMatchObject({ copy: true });
+    expect(h.said).toEqual(["Kept as Notes (mine).md"]);
+  });
+
+  it("keeps saying a failed save until a send is answered: a key after it never turns the line back to Saved", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("a\n");
+    await h.fire();
+    expect(h.words()).toBe("Offline. 1 change waits here");
+    // His next key: the words still wait, and the line says so, counted.
+    h.session.edit("ab\n");
+    expect(h.words()).toBe("Offline. 2 changes wait here");
+    h.tick(SAVE_AFTER_MS + 1);
+    expect(h.words()).toBe("Offline. 2 changes wait here");
+    // The link back: the next send is answered, and only then is it Saved.
+    h.setDown(false);
+    await h.fire();
+    expect(h.words()).toBe("Saved 1:53 PM in Events");
+    h.session.edit("abc\n");
+    expect(h.words()).toBe("Saved 1:53 PM in Events");
   });
 
   it("keeps the last Saved line through the pause and a short send, says Saving… past them, and never names a time later than the host's answer", async () => {
