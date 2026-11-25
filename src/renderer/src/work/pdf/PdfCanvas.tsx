@@ -6,6 +6,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, Input, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
+import { loadToast } from "../../components/ui/toaster";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
 import { OpenFailed } from "../canvas/FetchState";
@@ -467,5 +468,5 @@ async function saveCopy(host: PdfHost): Promise<void> {
   a.download = made.name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  if (made.warnings.length) sayError(new Error(made.warnings.join(" ")), "");
+  if (made.warnings.length) void loadToast().then((toast) => toast.error(made.warnings.join(" ")));
 }

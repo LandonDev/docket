@@ -30,10 +30,12 @@ export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEO
 /**
  * An error a person should see once, in the thread's toast stack: the act's own line (`fallback`, "Couldn't refresh")
  * as its title, and the host's answer in plain words under it (`workErrorWords`, naming the computer asked where the
- * caller gives `environmentId`), none when the answer has no plain words. Never a method's name or a path.
+ * caller gives `environmentId`), none when the answer has no plain words or repeats the title. Never a method's name or a path.
  */
 export function sayError(error: unknown, fallback: string, environmentId?: string | null): void {
-  void loadToast().then((toast) => toast.error(fallback, errorDescription(error, environmentId)));
+  const under = errorDescription(error, environmentId);
+  // A refusal raised with its own sentence as the act's line (`sayError(new Error(why), why)`) is said once.
+  void loadToast().then((toast) => toast.error(fallback, under?.description === fallback ? undefined : under));
 }
 
 /** The plain words under `sayError`'s title, or none. */

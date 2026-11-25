@@ -400,6 +400,9 @@ A canvas pane words both its failures this way, naming the pane's computer
 (`useFailedWords`, canvas/FetchState.tsx): the centred "Couldn't open this
 …" and the detail of every kind's state line ("Couldn't save", "History did
 not load"); a raw detail shows none, and the line's word stands alone.
+A press that failed toasts through `sayError` (canvas/frame.ts): the act's
+own line as the title, these words under it, and none under it when they
+are empty or repeat the title (a refusal raised with its own sentence).
 
 A site that branches on a host's raw text (a stale version, a conflict)
 reads `err.message`, never these words. The test holds the raw lines found

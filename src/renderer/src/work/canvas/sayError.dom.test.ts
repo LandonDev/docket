@@ -34,4 +34,9 @@ describe("sayError", () => {
     sayError(undefined, "Open in its app did not work");
     expect(await said()).toEqual(["Open in its app did not work", undefined]);
   });
+
+  it("says a refusal raised with its own sentence once, not as its title and again under it", async () => {
+    sayError(new Error("Accept or reject the suggestion on this slide first"), "Accept or reject the suggestion on this slide first");
+    expect(await said()).toEqual(["Accept or reject the suggestion on this slide first", undefined]);
+  });
 });

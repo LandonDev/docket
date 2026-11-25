@@ -37,6 +37,12 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
 });
 
+const toasts = vi.hoisted(() => ({ errors: [] as unknown[][] }));
+vi.mock("../../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../../components/ui/toaster")>()),
+  loadToast: async () => ({ error: (...args: unknown[]) => void toasts.errors.push(args) }),
+}));
+
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { resetCanvasStore } from "../canvas/store";
 
@@ -485,6 +491,16 @@ describe("the bar and failures", () => {
     fireEvent.click(within(page1).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(doc.painted).toContain(1));
     await waitFor(() => expect(page1.querySelector("[data-pdf-page-failed]")).toBeNull());
+  });
+
+  it("says what a saved copy could not keep as the toast's own line, never under an empty title", async () => {
+    await open(pdfView());
+    pdfHost.export = async () => ({ name: "Ballroom contract.pdf", size: 0, warnings: ["The signature is not in the copy."] });
+    URL.createObjectURL ??= () => "blob:copy";
+    URL.revokeObjectURL ??= () => undefined;
+    toasts.errors.length = 0;
+    fireEvent.click(await screen.findByRole("button", { name: "Save a copy" }));
+    await waitFor(() => expect(toasts.errors).toEqual([["The signature is not in the copy."]]));
   });
 
   it("finds in the system's search field, whose ring is the field's own", async () => {
