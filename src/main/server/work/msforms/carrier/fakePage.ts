@@ -61,6 +61,11 @@ export class FakeForms implements FormsComputer {
   saving = 0
   /** the page never says the change is saved */
   neverSaves = false
+  /** as Forms does (P5): after Tab in an option field, reads lack that option's row until the next press */
+  redraws = false
+  private redrawing: number | null = null
+  /** as Forms does (P5): "Add new question" pressed while a question is open inserts above it and leaves it open */
+  insertsBetween = false
   /** forms deleted in Forms: their builder draws Forms' "This form doesn't exist" page (P5) */
   gone = new Set<string>()
   /** the browser stops once a step of this name was taken (the box browser's memory cap, P5): every call after it fails */
@@ -242,7 +247,9 @@ export class FakeForms implements FormsComputer {
     el(1, `group ${q(`Question ${i + 1}`)}`)
     el(2, `text area ${q(`Question title ${i + 1} Input your question title here`)} = ${q(d.title)}`, { what: 'question title', run: (t) => t !== undefined && (d.title = t) })
     if (d.type === 'choice') {
+      const redrawn = this.redrawing
       ;(d.options ?? []).forEach((o, k) => {
+        if (k === redrawn) return
         el(2, `input "Choice Option Text Please enter a name for this option." = ${q(o)}`, { what: `option ${k + 1}`, run: (t) => t !== undefined && (d.options![k] = t) })
         el(3, `button ${q(`Delete ${o}`)}`, { what: `Delete ${o}`, run: () => d.options!.splice(k, 1) })
       })
@@ -269,6 +276,8 @@ export class FakeForms implements FormsComputer {
   }
 
   async act(window: string, _screen: Screen, steps: readonly ComputerAction[]): Promise<{ ok: boolean; words?: string }> {
+    // the row Forms redrew is back in the tree with the next press, as on the page (P5)
+    this.redrawing = null
     const page = this.pages.get(window)
     for (const s of steps) {
       const index = (s as { element?: number }).element
@@ -278,7 +287,8 @@ export class FakeForms implements FormsComputer {
       if (action === 'left_click') {
         this.log.push(`click ${hit.what}`)
         // A click elsewhere commits the question in edit, as Forms does.
-        if (page?.kind === 'builder' && !/question title|option|Required|Multiple|Long|Add option|Delete|Move/.test(hit.what)) this.commit(this.forms.get(page.formId)!, this.ui.get(window)!)
+        const opens = this.insertsBetween && hit.what === 'Add new question' && !!this.ui.get(window)?.editing
+        if (page?.kind === 'builder' && !opens && !/question title|option|Required|Multiple|Long|Add option|Delete|Move/.test(hit.what)) this.commit(this.forms.get(page.formId)!, this.ui.get(window)!)
         hit.run()
         if (this.diesAfter === hit.what) this.dead = true
       } else if (action === 'type') {
@@ -289,6 +299,7 @@ export class FakeForms implements FormsComputer {
         const key = (s as { text: string }).text
         this.log.push(`key ${key} in ${hit.what}`)
         if (key === 'Tab' && hit.what === 'title field' && page?.kind === 'builder') this.ui.get(window)!.titleEdit = false
+        if (key === 'Tab' && this.redraws && /^option \d+$/.test(hit.what)) this.redrawing = Number(hit.what.slice(7)) - 1
       }
     }
     return { ok: true }

@@ -20,6 +20,8 @@ const ITEM = ['menu item', 'button', 'link', 'option']
 /** The library's New menu item that makes a form, with or without the file type SharePoint puts before it. */
 export const FORMS_SURVEY = /^(?:xlsx\s+)?Forms survey$/i
 const TOGGLE = ['checkbox', 'switch']
+/** A new option's own name, as Forms draws an empty field: "Option 3". */
+const PLACEHOLDER = /^Option \d+$/
 const TYPE_BUTTON: Record<MsQuestion['type'], RegExp> = { choice: /^Choice$/, text: /^Text$/, rating: /^Rating$/, date: /^Date$/, section: /^Section$/ }
 
 /**
@@ -175,32 +177,39 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     }, `the title "${short(q.title)}"`)
     if (q.type === 'choice') {
       const want = q.options ?? []
+      // Forms redraws an option's row as Tab commits it, and the tree lacks that row until the next press (P5): a count
+      // read then took a second Add option and left Forms' "Option 4" behind, and a wait for the row never ended. So the
+      // fields are never counted: each option goes into the next field still holding Forms' own "Option N", Add option
+      // is pressed only when none shows, and the options are checked at rest, once the question is left.
+      const placeholders = (x: Screen) => (questionInEdit(x)?.options ?? []).filter((o) => PLACEHOLDER.test((o.value ?? '').trim()))
+      // an option asked for in Forms' own words ("Option 2") keeps its field a placeholder: those are passed over
+      let kept = 0
       for (let i = 0; i < want.length; i++) {
-        edit = questionInEdit(page.last!)
-        if (!edit) return page.stop(`the question "${short(q.title)}" closed before its options were written`)
-        if (i >= edit.options.length) {
+        const skip = kept
+        // an empty field shows whole (only a typed row is redrawn): Add option only when none does
+        let { got } = await page.until((x) => placeholders(x)[skip], Math.min(mount, 3_000))
+        if (!got) {
           await page.act((x) => {
             const e = questionInEdit(x)
             return e?.addOption ? [click(e.addOption)] : null
           }, 'Add option')
+          got = (await page.until((x) => placeholders(x)[skip], mount)).got
         }
+        if (!got) return page.stop(`the option "${short(want[i])}" found no empty field`)
         // Never Return in an option field: it takes a suggestion chip.
         await page.act((x) => {
-          const e = questionInEdit(x)
-          const field = e?.options[i]
+          const field = placeholders(x)[skip]
           return field ? [typeInto(field, want[i]), tab(field)] : null
         }, `the option "${short(want[i])}"`)
+        if (PLACEHOLDER.test(want[i].trim())) kept++
       }
-      // Options Forms put there that were not asked for go, each read afresh (P1: an "Option 4" was left behind). An
-      // option's Delete is the first Delete after its field, whatever its words.
+      // Fields Forms put there that were not asked for go, each read afresh (P1: an "Option 4" was left behind). An
+      // option's Delete is the first Delete after its field, whatever its words, drawn only while its row is hovered.
       for (let guard = 0; guard < 20; guard++) {
-        edit = questionInEdit(await page.read())
-        const extra = edit?.options[want.length]
-        if (!extra) break
+        if (!placeholders(await page.read())[kept]) break
         await page.act((x) => {
-          const field = questionInEdit(x)?.options[want.length]
+          const field = placeholders(x)[kept]
           const del = field ? [...x.elements.values()].filter((e) => e.role === 'button' && e.index > field.index && /^Delete\b/.test(e.name ?? '') && !/^Delete question\b/.test(e.name ?? '')).sort((a, b) => a.index - b.index)[0] : null
-          // an option's Delete is drawn only while its row is under the pointer (P1): the field is hovered first
           return del && field ? [{ action: 'mouse_move', element: field.index } as ComputerAction, click(del)] : null
         }, 'removing an option Forms added')
       }
@@ -239,16 +248,30 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       return k ? [click(k)] : null
     }, `the ${q.type} question type`)
     await fill(page, q)
-    // A click outside the question commits it (Forms saves on leaving it); then it must show at rest, last, by its title.
+    // Leaving the question commits it (Forms saves on leaving it); then it must show at rest, last, by its title. It is
+    // left by the form's own title: "Add new question" pressed while a question is open inserts one above it and leaves
+    // it open (P5). The title field that opens is left by Tab, unchanged.
     await page.act((x) => {
-      const a = one(x, BUTTON, /^(Add new question|Quick start with)$/i)
-      return a ? [click(a)] : []
+      const b = formTitleButton(x)
+      return b ? [click(b)] : null
     }, 'leaving the question')
+    const { got: titleField } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
+    if (titleField) {
+      await page.act((x) => {
+        const f = one(x, ['text area', 'input'], /^Form title$/)
+        return f ? [tab(f)] : []
+      }, 'leaving the form title')
+    }
     const { got } = await page.until((x) => {
       const list = questionsOf(x)
       return list.length > before && sameTitle(list[list.length - 1]?.title ?? '', q.title)
     }, mount)
     if (!got) page.stop(`the question "${short(q.title)}" did not show after Add`)
+    if (q.type === 'choice') {
+      const shown = questionsOf(page.last!).at(-1)
+      const options = shown && 'options' in shown ? (shown.options ?? []) : []
+      if (JSON.stringify(options.map((o) => o.trim())) !== JSON.stringify((q.options ?? []).map((o) => o.trim()))) page.stop(`the question "${short(q.title)}" shows other options than asked`)
+    }
   }
 
   /** Puts a question at rest into edit by its place. */

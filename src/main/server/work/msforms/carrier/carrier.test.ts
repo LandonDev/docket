@@ -207,6 +207,21 @@ describe('the operations', () => {
     expect(page.log.some((l) => /key (Return|Escape)/.test(l))).toBe(false)
   })
 
+  it("writes a Choice question's options exactly as asked on a page that redraws a committed option and opens a question above on Add new question (P5)", async () => {
+    const page = new FakeForms()
+    page.redraws = true
+    page.insertsBetween = true
+    const { carrier, auth } = rig(page)
+    page.add(form())
+    const before = structuredClone(page.forms.get('FakeFormId00000000000001')!.questions)
+    const changes = [{ op: 'add' as const, question: { title: 'Which size?', type: 'choice' as const, options: ['Small', 'Medium', 'Large'], required: false } }]
+    const { read } = await carrier.write(auth('write', { changes, before }), 'FakeFormId00000000000001', changes, before)
+    expect(read.questions).toEqual([
+      { title: 'Name', type: 'text', required: true },
+      { title: 'Which size?', type: 'choice', options: ['Small', 'Medium', 'Large'], required: false }
+    ])
+  })
+
   it('stops on drift and says nothing was changed', async () => {
     const { page, carrier, auth } = rig()
     page.add(form())
