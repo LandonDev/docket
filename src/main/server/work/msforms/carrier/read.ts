@@ -172,7 +172,8 @@ export function settingsOf(screen: Screen, was: MsFormSettings = MSFORM_NEW_SETT
 export function countOf(screen: Screen): number | null {
   for (const e of all(screen)) {
     const name = `${e.name ?? ''} ${e.value ?? ''}`.trim()
-    if (/^No responses( yet)?$/i.test(name)) return 0
+    // "No responses yet, get your data now." on a form no one has answered (P5)
+    if (/^No responses( yet)?\b/i.test(name)) return 0
     const m = /^(\d[\d,]*)\s+Responses?$/i.exec(name) ?? /^Responses\s+(\d[\d,]*)$/i.exec(name)
     if (m) return Number(m[1].replace(/,/g, ''))
   }

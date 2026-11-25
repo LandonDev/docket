@@ -65,6 +65,14 @@ describe('a read of the page', () => {
     ])
   })
 
+  it("reads a form with no answers as 0, in the Responses view's own words (P5)", () => {
+    expect(countOf(screen(`
+[1] window "Untitled form"
+  [2] text "No responses yet, get your data now."
+  [3] button "Share to collect responses"
+`))).toBe(0)
+  })
+
   it('reads Settings, the link and the count', () => {
     expect(settingsOf(SETTINGS)).toEqual({ accepting: true, orgOnly: true, recordName: true, onePerPerson: false })
     expect(linkOf(COLLECT)).toBe('https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=FakeFormId00000000000001')
