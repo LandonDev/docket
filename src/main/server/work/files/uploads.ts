@@ -127,7 +127,9 @@ function soon(ctx: WorkCtx, ms: number): void {
  */
 export function lookAll(ctx: WorkCtx, now: () => number = Date.now): Promise<void> {
   const next = queue.then(async () => {
-    const due = [...uploads.values()].filter((u) => owed(u, now()))
+    // Another host's file is first asked `every` after our write, whichever timer runs the sweep: a Mac says the old
+    // bytes are uploaded for about 0.6 s after a write, so a second save made while the first was followed waits too.
+    const due = [...uploads.values()].filter((u) => owed(u, now()) && (u.vm || now() - u.wrote >= uploadTiming.every))
     const near = due.filter((u) => u.vm)
     const far = new Map<string, Upload[]>()
     for (const u of due) if (!u.vm) (far.get(`${u.host}\u0000${u.workspaceId}`) ?? far.set(`${u.host}\u0000${u.workspaceId}`, []).get(`${u.host}\u0000${u.workspaceId}`)!).push(u)

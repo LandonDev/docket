@@ -2802,7 +2802,9 @@ workbooks, text and Word alike (files/uploads.ts):
   asked; while a write of ours is still owed, the keeper does not put the VM to sleep (`KeeperDeps.owed`,
   `uploadsOwed`).
 - **A Mac.** `work.files.uploaded {ref}`, asked of the file's own host by the workspace's host 2 s after its write
-  (a Mac says the old version is uploaded for about 0.6 s after a write): the File Provider item's
+  (a Mac says the old version is uploaded for about 0.6 s after a write), whichever timer runs the sweep: a second
+  save made while the first is still followed is left out of every sweep until its own 2 s are up (`lookAll`). The
+  File Provider item's
   `NSURLUbiquitousItemIsUploadedKey` and `IsUploadingKey`, read by JXA through osascript with no prompt
   (`MAC_UPLOAD_STATE`, about 60 ms a read). A file in no library there answers `outside` and nothing is told; a
   computer that cannot read them (a PC, an older build) answers null, and its tab keeps the computer's own line

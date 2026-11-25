@@ -1565,7 +1565,7 @@ describe('Save as Word to a folder he picks', () => {
     // The file it made is followed to the cloud as any write of ours there: the Mac alone says it lies in a library.
     expect(cloudOf(WS, MAC, got.ref.path)).toBeUndefined()
     setUploadReader(async () => false)
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, () => Date.now() + uploadTiming.every)
     expect(cloudOf(WS, MAC, got.ref.path)).toMatchObject({ is: 'uploading' })
   })
 
@@ -1586,6 +1586,8 @@ describe('Save as Word to a folder he picks', () => {
 })
 
 describe("saved is not uploaded: a Mac's OneDrive says when it has the file", () => {
+  /** The sweep's own clock: another host's file is asked `every` after our write. */
+  const swept = () => Date.now() + uploadTiming.every
   const cloudOfTab = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)?.cloud
 
   it('says nothing until the Mac answers, then uploading, then uploaded once its OneDrive item is, as the Mac reads it', async () => {
@@ -1597,11 +1599,11 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     await settled()
     // the Mac alone knows whether the file lies in a folder OneDrive syncs
     expect(await cloudOfTab(tabId)).toBeUndefined()
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
     expect(asked).toEqual([path])
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploading' })
     uploaded = true
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
   })
 
@@ -1611,8 +1613,8 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
     await editorSaves(copy, 'workbook two')
     await settled()
-    await lookAll(box.ctx)
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
+    await lookAll(box.ctx, swept)
     expect(await cloudOfTab(tabId)).toBeUndefined()
     expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
     expect(asks).toBe(1)
@@ -1636,7 +1638,7 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     uploadTiming.ask = 50
     try {
       far.length = 0
-      await lookAll(box.ctx)
+      await lookAll(box.ctx, swept)
       const ups = far.filter((c) => c.verb === 'uploaded')
       expect(ups).toHaveLength(1)
       expect((ups[0]!.args.refs as unknown[]).length).toBe(3)
@@ -1653,7 +1655,7 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
     await editorSaves(copy, 'workbook two')
     await settled()
-    const looking = lookAll(box.ctx)
+    const looking = lookAll(box.ctx, swept)
     await new Promise((r) => setTimeout(r, 20))
     // A newer save lands while the Mac is asked about the older one.
     await editorSaves(copy, 'workbook three')
@@ -1662,7 +1664,7 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     await looking
     expect(await cloudOfTab(tabId)).not.toMatchObject({ is: 'uploaded' })
     // Asked again after the newer write, the Mac's yes is of it: only that one says In Teams.
-    const again = lookAll(box.ctx)
+    const again = lookAll(box.ctx, swept)
     await new Promise((r) => setTimeout(r, 20))
     answer(true)
     await again
@@ -1676,11 +1678,11 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
     await editorSaves(copy, 'workbook two')
     await settled()
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
     // A look is under way when the next save's send leaves and is held on its way to the Mac.
     answer = () => undefined
-    const looking = lookAll(box.ctx)
+    const looking = lookAll(box.ctx, swept)
     await new Promise((r) => setTimeout(r, 20))
     let open!: () => void
     hold = new Promise((r) => (open = r))
@@ -1694,13 +1696,33 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     expect(await cloudOfTab(tabId)).toBeUndefined()
     answer = null
     uploaded = false
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
     expect(await cloudOfTab(tabId)).toBeUndefined()
     open()
     await settled()
     // The send landed: from here its own write is followed.
-    await lookAll(box.ctx)
+    await lookAll(box.ctx, swept)
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploading' })
+  })
+
+  it("asks nothing of a write younger than a sweep's wait, though a timer from an earlier save runs the sweep", async () => {
+    // The Mac's flag is still the last bytes' for a moment after each write: read too soon, it says uploaded.
+    const asked: string[] = []
+    setUploadReader(async (path) => (asked.push(path), true))
+    const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    await lookAll(box.ctx, swept)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
+    asked.length = 0
+    await editorSaves(copy, 'workbook three')
+    await settled()
+    // The earlier save's timer fires just after this write.
+    await lookAll(box.ctx)
+    expect(asked).toEqual([])
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    await lookAll(box.ctx, swept)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
   })
 
   it("is the workspace's host's question alone", async () => {
