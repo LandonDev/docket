@@ -3008,8 +3008,8 @@ Around the canvas:
     chip) and Display, no rule above or
     below; the tree (or the task board, which keeps the brief, Files and
     Log around it; grouped by State or Priority, New task draws the plain
-    tree while its line is open, Tab in it too, and the groups come back
-    when it shuts; Tab and Shift+Tab keep the words typed; New task from
+    tree while its line is open, Tab in it too, as does a row's Add
+    sub-task, and the groups come back when it shuts; Tab and Shift+Tab keep the words typed; New task from
     a board card's menu opens the project in List with the field focused);
     "2 done"; Files; Log. Sections stand 40px apart with
     a 14/600 head, no boxes. Files lists the project's documents, sheets,
