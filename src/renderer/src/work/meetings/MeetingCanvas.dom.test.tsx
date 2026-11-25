@@ -485,7 +485,15 @@ describe("the meeting canvas", () => {
     expect(container.querySelector("[data-meeting-skeleton]")).toBeNull();
     expect(container.querySelector("[data-meeting-bar-bone]")).toBeNull();
     host.down = false;
+    // Council round 12 (the walk): Retry handed back nothing, so it never spun. The failure stays, Retry spinning, until the answer.
+    let go!: () => void;
+    host.hold = new Promise((r) => (go = r));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await act(async () => new Promise((settle) => setTimeout(settle, 10)));
+    expect(container.querySelector("[data-canvas-failed]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    host.hold = null;
+    await act(async () => go());
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });

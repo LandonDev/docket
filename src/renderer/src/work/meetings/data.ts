@@ -40,16 +40,22 @@ function put(itemId: string, patch: Partial<Entry>): void {
   tell(itemId);
 }
 
-/** Fetch an item's meeting from its host; a push while it runs fetches once more after it. */
-export function loadMeeting(environmentId: string, itemId: string): void {
+/** Each item's fetch in flight, so a Retry pressed while one runs waits for that one's answer. */
+const flights = new Map<string, Promise<void>>();
+
+/**
+ * Fetch an item's meeting from its host; a push while it runs fetches once more after it. What is held, a failure too,
+ * stays until the answer; the promise settles then (a Retry spins until it does).
+ */
+export function loadMeeting(environmentId: string, itemId: string): Promise<void> {
   const entry = entries.get(itemId) ?? { ...EMPTY, environmentId, fetching: false, again: false };
   if (!entries.has(itemId) || entry.environmentId !== environmentId) entries.set(itemId, { ...entry, environmentId });
   if (entry.fetching) {
     put(itemId, { again: true });
-    return;
+    return flights.get(itemId) ?? Promise.resolve();
   }
   put(itemId, { fetching: true, again: false });
-  void registry
+  const flight = registry
     .linkOf(environmentId)
     .request<{ meeting: Meeting | null }>("work.meetings.get", { itemId })
     .then(
@@ -63,9 +69,12 @@ export function loadMeeting(environmentId: string, itemId: string): void {
     )
     .finally(() => {
       const now = entries.get(itemId);
+      flights.delete(itemId);
       put(itemId, { fetching: false });
-      if (now?.again) loadMeeting(now.environmentId, itemId);
+      if (now?.again) void loadMeeting(now.environmentId, itemId);
     });
+  flights.set(itemId, flight);
+  return flight;
 }
 
 /** The `work.meetings` push, and a test's seam for it: a meeting on screen whose rev moved is fetched again. */

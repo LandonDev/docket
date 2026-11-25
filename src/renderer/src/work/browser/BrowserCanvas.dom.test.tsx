@@ -22,6 +22,7 @@ const host = vi.hoisted(() => ({
   stopped: [] as string[],
   pictureDown: false,
   stateDown: false,
+  stateHold: null as Promise<void> | null,
   /** what the act kept: its bytes, no picture at all, or a picture whose bytes did not come */
   picture: "bytes" as "bytes" | "none" | "empty",
   /** while set, the picture's read waits on it */
@@ -42,6 +43,7 @@ vi.mock("../../lib/connection", async (original) => {
     connected: true,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       host.calls.push({ method, params });
+      if (method === "work.browser.state" && host.stateHold) await host.stateHold;
       if (method === "work.browser.state" && host.stateDown) throw new Error("not connected");
       if (method === "work.browser.state") return host.state;
       if (method === "computer.drive") return void (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
@@ -128,6 +130,7 @@ beforeEach(() => {
   host.stopped = [];
   host.pictureDown = false;
   host.stateDown = false;
+  host.stateHold = null;
   host.picture = "bytes";
   host.pictureGate = null;
   host.drawn = [];
@@ -532,7 +535,15 @@ describe("the browser's body", () => {
     // The body says it, so no state line says it again.
     expect(p.shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     host.stateDown = false;
+    // Council round 12 (the walk): Retry cleared the failure at once. It stays, Retry spinning, until the read answers.
+    let go!: () => void;
+    host.stateHold = new Promise((r) => (go = r));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await act(async () => new Promise((settle) => setTimeout(settle, 10)));
+    expect(screen.getByText("Couldn't open this page")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    host.stateHold = null;
+    await act(async () => go());
     await screen.findByText("The agent is not driving the browser now");
     expect(p.shell.statusLine).toHaveBeenLastCalledWith(null);
   });

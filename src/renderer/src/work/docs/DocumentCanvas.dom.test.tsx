@@ -55,6 +55,16 @@ describe("the document's body", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(ready.at(-1)).toBe(false);
+    // Council round 12 (the walk): Retry dropped to bones at once. The failure stays, Retry spinning, until the open answers.
+    const made = opening.made;
+    fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(opening.made).toBe(made + 1));
+    expect(failed.isConnected).toBe(true);
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(within(failed).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => opening.fail(new Error("Still not there")));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Still not there"));
+    expect(within(container.querySelector<HTMLElement>("[data-canvas-failed]")!).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull();
   });
 
   it("opens once for the same source: a canvas push's new copy of the item reopens nothing; another document opens", () => {
@@ -235,7 +245,13 @@ describe("a mail's attachment as a document", () => {
     // The item stays the attachment: nothing opens in its place, and no thread is named.
     expect(conn.asked).toEqual([{ method: "work.formats.import", params: { itemId: "a1", from: { at: "source", source: MAIL } } }]);
     fail = false;
+    // Council round 12 (the walk): Retry dropped to bones at once. The failure stays, Retry spinning, until the read answers.
+    let answer!: () => void;
+    conn.answer = (method) => (method !== "work.formats.import" ? Promise.resolve([]) : new Promise((r) => (answer = () => r({ source: MAIL, title: "Brief", warnings: [], outsiders: false }))));
     await act(async () => fireEvent.click(within(failed).getByRole("button", { name: "Retry" })));
+    expect(failed.isConnected).toBe(true);
+    expect(within(failed).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
     await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).toBeNull());
     expect(conn.asked.filter((a) => a.method === "work.formats.import")).toHaveLength(2);
     // The document it became opens (here the host's open waits): its bones, under the attachment's name.

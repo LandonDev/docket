@@ -45,7 +45,7 @@ export interface Browser {
   live: ComputerEntry[];
   /** why the first read of who drives failed, while nothing has been read */
   error?: string | null;
-  retry?(): void;
+  retry?(): void | Promise<void>;
 }
 
 function useBrowser(env: string, pane: string): Browser {

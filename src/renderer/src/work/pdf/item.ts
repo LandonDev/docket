@@ -99,7 +99,7 @@ export function usePdfItem(
   host: PdfHost,
   engine: PdfEngine = pdfjsEngine,
   keep?: string,
-): { view: PdfView | null; viewError: string | null; doc: DocState; setView(view: PdfView): void; unlock(password: string): void; retry(): void } {
+): { view: PdfView | null; viewError: string | null; doc: DocState; setView(view: PdfView): void; unlock(password: string): void; retry(): Promise<void> } {
   // A kept file is the body's again: taken out of the kept ones once the body is up (below).
   const [kept] = useState(() => (keep ? (keptPdfs.get(keep) ?? null) : null));
   const [view, setView] = useState<PdfView | null>(kept?.view ?? null);
@@ -129,16 +129,30 @@ export function usePdfItem(
   }, [keep]);
   const [password, setPassword] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
+  const attemptSeen = useRef(0);
   // Bumped by Retry after the view itself did not come: the host is asked again.
   const [asks, setAsks] = useState(0);
+  // Retry's presses, settled once the read they asked answers: the failure stays shown until then.
+  const waiters = useRef<(() => void)[]>([]);
+  const settle = (): void => {
+    for (const done of waiters.current.splice(0)) done();
+  };
 
   useEffect(() => {
     let live = true;
-    setViewError(null);
     const off = host.onView((next) => live && setView(next));
     host.open().then(
-      (got) => live && setView(got),
-      (error: unknown) => live && setViewError(error instanceof Error ? error.message : "The host did not answer"),
+      (got) => {
+        if (!live) return;
+        setViewError(null);
+        setView(got);
+        settle();
+      },
+      (error: unknown) => {
+        if (!live) return;
+        setViewError(error instanceof Error ? error.message : "The host did not answer");
+        settle();
+      },
     );
     return () => {
       live = false;
@@ -157,7 +171,10 @@ export function usePdfItem(
     let opened: PdfDoc | null = null;
     current.current = null;
     open?.doc.destroy();
-    setDoc({ phase: "loading" });
+    // His Retry keeps the failure until the file answers; any other read shows its loading.
+    const again = attempt !== attemptSeen.current;
+    attemptSeen.current = attempt;
+    setDoc((was) => (again && was.phase === "failed" ? was : { phase: "loading" }));
     // A version the host no longer keeps (the file changed and was opened again elsewhere): open again, which reloads at the new rev.
     const read = (offset: number, length: number): Promise<Uint8Array> =>
       host.read("file", offset, length, rev).catch((error: unknown) => {
@@ -173,11 +190,13 @@ export function usePdfItem(
         opened = got;
         current.current = { doc: got, rev, size };
         setDoc({ phase: "ready", doc: got });
+        settle();
       },
       (error: unknown) => {
         if (!live) return;
         if (error instanceof PasswordNeeded) setDoc({ phase: "password", wrong: error.wrong });
         else setDoc({ phase: "failed", message: error instanceof Error && error.message ? error.message : "The file could not be read" });
+        settle();
       },
     );
     return () => {
@@ -190,7 +209,18 @@ export function usePdfItem(
   // Retry asks again for what did not come: the view, else the file.
   const failedView = viewError !== null;
   return useMemo(
-    () => ({ view, viewError, doc, setView, unlock: setPassword, retry: () => (failedView ? setAsks : setAttempt)((n) => n + 1) }),
+    () => ({
+      view,
+      viewError,
+      doc,
+      setView,
+      unlock: setPassword,
+      retry: () =>
+        new Promise<void>((done) => {
+          waiters.current.push(done);
+          (failedView ? setAsks : setAttempt)((n) => n + 1);
+        }),
+    }),
     [view, viewError, doc, failedView],
   );
 }

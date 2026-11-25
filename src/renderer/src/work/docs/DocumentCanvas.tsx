@@ -139,9 +139,14 @@ export function useOpened(env: string, source: CanvasSource, attempt: number, it
   const key = JSON.stringify(source);
   const latest = useRef(source);
   latest.current = source;
+  // What the last open was asked for: the same document asked again (his Retry) keeps its failure until the answer.
+  const asked = useRef<string | null>(null);
   useEffect(() => {
     let live = true;
-    setOpened(null);
+    const what = `${env}\n${key}\n${itemId ?? ""}`;
+    const same = asked.current === what;
+    asked.current = what;
+    setOpened((was) => (same && was && "error" in was ? was : null));
     const tryOn = async (on: string, again: boolean): Promise<void> => {
       const host = docHost(on, latest.current, itemId);
       try {
@@ -332,36 +337,52 @@ export function Body(props: CanvasBodyProps<DocState>) {
  */
 function AttachmentBody(props: CanvasBodyProps<DocState>) {
   const { item, env, shell } = props;
-  const [attempt, setAttempt] = useState(0);
   const [read, setRead] = useState<{ source: CanvasSource } | { error: string } | null>(null);
+  // The read in hand: the effect's, and his Retry's, which keeps the failure until it answers.
+  const readNow = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
     let live = true;
     setRead(null);
     // An item's source never changes, so its id is enough: a push that hands a new copy of the item reads nothing again.
-    readAttachment(env, { id: item.id, source: item.source }).then(
-      (a) => live && setRead({ source: a.source }),
-      (err: unknown) => live && setRead({ error: err instanceof Error && err.message ? err.message : "It could not be read" }),
-    );
+    const ask = (): Promise<void> =>
+      readAttachment(env, { id: item.id, source: item.source }).then(
+        (a) => void (live && setRead({ source: a.source })),
+        (err: unknown) => void (live && setRead({ error: err instanceof Error && err.message ? err.message : "It could not be read" })),
+      );
+    readNow.current = ask;
+    void ask();
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env, item.id, attempt]);
+  }, [env, item.id]);
   useLayoutEffect(() => {
     if (!read || "error" in read) shell.ready?.(false);
   }, [shell, read]);
   const { id, sessionId } = item;
   const keep = useMemo((): MoreEntry[] => [{ id: "keep", label: "Keep as document", icon: Doc, run: () => keepAsDocument(env, { id, sessionId }) }], [env, id, sessionId]);
   if (!read) return <ItemSkeleton />;
-  if ("error" in read) return <OpenFailed kind="document" why={read.error} onRetry={() => setAttempt((n) => n + 1)} />;
+  if ("error" in read) return <OpenFailed kind="document" why={read.error} onRetry={() => readNow.current()} />;
   return <DocBody {...props} source={read.source} more={keep} />;
 }
 
 function DocBody({ item, source, env, state, setState, shell, more: own = NO_MORE }: CanvasBodyProps<DocState> & { more?: MoreEntry[] }) {
   const [attempt, setAttempt] = useState(0);
   const opened = useOpened(env, source, attempt, item.id);
-  // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google.
-  const reopen = useCallback(() => setAttempt((n) => n + 1), []);
+  // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google. Its promise settles once the
+  // open it asked answers, so a Retry spins until then.
+  const waiting = useRef<(() => void)[]>([]);
+  const reopen = useCallback(
+    (): Promise<void> =>
+      new Promise<void>((done) => {
+        waiting.current.push(done);
+        setAttempt((n) => n + 1);
+      }),
+    [],
+  );
+  useEffect(() => {
+    for (const done of waiting.current.splice(0)) done();
+  }, [opened]);
   const googleMore = useGoogleDoc(env, item, reopen);
   const google = useMemo(() => (own.length ? [...own, ...googleMore] : googleMore), [own, googleMore]);
   // Save As…: a document of a Work workspace, from the header, the pane's More and File → Save As… (⇧⌘S).

@@ -355,12 +355,15 @@ describe("a file the host stops sending", () => {
     pdfHost = fakePdfHost(pdfView());
     let tries = 0;
     let fail: (() => void) | undefined;
+    let land: (() => void) | undefined;
     engine = {
       open: async (file) => {
         if (++tries === 1) {
           // pdf.js opened, then a range it needed never came.
           fail = () => file.onFail?.("The host stopped sending this file.");
+          return fakeDoc(FILE);
         }
+        await new Promise<void>((go) => (land = go));
         return fakeDoc(FILE);
       },
     };
@@ -374,6 +377,11 @@ describe("a file the host stops sending", () => {
     await act(async () => fail!());
     expect(await screen.findByText("The host stopped sending this file.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // Council round 12 (the walk): Retry dropped to bones at once. The failure stays, Retry spinning, until the file answers.
+    await waitFor(() => expect(land).toBeDefined());
+    expect(screen.getByText("The host stopped sending this file.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => land!());
     await waitFor(() => expect(pages()[0]).toBe(1));
     expect(tries).toBe(2);
   });
@@ -428,8 +436,10 @@ describe("the bar and failures", () => {
     pdfHost.open = async () => {
       // The wire's own words: the shared failure says them as every viewer does (`OpenFailed`, `workErrorWords`).
       if (++tries === 1) throw new Error("No answer in 4 s");
+      if (tries === 2) await new Promise<void>((go) => (answer = go));
       return open();
     };
+    let answer: (() => void) | undefined;
     engine = fakeEngine(fakeDoc(FILE));
     host.current = fakeHost([ITEM], host as never);
     render(
@@ -442,6 +452,11 @@ describe("the bar and failures", () => {
     expect(screen.queryByText("No answer in 4 s")).toBeNull();
     await waitFor(() => expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // Council round 12 (the walk): the failure stays, Retry spinning, until the view answers.
+    await waitFor(() => expect(answer).toBeDefined());
+    expect(document.querySelector("[data-canvas-failed]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer!());
     await waitFor(() => expect(pages()[0]).toBe(1));
     expect(tries).toBe(2);
   });

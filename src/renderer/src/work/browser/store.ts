@@ -14,13 +14,14 @@ import { registry } from "../../lib/connection";
  */
 
 /** Who asks for a thread's browser state, by host and thread: Retry asks again for every reader of it (the bar and the body alike). */
-const readers = new Map<string, Set<() => void>>();
+const readers = new Map<string, Set<() => Promise<void>>>();
 
 export interface BrowserRead {
   state: BrowserState | null;
-  /** why the first read failed, while nothing has been read */
+  /** why the first read failed, while nothing has been read; kept while Retry asks again */
   error: string | null;
-  retry(): void;
+  /** asks again; settles once that read answers or fails */
+  retry(): Promise<void>;
 }
 
 export function useBrowserState(env: string, sessionId: string): BrowserRead {
@@ -30,24 +31,24 @@ export function useBrowserState(env: string, sessionId: string): BrowserRead {
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
-    const load = (): void =>
-      void link.request<BrowserState>("work.browser.state", { sessionId }).then(
+    const load = (): Promise<void> =>
+      link.request<BrowserState>("work.browser.state", { sessionId }).then(
         (s) => {
           if (!live) return;
           setState(s);
           setError(null);
         },
-        (err: unknown) => live && setError(err instanceof Error ? err.message : String(err)),
+        (err: unknown) => void (live && setError(err instanceof Error ? err.message : String(err))),
       );
     const set = readers.get(key) ?? new Set();
     readers.set(key, set.add(load));
-    load();
+    void load();
     const offPush = link.onPush((push) => {
       if (push.push !== "work.browser" || push.state.sessionId !== sessionId) return;
       setState(push.state);
       setError(null);
     });
-    const offOpen = link.onOpen(load);
+    const offOpen = link.onOpen(() => void load());
     return () => {
       live = false;
       set.delete(load);
@@ -56,10 +57,10 @@ export function useBrowserState(env: string, sessionId: string): BrowserRead {
       offOpen();
     };
   }, [env, sessionId, key]);
-  // One function per thread, so a state line that holds it is not set again on every render.
-  const retry = useCallback(() => {
-    setError(null);
-    readers.get(key)?.forEach((load) => load());
+  // One function per thread, so a state line that holds it is not set again on every render. The failure stays, the
+  // press spinning, until the reads answer.
+  const retry = useCallback(async () => {
+    await Promise.all([...(readers.get(key) ?? [])].map((load) => load()));
   }, [key]);
   return { state, error: state ? null : error, retry };
 }

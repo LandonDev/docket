@@ -271,7 +271,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
     return <OpenFailed kind="meeting" why={startError} onRetry={retry} />;
   }
   // A read that failed is the centred failure with Retry: nothing under it pretends to load.
-  if (error && !meeting) return <OpenFailed kind="meeting" why={error} onRetry={() => void retry()} />;
+  if (error && !meeting) return <OpenFailed kind="meeting" why={error} onRetry={retry} />;
   if (!loaded || (needsFile && hasFile(source))) return <TurnsSkeleton />;
   if (!meeting || meeting.status === "empty") {
     return (
