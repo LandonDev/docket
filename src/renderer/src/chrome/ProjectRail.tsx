@@ -201,6 +201,8 @@ type Props = {
 
 /** No port to hear: the + menu is shut. */
 const noPort = (): (() => void) => () => undefined;
+/** Work's rows as they change, while the + menu is open. */
+const hearPort = (listener: () => void): (() => void) => workRailPort.get()?.subscribe?.(listener) ?? (() => undefined);
 
 export function ProjectRail({
   cwd,
@@ -280,7 +282,7 @@ export function ProjectRail({
   const [menuPath, setMenuPath] = useState<string | null>(null);
   // While Work's + menu is open its rows follow Work's state (a Retry's answer replaces the row in place).
   const addOpen = menuPath === WORK_ADD_MENU;
-  const openPort = useSyncExternalStore(addOpen ? workRailPort.subscribe : noPort, () => (addOpen ? workRailPort.get() : null));
+  const openPort = useSyncExternalStore(addOpen ? hearPort : noPort, () => (addOpen ? workRailPort.get() : null));
   const [customizing, setCustomizing] = useState<{ path: string; projectKey: string } | null>(null);
   const projectMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const [removing, setRemoving] = useState<{

@@ -150,6 +150,9 @@ export function retryLifeos(home: string | null | undefined, fail: (error: unkno
     .finally(() => done?.());
 }
 
+/** The open + menu, hearing the port's rows change (`WorkRailPort.subscribe`). */
+const railListeners = new Set<() => void>();
+
 export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: string) => void }) {
   const environments = useEnvironments();
   const hosts = useWorkHosts();
@@ -181,6 +184,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
+      subscribe: (listener) => (railListeners.add(listener), () => void railListeners.delete(listener)),
       addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere, home ? lifeosHostName(home) : null, retrying),
       sectorRows(path) {
         const workspace = workspaceAt(path);
@@ -210,6 +214,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
         }
       },
     });
+    // An open + menu reads its rows again: a Retry's answer replaces its row in place.
+    for (const listener of railListeners) listener();
     return () => workRailPort.set(null);
   }, [home, hostState, hosts, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces, retrying]);
 

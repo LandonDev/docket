@@ -163,22 +163,17 @@ export interface WorkRailPort {
   addRows(): MenuRow[];
   sectorRows(workspacePath: string): MenuRow[];
   pick(action: string, workspacePath: string | null): void;
+  /** Hears each change to the rows, so an open menu reads them again. */
+  subscribe?(listener: () => void): () => void;
 }
 
 let port: WorkRailPort | null = null;
 let portWaiters: (() => void)[] = [];
-const portListeners = new Set<() => void>();
 export const workRailPort = {
   get: (): WorkRailPort | null => port,
   set(next: WorkRailPort | null): void {
     port = next;
     if (next) for (const resolve of portWaiters.splice(0)) resolve();
-    for (const listener of portListeners) listener();
-  },
-  /** Each new port (Work's state changed): a menu the port's rows fill reads them again while it is open. */
-  subscribe(listener: () => void): () => void {
-    portListeners.add(listener);
-    return () => void portListeners.delete(listener);
   },
   /** Resolves once the chunk's host has registered (it does so a commit after the chunk lands). */
   ready: (): Promise<void> => (port ? Promise.resolve() : new Promise((resolve) => portWaiters.push(resolve))),
