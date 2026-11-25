@@ -53,7 +53,9 @@ while Work is on for some host).
   computer once: in that line, else in its title ("LifeOS on Mac", "Agents'
   LifeOS keys on Mac"). A host a build behind names no state: its own line
   stands. LifeOS answers' row has Retry, which checks that host again alone,
-  spinning while it does; the sign-in row keeps Sign out, with that Retry before it when the host says LifeOS is
+  spinning while the check it began runs (off, not spinning, while Check
+  again or a check the page runs by itself asks that host: `HostView.by`
+  names the press, and only that button spins); the sign-in row keeps Sign out, with that Retry before it when the host says LifeOS is
   unreachable. While a host does not answer its check (and while it is asked again after that), its rows of
   LifeOS's silence are not drawn as they were: LifeOS answers goes, and the sign-in row keeps its Sign out with no
   line or Retry; the Hosts row says the silence with the one Retry (`PlacedRow.hushed`).

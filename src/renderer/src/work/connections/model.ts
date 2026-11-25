@@ -12,8 +12,12 @@ import { connectingWords, lifeosDownWords } from "../shell/lifeosWords";
 
 /** One host as the page knows it: still checking (`silent`: after a check it did not answer), its rows, not linked now, or its refusal. */
 export type HostView =
-  /** `failed`: the host's last check failed and it is asked again: its Hosts row stands, its Retry spinning, until the answer */
-  | { id: string; name: string; status: "checking"; report?: HealthReport; silent?: boolean; failed?: { error?: string } }
+  /**
+   * `failed`: the host's last check failed and it is asked again: its Hosts row stands until the answer. `by`: the press
+   * that began the check, whose button alone spins ("hosts" the Hosts row's Retry, else a row's key); none for a round
+   * of Check again, or a check the page ran by itself.
+   */
+  | { id: string; name: string; status: "checking"; report?: HealthReport; silent?: boolean; failed?: { error?: string }; by?: string }
   | { id: string; name: string; status: "ready"; report: HealthReport }
   | { id: string; name: string; status: "offline" }
   | { id: string; name: string; status: "failed"; error?: string; silent?: boolean; report?: HealthReport };

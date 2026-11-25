@@ -55,10 +55,13 @@ export function ConnectionsPage() {
     })),
   );
 
-  /** `fresh`: his own Check again, which the host runs anew; the page's open may be answered from the host's last few seconds. */
-  const checkHost = useCallback(async (id: string, name: string, fresh = false): Promise<void> => {
-    // A host whose check failed keeps its Hosts row while it is asked again: its Retry spins in place.
-    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}), ...failedOf(all[id]) } }));
+  /**
+   * `fresh`: his own press, which the host runs anew; the page's open may be answered from the host's last few seconds.
+   * `by`: the press that began the check (`HostView` checking), whose button alone spins.
+   */
+  const checkHost = useCallback(async (id: string, name: string, fresh = false, by?: string): Promise<void> => {
+    // A host whose check failed keeps its Hosts row while it is asked again.
+    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}), ...failedOf(all[id]), ...(by ? { by } : {}) } }));
     let next: HostView;
     try {
       const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", fresh ? { fresh: true } : {}), CHECK_DEADLINE_MS);
@@ -72,7 +75,8 @@ export function ConnectionsPage() {
   }, []);
 
   const linked = (id: string): boolean => statuses.get(id)?.transport === "open";
-  // Check again spins only for a round it began (the page's first, or its own press): a Hosts row's Retry spins itself.
+  // Check again spins only for a round it began (the page's first, or its own press): a row's Retry spins itself, and a
+  // check the page ran by itself (a link back, LifeOS changed, a fix done) spins nothing.
   const [round, setRound] = useState(true);
   const checkAll = (): void => {
     setRound(true);
@@ -107,7 +111,7 @@ export function ConnectionsPage() {
           <BusyLabel busy={checking && round} label="Check again" />
         </Button>
       </PageActions>
-      <ConnectionsView hosts={shown} onRecheck={(id) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id, true)} />
+      <ConnectionsView hosts={shown} onRecheck={(id, by) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id, true, by)} />
       {hosts.map((host) => (linked(host.id) ? <LifeosWatch key={host.id} environmentId={host.id} onChange={() => void checkHost(host.id, host.name, true)} /> : null))}
     </>
   );
@@ -155,11 +159,12 @@ function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
 const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal [&>[data-slot=status-glyph]]:mt-px [&>[data-slot=status-glyph]]:self-start";
 
 /** The page as the hosts' answers leave it: what the preview and the test draw. */
-export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string) => void; now?: number }) {
+export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string, by?: string) => void; now?: number }) {
   const sections = sectionsOf(hosts);
   const away = unchecked(hosts);
   const waiting = hosts.filter((h) => h.status === "checking" && !h.report);
-  const checking = new Set(hosts.filter((h) => h.status === "checking").map((h) => h.id));
+  // Each host asked now, with the press that asked it (none for a round or a check of the page's own).
+  const checking = new Map(hosts.flatMap((h) => (h.status === "checking" ? [[h.id, h.by ?? null] as const] : [])));
   return (
     <>
       {away.length ? (
@@ -169,9 +174,9 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
               <PageRow key={host.id} title={host.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
             ) : (
               <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in host && host.silent ? "Did not answer" : "Not checked"} detail={host.status === "failed" ? host.error : host.status === "checking" ? host.failed?.error : undefined} />}>
-                {/* The row's own press, at the LifeOS rows' weight; it spins while its check runs, and a new cause replaces the reason. */}
-                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={host.status === "checking"} onClick={() => onRecheck(host.id)}>
-                  <BusyLabel busy={host.status === "checking"} label="Retry" />
+                {/* The row's own press, at the LifeOS rows' weight; it spins while the check it began runs, and a new cause replaces the reason. */}
+                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={host.status === "checking"} onClick={() => onRecheck(host.id, "hosts")}>
+                  <BusyLabel busy={host.status === "checking" && host.by === "hosts"} label="Retry" />
                 </Button>
               </PageRow>
             ),
@@ -181,7 +186,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
       {sections.map((section) => (
         <PageSection key={section.group} title={section.titled ? section.group : undefined} aria-label={section.titled ? undefined : section.group}>
           {section.rows.map((placed) => (
-            <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} onDone={() => onRecheck(placed.hostId)} />
+            <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} spinning={checking.get(placed.hostId) === placed.key} onRetry={() => onRecheck(placed.hostId, placed.key)} onDone={() => onRecheck(placed.hostId)} />
           ))}
         </PageSection>
       ))}
@@ -201,14 +206,17 @@ const OWN_ROWS: Record<string, (hostId: string, title: string) => ReactNode> = {
 };
 
 /** One connection: what it is, its state and its one line, then when it lapses and the fix. */
-function ConnectionRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: number; checking: boolean; onDone: () => void }) {
-  const own = OWN_ROWS[placed.row.id];
-  if (own) return <>{own(placed.hostId, placed.title)}</>;
-  return <FixRow placed={placed} now={now} checking={checking} onDone={onDone} />;
+function ConnectionRow(props: { placed: PlacedRow; now: number; checking: boolean; spinning: boolean; onRetry: () => void; onDone: () => void }) {
+  const own = OWN_ROWS[props.placed.row.id];
+  if (own) return <>{own(props.placed.hostId, props.placed.title)}</>;
+  return <FixRow {...props} />;
 }
 
-/** `checking`: the row's host is being asked again; `onDone` asks it again, that host alone. */
-function FixRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: number; checking: boolean; onDone: () => void }) {
+/**
+ * `checking`: the row's host is being asked again (its Retry is off); `spinning`: by this row's Retry, which spins.
+ * `onRetry` asks that host again for this row's press; `onDone` asks it again once a fix is done, with no spin.
+ */
+function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: PlacedRow; now: number; checking: boolean; spinning: boolean; onRetry: () => void; onDone: () => void }) {
   const { row, hostId } = placed;
   const mark = markOf(row.state);
   const usable = usableFix(row.fix, registry.primary().environmentId === hostId);
@@ -259,8 +267,8 @@ function FixRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: num
       >
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
         {retry ? (
-          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onDone}>
-            <BusyLabel busy={checking} label="Retry" />
+          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onRetry}>
+            <BusyLabel busy={spinning} label="Retry" />
           </Button>
         ) : null}
         {fix ? (

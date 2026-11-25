@@ -189,6 +189,52 @@ describe("Connections", () => {
     expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  /** Council round 11 (Sol Settings 1): Check again spun a LifeOS row's Retry too, and a check the page ran spun it. */
+  it("spins the button pressed alone: Check again or a row's Retry, and neither for a check the page runs by itself", async () => {
+    const releases: (() => void)[] = [];
+    let asks = 0;
+    const report: HealthReport = {
+      host: "env_box",
+      at: 1,
+      rows: [{ id: "lifeos.answers", pillar: "lifeos", group: "LifeOS", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }],
+    };
+    const request = vi.fn((): Promise<HealthReport> => new Promise((done) => (++asks === 1 ? done(report) : releases.push(() => done(report)))));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request, onPush: () => () => {}, onOpen: () => () => {}, connected: true } as never);
+    setLifeosStatus("box", { lifeos: { state: "unreachable" }, keys: [] } as never);
+    // Check again sits on the page's title line, so the page is drawn around it.
+    render(
+      <Page title="Connections">
+        <ConnectionsPage />
+      </Page>,
+    );
+    await settle();
+    const checkAgain = () => screen.getByRole("button", { name: "Check again" });
+    const retry = () => screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    const spins = (button: HTMLElement): boolean => !!button.querySelector("[data-busy]");
+    const answer = async () => {
+      await act(async () => releases.splice(0).forEach((release) => release()));
+      await settle();
+    };
+    fireEvent.click(checkAgain());
+    await settle();
+    expect(spins(checkAgain())).toBe(true);
+    expect(retry().disabled).toBe(true);
+    expect(spins(retry())).toBe(false);
+    await answer();
+    fireEvent.click(retry());
+    await settle();
+    expect(spins(retry())).toBe(true);
+    expect(spins(checkAgain())).toBe(false);
+    await answer();
+    // LifeOS changed: the page checks the host by itself, and spins nothing.
+    await act(async () => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never));
+    await settle();
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(spins(retry())).toBe(false);
+    expect(spins(checkAgain())).toBe(false);
+    await answer();
+  });
+
   /** Council round 9 (Sol, Settings 1): the box itself said LifeOS was unreachable, and its row offered Sign out alone. */
   it("gives the sign-in row of a host that says LifeOS is unreachable that host's Retry, beside its Sign out, as it was", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2 * 3_600_000);

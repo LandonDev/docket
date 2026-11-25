@@ -133,6 +133,7 @@ const HOSTS: Record<string, HostView[]> = {
       status: "checking",
       silent: true,
       failed: {},
+      by: "hosts",
       report: {
         host: "env_mac",
         at: NOW,
