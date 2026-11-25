@@ -225,12 +225,10 @@ function ChangesInPlace({ first, now, onReady }: { first: unknown; now: unknown;
   }, [now]);
   const was = new Map(moved.map((f) => [f.label, f.was]));
   // It shows the thing, so Send waits on it as on a kind's view (ActView's `onReady`).
-  const report = useRef(onReady);
-  report.current = onReady;
   useLayoutEffect(() => {
-    report.current?.(true);
-    return () => report.current?.(false);
-  }, []);
+    onReady?.(true);
+    return () => onReady?.(false);
+  }, [onReady]);
   return (
     <div data-slot="act-payload" data-outbox-changes className="flex min-w-0 flex-col gap-4">
       {fields.length ? (
