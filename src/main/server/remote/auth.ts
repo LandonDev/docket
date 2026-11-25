@@ -9,6 +9,7 @@ import {
 } from '@shared/capabilities'
 import {
   WEBHOOK_EVENTS,
+  type KeyClient,
   type RemoteKey,
   type RemotePairing,
   type RemoteSession,
@@ -116,6 +117,7 @@ interface KeyRow {
   webhook_url: string | null
   webhook_secret: string | null
   events: string | null
+  client: KeyClient | null
 }
 interface PairingRow {
   id: string
@@ -267,14 +269,14 @@ export class RemoteAuth {
   }
 
   private insertKey(
-    row: Omit<KeyRow, 'last_used_at' | 'revoked_at' | 'webhook_url' | 'webhook_secret' | 'events'> &
-      Partial<Pick<KeyRow, 'webhook_url' | 'webhook_secret' | 'events'>>
+    row: Omit<KeyRow, 'last_used_at' | 'revoked_at' | 'webhook_url' | 'webhook_secret' | 'events' | 'client'> &
+      Partial<Pick<KeyRow, 'webhook_url' | 'webhook_secret' | 'events' | 'client'>>
   ): void {
     this.db
       .prepare(
-        `INSERT INTO remote_keys (id, name, audience, caps, hash, salt, created_at, created_by, webhook_url, webhook_secret, events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO remote_keys (id, name, audience, caps, hash, salt, created_at, created_by, webhook_url, webhook_secret, events, client) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(row.id, row.name, row.audience, row.caps, row.hash, row.salt, row.created_at, row.created_by, row.webhook_url ?? null, row.webhook_secret ?? null, row.events ?? null)
+      .run(row.id, row.name, row.audience, row.caps, row.hash, row.salt, row.created_at, row.created_by, row.webhook_url ?? null, row.webhook_secret ?? null, row.events ?? null, row.client ?? null)
   }
 
   private freshKeyId(): string {
@@ -320,6 +322,8 @@ export class RemoteAuth {
     events?: WebhookEvent[]
     /** The creator's own caps when it is not local: a key never widens its creator. */
     ceiling?: Capability[]
+    /** what pairs, when it says */
+    client?: KeyClient
   }): Promise<{ key: RemoteKey; token: string; webhookSecret?: string }> {
     const name = input.name.trim()
     if (!name) throw new RemoteAuthError(400, 'name is required')
@@ -330,7 +334,7 @@ export class RemoteAuth {
     const salt = randomBytes(16).toString('hex')
     const hash = (await scryptHash(secret, salt)).toString('hex')
     const webhook = await checkWebhook(input, this.resolveHost)
-    this.insertKey({ id, name, audience: input.audience, caps: capsToText(caps), hash, salt, created_at: this.now(), created_by: input.createdBy, ...webhook.row })
+    this.insertKey({ id, name, audience: input.audience, caps: capsToText(caps), hash, salt, created_at: this.now(), created_by: input.createdBy, client: input.client ?? null, ...webhook.row })
     return {
       key: keyOf(this.keyRow(id)!),
       token: `${KEY_PREFIX}${id}.${secret}`,
@@ -451,7 +455,7 @@ export class RemoteAuth {
   }
 
   private principalOf(row: KeyRow, caps = capsFromText(row.caps)): Principal & { kind: 'remote' } {
-    return { kind: 'remote', keyId: row.id, name: row.name, audience: row.audience, caps }
+    return { kind: 'remote', keyId: row.id, name: row.name, audience: row.audience, caps, ...(row.client ? { client: row.client } : {}) }
   }
 
   /** `tc_<keyId>.<secret>` → the key's principal, or null. One scrypt per key per process. */
@@ -565,7 +569,7 @@ export class RemoteAuth {
   async exchange(
     code: string,
     request:
-      | { kind: 'key'; name?: string; caps?: string[] }
+      | { kind: 'key'; name?: string; caps?: string[]; client?: KeyClient }
       | { kind: 'session'; name?: string; caps?: string[]; userAgent?: string | null }
   ): Promise<
     | { kind: 'key'; key: RemoteKey; token: string }
@@ -595,7 +599,7 @@ export class RemoteAuth {
     }
     try {
       if (request.kind === 'key') {
-        const created = await this.createKey({ name, audience: row.audience, caps, createdBy })
+        const created = await this.createKey({ name, audience: row.audience, caps, createdBy, ...(request.client ? { client: request.client } : {}) })
         stamp(created.key.id)
         return { kind: 'key', ...created }
       }

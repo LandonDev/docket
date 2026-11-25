@@ -243,7 +243,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   co-authoring hosts (`coauthorRead`, src/shared/computer/outward.ts), with a fresh
   browser read and no grant. [docs/agents/computer-use.md](docs/agents/computer-use.md)
 - **Live video** — the computer an agent drives as H.264 video on screen-relay's NSL1 wire
-  (src/shared/video/nsl1.ts): `video.open`, `video.close`, `video.paste`, `video.copy`, a ticket per stream, the
+  (src/shared/video/nsl1.ts): `video.open`, `.close`, `.paste`, `.copy`, `.size` (shared/video/guestSize.ts), a ticket per stream, the
   `/video/<stream>` socket and `VideoRelay` (src/main/server/video/), who may watch (`mayWatch`); the
   box's browser headed on a private display at twice the page's pixels (2560×1600, scale 2) under our own window manager, one `relay-engine` per
   viewer (src/main/server/work/browser/box/); the Mac's windows from tc-computer (`capture.video.*`

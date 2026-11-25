@@ -6,7 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { configure } from 'aliax-core'
 import { WebSocket } from 'ws'
 import type { Capability } from '@shared/capabilities'
-import { VIDEO_CLOSE, type VideoOpenAnswer } from '@shared/contract-video'
+import { VIDEO_CLOSE, type VideoOpenAnswer, type VideoSizeAnswer } from '@shared/contract-video'
+import type { KeyClient } from '@shared/contract-remote'
+import { guestSizeFor } from '@shared/video/guestSize'
 import { encodeAck, encodeInput, parseFrame } from '@shared/video/nsl1'
 import type { RunningServer } from '../index'
 import { findChromium } from '../work/browser/box/chromium'
@@ -38,6 +40,29 @@ function testSource(server: RunningServer): VideoSource {
 }
 const lastFeed = (server: RunningServer): FakeFeed => feeds.get(server)!.at(-1)!
 
+/**
+ * A computer whose size changes, as the Windows VM's source will: a stream opens at the size it has now, and a size
+ * it takes ends every one of its streams `resized`.
+ */
+const sizing = { width: 1280, height: 800, feeds: [] as FakeFeed[] }
+function sizingSource(server: RunningServer): VideoSource {
+  return {
+    open: async (ask) => {
+      if (ask.thread !== 'vm') return null
+      const feed = new FakeFeed()
+      sizing.feeds.push(feed)
+      return { ok: true, feed, width: sizing.width, height: sizing.height, fps: 60, scope: ask.drive ? 'drive' : 'watch', group: 'vm' }
+    },
+    size: async (_stream, ask) => {
+      const size = ask.mode === 'fit' ? guestSizeFor(ask, ask.scale, ask.detail) : { width: ask.width, height: ask.height, scale: 200 }
+      sizing.width = size.width
+      sizing.height = size.height
+      server.video.relay.endWhere((s) => s.group === 'vm', 'resized')
+      return { ok: true, ...size }
+    }
+  }
+}
+
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'tc-video-server-'))
   configure({
@@ -57,6 +82,7 @@ beforeAll(async () => {
   desk = await startServer(join(root, 'desk', 'app.db'), { claimShim: false, remotePort: 0, appPath: root, desktop: true })
   box.video.rpc.addSource(testSource(box))
   desk.video.rpc.addSource(testSource(desk))
+  box.video.rpc.addSource(sizingSource(box))
 }, 120_000)
 afterAll(async () => {
   await box?.close()
@@ -92,8 +118,8 @@ function open(url: string): Promise<Rpc> {
   })
 }
 const local = (server: RunningServer): Promise<Rpc> => open(`ws://127.0.0.1:${server.port}`)
-async function keyed(server: RunningServer, caps: Capability[], audience: 'client' | 'mcp' = 'client'): Promise<{ rpc: Rpc; keyId: string }> {
-  const { token, key } = await server.remoteAuth.createKey({ name: `key-${caps.join('-')}`, audience, caps, createdBy: 'local' })
+async function keyed(server: RunningServer, caps: Capability[], audience: 'client' | 'mcp' = 'client', client?: KeyClient): Promise<{ rpc: Rpc; keyId: string }> {
+  const { token, key } = await server.remoteAuth.createKey({ name: `key-${caps.join('-')}`, audience, caps, createdBy: 'local', ...(client ? { client } : {}) })
   const ticket = await new Promise<string>((resolve, reject) => {
     const req = httpRequest({ host: '127.0.0.1', port: server.remote!.port, path: '/api/ticket', method: 'POST', headers: { Authorization: `Bearer ${token}` } }, (res) => {
       let text = ''
@@ -228,6 +254,78 @@ describe('live video on a host with no desktop, over keys', () => {
     expect(feed.inputs).toHaveLength(1)
     viewer.ws.close()
     rpc.ws.close()
+  })
+})
+
+describe('the guest’s size, asked by the stream he drives with', () => {
+  const VM = { threadId: 'vm', maxEdge: 3840 }
+  const fit = (stream: string) => ({ stream, mode: 'fit', width: 1728, height: 1117, scale: 2, detail: 'sharp' })
+  const drive = async (rpc: Rpc): Promise<{ stream: string; viewer: Viewer; answer: VideoOpenAnswer & { ok: true } }> => {
+    const answer = (await rpc.request<VideoOpenAnswer>('video.open', { ...VM, drive: true })).result!
+    if (!answer.ok) throw new Error(JSON.stringify(answer))
+    return { stream: answer.stream, viewer: await view(box.remote!.port, answer.stream, answer.ticket), answer }
+  }
+
+  it('takes his size, ends the stream resized, and the stream opened again is at the new size', async () => {
+    const mac = await keyed(box, ['approve'], 'client', 'desktop')
+    const first = await drive(mac.rpc)
+    expect(first.answer).toMatchObject({ width: 1280, height: 800 })
+    box.video.relay.setDriver('vm', true)
+    const feed = sizing.feeds.at(-1)!
+    await until(() => feed.started)
+    first.viewer.ws.send(encodeInput({ type: 'keyDown', key: 4 }, 1))
+    await until(() => feed.inputs.length === 1)
+    expect((await mac.rpc.request<VideoSizeAnswer>('video.size', fit(first.stream))).result).toEqual({ ok: true, width: 3456, height: 2234, scale: 200 })
+    expect(await first.viewer.closed).toEqual({ code: VIDEO_CLOSE.resized, reason: 'resized' })
+    expect(feed.closed).toBe(true)
+    // the viewer opens again at once, with a fresh ticket: the same holder, so it may size again before any input
+    const again = await drive(mac.rpc)
+    expect(again.answer).toMatchObject({ width: 3456, height: 2234 })
+    const next = sizing.feeds.at(-1)!
+    await until(() => next.started)
+    next.push({ width: 3456, height: 2234 })
+    await until(() => again.viewer.frames.length === 1)
+    expect(parseFrame(again.viewer.frames[0])).toMatchObject({ width: 3456, height: 2234, keyframe: true })
+    const fixed = { stream: again.stream, mode: 'fixed', width: 2560, height: 1600, detail: 'sharp' }
+    expect((await mac.rpc.request<VideoSizeAnswer>('video.size', fixed)).result).toMatchObject({ ok: true, width: 2560, height: 1600 })
+    expect((await again.viewer.closed).code).toBe(VIDEO_CLOSE.resized)
+    expect(await mac.rpc.request('video.size', { ...fixed, width: 3000 })).toMatchObject({ ok: false })
+    box.video.relay.setDriver('vm', false)
+    mac.rpc.ws.close()
+  })
+
+  it('refuses a watch stream, a second device’s drive stream, a phone’s key and a key without approve; a source with no size says unsupported', async () => {
+    const mac = await keyed(box, ['approve'], 'client', 'desktop')
+    const pc = await keyed(box, ['approve'])
+    const phone = await keyed(box, ['approve'], 'client', 'phone')
+    const reader = await keyed(box, ['operate'])
+    const m = await drive(mac.rpc)
+    const p = await drive(pc.rpc)
+    const ph = await drive(phone.rpc)
+    const watch = (await mac.rpc.request<{ stream: string }>('video.open', VM)).result!
+    box.video.relay.setDriver('vm', true)
+    const macFeed = sizing.feeds.at(-4)!
+    await until(() => macFeed.started)
+    m.viewer.ws.send(encodeInput({ type: 'keyDown', key: 4 }, 1))
+    await until(() => macFeed.inputs.length === 1)
+    const before = { width: sizing.width, height: sizing.height }
+    expect(await mac.rpc.request('video.size', fit(watch.stream))).toMatchObject({ ok: false, error: 'forbidden: video.size needs a stream you are driving' })
+    expect((await pc.rpc.request('video.size', fit(p.stream))).result).toEqual({ ok: false, reason: 'elsewhere' })
+    expect(await phone.rpc.request('video.size', fit(ph.stream))).toMatchObject({ ok: false, error: "forbidden: video.size is not a phone's" })
+    expect(await reader.rpc.request('video.size', fit(m.stream))).toMatchObject({ ok: false, error: 'forbidden: video.size needs approve' })
+    // nothing was sized, and every stream still runs
+    expect({ width: sizing.width, height: sizing.height }).toEqual(before)
+    expect([m, p, ph].map((s) => s.viewer.ws.readyState)).toEqual([WebSocket.OPEN, WebSocket.OPEN, WebSocket.OPEN])
+    // the right stream of a source that cannot change size
+    const live = (await mac.rpc.request<VideoOpenAnswer>('video.open', { ...ASK, drive: true })).result!
+    if (!live.ok) throw new Error()
+    const liveViewer = await view(box.remote!.port, live.stream, live.ticket)
+    box.video.relay.setDriver('pane', true)
+    expect((await mac.rpc.request('video.size', fit(live.stream))).result).toEqual({ ok: false, reason: 'unsupported' })
+    box.video.relay.setDriver('pane', false)
+    box.video.relay.setDriver('vm', false)
+    liveViewer.ws.close()
+    for (const c of [mac, pc, phone, reader]) c.rpc.ws.close()
   })
 })
 

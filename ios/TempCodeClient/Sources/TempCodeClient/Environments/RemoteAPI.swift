@@ -61,7 +61,7 @@ public struct RemoteAPI: Sendable {
 
     /// `POST /api/pair { code, kind: 'key' }`: the code becomes a key, once.
     public func pair(origin: URL, code: String, name: String? = nil) async throws(RemoteAPIError) -> PairKeyResponse {
-        try await send(origin: origin, path: "/api/pair", method: "POST", key: nil, body: PairBody(code: code, kind: .key, name: name, caps: nil))
+        try await send(origin: origin, path: "/api/pair", method: "POST", key: nil, body: PairBody(code: code, kind: .key, name: name, caps: nil, client: .phone))
     }
 
     /// `POST /api/ticket` with the key: a single-use ticket good for 30 s.

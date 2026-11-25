@@ -352,7 +352,9 @@ export function openDb(path: string): DatabaseSync {
     // The routine run that started the thread (started_by is a session id and stays null).
     `ALTER TABLE sessions ADD COLUMN routine_run_id TEXT`,
     // The LifeOS project this project mirrors.
-    `ALTER TABLE projects ADD COLUMN lifeos_project_id TEXT`
+    `ALTER TABLE projects ADD COLUMN lifeos_project_id TEXT`,
+    // What paired the key: 'desktop' | 'phone' (`KeyClient`); NULL for a key from before, a browser's or a bot's.
+    `ALTER TABLE remote_keys ADD COLUMN client TEXT`
   ]) {
     try {
       db.exec(stmt)

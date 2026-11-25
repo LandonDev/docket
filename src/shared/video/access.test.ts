@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { LOCAL_PRINCIPAL, METHOD_CAPABILITY, type Capability, type Principal } from '../capabilities'
-import { VIDEO_CLOSE, VIDEO_CLOSE_SHOWS, VIDEO_REFUSALS, VideoOpenAnswerSchema, videoCloseReason, videoCloseShows } from '../contract-video'
+import {
+  VIDEO_CLOSE,
+  VIDEO_CLOSE_SHOWS,
+  VIDEO_REFUSALS,
+  VideoOpenAnswerSchema,
+  VideoRequestSchemas,
+  VideoSizeAnswerSchema,
+  VideoSizeParamsSchema,
+  videoCloseReason,
+  videoCloseShows
+} from '../contract-video'
 import { mayWatch } from './access'
 
 const key = (caps: Capability[], audience: 'client' | 'mcp' = 'client'): Principal => ({ kind: 'remote', keyId: 'k1', name: 'Phone', audience, caps })
@@ -31,7 +41,7 @@ describe('mayWatch', () => {
 
 describe('the video contract', () => {
   it('every video method and the preview need approve', () => {
-    for (const m of ['video.open', 'video.close', 'video.paste', 'computer.preview.start', 'computer.preview.ack', 'computer.preview.stop'] as const)
+    for (const m of ['video.open', 'video.close', 'video.paste', 'video.copy', 'video.size', 'computer.preview.start', 'computer.preview.ack', 'computer.preview.stop'] as const)
       expect(METHOD_CAPABILITY[m]).toBe('approve')
   })
   it('an open answers a stream with its ticket, or one of the six refusals', () => {
@@ -64,5 +74,25 @@ describe('the video contract', () => {
     expect(VIDEO_CLOSE_SHOWS.slow).toEqual({ face: 'again' })
     expect(videoCloseShows(1006)).toEqual({ face: 'again' })
     expect(videoCloseShows(VIDEO_CLOSE.moved)).toEqual({ face: 'picture' })
+    // the guest took a new size: open again at once, not a try
+    expect(VIDEO_CLOSE.resized).toBe(4108)
+    expect(videoCloseShows(4108)).toEqual({ face: 'again', atOnce: true })
+  })
+  it('asks a size to fit a room, or one of three fixed sizes', () => {
+    const fit = { stream: 's', mode: 'fit', width: 1728, height: 1117, scale: 2, detail: 'sharp' }
+    expect(VideoSizeParamsSchema.safeParse(fit).success).toBe(true)
+    expect(VideoSizeParamsSchema.safeParse({ ...fit, detail: 'blurry' }).success).toBe(false)
+    expect(VideoSizeParamsSchema.safeParse({ ...fit, scale: 0 }).success).toBe(false)
+    const fixed = { stream: 's', mode: 'fixed', detail: 'faster' }
+    for (const [width, height] of [[1280, 800], [1920, 1200], [2560, 1600]]) expect(VideoSizeParamsSchema.safeParse({ ...fixed, width, height }).success).toBe(true)
+    expect(VideoSizeParamsSchema.safeParse({ ...fixed, width: 3000, height: 2000 }).success).toBe(false)
+    expect(VideoSizeAnswerSchema.safeParse({ ok: true, width: 4000, height: 2250, scale: 125 }).success).toBe(true)
+    expect(VideoSizeAnswerSchema.safeParse({ ok: false, reason: 'elsewhere' }).success).toBe(true)
+  })
+  it('an open names what it reads beside frames, from a known list', () => {
+    const open = VideoRequestSchemas[0].shape.params
+    expect(open.safeParse({ threadId: 't', maxEdge: 1280, accepts: ['cursor', 'pong'] }).success).toBe(true)
+    expect(open.safeParse({ threadId: 't', maxEdge: 1280, accepts: ['audio'] }).success).toBe(false)
+    expect(open.safeParse({ threadId: 't', maxEdge: 1280 }).success).toBe(true)
   })
 })

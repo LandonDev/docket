@@ -105,7 +105,12 @@
   the environment id and contract (L2); the `/pair` page's script and style
   run under a per-response nonce, the policy on the meta tag and the
   response header alike (`pairPageCsp`), no `'unsafe-inline'` anywhere (L3).
-  `POST /api/pair` with `kind: 'key'` answers the raw key once; with
+  `POST /api/pair` with `kind: 'key'` answers the raw key once, and keeps
+  what paired it when the body says (`client: 'desktop' | 'phone'`, the
+  `remote_keys.client` column, `Principal.client`): the desktop's
+  `pairEnvironment` says `desktop`, the phone says `phone`, and a key from
+  before says nothing. Only `video.size` reads it (a phone's key never sizes
+  the Windows VM, live-video.md "The size ask"); with
   `kind: 'session'` it sets the HttpOnly `tc_session` cookie that `/ui` and
   cookie upgrades of `/ws` use. The page (remote/pairPage.ts, on the app's
   tokens: `PAIR_TOKENS`, held equal to index.css by its test) shows the

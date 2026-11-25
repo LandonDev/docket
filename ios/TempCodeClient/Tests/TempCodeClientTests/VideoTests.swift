@@ -181,6 +181,14 @@ private final class Layer: VideoSampleSink {
         #expect(VideoRules.afterClose(code: 0, fault: .stalled, tries: VideoClose.retries) == .over(.picture, retry: false))
     }
 
+    @Test func `opens a resized stream again at once, whatever the tries, and never counts it`() {
+        #expect(VideoRules.afterClose(code: VideoClose.resized, fault: nil, tries: 0) == .again(delayMs: 0))
+        #expect(VideoRules.afterClose(code: VideoClose.resized, fault: nil, tries: VideoClose.retries) == .again(delayMs: 0))
+        #expect(!VideoRules.counts(code: VideoClose.resized))
+        #expect(VideoRules.counts(code: VideoClose.slow))
+        #expect(VideoRules.counts(code: 1006))
+    }
+
     @Test func `never opens again a stream the host ended, and gives way at once on a phone that cannot decode it`() {
         #expect(VideoRules.afterClose(code: VideoClose.moved, fault: nil, tries: 0) == .over(.picture, retry: false))
         #expect(VideoRules.afterClose(code: VideoClose.busy, fault: nil, tries: 0) == .over(.picture, retry: false))

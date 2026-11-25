@@ -502,6 +502,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'video.close': 'approve',
   'video.paste': 'approve',
   'video.copy': 'approve',
+  'video.size': 'approve',
   'computer.proofHold': 'local',
   // The thread's computer history: pictures of the person's windows and what was read off them, this desktop's alone.
   'computer.history.read': 'local',
@@ -686,6 +687,8 @@ export type Principal =
       via?: string
       /** A ticket a device key's proved socket minted (`devices.ticket`): the env id that proof bound, carried to the socket the ticket opens. */
       provedEnv?: string
+      /** What paired the key, when it said (`PairBody.client`) */
+      client?: import('./contract-remote').KeyClient
     }
 
 export const LOCAL_PRINCIPAL: Principal = { kind: 'local' }

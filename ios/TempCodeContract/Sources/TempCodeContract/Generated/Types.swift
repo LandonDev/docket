@@ -3354,17 +3354,41 @@ public struct PairBody: Codable, Hashable, Sendable {
             }
         }
     }
+    public enum Client: RawRepresentable, Codable, Hashable, Sendable {
+        case desktop
+        case phone
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "desktop": self = .desktop
+            case "phone": self = .phone
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .desktop: "desktop"
+            case .phone: "phone"
+            case .unknown(let value): value
+            }
+        }
+    }
 
     public let code: String
     public let kind: Kind
     public let name: String?
     public let caps: [Capability]?
+    public let client: Client?
 
-    public init(code: String, kind: Kind, name: String? = nil, caps: [Capability]? = nil) {
+    public init(code: String, kind: Kind, name: String? = nil, caps: [Capability]? = nil, client: Client? = nil) {
         self.code = code
         self.kind = kind
         self.name = name
         self.caps = caps
+        self.client = client
     }
 }
 

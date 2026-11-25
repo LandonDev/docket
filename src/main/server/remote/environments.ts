@@ -322,7 +322,7 @@ export async function pairEnvironment(
   const response = await hostFetch(ctx, `${parsed.origin}/api/pair`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ code: parsed.code, kind: 'key', name: hostLabel() })
+    body: JSON.stringify({ code: parsed.code, kind: 'key', name: hostLabel(), client: 'desktop' })
   })
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     await response.body?.cancel()

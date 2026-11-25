@@ -21,7 +21,7 @@ public enum VideoFace: String, Sendable, Equatable {
 
 /// The codes a stream's socket closes with (`VIDEO_CLOSE` in src/shared/contract-video.ts).
 public enum VideoClose {
-    public static let ended = 4100, moved = 4101, busy = 4102, held = 4103, revoked = 4104, error = 4105, permission = 4106, slow = 4107
+    public static let ended = 4100, moved = 4101, busy = 4102, held = 4103, revoked = 4104, error = 4105, permission = 4106, slow = 4107, resized = 4108
     /// A dropped stream is opened again this many times before it gives way to the still picture (`VIDEO_RETRIES`).
     public static let retries = 5
     /// How long before each new open, by how many times it was opened again (`RETRY_DELAYS_MS`).
@@ -41,13 +41,18 @@ public enum VideoRules {
     /// how many times it was opened again since a frame was last shown.
     public static func afterClose(code: Int, fault: VideoFault?, tries: Int) -> AfterClose {
         if fault == .unsupported { return .over(.picture, retry: false) }
+        // the guest took a new size: open again at once, and it is not a try
+        if fault == nil, code == VideoClose.resized { return .again(delayMs: 0) }
         let shown: (face: VideoFace?, retry: Bool) = fault != nil ? (nil, false) : shows(code)
         if let face = shown.face { return .over(face, retry: shown.retry) }
         if tries >= VideoClose.retries { return .over(.picture, retry: false) }
         return .again(delayMs: VideoClose.retryDelaysMs[min(tries, VideoClose.retryDelaysMs.count - 1)])
     }
 
-    /// `VIDEO_CLOSE_SHOWS`: nil is "open again" (`slow`, and a drop that named no reason).
+    /// Whether an open again after this close counts toward `VideoClose.retries`: `resized`'s does not (`atOnce`).
+    public static func counts(code: Int) -> Bool { code != VideoClose.resized }
+
+    /// `VIDEO_CLOSE_SHOWS`: nil is "open again" (`slow`, `resized`, and a drop that named no reason).
     static func shows(_ code: Int) -> (face: VideoFace?, retry: Bool) {
         switch code {
         case VideoClose.ended, VideoClose.revoked: (.stopped, false)

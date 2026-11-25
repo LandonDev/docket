@@ -42,6 +42,7 @@ import TempCodeContract
 /// The names the fake host was asked to give a key.
 private final class SentNames: @unchecked Sendable {
     var names: [String?] = []
+    var clients: [String?] = []
 }
 
 /// A fake host for the store: answers pair and hello from canned bodies.
@@ -55,6 +56,7 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
         case "/api/pair":
             if let sent, let body = request.httpBody, let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
                 sent.names.append(object["name"] as? String)
+                sent.clients.append(object["client"] as? String)
             }
             if refusePairing { return json(401, #"{"error":"pairing code is not valid"}"#) }
             return json(200, #"{"key":"tc_K1.secret","keyId":"K1","name":"iphone","caps":["read"],"audience":"client","environmentId":"\#(environmentId)"}"#)
@@ -119,11 +121,13 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
         #expect(stored == "tc_K1.secret")
     }
 
-    @Test func `the key is named for the phone and the host keeps the name it gives itself`() async throws {
+    @Test func `the key is named for the phone, says it is a phone's, and the host keeps the name it gives itself`() async throws {
         let sent = SentNames()
         let store = EnvironmentStore(directory: directory, keys: InMemoryKeyStore(), api: fakeHost(sent: sent))
         let added = try await store.add(pairingLink: "https://box.example/pair#AB1CD-EF2GH", clientName: "iPhone")
         #expect(sent.names == ["iPhone"])
+        // a phone's key never sizes the Windows VM (`video.size`)
+        #expect(sent.clients == ["phone"])
         #expect(added.name == "box")
         #expect(added.customName == nil)
     }

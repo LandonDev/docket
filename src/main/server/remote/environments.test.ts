@@ -174,7 +174,7 @@ describe('pairEnvironment', () => {
     )
     const saved = await pairEnvironment(ctx, { link: 'https://tempcode.example.com/pair#ABCDE-12345', name: 'Box' })
     expect(calls[0].url).toBe('https://tempcode.example.com/api/pair')
-    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ code: 'ABCDE-12345', kind: 'key' })
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ code: 'ABCDE-12345', kind: 'key', client: 'desktop' })
     expect(calls[1].url).toBe('https://tempcode.example.com/api/hello')
     expect((calls[1].init?.headers as Record<string, string>).authorization).toBe('Bearer tc_k9.fresh')
     expect(saved).toMatchObject({ id: HOST_ID, name: 'Box', caps: ['read', 'operate'], keyName: 'mac', routes: [{ url: 'wss://tempcode.example.com/ws', kind: 'tunnel' }] })

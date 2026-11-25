@@ -1,17 +1,17 @@
 import type { Principal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush } from '@shared/contract-computer'
-import { type VideoCopyAnswer, type VideoOpenAnswer, type VideoRefusal } from '@shared/contract-video'
+import { type VideoAccept, type VideoCopyAnswer, type VideoOpenAnswer, type VideoRefusal, type VideoSizeAnswer, type VideoSizeParams } from '@shared/contract-video'
 import { mayWatch } from '@shared/video/access'
 import type { RemoteAuth, StreamHolder } from '../remote/auth'
 import type { VideoFeed } from './feed'
 import type { StreamInfo, VideoRelay } from './relay'
 
 /**
- * `video.open`, `video.close` and `video.paste` on the host the asking socket
- * is connected to (docs/agents/live-video.md). `mayWatch` decides who; a
- * source decides what: the box's browser, a window in tc-computer, or a
- * stream another host publishes here.
+ * `video.open`, `video.close`, `video.paste`, `video.copy` and `video.size`
+ * on the host the asking socket is connected to (docs/agents/live-video.md).
+ * `mayWatch` decides who; a source decides what: the box's browser, a window
+ * in tc-computer, or a stream another host publishes here.
  */
 
 export interface VideoAsk {
@@ -53,6 +53,11 @@ export interface VideoSource {
   paste?(stream: StreamInfo, text: string): Promise<void>
   /** The far clipboard's text after his copy, for his own; only a source that takes his input has it. */
   copy?(stream: StreamInfo): Promise<VideoCopyAnswer>
+  /**
+   * The guest's size on his ask (`guestSizeFor`): only a source whose computer can change size has it (the Windows
+   * VM's), and it ends its streams `resized` once the new size shows. Without it the answer is `unsupported`.
+   */
+  size?(stream: StreamInfo, ask: VideoSizeParams): Promise<VideoSizeAnswer>
 }
 
 /** Who asks: the socket's principal and the socket itself. */
@@ -103,7 +108,7 @@ export class VideoRpc {
    * this host reaches by the publish leg alone.
    */
   async open(
-    params: { threadId: string; computer?: string; maxEdge: number; take?: boolean; drive?: boolean },
+    params: { threadId: string; computer?: string; maxEdge: number; take?: boolean; drive?: boolean; accepts?: VideoAccept[] },
     caller: VideoCaller,
     via?: (ask: VideoAsk) => Promise<VideoOpening | null>
   ): Promise<VideoOpenAnswer> {
@@ -134,7 +139,8 @@ export class VideoRpc {
         connection: caller.connection,
         feed: opening.feed,
         group: opening.group,
-        tag: opening.tag
+        tag: opening.tag,
+        ...(params.accepts?.length ? { accepts: [...new Set(params.accepts)] } : {})
       })
       this.origin.set(stream, source)
       opening.opened?.(stream)
@@ -167,6 +173,20 @@ export class VideoRpc {
     if (!source?.copy) throw new Error('This stream gives no copy')
     return source.copy(stream)
   }
+
+  /**
+   * The guest's size, on his say alone: the paste gate, then two rules it cannot tell his devices apart by. A phone's
+   * key never sizes (a resize under him moves every window), and of his streams only the one his last input came on.
+   */
+  async size(params: VideoSizeParams, caller: VideoCaller): Promise<VideoSizeAnswer> {
+    if (caller.principal.kind === 'remote' && caller.principal.client === 'phone') throw new Error("forbidden: video.size is not a phone's")
+    const stream = this.relay.own(params.stream, caller.connection)
+    if (!stream || stream.scope !== 'drive' || !stream.group || !this.relay.driving(stream.group)) throw new Error('forbidden: video.size needs a stream you are driving')
+    if (!this.relay.sentLastInput(stream.id)) return { ok: false, reason: 'elsewhere' }
+    const source = this.origin.get(stream.id)
+    if (!source?.size) return { ok: false, reason: 'unsupported' }
+    return source.size(stream, params)
+  }
 }
 
 export async function handleVideo(req: ClientRequest, video: VideoRpc, caller: VideoCaller): Promise<{ handled: boolean; result?: unknown }> {
@@ -179,6 +199,8 @@ export async function handleVideo(req: ClientRequest, video: VideoRpc, caller: V
       return { handled: true, result: await video.paste(req.params, caller) }
     case 'video.copy':
       return { handled: true, result: await video.copy(req.params, caller) }
+    case 'video.size':
+      return { handled: true, result: await video.size(req.params, caller) }
     default:
       return { handled: false }
   }

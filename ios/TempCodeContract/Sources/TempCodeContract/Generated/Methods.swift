@@ -6725,18 +6725,43 @@ public enum Methods {
         public static let name = "video.open"
 
         public struct Params: Codable, Hashable, Sendable {
+            public enum Accept: RawRepresentable, Codable, Hashable, Sendable {
+                case cursor
+                case pong
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "cursor": self = .cursor
+                    case "pong": self = .pong
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .cursor: "cursor"
+                    case .pong: "pong"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
             public let threadId: String
             public let computer: String?
             public let maxEdge: Int
             public let take: Bool?
             public let drive: Bool?
+            public let accepts: [Accept]?
 
-            public init(threadId: String, computer: String? = nil, maxEdge: Int, take: Bool? = nil, drive: Bool? = nil) {
+            public init(threadId: String, computer: String? = nil, maxEdge: Int, take: Bool? = nil, drive: Bool? = nil, accepts: [Accept]? = nil) {
                 self.threadId = threadId
                 self.computer = computer
                 self.maxEdge = maxEdge
                 self.take = take
                 self.drive = drive
+                self.accepts = accepts
             }
         }
 

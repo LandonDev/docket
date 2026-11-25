@@ -54,12 +54,17 @@ export const NewPairingSchema = NewClientSchema.extend({
    */
   setup: z.object({ verifier: z.string().min(1).max(64), bundle: z.string().min(1).max(64_000), name: z.string().min(1).max(120) }).optional()
 })
+/** What paired a key: one of his desktops, or his phone. */
+export const KEY_CLIENTS = ['desktop', 'phone'] as const
+export type KeyClient = (typeof KEY_CLIENTS)[number]
 /** `POST /api/pair`: redeem a code for a key or a browser session. */
 export const PairBodySchema = z.object({
   code: z.string().min(1).max(40),
   kind: z.enum(['key', 'session']),
   name: z.string().max(80).optional(),
-  caps: z.array(CapabilitySchema).optional()
+  caps: z.array(CapabilitySchema).optional(),
+  /** What pairs: a desktop's app or the phone's; a key so made carries it (`Principal.client`) */
+  client: z.enum(KEY_CLIENTS).optional()
 })
 
 // ── Push (thread L6): the phone registers its APNs token with the host ──

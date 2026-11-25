@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { VIDEO_CLOSE, type VideoCloseReason } from '@shared/contract-video'
+import { VIDEO_CLOSE, type VideoAccept, type VideoCloseReason } from '@shared/contract-video'
 import { MESSAGE_TYPES, messageType } from '@shared/video/nsl1'
 import type { StreamClaim, StreamHolder, StreamScope } from '../remote/auth'
 import { isFrame, type VideoFeed } from './feed'
@@ -41,6 +41,8 @@ export interface StreamGrant {
   group?: string
   /** what the source keeps beside the stream (the box's page id) */
   tag?: string
+  /** what the viewer reads beside frames (`video.open`'s `accepts`) */
+  accepts?: readonly VideoAccept[]
 }
 
 export interface StreamInfo {
@@ -50,6 +52,7 @@ export interface StreamInfo {
   holder: StreamHolder
   group: string | null
   tag: string | null
+  accepts: readonly VideoAccept[]
   /** a viewer's socket has joined */
   joined: boolean
 }
@@ -67,6 +70,8 @@ export class VideoRelay {
   private readonly streams = new Map<string, Stream>()
   /** the groups he drives now */
   private readonly driven = new Set<string>()
+  /** the stream each group's last input came on, and who held it */
+  private readonly lastInput = new Map<string, { stream: string; holder: StreamHolder }>()
   private readonly listeners = new Set<() => void>()
 
   constructor(private readonly opts: { maxUnsent?: number; unclaimedMs?: number } = {}) {}
@@ -103,7 +108,10 @@ export class VideoRelay {
       // a feed that throws ends its own stream, never the process
       this.guard(s, () => {
         if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
-        else if (type === MESSAGE_TYPES.input && this.drives(s)) s.feed.input(bytes)
+        else if (type === MESSAGE_TYPES.input && this.drives(s)) {
+          this.lastInput.set(s.group!, { stream: s.id, holder: s.holder })
+          s.feed.input(bytes)
+        }
       })
     })
     socket.on('close', () => this.remove(s))
@@ -181,6 +189,7 @@ export class VideoRelay {
       return
     }
     const was = this.driven.delete(group)
+    this.lastInput.delete(group)
     for (const s of [...this.streams.values()]) {
       if (s.group !== group || s.scope !== 'drive') continue
       if (!s.socket) {
@@ -191,6 +200,18 @@ export class VideoRelay {
       s.scope = 'watch'
     }
     this.changed()
+  }
+
+  /**
+   * Whether stream `id` is the one his last input in its group came on: true too before any input since he took over,
+   * and for a stream of the same holder once that one is gone (the viewer opened it again).
+   */
+  sentLastInput(id: string): boolean {
+    const s = this.streams.get(id)
+    if (!s?.group) return false
+    const last = this.lastInput.get(s.group)
+    if (!last || last.stream === id) return true
+    return !this.streams.has(last.stream) && sameHolder(last.holder, s.holder)
   }
 
   /** He drives `group` now. */
@@ -218,7 +239,7 @@ export class VideoRelay {
   }
 
   private info(s: Stream): StreamInfo {
-    return { id: s.id, thread: s.thread, scope: s.scope, holder: s.holder, group: s.group ?? null, tag: s.tag ?? null, joined: !!s.socket }
+    return { id: s.id, thread: s.thread, scope: s.scope, holder: s.holder, group: s.group ?? null, tag: s.tag ?? null, accepts: s.accepts ?? [], joined: !!s.socket }
   }
 
   private remove(s: Stream): void {

@@ -41,19 +41,25 @@ changes the wire fails there. The pin is the published 0.1.2: it has no
 `src/shared/contract-video.ts`. The host the asking socket is connected to
 serves these.
 
-- `video.open { threadId, maxEdge, take?, drive? }` answers
+- `video.open { threadId, maxEdge, take?, drive?, accepts? }` answers
   `{ ok: true, stream, ticket, width, height, fps }`, or
   `{ ok: false, reason }` with `off`, `no-tools`, `unsupported`, `busy`,
   `permission` or `refused`. `threadId` is the key `computer.preview.start`
-  takes.
+  takes. `accepts` (`'cursor' | 'pong'`, `VIDEO_ACCEPTS`) names what the
+  viewer reads beside frames; the relay keeps it on the stream's record
+  (`StreamInfo.accepts`). It still passes frames alone to every stream: the
+  passing of a named type is M4's.
 - `video.close { stream }` ends a stream the same socket opened.
 - `video.paste { stream, text }` puts text into the page he drives. It needs
   a `drive` stream the same socket opened, while he is the driver.
 - `video.copy { stream }` answers `{ text, truncated? }`, the far clipboard's
   text after his copy there, on the same terms. Only the Windows VM's source
   has it (its clipboard is not his; the box's browser's paste is the page's).
+- `video.size { stream, mode: 'fit', width, height, scale, detail }` or
+  `{ stream, mode: 'fixed', width, height, detail }` asks the guest for a new
+  size; "The size ask" below.
 
-All four need `approve` (`METHOD_CAPABILITY`).
+All five need `approve` (`METHOD_CAPABILITY`).
 
 The frames never ride the RPC socket. The viewer opens a socket of its own,
 `/video/<stream>?ticket=…`, with the subprotocol `nsl1`. It closes with a code
@@ -70,9 +76,14 @@ for each:
 | `error` | 4105 | "The preview stopped", with Retry |
 | `permission` | 4106 | the Screen Recording line |
 | `slow` | 4107 | opens again with a fresh ticket |
+| `resized` | 4108 | opens again at once with a fresh ticket, the last frame kept |
 
 A drop that names no reason (a cut link) is opened again too, up to
 `VIDEO_RETRIES` (5) times, then the viewer falls back to the picture.
+`resized` is the one that never counts toward them and waits for nothing
+(`atOnce` in `VIDEO_CLOSE_SHOWS`): the guest took a new size, and its engines
+start again at it. A viewer from before reads 4108 as a drop and opens again
+too.
 
 ## Who may watch
 
@@ -95,6 +106,54 @@ when it is a Mac or a PC that is not headless (`personsDesktop`,
 src/main/headless.ts). A Linux host never has one, whatever its environment
 says: the box's service runs under `xvfb-run`, so it has a display, and the
 refusal of its local socket must not rest on one variable in a file.
+
+## The size ask
+
+Windows changes size only on his say: while he drives and his picture's room
+changes, or when he picks a size. Never for a watcher, a thread or the phone:
+a resize under an agent moves every window it was about to click.
+
+`guestSizeFor(room, dpr, detail, caps)` (`src/shared/video/guestSize.ts`) is
+the one rule for both ends:
+
+- `sharp`: guest pixels = points × min(dpr, 2), Windows at that scale (200% on
+  a Retina screen). `faster`: guest pixels = points, 100%, drawn doubled.
+- Even numbers. Never under 1024×640 points: a smaller room grows in its
+  shape. The shape held between 5:4 and 32:9: past it the long side is cut,
+  and the picture keeps a matte.
+- Never more pixels than the host's cap (`GUEST_CAPS`: 9,216,000 until M0's
+  numbers set `work.winvm.maxPixels`), never wider than 4096 or taller than
+  2400 (his Mac decodes H.264 in hardware to there). Over a cap the scale
+  steps down 200, 175, 150, 125, 100, then the size, in its shape.
+- His screens: the ASUS (3200×1800 points, dpr 2) gives 4000×2250 at 125%,
+  the MacBook (1728×1117, dpr 2) 3456×2234 at 200%, the LG (3840×1620)
+  3840×1620 at 100%.
+- `sizeAskDue(asked, room, restedMs)`: a viewer asks only once the room has
+  rested 400 ms and moved 16 points or more from its last ask, so a window
+  dragged to a size is one ask, at its end.
+
+`video.size` (`VideoRpc.size`, video/rpc.ts) takes `video.paste`'s gate (a
+`drive` stream the same socket opened, while he drives) and two rules more,
+since that gate does not tell his devices apart:
+
+- A phone's key is refused (`forbidden: video.size is not a phone's`), by
+  what paired the key (`Principal.client`, remote-access.md). A key from
+  before says nothing, and passes; the phone never sends `video.size`.
+- Of his streams only the one his last input came on may size
+  (`VideoRelay.sentLastInput`): another answers `{ ok: false, reason:
+  'elsewhere' }`, and its Fit shows Windows in its own shape on matte. Before
+  any input since he took over, any of his drive streams may; a stream the
+  same holder opened again after a `resized` close stands in for the one that
+  closed.
+
+A key without `approve` is refused before any of this, and `video.*` is not
+on the app bridge, so no thread can call it. The answer is the mode the guest
+took, `{ ok: true, width, height, scale }` (its pixels and Windows' scale in
+percent), and its streams then close `resized`; or `unsupported` from a
+source with no `size` of its own (`VideoSource.size`). Every source answers
+`unsupported` today; the Windows VM's (`VmPicture`) takes sizes in M3b.
+`fixed` takes one of `VIDEO_FIXED_SIZES` (1280×800, 1920×1200, 2560×1600),
+the guest's own pixels.
 
 ## The ticket
 
@@ -874,7 +933,10 @@ The iPhone plays a stream as the desktop's viewer does, natively
   `VideoOpenWireSchema`: the desktop's union is tagged by a boolean, which the
   Swift generator cannot take), `video.close`, `video.paste`,
   `computer.sessions`, `computer.stop`, `computer.drive` and the `computer`
-  push are in the phone's subset. The push already reached a key's socket; it
+  push are in the phone's subset; `video.size` is not, and the phone pairs
+  as `client: 'phone'`, so its key never sizes the VM. It names no `accepts`
+  and gets frames alone. `resized` (4108) opens again at once and is not a
+  try (`VideoRules.counts`). The push already reached a key's socket; it
   only joined `RemotePushSchema`. On a relayed lane `computer.sessions` and
   `computer.stop` go to the lane's host (`RELAY_METHODS`), so Stop reaches a
   Mac's row; `video.open`, `video.close` and `video.paste` are the box's to
@@ -1157,12 +1219,19 @@ is first seen in the owner's own use:
   the key records and the paste runs) and `ComputerTilesTests` (the tiles,
   which take over, by what name, and `find`)
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
-- `src/main/server/remote/auth.test.ts` "stream tickets"
-- `src/main/server/video/relay.test.ts`: the relay and the RPC, with fakes
+- `src/shared/video/guestSize.test.ts`: his three screens, Sharp and Faster,
+  the floor, the shape, the cap's steps, the 400 ms and 16-point rule
+- `src/main/server/remote/auth.test.ts` "stream tickets", and the key's
+  client kind under "pairings"
+- `src/main/server/video/relay.test.ts`: the relay and the RPC, with fakes;
+  the stream his last input came on, `accepts`, and `video.size`'s gate
 - `src/main/server/video/video.server.test.ts`: two real servers, one with no
   desktop reached over keys and one with a desktop on its own socket; the
   upgrade's refusals, revoke, the preview's gate, and that no key sets
-  `computer.video.remote`
+  `computer.video.remote`; a fake source that takes sizes: the ask, the
+  `resized` close, the stream opened again at the new size, and the refusals
+  (a watch stream, a second device's, a phone's key, a key without
+  `approve`, `unsupported` from a source that cannot size)
 - `src/main/server/computer/preview.test.ts`: a key never gets a person's
   windows; the box's browser goes to a key that may watch
 - `scripts/work-tools/installer.test.ts`: the `build` kind, and the

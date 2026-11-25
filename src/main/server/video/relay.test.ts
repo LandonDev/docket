@@ -120,6 +120,40 @@ describe('VideoRelay', () => {
     expect(feed.acked()).toEqual([1])
   })
 
+  it('knows the drive stream his last input came on, and a reopen of it by the same holder', () => {
+    const relay = new VideoRelay()
+    const mac = joined(relay, { scope: 'drive', group: 'pane' })
+    const pc = joined(relay, { scope: 'drive', group: 'pane', holder: { keyId: 'k2' } })
+    const watch = joined(relay, { group: 'pane' })
+    const key = encodeInput({ type: 'keyDown', key: 4 }, 1)
+    // before any input since he took over, any of his drive streams
+    relay.setDriver('pane', true)
+    expect([mac.id, pc.id].map((id) => relay.sentLastInput(id))).toEqual([true, true])
+    mac.socket.say(key)
+    expect([mac.id, pc.id].map((id) => relay.sentLastInput(id))).toEqual([true, false])
+    // a watch stream's input goes nowhere, so it moves nothing
+    watch.socket.say(key)
+    expect(relay.sentLastInput(mac.id)).toBe(true)
+    pc.socket.say(key)
+    expect([mac.id, pc.id].map((id) => relay.sentLastInput(id))).toEqual([false, true])
+    // the PC's viewer opens its stream again: the new one is the same holder's
+    pc.socket.drop()
+    const again = joined(relay, { scope: 'drive', group: 'pane', holder: { keyId: 'k2' } })
+    expect([mac.id, again.id].map((id) => relay.sentLastInput(id))).toEqual([false, true])
+    expect(relay.sentLastInput('nope')).toBe(false)
+    // he hands back and takes over again: nobody's input is the last
+    relay.setDriver('pane', false)
+    relay.setDriver('pane', true)
+    expect(relay.sentLastInput(mac.id)).toBe(true)
+  })
+
+  it('keeps what a viewer reads beside frames on its stream', () => {
+    const relay = new VideoRelay()
+    joined(relay, { accepts: ['cursor'] })
+    joined(relay)
+    expect(relay.list().map((s) => s.accepts)).toEqual([['cursor'], []])
+  })
+
   it('ends a drive stream nobody joined when he hands back: its ticket was for a stream it no longer is', () => {
     const relay = new VideoRelay()
     relay.setDriver('pane', true)
@@ -409,6 +443,66 @@ describe('VideoRpc', () => {
     expect(pasted).toEqual(['hello'])
     rpc.close(answer.stream, me)
     expect(relay.list()).toEqual([])
+  })
+
+  it('keeps what the viewer said it reads beside frames', async () => {
+    const relay = new VideoRelay()
+    const { auth } = tickets()
+    const rpc = new VideoRpc(relay, auth, () => true)
+    rpc.addSource(source(live()))
+    await rpc.open({ ...ASK, accepts: ['cursor', 'pong', 'cursor'] }, caller(LOCAL_PRINCIPAL))
+    await rpc.open(ASK, caller(LOCAL_PRINCIPAL))
+    expect(relay.list().map((s) => s.accepts)).toEqual([['cursor', 'pong'], []])
+  })
+
+  it('sizes the guest on his say alone: his drive stream, never a phone’s key, and only the one his last input came on', async () => {
+    const relay = new VideoRelay()
+    const { auth } = tickets()
+    const sized: unknown[] = []
+    const rpc = new VideoRpc(relay, auth, () => false)
+    rpc.addSource(source(live('drive'), { size: async (stream, ask) => (sized.push([stream.id, ask]), { ok: true, width: 3456, height: 2234, scale: 200 }) }))
+    const desk = (keyId: string, client?: 'desktop' | 'phone') => ({ principal: { ...key(['approve', 'read']), keyId, ...(client ? { client } : {}) }, connection: {}, connectionId: keyId })
+    const drive = async (who: ReturnType<typeof desk>) => {
+      const answer = await rpc.open({ ...ASK, drive: true }, who)
+      if (!answer.ok) throw new Error()
+      const socket = new FakeSocket()
+      expect(relay.attach({ stream: answer.stream, scope: 'drive', holder: { keyId: who.principal.keyId } }, socket)).toBe(true)
+      return { stream: answer.stream, socket }
+    }
+    const mac = desk('mac', 'desktop')
+    const pc = desk('pc')
+    const phone = desk('phone', 'phone')
+    const [m, p, ph] = [await drive(mac), await drive(pc), await drive(phone)]
+    const fit = (stream: string) => ({ stream, mode: 'fit' as const, width: 1728, height: 1117, scale: 2, detail: 'sharp' as const })
+    const refusal = 'forbidden: video.size needs a stream you are driving'
+    // he does not drive yet
+    await expect(rpc.size(fit(m.stream), mac)).rejects.toThrow(refusal)
+    relay.setDriver('pane', true)
+    // another socket's stream, and one that is not
+    await expect(rpc.size(fit(m.stream), pc)).rejects.toThrow(refusal)
+    await expect(rpc.size(fit('nope'), mac)).rejects.toThrow(refusal)
+    // a phone's key, whatever stream it holds
+    await expect(rpc.size(fit(ph.stream), phone)).rejects.toThrow("forbidden: video.size is not a phone's")
+    m.socket.say(encodeInput({ type: 'keyDown', key: 4 }, 1))
+    // the PC's drive stream did not send his last input: its Fit shows Windows on matte
+    expect(await rpc.size(fit(p.stream), pc)).toEqual({ ok: false, reason: 'elsewhere' })
+    expect(await rpc.size(fit(m.stream), mac)).toEqual({ ok: true, width: 3456, height: 2234, scale: 200 })
+    expect(sized).toEqual([[m.stream, fit(m.stream)]])
+    // once he hands back his stream is a watch stream: no size
+    relay.setDriver('pane', false)
+    await expect(rpc.size(fit(m.stream), mac)).rejects.toThrow(refusal)
+  })
+
+  it('a source with no size of its own answers unsupported', async () => {
+    const relay = new VideoRelay()
+    const { auth } = tickets()
+    const rpc = new VideoRpc(relay, auth, () => true)
+    rpc.addSource(source(live('drive')))
+    const me = caller(LOCAL_PRINCIPAL)
+    const answer = await rpc.open({ ...ASK, drive: true }, me)
+    if (!answer.ok) throw new Error()
+    relay.setDriver('pane', true)
+    expect(await rpc.size({ stream: answer.stream, mode: 'fixed', width: 2560, height: 1600, detail: 'sharp' }, me)).toEqual({ ok: false, reason: 'unsupported' })
   })
 
   it('a watch stream takes no paste', async () => {

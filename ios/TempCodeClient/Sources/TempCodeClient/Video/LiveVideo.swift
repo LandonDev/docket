@@ -237,7 +237,7 @@ public final class LiveVideo {
             if shown > 0 { tries = 0 }
             switch VideoRules.afterClose(code: code, fault: fault, tries: tries) {
             case .again(let delayMs):
-                tries += 1
+                if VideoRules.counts(code: code) { tries += 1 }
                 phase = .opening
                 await sleep(delayMs)
             case .over(let face, let retry):

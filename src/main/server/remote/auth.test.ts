@@ -107,6 +107,21 @@ describe('pairings', () => {
     expect(auth.listPairings()).toEqual([])
     await expectStatus(() => auth.exchange(code, { kind: 'key' }), 401)
   }, 20_000)
+  it('a key says what paired it, when that said, on every principal it makes', async () => {
+    const phone = auth.createPairing({ name: 'p', audience: 'client', caps: ['approve'], createdBy: 'local' })
+    const desk = auth.createPairing({ name: 'd', audience: 'client', caps: ['approve'], createdBy: 'local' })
+    const old = auth.createPairing({ name: 'o', audience: 'client', caps: ['approve'], createdBy: 'local' })
+    const outs = [
+      await auth.exchange(phone.code, { kind: 'key', client: 'phone' }),
+      await auth.exchange(desk.code, { kind: 'key', client: 'desktop' }),
+      await auth.exchange(old.code, { kind: 'key' })
+    ]
+    const principals = await Promise.all(outs.map((out) => (out.kind === 'key' ? auth.verifyToken(out.token) : null)))
+    expect(principals.map((p) => p?.client)).toEqual(['phone', 'desktop', undefined])
+    // the socket a ticket opens carries it too
+    expect(auth.consumeTicket(auth.mintTicket(principals[0]!).ticket)?.client).toBe('phone')
+  }, 20_000)
+
   it('concurrent redeems of one code mint one key; the loser is a 401 (R2 M1)', async () => {
     const { pairing, code } = auth.createPairing({ name: 'c', audience: 'client', caps: ['operate'], createdBy: 'local' })
     const before = auth.listKeys().length

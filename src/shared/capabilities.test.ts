@@ -109,6 +109,7 @@ describe('METHOD_CAPABILITY', () => {
         'video.close',
         'video.paste',
         'video.copy',
+        'video.size',
         'work.reveal'
       ].sort()
     )
