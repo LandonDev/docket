@@ -88,7 +88,7 @@ describe('planning a structural edit', () => {
 
   it('refuses what it cannot save, in words', () => {
     expect(() =>
-      planOf([{ id: 'sheet.mutation.set-row-hidden', params: { subUnitId: 'sheet1' } }], names())
+      planOf([{ id: 'sheet.mutation.set-tab-color', params: { subUnitId: 'sheet1' } }], names())
     ).toThrow(NotSaved)
     expect(() =>
       planOf(

@@ -77,6 +77,24 @@ export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
   csv: []
 }
 
+/** How a sheet is laid out for reading, apart from its cells (work-kit's `SheetLayoutControl`): panes frozen, rows and columns hidden, the sheets' order. */
+export type SheetLayoutControl = 'freeze' | 'hide' | 'order'
+
+/**
+ * What a sheet's layout takes by where it lives, which the host puts in the view (`layout`) as it does `row`, and for
+ * the same reason (`sheets/layoutMatrix.test.ts` holds every cell). A sheet the service holds (a .tcsheet, a LifeOS
+ * sheet) keeps each in its engine's snapshot, and the Excel export writes them; an opened Excel file writes each through
+ * the patch writer (`sheetView`'s frozen `pane`, a row's and a column's `hidden`, the order of `<sheets>`). A .csv keeps
+ * none, and a workbook Excel or Google holds is a `package` with no `layout`: a change there is refused in words as any
+ * it cannot keep.
+ */
+export const SHEET_LAYOUT: Record<SheetStoreKind, readonly SheetLayoutControl[]> = {
+  tcsheet: ['freeze', 'hide', 'order'],
+  lifeos: ['freeze', 'hide', 'order'],
+  package: ['freeze', 'hide', 'order'],
+  csv: []
+}
+
 /** What a note's pop-over offers (the kit's `NoteControl`): its words changed, a note made, a note removed. */
 export type SheetNoteControl = 'edit' | 'add' | 'remove'
 
@@ -199,6 +217,8 @@ export interface SheetView {
   row?: SheetRowControl[]
   /** what the notes' pop-over offers here (`SHEET_NOTES`); absent or empty, notes are read only */
   notes?: SheetNoteControl[]
+  /** the layout changes this sheet keeps (`SHEET_LAYOUT`): Freeze, Hide and Unhide, tabs in order; absent or empty, none is offered */
+  layout?: SheetLayoutControl[]
   /** an opened Excel file whose host saves moved cells, rows and columns (sheets/structural.ts); absent, the canvas stops a move as he makes it */
   moves?: true
   /** Save to Google Sheets is offered: a workbook of his own that this host holds (sheets/toGoogle.ts `canSaveToGoogle`) */

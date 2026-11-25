@@ -1197,6 +1197,24 @@ describe("the sheet kind", () => {
     expect(grid.findOpened).toEqual([false]);
   });
 
+  it("hands the canvas the layout changes its store keeps (view.layout)", async () => {
+    open(sheetView({ store: "tcsheet", layout: ["freeze", "hide", "order"] }));
+    await gridUp();
+    expect(grid.layoutGiven).toEqual(["freeze", "hide", "order"]);
+  });
+
+  it("offers no layout change on a sheet he cannot edit", async () => {
+    open(sheetView({ store: "package", readOnly: "This file cannot be opened here: a password", layout: ["freeze", "hide", "order"] }));
+    await gridUp();
+    expect(grid.layoutGiven).toBeUndefined();
+  });
+
+  it("offers none where the host lists none (a workbook Excel or Google holds)", async () => {
+    open(sheetView({ store: "package" }));
+    await gridUp();
+    expect(grid.layoutGiven).toBeUndefined();
+  });
+
   it("a work-kit before Pin B has no find: the body does not answer it, so ⌘F stays the app's", async () => {
     open(sheetView({ store: "package" }));
     await gridUp();

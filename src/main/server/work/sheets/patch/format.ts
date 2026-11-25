@@ -1,6 +1,7 @@
 import { readRels, workbookMap } from './patch'
 import type { IRange } from '@univerjs/core'
 import { StyleTable } from './format-styles'
+import { reorderSheets } from './format-book'
 import { FormatSheet } from './format-sheet'
 import { FormatRefused } from './format-xml'
 import { readEntry, readZip, writeZip } from './zip'
@@ -94,6 +95,12 @@ export type FormatEdit =
   | { kind: 'rowHeight'; sheet: string; from: number; to: number; height: number | null }
   | { kind: 'merge'; sheet: string; range: FormatRange }
   | { kind: 'unmerge'; sheet: string; range: FormatRange }
+  // A sheet's layout: rows and columns hidden or shown (zero-based, inclusive), the rows and columns frozen (0 and 0
+  // unfreezes), a worksheet moved to a place among the worksheets (from 0).
+  | { kind: 'rowHidden'; sheet: string; from: number; to: number; hidden: boolean }
+  | { kind: 'colHidden'; sheet: string; from: number; to: number; hidden: boolean }
+  | { kind: 'freeze'; sheet: string; rows: number; columns: number }
+  | { kind: 'sheetOrder'; sheet: string; to: number }
 
 /** Smallest width at Excel's 1/256-character precision that reads back as the given rounded pixels. */
 export function columnWidthFromPx(pixels: number): number {
@@ -141,7 +148,17 @@ export function patchFormat(
     return (styles ??= new StyleTable(read(stylesPart), report.styles))
   }
   const editsByPart = new Map<string, FormatEdit[]>()
+  // The tabs' order is the workbook's own part, not a sheet's (format-book.ts).
+  const moves = edits.flatMap((edit) => (edit.kind === 'sheetOrder' ? [{ sheet: edit.sheet, to: edit.to }] : []))
+  if (moves.length) {
+    for (const move of moves) if (sheetsByName.get(move.sheet)?.kind !== 'worksheet') throw new FormatRefused(`No worksheet named “${move.sheet}”.`)
+    const { wbPart, wbXml, P } = workbookMap(zip)
+    const kinds = sheets.map((sheet) => [sheet.index, sheet.kind] as const)
+    const after = reorderSheets(wbXml, P, moves, (index) => kinds.find(([at]) => at === index)?.[1] === 'worksheet')
+    parts.set(wbPart, { before: wbXml, after })
+  }
   for (const edit of edits) {
+    if (edit.kind === 'sheetOrder') continue
     const sheet = sheetsByName.get(edit.sheet)
     if (sheet?.kind !== 'worksheet') throw new FormatRefused(`No worksheet named “${edit.sheet}”.`)
     const group = editsByPart.get(sheet.part)

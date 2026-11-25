@@ -249,6 +249,8 @@ export interface FakeGrid extends SheetGrid {
   dataChrome: boolean | undefined;
   /** what the canvas was last told a note's pop-over offers (`noteControls`) */
   noteControls: SheetCanvasProps["noteControls"];
+  /** the layout changes the canvas was last told this store keeps (`layout`, work-kit's from Pin B) */
+  layoutGiven: readonly string[] | undefined;
   /** whether the canvas was asked for its find (`find`, work-kit's from Pin B) */
   findAsked: boolean | undefined;
   /** each open of the grid's find (`withReplace`), on a grid made with `find: true` (a kit with Pin B) */
@@ -428,6 +430,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     const { snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection } = props;
     grid.noteControls = noteControls;
     grid.findAsked = (props as { find?: boolean }).find;
+    grid.layoutGiven = (props as { layout?: readonly string[] }).layout;
     grid.objectsGiven = { objects, media, onObjects };
     grid.styleKeys = styleKeys;
     grid.filter = filter;
@@ -598,6 +601,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
   const grid: FakeGrid = {
     handle: null,
     findAsked: undefined,
+    layoutGiven: undefined,
     findOpened: [],
     applied: [],
     formats: [],

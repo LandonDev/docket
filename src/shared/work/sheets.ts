@@ -186,6 +186,19 @@ const FORMAT_SAVED = new Set([
 ]);
 
 
+/**
+ * What an opened Excel file keeps of a sheet's layout, by the control that makes it (`SHEET_LAYOUT`, the host's word in
+ * `view.layout`): the patch writer writes a frozen pane, a row's or a column's `hidden` and the sheets' order.
+ */
+export const LAYOUT_SAVED: Readonly<Record<string, "freeze" | "hide" | "order">> = {
+  "sheet.mutation.set-frozen": "freeze",
+  "sheet.mutation.set-row-hidden": "hide",
+  "sheet.mutation.set-row-visible": "hide",
+  "sheet.mutation.set-col-hidden": "hide",
+  "sheet.mutation.set-col-visible": "hide",
+  "sheet.mutation.set-worksheet-order": "order",
+};
+
 /** The kinds of rule a sheet's row lists (the host's word on what its store keeps). */
 export function ruleKinds(row: readonly string[] | undefined): Set<SheetRuleKind> {
   const out = new Set<SheetRuleKind>();
@@ -224,7 +237,7 @@ export function latestRules(mutations: SheetMutation[]): SheetMutation[] {
  * workbook Excel or Google holds), a pasted cell's style is left out. Text in more than one style
  * is kept where formatting is, as runs (`doc` reads a cell's document from the grid, for a style
  * set over one); a note's words where the host lists `edit` in `notes`. What cannot be kept (moved
- * cells, a hidden row, a note made or removed in an Excel file and the like) answers `stop`: the
+ * cells where the host saves no move, a hidden row where it lists no `hide`, a note made or removed in an Excel file and the like) answers `stop`: the
  * caller takes the change back as he makes it and says why, so nothing he made stays in the grid
  * that the file does not have.
  * A rule's change (a conditional format, a validation, a name, the filter) goes as the whole list
@@ -233,9 +246,12 @@ export function latestRules(mutations: SheetMutation[]): SheetMutation[] {
 export function forPackage(
   mutation: SheetMutation,
   formula: (sheet: string, row: number, col: number) => string | null,
-  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind>; moves?: boolean; doc?: (sheet: string, row: number, col: number) => unknown; notes?: readonly string[] } = {},
+  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind>; moves?: boolean; doc?: (sheet: string, row: number, col: number) => unknown; notes?: readonly string[]; layout?: readonly string[] } = {},
 ): { keep: SheetMutation[] } | { stop: string } {
   if (STRUCTURAL_SAVED.has(mutation.id)) return { keep: [mutation] };
+  // A frozen pane, a hidden row or column, the tabs' order: kept where the host lists its control (`view.layout`).
+  const layout = LAYOUT_SAVED[mutation.id];
+  if (layout) return opts.layout?.includes(layout) ? { keep: [mutation] } : { stop: sheetStopWords("other", opts.google) };
   if (SHEET_MOVES.has(mutation.id)) {
     // What a move may not cut through (a table, a merge, an array) the host finds in the file and says in the same words.
     return opts.moves ? { keep: [mutation] } : { stop: sheetStopWords("moved", opts.google) };

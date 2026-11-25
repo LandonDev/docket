@@ -22,6 +22,13 @@ export const ADD_MERGE = 'sheet.mutation.add-worksheet-merge'
 export const REMOVE_MERGE = 'sheet.mutation.remove-worksheet-merge'
 /** A row told to fit what it holds, or to stop fitting (a double-click on its border). */
 export const AUTO_HEIGHT = 'sheet.mutation.set-worksheet-row-is-auto-height'
+/** A sheet's layout (`SHEET_LAYOUT`): rows and columns hidden or shown, a frozen pane, a tab moved among the sheets. */
+export const ROW_HIDDEN = 'sheet.mutation.set-row-hidden'
+export const ROW_SHOWN = 'sheet.mutation.set-row-visible'
+export const COL_HIDDEN = 'sheet.mutation.set-col-hidden'
+export const COL_SHOWN = 'sheet.mutation.set-col-visible'
+export const FROZEN = 'sheet.mutation.set-frozen'
+export const SHEET_ORDER = 'sheet.mutation.set-worksheet-order'
 /** The mutations a package saves as formatting. */
 export const FORMAT_IDS = new Set([COL_WIDTH, ROW_HEIGHT, ADD_MERGE, REMOVE_MERGE, AUTO_HEIGHT])
 
@@ -269,6 +276,16 @@ export function formatEditsOf(mutations: readonly SheetMutationJson[], sheetName
       // A row set to fit what it holds has no height of its own in the file: Excel fits it on open.
       const auto = (p as { autoHeightInfo?: unknown }).autoHeightInfo
       if (auto === 1 || auto === true) for (const range of p.ranges ?? []) out.push({ kind: 'rowHeight', sheet, from: range.startRow, to: range.endRow, height: null })
+    } else if (m.id === ROW_HIDDEN || m.id === ROW_SHOWN) for (const range of p.ranges ?? []) out.push({ kind: 'rowHidden', sheet, from: range.startRow, to: range.endRow, hidden: m.id === ROW_HIDDEN })
+    else if (m.id === COL_HIDDEN || m.id === COL_SHOWN) for (const range of p.ranges ?? []) out.push({ kind: 'colHidden', sheet, from: range.startColumn, to: range.endColumn, hidden: m.id === COL_HIDDEN })
+    else if (m.id === FROZEN) {
+      // Univer's xSplit and ySplit are the columns and rows frozen; none is 0 (or -1 on an axis it never set).
+      const f = p as { xSplit?: unknown; ySplit?: unknown }
+      const count = (n: unknown) => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 0)
+      out.push({ kind: 'freeze', sheet, rows: count(f.ySplit), columns: count(f.xSplit) })
+    } else if (m.id === SHEET_ORDER) {
+      const to = (p as { toOrder?: unknown }).toOrder
+      if (typeof to === 'number' && Number.isInteger(to) && to >= 0) out.push({ kind: 'sheetOrder', sheet, to })
     } else if (m.id === ADD_MERGE) for (const range of p.ranges ?? []) out.push({ kind: 'merge', sheet, range })
     else if (m.id === REMOVE_MERGE) for (const range of p.ranges ?? []) out.push({ kind: 'unmerge', sheet, range })
   }

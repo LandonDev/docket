@@ -29,7 +29,7 @@ import {
   type ElementSpan,
   type Splice
 } from './format-xml'
-import { parseAttrs, removeAttrInTag, setAttrInTag, type Box } from './xml'
+import { parseAttrs, refName, removeAttrInTag, setAttrInTag, type Box } from './xml'
 
 const ORDER = (
   'sheetPr dimension sheetViews sheetFormatPr cols sheetData sheetCalcPr sheetProtection ' +
@@ -93,6 +93,8 @@ export class FormatSheet {
     const mergeChecks: Box[] = []
     const merges = [...originalMerges]
     let tables: Box[] | undefined
+    // The last freeze the edits ask for (the panes are one state, not a sum).
+    let frozen: { rows: number; columns: number } | null = null
 
     for (const [order, edit] of edits.entries()) {
       this.checkProtection(edit)
@@ -149,6 +151,22 @@ export class FormatSheet {
           })
           break
         }
+        case 'rowHidden':
+          checkAxis(edit.from, edit.to, ROWS, null, 0, 'row')
+          operations.push({ order, kind: 'hidden', from: edit.from + 1, to: edit.to + 1, hidden: edit.hidden })
+          break
+        case 'colHidden':
+          checkAxis(edit.from, edit.to, COLS, null, 0, 'column')
+          cols.setHidden(edit.from + 1, edit.to + 1, edit.hidden)
+          break
+        case 'freeze':
+          if (!Number.isInteger(edit.rows) || !Number.isInteger(edit.columns) || edit.rows < 0 || edit.columns < 0 || edit.rows >= ROWS || edit.columns >= COLS)
+            throw new FormatRefused(`That pane cannot be frozen on “${edit.sheet}”.`)
+          frozen = { rows: edit.rows, columns: edit.columns }
+          break
+        case 'sheetOrder':
+          // the workbook's part, not the sheet's (format-book.ts)
+          break
         case 'merge':
         case 'unmerge': {
           const box = readRange(edit.range)
@@ -188,9 +206,41 @@ export class FormatSheet {
       else this.insert('sheetFormatPr', updatedFormatTag)
     }
     cols.render(this.xml, this.changes, (name, text) => this.insert(name, text))
+    if (frozen) this.renderFreeze(frozen.rows, frozen.columns)
     this.renderMerges(originalMerges, merges)
     this.expandDimension()
     return applySplices(this.xml, this.changes)
+  }
+
+  /**
+   * The first window's frozen pane (`<sheetView><pane state="frozen"/>`): the rows above and the columns left of a cell
+   * stay, the rest scroll. A pane of any kind already there is replaced, and a selection that names a pane goes with it
+   * (it names one that is no longer there); 0 and 0 leave no pane.
+   */
+  private renderFreeze(rows: number, columns: number) {
+    const P = this.prefix
+    const active = rows && columns ? 'bottomRight' : rows ? 'bottomLeft' : 'topRight'
+    const pane = rows || columns ? `<${P}pane${columns ? ` xSplit="${columns}"` : ''}${rows ? ` ySplit="${rows}"` : ''} topLeftCell="${refName(rows + 1, columns + 1)}" activePane="${active}" state="frozen"/>` : ''
+    const views = this.child('sheetViews')
+    if (!views) {
+      if (pane) this.insert('sheetViews', `<${P}sheetViews><${P}sheetView workbookViewId="0">${pane}</${P}sheetView></${P}sheetViews>`)
+      return
+    }
+    const view = children(this.xml, views).find((el) => el.name === P + 'sheetView')
+    if (!view) {
+      if (pane) this.changes.push({ start: views.start, end: views.end, text: withBody(openTag(this.xml, views), views.name, `<${P}sheetView workbookViewId="0">${pane}</${P}sheetView>`) })
+      return
+    }
+    if (view.openEnd === view.end) {
+      if (pane) this.changes.push({ start: view.start, end: view.end, text: withBody(openTag(this.xml, view), view.name, pane) })
+      return
+    }
+    for (const el of children(this.xml, view)) {
+      const named = el.name === P + 'selection' && valueOf(openTag(this.xml, el), 'pane') !== undefined
+      if (el.name === P + 'pane' || named) this.changes.push({ start: el.start, end: el.end, text: '' })
+    }
+    // The pane is the window's first child (CT_SheetView).
+    if (pane) this.changes.push({ start: view.openEnd, end: view.openEnd, text: pane })
   }
 
   private child(name: string) {
@@ -203,6 +253,8 @@ export class FormatSheet {
   }
 
   private checkProtection(edit: FormatEdit) {
+    // A frozen pane is the window's, which Excel lets a protected sheet change; the tabs' order is the workbook's.
+    if (edit.kind === 'freeze' || edit.kind === 'sheetOrder') return
     const protection = this.child('sheetProtection')
     if (!protection) return
     const tag = openTag(this.xml, protection)
@@ -214,7 +266,11 @@ export class FormatSheet {
       colWidth: 'formatColumns',
       rowHeight: 'formatRows',
       merge: undefined,
-      unmerge: undefined
+      unmerge: undefined,
+      rowHidden: 'formatRows',
+      colHidden: 'formatColumns',
+      freeze: undefined,
+      sheetOrder: undefined
     }[edit.kind]
     if (!flag || !['0', 'false'].includes(valueOf(tag, flag) ?? ''))
       throw new FormatRefused(

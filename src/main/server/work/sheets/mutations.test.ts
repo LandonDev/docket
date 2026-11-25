@@ -20,7 +20,7 @@ describe('what an Excel file cannot keep', () => {
 
   it('refuses each kind with its sentence, and nothing of a cell that only takes a style', () => {
     expect(() => editsOf([{ id: 'sheet.mutation.move-range', params: { subUnitId: 's1' } }], name)).toThrow(UNSAVED.moved)
-    expect(() => editsOf([{ id: 'sheet.mutation.set-row-hidden', params: { subUnitId: 's1' } }], name)).toThrow(UNSAVED.other)
+    expect(() => editsOf([{ id: 'sheet.mutation.set-tab-color', params: { subUnitId: 's1' } }], name)).toThrow(UNSAVED.other)
     expect(() => editsOf(cells({ 0: { 0: { p: { body: {} } } } }), name)).toThrow(UNSAVED.rich)
     expect(() => editsOf(cells({ 0: { 0: { si: 'x' } } }), name)).toThrow(UNSAVED.fill)
     expect(() => editsOf(cells({ 0: { 0: { t: 2 } } }), name)).toThrow(NotSaved)

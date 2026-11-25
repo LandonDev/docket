@@ -11,7 +11,7 @@ import {
   type ElementSpan,
   type Splice
 } from './format-xml'
-import { removeAttrInTag } from './xml'
+import { removeAttrInTag, setAttrInTag } from './xml'
 
 export interface ColumnStyle {
   from: number
@@ -104,6 +104,11 @@ export class FormatColumns {
         return tag
       return setSize(tag, 'width', 'customWidth', size)
     })
+  }
+
+  /** Hides columns `from`..`to` (one-based), or shows them again. */
+  setHidden(from: number, to: number, hidden: boolean) {
+    this.edit(from, to, (tag) => (hidden ? setAttrInTag(tag, 'hidden', '1') : removeAttrInTag(tag, 'hidden')))
   }
 
   private edit(from: number, to: number, update: (tag: string) => string) {

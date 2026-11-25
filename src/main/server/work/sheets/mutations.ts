@@ -2,7 +2,7 @@ import type { ICellData } from '@univerjs/core'
 import { runsOf, type Run } from 'work-kit/sheet/xlsx'
 import type { SheetCellJson, SheetMutationJson } from '@shared/contract-work-sheets'
 // (by its path: the Work service reaches this file, and its bundle resolves no alias for a value)
-import { NOTE_STOP, RULES_SET, sheetStopWords, spillingIn, spillStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
+import { LAYOUT_SAVED, NOTE_STOP, RULES_SET, sheetStopWords, spillingIn, spillStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
 import { CELL_BOOLEAN, typedCell } from '../../../../shared/work/cellInput'
 import { cellName } from './a1'
 import type { EditSpec } from './patch/patch'
@@ -39,7 +39,9 @@ export const FORMATTING = new Set([
   'sheet.mutation.add-worksheet-merge',
   'sheet.mutation.remove-worksheet-merge',
   // a rule's whole list as its change left it (the canvas sends it in place of the rule's own mutation): rules.ts lays it
-  RULES_SET
+  RULES_SET,
+  // a sheet's layout where the host lists it (`SHEET_LAYOUT`): a frozen pane, rows and columns hidden or shown, the tabs' order
+  ...Object.keys(LAYOUT_SAVED)
 ])
 
 /** What an opened Excel file cannot keep yet, in the words he reads when he tries it: the canvas stops these as he makes them and says the same (`sheetStopWords`, the contract). */

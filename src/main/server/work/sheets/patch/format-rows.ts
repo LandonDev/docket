@@ -43,6 +43,7 @@ export type RowOperation =
       style: (old: number) => number
     }
   | { order: number; kind: 'height'; from: number; to: number; height: number | null }
+  | { order: number; kind: 'hidden'; from: number; to: number; hidden: boolean }
   | { order: number; kind: 'merge'; box: Box; columns: ColumnStyle[]; anchorStyle?: number }
 
 type ActiveOperation =
@@ -79,7 +80,7 @@ class RowTimeline {
         this.events.push({ row: from, start: true, operation, box })
         this.events.push({ row: to + 1, start: false, operation, box })
       }
-      if (operation.kind === 'height') add(operation.from, operation.to)
+      if (operation.kind === 'height' || operation.kind === 'hidden') add(operation.from, operation.to)
       else if (operation.kind === 'merge') add(operation.box.r1, operation.box.r2)
       else for (const box of operation.boxes) add(box.r1, box.r2, box)
     }
@@ -316,6 +317,7 @@ export class FormatRows {
     for (const op of operations) {
       if (op.kind === 'cells') this.applyCells(row, op)
       else if (op.kind === 'merge') this.applyMerge(row, op)
+      else if (op.kind === 'hidden') row.tag = op.hidden ? setAttrInTag(row.tag, 'hidden', '1') : removeAttrInTag(row.tag, 'hidden')
       else row.tag = setSize(row.tag, 'ht', 'customHeight', op.height)
     }
   }
@@ -350,7 +352,9 @@ export class FormatRows {
               op.kind === 'merge' ||
               (op.kind === 'height'
                 ? op.height !== null
-                : op.prepare.wholeRow || op.prepare.explicit.length > 0)
+                : op.kind === 'hidden'
+                  ? op.hidden
+                  : op.prepare.wholeRow || op.prepare.explicit.length > 0)
           )
         ) {
           // In this gap every missing row has the same operations and defaults.
@@ -398,7 +402,7 @@ export class FormatRows {
       if (!guardArray && !timeline.active.length) continue
       const row = new Row(number, this.xml, this.prefix, span)
       row.protectedArray = guardArray
-      if (guardArray || timeline.active.some((op) => op.kind !== 'height')) row.readCells()
+      if (guardArray || timeline.active.some((op) => op.kind !== 'height' && op.kind !== 'hidden')) row.readCells()
       this.applyRow(row, timeline.active)
       row.render(this.changes)
     }

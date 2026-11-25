@@ -3519,6 +3519,10 @@ set by hand.
   may edit. The formula bar's first field is the **Name Box**: he types a place (B2:D9, Roster!A1, a name) and
   Return goes there; one that is not there stays, ringed in `destructive`. While he types a formula in the bar, a
   press or a drag on the grid puts the range's reference in at the caret.
+- **Freeze and Hide** (work-kit's, with Pin B) are rows of the grid's right-press menu where the sheet's store
+  keeps them: Freeze › (Freeze panes, Freeze top row, Freeze first column, and under a rule Unfreeze panes), and on
+  whole rows or columns Hide row or Hide column, with Unhide where one is hidden. A **sheet tab** is dragged into
+  its place: a 2px `accent` line in the gap, no tab moving under the pointer; ⌥← and ⌥→ move the focused tab.
 - **The sheet's Data** is one menu in the row's data group (232px): Sort
   (A to Z, Z to A on the selection's column, then "Custom sort…"), Filter
   with a check while the sheet has one (⇧⌘L), and under a rule Validation,

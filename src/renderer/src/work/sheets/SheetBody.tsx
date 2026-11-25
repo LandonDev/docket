@@ -307,6 +307,9 @@ export function Body(props: Props) {
           labels={LABELS}
           // Find and Replace in the grid, a reader's too (Replace only where he may edit); a kit before Pin B has no such prop.
           {...KIT_FIND}
+          // Freeze, Hide and Unhide, tabs in order: what this store keeps, as its host says (`view.layout`); none on a sheet he
+          // cannot edit. A kit before Pin B takes no such prop and draws none.
+          {...(view.layout?.length && !locked && !state.reloading ? kitLayout(view.layout) : {})}
           className="min-h-0 min-w-0 flex-1"
         />
         {siding ? (
@@ -343,6 +346,8 @@ function kitFind(handle: SheetHandle | null): { open(withReplace?: boolean): voi
   const find = (handle as (SheetHandle & { find?: { available: boolean; open(withReplace?: boolean): void } }) | null)?.find;
   return find?.available ? find : null;
 }
+/** `layout` on the canvas (work-kit's from Pin B): the layout changes the store keeps. */
+const kitLayout = (layout: readonly string[]) => ({ layout }) as unknown as Record<string, never>;
 /** `find` on the canvas: a prop of work-kit's from Pin B; the kit before it takes none. */
 const KIT_FIND = { find: true } as unknown as Record<string, never>;
 

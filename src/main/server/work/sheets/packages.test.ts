@@ -200,7 +200,7 @@ describe('an opened package', () => {
     // a move goes through LibreOffice, as an insert does: a store with none refuses it
     const moved = { fromRange: range, toRange: { ...range, startRow: 5, endRow: 5 }, from: { subUnitId: data, value: {} }, to: { subUnitId: data, value: {} } }
     await expect(store.edit(path, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, ...moved } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)
-    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.set-frozen', params: { unitId: PACKAGE_UNIT, subUnitId: data } }], 'owner')).rejects.toThrow('That change is not saved in an Excel file yet')
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.set-tab-color', params: { unitId: PACKAGE_UNIT, subUnitId: data, color: '#ff0000' } }], 'owner')).rejects.toThrow('That change is not saved in an Excel file yet')
     // a rich cell whose document holds no words is refused, never written empty
     await expect(store.edit(path, 0, [set(data, 1, 0, { p: { body: {} } })], 'owner')).rejects.toThrow('That change is not saved in an Excel file yet')
     await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)

@@ -1629,8 +1629,22 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   work command, so Edit → Find… and ⌘F open the grid's own bar, on a sheet he can only read too; Replace is offered
   only where he may edit, and writes as any typed edit (one `set-range-values` a cell, Replace all one step of Undo).
   Before the pin moves the body answers no `find` and ⌘F stays the app's. The same pin brings the Name Box, pointing at
-  cells from the formula bar, and the canvas's `layout` (freeze panes, hide and unhide, tabs dragged into order),
-  which the body does not list yet ("Not built").
+  cells from the formula bar, and the canvas's `layout`.
+- **Freeze panes, Hide and Unhide, and the tabs' order** (work-kit's canvas `layout`, Pin B). The host says per store
+  what keeps them (`SHEET_LAYOUT` in the contract, `view.layout`), and the body hands that list to the canvas, none on a
+  sheet he cannot edit. A .tcsheet and a LifeOS sheet keep all three in the service engine's snapshot, and the Excel
+  export writes them (`writer.ts`: `freeze`, a row's and a column's `hd`, `sheetOrder`). An opened Excel file keeps
+  all three through the patch writer: the grid's `set-frozen`, `set-row-hidden`/`set-row-visible`,
+  `set-col-hidden`/`set-col-visible` and `set-worksheet-order` ride the formatting path (`FORMATTING` in mutations.ts,
+  `formatEditsOf`) to `patchFormat`, which writes the first window's frozen `pane` (`format-sheet.ts`
+  `renderFreeze`: a pane already there is replaced, a selection that names a pane goes with it), `hidden` on rows
+  (made where the file had none) and on `<col>`s (their widths kept), and the order of `<sheets>` (`format-book.ts`:
+  among the worksheets, as the grid counts them, a chartsheet keeping its place; a defined name's `localSheetId` and
+  the window's `activeTab` and `firstSheet` follow their sheets). A protected sheet still freezes, its window being the
+  reader's; hiding needs its format rows or columns allowed. A .csv lists none, and a workbook Excel or Google holds
+  is a `package` with no `layout`: there each is stopped as he makes it, in the words any change it cannot keep gets
+  (`forPackage`, `LAYOUT_SAVED`). Held by `layoutMatrix.test.ts` (every control on every store, saved and read back)
+  and `patch/layout.test.ts`.
 
 - **A book comes in pieces at once, and is kept for a tab shown again**
   (perf M7, sync.ts). `work.sheets.open {first: true}` carries the book's
@@ -2032,13 +2046,6 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
-- Freeze panes, hiding rows and columns, and dragging the sheet tabs into order (work-kit's canvas `layout`, Pin B):
-  the grid makes each as a mutation (`set-frozen`, `set-row-hidden`/`set-col-hidden` and their `-visible`,
-  `set-worksheet-order`), and `writer.ts` already writes `freeze` and `hd` from a snapshot, but no store lists them:
-  the host must say per store what keeps them (a `SHEET_LAYOUT` beside `SHEET_ROW`, held by a matrix test: the service's
-  engine replays each, a cold load shows it, the export holds it), and the patch writer for an opened Excel file writes
-  none of the three yet (`sheetView`'s `pane`, a row's and a column's `hidden`, the workbook's `sheets` order). Until
-  then an opened file stops them as it stops any change it cannot keep.
 - For a copy of another format ("Other formats in"): the line does not say
   whether the copy holds edits not yet saved back; Files shows no count of
   suggestions waiting on such a file (they are kept by the copy's path);
