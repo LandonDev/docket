@@ -31,8 +31,11 @@ async function today(context: Context): Promise<void> {
 }
 
 async function correctWorkspace(context: Context): Promise<void> {
+  // Read the rail's mark, not a hit test: a due task opens its sheet over the window, and the sheet's backdrop
+  // covers the rail while the mark beneath it is already right.
   await context.pair.page.until('the correct workspace selected', 8000, () =>
-    context.pair.page.centre('nav [data-rail-path] button[aria-current="true"]', context.workspace.name))
+    context.pair.page.eval(`[...document.querySelectorAll('nav [data-rail-path] button[aria-current="true"]')]
+      .some((row) => (row.getAttribute('aria-label') ?? row.textContent).trim() === ${JSON.stringify(context.workspace.name)})`))
 }
 
 export default journey({

@@ -438,7 +438,10 @@ control, takes it away.
   his unechoed message its one row, and it resumes from the first row
   (`replayGap`) with no loading state, the message held until its echo
   claims it. Without that the dock sat on "Sending" and showed only "Worked
-  for" (commands.test.ts, a local and a remote link). Before, the first message waited on four or five requests in a
+  for" (commands.test.ts, a local and a remote link). `createDraft` tells
+  `adopt` the send was folded (`folded`), since the host may push the new
+  thread before its reply (a mail chat's adopt step does): the pushed meta
+  must not make the draft read as a thread already followed (J36). Before, the first message waited on four or five requests in a
   row. An older host, a draft with fast set, or a draft whose step cannot
   ride the create, goes the old way: the composer's normal way (App's
   `onSubmit`, `commands.send`). In it, in this order: `session.create` (it names no file:

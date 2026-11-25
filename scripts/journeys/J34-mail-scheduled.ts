@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { FIRST_MAIL, SECOND_MAIL } from './lib/lifeosSeed'
-import { draftReply, evidence, heldMail, mailbox, MAIL_LIST, MAIL_PANE, openMail, see, wordsIn } from './lib/lifeosJourney'
+import { draftReply, evidence, HELD_ACT, heldMail, mailbox, MAIL_LIST, MAIL_PANE, openMail, see, wordsIn } from './lib/lifeosJourney'
 import { COMPOSE, composeRow, mailToast, readReply, startReply, type MailRow } from './lib/mailJourney'
 import { journey, step, type Context } from './lib/record'
 import { createThread } from './lib/thread'
@@ -99,7 +99,7 @@ export default journey({
       const ref = { at: 'lifeos', table: 'outbox', id: queued._id }
       await pair.page.clickOn('nav [data-rail-row] > button > span.truncate', 'Outbox')
       await pair.page.press('tab', 'Waiting')
-      await pair.page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
+      await pair.page.clickOn(HELD_ACT, 'Send to Dana Lee')
       const pane = '[data-outbox-detail]'
       await pair.page.until('the scheduled held row with Cancel send', 8000, async () =>
         scheduledWords(await wordsIn(pair.page, pane), queued.sendAt) && !!await pair.page.centre(pane + ' button', 'Cancel send'))

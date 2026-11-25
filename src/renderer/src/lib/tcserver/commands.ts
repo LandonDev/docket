@@ -273,7 +273,7 @@ async function createDraft(session: Session, first?: FirstSend): Promise<{ meta:
     // The host stored the message and ran the steps before it answered: the rows load as any thread's.
     const step = created.get(session.id);
     created.delete(session.id);
-    sessionStore.adopt(meta);
+    sessionStore.adopt(meta, { folded: true });
     if (itemsFailed?.length) step?.onItemsFailed?.(itemsFailed);
     return { meta, sent: true };
   }

@@ -76,6 +76,8 @@ class FakeLink implements Link {
   /** Rows the host stored per thread, and the threads this socket follows: a host pushes rows to followers alone. */
   rows = new Map<string, EventRow[]>();
   followed = new Set<string>();
+  /** A folded create whose host tells every window of the new thread before it answers (a mail chat's adopt step). */
+  pushBeforeReply = false;
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve([] as T);
@@ -96,6 +98,7 @@ class FakeLink implements Link {
       const p = params as any;
       const wire = this.made(wireMeta({ id: p.id, status: "running" }));
       this.rows.set(p.id, [{ sessionId: p.id, seq: 1, ts: 1, event: { type: "user-text", text: p.firstMessage } }]);
+      if (this.pushBeforeReply) this.push({ push: "session", session: wire });
       setTimeout(() => {
         this.stream({ sessionId: p.id, seq: 2, ts: 2, event: { type: "assistant-text", text: "March rose 4%.", delta: false } });
         this.push({ push: "session", session: { ...wire, status: "idle" } });
@@ -229,6 +232,21 @@ describe("send", () => {
       ["assistant", "March rose 4%.", false],
     ]);
     expect(sessionStore.get(draft.id)!.busy).toBe(false);
+  });
+
+  it("a folded first send whose thread the host pushed before its reply still follows the thread (J36, the mail dock)", async () => {
+    link.pushBeforeReply = true;
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { features: ["create.steps"] } } as never);
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    afterCreate.set(draft.id, async () => undefined, { fold: () => ({ mailAdopt: { workspaceId: "w1", kind: "thread", mailThreadId: "m1" } }) as never });
+    await send(draft, "Draft a reply about the spare cables", [], undefined, undefined);
+    expect(link.of("session.create")[0]).toMatchObject({ firstMessage: "Draft a reply about the spare cables" });
+    const blocks = sessionStore.get(draft.id)!.blocks;
+    expect(blocks.map((b) => [b.role, b.text, !!b.pending])).toEqual([
+      ["user", "Draft a reply about the spare cables", false],
+      ["assistant", "March rose 4%.", false],
+    ]);
   });
 
   it("a provisional entry is never created: a send into it fails instead of minting a second thread", async () => {

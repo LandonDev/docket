@@ -2480,11 +2480,13 @@ class SessionStore {
    *  `created`: this window made it empty (a draft's first send, an empty
    *  chat), so its rows arrive as pushes from the start. Any other thread
    *  may hold rows already (the host stored its brief before answering):
-   *  it loads as any thread does, and those rows fold in. */
-  adopt(meta: SessionMeta, options: { created?: boolean } = {}): void {
+   *  it loads as any thread does, and those rows fold in.
+   *  `folded`: a draft's first send rode its create, so the entry is that draft even when the host's push of the new
+   *  thread landed before the create's reply and gave it its meta (a mail chat's adopt step pushes it). */
+  adopt(meta: SessionMeta, options: { created?: boolean; folded?: boolean } = {}): void {
     const before = this.entries.get(meta.id);
     const fresh = !before;
-    const draft = !!before && !before.meta && !before.provisional;
+    const draft = !!before && (!before.meta || !!options.folded) && !before.provisional;
     this.mergeMeta(meta);
     const entry = this.entries.get(meta.id);
     if (entry && options.created) {

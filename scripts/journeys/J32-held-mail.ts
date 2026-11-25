@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { composeRow, type MailRow } from './lib/mailJourney'
+import { HELD_ACT } from './lib/lifeosJourney'
 import { journey, step, type Context } from './lib/record'
 
 export function queuedAge(line: string): boolean {
@@ -51,14 +52,15 @@ export default journey({
       const { pair, folder } = context
       const { page } = pair
       await page.clickOn('nav [data-rail-row] > button > span.truncate', 'Outbox')
-      await page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
+      await page.clickOn(HELD_ACT, 'Send to Dana Lee')
       await page.until('the held mail subject in Outbox', 5000, () =>
         page.eval(`document.querySelector('[data-outbox-detail]')?.innerText.includes(${JSON.stringify(SUBJECT)})`))
       await page.clickOn('[data-outbox-detail] button', 'Edit')
-      await page.clickOn('[role="dialog"] textarea')
+      // Edit opens in place, in the detail, with the message as its textarea (HeldDetail.tsx EditInPlace).
+      await page.clickOn('[data-outbox-detail] [data-outbox-editing] textarea')
       await page.key('Control+a')
       await page.typeKeys(EDIT)
-      await page.clickOn('[role="dialog"] button', 'Save')
+      await page.clickOn('[data-outbox-detail] button', 'Save')
       await page.until('the revised words in Outbox', 5000, () =>
         page.eval(`document.querySelector('[data-outbox-detail]')?.innerText.includes(${JSON.stringify(EDIT)})`))
       const row = await composeRow(context, draftId(folder))
@@ -75,8 +77,9 @@ export default journey({
         row = await composeRow(context, id)
         return row.status === 'queued' && row.message.text.trim() === EDIT
       })
-      await page.press('tab', 'Sent')
-      await page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
+      // Sent is now Done; a queued mail keeps its act's words there, and the row's first span is the act.
+      await page.press('tab', 'Done')
+      await page.clickOn('[data-outbox-done] [data-outbox-row] > span:first-child', 'Send to Dana Lee')
       let words: string[] = []
       await page.until('the same Outbox item’s queued wording and age', 8000, async () => {
         const detail = await page.eval<string>(`document.querySelector('[data-outbox-detail]')?.innerText ?? ''`)

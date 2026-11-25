@@ -33,7 +33,20 @@ export default journey({
           row = drafts.find((draft) => draft.message.text === REPLY && draft.status === 'draft')
           return row
         })
-        await see(pair.page, CARD, REPLY)
+        try {
+          await see(pair.page, CARD, REPLY)
+        } catch (error) {
+          // What the window holds of the thread when the card is missing: its blocks and the dock's words.
+          evidence(context, 'missing-card', await pair.page.eval(`(() => {
+            const thread = window.__monocode.sessionStore.get(${JSON.stringify(sessionId)});
+            return {
+              blocks: thread?.blocks.map((b) => ({ id: b.id, role: b.role, kind: b.kind, tool: b.tool?.name, detail: b.tool?.detail?.slice?.(0, 200), text: b.text?.slice?.(0, 120) })),
+              dock: document.querySelector(${JSON.stringify(DOCK)})?.innerText,
+              rows: [...document.querySelectorAll(${JSON.stringify(DOCK + ' [data-block]')})].map((el) => el.getAttribute('data-block'))
+            };
+          })()`))
+          throw error
+        }
         await see(pair.page, CARD + ' [data-draft-state]', 'Draft')
         state.set(context, { id: row!._id, sessionId })
         await pair.page.shot(context.folder + '/offered-draft.png')

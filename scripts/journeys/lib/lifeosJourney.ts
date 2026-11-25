@@ -119,13 +119,17 @@ export async function draftReply(context: Context, sessionId: string, threadId: 
   return id
 }
 
+/**
+ * A held act by its own words: its row in Waiting (the row's first span is the act), or its line in a thread's
+ * summary (SummaryList.tsx), whichever the Outbox shows. The Outbox opens on an item or on a thread's summary.
+ */
+export const HELD_ACT = '[data-outbox-waiting] [data-outbox-row] > span:first-child, [data-outbox-list] [data-summary-act]'
+
 export async function heldMail(context: Context, id: string, recipient: string): Promise<void> {
   const { pair } = context
   await pair.page.clickOn(OUTBOX, 'Outbox')
   await pair.page.press('tab', 'Waiting')
-  // The Outbox lists held acts by thread now (SummaryList.tsx); the act's own words name the row.
-  const rows = '[data-outbox-list] [data-summary-act]'
-  await pair.page.clickOn(rows, 'Send to ' + recipient)
+  await pair.page.clickOn(HELD_ACT, 'Send to ' + recipient)
   await pair.page.until('the matching draft in the host Outbox feed', 8000, async () =>
     (await pair.sandbox!.query<MailRow[]>('outboxHeld:held', { host: pair.box.host })).some((row) => row._id === id && row.status === 'draft'))
 }
