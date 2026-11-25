@@ -12,7 +12,7 @@ import type { CanvasItem } from "@shared/work";
 import type { FilePlace } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
-const world = vi.hoisted(() => ({ fail: 0, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
+const world = vi.hoisted(() => ({ fail: 0, refuse: null as string | null, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
 
 const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
 const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
@@ -28,6 +28,11 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.list") return { entries: [], trail: [{ name: "General", at: at("/cloud/General") }] };
       if (method === "work.files.saveAs") {
         if (world.fail > 0 && world.fail--) throw new Error("The request timed out.");
+        if (world.refuse) {
+          const why = world.refuse;
+          world.refuse = null;
+          throw new Error(why);
+        }
         if (world.exists && !params.exists) return { exists: { name: params.name, version: "v-there" } };
         return { saved: { name: params.name, ref: at(`/cloud/General/${String(params.name)}`), linked: params.link !== false } };
       }
@@ -96,6 +101,7 @@ beforeEach(() => {
   world.opened.length = 0;
   world.exists = false;
   world.fail = 0;
+  world.refuse = null;
   port.tellOrigin("i1", null);
   world.choice = "other";
   world.links = [];
@@ -243,6 +249,18 @@ describe("the sheet for a document made of a file", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(saved()).toHaveLength(1));
     expect(saved()[0]).toMatchObject({ at: at("/cloud/General"), format: "docx", name: "Run of show copy.docx" });
+  });
+
+  it("sends Save again after a refusal the holder confirmed as a new press, so the cause he cleared is tried again", async () => {
+    fromFile("Budget.docx");
+    world.refuse = "This workspace keeps Teams files where they are.";
+    const dialog = await sheet();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(world.toasts.map((t) => t.title)).toEqual(["Not saved"]));
+    await waitFor(() => expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(2));
+    expect(saved()[1]!.op).not.toBe(saved()[0]!.op);
   });
 
   it("sends Save again after a failure as the same press, so a file it made is answered, never made twice", async () => {

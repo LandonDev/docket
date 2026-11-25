@@ -2593,7 +2593,9 @@ picks, and stays linked to that file: each later edit is written to it.
     a press whose answer was lost on the way back (`unreachable`: kept as `OpLost`, no failed row) is sent again by
     the window under that id and answered with the file that host made, never a silent "Plan 2.docx"; a press the
     journal knows skips the question whether the name is taken. The window keeps one press's id while its words
-    stay the same (Save again after "Not saved"), and mints a new one once it saved or he changed anything.
+    stay the same and its answer never came (Save again after a dropped link or a host that did not answer:
+    SaveAs.tsx `answerUncertain`), and mints a new one once it saved, a host refused it (the journal keeps that
+    refusal under the old id, so his Save after he clears its cause is a new press), or he changed anything.
   The answer is `SavedAs`: `{saved: {name, ref, linked}}`. `work.files.saveAsWord` stays on the wire for an older
   window, as Save As… with Word, Keep Both and no link.
 - **The link** (`work_files_links`, tables.ts): one row a file, by the document's `.tcdoc` path: the format, where the

@@ -16,6 +16,7 @@ import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { makeIn } from "./acts";
+import { linkDropped } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
 import type { Sidebar } from "./model";
 import { Folders, keepRecentFolder, placeItems, Places, recentFolders, ROW, type MoveTarget } from "./MoveDialog";
@@ -34,6 +35,11 @@ import { useReach } from "./store";
  */
 
 const NO_PLACES: Sidebar = { home: null, marks: [], lenses: [], folder: null, lifeos: null, drives: [], projects: [], places: [], rows: [] };
+/**
+ * Whether a failed press may still have landed: the link dropped or the far host did not answer (fileText.ts
+ * `linkDropped`, and the words the host's copies.ts `unreachable` reads as no answer), not a refusal it answered.
+ */
+const answerUncertain = (why: string): boolean => linkDropped(why) || /offline|no live link|unreachable|not answer|ECONNRE|socket hang up/i.test(why);
 const opId = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 type Folder = MoveTarget & { where: string };
@@ -101,6 +107,9 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
       }
       close();
     } catch (err) {
+      // A refusal the holder answered is this press done: Save again after he clears its cause is a new one. A send
+      // whose answer never came keeps its id, so the file it may have made is answered, never made twice.
+      if (!answerUncertain(err instanceof Error ? err.message : String(err))) press.current = null;
       void loadToast().then((toast) => toast.error("Not saved", { description: workErrorWords(err) || undefined }));
     } finally {
       setPending(false);
