@@ -70,6 +70,10 @@ describe('the draft store', () => {
     expect(draftOf({ ...draft('x'), body: cells })?.body).toEqual(cells)
     expect(draftOf({ ...draft('x'), body: { kind: 'sheet', mutations: [{ id: 'x', params: 'y'.repeat(4 * 1024 * 1024) }] } })).toBeNull()
     expect(draftOf({ ...draft('x'), body: { kind: 'other' } })).toBeNull()
+    const box = { kind: 'deck', slideId: 3, shapeId: 2, words: [['Who comes']], model: [{ runs: [{ text: 'Who comes today' }] }] }
+    expect(draftOf({ ...draft('x'), body: box })?.body).toEqual(box)
+    expect(draftOf({ ...draft('x'), body: { ...box, words: [[1]] } })).toBeNull()
+    expect(draftOf({ ...draft('x'), body: { ...box, slideId: 'x' } })).toBeNull()
     expect(draftOf({ ...draft('x'), body: { kind: 'text', text: 'x'.repeat(4 * 1024 * 1024 + 1) } })).toBeNull()
   })
 })

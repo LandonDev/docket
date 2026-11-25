@@ -1,5 +1,9 @@
 import type { DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
+import type { Draft } from "@shared/work/drafts";
+import type { DraftJournal } from "../../canvas/drafts";
+import { copyText } from "../../../lib/clipboard";
 import { CloseRefused, FLUSH_WAIT_MS } from "../../canvas/flush";
+import { whenWords } from "../../files/fileText";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
 import type { Quad } from "../geometry";
@@ -108,6 +112,12 @@ export interface HandState {
   /** the box's own undo and redo */
   undo: boolean;
   redo: boolean;
+  /**
+   * A box's words a window kept on this computer and never sent (canvas/drafts.ts), offered as the deck opens: `same`
+   * when the shape still holds the words the box opened on (Restore sends them as a commit does), else they are offered
+   * to copy, never written over the shape. No box opens until he answers.
+   */
+  offer?: { at: number; same: boolean; text: string } | null;
 }
 
 /** The host's word when the file moved between the read and the write (src/main/server/work/slides/view.ts). */
@@ -146,6 +156,12 @@ export class HandSession {
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
   /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
   private sending: Promise<void> | null = null;
+  /** where the open box's unsent words are kept on this computer; null where there is no store */
+  private journal: DraftJournal | null = null;
+  /** what was last kept, as its JSON: the same box said again is not written again */
+  private keptJson = "";
+  private offered: Draft | null = null;
+  private looked = false;
 
   constructor(
     private host: DeckHost,
@@ -160,6 +176,68 @@ export class HandSession {
   private set(patch: Partial<HandState>): void {
     this.state = { ...this.state, ...patch, undo: this.past.length > 0, redo: this.future.length > 0 };
     for (const listener of this.listeners) listener();
+    this.note();
+  }
+
+  /** The open box's words the host has not written, kept on this computer by the shape they are on; nothing once written, or the box gone. */
+  private note(): void {
+    if (!this.journal) return;
+    const box = this.state.box;
+    const waits = box && (box.phase === "typing" || box.phase === "saving") && !unchanged(box.model, box.initial);
+    const body = waits ? { kind: "deck" as const, slideId: box.slideId, shapeId: box.shape.id, words: wordsOf(box.shape), model: box.model } : null;
+    const json = body ? JSON.stringify(body) : "";
+    if (json === this.keptJson) return;
+    this.keptJson = json;
+    this.journal.keep(body ? `${body.slideId}:${body.shapeId}` : "", body);
+  }
+
+  /** Where the box's unsent words are kept (SlidesCanvas, as the item is drawn); a deck already read asks for an earlier draft now. */
+  journalTo(journal: DraftJournal | null): void {
+    if (this.journal || !journal) return;
+    this.journal = journal;
+    void this.lookForDrafts();
+  }
+
+  /** Once, as the deck is read: the newest draft no live window holds is offered, and no box opens until he answers. */
+  async lookForDrafts(): Promise<void> {
+    const view = this.store.get().view;
+    if (this.looked || !this.journal || !view) return;
+    this.looked = true;
+    const draft = (await this.journal.offered("deck"))[0];
+    if (!draft || draft.body.kind !== "deck") return;
+    const { slideId, shapeId, words, model } = draft.body;
+    const shape = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
+    this.offered = draft;
+    this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model) } });
+  }
+
+  /** Restore: the kept words, over a shape that still holds what the box opened on, sent as the box's commit sends them. A shape that moved on meanwhile turns the offer to Copy. */
+  async restoreDraft(): Promise<void> {
+    const draft = this.offered;
+    if (!draft || draft.body.kind !== "deck" || !this.state.offer?.same) return;
+    const { slideId, shapeId, words, model } = draft.body;
+    this.set({ busy: this.state.busy + 1 });
+    try {
+      this.store.view(await this.host.edit([runsOp(model as Model, slideId, shapeId, words)]));
+      this.journal?.drop(draft);
+      this.offered = null;
+      this.set({ busy: this.state.busy - 1, savedAt: Date.now(), offer: null });
+    } catch (error) {
+      const said = message(error, "The host did not answer");
+      if (MOVED.test(said)) this.set({ busy: this.state.busy - 1, offer: { ...this.state.offer!, same: false } });
+      else {
+        this.set({ busy: this.state.busy - 1 });
+        sayError(error, "Couldn't restore your words");
+      }
+    }
+  }
+
+  /** Discard: the kept words go. */
+  discardDraft(): void {
+    if (!this.offered) return;
+    this.journal?.drop(this.offered);
+    this.offered = null;
+    this.set({ offer: null });
   }
   private setBox(patch: Partial<BoxState>): void {
     if (this.state.box) this.set({ box: { ...this.state.box, ...patch } });
@@ -193,6 +271,8 @@ export class HandSession {
   open(slide: DeckSlide, shape: DeckShape, start: Start): boolean {
     // While his last words are on their way the deck's words are about to change: a box now would be built on the old ones.
     if (this.state.box?.phase === "saving") return false;
+    // Words kept from before wait for his answer first: a box now could be built over the shape they belong to.
+    if (this.state.offer) return false;
     // Words still in a box (a conflict that waits for Reload, a send the host refused) are never drawn over by another.
     const was = this.state.box;
     if (was?.phase === "typing" && (was.conflict || !unchanged(was.model, was.initial))) {
@@ -619,7 +699,15 @@ export class HandSession {
 
   /** What saved means now, for a file's save line (FILES-SEAM.md "Save state"). */
   saved(reload: () => void, copy?: () => void): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
-    const { busy, savedAt, failure, box } = this.state;
+    const { busy, savedAt, failure, box, offer } = this.state;
+    if (offer) {
+      const when = whenWords(offer.at);
+      return {
+        state: "conflict",
+        detail: offer.same ? `Edits from ${when} were not saved` : `Edits from ${when} were not saved. The slide changed since`,
+        actions: [offer.same ? { id: "restore", label: "Restore", run: () => void this.restoreDraft() } : { id: "copy", label: "Copy Words", run: () => void copyText(offer.text) }, { id: "discard", label: "Discard", run: () => this.discardDraft() }],
+      };
+    }
     if (failure?.message === SHAPE_GONE && copy) return { state: "conflict", detail: failure.message, actions: [{ id: "copy", label: "Copy words", run: copy }] };
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
     // Words in an open box that are not in the file yet are on their way (`keep`, within seconds): never saved.

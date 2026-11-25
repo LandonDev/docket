@@ -19,9 +19,14 @@ export interface DraftKey {
 
 /**
  * What each editor keeps of an edit, by kind: a text file's words; a sheet's mutations the host has not answered (sent
- * and queued, in order), made on the file's revision.
+ * and queued, in order), made on the file's revision; a deck's open typing box: the shape it is on, that shape's words
+ * as the box opened on them (the host's check, as a commit's), and the box's model (words, runs and the looks they
+ * carry).
  */
-export type DraftBody = { kind: "text"; text: string; bom: boolean; crlf: boolean } | { kind: "sheet"; mutations: { id: string; params: unknown }[] };
+export type DraftBody =
+  | { kind: "text"; text: string; bom: boolean; crlf: boolean }
+  | { kind: "sheet"; mutations: { id: string; params: unknown }[] }
+  | { kind: "deck"; slideId: number; shapeId: number; words: string[][]; model: unknown };
 export type DraftKind = DraftBody["kind"];
 
 export interface Draft extends DraftKey {
@@ -80,6 +85,12 @@ function bodyOf(v: unknown): DraftBody | null {
     const m = (b as { mutations?: unknown }).mutations;
     if (!Array.isArray(m) || m.length === 0 || !m.every((x) => x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string") || !fits(m)) return null;
     return { kind: "sheet", mutations: m.map((x: { id: string; params?: unknown }) => ({ id: x.id, params: x.params ?? null })) };
+  }
+  if (b.kind === "deck") {
+    const d = b as Partial<Extract<DraftBody, { kind: "deck" }>>;
+    const words = Array.isArray(d.words) && d.words.every((p) => Array.isArray(p) && p.every((r) => typeof r === "string"));
+    if (!Number.isInteger(d.slideId) || !Number.isInteger(d.shapeId) || !words || !Array.isArray(d.model) || !fits(d)) return null;
+    return { kind: "deck", slideId: d.slideId!, shapeId: d.shapeId!, words: d.words!, model: d.model };
   }
   return null;
 }

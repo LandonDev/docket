@@ -14,8 +14,8 @@ An edit the host has not acknowledged is kept on his computer by one store main 
 `DraftKey`: workspace, holder, file, base) and offered when the file opens again, through the same version checks
 as a live save; a changed base keeps both (work-files.md "Drafts survive a crash"). Each editor journals through
 `DraftJournal` (work/canvas/drafts.ts) its own `DraftBody` kind: the text file's words (`text`) and the sheet's
-unanswered mutations by the file's revision (`sheet`). The document and the deck keep no draft yet: their kinds are
-the next (a deck's open box with its pack state, a document's sync update).
+unanswered mutations by the file's revision (`sheet`), the deck's open box by its slide and shape with the words
+it opened on (`deck`). The document keeps no draft yet: its kind is the next (its sync update).
 
 ## Who hears a key
 

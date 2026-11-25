@@ -2347,8 +2347,8 @@ over a file that changed there.
   and a window's own close have no cap of main's). Past it the app quits and the window goes anyway; the items whose
   send failed or was late are named in the console (`[quit]`). A text file's words are kept on this computer as a
   draft ("Drafts survive a crash" below) and offered when the file opens again, and so are a sheet's cells (150 ms)
-  the host has not answered; the kinds that keep no draft yet lose what did not reach the host by then: a deck's open
-  box (2 s), a document's last frames. A send that reached the host is safe: a copy's changes are kept and sent from there
+  the host has not answered and a deck's open box (2 s); the document, which keeps no draft yet, loses its last frames
+  that did not reach the host by then. A send that reached the host is safe: a copy's changes are kept and sent from there
   ("Nothing he changed is dropped in silence"). A window that hides because a thread is busy keeps its tabs and sends
   nothing yet. Before, quit and window close sent the chat drafts alone, and every such edit was lost.
 - **Drafts survive a crash** (decision 14 of plan cBclQIRDtvVS, audit A3). Each text edit the host has not
@@ -2370,7 +2370,13 @@ over a file that changed there.
   is, "Edits from 2:14 PM were not saved. The file changed since" with Keep Both (written beside the file under its
   keep-both name, `copy: true`, never over the newer file) and Discard. The other kinds journal through one helper,
   `DraftJournal` (work/canvas/drafts.ts: the newest body under its base, the older base's dropped, all dropped once
-  answered): a sheet (below, and work-sheets.md "The canvas"). Decks and documents keep no draft yet.
+  answered): a sheet and a deck's open box (below; work-sheets.md "The canvas", work-slides.md `edit/session.ts`).
+  Documents keep no draft yet.
+- **A deck's draft** (`DraftBody` kind `deck`): the open box's model (its words, runs and the looks they carry), the
+  slide and shape it is on (its base, `slide:shape`) and that shape's words as the box opened on them, kept while the
+  box holds words the host has not written and dropped once written. As the deck opens: over a shape that still holds
+  those words, Restore sends one `runs` edit with them as its check, as the box's commit does; over one that changed,
+  "The slide changed since" with Copy Words and Discard, nothing sent. No box opens while the offer stands.
 - **A sheet's draft** (`DraftBody` kind `sheet`): the mutations the host has not answered, the batch on its way and
   the queue after it, under the file's revision (`SheetSync.note`, after each push into the queue, each send's end and
   each drop). As the book is read the newest unclaimed draft is offered in the same line with the grid read only:

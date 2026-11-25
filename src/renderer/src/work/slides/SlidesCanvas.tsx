@@ -13,6 +13,7 @@ import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
 import { useLinkMay } from "../../lib/linkMay";
 import { sayError } from "../canvas/frame";
+import { itemJournal } from "../canvas/drafts";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { OpenFailed } from "../canvas/FetchState";
@@ -201,6 +202,9 @@ export function SlidesBody({
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
   // A box open when the tab closes, or the item leaves, commits; a tab's close waits for it, and stays open when the
   // words did not go in (canvas/flush.ts).
+  // A box's words the host never wrote are kept on this computer and offered when the deck opens again (canvas/drafts.ts).
+  useEffect(() => session.journalTo(itemJournal(env, item)), [session]);
+  useEffect(() => void (view && session.lookForDrafts()), [session, view]);
   useEffect(() => {
     const off = registerFlush(item.id, () => session.flush());
     return () => {
@@ -505,7 +509,7 @@ function useFeeds(
   // What saved means for the file, where he can edit it by hand (FILES-SEAM.md "Save state").
   const editable = !!view?.hand && !inPowerPoint;
   const saved = editable ? session.saved(reload, copyDraft) : null;
-  const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}` : "";
+  const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}:${saved.actions?.map((a) => a.id).join() ?? ""}` : "";
   useEffect(() => {
     shell.saved?.(saved);
     return () => shell.saved?.(null);
