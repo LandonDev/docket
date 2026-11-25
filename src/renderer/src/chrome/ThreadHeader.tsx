@@ -17,10 +17,13 @@ import {
 import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
-import { WorkCrumb } from "./WorkCrumb";
+import { workHeadChunk } from "../surfaces/chunks";
 import { useMasterIds } from "../lib/masterThread";
 import { useWorkSessionId } from "../lib/workRow";
 import { sessionStore } from "../lib/tcserver/store";
+
+// The crumb is Work's: it rides the head's chunk, so a code thread loads none of it and the first paint holds none.
+const WorkCrumb = workHeadChunk.surface("WorkCrumb");
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading

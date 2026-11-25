@@ -260,3 +260,6 @@ function FromTask({ title, onOpen }: { title: string; onOpen?: () => void }) {
     </div>
   );
 }
+
+/** The title bar's crumb rides this chunk too (chrome/ThreadHeader.tsx). */
+export { WorkCrumb } from "../../chrome/WorkCrumb";

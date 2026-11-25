@@ -48,14 +48,13 @@ import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
 import { useTranscriptSelection } from "../hooks/useTranscriptSelection";
 import { SelectSessionContext } from "./AgentMarkdown";
 import type { OpenFileFn } from "../lib/search";
-import { RowBornContext, TranscriptSessionContext } from "./transcriptSession";
+import { RowBornContext, ThreadHeadContext, ThreadHeadSlot, TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
 import { Button } from "../components/ui/button";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
-import { ThreadHeadContext, WorkHeadSlot } from "./transcript/WorkHeadSlot";
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
  * bottom on a spring, `parked` holds the prompt at the top of the viewport
@@ -1304,7 +1303,7 @@ const RowView = memo(function RowView({
         />
       ) : row.item.block.role === "user" ? (
         <div data-block={row.item.block.id} className="flex min-w-0 flex-col">
-          <WorkHeadSlot blockId={row.item.block.id} />
+          <ThreadHeadSlot blockId={row.item.block.id} />
           <TranscriptBlock
             block={row.item.block}
             stickyIndex={row.turn.index + 1}

@@ -25,8 +25,9 @@ vi.mock("./ThreadHeaderStrip", () => ({
     </div>
   ),
 }));
-vi.mock("./WorkCrumb", () => ({
-  WorkCrumb: ({ last, thread }: { last?: boolean; thread: { projectId?: string | null } }) => <span data-testid="crumb" data-last={String(!!last)} data-project={thread.projectId ?? ""} />,
+// The crumb rides the head's lazy chunk: the test stands its surface in.
+vi.mock("../surfaces/chunks", () => ({
+  workHeadChunk: { surface: () => ({ last, thread }: { last?: boolean; thread: { projectId?: string | null } }) => <span data-testid="crumb" data-last={String(!!last)} data-project={thread.projectId ?? ""} /> },
 }));
 vi.mock("./ThreadMenu", () => ({
   ThreadMenu: ({ terminal }: { terminal: { onShow?: () => void; onNew?: () => void } }) => (

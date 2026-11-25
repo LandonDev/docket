@@ -612,11 +612,11 @@ One record answers it for every screen (the thread's head, the column's outcome 
 - **`work.threads.record {sessionId}`** (core, `approve`, read only; a subagent's id answers its root's; a code thread
   is refused): the whole record, reading the Outbox and Results fresh and the links from LifeOS at the ask.
 - **The thread's head** (surfaces/transcript/WorkHead.tsx, its own chunk `work-head`; docs/DESIGN.md "A thread's
-  head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`WorkHeadSlot`,
+  head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`ThreadHeadSlot` in surfaces/transcriptSession.ts,
   inside that message's row so the transcript's row
   layout measures it), again whenever the folded outcome, the thread's status or the host's waiting count moves. A
   held row opens the Outbox's own `HeldDetail` in a sheet; the held call in the transcript is one quiet line.
-- **The title bar** of a Work thread in front is its crumb (`WorkCrumb`): the job's dot, its project (a press opens
+- **The title bar** of a Work thread in front is its crumb (`WorkCrumb`, on the `work-head` chunk so the first paint holds none of it): the job's dot, its project (a press opens
   the project's page) or, loose, the job's name, then the title; no strip of chips. A code thread's bar is unchanged.
 - **The right panel** lists Results but opens on them only when he asks (lib/rightPanel.ts): the head says it.
 - **Done in Projects** goes through `work.tasks.done` (work/projects/kit.tsx `withHostDone`), so a task a thread
