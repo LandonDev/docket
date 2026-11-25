@@ -1,6 +1,7 @@
 import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { makeFunctionReference } from "convex/server";
+import { TargetField } from "work-kit/projects";
 import type { SectorKey } from "@shared/work";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import { wordCount } from "@server/shared/preamble";
@@ -56,14 +57,14 @@ export type ProjectState = (typeof PROJECT_STATES)[number]["value"];
 
 type LifeosProject = { _id: string; name: string; status: ProjectState; targetDate?: number | null };
 
-/** A target as the date field holds it, "YYYY-MM-DD" on his own calendar, or "" for none. */
+/** A target as the sheet holds it, "YYYY-MM-DD" on his own calendar, or "" for none. */
 export function targetDay(ms: number | null | undefined): string {
   if (ms == null) return "";
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** The date field's day as LifeOS keeps a target: the start of that day here. "" is no target. */
+/** The sheet's day as LifeOS keeps a target: the start of that day here. "" is no target. */
 export function targetMs(day: string): number | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() : null;
@@ -210,7 +211,8 @@ export function WorkProjectFields({
               </FieldRow>
               <FieldRow label="Target">
                 {reach.status === "ready" ? (
-                  <Input data-target-date type="date" value={target} onChange={(e) => onTarget?.(e.target.value)} className="h-7 w-36 text-[13px] tabular-nums" />
+                  // The kit's own field, as the project's page and New project draw it: the calendar, and No target date to clear.
+                  <TargetField value={targetMs(target) ?? undefined} onChange={(ms) => onTarget?.(targetDay(ms))} className="h-7 w-36 text-[13px] tabular-nums" />
                 ) : (
                   <Skeleton data-target-loading className="h-7 w-36 rounded-md" />
                 )}

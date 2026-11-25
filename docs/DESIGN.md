@@ -2892,8 +2892,10 @@ Around the canvas:
     and Dropped under "Show finished". One New project, in the header;
     the ⋯ holds Board. Under 896px a row is two lines (six columns need
     that room): the name and the
-    target, then the facts as one 12px comma sentence; a cut Next is
-    whole in its tip. Loading draws
+    target, then the facts as one 12px comma sentence. A cut Next is
+    whole in a tip while the row is in hand (the pointer a while, the
+    keyboard's focus at once), with no Tab stop of its own; a clipped
+    Threads cell has the thread's title and its words in its tip. Loading draws
     bones in the rows' shape. A facts read that fails keeps every row and
     its count, with one muted line at the foot, "Next and Waiting on did
     not load.", and Retry.
@@ -2935,13 +2937,16 @@ Around the canvas:
     shadow or corner, 44% of the view's pane (560 to 960px); the work
     makes room for it on a pane of 1280px or more, and under that it lies
     over the work. Its Open and Close float over its corner so its title
-    stands level with the page's; it is never wider than its pane. Its
+    stands level with the page's; it is never wider than its pane. A peek
+    that fills its pane takes the focus and the work under it is inert;
+    shut, the focus goes back to its row. Its
     sub-tasks are flat rows, their key
-    in hand, "1 of 3" in muted numbers on a task with sub-tasks, as on
-    the tree's rows. A task's page names its project once, in the way
+    in hand, "1 of 3" in muted numbers on a task with sub-tasks and the
+    thread marks at their end, as on the tree's rows. A task's page names its project once, in the way
     back; under its title it names only a parent, where there is one
     (the peek, with no way back, names both). A Work project's settings are a sheet with its name, state,
-    target, rules, accounts and sharing and nothing of code; what LifeOS
+    target (the kit's own Target field, as New project's), rules, accounts
+    and sharing and nothing of code; what LifeOS
     cannot take now is shown as words, never as disabled controls. While
     Save writes, the fields hold still (disabled), so it never closes over
     a later edit.

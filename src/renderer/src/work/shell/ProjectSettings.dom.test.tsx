@@ -346,25 +346,35 @@ describe("a save that half landed", () => {
 });
 
 describe("Target", () => {
+  // The kit's Target field: the date on a button named by its row ("Target, Mar 14, 2027"), the calendar under it.
+  const targetButton = (root: HTMLElement) => within(root).getByRole("button", { name: /^Target\b/ });
+
   it("shows LifeOS's target as a day, and Save sends it as the start of the day he picked", async () => {
     connected(lifeosClient([{ _id: "lp_1", name: "Spring LAN", status: "active", targetDate: new Date(2027, 2, 14).getTime() } as never]));
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
-    const field = root.querySelector("[data-target-date]") as HTMLInputElement;
-    expect(field.value).toBe("2027-03-14");
-    fireEvent.change(field, { target: { value: "2027-04-01" } });
+    expect(targetButton(root).textContent).toContain("Mar 14");
+    fireEvent.click(targetButton(root));
+    const day = await waitFor(() => {
+      const found = document.querySelector(`[data-day="${new Date(2027, 2, 20).toLocaleDateString("en-US")}"]`);
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    fireEvent.click(day);
     await act(async () => {
       fireEvent.click(saveButton());
     });
     await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0].args).toEqual({ id: "lp_1", patch: { targetDate: new Date(2027, 3, 1).getTime() } });
+    expect(sent[0].args).toEqual({ id: "lp_1", patch: { targetDate: new Date(2027, 2, 20).getTime() } });
   });
 
-  it("an emptied field clears the target", async () => {
+  it("No target date clears the target", async () => {
     connected(lifeosClient([{ _id: "lp_1", name: "Spring LAN", status: "active", targetDate: new Date(2027, 2, 14).getTime() } as never]));
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
-    fireEvent.change(root.querySelector("[data-target-date]")!, { target: { value: "" } });
+    fireEvent.click(targetButton(root));
+    fireEvent.click(await screen.findByRole("button", { name: "No target date" }));
+    expect(targetButton(root).textContent).toBe("No target");
     await act(async () => {
       fireEvent.click(saveButton());
     });
