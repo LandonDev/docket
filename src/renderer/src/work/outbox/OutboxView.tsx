@@ -317,14 +317,15 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
       onPointerDownCapture={() => (touched.current = true)}
       onClickCapture={() => (touched.current = true)}
       onKeyDown={onKeyDown} className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
-      <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
+      <div className="@container/head flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
         {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
           <Outbox className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate font-medium">Outbox</span>
+          <span className="shrink-0 font-medium">Outbox</span>
         </div>
-        <Button variant="ghost" size="sm" className="me-2 text-muted-foreground" onClick={() => setGrantsOpen(true)}>
+        {/* The page's name outlives its one button: on a very narrow page Grants gives way, never "Outbox". */}
+        <Button variant="ghost" size="sm" className="me-2 text-muted-foreground @max-[18rem]/head:hidden" onClick={() => setGrantsOpen(true)}>
           Grants
         </Button>
         {IS_MAC ? null : <WindowControls />}
@@ -433,6 +434,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 setTicked(new Set());
                 void pressMany(items, choice, setBatch);
               }}
+              canRetry={(key) => outbox.waiting.some((i) => itemKey(i) === key && tickable(i))}
               onSendAgain={(keys) => {
                 const again = outbox.waiting.filter((i) => keys.includes(itemKey(i)) && tickable(i));
                 if (again.length) void pressMany(again, { do: "send" }, setBatch);

@@ -71,6 +71,7 @@ export function TickedDetail({
   onClear,
   onPress,
   onSendAgain,
+  canRetry = () => true,
   commands,
 }: {
   /** The ticked rows (none once a press was made: `batch` shows instead). */
@@ -82,6 +83,8 @@ export function TickedDetail({
   onPress: (items: HostItem[], choice: DecideDo) => void;
   /** The failed rows of a press, sent again. */
   onSendAgain: (keys: string[]) => void;
+  /** Whether a failed row may go again from here: it still waits as it was, and did not maybe go (that one is checked in its own detail). */
+  canRetry?: (key: string) => boolean;
   commands?: RefObject<DetailCommands | null>;
 }) {
   const quoted = useQuoted(items);
@@ -92,7 +95,7 @@ export function TickedDetail({
   const goes = items.filter((i) => !only(i));
   const later = goes.length > 0 && goes.every((i) => i.later === true);
   const busy = !!batch && [...batch.results.values()].some((r) => r.state === "working");
-  const failed = batch ? [...batch.results].filter(([, r]) => r.state === "failed").map(([k]) => k) : [];
+  const failed = batch ? [...batch.results].filter(([k, r]) => r.state === "failed" && canRetry(k)).map(([k]) => k) : [];
 
   const verbs: DetailCommands = {
       primary: () => !batch && goes.length > 0 && onPress(goes, { do: "send" }),
@@ -134,7 +137,7 @@ export function TickedDetail({
     <>
       <DetailColumn>
         <SummaryList
-          head={summaryHead(goes, goes.length ? 0 : items.length)}
+          head={summaryHead(goes, goes.length ? 0 : items)}
           rows={items.map((item) => ({ item, on: true, side: only(item) ? "Open to send" : null }))}
           onToggle={onToggle}
           host={host}

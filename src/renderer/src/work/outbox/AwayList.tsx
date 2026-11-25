@@ -16,7 +16,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { AWAY_HEADING, awayLine, awaySections, byWorkspace, spanWords, WORK_CHATS_KEY, type AwayCounts } from "./model";
 import { resultsSince, undoResult, type HostResult } from "./results";
 import { loadHost, outboxNow, useOutbox, wantOutboxItem, type HostItem } from "./store";
-import { askedItemKeys, loadRequests, openRequestsNow, requestKey, useOpenRequests } from "./requests";
+import { askedItemKeys, loadRequests, openRequestsNow, requestKey, requestName, useOpenRequests } from "./requests";
 import { rowWords } from "./OutboxView";
 import { itemFailWords, pressFailWords } from "./failWords";
 
@@ -164,7 +164,7 @@ export function AwayReturnWork({
               <>
                 {/* A thread's request is one row; Open shows it in the Outbox, where his press answers it. */}
                 {requests.map((request) => (
-                  <Row key={requestKey(request)} media={<Outbox className="size-3.5 text-muted-foreground" />} title={request.head} line={storeTitleOf(request.sessionId) ? `Asked in ${storeTitleOf(request.sessionId)}` : null}>
+                  <Row key={requestKey(request)} media={<Outbox className="size-3.5 text-muted-foreground" />} title={requestName(request)} line={storeTitleOf(request.sessionId) ? `Asked in ${storeTitleOf(request.sessionId)}` : null}>
                     <Button
                       variant="ghost"
                       size="xs"

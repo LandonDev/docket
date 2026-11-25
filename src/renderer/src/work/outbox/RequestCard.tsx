@@ -21,12 +21,12 @@ import { pressFailWords } from "./failWords";
 import { PickTime, useKeyVerbs, type DetailCommands } from "./HeldDetail";
 import { WORK_CHATS_KEY } from "./model";
 import { DetailColumn, VerbBar } from "./parts";
-import { answerRequest, declineRequest, useRequest, viewRow, type HostRequest } from "./requests";
+import { answerRequest, declineRequest, requestName, useRequest, viewRow, type HostRequest } from "./requests";
 import { decideMany, loadHost, useOutbox, wantOutboxItem, type DecideDo, type HostItem } from "./store";
 import { shell } from "../../stores/shell";
 import { ownZone } from "work-kit/mail/lib/zones";
 import { SummaryList, type SummaryRow } from "./SummaryList";
-import { aheadTime, doneWords, itemKey, resultsHead, summaryHead, type RowResult } from "./waiting";
+import { aheadTime, doneWords, itemKey, resultsHead, type RowResult } from "./waiting";
 
 /**
  * A thread's request for his press (docs/DESIGN.md "The Outbox", "A
@@ -287,20 +287,27 @@ function useRequestPress(request: HostRequest) {
     if (!r.item) return [];
     const key = rowKey(env, r);
     const result = again.get(key) ?? (sending?.has(key) ? ({ state: "working" } as RowResult) : resultOf(r));
-    return [{ item: { ...r.item, environmentId: env }, on: isOn(r), locked: !open || !r.receipt || !r.open, side: open ? sideOf(r) : r.result ? null : "Left out", ...(result ? { result } : {}) }];
+    // A row that dies leads with its action, so a mixed card never reads a discard as a send; a row changed since the
+    // ask shows an empty tick he can take once he opened it ("Review the change").
+    const waits = open && r.open && r.changed && !r.receipt;
+    return [
+      {
+        item: { ...r.item, environmentId: env },
+        on: isOn(r),
+        locked: !open || !r.receipt || !r.open,
+        ...(waits ? { pending: true, openLabel: "Review the change" } : {}),
+        ...(r.do === "discard" ? { doing: "Discard" } : {}),
+        side: open ? sideOf(r) : r.result ? null : "Left out",
+        ...(result ? { result } : {}),
+      },
+    ];
   });
   const gone = request.rows.filter((r) => !r.item).length;
   const results = rows.flatMap((r) => (r.result && r.result.state !== "working" ? [r.result] : []));
-  // The head: what the ticked rows do while it waits; what the press did once answered.
+  // The head: the request's one name while it waits, as its row, Today and its notice say it (the press counts what
+  // is ticked); what the press did once answered.
   const did = new Set(request.rows.filter((r) => r.result).map((r) => r.do));
-  const head = open
-    ? ticked.length
-      ? summaryHead(
-          ticked.filter((r) => r.do !== "discard").map((r) => r.item!),
-          ticked.filter((r) => r.do === "discard").length,
-        )
-      : request.head
-    : resultsHead(results, did.size === 1 && did.has("discard") ? "discard" : "send") || request.head;
+  const head = open ? requestName(request) : resultsHead(results, did.size === 1 && did.has("discard") ? "discard" : "send") || requestName(request);
   return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do)) };
 }
 

@@ -724,3 +724,13 @@ describe("the host's steps fold into the run", () => {
     expect(actionGroupOf([gate(true), task("completed")]).kind).toBe("other");
   });
 });
+
+describe("a thread's request for his press", () => {
+  it("stands as its own row, so the card takes the call's place and no Used line is drawn over it", async () => {
+    const { standsAlone } = await import("./transcriptActivity");
+    const call = (status: string) => ({ id: "r", role: "tool", text: "", tool: { name: "mcp__app__outbox_request", status, detail: JSON.stringify({ outboxRequest: { id: "r1", host: "box" } }) } }) as never;
+    expect(standsAlone(call("completed"))).toBe(true);
+    expect(standsAlone(call("failed"))).toBe(true);
+    expect(standsAlone({ id: "x", role: "tool", text: "", tool: { name: "mcp__app__outbox_list", status: "completed", detail: "[]" } } as never)).toBe(false);
+  });
+});

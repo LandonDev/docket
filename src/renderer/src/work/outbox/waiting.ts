@@ -192,48 +192,73 @@ const lower = (s: string): string => s[0]!.toLowerCase() + s.slice(1);
  * invite". Kinds in the order first met; each says its items' own verb when they share one ("Accept"), else its
  * kind's; mail says to how many people. `discard` adds what goes nowhere.
  */
-export function summaryHead(items: readonly Pick<Item, "kind" | "verb" | "payload">[], discard = 0): string {
+export function summaryHead(items: readonly Pick<Item, "kind" | "verb" | "payload">[], discard: number | readonly Pick<Item, "kind" | "verb" | "payload">[] = 0): string {
+  const parts = groupParts(items, false);
+  // What goes nowhere says what it is too ("discard 1 mail"); a bare count stays a count.
+  if (typeof discard === "number") {
+    if (discard) parts.push(parts.length ? `discard ${discard}` : `Discard ${discard}`);
+  } else if (discard.length) {
+    const nouns = groupParts(discard, true).map((p) => p.replace(/^\S+ /, ""));
+    parts.push(`${parts.length ? "discard" : "Discard"} ${join(nouns)}`);
+  }
+  return join(parts);
+}
+
+/** Each kind's part of a head: its verb, its count and its noun; mail to how many people; an add-on call by its tool. */
+function groupParts(items: readonly Pick<Item, "kind" | "verb" | "payload">[], bare: boolean): string[] {
   const groups = new Map<string, { noun: [string, string]; verbs: Set<string>; fallback: string; items: (typeof items)[number][] }>();
   for (const item of items) {
     const [one, many, fallback] = NOUN[item.kind];
-    const key = MAIL.includes(item.kind) ? "mail" : `${item.kind}`;
+    const p = (item.payload ?? {}) as { addonId?: unknown; tool?: unknown };
+    const key = MAIL.includes(item.kind) ? "mail" : item.kind === "addon.call" ? `addon:${String(p.addonId)}:${String(p.tool)}` : `${item.kind}`;
     const group = groups.get(key) ?? { noun: [one, many], verbs: new Set(), fallback, items: [] };
     group.verbs.add(item.verb.split(" ")[0]!);
     group.items.push(item);
     groups.set(key, group);
   }
-  const parts = [...groups].map(([key, g], i) => {
+  return [...groups].map(([key, g], i) => {
+    const n = g.items.length;
+    if (key.startsWith("addon:") && !bare) {
+      // An add-on's call by what it does, in the tool's and the add-on's own words: "Echo with League, 3 times".
+      const p = (g.items[0]!.payload ?? {}) as { words?: unknown; tool?: unknown; addon?: unknown };
+      const words = String(p.words ?? p.tool ?? "Run");
+      const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${n > 1 ? `, ${n} times` : ""}`;
+      return i ? lower(part) : part;
+    }
     const verb = g.verbs.size === 1 ? [...g.verbs][0]! : g.fallback;
-    let part = `${i ? lower(verb) : verb} ${g.items.length} ${g.items.length === 1 ? g.noun[0] : g.noun[1]}`;
-    if (key === "mail") {
+    let part = `${i ? lower(verb) : verb} ${n} ${n === 1 ? g.noun[0] : g.noun[1]}`;
+    if (key === "mail" && !bare) {
       const people = new Set(g.items.flatMap(recipients)).size;
       if (people) part += ` to ${people} ${people === 1 ? "person" : "people"}`;
     }
     return part;
   });
-  if (discard) parts.push(parts.length ? `discard ${discard}` : `Discard ${discard}`);
-  return join(parts);
 }
 
 /** A press's result on one item, as the summary list shows it. */
 export type RowResult = { state: "working" } | { state: "done"; words: string } | { state: "failed"; words: string };
 
-/** What one item's press left, in its row's words: "Queued in LifeOS", "Posted", "Accepted", "Discarded", "Scheduled". */
+/** What one item's press left, in its row's words: "Queued in LifeOS", "Posted", "Accepted", "Discarded", "Scheduled"; nothing for a plain send, whose check says it. */
 export function doneWords(after: Pick<OutboxItem, "state" | "verb" | "lifeos" | "decidedAt" | "kind">, did: "send" | "discard" | "later"): string {
   if (did === "discard") return "Discarded";
   if (did === "later") return "Scheduled";
   const held = lifeosWords(after);
   if (held) return held.word;
   if (after.state === "sending") return "Sending";
-  return pastOf(after.verb.split(" ")[0]!, after.kind);
+  const past = pastOf(after.verb.split(" ")[0]!, after.kind);
+  // A check beside "Sent" says one thing twice: the word stays only where it adds ("Posted", "Accepted", queued).
+  return past === "Sent" ? "" : past;
 }
 
 /** The head once the press answered: "Sent 5, 1 not sent", "Discarded 3", "Scheduled 2". */
 export function resultsHead(results: readonly RowResult[], did: "send" | "discard" | "later"): string {
-  const done = results.filter((r) => r.state === "done").length;
+  const done = results.filter((r): r is Extract<RowResult, { state: "done" }> => r.state === "done");
+  // What LifeOS holds in its undo time is queued, never sent (docs/DESIGN.md): counted as it is.
+  const queued = did === "send" ? done.filter((r) => r.words.startsWith("Queued in LifeOS")).length : 0;
+  const went = done.length - queued;
   const failed = results.filter((r) => r.state === "failed").length;
   const word = { send: ["Sent", "not sent"], discard: ["Discarded", "not discarded"], later: ["Scheduled", "not scheduled"] }[did];
-  const parts = [done ? `${word[0]} ${done}` : null, failed ? `${failed} ${word[1]}` : null].filter((p): p is string => p !== null);
+  const parts = [went ? `${word[0]} ${went}` : null, queued ? `queued ${queued} in LifeOS` : null, failed ? `${failed} ${word[1]}` : null].filter((p): p is string => p !== null);
   const line = parts.join(", ");
   return line ? line[0]!.toUpperCase() + line.slice(1) : "";
 }
@@ -274,10 +299,14 @@ export function whoWords(item: Pick<Item, "decidedBy" | "via">, o: { grantLabel?
   return "by you";
 }
 
-/** A Done row's act and line: what went says so (or that LifeOS still holds it), what he put away says how. */
-export function doneLine(item: Item, words: { act: string; about: string | null }, now = Date.now()): { act: string; about: string | null } {
-  if (item.state === "discarded") return { act: words.act, about: "Discarded" };
-  if (item.state === "stale") return { act: words.act, about: "Out of date" };
+/**
+ * A Done row's act, its line and its outcome: what went says so in the past (or that LifeOS still holds it); what he
+ * put away keeps its own words and says how in the row's trailing slot ("Discarded", "Out of date"), which holds at
+ * every width while what it is about gives way first.
+ */
+export function doneLine(item: Item, words: { act: string; about: string | null }, now = Date.now()): { act: string; about: string | null; outcome?: string } {
+  if (item.state === "discarded") return { act: words.act, about: words.about, outcome: "Discarded" };
+  if (item.state === "stale") return { act: words.act, about: words.about, outcome: "Out of date" };
   const queued = lifeosLine(item, now);
   if (queued) return { act: words.act, about: queued };
   return { act: pastAct(words.act, item.verb, item.kind), about: words.about };

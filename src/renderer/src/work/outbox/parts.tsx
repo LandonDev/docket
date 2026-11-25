@@ -114,7 +114,8 @@ export function VerbBar({ children }: { children: ReactNode }) {
   return (
     // Not inside a sheet (Today's held item): a sheet lies over the toasts, and a stack seated there would show cut by its edge.
     <div ref={(el) => (el && !el.closest("[role=dialog]") ? registerToastAnchor(el) : undefined)} data-outbox-verbs className="shrink-0 border-t border-border">
-      <div className="mx-auto flex min-h-14 w-full max-w-[688px] items-center gap-2 px-8 py-3 @max-[40rem]/outbox:px-4">{children}</div>
+      {/* A ghost button that opens the bar hangs its label on the text edge above it, not its own padding in. */}
+      <div className="mx-auto flex min-h-14 w-full max-w-[688px] items-center gap-2 px-8 py-3 @max-[40rem]/outbox:px-4 [&>button[data-variant=ghost]:first-child]:-ms-2.5">{children}</div>
     </div>
   );
 }
@@ -139,9 +140,28 @@ export function DetailSkeleton() {
         <Skeleton className="h-4 w-64 max-w-full" />
       </span>
       <span className="mt-2 flex h-[22px] items-center">
-        <Skeleton className="h-3.5 w-[80%]" />
+        <Skeleton className="h-3.5 w-[60%]" />
       </span>
-      <Skeleton className="mt-5 h-40 w-full rounded-lg" />
+      {/* The thing's own shape: its fields on the 72px label column, the hairline, its body's lines. */}
+      <div className="mt-5 grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+        {[40, 56, 48].map((w) => (
+          <div key={w} className="contents">
+            <span className="flex h-5 items-center">
+              <Skeleton className="h-3 w-12" />
+            </span>
+            <span className="flex h-5 items-center">
+              <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-col border-t border-border pt-4">
+        {[90, 76, 84, 40].map((w) => (
+          <span key={w} className="flex h-[22px] items-center">
+            <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

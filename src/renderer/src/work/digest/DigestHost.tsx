@@ -11,7 +11,7 @@ import { choose, digestOpensPort, openWorkView, stillChosen, workEnterPort, work
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { project } from "../../stores/project";
-import { shell } from "../../stores/shell";
+import { shell, useShell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
 import { Outbox } from "../../chrome/icons";
@@ -215,7 +215,10 @@ export function DigestHost() {
     const heardKept = forgetGone(heard.current, view.rows);
     if (heardKept) heard.current = heardKept;
   }, [view, legacy, closed, dismissed]);
-  const toasts = useMemo(() => nowToasts(openInterrupts(view, closed, now)), [view, closed, now]);
+  // While the Outbox is the page, held work's toasts step aside: what they say is on the page itself, and a count in a
+  // toast would outlive the press made there. They come back when the page closes, if still open.
+  const outboxOpen = useShell((state) => state.outboxViewOpen);
+  const toasts = useMemo(() => nowToasts(openInterrupts(view, closed, now)).filter((t) => !(outboxOpen && heldOnly(t))), [view, closed, now, outboxOpen]);
   const openToast = useCallback(
     (toast: NowToast) => {
       if (toast.rows.length === 1) return openRow(toast.rows[0]!);

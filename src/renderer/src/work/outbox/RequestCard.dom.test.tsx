@@ -147,12 +147,17 @@ describe("the request card", () => {
   it("waits: his words quoted, the rows he may press ticked, a changed one unticked with its word, and Send N", async () => {
     const el = await drawn();
     expect(el.textContent).toContain("You asked: “send the roster mails, all three”");
-    expect(el.querySelector("h3")!.textContent).toBe("Send 2 mails to 2 people");
+    // The request's one name, as its row and notice say it; the press counts what is ticked.
+    expect(el.querySelector("h3")!.textContent).toBe("Send 3 mails to 3 people");
     const rows = [...el.querySelectorAll("[data-summary-row]")];
     expect(rows).toHaveLength(3);
     expect(within(rows[0] as HTMLElement).getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
     expect(rows[2]!.textContent).toContain("Changed since asked");
-    expect(within(rows[2] as HTMLElement).queryByRole("checkbox")).toBeNull();
+    // An empty tick he cannot take until he opens the row, never a blank slot.
+    const waiting = within(rows[2] as HTMLElement).getByRole("checkbox");
+    expect(waiting.getAttribute("aria-checked")).toBe("false");
+    expect(waiting.hasAttribute("disabled") || waiting.getAttribute("aria-disabled") === "true" || waiting.hasAttribute("data-disabled")).toBe(true);
+    expect(within(rows[2] as HTMLElement).getByRole("button", { name: /^Review the change / })).toBeTruthy();
     expect(sendButton().textContent).toBe("Send 2");
     expect(within(el).getByRole("button", { name: "Not now" })).toBeTruthy();
     // the card's shape: the transcript's one card, a hairline on the card fill
@@ -164,9 +169,13 @@ describe("the request card", () => {
   it("opening a changed row asks its host for a fresh receipt, and he ticks it himself", async () => {
     const el = await drawn();
     const changed = el.querySelectorAll("[data-summary-row]")[2] as HTMLElement;
-    await act(async () => fireEvent.click(within(changed).getByRole("button", { name: /^Open / })));
+    await act(async () => fireEvent.click(within(changed).getByRole("button", { name: /^(Open|Review the change) / })));
     expect(world.calls.filter((c) => c.method === "work.outbox.request.view").map((c) => c.params)).toEqual([{ id: "r1", ref: { at: "lifeos", table: "outbox", id: "m3" } }]);
-    const tick = await waitFor(() => within(el.querySelectorAll("[data-summary-row]")[2] as HTMLElement).getByRole("checkbox"));
+    const tick = await waitFor(() => {
+      const box = within(el.querySelectorAll("[data-summary-row]")[2] as HTMLElement).getByRole("checkbox");
+      expect(box.hasAttribute("data-disabled")).toBe(false);
+      return box;
+    });
     expect(tick.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(tick);
     expect(sendButton().textContent).toBe("Send 3");
@@ -201,7 +210,8 @@ describe("the request card", () => {
     });
     const el = await drawn();
     await act(async () => fireEvent.click(sendButton()));
-    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Sent 1, 1 not sent"));
+    // Queued is queued, never sent: the sum says it as its rows do.
+    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Queued 1 in LifeOS, 1 not sent"));
     const rows = [...el.querySelectorAll("[data-summary-row]")];
     expect(rows[0]!.textContent).toContain("Queued in LifeOS");
     expect(rows[1]!.querySelector("[data-summary-side]")!.textContent).toBe("Outlook did not answer in time");
@@ -280,8 +290,9 @@ describe("ticks bound to receipts (review finding 9, and the Outbox's copy drawn
     await act(async () => void (await getRequest("box", "r1")));
     await waitFor(() => expect(tickOf(0)?.getAttribute("aria-checked")).toBe("true"));
     expect(tickOf(1)?.getAttribute("aria-checked")).toBe("true");
-    // the row changed since the ask still waits for his own tick
-    expect(tickOf(2)).toBeNull();
+    // the row changed since the ask still waits for his own tick: an empty one he cannot take yet
+    expect(tickOf(2)?.getAttribute("aria-checked")).toBe("false");
+    expect(tickOf(2)?.hasAttribute("data-disabled")).toBe(true);
     expect(sendButton().textContent).toBe("Send 2");
   });
 
@@ -290,10 +301,11 @@ describe("ticks bound to receipts (review finding 9, and the Outbox's copy drawn
     expect(tickOf(1)?.getAttribute("aria-checked")).toBe("true");
     world.request = request({ rows: request().rows.map((r, i) => (i === 1 ? { ...r, changed: true, receipt: undefined } : r)) });
     await act(async () => void (await getRequest("box", "r1")));
-    await waitFor(() => expect(tickOf(1)).toBeNull());
+    await waitFor(() => expect(tickOf(1)?.hasAttribute("data-disabled")).toBe(true));
+    expect(tickOf(1)!.getAttribute("aria-checked")).toBe("false");
     expect(sendButton().textContent).toBe("Send 1");
-    await act(async () => fireEvent.click(within(card().querySelectorAll("[data-summary-row]")[1] as HTMLElement).getByRole("button", { name: /^Open / })));
-    await waitFor(() => expect(tickOf(1)).toBeTruthy());
+    await act(async () => fireEvent.click(within(card().querySelectorAll("[data-summary-row]")[1] as HTMLElement).getByRole("button", { name: /^(Open|Review the change) / })));
+    await waitFor(() => expect(tickOf(1)?.hasAttribute("data-disabled")).toBe(false));
     expect(tickOf(1)!.getAttribute("aria-checked")).toBe("false");
     expect(sendButton().textContent).toBe("Send 1");
   });
@@ -382,5 +394,23 @@ describe("Send again binds the revision the press attempted (review round 3, fin
     expect(world.calls.filter((c) => c.method === "work.outbox.decide" && c.params.items).map((c) => c.params)).toEqual([
       { items: [{ ref: { at: "lifeos", table: "outbox", id: "m2" }, do: "send", rev: 500 }], many: true, via: "outbox" },
     ]);
+  });
+});
+
+describe("council round 1: the card's words", () => {
+  it("names a request once, by kind, as its row and notice say it", async () => {
+    const { requestName } = await import("./requests");
+    expect(requestName(request())).toBe("Send 3 mails to 3 people");
+    expect(requestName({ head: "Send 2 items", rows: [] })).toBe("Send 2 items");
+  });
+
+  it("leads a row that dies with Discard, its act muted, so a mixed card never reads a discard as a send", async () => {
+    world.request = request({ rows: [request().rows[0]!, { ...request().rows[1]!, do: "discard" }] });
+    const el = await drawn();
+    const act = el.querySelectorAll("[data-summary-row]")[1]!.querySelector("[data-summary-act]")!;
+    expect(act.textContent).toBe("Discard Send to Jordan Patel");
+    expect(act.querySelector(".text-muted-foreground")!.textContent).toBe("Send to Jordan Patel");
+    expect(el.querySelector("h3")!.textContent).toBe("Send 1 mail to 1 person and discard 1 mail");
+    expect(sendButton().textContent).toBe("Approve 2");
   });
 });

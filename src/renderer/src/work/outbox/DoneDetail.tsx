@@ -75,7 +75,7 @@ export function DoneDetail({
           <DetailFacts item={item} job={workspace} when={timeOf(decidedAt(item))} onOpenSession={onOpenSession} extra={item.state === "stale" ? null : who} />
           <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{itemTitle(item, went && !queued)}</h1>
         </header>
-        <div className="mt-3 flex flex-col gap-2">
+        <div className="mt-3 flex flex-col gap-2 empty:hidden">
           {queued ? (
             <p role="status" className="text-[13px] leading-5">
               <StatusMark state={queued.state} word={queued.word} detail={queued.detail ?? undefined} />

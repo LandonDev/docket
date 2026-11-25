@@ -145,8 +145,8 @@ describe("Done", () => {
   it("puts what went in the past, and says what he put away", () => {
     const words = { act: "Send to Dana Lee", about: "Re: budget" };
     expect(doneLine(item({ state: "sent" }), words, NOW)).toEqual({ act: "Sent to Dana Lee", about: "Re: budget" });
-    expect(doneLine(item({ state: "discarded" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Discarded" });
-    expect(doneLine(item({ state: "stale" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Out of date" });
+    expect(doneLine(item({ state: "discarded" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Discarded" });
+    expect(doneLine(item({ state: "stale" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Out of date" });
     expect(doneLine(item({ state: "sent", lifeos: "queued", decidedAt: NOW - 12 * 60_000 }), words, NOW).about).toBe("Queued in LifeOS for 12m");
   });
 });
@@ -177,5 +177,28 @@ describe("Show changes", () => {
     expect(changes.fields).toEqual([{ label: "Subject", was: "Travel", now: "Nationals travel" }]);
     expect(changes.body?.filter((p) => p.t === "ins").map((p) => p.s.trim())).toEqual(["Room with Drew."]);
     expect(changesOf(first, first)).toEqual({ fields: [], body: null });
+  });
+});
+
+describe("council round 1: words that agree", () => {
+  it("counts what LifeOS holds as queued, never as sent", () => {
+    const queued = { state: "done" as const, words: "Queued in LifeOS" };
+    const sent = { state: "done" as const, words: "" };
+    const failed = { state: "failed" as const, words: "Outlook did not answer in time" };
+    expect(resultsHead([queued, queued, queued, queued, queued, failed], "send")).toBe("Queued 5 in LifeOS, 1 not sent");
+    expect(resultsHead([sent, queued], "send")).toBe("Sent 1, queued 1 in LifeOS");
+  });
+
+  it("says nothing beside a plain send's check, and the word where it adds", () => {
+    expect(doneWords({ state: "sent", verb: "Send", kind: "mail.send", decidedAt: 1 }, "send")).toBe("");
+    expect(doneWords({ state: "sent", verb: "Post", kind: "teams.post", decidedAt: 1 }, "send")).toBe("Posted");
+  });
+
+  it("names what goes nowhere by its kind, and an add-on call by what it does", () => {
+    const mail = item({ payload: { message: { to: [{ address: "a@x.edu" }] } } });
+    expect(summaryHead([mail], [item({ ref: { at: "host", id: "d1" } })])).toBe("Send 1 mail to 1 person and discard 1 mail");
+    expect(summaryHead([], [item(), item()])).toBe("Discard 2 mails");
+    const echo = (id: string) => item({ ref: { at: "host", id }, kind: "addon.call", verb: "Send", payload: { addonId: "a1", tool: "echo", words: "Echo", addon: "League" } });
+    expect(summaryHead([echo("e1"), echo("e2"), echo("e3")])).toBe("Echo with League, 3 times");
   });
 });

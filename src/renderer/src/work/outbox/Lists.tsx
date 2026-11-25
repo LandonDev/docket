@@ -7,7 +7,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { ChevronDown, Outbox } from "../../chrome/icons";
 import { storeTitleOf } from "../../lib/threadMentions";
-import { requestKey, type HostRequest } from "./requests";
+import { requestKey, requestName, type HostRequest } from "./requests";
 import { heldWhen } from "./when";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
@@ -27,9 +27,12 @@ import { doneLine, decidedAt, FOLD_AT, FOLD_SHOWS, itemKey, rowSide, tickable, t
 /** A row's key on the element, for the page's roving focus. */
 export const ROW_ATTR = "data-outbox-row";
 
+/** 12px between two groups, none over the first: on the section, where `first:` can tell them apart. */
+const GROUP = "mt-3 first:mt-0";
+
 /** A small heading over a section or a thread's group. */
 function Heading({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("group/item mt-3 flex h-7 min-w-0 items-center gap-2 pe-1 ps-2 text-xs leading-4 first:mt-0", className)}>{children}</div>;
+  return <div className={cn("group/item flex h-7 min-w-0 items-center gap-2 pe-1 ps-2 text-xs leading-4", className)}>{children}</div>;
 }
 
 /** One row: the glyph column, the act, what it is about (it gives way first), one trailing word. */
@@ -57,7 +60,7 @@ function Row({
   onPick: () => void;
 }) {
   return (
-    <li className="group/row relative">
+    <li className="group/row @container/row relative">
       <ItemButton
         {...{ [ROW_ATTR]: rowKey }}
         tabIndex={stop ? 0 : -1}
@@ -66,8 +69,9 @@ function Row({
         className={cn("h-8 flex-nowrap gap-2 rounded-md py-0 pe-2 ps-7 text-left text-[13px] leading-5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}
       >
         <span className="min-w-0 shrink truncate">{act}</span>
-        {about ? <span className="min-w-0 flex-1 shrink-[100] truncate text-muted-foreground @max-[40rem]/outbox:hidden">{about}</span> : <span className="flex-1" />}
-        <span className={cn("shrink-0 text-xs tabular-nums", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
+        {about ? <span className="min-w-0 flex-1 shrink-[100] truncate text-muted-foreground @max-[40rem]/outbox:hidden">{about}</span> : null}
+        {/* Its own column at the row's end whether or not what it is about shows; on a very narrow row it gives way first, so the act is read. */}
+        <span className={cn("ms-auto shrink-0 text-xs tabular-nums @max-[15rem]/row:hidden", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
       </ItemButton>
       {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
       <span className="pointer-events-none absolute start-2 top-2 grid size-4 place-items-center">{lead}</span>
@@ -128,7 +132,7 @@ export function WaitingList({
   return (
     <div className="flex flex-col p-1" data-outbox-waiting data-ticking={ticking ? "" : undefined}>
       {requests.length ? (
-        <section aria-label="Asked in threads" data-outbox-section="asked">
+        <section aria-label="Asked in threads" data-outbox-section="asked" className={GROUP}>
           <Heading className="ps-2 font-medium text-muted-foreground">Asked in threads</Heading>
           <ul className="flex flex-col gap-0.5">
             {requests.map((request) => {
@@ -139,7 +143,7 @@ export function WaitingList({
                   rowKey={key}
                   stop={stop === key}
                   current={current === key}
-                  act={request.head}
+                  act={requestName(request)}
                   about={storeTitleOf(request.sessionId) ?? null}
                   side={heldWhen(request.createdAt, now)}
                   onPick={() => onPickRequest?.(request)}
@@ -156,7 +160,7 @@ export function WaitingList({
         const tickables = section.items.filter(tickable);
         const label = section.kind === "thread" ? `${section.title}${section.job ? `, ${section.job}` : ""}` : section.title;
         return (
-          <section key={section.key} aria-label={label} data-outbox-section={section.kind}>
+          <section key={section.key} aria-label={label} data-outbox-section={section.kind} className={GROUP}>
             {section.kind === "thread" ? (
               <Heading>
                 <SectorDot sector={section.sector} className="size-4 shrink-0" />
@@ -249,12 +253,12 @@ export function DoneList({ days, current, stop, now, onPick }: { days: { label: 
   return (
     <div className="flex flex-col p-1" data-outbox-done>
       {days.map((day) => (
-        <section key={day.label} aria-label={day.label}>
+        <section key={day.label} aria-label={day.label} className={GROUP}>
           <Heading className="ps-2 font-medium text-muted-foreground">{day.label}</Heading>
           <ul className="flex flex-col gap-0.5">
             {day.items.map((item) => {
               const key = itemKey(item);
-              const { act, about } = doneLine(item, rowWords(item), now);
+              const { act, about, outcome } = doneLine(item, rowWords(item), now);
               const queued = item.state === "sent" && item.lifeos === "queued";
               return (
                 <Row
@@ -264,7 +268,7 @@ export function DoneList({ days, current, stop, now, onPick }: { days: { label: 
                   current={current === key}
                   act={act}
                   about={about}
-                  side={clockTime(decidedAt(item))}
+                  side={outcome ?? clockTime(decidedAt(item))}
                   onPick={() => onPick(item)}
                   lead={queued ? <StatusMark state="queued" word={false} /> : <KindGlyph kind={item.kind} />}
                 />

@@ -300,11 +300,13 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-    await waitFor(() => expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Sent 3"), { timeout: 5000 });
-    const rows = [...document.querySelectorAll("[data-summary-row]")].map((r) => r.textContent);
-    expect(rows[0]).toContain("Queued in LifeOS");
-    expect(rows[1]).toContain("Back in drafts in LifeOS");
-    expect(rows[2]).toContain("Sent");
+    // Queued is counted as queued, never as sent; a plain send's check says it alone.
+    await waitFor(() => expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Sent 2, queued 1 in LifeOS"), { timeout: 5000 });
+    const rows = [...document.querySelectorAll("[data-summary-row]")];
+    expect(rows[0]!.textContent).toContain("Queued in LifeOS");
+    expect(rows[1]!.textContent).toContain("Back in drafts in LifeOS");
+    expect(rows[2]!.querySelector('[aria-label="Done"]')).toBeTruthy();
+    expect(rows[2]!.querySelector("[data-summary-side]")).toBeNull();
   });
 });
 
@@ -493,7 +495,7 @@ describe("the Outbox", () => {
       await waitFor(() => expect([...document.querySelectorAll("[data-summary-row]")].every((r) => r.textContent!.includes("Open to send"))).toBe(true), { timeout: 5000 });
       expect(screen.queryByRole("button", { name: /^Send \d/ })).toBeNull();
       expect(screen.getByRole("button", { name: "Discard 3" })).toBeTruthy();
-      expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Discard 3");
+      expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Discard 3 mails");
     } finally {
       world.quote = null;
     }
@@ -915,7 +917,7 @@ describe("the Outbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review 1" }));
     const row = document.querySelector("[data-summary-row]") as HTMLElement;
     expect(row.querySelector("[data-summary-act]")!.textContent).toBe("Send to Sam Ortiz");
-    expect(row.querySelector("[data-summary-about]")!.className).toContain("@max-[40rem]/outbox:hidden");
+    expect(row.querySelector("[data-summary-about]")!.className).toContain("@max-[28rem]/summary:hidden");
     fireEvent.click(within(row).getByRole("button", { name: "Open Send to Sam Ortiz" }));
     await waitFor(() => expect(row.querySelector("[data-summary-open]")!.textContent).toContain("Scrims"));
   });
@@ -1079,7 +1081,8 @@ describe("the Outbox, rebuilt around how he decides", () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { effect: "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." })]);
     await open();
     const head = detail().querySelector("header")!;
-    expect(head.nextElementSibling!.textContent).toBe("Goes from landon@purdue.edu to Dana Lee after your 30-second undo.");
+    // Only what the fields below do not say: From and To are the mail's own.
+    expect(head.nextElementSibling!.textContent).toBe("Goes after your 30-second undo.");
   });
 
   it("an item out of date waits with its why; its bar is Discard and Ask the thread again", async () => {
@@ -1193,14 +1196,14 @@ describe("a thread's request in the Outbox", () => {
     const sections = [...document.querySelectorAll("[data-outbox-section]")];
     expect(sections[0]!.getAttribute("data-outbox-section")).toBe("asked");
     expect(sections[0]!.querySelectorAll("li")).toHaveLength(1);
-    expect(sections[0]!.textContent).toContain("Send 2 mails");
+    expect(sections[0]!.textContent).toContain("Send 2 mails to 2 people");
     // Dana's and Sam's mails are the request's; only the third still sits under its thread.
     const rest = sections.slice(1).map((s) => s.textContent).join(" ");
     expect(rest).not.toContain("Send to Dana Lee");
     expect(rest).not.toContain("Send to Sam Ortiz");
     expect(rest).toContain("Send to Events booking");
     // Its detail is the same summary, with Not now and Send 2.
-    fireEvent.click(within(sections[0] as HTMLElement).getByText("Send 2 mails"));
+    fireEvent.click(within(sections[0] as HTMLElement).getByText("Send 2 mails to 2 people"));
     const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
     await waitFor(() => expect(within(detail).getByRole("button", { name: "Send 2" })).toBeTruthy());
     expect(within(detail).getByRole("button", { name: "Not now" })).toBeTruthy();
@@ -1224,5 +1227,48 @@ describe("a thread's request in the Outbox", () => {
     wantOutboxItem({ environmentId: "mac", n: 1 });
     render(<OutboxView besideRail onClose={() => undefined} />);
     await waitFor(() => expect(document.querySelector('[data-outbox-list] [aria-current="true"]')?.textContent).toContain("Post message with Slack"), { timeout: 5000 });
+  });
+});
+
+describe("council round 1: the list, the detail and the bulk press", () => {
+  it("puts 12px between groups on the section, none over the first", async () => {
+    await open();
+    const sections = [...document.querySelectorAll("[data-outbox-section]")];
+    expect(sections.length).toBeGreaterThan(1);
+    for (const section of sections) expect(section.className.split(" ")).toEqual(expect.arrayContaining(["mt-3", "first:mt-0"]));
+  });
+
+  it("keeps the trailing word in its column when what it is about hides, and lets it give way first on a very narrow row", async () => {
+    await open();
+    const side = screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!.closest("button")!.lastElementChild!;
+    expect(side.className).toContain("ms-auto");
+    expect(side.className).toContain("@max-[15rem]/row:hidden");
+  });
+
+  it("keeps the page's name over Grants when the header is narrow", async () => {
+    await open();
+    expect(screen.getByText("Outbox", { selector: "span" }).className).toContain("shrink-0");
+    expect(screen.getByRole("button", { name: "Grants" }).className).toContain("@max-[18rem]/head:hidden");
+  });
+
+  it("says Done's outcome in the trailing slot, where it holds at every width", async () => {
+    world.items.set("box", [mail("o2", "Sam Ortiz", "Scrims", { state: "discarded", decidedBy: "owner", decidedAt: Date.now() - 60_000 })]);
+    world.items.set("mac", []);
+    rememberOutboxTab("done");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    const row = await waitFor(() => screen.getByText("Send to Sam Ortiz").closest("button")!, { timeout: 5000 });
+    expect(row.lastElementChild!.textContent).toBe("Discarded");
+    expect(row.textContent).toContain("Scrims");
+  });
+
+  it("a bulk press's Send again leaves out a row that may have gone: that one is checked in its own detail", async () => {
+    world.refuse = { o2: "Outlook did not answer in time" };
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send 1 again" })).toBeTruthy(), { timeout: 5000 });
+    Object.assign(world.items.get("box")!.find((i) => i.ref.id === "o2")!, { state: "failed", outcomeUnknown: true });
+    await act(async () => loadOutbox());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send 1 again" })).toBeNull());
   });
 });

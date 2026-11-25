@@ -1056,13 +1056,16 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
     (when every item may wait). The press is one `work.outbox.decide` per
     host (`decideMany`, `via: outbox`); each row shows the working mark,
     then a check and what happened ("Queued in LifeOS", "Posted"), or the
-    red mark and the host's reason; the head becomes "Sent 5, 1 not sent"
-    (`resultsHead`), and Send N again takes the ones that failed. M5's
+    red mark and the host's reason (a plain send's check alone); the head
+    sums them as they are, "Sent 2, queued 3 in LifeOS, 1 not sent"
+    (`resultsHead`), and Send N again takes the ones that failed and can
+    still go plainly (one that may have gone is checked in its detail). M5's
     request card draws the same `SummaryList`.
   - **Done** (`DoneList`, `DoneDetail.tsx`): what went, what he discarded
     and what went out of date that he put away (`list({show: 'done'})`), by
-    day, newest first; a row's line says "Discarded", "Out of date" or
-    "Queued in LifeOS for 12m". The head says who decided (`whoWords`): "by
+    day, newest first; a row's trailing slot says "Discarded" or "Out of
+    date" (at every width), its line "Queued in LifeOS for 12m" while LifeOS
+    holds it. The head says who decided (`whoWords`): "by
     you", "from another device", "by the grant …", "from your approval in
     <thread>" (`via` `request:<id>`), "scheduled by you". A discard shows his
     words ("Discarded. You told the thread: "…""). The Result's way back,
@@ -1117,7 +1120,12 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   (RequestCard.dom.test.tsx holds it). The Outbox lists open requests first,
   in **Asked in threads** (one row each, its items not again under their
   thread); its detail is the same body with the bar (Not now, the press,
-  ⌘↩). An untouched page picks a request that comes to lead. Today's
+  ⌘↩). An untouched page picks a request that comes to lead. A request has
+  one name in his words on every surface (`requestName`: its rows by kind),
+  the card's head included; the press counts what is ticked. A discard row
+  leads with "Discard"; a changed row shows an empty, disabled tick. The
+  card stands alone in the transcript (`standsAlone`), never under a "Used"
+  line. While the Outbox is the page, held work's digest toasts step aside. Today's
   Waiting on you and the return from Away read `needsHim` and show an open
   request as one row that opens it in the Outbox (`wantOutboxItem('request:<host>:<id>')`),
   its items left out.

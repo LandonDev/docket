@@ -281,12 +281,6 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
         {repliedWords(item.replied)}
       </Note>,
     );
-  if (isScheduled(item) && item.scheduledFor != null)
-    notes.push(
-      <Note key="when" glyph={<Clock className="size-3.5" />}>
-        <span className="tabular-nums">Goes {scheduleLine(item.scheduledFor, ownZone(), item.scheduledZone)}</span>
-      </Note>,
-    );
   if (item.kind === "computer.act")
     notes.push(
       <Note key="screen" glyph={<SquareMousePointer className="size-3.5" />}>
@@ -312,9 +306,28 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
 }
 
 /** One sentence of what the press does, from the host (`effect`); none for an item that went out of date. */
-export function Effect({ item, compact = false }: { item: Pick<HostItem, "effect" | "state">; compact?: boolean }) {
+export function Effect({ item, compact = false }: { item: Pick<HostItem, "effect" | "state" | "kind" | "scheduledFor" | "scheduledZone">; compact?: boolean }) {
+  const words = effectWords(item);
+  if (!words) return null;
+  return <p className={cn("max-w-[60ch] text-pretty tabular-nums", compact ? "text-[13px] leading-5 text-muted-foreground" : "mt-2 text-sm leading-[22px]")}>{words}</p>;
+}
+
+/** The kinds whose view draws From and To: their sentence leaves those out and says what the fields cannot. */
+const FIELDS_SHOW_WHO = new Set<string>(["mail.send", "office.mail.send"]);
+
+/**
+ * The one sentence of what the press does, saying only what the thing below does not: a mail's From and To are in
+ * its fields, so "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." reads "Goes after your 30-second
+ * undo."; a send he timed says when it goes, once ("Goes Wed 8:00 AM"); an item out of date says nothing.
+ */
+export function effectWords(item: Pick<HostItem, "effect" | "state" | "kind" | "scheduledFor" | "scheduledZone">): string | null {
+  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, ownZone(), item.scheduledZone)}`;
   if (!item.effect || item.state === "stale") return null;
-  return <p className={cn("max-w-[60ch] text-pretty", compact ? "text-[13px] leading-5 text-muted-foreground" : "mt-2 text-sm leading-[22px]")}>{item.effect}</p>;
+  if (FIELDS_SHOW_WHO.has(item.kind)) {
+    const said = /^Goes from \S+ to .+? (after .+)$/.exec(item.effect);
+    if (said) return `Goes ${said[1]}`;
+  }
+  return item.effect;
 }
 
 /**

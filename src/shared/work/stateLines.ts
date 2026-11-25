@@ -137,6 +137,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Sending", "queued"],
     ["Scheduled", "answer"],
     ["Sending", "queued"],
+    ["Sent", "local"],
+    ["Queued in LifeOS", "queued"],
     ["Sent", "answer"],
     ["Scheduled", "answer"],
   ],

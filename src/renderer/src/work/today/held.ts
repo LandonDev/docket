@@ -4,7 +4,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { WORK_CHATS_KEY } from "../outbox/model";
 import { KindGlyph, rowWords } from "../outbox/OutboxView";
 import { loadHost, loadOutbox, useOutbox, wantOutboxItem, type HostItem } from "../outbox/store";
-import { askedItemKeys, requestKey, useOpenRequests, type HostRequest } from "../outbox/requests";
+import { askedItemKeys, requestKey, requestName, useOpenRequests, type HostRequest } from "../outbox/requests";
 import { Outbox } from "../../chrome/icons";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { shell } from "../../stores/shell";
@@ -67,7 +67,7 @@ export function heldRows(
       section: SECTION.id,
       sector: (request.sector as SectorKey | null) ?? null,
       ...(job ? { job } : {}),
-      title: request.head,
+      title: requestName(request),
       ...(thread ? { detail: `Asked in ${thread}` } : {}),
       at: request.createdAt,
       when: heldWhen(request.createdAt, now),

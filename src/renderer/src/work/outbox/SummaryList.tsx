@@ -33,6 +33,12 @@ export type SummaryRow = {
   result?: RowResult;
   /** no tick of its own (it cannot be part of the press) */
   locked?: boolean;
+  /** an empty tick he cannot take yet (a row changed since a thread asked: he opens it first) */
+  pending?: boolean;
+  /** the row's own action word, before the act, where it is not the act's (a request's "Discard") */
+  doing?: string;
+  /** what the chevron says it does, where it is more than opening ("Review the change") */
+  openLabel?: string;
 };
 
 export function SummaryList({
@@ -68,7 +74,7 @@ export function SummaryList({
     });
   };
   return (
-    <div data-outbox-summary className="flex flex-col">
+    <div data-outbox-summary className="@container/summary flex flex-col">
       {facts}
       {head !== null ? (
         <h1 aria-live="polite" className={cn("text-base font-semibold leading-6 tracking-[-0.01em] text-balance", facts && "mt-1")}>
@@ -84,22 +90,40 @@ export function SummaryList({
           const dim = !row.on && !row.result;
           return (
             <li key={key} data-summary-row={key} className="flex flex-col border-t border-border first:border-t-0">
-              <div className="flex min-h-9 min-w-0 items-center gap-2 ps-0.5 text-[13px] leading-5">
-                <span className="grid size-4 shrink-0 place-items-center">
+              {/* The act keeps its line first: what it is about gives way, then the side word wraps under it, never cutting the name. */}
+              <div className="flex min-h-9 min-w-0 items-start gap-2 py-2 ps-0.5 text-[13px] leading-5">
+                <span className="grid h-5 w-4 shrink-0 place-items-center">
                   <RowLead row={row} act={act} onToggle={onToggle} />
                 </span>
-                <span className="grid size-4 shrink-0 place-items-center">
+                <span className="grid h-5 w-4 shrink-0 place-items-center">
                   <KindGlyph kind={row.item.kind} />
                 </span>
-                <span data-summary-act className={cn("min-w-0 shrink truncate", dim && "text-muted-foreground")}>{act}</span>
-                {about ? <span data-summary-about className="min-w-0 flex-1 shrink-[100] truncate text-muted-foreground @max-[40rem]/outbox:hidden">{about}</span> : <span className="flex-1" />}
-                <Side row={row} />
-                <Button variant="ghost" size="icon-xs" aria-label={opened ? `Close ${act}` : `Open ${act}`} aria-expanded={opened} className="shrink-0 text-muted-foreground" onClick={() => flip(key, row.item)}>
+                <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                  <span data-summary-act className={cn("min-w-0 max-w-full truncate", dim && "text-muted-foreground")}>
+                    {row.doing ? (
+                      <>
+                        {row.doing} <span className="text-muted-foreground">{act}</span>
+                      </>
+                    ) : (
+                      act
+                    )}
+                  </span>
+                  {about ? <span data-summary-about className="min-w-0 flex-1 basis-0 truncate text-muted-foreground @max-[28rem]/summary:hidden">{about}</span> : null}
+                  <Side row={row} />
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={opened ? `Close ${act}` : `${row.openLabel ?? "Open"} ${act}`}
+                  aria-expanded={opened}
+                  className="-my-0.5 shrink-0 text-muted-foreground"
+                  onClick={() => flip(key, row.item)}
+                >
                   <ChevronRight className={cn(DISCLOSURE_CHEVRON, opened && "rotate-90")} />
                 </Button>
               </div>
               {opened ? (
-                <div data-summary-open className="border-t border-border pt-2 pb-4 ps-12 @max-[40rem]/outbox:ps-6">
+                <div data-summary-open className="border-t border-border pt-2 pb-4 ps-12 @max-[28rem]/summary:ps-6">
                   <ItemInPlace item={row.item} host={host?.(row.item)} />
                 </div>
               ) : null}
@@ -116,6 +140,7 @@ function RowLead({ row, act, onToggle }: { row: SummaryRow; act: string; onToggl
   if (row.result?.state === "working") return <StatusMark state="working" word={false} />;
   if (row.result?.state === "done") return <Check aria-label="Done" className="size-3.5 text-muted-foreground" />;
   if (row.result?.state === "failed") return <StatusMark state="failed" word={false} />;
+  if (row.pending) return <Checkbox aria-label={`Include ${act}`} checked={false} disabled />;
   if (row.locked || !onToggle) return null;
   return <Checkbox aria-label={`Include ${act}`} checked={row.on} onCheckedChange={(on) => onToggle(row.item, on)} />;
 }
@@ -125,5 +150,5 @@ function Side({ row }: { row: SummaryRow }) {
   const result = row.result;
   const words = result && result.state !== "working" ? result.words : (row.side ?? null);
   if (!words) return null;
-  return <span data-summary-side className={cn("max-w-[50%] shrink-0 truncate text-xs tabular-nums", result?.state === "failed" ? "text-destructive" : "text-muted-foreground")}>{words}</span>;
+  return <span data-summary-side className={cn("ms-auto max-w-full shrink-0 truncate text-xs leading-5 tabular-nums", result?.state === "failed" ? "text-destructive" : "text-muted-foreground")}>{words}</span>;
 }

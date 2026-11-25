@@ -7,6 +7,8 @@ import { ACT_VIEWS } from "../acts/registry";
 import { defineChunk } from "../../lib/lazyChunk";
 import { asGivenComputer, OverFrame, Unsettled, usePressNamed } from "../kit.preview";
 import { OutboxView, rememberOutboxTab } from "./OutboxView";
+import { ItemInPlace } from "./HeldDetail";
+import { rowWords } from "./parts";
 import { sessionStore } from "../../lib/tcserver/store";
 import { resetOutboxStore, wantOutboxItem } from "./store";
 
@@ -60,8 +62,15 @@ const sent = (n: number, subject: string, text: string, when: number): OutboxIte
 
 /** A second job, so Sent shows its groups: a calendar change for refereeing. */
 const WS2 = { id: "ws2", name: "Refereeing", path: "/home/work/Refereeing", kind: "work", sector: "ref", createdAt: 2 };
+/** Two more jobs, so each fixture's dot, account and recipient agree: Cosmic's release and bug report, Hypixel's trailer. */
+const WS3 = { id: "ws3", name: "Cosmic", path: "/home/work/Cosmic", kind: "work", sector: "cosmic", createdAt: 3 };
+const WS4 = { id: "ws4", name: "Hypixel", path: "/home/work/Hypixel", kind: "work", sector: "hypixel", createdAt: 4 };
 const SENT: OutboxItem[] = [
-  sent(5, "Budget lines for the Spring LAN", "Hi Dana,\n\nThe Spring LAN comes to $4,180: $2,600 for the ballroom, $1,100 for prizes and $480 for food. The PO request is attached.\n\nLandon", at(20, 9, 41)),
+  (() => {
+    const mail = sent(5, "Budget lines for the Spring LAN", "Hi Dana,\n\nThe Spring LAN comes to $4,180: $2,600 for the ballroom, $1,100 for prizes and $480 for food. The PO request is attached.\n\nLandon", at(20, 9, 41));
+    const p = mail.payload as { message: Record<string, unknown> };
+    return { ...mail, payload: { ...p, message: { ...p.message, attachments: [{ name: "Spring LAN PO request.pdf", size: 182_000 }] } } };
+  })(),
   { ...sent(9, "", "", at(20, 8, 15)), ref: { at: "lifeos", table: "outbox", id: "ob_9" }, kind: "calendar.op", workspaceId: "ws2", sector: "ref", summary: "Add Varsity at North on Fri, Nov 27 at 6:00 PM", verb: "Add", payload: { id: "op9", kind: "create", payload: { title: "Varsity at North", startsAt: at(27, 18), endsAt: at(27, 20), location: "North High School" } }, result: null },
   sent(4, "Re: Travel for nationals", "Hi Dana,\n\nSix players and two staff, leaving Thursday at 7 AM. The van is booked through RecWell.\n\nLandon", at(19, 16, 5)),
   sent(3, "Re: Jersey order", "Hi Dana,\n\nThe order is 14 jerseys at $62 each. Invoice attached.\n\nLandon", at(18, 11, 20)),
@@ -143,7 +152,15 @@ const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", la
 /** One held item of each of six kinds, as the Waiting list shows them; the last one's payload is not one its kind reads. */
 const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
 const INVITE = { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } };
-const KINDS: OutboxItem[] = [
+/** What each kind's press does, as the host says it (outbox/effects.ts). */
+const KIND_EFFECT: Record<string, string> = {
+  "calendar.op": "Sends the invite to Dana Lee from your Purdue calendar.",
+  "chat.reply": "Replies as you to Sam Ortiz in Teams.",
+  "file.act": "Moves the file for everyone who can open Esports Staff › Events.",
+  "share.guestLink": "Makes a link Maya Chen opens without signing in. She can comment.",
+  "teams.post": "Posts as you in Esports Staff, General, where 14 people see it.",
+};
+const KINDS_BARE: OutboxItem[] = [
   { ...SENT[0]!, state: "held", decidedBy: null, decidedAt: null, result: null, n: 21, createdAt: at(20, 10, 50) },
   held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", INVITE, 44),
   held(23, "chat.reply", "Reply to Sam Ortiz in Teams: Thursday at 7 works for varsity", "Reply", { chatId: "c1", source: "teams", chat: "Sam Ortiz", text: "Thursday at 7 works for varsity." }, 38),
@@ -152,6 +169,7 @@ const KINDS: OutboxItem[] = [
   held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", "not a payload", 12),
   held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu" }, 6),
 ];
+const KINDS: OutboxItem[] = KINDS_BARE.map((k) => (KIND_EFFECT[k.kind] && k.kind !== "mail.send" ? { ...k, effect: KIND_EFFECT[k.kind] } : k));
 /** `longGuest`: the invite asks one more guest, whose name and address are each longer than a narrow column. */
 const LONG_GUEST = { address: "events-and-facilities-reservations.recwell@purdue.edu", name: "Alexandra Montgomery-Fitzgerald" };
 const LONG_KINDS: OutboxItem[] = KINDS.map((k) => (k.payload === INVITE ? { ...k, payload: { ...INVITE, payload: { ...INVITE.payload, attendees: [...INVITE.payload.attendees, LONG_GUEST] } } } : k));
@@ -167,7 +185,7 @@ const GRANTS: OutboxGrant[] = [
  */
 const H = 3_600_000;
 const NOW = Date.now();
-const TITLES: Record<string, string> = { roster: "Nationals roster", budget: "Travel budget for nationals", release: "Release 2.14", bugs: "Weekly bug report", sweep: "Morning sweep" };
+const TITLES: Record<string, string> = { roster: "Nationals roster", budget: "Travel budget for nationals", release: "Release 2.14", bugs: "Weekly bug report", sweep: "Morning sweep", trailer: "Trailer v3", t1: "Spring LAN" };
 const mailTo = (n: number, to: string, address: string, subject: string, text: string, over: Partial<OutboxItem> = {}): OutboxItem => ({
   ...sent(n, subject, text, NOW - (30 - n) * 60_000),
   ref: { at: "lifeos", table: "outbox", id: `d_${n}` },
@@ -195,11 +213,22 @@ const DANA_FIRST = { message: { from: { address: "landon@purdue.edu" }, to: [{ n
 const DAY: OutboxItem[] = [
   ...ROSTER,
   DANA,
-  { ...held(11, "chat.reply", "Reply to Priya in #release: Ship 2.14 tonight after QA signs off", "Reply", { chatId: "c1", source: "slack", chat: "#release", text: "Yes, ship tonight once QA signs off. I'll watch the crash dashboard for the first hour." }, 0), workspaceId: "ws2", sector: "ref", sessionId: "release", createdAt: NOW - 9 * 60_000, effect: "Replies as you in Priya's thread in #release, where 31 people see it.", later: true },
-  { ...mailTo(12, "Priya", "priya@cosmicgames.com", "Bug report, week 47", "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", { sessionId: "bugs", routineRunId: "run1", workspaceId: "ws2", sector: "ref" }), state: "failed", error: "Gmail refused it: the attachment is over 25 MB." },
+  { ...held(11, "chat.reply", "Reply to Priya in #release: Ship 2.14 tonight after QA signs off", "Reply", { chatId: "c1", source: "slack", chat: "#release", text: "Yes, ship tonight once QA signs off. I'll watch the crash dashboard for the first hour." }, 0), workspaceId: "ws3", sector: "cosmic", sessionId: "release", createdAt: NOW - 9 * 60_000, effect: "Replies as you in Priya's thread in #release, where 31 people see it.", later: true },
+  {
+    ...mailTo(12, "Priya", "priya@cosmicgames.com", "Bug report, week 47", "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", {
+      sessionId: "bugs",
+      routineRunId: "run1",
+      workspaceId: "ws3",
+      sector: "cosmic",
+      effect: "Goes from landon@cosmicgames.com to Priya after your 30-second undo.",
+    }),
+    payload: { id: "d_12", status: "draft", message: { kind: "mail", accountId: "acct", to: [{ name: "Priya", address: "priya@cosmicgames.com" }], cc: [], bcc: [], subject: "Bug report, week 47", html: "", text: "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", from: { address: "landon@cosmicgames.com" }, attachments: [{ name: "crash-dumps-week-47.zip", size: 31_400_000 }] } },
+    state: "failed",
+    error: "Gmail refused it: the attachment is over 25 MB.",
+  },
   { ...held(13, "calendar.op", "Accept Kickoff call with Northside PT", "Accept", { id: "op13", kind: "accept", eventId: "ev1", eventStartsAt: NOW + 4 * H, account: "landon@purdue.edu" }, 0), sessionId: "sweep", createdAt: NOW - 2 * H, effect: "Tells Northside PT you will come and keeps it on your Purdue calendar." },
   { ...EDITS[0]!, sessionId: "budget", state: "stale", error: "Dana changed the Hotels sheet at 9:05 AM, after this was made.", createdAt: NOW - 50 * 60_000 },
-  { ...mailTo(14, "Jess", "jess@hypixel.net", "Trailer cut, v3", "Jess,\n\nThe v3 cut is up.\n\nLandon", { sessionId: "release", workspaceId: "ws2", sector: "ref" }), state: "scheduled", scheduledFor: NOW + 22 * H, scheduledZone: "America/Chicago" },
+  { ...mailTo(14, "Jess", "jess@hypixel.net", "Trailer cut, v3", "Jess,\n\nThe v3 cut is up.\n\nLandon", { sessionId: "trailer", workspaceId: "ws4", sector: "hypixel" }), state: "scheduled", scheduledFor: NOW + 22 * H, scheduledZone: "America/Chicago" },
 ];
 /** Done for `done`: what went, what he discarded with his words, and what went out of date that he put away. */
 const DONE: OutboxItem[] = [
@@ -252,7 +281,7 @@ const dayItems = (): OutboxItem[] => DAY.map((i) => (i.ref.id === DAY_PICK[state
 const answers = (method: string, params: { show?: string; ref?: { id: string }; items?: { ref: { id: string }; do: string }[] } = {}): unknown => {
   switch (method) {
     case "workspace.list":
-      return [WS, WS2];
+      return [WS, WS2, WS3, WS4];
     case "project.list":
       return [];
     case "work.outbox.list":
@@ -290,7 +319,7 @@ const answers = (method: string, params: { show?: string; ref?: { id: string }; 
       if (state === "done") return DONE.find((i) => i.ref.id === params.ref?.id) ?? DONE[0];
       // The box's own LifeOS session, signed out, throws its words for the mail's full read.
       if (state === "unread" && pick === 0) throw new Error("This host is not signed in to LifeOS");
-      return kinds() ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
+      return kinds() ? (pickedKinds().find((i) => i.ref.id === params.ref?.id) ?? pickedKinds()[pick]) : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
     }
   }
   throw new Error(`no ${method}`);
@@ -334,8 +363,8 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     if (DAY_PICK[s]) wantOutboxItem(`local:${s === "stale" ? "host" : "lifeos"}:${DAY_PICK[s]}`);
   }
   // Each state's own press, once the page has drawn: the thread's Select 6, its Send 6, Show changes, Edit.
-  usePressNamed(s === "ticked" || s === "results" ? "Select 6" : s === "changed" ? "Show changes" : s === "editing" ? "Edit" : null, 160);
-  usePressNamed(s === "results" ? "Send 6" : null, 300);
+  usePressNamed(s === "ticked" || s === "results" ? "Select 6" : s === "changed" ? "Show changes" : s === "editing" ? "Edit" : null, 240);
+  usePressNamed(s === "results" ? "Send 6" : null, 480);
   // Grants is the header's own press.
   usePressNamed(s === "grants" ? "Grants" : null, 80);
   // `longGuest` opens the picked row, so a narrow window shows its detail in the list's place.
@@ -344,12 +373,27 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     const t = setTimeout(() => document.querySelector<HTMLElement>('button[aria-current="true"]')?.click(), 120);
     return () => clearTimeout(t);
   }, [s]);
-  return (
+  const page = (
     <OverFrame maxWidth={1100} height={640}>
-      {s === "results" ? <Unsettled ms={900} /> : null}
+      {s === "results" || s === "ticked" || s === "changed" || s === "editing" ? <Unsettled ms={900} /> : null}
       <div className="flex h-full w-full">
         <OutboxView besideRail onClose={() => {}} />
       </div>
     </OverFrame>
   );
+  if (s === "kinds")
+    return (
+      <div className="flex w-full max-w-[1100px] flex-col gap-6">
+        {page}
+        {/* Each kind's own detail, opened in place as the summary list opens it: its sentence, its notes, the thing. */}
+        <Unsettled ms={600} />
+        {KINDS.map((k) => (
+          <section key={k.ref.id} className="flex flex-col gap-1">
+            <h3 className="text-sm font-medium">{rowWords(k).act}</h3>
+            <ItemInPlace item={{ ...k, environmentId: "local" }} host="The box" />
+          </section>
+        ))}
+      </div>
+    );
+  return page;
 }

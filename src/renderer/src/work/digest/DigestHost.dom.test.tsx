@@ -123,6 +123,16 @@ describe("the digest's toast", () => {
     expect((shown().find((t) => t.text.startsWith("Budget review")) as unknown as { kind: string }).kind).toBe("warning");
   });
 
+  it("a held toast steps aside while the Outbox is the page, and comes back when it closes", async () => {
+    w().rows.set("box", [...w().rows.get("box")!, tell({ key: "request:r2", kind: "outbox.request", group: "held", title: "Asked: Post 2 messages", how: "now", toldAt: at(24, 10), open: { thread: "t1" } })]);
+    await mount();
+    expect(shown().some((t) => t.text === "Asked: Post 2 messages")).toBe(true);
+    await act(async () => shell.openOutbox());
+    await waitFor(() => expect(shown().some((t) => t.text === "Asked: Post 2 messages")).toBe(false));
+    await act(async () => shell.closeOutbox());
+    await waitFor(() => expect(shown().some((t) => t.text === "Asked: Post 2 messages")).toBe(true));
+  });
+
   it("is one toast for two hosts' same day, sticky, with Open", async () => {
     await mount();
     expect(shown()).toMatchObject([{ id: "work-digest", kind: "plain", text: "Digest: 3 things in Cosmic, Purdue and Ref", sticky: true, label: "Open" }]);

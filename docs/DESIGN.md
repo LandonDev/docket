@@ -1492,9 +1492,11 @@ Around the canvas:
   held. A tick takes the glyph's place on hover and stays on every row while
   any is ticked. The detail, in a 688px column: the facts line (the job's dot
   and name, "from" the thread as a link, the time), the act as a 16px title,
-  one 14px sentence of what the press does and to whom, the notes that apply
+  one 14px sentence of what the press does that the thing below does not say
+  (a mail's From and To are its fields, so its sentence is "Goes after your
+  30-second undo."; a timed send's is when it goes, once), the notes that apply
   (one 13px muted line each behind a 14px glyph: not sent, out of date, the
-  thread rewrote it with Show changes, someone wrote back, when it goes),
+  thread rewrote it with Show changes, someone wrote back),
   then the thing as it will arrive. Show changes draws only what moved: a
   field's old value muted and struck beside the new, the body's words taken
   out muted and struck, the words put in on a light accent tint. The verb bar
@@ -1509,8 +1511,15 @@ Around the canvas:
   word, a chevron that opens the item in place with no border), and a bar of
   Clear, Discard N and Send N joined to Send later; after the press each row
   shows its own result (the working mark, a check and its word, or the red
-  mark and its reason) and the sentence becomes "Sent 5, 1 not sent". Done
-  groups by day under 12px headings; its head says who decided. Keys move,
+  mark and its reason; a plain send's check stands alone) and the sentence
+  sums them as they are ("Sent 2, queued 3 in LifeOS, 1 not sent"); a row
+  keeps its act whole when narrow, what it is about giving way and its side
+  word wrapping under it. Groups stand 12px apart; a row's trailing word keeps
+  its column at every width and gives way first on a very narrow row; the
+  header keeps "Outbox" when Grants no longer fits. Done groups by day under
+  12px headings, a row's outcome ("Discarded", "Out of date") in its trailing
+  slot; its head says who decided. Held work's toasts step aside while the
+  Outbox is the page. Keys move,
   tick and press without motion; their caps show only in tooltips. A
   computer-use act names the computer and says it "takes its screen for a
   moment", and its Done record keeps a picture. A press's toast carries Undo
@@ -4378,15 +4387,18 @@ word; the call's row above it keeps its tool icon, so the mark shows once.
 A thread's request for his press (its `outbox_request` call) stands in
 the call's place as the question's frame (a hairline on `card`, 12px
 corners, 16px inset): the Outbox glyph, muted, never amber (held is not
-Needs you), the head sentence at 14px medium, "You asked: "…"" muted under
+Needs you), the request's one name at 14px medium (the same words on its
+Outbox row, on Today and after Away: "Send 3 mails to 3 people and discard 1
+mail"; the press counts what is ticked), "You asked: "…"" muted under
 it on the head's text column, the summary list (36px rows parted by
 hairlines: tick, kind glyph, act, what it is about, a side word, a chevron
 that opens the item in place), then Not now and the press (Send N, Discard
-N, Approve N when the actions mix) at its foot, right-aligned. A row
-rewritten since the thread asked starts unticked with "Changed since
-asked" and takes its tick only once he opens it. Pressed, each row shows
-its result where its tick was; then the head sums them ("Sent 1, 1 not
-sent") and the foot says "by you at 9:41 AM" with, for what did not go,
+N, Approve N when the actions mix) at its foot, right-aligned. A row that
+dies leads with "Discard", its act muted. A row rewritten since the thread
+asked shows an empty tick he cannot take, "Changed since asked", and its
+chevron reads "Review the change"; the tick is his once he opens it. Pressed, each row shows
+its result where its tick was; then the head sums them ("Queued 1 in
+LifeOS, 1 not sent") and the foot says "by you at 9:41 AM" with, for what did not go,
 Send again (a Send), Pick a new time… (a Later, its new time said before it
 goes), or Open in the Outbox (an item that moved since or may have gone). A
 tick holds only while its row keeps the receipt it was given for. A held

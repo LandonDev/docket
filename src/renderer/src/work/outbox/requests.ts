@@ -3,6 +3,7 @@ import type { HeldRef } from "@shared/work";
 import type { OutboxRequest, OutboxRequestRow } from "@shared/contract-work-outbox";
 import { registry } from "../../lib/connection";
 import { workSwitch } from "../../lib/workSwitch";
+import { summaryHead } from "./waiting";
 
 /**
  * A thread's requests for his press (docs/agents/work-outbox.md "A thread asks
@@ -20,6 +21,20 @@ const hosts = new Map<string, Map<string, HostRequest>>();
 const failures = new Map<string, string>();
 const listeners = new Set<() => void>();
 let openSnapshot: HostRequest[] | null = null;
+
+/**
+ * A request's one name, in his words, on every surface that shows it (the row in Asked in threads, Today, the return
+ * from Away, the card and its detail): what it asks, by kind ("Send 3 mails to 3 people and discard 1 mail", "Echo
+ * with League, 3 times"). The host's own head stands in where no row's item is known here.
+ */
+export function requestName(request: Pick<OutboxRequest, "rows" | "head">): string {
+  const rows = request.rows.filter((r) => r.item);
+  if (!rows.length) return request.head;
+  return summaryHead(
+    rows.filter((r) => r.do !== "discard").map((r) => r.item!),
+    rows.filter((r) => r.do === "discard").map((r) => r.item!),
+  );
+}
 
 /** A request's key across hosts: the Outbox's selection and `wantOutboxItem` use it. */
 export const requestKey = (r: Pick<HostRequest, "environmentId" | "id">): string => `request:${r.environmentId}:${r.id}`;
