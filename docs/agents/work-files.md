@@ -2648,7 +2648,11 @@ picks, and stays linked to that file: each later edit is written to it.
   deleted in General", "Not saved to General"), with "+1" for the others; it takes the foreground only
   when a link needs him. It holds the calm rule (canvas/calm.ts) as the document's own line beside it does: "Saving
   to General…" only once a write has been out 600 ms (`SEND_SHOWN_MS`, with a push then) or his words waited past
-  Word's 3 s pause with nothing written; inside that, the last Saved line stays (saveAs.ts `viewOf`). Its menu holds, for each link: Keep Both and Replace for a Word file changed there, Save Again
+  Word's 3 s pause with nothing written; inside that, the last Saved line stays (saveAs.ts `viewOf`). A link in a
+  Teams or OneDrive library says Saved to it only once OneDrive has the bytes (`DocLink.upload`, read from the upload
+  record `makeIn`, `putOver` and `deliver` keep, uploads.ts): "Saved, uploading to General…", "Not uploaded to
+  General yet" (a minute on; it takes the foreground), "Saved. OneDrive uploads it to General" (the VM's older
+  helper cannot say), then "Saved to General 9:12 PM". Its menu holds, for each link: Keep Both and Replace for a Word file changed there, Save Again
   for another format changed or gone (`replace`, `keep`), Retry for one waiting or refused, then Open, Show in Files
   and Unlink. A copy made once (Just a copy) is said in one toast with Show; a linked one by the header alone.
 - **The fence.** `saveAs` is in `GUEST_METHODS` and `ELSEWHERE_METHODS`, as `saveAsWord` was.

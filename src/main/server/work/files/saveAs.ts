@@ -15,7 +15,7 @@ import { admitCaller, locate, sharedOf, workspaceHere } from './policy'
 import { versionWord } from './save'
 import { makeBytes, makeFolderRef } from './verbs'
 import { vmReadVersioned } from './vmVerbs'
-import { uploadPending, uploadWrote } from './uploads'
+import { cloudOf, uploadPending, uploadWrote } from './uploads'
 import { liveRev, wordTiming } from './word'
 import { canonicalPath } from '../service/ctx'
 import type { DocRevision } from '../service/wire'
@@ -311,6 +311,9 @@ function viewOf(r: LinkRow, now = Date.now()): DocLink {
   const waited = seen !== undefined && seen.rev !== r.saved_rev && now - seen.at >= wordTiming.pause
   const saving = (sent !== undefined && now - sent >= SEND_SHOWN_MS) || waited
   const state: DocLink['state'] = r.state === 'ok' ? (saving ? 'saving' : 'saved') : r.state
+  // OneDrive's word on the last bytes written there (uploads.ts): Saved to a library is said only once it has them.
+  const cloud = state === 'saved' ? cloudOf(r.workspace_id, r.host, r.path)?.is : undefined
+  const upload = cloud === 'uploading' || cloud === 'late' || cloud === 'unknown' ? cloud : undefined
   const folder = r.path.slice(0, Math.max(r.path.lastIndexOf('/'), r.path.lastIndexOf('\\')))
   return {
     id: r.id,
@@ -321,6 +324,7 @@ function viewOf(r: LinkRow, now = Date.now()): DocLink {
     ref: { at: 'file', host: r.host, path: r.path },
     folder: { at: 'file', host: r.host, path: folder },
     state,
+    ...(upload ? { upload } : {}),
     ...(r.state === 'changed' && r.seen_version ? { version: r.seen_version } : {}),
     ...(r.saved_at ? { at: r.saved_at } : {}),
     ...(r.changed_at ? { changedAt: r.changed_at } : {}),

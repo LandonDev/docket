@@ -369,6 +369,17 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       await expect(call('work.files.linkAct', { id: link!.id, act: 'unlink' }, phone)).rejects.toThrow()
     })
 
+    it("says a linked file in a VM library saved there only once OneDrive has it", async () => {
+      const source = { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }
+      await call('work.files.open', { ref: source })
+      await call('work.files.saveAs', { source, at: at(GENERAL), format: 'docx', name: 'Agenda', place: 'General', op: op() }, approver)
+      const linked = async () => (await call<{ state: string; upload?: string }[]>('work.files.links', { source }, approver))[0]
+      expect(await linked()).toMatchObject({ state: 'saved', upload: 'uploading' })
+      synced = true
+      await lookAll(rig.ctx)
+      expect((await linked())?.upload).toBeUndefined()
+    })
+
     it('follows a Save As into a VM library to the cloud, and drops what OneDrive did once the link writes it again', async () => {
       const source = { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }
       const made = `${GENERAL}\\Agenda.docx`

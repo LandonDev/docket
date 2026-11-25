@@ -62,6 +62,12 @@ export interface DocLink {
   state: 'saved' | 'saving' | 'waiting' | 'changed' | 'gone' | 'refused'
   /** `changed`: the version found there, which his Replace names */
   version?: string
+  /**
+   * `saved` in a Teams or OneDrive library: OneDrive has not said it has those bytes yet (uploads.ts, decision 18):
+   * `uploading`, `late` (a minute on, not uploaded), or `unknown` (the VM's older helper cannot say). None once it has,
+   * or where no one can tell.
+   */
+  upload?: 'uploading' | 'late' | 'unknown'
   at?: number
   changedAt?: number
   detail?: string
@@ -77,9 +83,13 @@ export function saveAsOutcome(o: { name: string; place: string | null; link: boo
 }
 
 /** How a linked file stands, in the header's words. */
-export function linkWords(l: Pick<DocLink, 'state' | 'place' | 'at'>, time: (at: number) => string): string {
+export function linkWords(l: Pick<DocLink, 'state' | 'place' | 'at' | 'upload'>, time: (at: number) => string): string {
   switch (l.state) {
     case 'saved':
+      // Saved to a library is said once OneDrive has the bytes; until then what it has done, as a copy's tab says it.
+      if (l.upload === 'uploading') return `Saved, uploading to ${l.place}…`
+      if (l.upload === 'late') return `Not uploaded to ${l.place} yet`
+      if (l.upload === 'unknown') return `Saved. OneDrive uploads it to ${l.place}`
       return l.at ? `Saved to ${l.place} ${time(l.at)}` : `Saved to ${l.place}`
     case 'saving':
       return `Saving to ${l.place}…`
@@ -95,4 +105,4 @@ export function linkWords(l: Pick<DocLink, 'state' | 'place' | 'at'>, time: (at:
 }
 
 /** Whether a link needs his press: the header takes the foreground for it. */
-export const linkNeedsHim = (l: Pick<DocLink, 'state'>): boolean => l.state === 'changed' || l.state === 'gone' || l.state === 'refused'
+export const linkNeedsHim = (l: Pick<DocLink, 'state' | 'upload'>): boolean => l.state === 'changed' || l.state === 'gone' || l.state === 'refused' || (l.state === 'saved' && l.upload === 'late')

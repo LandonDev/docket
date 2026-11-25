@@ -353,6 +353,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     // A link's send not answered yet: nothing is claimed.
     ["`Not saved to ${l.place} yet`", "queued"],
     ["`Not saved to ${l.place}`", "answer"],
+    // The write's answer, then OneDrive's word on those bytes (`DocLink.upload`, uploads.ts): Saved to the library only once it has them.
+    ["`Saved, uploading to ${l.place}…`", "answer"],
+    ["`Saved. OneDrive uploads it to ${l.place}`", "answer"],
     ["`Saved to ${l.place} ${time(l.at)}`", "answer"],
     ["`Saved to ${l.place}`", "answer"],
     ["`Moved or deleted in ${l.place}`", "answer"],
