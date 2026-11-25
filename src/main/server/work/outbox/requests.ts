@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { DecisionResult, OutboxItem, OutboxRequest, OutboxRequestRow } from '@shared/contract-work-outbox'
 import { errorText, needsHim, workText, type HeldRef, type WorkToolResult } from '@shared/work'
 import { judgeAsk, type AskAction, type AskItem } from '@shared/work/outboxAsk'
+import { summaryHead } from '@shared/work/outboxHead'
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { pressesFor } from '../files/policy'
 import { LATER, type Outbox } from './outbox'
@@ -479,7 +480,8 @@ export class OutboxRequests {
       workspaceId: row.workspace_id,
       sector: row.sector,
       quote: row.quote,
-      head: headOf(asked.map((a) => ({ do: a.do, kind: rows.find((r) => refKey(r.ref) === refKey(a.ref))?.item?.kind ?? 'mail.send' }))),
+      // The window's own words for it (shared/work/outboxHead.ts), so the notice, the card and the row say one thing.
+      head: rows.every((r) => r.item) && rows.length ? summaryHead(rows.filter((r) => r.do !== 'discard').map((r) => r.item!), rows.filter((r) => r.do === 'discard').map((r) => r.item!)) : headOf(asked.map((a) => ({ do: a.do, kind: rows.find((r) => refKey(r.ref) === refKey(a.ref))?.item?.kind ?? 'mail.send' }))),
       state: row.state as RequestState,
       ...(row.why ? { why: row.why } : {}),
       createdAt: Number(row.created_at),
