@@ -110,7 +110,10 @@ describe('METHOD_CAPABILITY', () => {
         'video.paste',
         'video.copy',
         'video.size',
-        'work.reveal'
+        'work.reveal',
+        // What a Work thread left him: a read, held to approve so a read-only pairing (/ui, a reader key) never sees
+        // what his threads hold or did. The tracker's work.projects.overview is the same, and counts as its pillar's.
+        'work.threads.record'
       ].sort()
     )
   })
