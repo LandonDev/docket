@@ -2,6 +2,7 @@ import { Check, ChevronRight } from "@renderer/chrome/icons";
 import { useEffect, useState, type ComponentProps } from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { cn } from "@renderer/lib/cn";
+import { fullScreenHome } from "@renderer/lib/fullScreenHome";
 import { KbdGroup } from "./kbd";
 import { MENU_ROW } from "./menu-row";
 
@@ -72,7 +73,7 @@ function DropdownMenuContent({
   ...props
 }: MenuPrimitive.Popup.Props & Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
   return (
-    <MenuPrimitive.Portal>
+    <MenuPrimitive.Portal container={fullScreenHome()}>
       <MenuPrimitive.Positioner className="isolate z-(--layer-popover) outline-none" align={align} alignOffset={alignOffset} side={side} sideOffset={sideOffset}>
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"

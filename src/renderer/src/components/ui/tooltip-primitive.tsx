@@ -1,5 +1,6 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@renderer/lib/cn";
+import { fullScreenHome } from "@renderer/lib/fullScreenHome";
 import { TOOLTIP } from "@renderer/lib/ease";
 
 const { delay: TOOLTIP_DELAY, closeDelay: TOOLTIP_CLOSE_DELAY } = TOOLTIP;
@@ -32,7 +33,7 @@ function TooltipContent({
     container?: HTMLElement | null;
   }) {
   return (
-    <TooltipPrimitive.Portal container={container ?? undefined}>
+    <TooltipPrimitive.Portal container={container ?? fullScreenHome()}>
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

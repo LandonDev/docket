@@ -223,12 +223,17 @@ shows at once: the host's answer is the note, kept in the item's view
   (`--frame-cap`) becomes the screen less those two rows, on the theme's
   `background`, and the focus moves into the player, so Space plays
   instead of pressing the button again. The button reads Leave full screen
-  there; Escape leaves too.
+  there; Escape leaves too. Comment's box, Speed's menu, a region's
+  selection bar and the labels open inside the player there: a popover,
+  menu or label mounts in the full-screen element while there is one
+  (`fullScreenHome`, lib/fullScreenHome.ts), since the browser draws
+  nothing over it.
 
 - **Stalls and scrubbing**: a `waiting` that lasts `STALL_SHOWN_MS` (300 ms,
   lib/ease.ts) puts a 16px `Spinner` on a 32px round of `matte` at half at
   the frame's centre, a status named "Loading the video", until the video
-  plays, a seek lands or it pauses; the transport keeps Pause. While he drags
+  plays, a seek lands or it pauses, or another version takes the first
+  screen (its timer goes with the old video); the transport keeps Pause. While he drags
   the scrubber the head, the fill and the clock stand at the pointer's frame
   at once, and after his release they stay there until the last seek lands,
   so the head never trails the pointer or steps back.
@@ -261,7 +266,9 @@ shows at once: the host's answer is the note, kept in the item's view
   or the shown version fails, the centred "Couldn't open this file" with
   its reason and Retry (`OpenFailed`); the pane's state line, with Retry,
   only when the version beside it in a compare fails, its reason in his
-  words (`workErrorWords`), never the host's raw line.
+  words, never the host's raw line: the kind hands the pane the reason as
+  it came and the pane words it once, naming the computer
+  (`useFailedWords`).
 
 ## Frame.io (milestone 48)
 

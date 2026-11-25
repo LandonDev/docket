@@ -237,6 +237,11 @@ export function Player({
   const live = useRef({ muted, rate });
   live.current = { muted, rate };
   const attach = (i: number, el: HTMLVideoElement | null): void => {
+    // A new first video (another version) starts with no wait: the old one's timer would put its spinner on this frame.
+    if (i === 0) {
+      clearTimeout(stall.current);
+      setStalled(false);
+    }
     videos.current[i] = el;
     if (!el) return;
     el.muted = live.current.muted;

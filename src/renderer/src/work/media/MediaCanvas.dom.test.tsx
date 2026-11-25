@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FrameTable, MediaNote, MediaVersion, MediaView } from "@shared/contract-work-media";
 import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
-import type { CanvasShell, ReviewAdapter } from "../canvas/kind";
+import type { CanvasShell, ReviewAdapter, StatusLine } from "../canvas/kind";
 
 const host = vi.hoisted(() => ({ view: null as unknown as MediaView, calls: [] as Array<{ method: string; params: Record<string, unknown> }>, viewFails: null as string | null, noteFails: undefined as string | undefined, hold: false }));
 vi.mock("../../lib/connection", async (original) => {
@@ -61,11 +61,12 @@ vi.mock("./segments", async (original) => ({
 
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
+import { StateLine } from "../canvas/CanvasPane";
 import { Bar, Body, selectionChip, stepZoom } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
 import { FEED_FAILED, nativeErrorWords, playWords } from "./Player";
 import { Notes } from "./Notes";
-import { resetMediaStore } from "./store";
+import { loadMedia, resetMediaStore } from "./store";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 3216 };
 const V3: MediaVersion = {
@@ -509,6 +510,42 @@ describe("the media canvas", () => {
     }
   });
 
+  it("opens Comment and Speed inside the player while it is full screen, where the screen draws them", async () => {
+    await mount();
+    const player = document.querySelector<HTMLElement>("[data-media-player]")!;
+    Object.defineProperty(document, "fullscreenElement", { value: player, configurable: true });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Comment at this frame" }));
+      const field = await screen.findByRole("textbox", { name: "Comment" });
+      // The browser draws nothing over a full-screen element: the box is inside it, so Space types where he sees.
+      expect(player.contains(field)).toBe(true);
+      fireEvent.keyDown(field, { key: "Escape" });
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "1×" })));
+      expect(player.contains(await screen.findByRole("menu", { name: "Speed" }))).toBe(true);
+    } finally {
+      Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
+    }
+  });
+
+  it("drops a stall's spinner and its timer when the first video changes, so the new version never shows the old wait", async () => {
+    const V4: MediaVersion = { ...V3, id: "v4", n: 4, name: "trailer v4.mp4" };
+    host.view = { itemId: "item1", kind: "video", versions: [V3, V4], notes: [], mode: "writes", shared: false, rev: 1 };
+    const props = { item: ITEM, source: ITEM.source, env: "local", setState: () => undefined, shell: fakeShell() };
+    const { rerender } = render(<Body {...props} state={{ versionId: "v3" }} />);
+    await screen.findByRole("slider", { name: "Frame" });
+    fireEvent(document.querySelector("video")!, new Event("waiting"));
+    rerender(<Body {...props} state={{ versionId: "v4" }} />);
+    await new Promise((done) => setTimeout(done, 400));
+    expect(document.querySelector("[data-media-stalled]")).toBeNull();
+  });
+
+  it("hands the pane a lost answer as it came, so the pane words it once and names the computer", async () => {
+    const { shell } = await mount();
+    host.viewFails = "No answer in 30s";
+    await act(async () => void (await loadMedia("local", "item1").catch(() => undefined)));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this file", detail: "No answer in 30s" })));
+  });
+
   it("says a copy being made to play as getting it ready, its share at the end, in the frame's place", async () => {
     host.view = { itemId: "item1", kind: "video", versions: [{ ...V3, state: "preparing", plays: [], progress: 0.34 }], notes: [], mode: "writes", shared: false, rev: 1 };
     const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
@@ -555,8 +592,12 @@ describe("the media canvas", () => {
     const shell = fakeShell();
     render(<Body item={ITEM} source={ITEM.source} env="local" state={{ compare: "v2" }} setState={() => undefined} shell={shell} />);
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "trailer v2.mp4 could not be shown" })));
-    const line = shell.statusLine.mock.lastCall![0] as { detail?: string };
-    expect(line.detail).toBeUndefined();
+    // The pane words the reason once (`StateLine`): a raw line shows no detail, only the line's own word.
+    const line = shell.statusLine.mock.lastCall![0] as StatusLine;
+    render(<StateLine line={line} />);
+    const shown = document.querySelector("[data-canvas-state=failed]")!;
+    expect(shown.textContent).toContain("trailer v2.mp4 could not be shown");
+    expect(shown.textContent).not.toContain("ffprobe");
   });
 
   it("hands Ask a stretch as the thread reads it, with its exact frames", () => {

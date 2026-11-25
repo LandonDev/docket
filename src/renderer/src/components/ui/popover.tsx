@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "@renderer/lib/cn";
+import { fullScreenHome } from "@renderer/lib/fullScreenHome";
 
 /** Floating content anchored to its trigger: scales from the anchor
  *  (transform-origin at the source), one surface, one ring, no arrow. */
@@ -31,7 +32,7 @@ function PopoverContent({
     container?: HTMLElement | null;
   }) {
   return (
-    <PopoverPrimitive.Portal container={container}>
+    <PopoverPrimitive.Portal container={container ?? fullScreenHome()}>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

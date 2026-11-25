@@ -9,7 +9,6 @@ import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
-import { workErrorWords } from "../../lib/workErrorWords";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
@@ -149,12 +148,12 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   useEffect(() => {
     // A failure that leaves the body empty says so there (`OpenFailed`); the line is for one that leaves content shown.
     const failed = [shown, other].find((v) => unshowable(v) !== undefined && !(v !== undefined && v === shown && blank(v)));
-    // The host's reason in his words (`workErrorWords`): a raw line drops to the line's own word.
+    // The host's reason as it came: the pane words it once (`useFailedWords`), naming the computer; a raw line drops.
     shell.statusLine(
       failed
-        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: workErrorWords(unshowable(failed)) || undefined, action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
+        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error && view
-          ? { tone: "failed", word: "Couldn't open this file", detail: workErrorWords(error) || undefined, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
+          ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
           : pictureFailed
             ? {
                 tone: "failed",
