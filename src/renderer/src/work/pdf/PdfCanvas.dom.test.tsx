@@ -16,6 +16,7 @@ import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { deliverCite, resetCites } from "./cite";
 import { navOf, resetNavs } from "./nav";
+import { resetKeptPdfs } from "./item";
 import type { PdfEngine } from "./engine";
 import { fakeDoc, fakeEngine, fakePdfHost, field, pdfView } from "./testkit";
 
@@ -90,7 +91,10 @@ beforeEach(async () => {
   resetNavs();
   await new Promise<void>((done) => openMenus(done));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetKeptPdfs();
+});
 
 /** An element once it is there: waitFor retries only on a throw. */
 const found = (selector: string): Promise<HTMLElement> =>

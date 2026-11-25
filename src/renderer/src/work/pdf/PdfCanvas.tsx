@@ -17,6 +17,7 @@ import { onCite } from "./cite";
 import { Column } from "./Column";
 import { pdfjsEngine, type PdfEngine } from "./engine";
 import { SignaturePad } from "./Fields";
+import { onItemsGone } from "../canvas/gone";
 import { linkHost, usePdfItem, type PdfHost } from "./item";
 import { ZOOMS, type Zoom } from "./layout";
 import { navOf, useNav, type PdfNav } from "./nav";
@@ -41,6 +42,10 @@ export interface PdfDeps {
 }
 
 const hosts = new Map<string, PdfHost>();
+// A closed item's host goes with it.
+onItemsGone((ids) => {
+  for (const key of [...hosts.keys()]) if (ids.includes(key.slice(key.indexOf("\n") + 1))) hosts.delete(key);
+});
 function hostFor(env: string, itemId: string): PdfHost {
   const key = `${env}\n${itemId}`;
   let host = hosts.get(key);
@@ -58,7 +63,7 @@ export function pending(fields: readonly PdfField[]): PdfField[] {
 
 export function Body(props: CanvasBodyProps<PdfState> & PdfDeps) {
   const host = props.host ?? hostFor(props.env, props.item.id);
-  const item = usePdfItem(host, props.engine ?? pdfjsEngine);
+  const item = usePdfItem(host, props.engine ?? pdfjsEngine, `${props.env}\n${props.item.id}`);
   return <PdfBody {...props} host={host} pdf={item} />;
 }
 

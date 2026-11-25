@@ -43,6 +43,8 @@ export interface PdfEngine {
    * or wrong.
    */
   open(file: { size: number; read(offset: number, length: number): Promise<Uint8Array>; password?: string; onFail?(message: string): void }): Promise<PdfDoc>;
+  /** Starts loading what the engine draws with, before a file is opened: a body calls it as it mounts. */
+  warm?(): void;
 }
 
 export class PasswordNeeded extends Error {
@@ -59,7 +61,8 @@ const MAX_PIXELS = 16_777_216;
 const READ_CHUNK = 1024 * 1024;
 
 type Pdfjs = typeof import("pdfjs-dist");
-type Loaded = { pdfjs: Pdfjs; worker: InstanceType<Pdfjs["PDFWorker"]>; data: typeof import("./pdfjsData").ShippedData };
+/** pdf.js as a document is opened with it: the window's one worker and the shipped data (a test in node hands in neither). */
+export type Loaded = { pdfjs: Pdfjs; worker?: InstanceType<Pdfjs["PDFWorker"]>; data?: typeof import("./pdfjsData").ShippedData };
 let loading: Promise<Loaded> | null = null;
 
 /**
@@ -149,135 +152,145 @@ function textLayerStyle(): void {
   document.head.appendChild(style);
 }
 
-/** The real engine: pdf.js on the file's bytes, fetched by range as pages need them. */
-export const pdfjsEngine: PdfEngine = {
-  async open({ size, read, password, onFail }) {
-    const { pdfjs, worker, data } = await loadPdfjs();
-    textLayerStyle();
-    const first = await read(0, Math.min(size, READ_CHUNK));
-    const range = new pdfjs.PDFDataRangeTransport(size, first, first.length >= size);
-    // A range pdf.js asked for and never got is never asked again: its pages would wait for good.
-    // So a read that fails twice fails the document, which the body shows with Retry.
-    let closed = false;
-    let fail: (error: Error) => void = () => undefined;
-    const failed = new Promise<never>((_, reject) => (fail = reject));
-    failed.catch(() => undefined);
-    range.requestDataRange = (begin: number, end: number) => {
+/**
+ * Opens a file with pdf.js as `load` hands it over. The file's first frame is asked for beside pdf.js's own load, so
+ * neither waits for the other. pdf.js fetches no range it was not asked for (`disableAutoFetch`): the pages drawn, and
+ * the pages find and a selection read, come by range as they are wanted, never the whole file behind page 1.
+ */
+export async function openPdf(load: () => Promise<Loaded>, { size, read, password, onFail }: Parameters<PdfEngine["open"]>[0]): Promise<PdfDoc> {
+  const [{ pdfjs, worker, data }, first] = await Promise.all([load(), read(0, Math.min(size, READ_CHUNK))]);
+  textLayerStyle();
+  const range = new pdfjs.PDFDataRangeTransport(size, first, first.length >= size);
+  // A range pdf.js asked for and never got is never asked again: its pages would wait for good.
+  // So a read that fails twice fails the document, which the body shows with Retry.
+  let closed = false;
+  let fail: (error: Error) => void = () => undefined;
+  const failed = new Promise<never>((_, reject) => (fail = reject));
+  failed.catch(() => undefined);
+  range.requestDataRange = (begin: number, end: number) => {
+    if (closed) return;
+    void readRange(read, begin, end).then((bytes) => {
       if (closed) return;
-      void readRange(read, begin, end).then((bytes) => {
-        if (closed) return;
-        if (!bytes) {
-          const error = new Error("The host stopped sending this file.");
-          fail(error);
-          onFail?.(error.message);
-          return;
-        }
-        try {
-          range.onDataRange(begin, bytes);
-        } catch {
-          // pdf.js dropped the request (the document closed under it): nothing waits for these bytes.
-        }
-      });
-    };
-    // 256 KB a range, not pdf.js's 64: a file whose page dictionaries are spread through it (a classic xref) needs a quarter of the round trips
-    // to open, though pdf.js may then read most of it before page 1 (34 MB in 4.3 s at 20 MB/s, against 21 MB in 7.1 s at 64 KB).
-    const task = pdfjs.getDocument({ range, worker, password, rangeChunkSize: 262_144, enableXfa: false, disableAutoFetch: false, BinaryDataFactory: data as never });
-    let doc: Awaited<typeof task.promise>;
-    try {
-      doc = await Promise.race([task.promise, failed]);
-    } catch (error) {
+      if (!bytes) {
+        const error = new Error("The host stopped sending this file.");
+        fail(error);
+        onFail?.(error.message);
+        return;
+      }
+      try {
+        range.onDataRange(begin, bytes);
+      } catch {
+        // pdf.js dropped the request (the document closed under it): nothing waits for these bytes.
+      }
+    });
+  };
+  // No range is fetched that nothing asked for. (pdf.js turns its own fetching off for a transport that streams, as this
+  // one does, so it is said here for a reader, and holds if that ever changes.) What can still read most of a file before
+  // page 1 is pdf.js's check of the last page, which reads every page object of a flat page tree (autoFetch.test.ts).
+  // 256 KB a range, not pdf.js's 64: a file whose page dictionaries are spread through it (a classic xref) needs a quarter of the round trips
+  // to open, though pdf.js may then read most of it before page 1 (34 MB in 4.3 s at 20 MB/s, against 21 MB in 7.1 s at 64 KB).
+  const task = pdfjs.getDocument({ range, worker, password, rangeChunkSize: 262_144, enableXfa: false, disableAutoFetch: true, BinaryDataFactory: data as never });
+  let doc: Awaited<typeof task.promise>;
+  try {
+    doc = await Promise.race([task.promise, failed]);
+  } catch (error) {
+    closed = true;
+    void task.destroy();
+    if (error instanceof pdfjs.PasswordException) throw new PasswordNeeded(error.code === pdfjs.PasswordResponses.INCORRECT_PASSWORD);
+    throw error;
+  }
+  const sizes = new Map<number, PageSize>();
+  const texts = new Map<number, Promise<TextRun[]>>();
+  /** Pages pdf.js has loaded: only these have anything to let go. */
+  const loaded = new Set<number>();
+  const pageOf = (n: number) => {
+    loaded.add(n);
+    return doc.getPage(n);
+  };
+  const measure = async (n: number): Promise<PageSize> => {
+    const page = await pageOf(n);
+    const viewport = page.getViewport({ scale: 1 });
+    const got = { width: viewport.width, height: viewport.height };
+    sizes.set(n, got);
+    return got;
+  };
+  await measure(1);
+  return {
+    pages: doc.numPages,
+    size: (n) => sizes.get(n) ?? sizes.get(1)!,
+    measure,
+    async paint(n, host, scale, text, signal) {
+      const page = await pageOf(n);
+      if (signal.aborted) return;
+      const viewport = page.getViewport({ scale: scale * CSS_PER_POINT });
+      sizes.set(n, { width: viewport.width / scale / CSS_PER_POINT, height: viewport.height / scale / CSS_PER_POINT });
+      const dpr = Math.min(globalThis.devicePixelRatio || 1, Math.sqrt(MAX_PIXELS / Math.max(1, viewport.width * viewport.height)));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      canvas.style.display = "block";
+      const job = page.render({ canvas, viewport, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0], annotationMode: pdfjs.AnnotationMode.ENABLE_FORMS });
+      const stop = (): void => job.cancel();
+      signal.addEventListener("abort", stop, { once: true });
+      try {
+        await job.promise;
+      } catch (error) {
+        if (signal.aborted) return;
+        throw error;
+      } finally {
+        signal.removeEventListener("abort", stop);
+      }
+      if (signal.aborted) return;
+      // The new picture replaces the old one only once it is whole, so a zoom never flashes white.
+      host.replaceChildren(canvas);
+      if (!text) return;
+      text.replaceChildren();
+      text.style.setProperty("--total-scale-factor", String(scale * CSS_PER_POINT));
+      const layer = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport });
+      signal.addEventListener("abort", () => layer.cancel(), { once: true });
+      await layer.render().catch(() => undefined);
+    },
+    text(n) {
+      let got = texts.get(n);
+      if (!got) {
+        got = (async () => {
+          const page = await pageOf(n);
+          const viewport = page.getViewport({ scale: 1 });
+          const content = await page.getTextContent();
+          const runs: TextRun[] = [];
+          for (const item of content.items) {
+            if (!("str" in item) || !item.str.trim()) continue;
+            const box = runBox(item.transform as number[], item.width, item.height, viewport);
+            if (box) runs.push({ str: item.str, box });
+          }
+          return runs;
+        })();
+        texts.set(n, got);
+        got.catch(() => texts.delete(n));
+      }
+      return got;
+    },
+    release(n) {
+      // A page never loaded has nothing to free; asking for it would load it.
+      if (!loaded.delete(n)) return;
+      void doc.getPage(n).then(
+        (page) => page.cleanup(),
+        () => undefined,
+      );
+    },
+    destroy() {
       closed = true;
       void task.destroy();
-      if (error instanceof pdfjs.PasswordException) throw new PasswordNeeded(error.code === pdfjs.PasswordResponses.INCORRECT_PASSWORD);
-      throw error;
-    }
-    const sizes = new Map<number, PageSize>();
-    const texts = new Map<number, Promise<TextRun[]>>();
-    /** Pages pdf.js has loaded: only these have anything to let go. */
-    const loaded = new Set<number>();
-    const pageOf = (n: number) => {
-      loaded.add(n);
-      return doc.getPage(n);
-    };
-    const measure = async (n: number): Promise<PageSize> => {
-      const page = await pageOf(n);
-      const viewport = page.getViewport({ scale: 1 });
-      const got = { width: viewport.width, height: viewport.height };
-      sizes.set(n, got);
-      return got;
-    };
-    await measure(1);
-    return {
-      pages: doc.numPages,
-      size: (n) => sizes.get(n) ?? sizes.get(1)!,
-      measure,
-      async paint(n, host, scale, text, signal) {
-        const page = await pageOf(n);
-        if (signal.aborted) return;
-        const viewport = page.getViewport({ scale: scale * CSS_PER_POINT });
-        sizes.set(n, { width: viewport.width / scale / CSS_PER_POINT, height: viewport.height / scale / CSS_PER_POINT });
-        const dpr = Math.min(globalThis.devicePixelRatio || 1, Math.sqrt(MAX_PIXELS / Math.max(1, viewport.width * viewport.height)));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-        canvas.style.display = "block";
-        const job = page.render({ canvas, viewport, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0], annotationMode: pdfjs.AnnotationMode.ENABLE_FORMS });
-        const stop = (): void => job.cancel();
-        signal.addEventListener("abort", stop, { once: true });
-        try {
-          await job.promise;
-        } catch (error) {
-          if (signal.aborted) return;
-          throw error;
-        } finally {
-          signal.removeEventListener("abort", stop);
-        }
-        if (signal.aborted) return;
-        // The new picture replaces the old one only once it is whole, so a zoom never flashes white.
-        host.replaceChildren(canvas);
-        if (!text) return;
-        text.replaceChildren();
-        text.style.setProperty("--total-scale-factor", String(scale * CSS_PER_POINT));
-        const layer = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport });
-        signal.addEventListener("abort", () => layer.cancel(), { once: true });
-        await layer.render().catch(() => undefined);
-      },
-      text(n) {
-        let got = texts.get(n);
-        if (!got) {
-          got = (async () => {
-            const page = await pageOf(n);
-            const viewport = page.getViewport({ scale: 1 });
-            const content = await page.getTextContent();
-            const runs: TextRun[] = [];
-            for (const item of content.items) {
-              if (!("str" in item) || !item.str.trim()) continue;
-              const box = runBox(item.transform as number[], item.width, item.height, viewport);
-              if (box) runs.push({ str: item.str, box });
-            }
-            return runs;
-          })();
-          texts.set(n, got);
-          got.catch(() => texts.delete(n));
-        }
-        return got;
-      },
-      release(n) {
-        // A page never loaded has nothing to free; asking for it would load it.
-        if (!loaded.delete(n)) return;
-        void doc.getPage(n).then(
-          (page) => page.cleanup(),
-          () => undefined,
-        );
-      },
-      destroy() {
-        closed = true;
-        void task.destroy();
-      },
-    };
-  },
+    },
+  };
+}
+
+/** The real engine: pdf.js on the file's bytes, fetched by range as pages need them. */
+export const pdfjsEngine: PdfEngine = {
+  open: (file) => openPdf(loadPdfjs, file),
+  warm: () => void loadPdfjs().catch(() => undefined),
 };
 
 /** Base64 from the host into bytes. */

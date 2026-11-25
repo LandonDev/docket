@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bbox, PdfFieldValue, PdfMode, PdfSignature, PdfView } from "@shared/contract-work-pdf";
 import { registry } from "../../lib/connection";
+import { onItemsGone } from "../canvas/gone";
 import { fromBase64, PasswordNeeded, pdfjsEngine, type PdfDoc, type PdfEngine } from "./engine";
 
 /** The host's side of a PDF item, as its canvas uses it (src/shared/contract-work-pdf.ts). */
@@ -52,14 +53,80 @@ export type DocState =
   | { phase: "password"; wrong: boolean }
   | { phase: "failed"; message: string };
 
-/** The item's view, kept current by the push, and its file opened in the engine at the view's revision. */
+/** A file opened in the engine, at the revision and size it was read at. */
+type Opened = { doc: PdfDoc; rev: string; size: number };
+/** A body's file kept while its tab is not shown: its last view and its open doc. */
+type KeptPdf = Opened & { view: PdfView };
+
+/** How many files of PDF tabs not shown stay open, so a tab shown again draws at once and reads nothing again. */
+export const KEPT_PDFS = 3;
+/** The kept files by `${env}\n${itemId}`, the most recently left last. */
+const keptPdfs = new Map<string, KeptPdf>();
+
+function keepPdf(key: string, kept: KeptPdf): void {
+  keptPdfs.get(key)?.doc.destroy();
+  keptPdfs.delete(key);
+  keptPdfs.set(key, kept);
+  for (const [old, held] of keptPdfs) {
+    if (keptPdfs.size <= KEPT_PDFS) break;
+    held.doc.destroy();
+    keptPdfs.delete(old);
+  }
+}
+// A closed item's file goes with it.
+onItemsGone((ids) => {
+  const gone = new Set(ids);
+  for (const [key, kept] of [...keptPdfs])
+    if (gone.has(key.slice(key.indexOf("\n") + 1))) {
+      kept.doc.destroy();
+      keptPdfs.delete(key);
+    }
+});
+/** For tests: how many files are kept, and none after. */
+export const keptPdfCount = (): number => keptPdfs.size;
+export function resetKeptPdfs(): void {
+  for (const kept of keptPdfs.values()) kept.doc.destroy();
+  keptPdfs.clear();
+}
+
+/**
+ * The item's view, kept current by the push, and its file opened in the engine at the view's revision. pdf.js starts
+ * loading as the body mounts, beside the ask for the view. With `keep` (the item's key), the open file outlives the body:
+ * a body that comes back draws it at once and asks only the view again, and reads the file again only when the view
+ * names another revision.
+ */
 export function usePdfItem(
   host: PdfHost,
   engine: PdfEngine = pdfjsEngine,
+  keep?: string,
 ): { view: PdfView | null; viewError: string | null; doc: DocState; setView(view: PdfView): void; unlock(password: string): void; retry(): void } {
-  const [view, setView] = useState<PdfView | null>(null);
+  // A kept file is the body's again: taken out of the kept ones once the body is up (below).
+  const [kept] = useState(() => (keep ? (keptPdfs.get(keep) ?? null) : null));
+  const [view, setView] = useState<PdfView | null>(kept?.view ?? null);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [doc, setDoc] = useState<DocState>({ phase: "loading" });
+  const [doc, setDoc] = useState<DocState>(kept ? { phase: "ready", doc: kept.doc } : { phase: "loading" });
+  /** The file open now, which the body lets go of (or keeps) as it goes. */
+  const current = useRef<Opened | null>(kept);
+  const shown = useRef(view);
+  useEffect(() => {
+    shown.current = view;
+  }, [view]);
+  useEffect(() => {
+    engine.warm?.();
+  }, [engine]);
+  useEffect(() => {
+    // The body's file is no longer kept while the body shows it (and again after React's checks mount it twice).
+    if (keep && current.current) {
+      const back = keptPdfs.get(keep);
+      if (back?.doc === current.current.doc) keptPdfs.delete(keep);
+    }
+    return () => {
+      const open = current.current;
+      if (!open) return;
+      if (keep && shown.current) keepPdf(keep, { ...open, view: shown.current });
+      else open.doc.destroy();
+    };
+  }, [keep]);
   const [password, setPassword] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   // Bumped by Retry after the view itself did not come: the host is asked again.
@@ -83,8 +150,13 @@ export function usePdfItem(
   const size = view?.size;
   useEffect(() => {
     if (rev === undefined || size === undefined) return;
+    const open = current.current;
+    // The file open already is the one this revision names (a kept one, a view pushed again): nothing is read.
+    if (open && open.rev === rev && open.size === size && password === undefined && attempt === 0) return setDoc({ phase: "ready", doc: open.doc });
     let live = true;
     let opened: PdfDoc | null = null;
+    current.current = null;
+    open?.doc.destroy();
     setDoc({ phase: "loading" });
     // A version the host no longer keeps (the file changed and was opened again elsewhere): open again, which reloads at the new rev.
     const read = (offset: number, length: number): Promise<Uint8Array> =>
@@ -99,6 +171,7 @@ export function usePdfItem(
       (got) => {
         if (!live) return got.destroy();
         opened = got;
+        current.current = { doc: got, rev, size };
         setDoc({ phase: "ready", doc: got });
       },
       (error: unknown) => {
@@ -109,7 +182,8 @@ export function usePdfItem(
     );
     return () => {
       live = false;
-      opened?.destroy();
+      // (the file open stays with the body, which lets it go or keeps it as it goes; one left behind by a new revision goes when that one opens)
+      if (opened && current.current?.doc !== opened) opened.destroy();
     };
   }, [host, engine, rev, size, password, attempt]);
 
