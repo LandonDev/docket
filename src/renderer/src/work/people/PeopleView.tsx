@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { makeFunctionReference } from "convex/server";
 import type { ContextChip } from "@shared/work";
 import { formatDue, formatStamp, formatTime } from "work-kit/views/lib/format";
@@ -23,6 +23,8 @@ import { downOf } from "../shell/lifeosDown";
 import { keepPlace, keptPlace } from "../shell/place";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
+import { useMinute } from "../tasks/minute";
+import { useKeptRows, WindowedRows, type RowPlace } from "../windowed";
 import { faceMap, findPeople, linksFor, linkWords, pageIsQuiet, personFor, pictureOf, type DirectoryPerson, type FaceRow, type PageEvent, type PersonPage, type SharedTable } from "./model";
 
 /**
@@ -282,28 +284,48 @@ function moveBetweenRows(e: KeyboardEvent<HTMLElement>): void {
   else if (e.key === "ArrowUp") (e.currentTarget.closest('[role="region"]') ?? document).querySelector<HTMLInputElement>('[role="search"] input')?.focus();
 }
 
-export function PeopleList({ workspaceId, rows, faces, now = Date.now() }: { workspaceId: string; rows: readonly DirectoryPerson[]; faces: ReadonlyMap<string, string>; now?: number }) {
+export function PeopleList({ workspaceId, rows, faces, now }: { workspaceId: string; rows: readonly DirectoryPerson[]; faces: ReadonlyMap<string, string>; now?: number }) {
   const { query } = usePlace(workspaceId);
-  const shown = useMemo(() => findPeople(rows, query), [rows, query]);
+  // A push answers the whole directory again: each person who holds what they held stays the same object (M12).
+  const kept = useKeptRows(rows, idOfPerson)!;
+  const shown = useMemo(() => findPeople(kept, query), [kept, query]);
+  const minute = useMinute();
+  const at = now ?? minute;
   if (!rows.length) return <EmptyState title="No people" />;
   if (!shown.length) return <EmptyState title="No matches" action={{ label: "Clear search", onClick: () => setPlace(workspaceId, { query: "" }) }} />;
   return (
     <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] px-6 py-5">
-      {shown.map((p) => (
-        <div key={p._id} role="listitem">
-          <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
-            <Face name={p.name} picture={pictureOf(p.emails, faces)} size="row" />
-            <span className="flex min-w-0 flex-1 items-baseline gap-1">
-              <span className="shrink-0 truncate text-foreground">{p.name}</span>
-              {p.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{p.emails[0]}</span> : null}
-            </span>
-            {p.lastAt ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatStamp(p.lastAt, now)}</span> : null}
-          </ItemButton>
-        </div>
-      ))}
+      <WindowedRows
+        count={shown.length}
+        rowHeight={32}
+        getKey={(index) => shown[index]!._id}
+        sizeKey="work-people-list"
+        render={(index, place) => {
+          const p = shown[index]!;
+          return <PersonRow key={p._id} workspaceId={workspaceId} person={p} picture={pictureOf(p.emails, faces)} stamp={p.lastAt ? formatStamp(p.lastAt, at) : null} place={place} />;
+        }}
+      />
     </div>
   );
 }
+
+const idOfPerson = (p: DirectoryPerson): string => p._id;
+
+/** One person's row, drawn again only when what it shows changed: the minute's tick hands it the same stamp words. */
+const PersonRow = memo(function PersonRow({ workspaceId, person: p, picture, stamp, place }: { workspaceId: string; person: DirectoryPerson; picture: string | undefined; stamp: string | null; place: RowPlace }) {
+  return (
+    <div role="listitem" {...place}>
+      <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
+        <Face name={p.name} picture={picture} size="row" />
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className="shrink-0 truncate text-foreground">{p.name}</span>
+          {p.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{p.emails[0]}</span> : null}
+        </span>
+        {stamp ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{stamp}</span> : null}
+      </ItemButton>
+    </div>
+  );
+});
 
 // ── A person's page ──
 
