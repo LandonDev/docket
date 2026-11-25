@@ -8,7 +8,7 @@ import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { asGivenComputer, standUpView, usePress, usePressNamed, ViewAt } from "../kit.preview";
 import { setLifeosStatus } from "../shell/lifeos";
 
-type State = "list" | "proposed" | "runs-failed" | "empty" | "failed" | "form" | "edit" | "given" | "lifeos";
+type State = "list" | "proposed" | "runs-failed" | "empty" | "failed" | "form" | "edit" | "given" | "lifeos" | "lifeos-connecting";
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
@@ -62,7 +62,7 @@ export function RoutinesPreview({ state = "list" }: { state?: State }) {
   if (!ready) {
     ready = true;
     if (state === "given") asGivenComputer({ on: ["local"] });
-    const routines = state === "empty" ? [] : state === "proposed" ? [PROPOSED, ...ROUTINES] : state === "lifeos" ? [{ ...ROUTINES[1]!, waiting: "Waiting on LifeOS", nextAt: null, createdAt: 0 }, ROUTINES[0]!, ...ROUTINES.slice(2)] : ROUTINES;
+    const routines = state === "empty" ? [] : state === "proposed" ? [PROPOSED, ...ROUTINES] : state === "lifeos" || state === "lifeos-connecting" ? [{ ...ROUTINES[1]!, waiting: "Waiting on LifeOS", nextAt: null, createdAt: 0 }, ROUTINES[0]!, ...ROUTINES.slice(2)] : ROUTINES;
     standUpView("routines", {}, (method) => {
       if (method === "work.routines.list") {
         if (state === "failed") throw new Error("The box did not answer");
@@ -78,6 +78,8 @@ export function RoutinesPreview({ state = "list" }: { state?: State }) {
     });
     // The host's own LifeOS signed out: Routines reads no LifeOS of its own, so its view stands, and the routine says why.
     if (state === "lifeos") setLifeosStatus("local", { lifeos: { state: "signed-out" }, keys: [] });
+    // Still connecting: the routine's detail says the one wait, with no press (council round 11).
+    if (state === "lifeos-connecting") setLifeosStatus("local", { lifeos: { state: "connecting" }, keys: [] });
   }
   // New routine is the header's own press; a routine's form is its Edit.
   usePress(state === "form" ? "[data-view-heading] ~ button" : null, 80);

@@ -8,7 +8,7 @@ import type { AgendaEvent } from "../tasks/client";
 import { Empty, Events, StepForm } from "./ClashDialog";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { answerAs } from "../kit.preview";
-import { DownLine } from "../shell/DownLine";
+import { DownLine, HostLine } from "../shell/DownLine";
 import { registry } from "../../lib/connection";
 
 /**
@@ -99,6 +99,16 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   // The box signed out of LifeOS: its line (`DownLine`), the computer named, with the rule's press.
   const hostDown = state === "hostdown" || state === "hostdown-step" ? <DownLine data-host-down session={{ environmentId: "local", sector: null, client: null, state: "signed-out" }} className="text-xs" /> : null;
   if (hostDown) Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  // The box's LifeOS still connecting with a step open: the wait, no press, the note kept and Send held (council round 11).
+  if (state === "hostwait-step") {
+    Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+    const wait = <HostLine data-host-down live={{ environmentId: "local", down: null, waits: true }} className="text-xs" />;
+    return (
+      <Box title={clashTitle(CLASHES.overlap!)} day={day}>
+        <StepForm clash={CLASHES.overlap!} step={{ side: "a", way: "decline" }} pending={false} down={wait} onBack={noop} onSend={noop} />
+      </Box>
+    );
+  }
   if (state === "hostdown-step")
     return (
       <Box title={clashTitle(CLASHES.overlap!)} day={day}>

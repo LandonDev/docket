@@ -21,7 +21,7 @@ import { stretchOf } from "./model";
 import type { Player } from "./player";
 import { SAMPLE_NOTES, SAMPLE_SEGMENTS, sampleMeeting } from "./sample";
 
-export type PreviewMoment = "read" | "notes" | "stretch" | "tasks" | "tasks-down" | "busy" | "empty" | "long" | "error";
+export type PreviewMoment = "read" | "notes" | "stretch" | "tasks" | "tasks-down" | "tasks-connecting" | "busy" | "empty" | "long" | "error";
 
 // The kind's chunk is lazy: landed before the first render, so a static page draws it.
 void CANVAS.meeting.chunk.load();
@@ -60,6 +60,7 @@ function meetingFor(moment: PreviewMoment): Meeting | null {
     case "notes":
     case "tasks":
     case "tasks-down":
+    case "tasks-connecting":
       return sampleMeeting({ notes: SAMPLE_NOTES });
     case "busy":
       return sampleMeeting({ status: "transcribing", segments: SAMPLE_SEGMENTS.slice(0, 4), progress: { phase: "words", done: T(14, 0), total: T(42, 10) } });
@@ -137,9 +138,10 @@ export function MeetingPreview({ moment = "read" }: { moment?: PreviewMoment }) 
   };
   if (meeting) seedMeeting("local", { ...meeting, itemId: item.id, sessionId });
   // `tasks-down`: tasks wait while the box's LifeOS is signed out, so none can be filed (council round 10).
-  if (moment === "tasks-down") {
+  // `tasks-connecting`: the same while it is still connecting: the wait, with no press (council round 11). Shot alone, with --props.
+  if (moment === "tasks-down" || moment === "tasks-connecting") {
     Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
-    setLifeosStatus("local", { lifeos: { state: "signed-out" }, keys: [] });
+    setLifeosStatus("local", { lifeos: { state: moment === "tasks-down" ? "signed-out" : "connecting" }, keys: [] });
   }
   const kept: MeetingState = { tab: moment === "notes" ? "notes" : "transcript", find: moment === "long" ? { query: "stipend", index: 1 } : null };
   keepState(item.id, kept);
