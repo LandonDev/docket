@@ -56,6 +56,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     // Trash's date column: when each row was deleted, its host's own record (files/trash.ts `deleted_at`).
     ["Deleted", "read"],
   ],
+  [`${R}/files/fileSession.ts`]: [
+    // A recovered draft's text put on his clipboard here.
+    ["Copied", "local"],
+  ],
   [`${R}/files/fileText.ts`]: [
     // A save the host refused, or his window's own ask for it failed: its answer, in its words.
     ["`Not saved. ${said[0]!.toUpperCase()}${said.slice(1)}.`", "answer"],

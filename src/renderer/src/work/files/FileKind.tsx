@@ -5,6 +5,7 @@ import { extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { copyText } from "../../lib/clipboard";
 import { draftStore, openUrl } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -59,6 +60,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
         request: (method, params) => link.request(method, params),
         saved: (line) => shellNow.current.saved?.(line),
         say: (text) => void loadToast().then((toast) => toast.message(text)),
+        copy: copyText,
         ...(drafts ? { drafts } : {}),
       },
       { workspaceId, itemId: item.id, source, name: item.title, holder: env },

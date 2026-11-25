@@ -468,6 +468,18 @@ describe('a file that changed on its computer', () => {
     expect(readFileSync(mine, 'utf8')).toBe('mine, again')
   })
 
+  it("Keep Both of a recovered text draft keeps its words beside the file there, and the tab stays on the file", async () => {
+    const { path, copy, tabId } = await openFar('Notes.md', 'ours')
+    // Another window saved the copy since the draft was made: the draft's own bytes go beside the file, by its holder.
+    await editorSaves(copy, 'another window')
+    await settled()
+    const got = await call<{ copy: { name: string } }>('work.files.write', { ref: { at: 'file', host: HOST, path: copy }, text: 'my draft', version: 'an old version', copy: true })
+    expect(got.copy.name).toBe('Notes (mine).md')
+    expect(readFileSync(join(mac.team, 'General', 'Notes (mine).md'), 'utf8')).toBe('my draft')
+    expect(readFileSync(path, 'utf8')).toBe('another window')
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)).toMatchObject({ name: 'Notes.md', copyOf: { host: MAC, path } })
+  })
+
   it('Reload reads the file into the copy and drops what was not sent', async () => {
     const { path, copy, tabId } = await openFar('Roster.xlsx', 'ours')
     writeFileSync(path, 'theirs')

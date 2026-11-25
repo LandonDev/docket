@@ -2466,7 +2466,10 @@ over a file that changed there.
   2:14 PM were not saved" with Restore (the draft in the editor, sent by its base through `work.files.write` as any
   save, so the door's version, fence and hold checks are the live edit's) and Discard; over a base the file no longer
   is, "Edits from 2:14 PM were not saved. The file changed since" with Keep Both (written beside the file under its
-  keep-both name, `copy: true`, never over the newer file) and Discard. The other kinds journal through one helper,
+  keep-both name, `copy: true`, never over the newer file; in a Files tab's copy of another computer's file the
+  draft's own bytes go beside the file there through its holder's keep-both make, `deliver`, and the tab stays on the
+  file) and Discard. A Keep Both nowhere would make gives way to Copy Text (his clipboard), the draft kept until he
+  lets it go. The other kinds journal through one helper,
   `DraftJournal` (work/canvas/drafts.ts: the newest body under its base, the older base's dropped, all dropped once
   answered): a sheet, a deck's open box and a document (below; work-sheets.md "The canvas", work-slides.md
   `edit/session.ts`, work-docs.md "The socket"). Edits the host refused for good, a sheet's batch a conflict over a

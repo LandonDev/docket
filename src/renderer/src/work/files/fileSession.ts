@@ -49,6 +49,8 @@ export interface FileSessionHost {
   saved(line: SavedLine | null): void;
   /** said once, outside the line: his text was kept as a copy */
   say?(text: string): void;
+  /** his clipboard: a draft no copy could keep goes there on Copy Text */
+  copy?(text: string): Promise<void>;
   now?(): number;
   /** this computer's draft store (native.ts `draftStore`); absent where there is none (a browser) */
   drafts?: DraftsPort;
@@ -121,6 +123,8 @@ export class FileSession {
   private journaled: DraftKey | null = null;
   /** drafts found on first open, offered one at a time, newest first */
   private offers: Draft[] = [];
+  /** the offered draft whose Keep Both the holder could not make: Copy Text takes its place */
+  private unkept: Draft | null = null;
   private looked = false;
 
   constructor(
@@ -246,7 +250,10 @@ export class FileSession {
       return this.host.saved({
         state: "conflict",
         detail: same ? `Edits from ${when} were not saved` : `Edits from ${when} were not saved. The file changed since`,
-        actions: [same ? { id: "restore", label: "Restore", run: () => this.restore() } : { id: "keep", label: "Keep Both", run: () => this.keepDraft() }, { id: "discard", label: "Discard", run: () => this.discardDraft() }],
+        actions: [
+          same ? { id: "restore", label: "Restore", run: () => this.restore() } : this.unkept === offer && this.host.copy ? { id: "copy", label: "Copy Text", run: () => this.copyDraft() } : { id: "keep", label: "Keep Both", run: () => this.keepDraft() },
+          { id: "discard", label: "Discard", run: () => this.discardDraft() },
+        ],
       });
     }
     if (this.conflicted) {
@@ -450,6 +457,21 @@ export class FileSession {
       if (this.offering === d) this.nextOffer();
     } catch (err) {
       this.host.say?.(`Not kept: ${textOf(err)}`);
+      // Nowhere would keep it: his words are still his to copy, never stranded behind a press that fails again.
+      this.unkept = d;
+      if (this.offering === d) this.line();
+    }
+  }
+
+  /** The offered draft's text to his clipboard; the draft stays offered until he lets it go. */
+  async copyDraft(): Promise<void> {
+    const d = this.offering;
+    if (!d || d.body.kind !== "text" || !this.host.copy) return;
+    try {
+      await this.host.copy(d.body.text);
+      this.host.say?.("Copied");
+    } catch (err) {
+      this.host.say?.(`Not copied: ${textOf(err)}`);
     }
   }
 

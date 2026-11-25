@@ -483,6 +483,33 @@ describe("drafts survive a crash, a close and a link drop", () => {
     expect(await after.kept()).toEqual([]);
   });
 
+  it("offers Copy Text in Keep Both's place when the holder cannot keep the draft, and keeps the draft until he lets it go", async () => {
+    const before = draftsAt();
+    const h = standIn("first\n", { drafts: before.port });
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("mine\n");
+    await h.fire();
+    h.theirs("theirs, later\n");
+    await before.store.settled();
+    const after = draftsAt(before.dir, 2);
+    const again = standIn("", { drafts: after.port, file: h.file });
+    const copied: string[] = [];
+    const host = (again.session as unknown as { host: FileSessionHost }).host;
+    host.copy = async (text) => void copied.push(text);
+    const request = host.request;
+    host.request = async (method, params) => (method === "work.files.write" && params.copy ? Promise.reject(new Error("The other computer did not keep the copy.")) : request(method, params));
+    await again.session.load();
+    await again.lines.at(-1)!.actions![0]!.run();
+    expect(again.said).toEqual(["Not kept: The other computer did not keep the copy."]);
+    expect(labels(again.lines.at(-1))).toEqual(["Copy Text", "Discard"]);
+    await again.lines.at(-1)!.actions![0]!.run();
+    expect(copied).toEqual(["mine\n"]);
+    expect(again.said.at(-1)).toBe("Copied");
+    await after.store.settled();
+    expect((await after.kept()).map((x) => x.body.text)).toEqual(["mine\n"]);
+  });
+
   it("drops a draft the file already holds (its save landed, its answer did not), and one he discards", async () => {
     const before = draftsAt();
     before.port.put({ workspaceId: "w1", holder: "box", file: JSON.stringify({ at: "file", host: "box", path: "/w/Notes.md" }), base: "v0", name: "Notes.md", at: AT(13, 0), body: { kind: "text", text: "first\n", bom: false, crlf: false } });

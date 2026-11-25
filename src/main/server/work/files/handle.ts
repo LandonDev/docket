@@ -20,7 +20,7 @@ import { isStay, recordStay, reopenStay, stayDiscarded, staysOf } from './copySt
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
-import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyDeleted, copyFolderFor, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack, type ShownWrites } from './copies'
+import { admitOwner, backsOf, copiesMoved, copyAt, deliver, copyBack, copyClosing, copyDeleted, copyFolderFor, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack, type ShownWrites } from './copies'
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { bodyOfAsync, keepBodyHash } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
@@ -791,7 +791,7 @@ async function readCopy(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref:
   return { ...(await readFile({ roots: [dirname(path)] }, path, p.offset, p.length, p.version)), ...(saving ? {} : { locked: COPY_LOCKED }) }
 }
 const COPY_LOCKED = 'This is a copy. Changes are made where the file is kept.'
-const COPY_KEEP_THERE = 'This copy changed here. Reload it, then make your change again.'
+const COPY_NOT_KEPT = 'The other computer did not keep the copy.'
 
 /** An editor's save of a text file (`work.files.write`): through the door as `edit`, then by version. */
 async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; text: string; version: string; tried?: string[]; copy?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string, signal?: AbortSignal): Promise<FileSaved> {
@@ -802,7 +802,14 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
   if (saving) {
     admitCaller(ctx, by, p.workspaceId)
     admitOwner(by, saving)
-    if (p.copy) throw new Error(COPY_KEEP_THERE)
+    if (p.copy) {
+      // A recovered draft's Keep Both: its own bytes, not the copy's, beside the file on its computer by the holder's
+      // keep-both make (`deliver`); the tab stays on the file.
+      const got = await deliver(ctx, saving, data, true)
+      if (!('copy' in got)) throw new Error(COPY_NOT_KEPT)
+      const ref: CanvasSource = { at: 'file', host: saving.host, path: got.copy.path }
+      return { copy: { key: refKey(ref), ref, folder: null, name: got.copy.name, kind: kindOfEntry(got.copy.name).kind } }
+    }
     return saveFile({ roots: [saving.dir] }, refKey({ at: 'file', host: ctx.host, path: saving.copy }), saving.copy, data, p.version, p.tried)
   }
   if (p.copy) {
