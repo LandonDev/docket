@@ -12,7 +12,8 @@ import { connectingWords, lifeosDownWords } from "../shell/lifeosWords";
 
 /** One host as the page knows it: still checking (`silent`: after a check it did not answer), its rows, not linked now, or its refusal. */
 export type HostView =
-  | { id: string; name: string; status: "checking"; report?: HealthReport; silent?: boolean }
+  /** `failed`: the host's last check failed and it is asked again: its Hosts row stands, its Retry spinning, until the answer */
+  | { id: string; name: string; status: "checking"; report?: HealthReport; silent?: boolean; failed?: { error?: string } }
   | { id: string; name: string; status: "ready"; report: HealthReport }
   | { id: string; name: string; status: "offline" }
   | { id: string; name: string; status: "failed"; error?: string; silent?: boolean; report?: HealthReport };
@@ -110,9 +111,9 @@ export function checkFailure(words: string): { word: string; error?: string; sil
   return silent ? { word: "Did not answer", silent } : { word: "Not checked", silent, ...(words ? { error: words } : {}) };
 }
 
-/** The hosts that could not be checked: offline, or refused. */
+/** The hosts that could not be checked: offline, or refused, and one asked again after a failed check, until it answers. */
 export function unchecked(hosts: readonly HostView[]): HostView[] {
-  return hosts.filter((h) => h.status === "offline" || h.status === "failed");
+  return hosts.filter((h) => h.status === "offline" || h.status === "failed" || (h.status === "checking" && !!h.failed));
 }
 
 /** A row's state in the status vocabulary: the glyph and tone StatusMark gives, with this page's own word. */

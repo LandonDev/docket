@@ -277,6 +277,35 @@ describe("Connections", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  /** Council round 10 (Sol Settings 1, Opus Settings 2): the Hosts row vanished while its check ran, and Check again spun. */
+  it("keeps a Hosts row in place while its Retry checks, spinning that Retry alone, and a new cause replaces the reason", async () => {
+    let answer: (err: Error) => void = () => {};
+    let asks = 0;
+    const request = vi.fn(() => (++asks === 1 ? Promise.reject(new Error("Work is off on this host")) : new Promise((_, no) => (answer = no))));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(
+      <Page title="Connections">
+        <ConnectionsPage />
+      </Page>,
+    );
+    await settle();
+    const retry = () => document.querySelector<HTMLButtonElement>("[data-host-retry]")!;
+    expect(retry().className).toContain("secondary");
+    fireEvent.click(retry());
+    await settle();
+    // The row stands, its words as they were, its Retry spinning; Check again does not spin for it.
+    expect(screen.getByText("Not checked")).toBeTruthy();
+    expect(screen.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
+    expect(retry().disabled).toBe(true);
+    expect(retry().querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Check again" }).querySelector("[data-busy]")).toBeNull();
+    await act(async () => answer(new Error("No answer in 4 s")));
+    await settle();
+    expect(screen.getByText("Did not answer")).toBeTruthy();
+    expect(screen.queryByText(/Work is off/)).toBeNull();
+    expect(retry().disabled).toBe(false);
+  });
+
   it("says a host that did not answer once, with no detail that says it again", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn(async () => Promise.reject(new Error("No answer in 4 s"))) } as never);
     render(<ConnectionsPage />);

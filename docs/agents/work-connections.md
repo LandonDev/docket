@@ -40,12 +40,14 @@ while Work is on for some host).
   did answer: it is "Not checked" with its reason in his words
   (`workErrorWords`) and Retry; only one that ran out of time is "Did not
   answer", with no reason after the word, which would only say it again
-  (`checkFailure`).
+  (`checkFailure`). That Retry has the LifeOS rows' weight (secondary); while
+  its check runs the row stays as it was and its Retry spins, not Check
+  again, and the answer's cause replaces the reason.
 - A LifeOS row that names a down state (`HealthRow.lifeos`) is worded by
   the window in the rule's words, its computer named (`lifeosLine`): "Not
   signed in to LifeOS on the box", "The LifeOS sign-in on the box waits for
-  your approval", "LifeOS refused the box's sign-in", "The box is still
-  connecting to LifeOS", "LifeOS did not answer the box. Still trying since
+  your approval", "LifeOS refused the box's sign-in", "LifeOS is still
+  connecting on the box", "LifeOS did not answer the box. Still trying since
   2:02 PM" on the sign-in row, "LifeOS did not answer Mac" on LifeOS answers.
   Once the page lists more than one host every LifeOS row names its
   computer once: in that line, else in its title ("LifeOS on Mac", "Agents'

@@ -40,7 +40,8 @@ export function ConnectionsPage() {
   const [views, setViews] = useState<Record<string, HostView>>({});
 
   const checkHost = useCallback(async (id: string, name: string): Promise<void> => {
-    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}) } }));
+    // A host whose check failed keeps its Hosts row while it is asked again: its Retry spins in place.
+    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}), ...failedOf(all[id]) } }));
     let next: HostView;
     try {
       const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", {}), CHECK_DEADLINE_MS);
@@ -53,7 +54,10 @@ export function ConnectionsPage() {
   }, []);
 
   const linked = (id: string): boolean => statuses.get(id)?.transport === "open";
+  // Check again spins only for a round it began (the page's first, or its own press): a Hosts row's Retry spins itself.
+  const [round, setRound] = useState(true);
   const checkAll = (): void => {
+    setRound(true);
     for (const host of hosts) if (linked(host.id)) void checkHost(host.id, host.name);
   };
 
@@ -73,13 +77,16 @@ export function ConnectionsPage() {
 
   const shown: HostView[] = hosts.map((h) => (linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }));
   const checking = shown.some((h) => h.status === "checking");
+  useEffect(() => {
+    if (!checking) setRound(false);
+  }, [checking]);
   // With no host linked there is nothing to ask: Check again is off, and each host's row says it is offline.
   const none = !shown.some((h) => h.status !== "offline");
   return (
     <>
       <PageActions>
         <Button variant="ghost" size="sm" disabled={checking || none} onClick={checkAll}>
-          <BusyLabel busy={checking} label="Check again" />
+          <BusyLabel busy={checking && round} label="Check again" />
         </Button>
       </PageActions>
       <ConnectionsView hosts={shown} onRecheck={(id) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id)} />
@@ -109,6 +116,8 @@ function LifeosWatch({ environmentId, onChange }: { environmentId: string; onCha
 
 const viewReport = (view: HostView | undefined): HealthReport | undefined => (view && "report" in view ? view.report : undefined);
 /** A host whose last check went unanswered, or that is asked again after one. */
+const failedOf = (view: HostView | undefined): { failed?: { error?: string } } =>
+  view?.status === "failed" ? { failed: view.error ? { error: view.error } : {} } : view?.status === "checking" && view.failed ? { failed: view.failed } : {};
 const wasSilent = (view: HostView | undefined): boolean => (view?.status === "failed" || view?.status === "checking") && !!view.silent;
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -141,9 +150,10 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
             host.status === "offline" ? (
               <PageRow key={host.id} title={host.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
             ) : (
-              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word={host.status === "failed" && !host.silent ? "Not checked" : "Did not answer"} detail={host.status === "failed" ? host.error : undefined} />}>
-                <Button variant="ghost" size="sm" onClick={() => onRecheck(host.id)}>
-                  Retry
+              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in host && host.silent ? "Did not answer" : "Not checked"} detail={host.status === "failed" ? host.error : host.status === "checking" ? host.failed?.error : undefined} />}>
+                {/* The row's own press, at the LifeOS rows' weight; it spins while its check runs, and a new cause replaces the reason. */}
+                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={host.status === "checking"} onClick={() => onRecheck(host.id)}>
+                  <BusyLabel busy={host.status === "checking"} label="Retry" />
                 </Button>
               </PageRow>
             ),
