@@ -1,14 +1,18 @@
 import { existsSync, readdirSync } from 'node:fs'
 import type { Template } from '../../src/shared/work/templates'
 import { holds, openRow } from './lib/files'
+import { revealView } from './lib/more'
 import { fileAt, selectFolderTab, showPlace } from './lib/place'
 import { journey, step } from './lib/record'
+import type { Window } from './lib/window'
 
 const STARTER = 'Meeting notes'
 const VALUE = 'Practice in the park'
 const SAVED = 'Park meeting form'
 const SHELF = '[data-templates-view]'
 const DIALOG = '[role="dialog"]'
+/** Templates sits under the Work column's More fold: the fold is opened for as long as the view is waited for. */
+const openTemplates = async (page: Window): Promise<void> => (await revealView(page, 'button', 'Templates'), await page.press('button', 'Templates'))
 
 export default journey({
   id: 'J28',
@@ -19,7 +23,7 @@ export default journey({
     step('Choose Meeting notes and fill the requested Meeting field', async (context) => {
       await showPlace(context)
       const { page } = context.pair
-      await page.press('button', 'Templates')
+      await openTemplates(page)
       await page.clickOn(SHELF + ' button', STARTER)
       let field: string | undefined
       await page.until('the Meeting field in the template dialog', 12_000, async () => (field = await page.eval<string>(`[...document.querySelectorAll('${DIALOG} label')].find(l => l.textContent.trim() === 'Meeting')?.htmlFor`)))
@@ -31,7 +35,7 @@ export default journey({
     }),
     step('Pick Edit a copy from the starter’s menu', async ({ pair, workspace }) => {
       const { page } = pair
-      await page.press('button', 'Templates')
+      await openTemplates(page)
       await page.until('the starter tile', 12_000, () => page.centre(SHELF + ' button', STARTER))
       const at = await page.centre(SHELF + ' button', STARTER)
       if (!at) throw new Error('Meeting notes is absent from the shelf')
@@ -56,7 +60,7 @@ export default journey({
       await page.key('Control+a')
       await page.typeKeys(SAVED)
       await page.press('button', 'Save')
-      await page.press('button', 'Templates')
+      await openTemplates(page)
       await page.until('the saved template tile', 15_000, () => page.centre(SHELF + ' button', SAVED))
     }),
     step('end: the saved template and the starter copy are on the host and the copy is open', async ({ pair, workspace }) => {
