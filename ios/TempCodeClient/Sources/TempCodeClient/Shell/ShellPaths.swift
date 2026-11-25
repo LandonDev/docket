@@ -19,7 +19,7 @@ public enum ShellPaths {
             return lifePlaces.contains(place) ? .detail : .sidebar
         case .workspace, .archivedThreads, .archivedProjects, .outbox, .digest, .computers, .folder:
             return .sidebar
-        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .prep, .clash, .filesFile, .msformAnswers:
+        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .lifeProject, .prep, .clash, .filesFile, .msformAnswers:
             return .detail
         }
     }
@@ -29,7 +29,7 @@ public enum ShellPaths {
     /// project's shell and a workspace are Work's when the lists say so (`isWork`).
     public static func tab(of route: Route, isWork: (Route) -> Bool) -> AppTab {
         switch route {
-        case .place, .outbox, .digest, .computers, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .prep, .clash, .folder, .filesFile, .msformAnswers:
+        case .place, .outbox, .digest, .computers, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .lifeProject, .prep, .clash, .folder, .filesFile, .msformAnswers:
             return .work
         case .thread, .project, .workspace:
             return isWork(route) ? .work : .home
@@ -67,6 +67,8 @@ public enum ShellPaths {
         // A meeting's page and a clash are reached from Today's rows: from outside, Back is Today.
         if case .prep = route { return .place(.today) }
         if case .clash = route { return .place(.today) }
+        // A project's page is reached from Today's Due rows.
+        if case .lifeProject = route { return .place(.today) }
         // A folder or a file named from outside stands on Files.
         if case .folder = route { return .place(.files) }
         if case .filesFile = route { return .place(.files) }

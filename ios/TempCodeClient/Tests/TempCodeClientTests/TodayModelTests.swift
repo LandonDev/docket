@@ -275,4 +275,25 @@ struct TodayModelTests {
         let page = TodayModel.Page.day(blocks: [.section(section)], offline: [], keys: [])
         #expect(TodayModel.workListLine(page, now: Self.at(24, 9), calendar: Self.cal) == "12 due, 10 late")
     }
+
+    // MARK: - the projects' names known (council 9: Opus 4.1, Sol 4)
+
+    @Test func `a sector's names are known as the desktop's known says, and a known sector with no such project says none`() {
+        let jobs = ["purdue", "ref", "hypixel"]
+        // The whole session's names came and its cover is in: every job's sector but Hypixel's, read through the Mac's own
+        // session whose names are still out.
+        #expect(TodaySources.namesKnown(whole: true, cover: .sectors(["purdue", "ref"]), jobs: jobs, unsure: ["hypixel"], came: []) == ["purdue", "ref"])
+        // Once Hypixel's own names came, it is known too.
+        #expect(TodaySources.namesKnown(whole: true, cover: .sectors(["purdue", "ref"]), jobs: jobs, unsure: [], came: ["hypixel"]) == ["hypixel", "purdue", "ref"])
+        // The cover still out: nothing is known whole, so every project opens by its id.
+        #expect(TodaySources.namesKnown(whole: true, cover: nil, jobs: jobs, unsure: [], came: []) == [])
+        // The whole session's names failed: a narrowed session's names that came are merged and known alone.
+        #expect(TodaySources.namesKnown(whole: false, cover: .all, jobs: jobs, unsure: [], came: ["hypixel"]) == ["hypixel"])
+        // So a Hypixel task in a project keeps Open project by id while its job's names are out.
+        let task = TodaySources.Task(id: "h1", title: "Cut the trailer", sector: "hypixel", projectId: "proj-h")
+        let out = TodaySources.ProjectNames(rows: [TodaySources.Project(id: "proj-p", name: "Spring tour")], known: ["purdue", "ref"])
+        #expect(TodaySources.projectOf(task, out) == TodaySources.Project(id: "proj-h", name: ""))
+        let came = TodaySources.ProjectNames(rows: [TodaySources.Project(id: "proj-p", name: "Spring tour")], known: ["hypixel", "purdue", "ref"])
+        #expect(TodaySources.projectOf(task, came) == nil)
+    }
 }

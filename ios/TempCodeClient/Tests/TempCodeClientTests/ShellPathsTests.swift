@@ -88,6 +88,17 @@ private let everyRoute: [Route] = [
         #expect(try JSONDecoder().decode(Route.self, from: Data(old.utf8)) == .folder(environmentId: "e", workspaceId: "w", placeId: "folder", at: .place(.init(id: "folder")), title: "Dummy Esports"))
     }
 
+    @Test func `a LifeOS project's page from Today is a Work detail route a launch restores, standing on Today`() throws {
+        let route = Route.lifeProject(environmentId: "e", workspaceId: "w", projectId: "proj-1")
+        #expect(ShellPaths.column(of: route) == .detail)
+        #expect(ShellPaths.tab(of: route, isWork: { _ in false }) == .work)
+        #expect(ShellPaths.list(under: route) == .place(.today))
+        #expect(try JSONDecoder().decode(Route.self, from: JSONEncoder().encode(route)) == route)
+        var snapshot = NavigationSnapshot(tab: .work)
+        snapshot[.work] = ColumnMemory(sidebar: [.place(.today)], detailRoot: route)
+        #expect(try JSONDecoder().decode(NavigationSnapshot.self, from: JSONEncoder().encode(snapshot)) == snapshot)
+    }
+
     @Test func `an open file's page is a route a launch restores`() throws {
         let route = Route.file(environmentId: "e", item: openFile, sessionId: "s1")
         #expect(try JSONDecoder().decode(Route.self, from: JSONEncoder().encode(route)) == route)

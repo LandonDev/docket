@@ -67,4 +67,12 @@ import Testing
         #expect(attempts.attempt(host: "box", ref: ref, pending: [out]) == "phone-rekey")
         #expect(PendingPress.Kind.guestRekey.readsBack && !PendingPress.Kind.guestRekey.readsItem)
     }
+
+    @Test func `Share stays open while a Create or a Replace Address is out, so its one address is never lost`() {
+        #expect(ShareRules.mayClose(creating: false, linkBusy: nil))
+        // Create pressed and waiting for the host (a slow success, or a refusal still on its way).
+        #expect(!ShareRules.mayClose(creating: true, linkBusy: nil))
+        // Replace Address out on one link.
+        #expect(!ShareRules.mayClose(creating: false, linkBusy: "link-1"))
+    }
 }

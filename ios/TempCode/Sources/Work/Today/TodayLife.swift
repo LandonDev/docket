@@ -24,6 +24,9 @@ enum TodayLife {
         var connecting = false
     }
 
+    /// The hosts passed over for the whole session while another reads the day.
+    private static var passed = LifeReach.PassedOver()
+
     /// The queries Today holds now, by registry and key.
     private static var held: [(live: LiveRegistry, key: String)] = []
     private static var onScreen = false
@@ -48,13 +51,17 @@ enum TodayLife {
         let hosts = workClients.map { LifeReach.Host(environmentId: $0.environment.id, open: $0.work.linked, mayToken: $0.work.may(.lifeosJwt)) }
         let refused = Set(workClients.filter { WorkLifeHost.every($0).refusedWhole }.map(\.environment.id))
         // A whole session known down gives way to the next host's (the desktop's `pickHost`). It is made again here when
-        // its host says LifeOS connected (`prepared`), and leads again once it is up.
-        let down = Set(workClients.filter { client in
+        // its host says LifeOS connected (`prepared`), but takes the day back only once the host read in its place is
+        // down (`passed`, the desktop's `tried`).
+        let downNow = Set(workClients.filter { client in
             let host = WorkLifeHost.every(client)
             guard case .unavailable = host.phase, self.down(host) != nil else { return false }
             _ = prepared(host, client)
             return true
         }.map(\.environment.id))
+        let holding = Set(jobs.map(\.environmentId))
+        let signers = hosts.filter { $0.open && $0.mayToken && holding.contains($0.environmentId) && !refused.contains($0.environmentId) }.map(\.environmentId)
+        let down = passed.update(signers: signers, down: downNow)
         var needed = 0
         defer { queriesNeeded = needed }
         switch LifeReach.reach(jobs: jobs, hosts: hosts, refused: refused, down: down) {
@@ -80,7 +87,7 @@ enum TodayLife {
                 readers.append(Reader(environmentId: job.environmentId, host: prepared(WorkLifeHost.of(other, workspace: workspace), other), sectors: [job.sector], connecting: connecting(other)))
             }
             let uncovered = TodayModel.uncoveredOf(cover, today, host: environmentId)
-            fill(&input, readers: readers, coverPending: coverPending, uncovered: uncovered, host: environmentId, needed: &needed)
+            fill(&input, readers: readers, coverPending: coverPending, cover: cover, jobSectors: today.map(\.sector), uncovered: uncovered, host: environmentId, needed: &needed)
             return input
         case .perJob(let able):
             var readers: [Reader] = []
@@ -97,7 +104,7 @@ enum TodayLife {
             guard input.reach == .ok else { return input }
             let covered = Set(able.map(\.sector))
             let uncovered = Array(Set(jobs.map(\.sector)).subtracting(covered)).sorted()
-            fill(&input, readers: readers, coverPending: false, uncovered: uncovered, host: first.environmentId, needed: &needed)
+            fill(&input, readers: readers, coverPending: false, cover: nil, jobSectors: jobs.map(\.sector), uncovered: uncovered, host: first.environmentId, needed: &needed)
             return input
         }
     }
@@ -212,13 +219,21 @@ enum TodayLife {
     }
 
     /// Every reader's events, tasks and mail waits merged by id into `input`, with what is still out and what failed.
-    private static func fill(_ input: inout TodayLifeInput, readers: [Reader], coverPending: Bool, uncovered: [String], host: String, needed: inout Int) {
+    private static func fill(_ input: inout TodayLifeInput, readers: [Reader], coverPending: Bool, cover: TodayCover?, jobSectors: [String], uncovered: [String], host: String, needed: inout Int) {
         var events: [TodaySources.Event] = [], tasks: [TodaySources.Task] = [], waits: [TodaySources.Wait] = []
         var seen = (events: Set<String>(), tasks: Set<String>(), waits: Set<String>())
         var eventsRead = TodaySources.LifeosRead(), tasksRead = TodaySources.LifeosRead(), waitsRead = TodaySources.LifeosRead()
         var haveEvents = false, haveTasks = false, haveWaits = false
-        // The projects' names, for Due's second line: the first reader's list, then each other reader's sectors.
-        var projects: [TodaySources.Project]?, projectsKnown: [String] = [], projectsFailed = false
+        // The projects' names, for Due's second line, merged from every reader whose names came; which sectors came
+        // whole follows the desktop's `known` (`TodaySources.namesKnown`).
+        var projects: [TodaySources.Project]?, projectsFailed = false
+        var wholeNames = false, namesCame = Set<String>(), namesUnsure = Set(uncovered)
+        // The whole session's sectors, once its cover is in: its display filter starts empty, so it is never read.
+        let covered: [String]? = switch cover {
+        case .all?: jobSectors
+        case .sectors(let list)?: list
+        case nil: nil
+        }
         var lost: [TodaySources.Lost] = uncovered.map { TodaySources.Lost(environmentId: host, sector: $0, error: TodaySources.notCovered) }
         var people: [String: [TodaySources.Person]] = [:]
         for (index, reader) in readers.enumerated() {
@@ -235,6 +250,7 @@ enum TodayLife {
                     tasksRead.pending = true
                     waitsRead.pending = true
                 }
+                if !first { namesUnsure.formUnion(reader.sectors ?? []) }
                 continue
             }
             // The sectors this host's own narrowed session reads: its sign-out takes those alone (`lifeosSignedOut`).
@@ -256,13 +272,12 @@ enum TodayLife {
             } else if !first { tasksRead.pending = true }
             let projectsQuery = store.projects
             if let value = projectsQuery.value {
-                if first || projects != nil {
-                    let read = (recode([TodaySources.Project].self, value) ?? []).filter { keeps($0.sector) }
-                    projects = (projects ?? []) + read.filter { one in !(projects ?? []).contains { $0.id == one.id } }
-                    projectsKnown += reader.sectors.map(Array.init) ?? store.sectors.map(\.rawValue)
-                }
-            } else if projectsQuery.failure != nil {
-                projectsFailed = true
+                let read = (recode([TodaySources.Project].self, value) ?? []).filter { keeps($0.sector) }
+                projects = (projects ?? []) + read.filter { one in !(projects ?? []).contains { $0.id == one.id } }
+                if let sectors = reader.sectors { namesCame.formUnion(sectors) } else { wholeNames = true }
+            } else {
+                if projectsQuery.failure != nil { projectsFailed = true }
+                if !first { namesUnsure.formUnion(reader.sectors ?? []) }
             }
             // Mail no one answered: one page of up to a hundred; more past it is `beyond`.
             let (page, failure) = waitsOf(store, needed: &needed)
@@ -273,7 +288,7 @@ enum TodayLife {
             } else if let failure {
                 if first { waitsRead.error = failure } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: failure)) }
             } else if !first { waitsRead.pending = true }
-            for sector in reader.sectors.map(Array.init) ?? Array(Set(store.sectors.map(\.rawValue))) {
+            for sector in reader.sectors.map(Array.init) ?? covered ?? Array(Set(store.sectors.map(\.rawValue))) {
                 people[sector, default: []] += peopleOf(store, sector: sector, needed: &needed)
             }
         }
@@ -286,7 +301,8 @@ enum TodayLife {
         input.waits = haveWaits ? waits : nil
         input.eventsRead = eventsRead
         input.tasksRead = tasksRead
-        input.projects = TodaySources.ProjectNames(rows: projects, known: projectsKnown.sorted(), failed: projectsFailed)
+        let known = TodaySources.namesKnown(whole: wholeNames, cover: coverPending ? nil : cover, jobs: jobSectors, unsure: namesUnsure, came: namesCame)
+        input.projects = TodaySources.ProjectNames(rows: projects, known: known, failed: projectsFailed)
         input.waitsRead = waitsRead
         input.people = people
     }

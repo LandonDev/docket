@@ -80,6 +80,28 @@ public enum LifeReach {
         return .perJob(jobs.filter { able.contains($0.environmentId) })
     }
 
+    /// The hosts Today passed over (the desktop's `tried`, today/env.ts), forgotten when the hosts that can sign
+    /// change. A host found down is passed over, and stays so while the host read in its place is up, even once its
+    /// own session is made again: Today keeps the reader that can read the day. Only while every host not passed
+    /// over is down is a passed host that is no longer down tried again.
+    public struct PassedOver: Hashable, Sendable {
+        public private(set) var signers: [String] = []
+        public private(set) var ids: Set<String> = []
+
+        public init() {}
+
+        /// The set `reach` passes over now (its `down`), from the signers in order and the hosts down now.
+        public mutating func update(signers: [String], down: Set<String>) -> Set<String> {
+            if signers != self.signers {
+                self.signers = signers
+                ids = []
+            }
+            ids.formUnion(down.intersection(signers))
+            if !signers.contains(where: { !ids.contains($0) && !down.contains($0) }) { ids.formIntersection(down) }
+            return ids
+        }
+    }
+
     /// The jobs the filter offers, one a sector (a job two hosts hold is one job): on `whole`, the signing
     /// host's own first.
     public static func offered(_ reach: Reach, jobs: [Job]) -> [Job] {

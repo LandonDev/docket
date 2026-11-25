@@ -181,9 +181,9 @@ struct TodayScreen: View {
             }
         }
         .contextMenu {
-            // At most two: the tick, then the row's own verbs.
+            // The tick, then the row's own verbs (at most two), the swipe's same set: three at most on a Due row.
             if let tick { Button("Done", systemImage: "checkmark.circle") { act(row, tick) } }
-            ForEach(Array(acts.prefix(tick == nil ? 2 : 1)), id: \.label) { verb in
+            ForEach(acts, id: \.label) { verb in
                 Button(verb.label, systemImage: Self.glyph(verb.press)) { act(row, verb.press) }
             }
         }

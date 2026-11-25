@@ -2045,7 +2045,7 @@
 			repositoryURL = "https://github.com/LandonDev/work-kit";
 			requirement = {
 				kind = revision;
-				revision = 159f2553f3b7dbd597970e28382e90623a4be87e;
+				revision = 3a8b2ba276de61994e4541b531b443e647f66d22;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

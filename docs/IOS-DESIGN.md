@@ -518,7 +518,9 @@ Stop and Archive done). Resume all runs at once. The outcome is one status
 card on glass floating above the tab bar, "Paused 14" in semibold and,
 under it in the destructive tint, "1 failed: Search (harness not
 responding)": a clean result leaves after four seconds, a
-failure waits for a tap.
+failure waits for a tap. A plain line never takes the place of a failure
+still up (`ToastSlot.takes`), and his own cancel of the owner's check
+("Nothing was sent.") is a plain line, not a failure.
 
 **Queued, stopped, resources.** A queued root (created, waiting for its
 `after` sibling) reads the host's reason ("Waiting for X", the host's
@@ -3056,15 +3058,18 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   the job first.
 - **A press** opens the row's thing (`row.route`); a row whose place the phone has not built is not a button.
   On the open Duo the list picks its first held row for the empty detail.
-- **The verbs** are swipe actions and the context menu, at most two, drawn only on a fresh row and for a key that
-  may press them: the tick (`work.tasks.done`, Undo reopens it in LifeOS), Tomorrow (LifeKit's `tasks:snooze`,
-  Undo `tasks:unsnooze`), Open project on a task of a LifeOS project (its job's Projects view with the project's
-  page pushed over it; the project's name is the row's line under the title, and "Project names did not load" is
+- **The verbs**, a row's own at most two, are its swipe actions; the context menu holds the tick and the same verbs
+  (three at most, on a Due row with a project), so the swipe and the long press never disagree. Each is drawn only on
+  a fresh row and for a key that may press it: the tick (`work.tasks.done`, Undo reopens it in LifeOS), Tomorrow (LifeKit's `tasks:snooze`,
+  Undo `tasks:unsnooze`), Open project on a task of a LifeOS project (the project's page in the detail, `Route.lifeProject`, which
+  makes the job's own LifeOS session and waits for it, with Try Again, and comes back on a relaunch; the project's name is the row's line under the title, and "Project names did not load" is
   the section's one quiet line when a job's names failed) and Nudge (`work.mail.nudge`: a thread that drafts the
   follow-up opens; nothing goes until he sends). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
   capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
-  desktop passes a down reader over (`LifeReach.reach`'s `down`). The LifeOS sections give way to one line when no
+  desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
+  passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
+  `tried`). The LifeOS sections give way to one line when no
   host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
   press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
@@ -3530,7 +3535,11 @@ link's name, then one meta line ("Edit · made Nov 20 · opened Nov 22, 3:10
 PM · until Dec 20"), and a 44 pt More with Replace Address… (asked first:
 the current address stops opening), the role, and Revoke in red. Where no
 link can be made, the host's one line stands in the form's place with Done.
-Create waits until the host that keeps the item's links has answered. A
+Create waits until the host that keeps the item's links has answered. From
+his Create or Replace Address to the host's answer the sheet stays open:
+Cancel, Done and New Link are dimmed and the swipe does nothing, as Save to
+TempCode's Cancel goes once Save is pressed, because the address shows once
+and only here. A
 press whose answer was lost says "Checking whether the link was made" under
 the form, which waits; closing and opening the sheet again keeps the same
 press, so no second link is made. A link the read-back finds made shows its

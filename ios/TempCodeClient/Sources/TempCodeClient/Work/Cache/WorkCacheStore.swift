@@ -84,7 +84,7 @@ public final class WorkCacheStore: Sendable {
     /// Runs the kept purges again, in order; one the file still refuses stays kept.
     public func retryPending() {
         retry.store(false, ordering: .relaxed)
-        for reason in purges.take() { drop(reason) }
+        for reason in purges.take() { drop(reason, retried: true) }
     }
 
     #if DEBUG
@@ -159,10 +159,16 @@ public final class WorkCacheStore: Sendable {
     /// then.
     @discardableResult
     public func drop(_ reason: WorkCacheDrop) -> Bool {
+        drop(reason, retried: false)
+    }
+
+    /// `retried`: a kept purge run again. A LifeOS sign-out moved the Today epoch on its first try, and moving it
+    /// again would refuse the fresh Today write that ran the retry, and every write queued with it.
+    private func drop(_ reason: WorkCacheDrop, retried: Bool) -> Bool {
         let done: Bool
         switch reason {
         case .lifeosSignedOut(let host):
-            done = dropLifeos(suppliedBy: host)
+            done = dropLifeos(suppliedBy: host, movesEpoch: !retried)
         case .keyReplaced(let host, let generation):
             done = run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
         case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host):
@@ -189,9 +195,9 @@ public final class WorkCacheStore: Sendable {
     /// Today's own fence moves first, under the same lock, so every Today write queued before this is refused,
     /// whichever host's key it names and whether or not that key holds any of the rows yet; each host rewritten has
     /// its fence moved too.
-    private func dropLifeos(suppliedBy host: String) -> Bool {
+    private func dropLifeos(suppliedBy host: String, movesEpoch: Bool) -> Bool {
         db.withLock { db -> Bool in
-            todayEpoch.add(1, ordering: .sequentiallyConsistent)
+            if movesEpoch { todayEpoch.add(1, ordering: .sequentiallyConsistent) }
             var rewrites: [(binds: [Database.Value], json: Data, host: String)] = []
             do {
                 try db.query("SELECT host, account, generation, workspace, scope, json FROM kept WHERE scope = ?", [.text(WorkCache.Scope.today.text)]) { row in

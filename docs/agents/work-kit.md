@@ -93,9 +93,11 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-A bump is one commit that changes three files: package.json, bun.lock and
-`ios/TempCode/project.yml` (the phone's WorkKit `revision:` is the same commit,
-and the pin test holds them equal). Push and tag (`vN`) the work-kit commit, set
+A bump is one commit that changes four files: package.json, bun.lock,
+`ios/TempCode/project.yml` (the phone's WorkKit `revision:` is the same commit)
+and the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`, whose one
+`revision = <commit>;` line is set by hand, since the box has no xcodegen to
+make the project again. The pin test holds all four equal. Push and tag (`vN`) the work-kit commit, set
 the sha in both, `bun install`. When the new commit adds a file the renderer's
 imports reach, `bun scripts/gen-work-kit-sources.ts` writes
 `work-kit-sources.css` again and that file rides in the same commit. A bump that

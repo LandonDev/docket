@@ -438,6 +438,15 @@ public enum TodaySources {
         return known ? nil : Project(id: id, name: "")
     }
 
+    /// The sectors whose project names came whole (the desktop's `known`, lifeos.ts). With the whole session's names in
+    /// and its cover known: every job's sector but those still unsure (one a narrowed session reads whose names are
+    /// out or failed, one nothing covers). Else, with the cover still out or no whole session, only the narrowed
+    /// sessions' sectors whose own names came. A known sector without the task's project says no project.
+    public static func namesKnown(whole: Bool, cover: TodayCover?, jobs: [String], unsure: Set<String>, came: Set<String>) -> [String] {
+        if whole, cover != nil { return Set(jobs).subtracting(unsure).sorted() }
+        return came.subtracting(unsure).sorted()
+    }
+
     /// The one quiet line when a job's names failed and a row shows its project by Open project alone.
     public static let namesLost = "Project names did not load"
 

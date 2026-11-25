@@ -29,6 +29,8 @@ struct LifeViewScreen: View {
     @Environment(\.shellPose) private var pose
     @Bindable var host: WorkLifeHost
     let view: Kind
+    /// On Projects: one project's page, drawn once the job's session is ready (Today's Open project).
+    var project: String? = nil
 
     var body: some View {
         Group {
@@ -117,7 +119,10 @@ struct LifeViewScreen: View {
         case .agenda: AgendaScreen()
         case .projects:
             // The workspace's sector's projects; a project pushes in the shell's own stack.
-            if let sector = host.sector {
+            if let project {
+                ProjectScreen(projectId: project)
+                    .projectDestinations()
+            } else if let sector = host.sector {
                 ProjectsList(sector: sector)
                     .projectDestinations()
             } else {

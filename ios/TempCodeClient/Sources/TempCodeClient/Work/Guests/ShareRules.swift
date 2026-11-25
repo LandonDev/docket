@@ -166,6 +166,10 @@ public enum ShareRules {
     /// A Create whose answer was lost, while the host is read back by its attempt key.
     public static let checkingWords = "Checking whether the link was made."
     /// The serving host or its key changed while the owner's check asked: nothing was made.
+    /// Share may close only once no press on a link is out: a Create or Replace Address answers with the address
+    /// once, and only this sheet can show it, so Cancel, Done and the swipe wait for the answer or the refusal.
+    public static func mayClose(creating: Bool, linkBusy: String?) -> Bool { !creating && linkBusy == nil }
+
     public static let movedWords = "Nothing was made: the link’s computer changed. Press Create again."
 }
 

@@ -159,9 +159,12 @@ struct WorkCacheStoreTests {
         #expect(!store.drop(.lifeosSignedOut(host: box)))
         #expect(purges.list() == [.lifeosSignedOut(host: box)])
         try store.execForTests("ALTER TABLE away RENAME TO kept")
-        // The next write runs it first, then lands; nothing stays kept.
-        try store.put(.outbox([]), at: WorkCache.Key(host: box, account: "k", keyGeneration: 1, scope: .outbox))
+        // Today's next write, stamped after the sign-out, runs it first and still lands: the retry does not move the
+        // Today epoch a second time. Nothing stays kept.
+        let mac = WorkCache.Key(host: "mac-\(UUID().uuidString)", account: "k", keyGeneration: 1, scope: .today)
+        try store.put(.todayRows([Self.row("held:mac:1", "held", by: nil)], day: "d"), at: mac, stamp: WorkCacheFence.stamp(mac.host), todayStamp: store.todayStamp())
         #expect(store.get(boxKey)?.todayShown(on: "d").isEmpty == true)
+        #expect(store.get(mac)?.todayShown(on: "d").map(\.key) == ["held:mac:1"])
         #expect(purges.list().isEmpty)
     }
 }

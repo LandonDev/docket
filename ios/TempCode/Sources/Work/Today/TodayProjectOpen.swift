@@ -1,13 +1,11 @@
-import LifeKitUI
-import SwiftUI
 import TempCodeClient
 
-/// A Due row's Open project (the desktop's `openProject`): the job's Projects view, then the project's own page pushed
-/// over it, where that view's `projectDestinations` draws it. Kept apart so Today's screen needs no LifeKitUI names.
+/// A Due row's Open project (the desktop's `openProject`): the project's own page in the detail, a route of its own
+/// (`Route.lifeProject`) whose page makes the job's LifeOS session and waits for it, so a cold tap never pushes onto
+/// a list that is not there yet, and a relaunch comes back on the project.
 @MainActor
 enum TodayProjectOpen {
     static func open(_ job: TodayWorkspace, projectId: String, navigator: ShellNavigator) {
-        navigator.open(.workView(environmentId: job.environmentId, workspaceId: job.workspaceId, view: "projects"))
-        navigator.detailStack.append(ProjectLink(id: projectId))
+        navigator.open(.lifeProject(environmentId: job.environmentId, workspaceId: job.workspaceId, projectId: projectId))
     }
 }

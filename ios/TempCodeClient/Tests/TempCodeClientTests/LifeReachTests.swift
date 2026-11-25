@@ -43,6 +43,22 @@ import TempCodeContract
         #expect(LifeReach.reach(jobs: box + mac, hosts: hosts, refused: ["mac"], down: ["box"]) == .whole(environmentId: "box"))
     }
 
+    @Test func `a host passed over stays passed while the one read in its place is up, and is tried again once that one is down`() {
+        var passed = LifeReach.PassedOver()
+        let signers = ["box", "mac"]
+        // The box signed out: passed over, the Mac reads the day.
+        #expect(passed.update(signers: signers, down: ["box"]) == ["box"])
+        // The box's session is made again (loading, no longer down): the Mac keeps the day.
+        #expect(passed.update(signers: signers, down: []) == ["box"])
+        #expect(passed.update(signers: signers, down: []) == ["box"])
+        // The Mac goes down: the box, back, is tried again.
+        #expect(passed.update(signers: signers, down: ["mac"]) == ["mac"])
+        // Both down: both passed, and `reach` lets the first stand.
+        #expect(passed.update(signers: signers, down: ["box", "mac"]) == ["box", "mac"])
+        // The hosts that can sign changed: all is forgotten.
+        #expect(passed.update(signers: ["box"], down: []) == [])
+    }
+
     @Test func `the whole session comes from the Work home, else the first open host that holds a job and may sign`() {
         let hosts = [LifeReach.Host(environmentId: "box", open: true, mayToken: true), LifeReach.Host(environmentId: "mac", open: true, mayToken: true)]
         #expect(LifeReach.reach(jobs: box + mac, hosts: hosts) == .whole(environmentId: "box"))

@@ -467,6 +467,8 @@ struct RootView: View {
             ChatScreen(environmentId: environmentId, workspaceId: workspaceId, chatId: chatId)
         case .person(let environmentId, let workspaceId, let personId):
             PersonScreen(environmentId: environmentId, workspaceId: workspaceId, personId: personId)
+        case .lifeProject(let environmentId, let workspaceId, let projectId):
+            WorkViewScreen(environmentId: environmentId, workspaceId: workspaceId, view: LifeViewScreen.Kind.projects.rawValue, project: projectId)
         case .prep(let environmentId, let workspaceId, let eventId):
             PrepScreen(environmentId: environmentId, workspaceId: workspaceId, eventId: eventId)
         case .clash(let environmentId, let clashId):

@@ -48,6 +48,15 @@ describe('the work-kit pin', () => {
     const revision = /url:\s*"?https:\/\/github\.com\/LandonDev\/work-kit[^\n]*\n\s*revision:\s*"?([0-9a-f]{40})/.exec(project)?.[1]
     expect(revision, 'the WorkKit package in project.yml needs a revision: line under its url').toBe(pinnedCommit(spec))
   })
+
+  it('names that commit in the tracked Xcode project too, which the box cannot make again (no xcodegen)', () => {
+    // A pin bump sets project.yml and this one line in the same commit: the project opened from a fresh checkout
+    // builds against the pin, not the one before it.
+    const project = read('ios/TempCode/TempCode.xcodeproj/project.pbxproj')
+    if (!project.includes('LandonDev/work-kit')) return
+    const revisions = [...project.matchAll(/^\s*revision = ([0-9a-f]{40});$/gm)].map((m) => m[1])
+    expect(revisions, 'project.pbxproj names the work-kit revision once: `revision = <commit>;`').toEqual([pinnedCommit(spec)])
+  })
 })
 
 describe('the lock', () => {

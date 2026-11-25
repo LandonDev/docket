@@ -35,6 +35,8 @@ struct ShareLinkSheet: View {
     @FocusState private var focused: Bool
 
     private var host: EnvironmentClient { home ?? client }
+    /// No press on a link is out: Create and Replace Address answer the address once, here alone (`ShareRules.mayClose`).
+    private var mayClose: Bool { ShareRules.mayClose(creating: saving, linkBusy: busy) }
     private var live: [GuestLinkRow] { ShareRules.live(links ?? []) }
     private var attempts: GuestAttempts { GuestAttempts.shared }
     /// Where this item's Create stands on its serving host: Checking after a lost answer, made, refused.
@@ -68,6 +70,8 @@ struct ShareLinkSheet: View {
             .toolbar { toolbar }
             .onAppear { focused = made == nil && refused == nil }
         }
+        // Held open from his press to the host's answer: the swipe, as Cancel and Done, waits for it.
+        .interactiveDismissDisabled(!mayClose)
         .task(id: host.work.guestsRev) { await load() }
         .confirmationDialog("Revoke this link?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), titleVisibility: .visible, presenting: revoking) { link in
             Button("Revoke", role: .destructive) { Task { await revoke(link) } }
@@ -200,11 +204,12 @@ struct ShareLinkSheet: View {
                         attempts.newLink(host: host.environment.id, ref: source.ref)
                         focused = true
                     }
+                    .disabled(!mayClose)
                 }
             }
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(!mayClose) }
         } else {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(!mayClose) }
             ToolbarItem(placement: .confirmationAction) {
                 if saving {
                     ProgressView()

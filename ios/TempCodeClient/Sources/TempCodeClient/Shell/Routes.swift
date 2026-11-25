@@ -44,6 +44,9 @@ public enum Route: Hashable, Codable, Sendable {
     case chat(environmentId: String, workspaceId: String, chatId: String)
     /// A person's page (Work/People): LifeOS's person by id, read in the job that holds them.
     case person(environmentId: String, workspaceId: String, personId: String)
+    /// A LifeOS project's page (Today's Open project), read through its job's own session, which the page makes
+    /// and waits for; Codable, so a relaunch comes back on the project.
+    case lifeProject(environmentId: String, workspaceId: String, projectId: String)
     /// A meeting's page (Work/Prep): the LifeOS event in its job, on the job's host.
     case prep(environmentId: String, workspaceId: String, eventId: String)
     /// One clash (Work/Clash), on the host that read it: by its id, or an event of it (a tell names the event).

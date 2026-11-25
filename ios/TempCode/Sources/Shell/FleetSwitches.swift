@@ -268,9 +268,10 @@ final class FleetToastCenter {
         show(.batch(toast))
     }
 
-    /// One action's failure, in the same line.
+    /// One action's failure, in the same line. His own cancel of the owner's check ("Nothing was sent.") is no failure:
+    /// it is said plainly (`ToastSlot.isPlain`).
     func post(message: String) {
-        show(.message(message))
+        show(ToastSlot.isPlain(message) ? .note(message) : .message(message))
     }
 
     /// An outcome that needs nothing more: in the plain ink, gone after four seconds.
@@ -279,6 +280,8 @@ final class FleetToastCenter {
     }
 
     private func show(_ next: FleetNotice) {
+        // A plain line never replaces a failure still up (`ToastSlot.takes`): it is said where it belongs as well.
+        guard ToastSlot.takes(nextSticky: next.sticky, upSticky: notice?.sticky) else { return }
         leave?.cancel()
         notice = next
         AccessibilityNotification.Announcement(next.summary).post()

@@ -1091,7 +1091,7 @@
   it is refused whichever host's key it names; the disk drop runs before Today's hook, whose fresh
   writes then pass. A drop the file refuses (SQLite turning a read or write away, as under complete
   protection while locked) is kept in `WorkCachePurges` and runs again before the next write or
-  purge and at the next open. Today forgets what a signed-out session gave from memory (`forgetSignedOut`) and writes every host
+  purge and at the next open; a retry never moves the Today epoch again, so the fresh write that ran it lands. Today forgets what a signed-out session gave from memory (`forgetSignedOut`) and writes every host
   again. The same sign-out ends that host's open LifeOS sessions at once, whether or not Today shows
   (`WorkHost.heardLifeosSignOut`, set by `TodayFeed`: `WorkLifeHost.signedOut` resets each store's
   queries and forgets the token, and a session counter drops a sign-in or token still out), and

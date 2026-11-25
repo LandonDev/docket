@@ -74,11 +74,13 @@ struct WorkViewScreen: View {
     let environmentId: String
     let workspaceId: String
     let view: String
+    /// On Projects: the one project's page in place of the list (`Route.lifeProject`).
+    var project: String? = nil
 
     var body: some View {
         if let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) {
             if let kind = LifeViewScreen.Kind(rawValue: view) {
-                LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind)
+                LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind, project: project)
             } else if view == "files" {
                 FilesScreen(client: client, workspace: workspace)
             } else if view == "money" {
