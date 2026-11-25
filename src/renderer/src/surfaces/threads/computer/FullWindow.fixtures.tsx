@@ -59,9 +59,10 @@ const base = { room: ROOM, name: "Live view of Expense report in Chromium", dpr:
 
 const fixtures: FullWindowFixture[] = [
   { name: "The Windows VM fills the MacBook's display (1728 by 1117 points): 1728 by 1080, its full width", props: { ...base, room: { width: 1728, height: 1117 }, tile: vmTile, stream: streamOf(VM), picture: vmPicture } },
-  { name: "The agent drives the box's browser: the picture as large as the window allows, its caption under it", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page } },
-  { name: "He drives: the caption says so, and offers Hand back alone; the picture takes his keys and pointer", props: { ...base, tile: tile({ driving: true, doing: null }), stream: streamOf(live(), "video", driven), picture: page } },
-  { name: "The pointer rested: the caption has faded", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page, captionShown: false } },
+  { name: "The agent drives the box's browser: the picture as large as the window allows, its bar called over the top edge", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page } },
+  { name: "He drives: the bar says so, and offers Hand back alone; the picture takes his keys and pointer", props: { ...base, tile: tile({ driving: true, doing: null }), stream: streamOf(live(), "video", driven), picture: page } },
+  { name: "At rest: the bar away, the display the picture's alone", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page, barShown: false } },
+  { name: "A poor link: the bar comes by itself, the delay's words in the number's place", props: { ...base, tile: { ...vmTile, driving: true, idle: false }, room: { width: 1728, height: 1117 }, stream: streamOf(VM, "video", driven), picture: vmPicture, reading: { delayMs: 212, fps: 22, link: "poor" } } },
   { name: "A window on a Mac: no driver to speak of, Stop alone", props: { ...base, tile: tile({ browser: false, computer: "window:t1", title: "Tidy the Downloads folder", where: "Landon's MacBook" }), stream: streamOf(live(), "picture"), picture: page } },
   { name: "A small window: the picture scaled down whole", props: { ...base, room: { width: 640, height: 520 }, tile: tile(), stream: streamOf(live()), picture: page } },
   { name: "On its way: the skeleton in the picture's shape", props: { ...base, room: { width: 900, height: 700 }, tile: tile(), stream: streamOf({ status: "starting", ...PAGE }) } },

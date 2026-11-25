@@ -490,11 +490,6 @@ export function windowPersisted(): void {
   api().win.persisted();
 }
 
-/** This window's pop-out keeps a picture of this width over height, with its bar under it (main's popOut.ts). */
-export function setPopOutShape(ratio: number): void {
-  void api().win.popOutShape(ratio).catch(() => {});
-}
-
 /** This window, or its pop-out, over its whole display or back (main's fullScreen.ts); answers whether it was full before. */
 export function setWindowFullScreen(ask: { on: boolean; popOut?: boolean }): Promise<boolean> {
   return api().win.fullScreen(ask).catch(() => false);

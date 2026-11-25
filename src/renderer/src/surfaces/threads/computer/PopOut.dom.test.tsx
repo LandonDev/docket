@@ -71,6 +71,17 @@ describe("the pop-out's body", () => {
     expect(picture().className).toContain("[image-rendering:pixelated]");
   });
 
+  it("its bar is above the picture, with Keys while he drives the Windows VM and Full screen on its own display", () => {
+    const full = vi.fn();
+    render(view({ tile: tile({ computer: "vm:windows", browser: false, driving: true, doing: null }), onFullScreen: full }));
+    const pop = document.querySelector<HTMLElement>('[data-slot="pop-out"]')!;
+    expect([...pop.children].map((c) => c.getAttribute("data-slot") ?? c.firstElementChild?.getAttribute("data-slot"))).toEqual(["pop-out-bar", "pop-out-picture"]);
+    const bar = document.querySelector<HTMLElement>('[data-slot="pop-out-bar"]')!;
+    expect(within(bar).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["Keys", "Hand back", "Back to the page", "Full screen", "Close"]);
+    fireEvent.click(within(bar).getByRole("button", { name: "Full screen" }));
+    expect(full).toHaveBeenCalledTimes(1);
+  });
+
   it("sits on matte in full screen, its bar on its own ground", () => {
     render(view({ full: true, room: { width: 1728, height: 1081 } }));
     expect(document.querySelector<HTMLElement>('[data-slot="pop-out"]')!.className).toContain("bg-matte");
@@ -124,8 +135,8 @@ describe("the pop-out, live", () => {
     expect(child.doc.body.querySelector('[data-slot="pop-out"]')).not.toBeNull();
     expect(child.doc.title).toBe("File the March expense report");
     expect(h.streams.at(-1)).toEqual({ key: "t1", run: true });
-    // the window keeps the picture's shape
-    expect(h.shapes.at(-1)).toBeCloseTo(1.6, 3);
+    // the window takes any size he drags it to: no shape is asked of it
+    expect(h.shapes).toEqual([]);
     act(() => closePopOut());
     expect(child.closed.n).toBe(1);
   });

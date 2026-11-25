@@ -18,7 +18,7 @@ import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
 import { restingVm, restingVmTiles, useVmStates, vmPlate, wakeVm, type VmState } from "../lib/winvmWake";
-import { readVmStill } from "../work/winvm/vmPresses";
+import { useVmStill } from "../work/winvm/vmPresses";
 import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerBar, OpenSettingsButton, ViewButton, WakeButton, tileLine, vmScreenSeam, type BarReading } from "./threads/computer/ComputerBar";
@@ -72,26 +72,6 @@ export const LOST_TRIES = 5;
 export function lostPlate(host: string, attempts: number): PlateProps & { retry: boolean } {
   if (attempts >= LOST_TRIES) return { title: "The picture stopped", retry: true };
   return { title: `Reconnecting to ${host}`, detail: `Try ${attempts + 1} of ${LOST_TRIES}`, spin: true, retry: false };
-}
-
-/** The Windows VM's last picture, kept by its host as it went to sleep (`work.winvm.still`), as an image source; read again at each sleep. */
-const stills = new Map<string, { src: string; width: number; height: number; at: number }>();
-export function useVmStill(host: string, want: boolean, key: unknown): { src: string; width: number; height: number } | null {
-  const [still, setStill] = useState(() => stills.get(host) ?? null);
-  useEffect(() => {
-    if (!want) return;
-    let live = true;
-    void readVmStill(host).then((s) => {
-      if (!live || !s) return;
-      const kept = { src: `data:image/jpeg;base64,${s.data}`, width: s.width, height: s.height, at: s.at };
-      stills.set(host, kept);
-      setStill((was) => (was?.at === kept.at ? was : kept));
-    });
-    return () => {
-      live = false;
-    };
-  }, [host, want, key]);
-  return want ? still : null;
 }
 
 /** A clock that ticks each second while `on`: a wake's count. */

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { cn } from "@renderer/lib/cn";
-import { Minimize2 } from "../../../chrome/icons";
+import { Minimize2, PictureInPicture } from "../../../chrome/icons";
 import { driveName, handBack, useComputer, type ComputerTile } from "../../../lib/computers";
 import { useDriveHold } from "../../../lib/driveHold";
 import { DUR } from "../../../lib/ease";
@@ -10,9 +10,12 @@ import { reducedMotion } from "../../../lib/motion";
 import { onWindowFullScreen, setWindowFullScreen } from "../../../lib/native";
 import { drawnPixelated, fitStage, pictureKind, type PictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
-import { ComputerBar, ViewButton } from "./ComputerBar";
+import { ComputerBar, ViewButton, type BarReading } from "./ComputerBar";
 import { FullScreenHint } from "./FullScreenHint";
-import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
+import { openPopOut } from "../../../lib/popOut";
+import { useVmStates, vmPlate, type VmState } from "../../../lib/winvmWake";
+import { useVmStill } from "../../../work/winvm/vmPresses";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, Plate, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
 
 /**
@@ -20,19 +23,33 @@ import { drivenScreen } from "../../../lib/video/videoInput";
  * his whole display. The window itself goes full screen (main's
  * fullScreen.ts) and the picture fills it on `matte`, in its own shape, with
  * no inset: a whole computer's screen as large as the display allows, a
- * window's picture to twice its own pixels (`fitStage`). The caption floats
- * over the top edge; it fades after two seconds with no pointer movement and
- * comes back with it, or with keyboard focus in it. ⌃⌘F leaves; Escape leaves
- * when the picture does not hold the keyboard; a double click on the picture
- * leaves when he does not drive. While he drives the picture holds the
- * keyboard with main (lib/video/keyboardHold.ts), and the two ways out are
- * said on entry (FullScreenHint). A press grows the picture from where it was;
- * a key's entry has no motion. It is another canvas on the stream the page
- * already plays.
+ * window's picture to twice its own pixels (`fitStage`). The computer's bar
+ * floats over the top edge's middle, hidden until called: the pointer resting
+ * 250 ms on the edge's middle 240px, or ⌃⌥; it goes 600 ms after the pointer
+ * leaves it, never while one of its menus is open, and comes by itself once
+ * when the link turns poor. ⌃⌘F leaves; Escape leaves when the picture does
+ * not hold the keyboard; a double click on the picture leaves when he does
+ * not drive. While he drives the picture holds the keyboard with main
+ * (lib/video/keyboardHold.ts), and the two ways out are said on entry
+ * (FullScreenHint). A press grows the picture from where it was; a key's
+ * entry has no motion. It is another canvas on the stream the page already
+ * plays.
  */
 
-/** The caption stays this long after the pointer last moved. */
-export const CAPTION_REST_MS = 2000;
+/** The pointer rests this long on the top edge's middle before the bar comes. */
+export const BAR_REST_MS = 250;
+/** The bar goes this long after the pointer leaves it. */
+export const BAR_LEAVE_MS = 600;
+/** Called by a poor link, the bar stays this long for him to see it. */
+export const BAR_POOR_MS = 3000;
+/** The top edge's middle that calls the bar: 240px wide, 8px tall. */
+export const EDGE = { width: 240, height: 8 };
+export const inEdge = (x: number, y: number, width: number): boolean => y <= EDGE.height && Math.abs(x - width / 2) <= EDGE.width / 2;
+
+/** The bar afloat: the popover's ground, 8px under the edge, as wide as 560px allows. In by opacity and 8px down; out faster. */
+const FLOAT =
+  "absolute top-2 left-1/2 z-10 w-[min(560px,calc(100%-32px))] -translate-x-1/2 rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border transition-[opacity,translate] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-opacity";
+const AWAY = "pointer-events-none -translate-y-2 opacity-0 duration-(--dur-fast) ease-(--ease-exit)";
 
 /** The longest a pressed picture waits for the window to fill the display before it grows anyway. */
 export const FILL_WAIT_MS = 400;
@@ -48,8 +65,16 @@ export interface FullWindowViewProps {
   boxRef?: Ref<HTMLDivElement>;
   measureRef?: Ref<HTMLDivElement>;
   dpr?: number;
-  /** the caption is shown; it fades otherwise */
-  captionShown?: boolean;
+  /** the bar is called; it is away otherwise */
+  barShown?: boolean;
+  barRef?: Ref<HTMLDivElement>;
+  /** a menu of the bar opened or closed: it stays while one is open */
+  onMenuOpen?: (open: boolean) => void;
+  /** the delay's numbers, as far as they are known */
+  reading?: BarReading | null;
+  /** in the picture's place where there is no computer: the Windows VM asleep under him */
+  rest?: ReactNode;
+  onPopOut?: () => void;
   onExit: () => void;
   onOpenSession: (threadId: string, host: string) => void;
   onTookOver?: () => void;
@@ -58,7 +83,7 @@ export interface FullWindowViewProps {
 }
 
 /** The screen's body, pure: what it draws for a tile, a stream and a room. */
-export function FullWindowView({ tile, stream, room, name, kind, boxRef, measureRef, dpr = 1, captionShown = true, onExit, onOpenSession, onTookOver, picture }: FullWindowViewProps) {
+export function FullWindowView({ tile, stream, room, name, kind, boxRef, measureRef, dpr = 1, barShown = true, barRef, onMenuOpen, reading, rest, onPopOut, onExit, onOpenSession, onTookOver, picture }: FullWindowViewProps) {
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const face = liveFace(stream);
@@ -66,10 +91,17 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
   const fit = fitStage(room, frame, dpr, kind ?? pictureKind(tile?.computer ?? ""));
   const aspect = frame ? `${frame.width} / ${frame.height}` : "16 / 10";
   const pixelated = drawnPixelated(fit.width, frame, dpr);
-  const leave = (
-    <ViewButton label="Leave full screen" onClick={onExit}>
-      <Minimize2 className="size-4" />
-    </ViewButton>
+  const views = (
+    <>
+      {onPopOut && tile && !over ? (
+        <ViewButton label="Pop out" fold onClick={onPopOut}>
+          <PictureInPicture className="size-4" />
+        </ViewButton>
+      ) : null}
+      <ViewButton label="Leave full screen" onClick={onExit}>
+        <Minimize2 className="size-4" />
+      </ViewButton>
+    </>
   );
   return (
     <div className="relative flex size-full items-center justify-center">
@@ -88,6 +120,8 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
             {picture ?? face.picture}
             <div className="pointer-events-none absolute inset-0">{face.mark}</div>
           </div>
+        ) : !tile && rest ? (
+          rest
         ) : (
           <div data-face="none" className="flex items-center justify-center bg-card px-3 text-center" style={{ aspectRatio: aspect }}>
             <ViewportLine
@@ -97,17 +131,9 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
           </div>
         )}
       </div>
-      {/* over the top edge, on its own ground: no words read on matte */}
-      <div
-        data-slot="full-window-caption"
-        data-shown={captionShown || undefined}
-        className={cn("absolute inset-x-0 top-0 bg-background px-4 py-2 transition-opacity duration-(--dur-base) ease-(--ease-out) has-focus-visible:opacity-100", !captionShown && "opacity-0")}
-      >
-        {tile ? (
-          <ComputerBar tile={tile} onOpenSession={onOpenSession} where={tile.where} onTookOver={onTookOver} views={leave} />
-        ) : (
-          <div className="flex min-h-9 items-center justify-end">{leave}</div>
-        )}
+      {/* the computer's bar afloat over the top edge's middle, on the popover's ground: no words read on matte */}
+      <div ref={barRef} data-slot="full-window-bar" data-shown={barShown || undefined} aria-hidden={barShown ? undefined : true} className={cn(FLOAT, !barShown && AWAY)}>
+        <ComputerBar tile={tile} name={name} onOpenSession={onOpenSession} where={tile?.where} onTookOver={onTookOver} reading={reading} views={views} onMenuOpen={onMenuOpen} className="pe-1.5" />
       </div>
     </div>
   );
@@ -215,23 +241,96 @@ function useWindowSize(): Size {
   return size;
 }
 
-/** The caption shows while the pointer moves, and for CAPTION_REST_MS after. */
-function useCaptionShown(): boolean {
-  const [shown, setShown] = useState(true);
+/**
+ * Whether the floating bar is called: the pointer resting BAR_REST_MS on the top edge's middle, ⌃⌥, or keyboard focus
+ * in it; it goes BAR_LEAVE_MS after the pointer leaves it (and the edge), never while a menu of it is open or focus
+ * is in it. A poor link calls it once, for BAR_POOR_MS.
+ */
+export function useFloatingBar(bar: RefObject<HTMLElement | null>, poor: boolean): { shown: boolean; onMenuOpen: (open: boolean) => void } {
+  const [shown, setShown] = useState(false);
+  const menus = useRef(0);
+  const over = useRef(false);
+  const live = useRef(false);
+  live.current = shown;
+  const rest = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const away = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stay = (): boolean => menus.current > 0 || over.current || !!bar.current?.contains(document.activeElement);
+  const clear = (t: typeof rest): void => {
+    if (t.current) clearTimeout(t.current);
+    t.current = null;
+  };
+  const goSoon = (ms = BAR_LEAVE_MS): void => {
+    clear(away);
+    away.current = setTimeout(() => {
+      away.current = null;
+      if (!stay()) setShown(false);
+    }, ms);
+  };
   useEffect(() => {
-    let timer = setTimeout(() => setShown(false), CAPTION_REST_MS);
-    const moved = (): void => {
-      setShown(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => setShown(false), CAPTION_REST_MS);
+    const move = (e: MouseEvent): void => {
+      const r = bar.current?.getBoundingClientRect();
+      const onBar = !!r && r.width > 0 && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      const edge = inEdge(e.clientX, e.clientY, window.innerWidth);
+      over.current = onBar || (live.current && edge);
+      if (over.current) clear(away);
+      if (edge && !live.current) {
+        clear(rest);
+        rest.current = setTimeout(() => setShown(true), BAR_REST_MS);
+      } else if (!edge) clear(rest);
+      if (!over.current && live.current && !away.current) goSoon();
     };
-    window.addEventListener("pointermove", moved);
+    const key = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && e.altKey && (e.key === "Control" || e.key === "Alt")) {
+        setShown(true);
+        goSoon(BAR_POOR_MS);
+      }
+    };
+    const focusIn = (): void => setShown(true);
+    const focusOut = (): void => goSoon();
+    window.addEventListener("pointermove", move);
+    window.addEventListener("keydown", key, true);
+    const el = bar.current;
+    el?.addEventListener("focusin", focusIn);
+    el?.addEventListener("focusout", focusOut);
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener("pointermove", moved);
+      clear(rest);
+      clear(away);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("keydown", key, true);
+      el?.removeEventListener("focusin", focusIn);
+      el?.removeEventListener("focusout", focusOut);
     };
-  }, []);
-  return shown;
+    // the handlers read refs: bound once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bar]);
+  // a poor link calls it by itself, once each time it turns poor
+  useEffect(() => {
+    if (!poor) return;
+    setShown(true);
+    goSoon(BAR_POOR_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poor]);
+  const onMenuOpen = (open: boolean): void => {
+    menus.current = Math.max(0, menus.current + (open ? 1 : -1));
+    if (!open) goSoon();
+  };
+  return { shown, onMenuOpen };
+}
+
+/**
+ * The Windows VM gone to sleep under him in full screen: its stream ended, so the keyboard is his Mac's again, and the
+ * picture's place shows the desk it slept on with its plate, as the page does. It wakes only by his press.
+ */
+function AsleepUnder({ host, vm, room }: { host: string; vm: VmState; room: Size }) {
+  const words = vmPlate(vm, { wakes: false, now: Date.now() });
+  const still = useVmStill(host, vm.state !== "none", vm.state === "asleep" ? vm.since : null);
+  const frame = still ? { width: still.width, height: still.height } : { width: 16, height: 10 };
+  const fit = fitStage(room, frame, 1, "screen");
+  return (
+    <div data-face="plate" className="relative overflow-hidden bg-card" style={{ width: fit.width, aspectRatio: `${frame.width} / ${frame.height}` }}>
+      <Plate title={words.title} detail={words.detail} spin={words.spin} still={words.bare ? null : still?.src} />
+    </div>
+  );
 }
 
 /** Escape leaves, unless the picture he drives holds the keyboard (there Escape is the page's) or a popup took it. */
@@ -250,11 +349,14 @@ function useLeaveOnEscape(leave: () => void): void {
 }
 
 /** Full screen, live, over the whole app while one is open (lib/fullWindow.ts). */
-export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string, host: string) => void }) {
+export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (threadId: string, host: string) => void; reading?: BarReading | null }) {
   const target = useFullWindow();
   const tile = useComputer(target?.host ?? "", target?.threadId ?? "");
   const room = useWindowSize();
-  const captionShown = useCaptionShown();
+  const bar = useRef<HTMLDivElement>(null);
+  const floating = useFloatingBar(bar, reading?.link === "poor");
+  const vm = (target?.threadId ?? "").startsWith("vm:") ? target!.host : null;
+  const vms = useVmStates();
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const focusOnDrive = useRef(false);
@@ -288,7 +390,19 @@ export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string
         boxRef={box}
         measureRef={measure}
         dpr={pixelRatioOf(measure.current)}
-        captionShown={captionShown}
+        barShown={floating.shown}
+        barRef={bar}
+        onMenuOpen={floating.onMenuOpen}
+        reading={reading}
+        rest={vm && vms[vm] ? <AsleepUnder host={vm} vm={vms[vm]!} room={room} /> : undefined}
+        onPopOut={
+          tile
+            ? () => {
+                closeFullWindow();
+                openPopOut({ host: target.host, threadId: target.threadId, name: target.name });
+              }
+            : undefined
+        }
         onExit={closeFullWindow}
         onOpenSession={(threadId, host) => {
           closeFullWindow();

@@ -169,7 +169,6 @@ const api = {
     slot: process.argv.find((a) => a.startsWith('--tc-window-slot='))?.slice(17) ?? 'main',
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     /** This window's pop-out keeps a picture of this width over height, with its bar under it. */
-    popOutShape: (ratio: number): Promise<void> => ipcRenderer.invoke('popout:shape', ratio),
     /** This window, or its pop-out, over its whole display or back (main's fullScreen.ts); answers whether it was full before. */
     fullScreen: (ask: { on: boolean; popOut?: boolean }): Promise<boolean> => ipcRenderer.invoke('window:fullScreen', ask),
     /** This window's full screen, or its pop-out's, as it changes. */

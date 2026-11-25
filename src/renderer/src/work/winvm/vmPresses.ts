@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { WinvmStill } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection/registry";
 
@@ -25,3 +26,24 @@ export async function readVmStill(host: string): Promise<WinvmStill | null> {
     return null;
   }
 }
+
+/** The Windows VM's last picture, kept by its host as it went to sleep (`work.winvm.still`), as an image source; read again at each sleep. */
+const stills = new Map<string, { src: string; width: number; height: number; at: number }>();
+export function useVmStill(host: string, want: boolean, key: unknown): { src: string; width: number; height: number } | null {
+  const [still, setStill] = useState(() => stills.get(host) ?? null);
+  useEffect(() => {
+    if (!want) return;
+    let live = true;
+    void readVmStill(host).then((s) => {
+      if (!live || !s) return;
+      const kept = { src: `data:image/jpeg;base64,${s.data}`, width: s.width, height: s.height, at: s.at };
+      stills.set(host, kept);
+      setStill((was) => (was?.at === kept.at ? was : kept));
+    });
+    return () => {
+      live = false;
+    };
+  }, [host, want, key]);
+  return want ? still : null;
+}
+

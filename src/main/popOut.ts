@@ -13,7 +13,7 @@ import type { BrowserWindowConstructorOptions, HandlerDetails, WindowOpenHandler
 /** The frame name a page opens its pop-out under; the only one the open handler lets through. */
 export const POP_OUT_FRAME = 'tc-popout'
 
-/** Its size before he drags it: the picture at 16:10 and a 36px bar under it. */
+/** Its size before he drags it: the picture at 16:10 and a 36px bar over it. He may drag it to any size; the picture keeps its shape inside. */
 export const POP_OUT_SIZE = { width: 384, height: 276 }
 export const POP_OUT_MIN = { width: 240, height: 186 }
 
@@ -25,7 +25,7 @@ export interface PopOutBounds {
   height: number
 }
 
-/** The bar under the picture: the window's shape is the picture's plus this. */
+/** The bar over the picture, the window's handle. */
 export const POP_OUT_BAR = 36
 
 /** A saved place that is whole and no smaller than the window may be; null otherwise. */

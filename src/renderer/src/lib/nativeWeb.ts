@@ -121,7 +121,6 @@ export const webApi: Api = {
   win: {
     slot: "web",
     minimize: done,
-    popOutShape: done,
     fullScreen: () => Promise.resolve(false),
     onFullScreen: () => noop,
     keyboardHold: () => Promise.resolve(false),

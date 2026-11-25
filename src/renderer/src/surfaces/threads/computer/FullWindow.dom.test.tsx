@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../../../lib/computers";
 import { registry } from "../../../lib/connection/registry";
 import { closeFullWindow, fullWindowTarget, openFullWindow } from "../../../lib/fullWindow";
 import { saveMotionPreference } from "../../../lib/motion";
-import { CAPTION_REST_MS, FullWindow, FullWindowView, growFrom } from "./FullWindow";
+import { BAR_LEAVE_MS, BAR_REST_MS, EDGE, FullWindow, FullWindowView, growFrom, inEdge } from "./FullWindow";
 import { FULL_SCREEN_HINT_MS, FullScreenHint } from "./FullScreenHint";
 import fixtures, { streamOf, tile } from "./FullWindow.fixtures";
 
@@ -79,10 +79,10 @@ const flush = () => act(async () => {});
 const view = (over: Partial<Parameters<typeof FullWindowView>[0]> = {}) => <FullWindowView tile={tile()} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" onExit={noop} onOpenSession={noop} {...over} />;
 
 describe("the full window's body", () => {
-  it("draws every fixture: the picture or its line, and one caption under it", () => {
+  it("draws every fixture: the picture or its line, and one bar over it", () => {
     for (const fixture of fixtures) {
       const v = render(<FullWindowView {...fixture.props} />);
-      expect(v.container.querySelectorAll('[data-slot="full-window-caption"]'), fixture.name).toHaveLength(1);
+      expect(v.container.querySelectorAll('[data-slot="full-window-bar"]'), fixture.name).toHaveLength(1);
       const over = fixture.props.stream.state.status === "ended" || fixture.props.tile === null;
       expect(!!v.container.querySelector('[data-face="live"]'), fixture.name).toBe(!over);
       expect(!!v.container.querySelector('[data-face="none"]'), fixture.name).toBe(over);
@@ -120,18 +120,24 @@ describe("the full window's body", () => {
     expect(picture(win).className).toContain("[image-rendering:pixelated]");
   });
 
-  it("floats its caption over the top edge, on its own ground", () => {
+  it("floats the computer's bar over the top edge's middle, on the popover's ground, 8px down and no wider than 560", () => {
     const v = render(view());
-    expect(v.container.querySelector<HTMLElement>('[data-slot="full-window-caption"]')!.className).toContain("absolute inset-x-0 top-0 bg-background");
+    const bar = v.container.querySelector<HTMLElement>('[data-slot="full-window-bar"]')!;
+    expect(bar.className).toContain("absolute top-2 left-1/2");
+    expect(bar.className).toContain("w-[min(560px,calc(100%-32px))]");
+    expect(bar.className).toContain("bg-popover");
+    expect(bar.querySelector('[data-slot="computer-bar"]')).not.toBeNull();
   });
 
-  it("fades the caption when the pointer rests, and keeps it while the keyboard is in it", () => {
-    const v = render(view({ captionShown: false }));
-    const caption = v.container.querySelector<HTMLElement>('[data-slot="full-window-caption"]')!;
-    expect(caption.className).toContain("opacity-0");
-    expect(caption.className).toContain("has-focus-visible:opacity-100");
-    v.rerender(view({ captionShown: true }));
-    expect(caption.className).not.toContain("opacity-0");
+  it("away, the bar is gone from the eye, the pointer and a screen reader; called, it comes back", () => {
+    const v = render(view({ barShown: false }));
+    const bar = v.container.querySelector<HTMLElement>('[data-slot="full-window-bar"]')!;
+    expect(bar.className).toContain("opacity-0");
+    expect(bar.className).toContain("pointer-events-none");
+    expect(bar.getAttribute("aria-hidden")).toBe("true");
+    v.rerender(view({ barShown: true }));
+    expect(bar.className).not.toContain("opacity-0");
+    expect(bar.hasAttribute("aria-hidden")).toBe(false);
   });
 
   it("Take over and Hand back are one call each to the host; Stop stops the one; Leave full screen leaves", async () => {
@@ -284,22 +290,55 @@ describe("the full window, live", () => {
     const opened = vi.fn();
     render(<FullWindow onOpenSession={opened} />);
     act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    // ⌃⌥ calls the bar
+    fireEvent.keyDown(window, { key: "Alt", ctrlKey: true, altKey: true });
     fireEvent.click(screen.getByRole("button", { name: "File the March expense report" }));
     expect(fullWindowTarget()).toBeNull();
     expect(opened).toHaveBeenCalledWith("t1", "box");
   });
 
-  it("fades its caption two seconds after the pointer last moved, and brings it back when it moves", () => {
+  it("calls its bar when the pointer rests 250 ms on the top edge's middle 240px, and sends it 600 ms after the pointer leaves, never while a menu is open", () => {
     vi.useFakeTimers();
     h.tile = tile();
     render(<FullWindow onOpenSession={noop} />);
     act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
-    const caption = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="full-window-caption"]')!;
-    expect(caption().dataset.shown).toBe("true");
-    act(() => vi.advanceTimersByTime(CAPTION_REST_MS));
-    expect(caption().dataset.shown).toBeUndefined();
-    act(() => void window.dispatchEvent(new Event("pointermove")));
-    expect(caption().dataset.shown).toBe("true");
+    const bar = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="full-window-bar"]')!;
+    const move = (x: number, y: number): void => void act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX: x, clientY: y })));
+    const mid = window.innerWidth / 2;
+    // hidden until called: the display is the picture's
+    expect(bar().dataset.shown).toBeUndefined();
+    // the corner of the edge is Windows' own: nothing comes
+    move(10, 2);
+    act(() => vi.advanceTimersByTime(BAR_REST_MS * 2));
+    expect(bar().dataset.shown).toBeUndefined();
+    move(mid + EDGE.width / 2 - 1, 2);
+    act(() => vi.advanceTimersByTime(BAR_REST_MS - 1));
+    expect(bar().dataset.shown).toBeUndefined();
+    act(() => vi.advanceTimersByTime(1));
+    expect(bar().dataset.shown).toBe("true");
+    // the pointer leaves: it stays 600 ms, then goes
+    move(mid, 400);
+    act(() => vi.advanceTimersByTime(BAR_LEAVE_MS - 1));
+    expect(bar().dataset.shown).toBe("true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(bar().dataset.shown).toBeUndefined();
+    expect(inEdge(mid, EDGE.height + 1, window.innerWidth)).toBe(false);
+  });
+
+  it("a menu of the bar open keeps it; a poor link calls it by itself", () => {
+    vi.useFakeTimers();
+    h.tile = tile();
+    const v = render(<FullWindow onOpenSession={noop} reading={{ delayMs: 40, link: "good" }} />);
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    const bar = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="full-window-bar"]')!;
+    expect(bar().dataset.shown).toBeUndefined();
+    v.rerender(<FullWindow onOpenSession={noop} reading={{ delayMs: 212, link: "poor" }} />);
+    expect(bar().dataset.shown).toBe("true");
+    const delay = within(bar()).getByRole("button", { name: "Link poor, details" });
+    // opened, the delay's popover holds the bar past its time
+    fireEvent.click(delay);
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(bar().dataset.shown).toBe("true");
   });
 });
 

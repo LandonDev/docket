@@ -1,7 +1,7 @@
 import { showWindowOptions } from './present'
 import { followFullScreen, isFull, isFullScreenKey, setFull } from './fullScreen'
 import { followHold, KeyboardHold } from './keyboardHold'
-import { POP_OUT_BAR, POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
+import { POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -477,12 +477,6 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void; 
   if (hooks.dropSnapshot) dropSnapshot = hooks.dropSnapshot
 
   ipcMain.handle('window:minimize', (e) => windowOf(e)?.minimize())
-  // the pop-out keeps its picture's shape as he drags it to a size: the bar under the picture is extra
-  ipcMain.handle('popout:shape', (e, ratio: unknown) => {
-    const child = popOuts.get(e.sender.id)
-    if (!child || child.isDestroyed() || typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0) return
-    child.setAspectRatio(ratio, { width: 0, height: POP_OUT_BAR })
-  })
   // A computer's picture asks for full screen (fullScreen.ts): this window's, or its pop-out's; answers whether it was full before.
   ipcMain.handle('window:fullScreen', (e, ask: unknown) => {
     const a = ask as { on?: unknown; popOut?: unknown } | null

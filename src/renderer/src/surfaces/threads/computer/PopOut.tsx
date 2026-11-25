@@ -1,37 +1,37 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { loadToast } from "@renderer/components/ui/toaster";
 import { TooltipContainerProvider } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
-import { Desktop, Square, X } from "../../../chrome/icons";
-import { canTakeOver, driveName, handBack, takeOver, useComputer, type ComputerTile } from "../../../lib/computers";
+import { Desktop, Maximize2, Minimize2, X } from "../../../chrome/icons";
+import { driveName, handBack, useComputer, type ComputerTile } from "../../../lib/computers";
 import { useDriveHold } from "../../../lib/driveHold";
-import { stopComputer } from "../../../lib/computerSessions";
-import { onWindowFullScreen, setPopOutShape } from "../../../lib/native";
+import { onWindowFullScreen, setWindowFullScreen } from "../../../lib/native";
 import { POP_OUT_FRAME, closePopOut, usePopOut } from "../../../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
-import { ViewButton } from "./ComputerBar";
+import { ComputerBar, ViewButton } from "./ComputerBar";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
 
 /**
  * The pop-out (docs/DESIGN.md "Computers", "Pop out"): a small frameless
  * window over every app, every Space and every workspace, with one computer
- * in it and a 36px bar under it. The main window draws it: a child window
+ * in it under its bar: the window's 36px handle, the computer's bar with
+ * Keys, Take over or Hand back, Stop, then Back to the page, Full screen and
+ * Close. The main window draws it: a child window
  * opened under the frame name main lets through (src/main/popOut.ts), filled
  * through a portal, its canvas handed to this window's own video worker, so
  * it plays the stream the page already plays. It wears the main window's
- * styles and theme and follows a change, keeps the picture's shape as he
- * drags it to a size, and closes when its computer leaves or the main window
- * closes. Input, the pixel ratio and the tips are the child window's own.
- * ⌃⌘F takes it full screen on its own display (main's fullScreen.ts): the
- * picture on `matte`, fitted as the stage's is (`fitStage`).
+ * styles and theme and follows a change, takes any size he drags it to (the
+ * picture keeps its shape inside, fitted as the stage's is, `fitStage`), and
+ * closes when its computer leaves or the main window closes. Input, the pixel
+ * ratio and the tips are the child window's own. Full screen (its button or
+ * ⌃⌘F) takes it over its own display (main's fullScreen.ts), the picture on
+ * `matte`.
  */
 
-/** The bar under the picture (main's POP_OUT_BAR). */
+/** The bar over the picture (main's POP_OUT_BAR). */
 const BAR = 36;
 
 /** A computer whose row is gone for this long has left: the pop-out closes. A Take over moves a row from one thread to another in between. */
@@ -50,12 +50,14 @@ export interface PopOutViewProps {
   full?: boolean;
   onBack: () => void;
   onClose: () => void;
+  /** its own display, or back */
+  onFullScreen?: () => void;
   /** a still in the canvas's place, for a fixture */
   picture?: ReactNode;
 }
 
-/** The window's body, pure: the picture filling the room above, and the bar. */
-export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr = 1, full = false, onBack, onClose, picture }: PopOutViewProps) {
+/** The window's body, pure: the bar, and the picture filling the room under it. */
+export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr = 1, full = false, onBack, onClose, onFullScreen, picture }: PopOutViewProps) {
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const face = liveFace(stream);
@@ -63,6 +65,30 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
   const fit = room ? fitStage(room, frame, dpr, pictureKind(tile?.computer ?? "")) : null;
   return (
     <div data-slot="pop-out" data-full={full || undefined} className={cn("flex h-screen w-screen flex-col overflow-hidden text-foreground", full ? "bg-matte" : "bg-background")}>
+      {/* the bar is the window's handle: it drags the window, and its buttons do not */}
+      <div data-slot="pop-out-bar" data-tauri-drag-region className="flex h-9 shrink-0 bg-background">
+        <ComputerBar
+          tile={tile}
+          name={name}
+          small
+          className="h-9 ps-2.5 pe-1.5"
+          views={
+            <>
+              <ViewButton label="Back to the page" onClick={onBack}>
+                <Desktop className="size-4" />
+              </ViewButton>
+              {onFullScreen ? (
+                <ViewButton label={full ? "Leave full screen" : "Full screen"} onClick={onFullScreen}>
+                  {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                </ViewButton>
+              ) : null}
+              <ViewButton label="Close" onClick={onClose}>
+                <X className="size-4" />
+              </ViewButton>
+            </>
+          }
+        />
+      </div>
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <div
           ref={measureRef}
@@ -89,50 +115,7 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
           )}
         </div>
       </div>
-      {/* the bar is the window's handle: it drags the window, and its buttons do not */}
-      <div data-slot="pop-out-bar" data-tauri-drag-region className="flex h-9 shrink-0 items-center gap-1 bg-background ps-3 pe-1.5">
-        <span className="min-w-0 flex-1 truncate text-xs leading-4 font-medium">{tile?.title ?? name}</span>
-        {tile ? <PopOutControls tile={tile} /> : null}
-        <ViewButton label="Back to the page" onClick={onBack}>
-          <Desktop className="size-4" />
-        </ViewButton>
-        <ViewButton label="Close" onClick={onClose}>
-          <X className="size-4" />
-        </ViewButton>
-      </div>
     </div>
-  );
-}
-
-/** Take over (where the computer takes input) and Stop; while he drives, Hand back. The bar's own sizes. */
-function PopOutControls({ tile }: { tile: ComputerTile }) {
-  const [busy, setBusy] = useState<"take" | "back" | "stop" | null>(null);
-  const press = (which: "take" | "back" | "stop", run: () => Promise<unknown>, failed: string): void => {
-    if (busy) return;
-    setBusy(which);
-    void run()
-      .catch(() => loadToast().then((toast) => toast.error(failed, { description: tile.title })))
-      .finally(() => setBusy(null));
-  };
-  if (tile.driving)
-    return (
-      <Button size="xs" data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
-        <BusyLabel busy={busy === "back"} label="Hand back" />
-      </Button>
-    );
-  return (
-    <>
-      {canTakeOver(tile) ? (
-        <Button variant="secondary" size="xs" disabled={!!busy} onClick={() => press("take", () => takeOver(tile), "Couldn't take over")}>
-          <BusyLabel busy={busy === "take"} label="Take over" />
-        </Button>
-      ) : null}
-      {tile.idle ? null : (
-        <ViewButton label={`Stop ${tile.title}`} onClick={() => press("stop", () => stopComputer(tile.entry), "Couldn't stop it")}>
-          <Square className="size-2.5 fill-current" />
-        </ViewButton>
-      )}
-    </>
   );
 }
 
@@ -228,16 +211,11 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
   const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure, { room });
   useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
   useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
-  const frame = streamSize(stream.state);
   const [full, setFull] = useState(false);
   useEffect(() => onWindowFullScreen(({ on, popOut }) => popOut && setFull(on)), []);
   useEffect(() => {
     title.title = tile?.title ?? name;
   }, [name, tile?.title, title]);
-  // the window keeps the picture's shape as he drags it to a size
-  useEffect(() => {
-    if (frame) setPopOutShape(frame.width / frame.height);
-  }, [frame?.width, frame?.height]); // eslint-disable-line react-hooks/exhaustive-deps
   // its computer left: the window closes (a Take over moves the row between threads within the grace)
   useEffect(() => {
     if (tile) return;
@@ -259,6 +237,7 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
         closePopOut();
       }}
       onClose={closePopOut}
+      onFullScreen={() => void setWindowFullScreen({ on: !full, popOut: true })}
     />
   );
 }
