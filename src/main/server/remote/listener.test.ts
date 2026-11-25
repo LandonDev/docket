@@ -8,6 +8,7 @@ import { request as httpRequest } from 'node:http'
 import { WebSocket } from 'ws'
 import type { RunningServer } from '../index'
 import { FAILURE_LIMIT } from './auth'
+import { BROWSER_INPUT_PROOF_MS } from './ownerBrowserEndpoints'
 
 /**
  * The fixed port end to end against a real startServer on a temp database
@@ -960,9 +961,53 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
       expect(renewed.result).toMatchObject({ ok: true, browserEndpoints: { listenerPorts: expect.arrayContaining([server.remote!.port]) } })
       expect(JSON.parse(server.store.getSetting(`remote.browserEndpoints.inbound.${from}`)!)).toEqual(updated)
       expect((await browser.request('peer.presence', { from, presence, browserEndpoints })).error).toMatch(/not registered on this socket/)
+      expect((await browser.request('relay.browserEndpoints', { from, args: {} })).error).toMatch(/registered peer socket/)
+      expect((await peer.request('relay.browserEndpoints', { from, args: {} })).result).toMatchObject({
+        ack: true,
+        browserEndpoints: { listenerPorts: expect.arrayContaining([server.remote!.port]) }
+      })
     } finally {
       browser.ws.close()
       peer.ws.close()
+    }
+  })
+
+  it('holds a moved public owner route until the connected peer acknowledges it', async () => {
+    const from = 'env_browser_move'
+    const oldOrigin = server.store.getSetting('remote.publicOrigin')
+    const peer = await open(`${wsBase()}/ws?ticket=${await ticketFor(await adminKey())}`)
+    const cookie = await cookieFor(['approve'])
+    const oldHost = 'moved.example:8442'
+    server.store.setSetting('remote.publicOrigin', `https://${oldHost}`)
+    const old = await open(`${wsBase()}/ws`, { Cookie: cookie, Host: oldHost, Origin: `https://${oldHost}`, 'X-Forwarded-Proto': 'https' })
+    const Host = 'moved.example:8443'
+    const Origin = `https://${Host}`
+    const headers = { Cookie: cookie, Host, Origin, 'X-Forwarded-Proto': 'https' }
+    const args = { from, args: {} }
+    try {
+      expect((await peer.request('peer.register', { from, offers: [] })).ok).toBe(true)
+      expect((await peer.request('relay.browserEndpoints', args)).result.browserEndpoints).toBeDefined()
+      server.store.setSetting('remote.publicOrigin', Origin)
+      await waitFor(() => peer.frames.some((f) => f.push === 'peer.call' && f.method === 'relay.browserEndpoints'))
+      const move = peer.frames.find((f) => f.push === 'peer.call' && f.method === 'relay.browserEndpoints')
+      expect(move.params.args.browserEndpoints.remoteRoutes).toContain(Origin)
+      expect((await peer.request('relay.browserEndpoints', args)).result.browserEndpoints).toBeUndefined()
+      await old.closed
+      expect((await call('GET', '/ui/', { headers })).status).toBe(503)
+      expect(await upgradeStatus(`${wsBase()}/ws`, headers)).toBe(503)
+      await sleep(BROWSER_INPUT_PROOF_MS)
+      expect((await call('GET', '/ui/', { headers })).status).toBe(503)
+
+      expect((await peer.request('peer.reply', { callId: move.callId, ok: true, result: { ack: true } })).ok).toBe(true)
+      expect((await peer.request('relay.browserEndpoints', args)).result.browserEndpoints.remoteRoutes).toContain(Origin)
+      expect((await call('GET', '/ui/', { headers })).status).toBe(200)
+      expect(await upgradeStatus(`${wsBase()}/ws`, headers)).toBe(101)
+      expect((await call('GET', '/ui/', { headers: { ...headers, Host: 'moved.example:8444' } })).status).toBe(403)
+    } finally {
+      old.ws.close()
+      peer.ws.close()
+      await peer.closed
+      server.store.setSetting('remote.publicOrigin', oldOrigin)
     }
   })
 

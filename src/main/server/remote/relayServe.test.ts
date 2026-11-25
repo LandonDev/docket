@@ -6,7 +6,7 @@ import { CONTRACT_VERSION } from '@shared/capabilities'
 import { RelayNoticeSchema, type RelayCallParams } from '@shared/contract-relay'
 import { MacPresenceWatcher } from '../../presence'
 import type { FacadeContext } from './facade'
-import { RelaySocket, RelayServer, relayOffers } from './relayServe'
+import { RelaySocket, RelayServer, relayOffers, type RelayServerDeps } from './relayServe'
 
 type Call = Extract<MacBridgePush, { push: 'peer.call' }>
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
@@ -166,6 +166,7 @@ describe('RelayServer', () => {
     links?: string[]
     browserEndpoints?: () => BrowserEndpoints
     onBrowserEndpoints?: (id: string, endpoints: BrowserEndpoints) => void
+    exchangeBrowserEndpoints?: RelayServerDeps['exchangeBrowserEndpoints']
   } = {}) {
     const presence = new MacPresenceWatcher({ initial: { screen: 'unlocked' }, now: () => 500 })
     const requests: { to: string; method: string; params: unknown }[] = []
@@ -205,6 +206,7 @@ describe('RelayServer', () => {
       heartbeatMs: opts.heartbeatMs,
       browserEndpoints: opts.browserEndpoints,
       onBrowserEndpoints: opts.onBrowserEndpoints,
+      exchangeBrowserEndpoints: opts.exchangeBrowserEndpoints,
       retryMs: 0,
       log: () => {}
     })
@@ -343,9 +345,17 @@ describe('RelayServer', () => {
     })
     expect(received).toHaveBeenCalledWith('env_box', peer)
 
-    localPort = 7679
-    server.announceBrowserEndpoints()
-    expect(requests.at(-1)?.params).toMatchObject({ browserEndpoints: { listenerPorts: [7679] } })
+    server.close()
+  })
+
+  it('acknowledges a linked host move on the reverse link and returns the current local list', async () => {
+    const host = { listenerPorts: [8765], lanAddresses: ['box.local'], remoteRoutes: [] }
+    const local = { listenerPorts: [7677], lanAddresses: ['studio.local'], remoteRoutes: [] }
+    const exchangeBrowserEndpoints = vi.fn(() => ({ ack: true as const, browserEndpoints: local }))
+    const { server, call } = make({ exchangeBrowserEndpoints })
+    expect(await call('relay.browserEndpoints', { browserEndpoints: host })).toEqual({ ack: true, browserEndpoints: local })
+    expect(exchangeBrowserEndpoints).toHaveBeenCalledWith('env_box', host)
+    await expect(call('relay.browserEndpoints', { browserEndpoints: host }, 'unknown')).rejects.toThrow('does not know that host')
     server.close()
   })
 

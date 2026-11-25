@@ -2,7 +2,7 @@ import type { TempCodeOrigins } from '../../remote/tempcodeOrigins'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { SessionMeta, SessionStatus } from '@shared/events'
-import type { ComputerRegistry } from '../../computer/run'
+import type { BrowserInputProof, ComputerRegistry } from '../../computer/run'
 import { ComputerService } from '../../computer/service'
 import { ComputerSessions } from '../../computer/sessions'
 import type { SettingsStore } from '../../computer/verdicts'
@@ -35,6 +35,7 @@ export interface VmRegistry extends ComputerRegistry {
 
 export interface VmWiring {
   origins?: () => TempCodeOrigins
+  confirmBrowserInput?: () => Promise<BrowserInputProof>
   registry: VmRegistry
   store: SettingsStore
   /** <userData>: the service's pictures land in `winvm/computer` */
@@ -90,6 +91,7 @@ export function wireVm(o: VmWiring): VmHost {
     rootOf: (id) => o.registry.rootSessionOf(id),
     gate: () => VM_TIER_GATE,
     origins: o.origins,
+    confirmBrowserInput: o.confirmBrowserInput,
     vm: true,
     log,
     ...(o.landing ? { landing: o.landing } : {})

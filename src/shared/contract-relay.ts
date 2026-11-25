@@ -1,4 +1,4 @@
-import { BrowserEndpointsSchema } from './browserEndpoints'
+import { BrowserEndpointsSchema, type BrowserEndpoints } from './browserEndpoints'
 import { z } from 'zod'
 import { HeldRefSchema } from './work/acts'
 import { NoticeWorkSchema } from './work/tell'
@@ -302,7 +302,7 @@ export const RELAY_BOX_LOCAL: readonly ClientRequest['method'][] = [
 export const relayForbidden = (method: string): string => `forbidden: ${method} does not relay to another host`
 
 // ── peer.call methods (box → host), inside the admin peer.call push ──────
-export const RELAY_PEER_METHODS = ['relay.open', 'relay.frame', 'relay.close', 'relay.facade'] as const
+export const RELAY_PEER_METHODS = ['relay.open', 'relay.frame', 'relay.close', 'relay.facade', 'relay.browserEndpoints'] as const
 export type RelayPeerMethod = (typeof RELAY_PEER_METHODS)[number]
 export const isRelayPeerMethod = (m: string): m is RelayPeerMethod => (RELAY_PEER_METHODS as readonly string[]).includes(m)
 
@@ -329,10 +329,13 @@ export type RelayOpenArgs = z.infer<typeof RelayOpenArgsSchema>
 export type RelayFrameArgs = z.infer<typeof RelayFrameArgsSchema>
 export type RelayCloseArgs = z.infer<typeof RelayCloseArgsSchema>
 export type RelayFacadeArgs = z.infer<typeof RelayFacadeArgsSchema>
+/** No list asks for current endpoints. A list announces a move and asks for an acknowledgement. */
+export const RelayBrowserEndpointsArgsSchema = z.object({ browserEndpoints: BrowserEndpointsSchema.optional() })
+export type RelayBrowserEndpointsArgs = { browserEndpoints?: BrowserEndpoints }
 export interface RelayCallParams {
   /** The box's environment id. */
   from: string
-  args: RelayOpenArgs | RelayFrameArgs | RelayCloseArgs | RelayFacadeArgs
+  args: RelayOpenArgs | RelayFrameArgs | RelayCloseArgs | RelayFacadeArgs | RelayBrowserEndpointsArgs
 }
 export interface RelayOpenResult {
   ok: true
@@ -374,6 +377,7 @@ export const RelayNoticeSchema = z.object({
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [
+  request('relay.browserEndpoints', z.object({ from, args: RelayBrowserEndpointsArgsSchema })),
   /** The host's presence changed, or its heartbeat. The reply includes endpoints when the peer sent its own. */
   request('peer.presence', z.object({ from, presence: MacPresenceSchema, browserEndpoints: BrowserEndpointsSchema.optional() })),
   /** Frames the host's attach() sent on a relayed lane, in order. → { ok: true }, or an error naming an unknown socket. */

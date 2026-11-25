@@ -15,6 +15,7 @@ import {
   RelayCloseArgsSchema,
   RelayFacadeArgsSchema,
   RelayFrameArgsSchema,
+  RelayBrowserEndpointsArgsSchema,
   RelayOpenArgsSchema,
   isRelayPeerMethod,
   type MacPresence,
@@ -185,6 +186,7 @@ export interface RelayServerDeps {
   deliversNotices: () => boolean
   browserEndpoints?: () => BrowserEndpoints
   onBrowserEndpoints?: (id: string, endpoints: BrowserEndpoints) => void
+  exchangeBrowserEndpoints?: (id: string, endpoints?: BrowserEndpoints) => { ack: true; browserEndpoints?: BrowserEndpoints }
   /** What this host runs (buildInfo.ts), for the box's host row. */
   build?: BuildFacts
   hostname?: string
@@ -244,6 +246,10 @@ export class RelayServer {
     if (params?.from !== ctx.from) throw new Error('the call names another host as its carrier')
     const args = params.args as Record<string, unknown>
     switch (method) {
+      case 'relay.browserEndpoints': {
+        if (!this.deps.exchangeBrowserEndpoints) throw new Error('browser endpoint exchange is unavailable')
+        return this.deps.exchangeBrowserEndpoints(env.id, RelayBrowserEndpointsArgsSchema.parse(args).browserEndpoints)
+      }
       case 'relay.open': {
         const a = RelayOpenArgsSchema.parse(args)
         const key = this.key(env.id, a.socketId)
@@ -344,11 +350,6 @@ export class RelayServer {
       this.sockets.delete(key)
       socket.close('link down')
     }
-  }
-
-  /** Refresh peers now when the listener changes, without waiting for the heartbeat. */
-  announceBrowserEndpoints(): void {
-    this.publish(this.deps.presence.snapshot())
   }
 
   /** A notice of a local root thread (notifier.onNotice): to every connected link as relay.notice when this host delivers nothing itself. */

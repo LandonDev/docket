@@ -155,7 +155,8 @@ export function isTempCodeBrowserHost(
   origins: TempCodeOrigins
 ): boolean {
   if (!/^(?:[a-z\d_.-]+|\[[a-f\d:.]+\])(?::\d+)?$/i.test(host)) return false
-  return isTempCodeOrigin(`${proto}://${host}`, origins)
+  // A tunnel name alone does not give its other ports an owner page.
+  return isTempCodeOrigin(`${proto}://${host}`, { ...origins, tunnelHosts: undefined })
 }
 
 export function readLocalTempCodeOrigins(

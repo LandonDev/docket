@@ -29,6 +29,7 @@ export interface Card {
 export function computerHarness(
   opts: {
     origins?: () => TempCodeOrigins
+    confirmBrowserInput?: () => Promise<import('./run').BrowserInputProof>
     env?: Record<string, string>
     gate?: SessionTierGate
     /** a gate that needs the service and the sessions (the scheduler) */
@@ -75,6 +76,7 @@ export function computerHarness(
   const sessions = new ComputerSessions({
     service,
     origins: opts.origins,
+    confirmBrowserInput: opts.confirmBrowserInput,
     registry,
     store,
     dataDir,

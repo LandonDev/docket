@@ -90,6 +90,8 @@ import { approverOf, assertMayAnswer } from '@shared/addons'
 import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
+import { browserEndpointsFromReply, type BrowserEndpoints } from '@shared/browserEndpoints'
+import { BROWSER_ENDPOINT_ACK_MS, BROWSER_INPUT_PROOF_MS, OwnerBrowserEndpoints } from './remote/ownerBrowserEndpoints'
 import { PeerBrowserEndpoints } from './remote/peerBrowserEndpoints'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
 import { handlePeerPull, macWriteStages } from './macWriteStage'
@@ -163,7 +165,7 @@ import type { PersonIdleSource } from '../personIdle'
 import { HostRelay, PeerRelayTransport } from './remote/relay'
 import { RelayServer, relayOffers } from './remote/relayServe'
 import type { PowerState, ScreenState } from '@shared/contract-relay'
-import type { MacPresence } from '@shared/contract-relay'
+import type { MacPresence, RelayBrowserEndpointsArgs } from '@shared/contract-relay'
 import { apnsFromEnv } from './remote/apns'
 import { ActivityFeed, PushRegistry } from './remote/push'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
@@ -579,14 +581,23 @@ export async function startServer(
     return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
   }
   const peerBrowserEndpoints = new PeerBrowserEndpoints(store)
+  const browserPeerConnections = new Set<number>()
+  const ownerBrowserEndpoints = new OwnerBrowserEndpoints()
+  const browserPeerIds = () => {
+    const outbound = listEnvironments(store).map((e) => e.id)
+    const inbound = [...new Set([...peerCalls.registeredIds(), ...hostRelay.hosts().map((e) => e.environmentId)])]
+      .filter((id) => deviceBindings.mayRoute(id))
+    return { outbound, inbound }
+  }
   const localBrowserEndpoints = () => readLocalTempCodeOrigins(store, remotePortWanted(), remote?.port)
-  const tempCodeOrigins = () => ({
-    ...readTempCodeOrigins(store, remotePortWanted(), remote?.port),
-    ...peerBrowserEndpoints.snapshot(
-      listEnvironments(store).map((e) => e.id),
-      [...peerCalls.registeredIds(), ...hostRelay.hosts().map((e) => e.environmentId)].filter((id) => deviceBindings.mayRoute(id))
-    )
-  })
+  const tempCodeOrigins = () => {
+    const { outbound, inbound } = browserPeerIds()
+    return { ...readTempCodeOrigins(store, remotePortWanted(), remote?.port), ...peerBrowserEndpoints.snapshot(outbound, inbound) }
+  }
+  function exchangeBrowserEndpoints(direction: 'inbound' | 'outbound', id: string, endpoints?: BrowserEndpoints) {
+    if (endpoints) peerBrowserEndpoints.receive(direction, id, endpoints)
+    return { ack: true as const, browserEndpoints: ownerBrowserEndpoints.current }
+  }
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
   // What this host runs, said in every hello; and master's number, so the
   // renderer can mark a host that is behind (src/shared/deployDrift.ts).
@@ -790,6 +801,7 @@ export async function startServer(
     facade: () => ({ registry, origin: null, environmentId }),
     deliversNotices: () => apns !== null || hub !== null,
     browserEndpoints: localBrowserEndpoints,
+    exchangeBrowserEndpoints: (id, endpoints) => exchangeBrowserEndpoints('outbound', id, endpoints),
     onBrowserEndpoints: (id, endpoints) => peerBrowserEndpoints.receive('outbound', id, endpoints),
     build
   })
@@ -1151,6 +1163,53 @@ export async function startServer(
   const peerRequest = (id: string): LinkRequest | null => {
     const link = peers.get(id)
     return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+  }
+  const browserPeerLinks = (announcing = false) => {
+    const { outbound, inbound } = browserPeerIds()
+    const dialed = outbound.map((id) => ({ id, direction: 'outbound' as const, link: peerRequest(id) }))
+    const registered = inbound.filter((id) =>
+      !outbound.includes(id) || (announcing && !dialed.some((peer) => peer.id === id && peer.link))
+    ).map((id) => {
+      const connection = peerCalls.connectionOf(id)
+      const link = connection !== null && browserPeerConnections.has(connection)
+        ? (_method: string, params: unknown, options: { timeoutMs: number }) =>
+            peerCalls.call(id, 'relay.browserEndpoints', params as { from: string; args: RelayBrowserEndpointsArgs }, options.timeoutMs)
+        : null
+      return { id, direction: 'inbound' as const, link }
+    })
+    return [...dialed, ...registered]
+  }
+  const confirmBrowserInput = async () => {
+    const start = performance.now()
+    const wall = Date.now()
+    const links = browserPeerLinks()
+    const unexpired = () => !links.length || (performance.now() - start < BROWSER_INPUT_PROOF_MS && Date.now() - wall < BROWSER_INPUT_PROOF_MS)
+    const identities = links.map(({ direction, id }) => `${direction}:${id}`)
+    const valid = () => {
+      if (!unexpired()) return false
+      const current = browserPeerLinks()
+      return current.length === identities.length && current.every(({ direction, id, link }, index) => link && `${direction}:${id}` === identities[index])
+    }
+    const confirmed = await Promise.all(links.map(async ({ id, direction, link }) => {
+      try {
+        const result = await link?.('relay.browserEndpoints', { from: environmentId, args: {} }, { timeoutMs: BROWSER_INPUT_PROOF_MS })
+        const endpoints = browserEndpointsFromReply(result)
+        if (endpoints && unexpired()) peerBrowserEndpoints.receive(direction, id, endpoints)
+        return endpoints
+      } catch {
+        return undefined
+      }
+    }))
+    const origins = tempCodeOrigins()
+    const proofs = confirmed.filter((endpoints) => endpoints !== undefined)
+    return {
+      origins: {
+        ...origins,
+        linkedEndpoints: [...(origins.linkedEndpoints ?? []), ...proofs],
+        linkedEndpointsUnknown: origins.linkedEndpointsUnknown || proofs.length !== links.length
+      },
+      valid
+    }
   }
   const hostLinks = new HostLinks({ calls: peerCalls, offer: CROSS_HOST_OFFER, link: peerRequest, linkIds: () => listEnvironments(store).map((e) => e.id) })
   // The hosts this one knows: the ones it saved (and dials), and the ones
@@ -1575,6 +1634,7 @@ export async function startServer(
     const sessions = new ComputerSessions({
       service,
       origins: tempCodeOrigins,
+      confirmBrowserInput,
       registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayFor: computerAwayFor },
       store,
       dataDir: computerData,
@@ -1984,7 +2044,7 @@ export async function startServer(
     void Promise.all([import('./work/winvm/vm'), import('./work/winvm/host')]).then(
       ([m, h]) => {
         const dataDir = options.dataDir ?? dirname(dbPath)
-        const vm = m.wireVm({ registry, store, dataDir, origins: tempCodeOrigins })
+        const vm = m.wireVm({ registry, store, dataDir, origins: tempCodeOrigins, confirmBrowserInput })
         const picture = h.wireVmPicture({ dataDir, video: { relay: videoRelay, rpc: videoRpc }, holder: () => vm.lease.holderPane(), log: (line) => console.log(`[winvm] ${line}`) })
         vmPreviews = picture.previews
         computerRpc.setBox(h.joinRows(vm.rows, picture))
@@ -2427,15 +2487,36 @@ export async function startServer(
 
   const builder = new BuildRunner()
   let remoteRestart: Promise<void> = Promise.resolve()
-  const restartRemote = (): Promise<void> =>
-    (remoteRestart = remoteRestart.then(async () => {
+  const publishOwnerBrowserEndpoints = (): Promise<void> => {
+    const endpoints = localBrowserEndpoints()
+    const links = browserPeerLinks(true)
+    return ownerBrowserEndpoints.publish(endpoints, links.length > 0, () =>
+      links.flatMap(({ id, direction, link }) => link ? [(async () => {
+        const reply = await link('relay.browserEndpoints', { from: environmentId, args: { browserEndpoints: endpoints } }, { timeoutMs: BROWSER_ENDPOINT_ACK_MS }).catch(() => undefined)
+        if (reply && typeof reply === 'object' && 'ack' in reply && reply.ack === true) return true
+        peerBrowserEndpoints.disconnect(direction, id)
+        return false
+      })()] : [])
+    )
+  }
+  const browserOriginChanged = (): void => {
+    ownerBrowserEndpoints.invalidate()
+    remote?.closeBrowserSockets()
+    queueMicrotask(() => {
+      if (remote?.port) void publishOwnerBrowserEndpoints()
+    })
+  }
+  const offLearnedBrowserOrigin = store.onSettingSet('remote.learnedOrigin', browserOriginChanged)
+  const offPublicBrowserOrigin = store.onSettingSet('remote.publicOrigin', browserOriginChanged)
+  const restartRemote = (): Promise<void> => {
+    ownerBrowserEndpoints.invalidate()
+    remote?.closeBrowserSockets()
+    return (remoteRestart = remoteRestart.then(async () => {
+      ownerBrowserEndpoints.invalidate()
       await remote?.close()
       remote = null
       const port = remotePortWanted()
-      if (port === null) {
-        relayServer.announceBrowserEndpoints()
-        return
-      }
+      if (port === null) return publishOwnerBrowserEndpoints()
       remote = await startRemoteListener({
         port,
         auth: remoteAuth,
@@ -2461,10 +2542,12 @@ export async function startServer(
           relay: hostRelay.facadeHosts()
         }),
         // The built renderer (electron-vite build); a dev tree without it answers 503.
-        ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
+        ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets }),
+        browserEndpoints: () => ownerBrowserEndpoints.current
       })
-      relayServer.announceBrowserEndpoints()
+      await publishOwnerBrowserEndpoints()
     }))
+  }
   // The phones' push registrations forward to the hub (made below), or go
   // out from here when this host holds the APNs key (remote/apns.ts); a
   // revoked key takes its registration and activities with it.
@@ -2482,7 +2565,10 @@ export async function startServer(
     store,
     push: pushRegistry,
     status: () => ({ running: remote !== null && remote.port > 0, port: remote?.port ?? 0, error: remote?.error ?? null }),
-    onSettingsChanged: () => void restartRemote(),
+    onSettingsChanged: () => {
+      // A public-origin move on the same port uses the live links to announce it.
+      if (!remote?.port || remotePortWanted() !== remote.port) void restartRemote()
+    },
     setup: setupPairings,
     ticketFor: (id) => given?.windowTicket(id) ?? null
   }
@@ -2515,6 +2601,7 @@ export async function startServer(
    */
   const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal }), peerEndpointSocket = false): void => {
     const connection = ++connections
+    if (peerEndpointSocket) browserPeerConnections.add(connection)
     const previewConnection = { connection }
     const unsubs = new Map<string, () => void>()
     /** This socket carries `sessionId`'s rows from now on (once per socket). */
@@ -2870,6 +2957,12 @@ export async function startServer(
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
+        if (req.method === 'relay.browserEndpoints') {
+          if (!peerEndpointSocket || peerCalls.connectionOf(req.params.from) !== connection)
+            throw new Error('forbidden: browser endpoints require the registered peer socket')
+          const result = exchangeBrowserEndpoints('inbound', req.params.from, req.params.args.browserEndpoints)
+          return sendFrame({ id: req.id, ok: true, result })
+        }
         // The relay (remote/relay.ts): a host's presence and its lanes' frames, each only
         // from the socket that host registered on.
         if (req.method === 'peer.presence' || req.method === 'relay.frames' || req.method === 'relay.closed' || req.method === 'relay.notice') {
@@ -4393,6 +4486,7 @@ export async function startServer(
       })
 
     ws.on('close', () => {
+      browserPeerConnections.delete(connection)
       socketClosed = true
       coalescer.dispose()
       focus.drop(connection)
@@ -4658,6 +4752,8 @@ export async function startServer(
       activityFeed.stop()
       apns?.close()
       hub?.stop()
+      offLearnedBrowserOrigin()
+      offPublicBrowserOrigin()
       await remoteRestart
       await remote?.close()
       stopStallMonitor()

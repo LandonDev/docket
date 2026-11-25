@@ -442,6 +442,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'thread.read': 'admin',
   // The relay (contract-relay.ts): a host's presence and its relayed lanes' frames, over its own link.
   'peer.presence': 'admin',
+  'relay.browserEndpoints': 'admin',
   'relay.frames': 'admin',
   'relay.closed': 'admin',
   'relay.notice': 'admin',
@@ -590,6 +591,7 @@ export const DEVICE_METHODS: ReadonlySet<string> = new Set([
   'peer.progress',
   'peer.pull',
   'peer.presence',
+  'relay.browserEndpoints',
   'relay.frames',
   'relay.closed',
   'relay.notice',

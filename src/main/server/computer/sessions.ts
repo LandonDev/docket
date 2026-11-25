@@ -8,7 +8,7 @@ import { attachmentDir } from '../attachmentDir'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { capturePicture, type ComputerHistory, type HistoryEntry, type HistoryPicture, type PictureTarget } from './history'
 import { frontLine, refusal, type ComputerToolOutcome } from './result'
-import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
+import { runComputerTool, type BrowserInputProof, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
 import { CallTiming, timingLine } from '@shared/computer/bridgeTiming'
 import type { Clock, ComputerService } from './service'
 import { TargetResolver } from './policy'
@@ -29,6 +29,7 @@ import { TierVerdicts, type SettingsStore } from './verdicts'
 
 export interface ComputerSessionsOptions {
   origins?: () => TempCodeOrigins
+  confirmBrowserInput?: () => Promise<BrowserInputProof>
   service: ComputerService
   registry: ComputerRegistry
   store: SettingsStore
@@ -109,6 +110,7 @@ export class ComputerSessions {
     this.host = {
       service: opts.service,
       origins: opts.origins,
+      confirmBrowserInput: opts.confirmBrowserInput,
       verdicts: this.verdicts,
       gate: () => opts.gate?.() ?? currentSessionTierGate(),
       registry: opts.registry,

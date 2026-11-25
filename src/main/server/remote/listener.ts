@@ -81,6 +81,8 @@ export interface RemoteListenerOptions {
   videoPublish?: { upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): 400 | 401 | 403 | 404 | null }
   /** The relayed hosts with their presence, for `/api/hello` to a caller the host knows. */
   hosts?: () => HostPresence[]
+  /** The last owner routes peers acknowledged, or undefined while a move is pending. */
+  browserEndpoints?: () => import('@shared/browserEndpoints').BrowserEndpoints | undefined
   ui?: UiHandler
   /** The MCP endpoint (mcp.ts): answers `/mcp` for bot keys. */
   mcp?: UiHandler
@@ -117,6 +119,7 @@ export interface RemoteListener {
   error: string | null
   /** Live contract sockets, by key id. */
   sockets: Map<string, Set<WebSocket>>
+  closeBrowserSockets: () => void
   close: () => Promise<void>
 }
 
@@ -204,13 +207,22 @@ function readJson(req: IncomingMessage): Promise<unknown> {
 export async function startRemoteListener(options: RemoteListenerOptions): Promise<RemoteListener> {
   const { auth, store, attach } = options
   const sockets = new Map<string, Set<WebSocket>>()
+  const browserSockets = new Set<WebSocket>()
+  const closeBrowserSockets = (): void => {
+    for (const ws of browserSockets) ws.terminate()
+    browserSockets.clear()
+  }
   // Every socket here is a remote client: permessage-deflate as wire.ts
   // sizes it, and attach() gives the principal the remote profile.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: remoteDeflateOptions() })
   let boundPort = 0
-  const browserHostAllowed = (ctx: Pick<RequestContext, 'req' | 'host' | 'proto'>): boolean =>
-    header(ctx.req, 'host') !== undefined &&
-    isTempCodeBrowserHost(ctx.host, ctx.proto, readLocalTempCodeOrigins(store, options.port, boundPort))
+  const browserHostStatus = (ctx: Pick<RequestContext, 'req' | 'host' | 'proto'>): 403 | 503 | null => {
+    const endpoints = options.browserEndpoints
+      ? options.browserEndpoints()
+      : readLocalTempCodeOrigins(store, options.port, boundPort)
+    if (!endpoints) return 503
+    return header(ctx.req, 'host') !== undefined && isTempCodeBrowserHost(ctx.host, ctx.proto, endpoints) ? null : 403
+  }
 
   /** The proxy's view of this host, remembered for pairing links. Taught
    *  only by an admin's own authenticated request (R2 L1): the Host of an
@@ -368,7 +380,8 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
     }
     if (path === '/mcp' && options.mcp) return void (await options.mcp(ctx))
     if (path === '/ui' || path.startsWith('/ui/')) {
-      if (!browserHostAllowed(ctx)) throw new HttpError(403, 'browser host refused')
+      const status = browserHostStatus(ctx)
+      if (status) throw new HttpError(status, status === 503 ? 'browser routes are being shared with linked computers' : 'browser host refused')
     }
     if (options.ui && (await options.ui(ctx))) return
     notFound(res)
@@ -451,7 +464,9 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       let principal: (Principal & { kind: 'remote' }) | null = null
       const ticket = base.query.get('ticket')
       // Browser sockets use the session cookie; origin-bearing ticket requests are browser traffic too.
-      if ((!ticket || header(req, 'origin') !== undefined) && !browserHostAllowed(base)) return refuseUpgrade(socket, 403, 'Forbidden')
+      const browser = !ticket || header(req, 'origin') !== undefined
+      const browserStatus = browser ? browserHostStatus(base) : null
+      if (browserStatus) return refuseUpgrade(socket, browserStatus, browserStatus === 503 ? 'Service Unavailable' : 'Forbidden')
       if (ticket) {
         principal = auth.consumeTicket(ticket)
         if (!principal) auth.recordFailure(base.ip)
@@ -491,11 +506,15 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         log(`upgrade refused from ${base.ip}: host ${host} is not reachable from here`)
         return refuseUpgrade(socket, 503, 'Host Unreachable')
       }
+      // Cookie verification awaited, so check again before admitting a browser.
+      const currentStatus = browser ? browserHostStatus(base) : null
+      if (currentStatus) return refuseUpgrade(socket, currentStatus, currentStatus === 503 ? 'Service Unavailable' : 'Forbidden')
       wss.handleUpgrade(req, socket, head, (ws) => {
         const keyId = principal.keyId
         let set = sockets.get(keyId)
         if (!set) sockets.set(keyId, (set = new Set()))
         set.add(ws)
+        if (browser) browserSockets.add(ws)
         let missed = 0
         ws.on('pong', () => (missed = 0))
         const timer = setInterval(() => {
@@ -506,6 +525,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         ws.on('close', () => {
           clearInterval(timer)
           set.delete(ws)
+          browserSockets.delete(ws)
           if (set.size === 0) sockets.delete(keyId)
           log(`socket closed: key ${keyId} (${principal.name})`)
         })
@@ -534,6 +554,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
     clearInterval(sweep)
     for (const set of sockets.values()) for (const ws of set) ws.terminate()
     sockets.clear()
+    browserSockets.clear()
     if (boundPort === 0) return
     await new Promise<void>((ok) => server.close(() => ok()))
     server.closeAllConnections?.()
@@ -551,10 +572,10 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
     const code = (err as NodeJS.ErrnoException).code
     const error = code === 'EADDRINUSE' ? `port ${options.port} is in use` : (err as Error).message
     log(`not listening: ${error}`)
-    return { port: 0, error, sockets, close }
+    return { port: 0, error, sockets, closeBrowserSockets, close }
   }
   const address = server.address()
   boundPort = typeof address === 'object' && address ? address.port : 0
   log(`listening on 127.0.0.1:${boundPort}`)
-  return { port: boundPort, error: null, sockets, close }
+  return { port: boundPort, error: null, sockets, closeBrowserSockets, close }
 }

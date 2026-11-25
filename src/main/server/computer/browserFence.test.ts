@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
-import { BROWSER_ADDRESS_UNAVAILABLE } from './policy'
+import { BROWSER_ADDRESS_UNAVAILABLE, BROWSER_PEER_UNCONFIRMED } from './policy'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
@@ -161,22 +161,27 @@ it.each([
   const h = make(false, url, () => ({ ...origins(), linkedEndpointsUnknown: true }))
   const target = { app: 'Webby' }
   expect(await h.run('computer_observe', target)).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
-  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: BROWSER_PEER_UNCONFIRMED })
   expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
 })
 
 it.each(['https://ordinary.test/', 'http://ordinary.test:7677/', 'http://ordinary.test:8192/'])(
-  'keeps public sites available while a peer has never announced its addresses at %s',
+  'allows a public read and refuses public input while a peer is unknown at %s',
   async (url) => {
     const h = make(false, url, () => ({ ...origins(), linkedEndpointsUnknown: true }))
-    expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
+    const target = { app: 'Webby' }
+    expect((await h.run('computer_observe', target)).isError).toBe(false)
+    h.set('t1', { scope: 'work', permission: 'auto' })
+    h.setAway(true)
+    expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: BROWSER_PEER_UNCONFIRMED })
+    expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
   }
 )
 
-it('refuses to open a private browser URL while a peer set is missing', async () => {
+it('refuses to open a public browser URL while a peer set is missing', async () => {
   const h = make(false, undefined, () => ({ ...origins(), linkedEndpointsUnknown: true }))
-  expect(await h.run('computer_apps', { launch: 'Webby', open: ['http://192.168.40.9:8192/ui'] })).toMatchObject({
-    body: BROWSER_ADDRESS_UNAVAILABLE
+  expect(await h.run('computer_apps', { launch: 'Webby', open: ['https://ordinary.test/'] })).toMatchObject({
+    body: BROWSER_PEER_UNCONFIRMED
   })
   expect(h.requests().some(({ method }) => method === 'apps.launch')).toBe(false)
 })
@@ -200,6 +205,35 @@ it('fences a moved peer before and after the announcement, even if another peer 
   expect(await h.run('computer_observe', target)).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
   expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
   expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
+})
+
+it('refuses input with an old peer list until the move is confirmed', async () => {
+  let confirmed = false
+  const stillCached = () => ({ ...origins(), linkedEndpoints: [linkedPeer] })
+  const h = computerHarness({
+    origins: stillCached,
+    confirmBrowserInput: async () => ({ origins: { ...stillCached(), linkedEndpointsUnknown: !confirmed }, valid: () => true }),
+    env: { FAKE_BROWSER_URL: 'https://ordinary.test/' }
+  })
+  open.push(h)
+  const act = { app: 'Webby', action: 'key', text: 'Tab' }
+  expect(await h.run('computer_act', act)).toMatchObject({ body: BROWSER_PEER_UNCONFIRMED })
+  expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
+
+  confirmed = true
+  expect((await h.run('computer_act', act)).isError).toBe(false)
+  expect(h.requests().some(({ method }) => method === 'action.run')).toBe(true)
+})
+
+it('refuses browser input if its peer proof expires before dispatch', async () => {
+  const h = computerHarness({
+    origins,
+    confirmBrowserInput: async () => ({ origins: origins(), valid: () => false }),
+    env: { FAKE_BROWSER_URL: 'https://ordinary.test/' }
+  })
+  open.push(h)
+  expect(await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab' })).toMatchObject({ body: BROWSER_PEER_UNCONFIRMED })
+  expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
 })
 
 it('allows an ordinary address on a peer port once all peer sets are fresh', async () => {

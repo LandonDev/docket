@@ -178,12 +178,13 @@ why and the measured headline.
   changes the address, further steps and the closing read stop. A fresh
   call checks the new address. Linked hosts share their listener ports,
   LAN addresses and names, and tunnel names when they connect and on each
-  heartbeat. A port change sends an update on live links. The host checks
-  all DNS answers against those addresses and its own. A missing or stale
-  peer list limits native browser tools to public sites on every port.
-  A peer list also leaves private targets on any port it omits blocked,
-  so a moved listener stays out of reach while its update is on the way.
-  A failed lookup stops the call. The listener requires a
+  heartbeat. Before browser input the host confirms the lists over the
+  live peer links. A missing or stale list stops input on every site,
+  including public sites. Reads still follow the address check. When a
+  listener changes port or public origin, it waits for peers to acknowledge
+  the new list or for a short timeout before it serves owner pages.
+  A peer that missed the update must confirm the new list before it can send
+  browser input. A failed lookup stops the call. The listener requires a
   known Host for the owner UI and its browser socket. The UI refuses to
   load in a frame.
 - **The hold in a Work thread** (docs/computer-protocol.md §19.3 "The hold

@@ -41,6 +41,7 @@ import {
   passwordTarget,
   refusedLaunch,
   refusedLaunchList,
+  BROWSER_PEER_UNCONFIRMED,
   refusedBrowserTarget,
   knownBrowser,
   refusedVmKey,
@@ -247,8 +248,14 @@ export interface ThreadComputer {
   pointer?: PointerAt
 }
 
+export interface BrowserInputProof {
+  origins: TempCodeOrigins
+  valid(): boolean
+}
+
 export interface RunHost {
   origins?: () => TempCodeOrigins
+  confirmBrowserInput?: () => Promise<BrowserInputProof>
   service: ComputerService
   verdicts: TierVerdicts
   gate(): SessionTierGate
@@ -553,10 +560,20 @@ async function runChecked(
   // host reads as outward, or the model flagged, is kept for the owner's press and asks no card. So the flag is no card here.
   const work = ctx.work === true || host.registry.get(threadId)?.scope === 'work'
 
+  // QEMU's guest gateway stands for the box's loopback.
+  const withVmOrigin = (origins: TempCodeOrigins): TempCodeOrigins =>
+    host.vm ? { ...origins, lanAddresses: [...origins.lanAddresses, '10.0.2.2'] } : origins
   const browserOrigins = (): TempCodeOrigins | undefined => {
     const origins = host.origins?.()
-    // QEMU's guest gateway stands for the box's loopback.
-    return origins && host.vm ? { ...origins, lanAddresses: [...origins.lanAddresses, '10.0.2.2'] } : origins
+    return origins && withVmOrigin(origins)
+  }
+  const webOpenItems = (items: string[]): string[] => items.filter((item) => /^https?:/i.test(item))
+  async function browserRefusal(targets: { browser: boolean; url?: string }[], input: boolean): Promise<string | null> {
+    const proof = input ? await host.confirmBrowserInput?.() : undefined
+    const origins = proof ? withVmOrigin(proof.origins) : browserOrigins()
+    if (!origins) return null
+    const lines = await Promise.all(targets.map((target) => refusedBrowserTarget(target, origins, input)))
+    return proof && !proof.valid() ? BROWSER_PEER_UNCONFIRMED : lines.find((line) => line !== null) ?? null
   }
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
@@ -564,13 +581,10 @@ async function runChecked(
     const line =
       (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
-    const origins = browserOrigins()
-    if (origins) {
-      for (const item of openOf(args)) {
-        if (!/^https?:/i.test(item)) continue
-        const refused = await refusedBrowserTarget({ browser: true, url: item }, origins)
-        if (refused) return refusal(refused)
-      }
+    const URLs = webOpenItems(openOf(args))
+    if (URLs.length) {
+      const refused = await browserRefusal(URLs.map((url) => ({ browser: true, url })), true)
+      if (refused) return refusal(refused)
     }
     // a Work thread opens no Forms page: only the msform tools reach Forms
     if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
@@ -739,15 +753,13 @@ async function runChecked(
     }
   }
   /** Check a browser target without reading its content or switching tabs. The native service binds checks to its steps. */
-  async function browserUrl(target: Pick<TargetBase, 'session' | 'app' | 'window'>): Promise<string | undefined> {
+  async function browserUrl(target: Pick<TargetBase, 'session' | 'app' | 'window'>, input = false): Promise<string | undefined> {
     if (!host.origins) return
     const report = await send('browser.target', { session: target.session, app: target.app, window: target.window }).catch((error: unknown) => {
       if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
       return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined }
     })
-    const origins = browserOrigins()
-    if (!origins) return
-    const line = await refusedBrowserTarget(report, origins)
+    const line = report.browser ? await browserRefusal([report], input) : null
     if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
     return report.browser ? report.url : undefined
   }
@@ -763,8 +775,14 @@ async function runChecked(
   async function call<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
     return await withReader(async () => {
       if (host.origins && (method === 'state.get' || method === 'action.run' || method === 'action.batch' || method === 'input.probe')) {
-        const url = await browserUrl(params as TargetBase)
+        const input = method === 'action.run' || method === 'action.batch'
+        const url = await browserUrl(params as TargetBase, input)
         if (url) return send(method, { ...params, browserUrl: url })
+      }
+      if (host.origins && method === 'apps.launch') {
+        const urls = webOpenItems((params as ComputerParams<'apps.launch'>).open ?? [])
+        const line = urls.length ? await browserRefusal(urls.map((url) => ({ browser: true, url })), true) : null
+        if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
       }
       return send(method, params)
     })
@@ -825,12 +843,14 @@ async function runChecked(
     note.person = person
     const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
     if (offLimits) return refusalOf(offLimits)
-    if (!work && host.origins && tool !== 'computer_observe') {
+    if (host.origins && tool !== 'computer_observe') {
       const current = app()?.window
       const window = args.window ? { title: args.window } : current ? { id: current.id } : undefined
-      await withReader(() => browserUrl({ session: t.serviceSession, app: { pid: pin.app.pid }, window }))
-      const notAllowed = await askCard()
-      if (notAllowed) return notAllowed
+      await withReader(() => browserUrl({ session: t.serviceSession, app: { pid: pin.app.pid }, window }, steps.some(sendsInput)))
+      if (!work) {
+        const notAllowed = await askCard()
+        if (notAllowed) return notAllowed
+      }
     }
     if (work && tool !== 'computer_observe') {
       const identity = { bundleId: pin.app.bundleId, name: pin.app.name }

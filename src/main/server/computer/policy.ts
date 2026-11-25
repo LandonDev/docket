@@ -229,8 +229,11 @@ export function refusedTarget(app: { pid: number; bundleId: string | null }, use
 
 export const BROWSER_ADDRESS_UNAVAILABLE = 'refused: the computer service could not verify this browser tab’s address.'
 
-export async function refusedBrowserTarget(target: { browser: boolean; url?: string }, origins: TempCodeOrigins): Promise<string | null> {
+export const BROWSER_PEER_UNCONFIRMED = 'refused: a linked computer has not said where it serves yet.'
+
+export async function refusedBrowserTarget(target: { browser: boolean; url?: string }, origins: TempCodeOrigins, input = false): Promise<string | null> {
   if (!target.browser) return null
+  if (input && origins.linkedEndpointsUnknown) return BROWSER_PEER_UNCONFIRMED
   if (!target.url || !URL.canParse(target.url)) return BROWSER_ADDRESS_UNAVAILABLE
   try {
     return await resolvesToTempCodeOrigin(target.url, origins) ? TEMPCODE_ORIGIN_REFUSAL : null
