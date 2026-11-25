@@ -712,6 +712,8 @@ describe("LifeOS, projects, Drive and From mail", () => {
     const mail = lens("mail", "mail", "From mail");
     const part: FileEntry = { key: "mail:m1:p1", ref: { at: "mail", threadId: "t", messageId: "m1", partId: "p1" } as FileEntry["ref"], folder: null, name: "Quote.pdf", kind: "pdf" };
     expect(actsFor([part], mail, { tabs: true }).map((r) => r.act)).toEqual(["open", "keep"]);
+    // One name for it everywhere: the file tab's "Save to workspace", in a menu's title case.
+    expect(actsFor([part], mail, { tabs: true }).find((r) => r.act === "keep")?.label).toBe("Save to Workspace");
     expect(actsFor([part, { ...part, key: "mail:m1:p2", name: "Map.png" }], mail, { tabs: true }).map((r) => r.act)).toEqual(["keep"]);
     const folder = lens("folder", "folder", "W", { at: "file", host: "h", path: "/w" }, { can: ["rename", "move", "copy", "trash"] });
     const linked: FileEntry = { key: "k:a", ref: { at: "file", host: "h", path: "/w/a.txt" }, folder: null, name: "a.txt", kind: "text", project: { id: "p1", name: "Spring LAN" } };
@@ -729,10 +731,33 @@ describe("the list's rules of round 1", () => {
     expect(folderGone(null)).toBe(false);
   });
 
+  it("finds the tab a file's folder line goes back to: its opener while it shows the folder, else any that does", async () => {
+    const { tabShowing } = await import("./model");
+    const events = { at: "file" as const, host: "h", path: "/w/Events" };
+    const page = (id: string, path: string) => ({ id, kind: "page", page: { at: { at: "file" as const, host: "h", path } } });
+    const tabs = [page("t1", "/w/Events"), page("t2", "/w"), page("t3", "/w/Events"), { id: "f1", kind: "file" }];
+    expect(tabShowing(tabs, events, "t3")?.id).toBe("t3");
+    // The opener moved on: another tab that shows the folder.
+    expect(tabShowing(tabs, events, "t2")?.id).toBe("t1");
+    expect(tabShowing(tabs, { ...events, path: "/w/Other" }, "t1")).toBeNull();
+  });
+
   it("lists each file of Home once, in the first list it belongs to", async () => {
     const { homeLists } = await import("./model");
     const e = (key: string) => ({ key });
     expect(homeLists({ waiting: [e("a")], starred: [e("b"), e("a")], recent: [e("a"), e("c"), e("b")] })).toEqual({ waiting: [e("a")], starred: [e("b")], recent: [e("c")] });
+  });
+
+  it("lists a library's file once though its star and its opening name it by different keys", async () => {
+    const { homeLists } = await import("./model");
+    const ref = { at: "file" as const, host: "env_box", path: "/cloud/Staff/General/Plan.docx" };
+    const where = { place: "b1/General", name: "Esports Staff", trail: ["General"] };
+    const starred = { key: "lib:staffgeneral:Plan.docx", name: "Plan.docx", ref, where };
+    // Opened as a copy on the Mac: another key and another path, the same place and folders.
+    const opened = { key: "file:env_mac:/Users/l/Staff/General/Plan.docx", name: "Plan.docx", ref: { ...ref, host: "env_mac", path: "/Users/l/Staff/General/Plan.docx" }, where };
+    const byPath = { key: "file:env_box:/cloud/Staff/General/Plan.docx", name: "Plan.docx", ref };
+    const other = { key: "lib:staffgeneral:Agenda.docx", name: "Agenda.docx", ref: { ...ref, path: "/cloud/Staff/General/Agenda.docx" }, where };
+    expect(homeLists({ waiting: [], starred: [starred], recent: [opened, byPath, other] })).toEqual({ waiting: [], starred: [starred], recent: [other] });
   });
 
   it("says what a search left out: the places asleep first, else that not every place was searched", async () => {

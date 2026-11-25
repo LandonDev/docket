@@ -145,6 +145,15 @@ export const placePage = (copy: PlaceCopy, name = copy.place.name): FilePage => 
 export const samePage = (a: FolderRef, b: FolderRef): boolean => refKey(a) === refKey(b);
 
 /**
+ * The tab a file's folder line goes back to: the tab it was opened from while that tab still shows the folder, else
+ * any tab that shows it; null where none does (the line then opens one beside it), so the row never fills with copies.
+ */
+export function tabShowing<T extends { id: string; kind: string; page?: { at: FolderRef } }>(tabs: readonly T[], at: FolderRef, opener?: string): T | null {
+  const shows = (t: T): boolean => t.kind === "page" && !!t.page && samePage(t.page.at, at);
+  return tabs.find((t) => t.id === opener && shows(t)) ?? tabs.find(shows) ?? null;
+}
+
+/**
  * The place a folder ref lies in, among the places the hosts answered: the place whose top is the folder or holds
  * it (the longest top wins), and the copy that holds it. A lens or a team's page is itself.
  */
@@ -630,7 +639,7 @@ export function actsFor(
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
   // A mail's file is no file of his yet: it opens, and Keep copies it into the workspace's folder.
-  if (place?.kind === "mail") return [...(one ? ([{ act: "open", label: "Open" }] satisfies ActRow[]) : []), { act: "keep", label: "Keep in the Workspace", rule: !!one }];
+  if (place?.kind === "mail") return [...(one ? ([{ act: "open", label: "Open" }] satisfies ActRow[]) : []), { act: "keep", label: "Save to Workspace", rule: !!one }];
   if (place?.kind === "trash") {
     const rows: ActRow[] = [];
     if (o.restore !== false) rows.push({ act: "restore", label: "Put Back" });
@@ -702,9 +711,18 @@ export const stemEnd = (name: string): number => {
 export const folderGone = (error: string | null | undefined): boolean => !!error && / is not there any more\b/.test(error);
 
 /** Home's three lists with each file once, in the first it belongs to: what waits on him, then his stars, then what he opened last. */
-export function homeLists<T extends { key: string }>(home: { waiting: readonly T[]; starred: readonly T[]; recent: readonly T[] }): { waiting: T[]; starred: T[]; recent: T[] } {
+export function homeLists<T extends Pick<FileEntry, "key"> & Partial<Pick<FileEntry, "name" | "ref" | "where">>>(home: { waiting: readonly T[]; starred: readonly T[]; recent: readonly T[] }): { waiting: T[]; starred: T[]; recent: T[] } {
   const seen = new Set<string>();
-  const once = (list: readonly T[]): T[] => list.filter((e) => !seen.has(e.key) && (seen.add(e.key), true));
+  // One file goes by more than one key (a library's file starred by its library and opened by a computer's path): it is
+  // one row by any of its key, where it lies, or its place and folders by name.
+  const names = (e: T): string[] => [e.key, ...(e.ref ? [`ref:${refKey(e.ref)}`] : []), ...(e.where && e.name ? [`where:${[e.where.name, ...e.where.trail, e.name].join("\u0000")}`] : [])];
+  const once = (list: readonly T[]): T[] =>
+    list.filter((e) => {
+      const its = names(e);
+      if (its.some((n) => seen.has(n))) return false;
+      its.forEach((n) => seen.add(n));
+      return true;
+    });
   return { waiting: once(home.waiting), starred: once(home.starred), recent: once(home.recent) };
 }
 

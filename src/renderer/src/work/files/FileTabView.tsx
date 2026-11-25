@@ -130,6 +130,26 @@ function frameLine(copy: CopyWords | null, item: CanvasItem | null, env: string,
  * line, or where the file is kept while its kind says nothing of saving), then the line's presses, the file's
  * menu and Ask.
  */
+/**
+ * The end of a file tab's ⋯ (docs/DESIGN.md "The Files place"): the ways the file leaves or is saved (Download, Save
+ * As…, Save as Template…, and a Word file's own choice, save by itself or ask each time), then Full Window and Close
+ * Tab, always last. `wordAuto` is whether that Word file saves by itself; null where it has no such choice.
+ */
+export function fileMenuEnd(o: { download: boolean; saveAs: boolean; template: boolean; wordAuto: boolean | null; full: boolean }): MenuRow[] {
+  const saves: MenuRow[] = [
+    ...(o.download ? ([{ kind: "item", id: "download", label: "Download" }] satisfies MenuRow[]) : []),
+    ...(o.saveAs ? ([{ kind: "item", id: "save-as", label: "Save As…" }] satisfies MenuRow[]) : []),
+    ...(o.template ? ([{ kind: "item", id: "save-template", label: "Save as Template…" }] satisfies MenuRow[]) : []),
+    ...(o.wordAuto !== null ? ([{ kind: "item", id: "word-auto", label: o.wordAuto ? "Ask Before Saving to Word" : "Save to Word Automatically" }] satisfies MenuRow[]) : []),
+  ];
+  return [
+    ...(saves.length ? ([{ kind: "sep" }, ...saves] satisfies MenuRow[]) : []),
+    { kind: "sep" },
+    { kind: "item", id: "full", label: o.full ? "Leave Full Window" : "Full Window", icon: o.full ? Minimize2 : Maximize2 },
+    { kind: "item", id: "close", label: "Close Tab", icon: X, shortcut: shortcutFor("Files (Work)", "Close Tab") },
+  ];
+}
+
 export function FileHeader({
   name,
   line,
@@ -422,20 +442,13 @@ export function FileTabView({
   // wears the document's name. A copy of a file from elsewhere is not offered: its file is not here.
   const mayTemplate = useLinkMay(workspace.environmentId, "work.templates.save");
   const template = meta && item && !copy && item.source.at === "file" && templateFormOf(item.source.path) && mayTemplate && workTemplatePort.get() ? item.source : null;
+  const wordAuto = copy && tab.word ? tab.word : null;
   const rows: MenuRow[] = [
     ...verbs.flatMap((row): MenuRow[] => [
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
       { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}) },
     ]),
-    ...(manage?.download || wordable || template ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
-    ...(manage?.download ? ([{ kind: "item", id: "download", label: "Download" }] satisfies MenuRow[]) : []),
-    ...(wordable ? ([{ kind: "item", id: "save-as", label: "Save As…" }] satisfies MenuRow[]) : []),
-    ...(template ? ([{ kind: "item", id: "save-template", label: "Save as Template…" }] satisfies MenuRow[]) : []),
-    { kind: "sep" },
-    { kind: "item", id: "full", label: full ? "Leave Full Window" : "Full Window", icon: full ? Minimize2 : Maximize2 },
-    { kind: "item", id: "close", label: "Close Tab", icon: X, shortcut: shortcutFor("Files (Work)", "Close Tab") },
-    // A Word file's own choice: save it by itself, or ask each time.
-    ...(copy && tab.word ? ([{ kind: "sep" }, { kind: "item", id: "word-auto", label: tab.word.auto ? "Ask Before Saving to Word" : "Save to Word Automatically" }] satisfies MenuRow[]) : []),
+    ...fileMenuEnd({ download: !!manage?.download, saveAs: wordable, template: !!template, wordAuto: wordAuto ? !!wordAuto.auto : null, full }),
   ];
   // A shared Office file opens here or live in Office on the web (docs/agents/work-office-live.md): the header's control
   // switches it, the line says how far Word has come, and the body is the guest's place (LiveBody).

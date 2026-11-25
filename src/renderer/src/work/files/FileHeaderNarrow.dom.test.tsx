@@ -150,3 +150,14 @@ describe("the Beside seat's bar", () => {
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Open in a Tab"]);
   });
 });
+
+describe("a file tab's ⋯", () => {
+  it("ends with Full Window and Close Tab; a Word file's own save choice stands with the other saves above them", async () => {
+    const { fileMenuEnd } = await import("./FileTabView");
+    const ids = (rows: ReturnType<typeof fileMenuEnd>): string[] => rows.map((r) => (r.kind === "item" ? r.id : r.kind));
+    expect(ids(fileMenuEnd({ download: true, saveAs: false, template: false, wordAuto: false, full: false }))).toEqual(["sep", "download", "word-auto", "sep", "full", "close"]);
+    expect(ids(fileMenuEnd({ download: false, saveAs: false, template: false, wordAuto: null, full: false }))).toEqual(["sep", "full", "close"]);
+    const word = fileMenuEnd({ download: false, saveAs: true, template: false, wordAuto: true, full: false }).find((r) => r.kind === "item" && r.id === "word-auto");
+    expect(word && word.kind === "item" ? word.label : null).toBe("Ask Before Saving to Word");
+  });
+});

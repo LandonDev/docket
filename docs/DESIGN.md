@@ -2076,7 +2076,8 @@ Around the canvas:
   and Show in Its Folder goes to its project, else the top of LifeOS.
   A **file open as itself** has a 48px header: its kind's glyph in its
   tint, its name at 14px semibold, and under it one 12px muted line that
-  says where it is kept ("In Events") or whose copy it is ("A copy from
+  says where it is kept ("In Events": a press goes back to the tab that
+  shows that folder, else opens one beside it) or whose copy it is ("A copy from
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
   saves, where saving stands ("Saved 1:52 PM in Events"; it takes
   `foreground` only when it needs him, with at most two presses beside
@@ -2118,7 +2119,9 @@ Around the canvas:
   presses has the first row to itself, whole, and the presses and Open in a Tab take a second row at the end). The name is a press that renames it in place. ⋯ holds
   its row's verbs (one greyed says why in its tooltip: on a computer this window reaches only through another host,
   "Purdue PC is reached through the box. Change its files on Purdue PC itself."), then Download, Save As… (a
-  document) and Save as Template… (a file the template shelf keeps), then Full Window and Close Tab. Full Window fills
+  document), Save as Template… (a file the template shelf keeps) and a Word file's own choice (Save to Word
+  Automatically, or Ask Before Saving to Word), then Full Window and Close Tab, always last; Star reads Remove Star
+  while the file is starred. Full Window fills
   the app's window with the file, its way back in the header and on
   Escape. Under the header the kind's own bar and body, exactly as beside
   a thread; the `file` kind shows a text or code file in an editor that

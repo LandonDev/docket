@@ -567,6 +567,28 @@ describe("a file open in its tab", () => {
     expect(await screen.findByRole("textbox", { name: /Rename / })).toBeTruthy();
   });
 
+  it("says Star or Remove Star in its ⋯ as his marks stand, read from the host's Starred, and follows his press", async () => {
+    await mount();
+    const more = async (): Promise<string[]> => {
+      fireEvent.click(screen.getByRole("button", { name: "More for Budget.xlsx" }));
+      const menu = await screen.findByRole("menu");
+      const items = within(menu).getAllByRole("menuitem").map((i) => i.textContent ?? "");
+      fireEvent.keyDown(menu, { key: "Escape" });
+      return items;
+    };
+    // Starred from its row before it was opened.
+    fireEvent.contextMenu(row("Budget.xlsx"));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Star" }));
+    await waitFor(() => expect(calls("work.files.star")).toHaveLength(1));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(document.querySelector("[data-files-header]")).not.toBeNull());
+    await waitFor(async () => expect(await more()).toContain("Remove Star"));
+    fireEvent.click(screen.getByRole("button", { name: "More for Budget.xlsx" }));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Remove Star" }));
+    await waitFor(() => expect(calls("work.files.star").at(-1)).toMatchObject({ on: false }));
+    await waitFor(async () => expect(await more()).toContain("Star"));
+  });
+
   it("offers Open in its app in a library's tab only where its computer is a Mac or a PC", async () => {
     const more = async (): Promise<string[]> => {
       fireEvent.click(screen.getByRole("button", { name: "More for Agenda.docx" }));

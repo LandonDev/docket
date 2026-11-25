@@ -1694,7 +1694,15 @@ links (`repointLinks`).
 **Home** (`home`): `waiting` is the held file acts and this host's files
 with suggestions waiting ("Agents"), then the LifeOS rows with suggestions
 waiting, newest first, then the mail files not kept, 12 in all. The window
-shows each file once, in the first of its lists it belongs to (`homeLists`).
+shows each file once, in the first of its lists it belongs to (`homeLists`): one
+file goes by more than one key (a library's file starred by its library and opened by
+a computer's path), so a row is the same file by its key, where it lies (`refKey`) or
+its place and folders by name. A file tab's ⋯ reads Star or Remove Star from the
+host's Starred lens (`useListing` on it, which follows each star), his own press
+standing until the lens says so; its end is `fileMenuEnd` (FileTabView.tsx). The
+header's folder line goes back to the tab that shows that folder, the opener first
+(`tabShowing`), else opens one beside it. A mail's file is saved with Save to
+Workspace ("Saved Quote.pdf to Dummy Esports").
 
 **Search**: "Search and Go to" above.
 

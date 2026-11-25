@@ -36,7 +36,7 @@ import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { cutsMiddle, MiddleCut } from "../canvas/TabName";
-import { carryRefusal, tabEnds, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
@@ -65,6 +65,8 @@ const ShareSheet = lazy(() => import("../guests/ShareSheet"));
 /** The page shown when no Teams place is listed: it says the one cause, with its press. */
 /** The lenses of his marks: they list LifeOS's rows beside files on disk. */
 const MARK_LENSES: ReadonlySet<FilePlace["kind"]> = new Set<FilePlace["kind"]>(["recent", "starred", "made"]);
+/** The Starred lens, where no host lists one: asked of no one. */
+const STARRED_AT: FolderRef = { at: "place", id: PLACE.starred };
 const TEAMS_PAGE: FilePage = { at: { at: "place", id: "teams" }, name: "Teams files" };
 
 /** Under this much room the sidebar folds itself away; its toggle brings it back over the list. */
@@ -709,7 +711,11 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
         onClose={() => close(tab.id)}
         onCloseSide={() => closeAtSide(tab)}
         onCloseHistory={closeHistory}
-        onShowFolder={newTab}
+        onShowFolder={(page) => {
+          const there = tabShowing(view.tabs, page.at, tab.opener);
+          if (there) void selectTab(link, workspace.id, there.id);
+          else newTab(page);
+        }}
       />
     );
   else {
@@ -1120,8 +1126,14 @@ function OpenFile({
   const file = item ? fileOf(tab, item) : null;
   const lies = file?.at === "file" ? placeOfRef(reach.sidebar, { at: "file", host: file.host, path: file.path.replace(/[\\/]+[^\\/]*$/, "") }) : null;
   const place = lies ? (lies.row ? (lies.row.copies.includes(lies.copy) && lies.copy.place.state.state !== "unreachable" ? lies.copy : readCopy(lies.row)) : lies.copy) : null;
-  const [starred, setStarred] = useState(false);
-  const entry: FileEntry | null = file && place && place.wire === "files" ? { key: tab.key ?? refKey(file), ref: file, folder: null, name: tab.name, kind: kindOfEntry(tab.name).kind, ...(place.place.shared ? { shared: true } : {}), ...(starred ? { starred: true } : {}) } : null;
+  // The ⋯ says Star or Unstar as his marks stand: the Starred lens on the workspace's host, which follows each star; his
+  // own press stands until it does.
+  const starredLens = reach.sidebar.marks.find((m) => m.place.kind === "starred") ?? null;
+  const stars = useListing(starredLens ? { workspaceId: workspace.id, copy: starredLens } : null, starredLens?.place.root ?? STARRED_AT);
+  const [pressed, setStarred] = useState<boolean | null>(null);
+  const fileKey = tab.key ?? (file ? refKey(file) : null);
+  const starred = pressed ?? (!!file && stars.entries.some((e) => e.key === fileKey || (!!e.ref && refKey(e.ref) === refKey(file))));
+  const entry: FileEntry | null = file && place && place.wire === "files" ? { key: fileKey!, ref: file, folder: null, name: tab.name, kind: kindOfEntry(tab.name).kind, ...(place.place.shared ? { shared: true } : {}), ...(starred ? { starred: true } : {}) } : null;
   // Save As… opens in the folder the file lies in, in its format (saveAsPort.ts `tellOrigin`).
   const itemId = item?.id;
   const filePath = file?.at === "file" ? file.path : null;

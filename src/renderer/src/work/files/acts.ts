@@ -299,16 +299,16 @@ export async function star(of: ActsOf, entries: readonly FileEntry[], on: boolea
   }
 }
 
-/** Keep: a mail's file is copied into the workspace's folder (or a folder of it), and leaves From mail. Said in one toast. */
+/** Save to Workspace: a mail's file is copied into the workspace's folder (or a folder of it), and leaves From mail. Said in one toast. */
 export async function keepMail(of: ActsOf, from: PlaceCopy, entries: readonly FileEntry[], to: { at: FolderRef; name: string }): Promise<boolean> {
   if (!entries.length) return false;
   try {
     const done = await registry.linkOf(from.link).request<FileDone>("work.files.copy", { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId() }, longWait(from));
-    if (done.entries.length) said(`Kept ${done.entries.length === 1 ? done.entries[0]!.name : `${done.entries.length} files`} in ${to.name}`, { description: leftovers(done) });
-    else failed("Nothing was kept", new Error(leftovers(done) ?? "The folder took nothing."));
+    if (done.entries.length) said(`Saved ${done.entries.length === 1 ? done.entries[0]!.name : `${done.entries.length} files`} to ${to.name}`, { description: leftovers(done) });
+    else failed("Nothing was saved", new Error(leftovers(done) ?? "The folder took nothing."));
     return done.entries.length > 0;
   } catch (err) {
-    failed("Nothing was kept", err);
+    failed("Nothing was saved", err);
     return false;
   }
 }

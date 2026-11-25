@@ -35,6 +35,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Copied", "answer"],
     ["`Saved as Word in ${to.name}`", "answer"],
     ["Deleted", "answer"],
+    ["`Saved ${done.entries.length === 1 ? done.entries[0]!.name : `${done.entries.length} files`} to ${to.name}`", "answer"],
     ["`Added ${entry.name} to ${project.name}`", "answer"],
     ["Added 1 file from Drive", "answer"],
     ["`Added ${files.length} files from Drive`", "answer"],
