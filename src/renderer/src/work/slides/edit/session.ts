@@ -283,17 +283,20 @@ export class HandSession {
     const draft = this.offers.shift() ?? null;
     this.offered = draft;
     if (!draft || !view) return this.set({ offer: null });
-    if (draft.body.kind !== "deck" && draft.body.kind !== "notes") return this.offerNext();
-    const slide = view.slides.find((s) => s.id === draft.body.slideId && s.tint !== "del");
+    const kept = draft.body;
+    if (kept.kind !== "deck" && kept.kind !== "notes") return this.offerNext();
+    const body: Extract<Draft["body"], { kind: "deck" | "notes" }> = kept;
+    const { slideId } = body;
+    const slide = view.slides.find((s) => s.id === slideId && s.tint !== "del");
     // Its place, by what it is and its slide's number: a slide gone since leaves only "Edits".
-    const where = slide ? `${draft.body.kind === "notes" ? "Notes" : "Words"} on slide ${slide.number}` : "Edits";
+    const where = slide ? `${body.kind === "notes" ? "Notes" : "Words"} on slide ${slide.number}` : "Edits";
     const key = draft.base;
-    if (draft.body.kind === "notes") {
-      const { text, was } = draft.body;
+    if (body.kind === "notes") {
+      const { text, was } = body;
       this.set({ offer: { at: draft.at, same: slide?.notes === was, text, where, key } });
       return;
     }
-    const { shapeId, cell, words, model } = draft.body;
+    const { shapeId, cell, words, model } = body;
     const found = slide?.shapes.find((s) => s.id === shapeId);
     const shape = found && cell ? cellShape(found, cell) : found;
     this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model), where, key } });
