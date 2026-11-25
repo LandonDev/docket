@@ -989,7 +989,7 @@ export class Outbox {
       const item = this.wire(row)
       if (item.ref.at !== 'lifeos' || !PRESSABLE.includes(row.state)) return item
       const there = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(item.ref))
-      return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload) }) : item
+      return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload, there.scheduledFor !== undefined) }) : item
     })
     const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload, i.scheduledFor !== undefined), ...(LATER[i.kind] && i.state === 'held' ? { later: true as const } : {}) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
     const items = [...rows, ...held]
@@ -1004,7 +1004,7 @@ export class Outbox {
     if (row && (ref.at === 'host' || !PRESSABLE.includes(row.state))) item = this.wire(row)
     else if (ref.at === 'lifeos') {
       const live = await this.readLifeos(ref)
-      item = this.withChanged({ ...live, effect: this.effect(live.kind, live.payload) })
+      item = this.withChanged({ ...live, effect: this.effect(live.kind, live.payload, live.scheduledFor !== undefined) })
     } else throw new Error(NO_SUCH_ITEM)
     if (item.changed) item = { ...item, changed: { ...item.changed, first: this.firstOf(runKeyOfRef(item.ref)) } }
     const replied = needsHim(item) ? await this.repliedTo(item) : null
@@ -1019,10 +1019,10 @@ export class Outbox {
       const item = this.wire(row)
       if (ref.at !== 'lifeos' || !PRESSABLE.includes(row.state)) return item
       const there = this.lifeos?.items().find((i) => runKeyOfRef(i.ref) === runKeyOfRef(ref))
-      return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload) }) : item
+      return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload, there.scheduledFor !== undefined) }) : item
     }
     const held = this.lifeos?.items().find((i) => runKeyOfRef(i.ref) === runKeyOfRef(ref))
-    return held ? this.withChanged({ ...held, effect: this.effect(held.kind, held.payload), ...(LATER[held.kind] && held.state === 'held' ? { later: true as const } : {}) }) : null
+    return held ? this.withChanged({ ...held, effect: this.effect(held.kind, held.payload, held.scheduledFor !== undefined), ...(LATER[held.kind] && held.state === 'held' ? { later: true as const } : {}) }) : null
   }
 
   /** How many items wait on the owner (`needsHim`): this host's and LifeOS's. A mail he scheduled is his press already. */

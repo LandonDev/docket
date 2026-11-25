@@ -225,6 +225,17 @@ describe('Send later for a mail LifeOS holds', () => {
     expect(outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
   })
 
+  it('a mail he timed in Mail says it sends as him on every read: the list, one item, and the item read here alone', async () => {
+    const item = await draft()
+    Object.assign(rig.lifeos.rows.get((item.ref as { id: string }).id)!, { status: 'queued', scheduled: true, sendAt: Date.now() + HOUR })
+    rig.lifeos.fire()
+    await settled()
+    const listed = (await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => i.kind === 'mail.send')!
+    expect(listed).toMatchObject({ scheduledFor: expect.any(Number), effect: 'Sends as you.' })
+    expect(await rig.rpc<OutboxItem>('work.outbox.get', { ref: item.ref })).toMatchObject({ effect: 'Sends as you.' })
+    expect(outboxHostOf(rig.work.ctx)!.outbox.itemNow(item.ref)).toMatchObject({ effect: 'Sends as you.' })
+  })
+
   it('a draft whose thread is gone takes no time', async () => {
     const item = await draft()
     rig.sessions.delete('t-work')
