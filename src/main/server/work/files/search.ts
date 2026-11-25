@@ -500,7 +500,8 @@ async function waitOn(live: Live, ready: () => boolean, ms: number, signal: Abor
 }
 
 /** Searches kept for the next page and the next part: 30 seconds, eight at most, the least used first. */
-const kept = new WeakMap<object, Map<string, { at: number; live: Live; words: string; who: string }>>()
+/** `owners`: the searches that asked for this walk first (a tab, a window): a replacement stops it only with its last. */
+const kept = new WeakMap<object, Map<string, { at: number; live: Live; words: string; who: string; owners: number }>>()
 
 interface Cursor {
   /** the search it belongs to */
@@ -569,7 +570,8 @@ export async function searchFiles(
   // The search this one takes the place of in the same tab: its walks stop now.
   if (p.replaces !== undefined) {
     const was = nameWords(p.replaces).join(' ')
-    if (was !== words) for (const [k, v] of cache) if (v.who === who && v.words === was && !v.live.done) {
+    // Two tabs or windows searching the same words share one walk (Sol round 1, S11): it stops with its last owner.
+    if (was !== words) for (const [k, v] of cache) if (v.who === who && v.words === was && !v.live.done && --v.owners <= 0) {
       v.live.controller.abort()
       cache.delete(k)
     }
@@ -577,9 +579,11 @@ export async function searchFiles(
   const now = Date.now()
   for (const [k, v] of cache) if (now - v.at > CAPS.keptMs) cache.delete(k)
   let entry = cache.get(key)
+  // A search's first ask (no cursor, no part seen yet) is one more owner of its walk; its later asks are not.
+  const firstAsk = !p.cursor && !p.seen
   if (!entry || entry.live.controller.signal.aborted) {
     const live = start(s)
-    entry = { at: now, live, words, who }
+    entry = { at: now, live, words, who, owners: 1 }
     cache.set(key, entry)
     while (cache.size > CAPS.kept) cache.delete(cache.keys().next().value!)
     // What a walk found feeds the names table once, as a search's first page always has: names, never a new feed.
@@ -592,6 +596,7 @@ export async function searchFiles(
       })
   } else {
     // A Map keeps insertion order: a search used again goes to the end.
+    if (firstAsk) entry.owners++
     cache.delete(key)
     cache.set(key, entry)
   }

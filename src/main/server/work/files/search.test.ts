@@ -448,6 +448,22 @@ describe('a search in parts', () => {
     expect(calls[0]?.signal?.aborted).toBe(true)
   })
 
+  /** Sol round 1, S11: two tabs (or windows) searching the same words share a walk; one typing on keeps the other's. */
+  it('keeps a walk two searches share when one of them is replaced, and stops it when the other is too', async () => {
+    if (process.platform === 'win32') return
+    const tabA = parts('budget', 0)
+    const tabB = parts('budget', 0)
+    tabA.catch(() => undefined)
+    tabB.catch(() => undefined)
+    await parts('budgets', 0, { replaces: 'budget', filter: { places: ['lifeos'] } })
+    // Tab B still waits on the shared walk: the VM's ask goes on.
+    expect(calls[0]?.signal?.aborted).toBe(false)
+    // Tab B types on too: the walk has no owner left, and stops.
+    await parts('budgeted', 0, { replaces: 'budget', filter: { places: ['lifeos'] } })
+    expect(calls[0]?.signal?.aborted).toBe(true)
+    await expect(tabB).rejects.toThrow('cancelled')
+  })
+
   it('sends nothing to a sleeping VM: no door call, its places named as left out', async () => {
     if (process.platform === 'win32') return
     setVmState(() => ({ state: 'asleep', cannot: null }))
