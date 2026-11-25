@@ -137,7 +137,9 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   guest comes back; the seat is kept. After it a coauthor's save, even one made after the press, proves nothing: only
   a save the file names as his counts (a file that names no one keeps the clock's rule). With no last key known (a
   ribbon change counts no keys), Switch Anyway is timed from the press, by the holder's clock: no change since the
-  tab went live is taken, only one after the press, and the tab stays live if none comes. When he typed, the host waits up to 60 s for a change made after his last key
+  tab went live is taken, only one after the press, and the tab stays live if none comes. A first look that fails
+  (the holder slow to answer) proves nothing: the next good look times the press, and a coauthor's save stays
+  refused all the same. When he typed, the host waits up to 60 s for a change made after his last key
   there (`quiet`, ms before the press, the wait to leave added), its time read by the holder's own clock: this
   host's, or his desktop's, which its `work.files.stat` answer gives (`now`). One already in the file counts at once
   (a Mac library's typing that came down before the press is taken, never waited out), else the next change seen
@@ -150,7 +152,9 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   marks `byMaker`, against his name in Work, `work.ownerName`, by whole words or by his first name and his last name or its
   initial: `sameName`, and the names he said were his, `mine`) is a coauthor's, which may have
   reached Teams before his typing did: it counts only when saved after the press, once Word had let the view go with
-  his words saved. Before that it is not taken, and the host asks, naming whose save it was (`why: 'other'`, `name`):
+  his words saved, or five minutes or more after his last key (`liveTiming.merged`: Word for the web sends a key up
+  within seconds, so her later save holds his typing; never after Switch Anyway). So a refusal that stands asks "Is
+  Dana Lee you?" only of a save close to his last key, never again of one a coworker made hours later. Before that it is not taken, and the host asks, naming whose save it was (`why: 'other'`, `name`):
   "Is Dana Lee you?", "Dana Lee saved Plan.docx after your last key, and nothing shows your typing in that save, so
   it stays live until a save of yours comes down." That’s Me asks again with `mine`: the host keeps the name as his
   (`work_office_files` `mine`, the newest 20, lower case) and takes that save, then and on every later Edit here.

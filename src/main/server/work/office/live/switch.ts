@@ -36,9 +36,10 @@ const DONE: OfficeLiveSet = { is: 'done' }
 const HIS: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
 /**
  * How long a switch waits: for a copy's send, for OneDrive to take that send up, for OneDrive to bring Word's edits
- * down, and between looks (a test shortens them).
+ * down, and between looks (a test shortens them). `merged`: how long after his last key a coauthor's save is sure to
+ * hold his typing.
  */
-export const liveTiming = { send: 30_000, upload: 30_000, version: 60_000, look: 1_000 }
+export const liveTiming = { send: 30_000, upload: 30_000, version: 60_000, look: 1_000, merged: 5 * 60_000 }
 
 const mtimeOf = (path: string): number | null => {
   try {
@@ -207,9 +208,11 @@ async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { h
  *
  * A change the file names as someone else's save (`by`, against his name in Work, `ownerName`) is a coauthor's, which
  * may have reached Teams before his typing did: it counts only when saved after the press, once Word had let the live
- * view go with his words saved and Teams had them in every save since. Before that, it is not taken, and the answer
+ * view go with his words saved and Teams had them in every save since, or five minutes or more after his last key
+ * (`liveTiming.merged`), by when Word had merged his typing into it. Before that, it is not taken, and the answer
  * names whose save it was. After Switch Anyway (`forced`) Word let go mid-save, so a coauthor's save after the press
- * proves nothing either: only his own does. A file that names no one, or no name of his to read it against, keeps the
+ * proves nothing either: only his own does, and a first look that fails leaves the next good one to time the press,
+ * never the author check dropped. A file that names no one, or no name of his to read it against, keeps the
  * clock's rule.
  */
 async function versionMoved(
@@ -226,18 +229,34 @@ async function versionMoved(
   // base proves a save of his, so with no last key known it is timed from the press (the holder's clock now).
   const told = o.quiet !== undefined || o.last !== undefined || !!o.forced
   if (first && !told && base !== null && first.word !== base) return { moved: true }
-  const keys = first?.now === undefined ? [] : [...(o.quiet !== undefined ? [first.now - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
-  if (o.forced && first?.now !== undefined && !keys.length) keys.push(first.now)
   // His last key by the holder's clock; for a tab live from before its version was kept, the live view's opening by this host's.
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
-  const after = keys.length ? Math.max(...keys) : !told && ownClock ? since : null
-  const owner = told && after !== null ? ownerName(ctx) : null
+  let after: number | null = !told && ownClock ? since : null
+  // The holder's clock at the press (`at`), read from the first look that answers it. Switch Anyway's first look failing
+  // proves nothing: the next good one times the press, and a coauthor's save stays refused all the same.
+  let at: number | undefined
+  let owner: string | null = null
   // The names Office saved under that he said were his (That's Me), beside his name in Work.
-  const mine = owner ? myNames(ctx.db) : []
+  let mine: string[] = []
+  const timed = (v: { now?: number } | null): void => {
+    if (at !== undefined || v?.now === undefined) return
+    at = v.now
+    const keys = [...(o.quiet !== undefined ? [v.now - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
+    if (o.forced && !keys.length) keys.push(v.now)
+    if (keys.length) after = Math.max(...keys)
+    owner = told && after !== null ? ownerName(ctx) : null
+    mine = owner ? myNames(ctx.db) : []
+  }
+  timed(first)
   let other: string | undefined
-  /** Whether the save is his, or came after the press of an unload Word allowed; a coauthor's else is kept as the answer's word. */
+  /**
+   * Whether the save is his, or came after the press of an unload Word allowed, or long after his last key (Word for the
+   * web sends a key up within seconds, so a coauthor's save `merged` later holds his typing); a coauthor's else is kept
+   * as the answer's word. After Switch Anyway only his own counts.
+   */
   const his = (v: { changed: number; by?: string }): boolean => {
-    if (!owner || !v.by || sameName(v.by, owner) || mine.includes(v.by.trim().toLowerCase()) || (!o.forced && v.changed >= first!.now!)) return true
+    if (!owner || !v.by || sameName(v.by, owner) || mine.includes(v.by.trim().toLowerCase())) return true
+    if (!o.forced && (v.changed >= at! || v.changed >= after! + liveTiming.merged)) return true
     other = v.by
     return false
   }
@@ -247,6 +266,7 @@ async function versionMoved(
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
     const now = await versionNow(ctx, workspaceId, ref, signal)
+    if (o.forced) timed(now)
     if (now && now.word !== from && (!told || after === null || now.changed > after) && his(now)) return { moved: true }
   }
   return { moved: false, last: after, ...(other ? { other } : {}) }

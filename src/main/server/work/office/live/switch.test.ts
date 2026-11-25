@@ -702,6 +702,40 @@ describe('Live → Edit here', () => {
     expect(await switching).toEqual({ is: 'done' })
   })
 
+  it("after Switch Anyway whose first look fails, still never takes a coauthor's save: the next good look times the press", async () => {
+    // Council r6 (Sol 3): a missed first stat dropped the author check for the whole wait.
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    rmSync(path)
+    const switching = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true })
+    await new Promise((settle) => setTimeout(settle, 30))
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, 1000)
+    expect(await switching).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    // His own save after that look passes.
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    const again = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true })
+    await new Promise((settle) => setTimeout(settle, 30))
+    writeFileSync(path, savedBy('Landon Johnson', 'his words'))
+    shiftMtime(path, 3000)
+    expect(await again).toEqual({ is: 'done' })
+  })
+
+  it("under a refusal that stands, takes a coauthor's save made long after his last key: Word had merged his typing into it", async () => {
+    // Council r6 (Opus 1): a coworker's save hours after his last key asked "Is Dana Lee you?" on every press.
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    // His last key ten minutes ago; nothing came down, so the press is refused and the refusal stands.
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 600_000 })).rejects.toThrow('has not come down from OneDrive yet')
+    // Nine minutes after his last key, Dana saves: by then Teams held his typing.
+    writeFileSync(path, savedBy('Dana Lee', 'her edit and his typing'))
+    shiftMtime(path, -60_000)
+    expect(await set(tabId, { mode: 'here' })).toEqual({ is: 'done' })
+  })
+
   it('takes a name as his only from his press', async () => {
     const { path, tabId } = await liveHere()
     hisName('Landon Hale')
