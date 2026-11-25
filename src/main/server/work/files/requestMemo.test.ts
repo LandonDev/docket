@@ -1,8 +1,9 @@
 import { realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { setRealpath } from '../../remote/fence'
-import { withRequestMemo } from '../../requestMemo'
+import { setNativeRealpath, setNativeRealpathAsync, setRealpath } from '../../remote/fence'
+import { inRequest, withRequestMemo } from '../../requestMemo'
+import { primeReals } from './policy'
 import { closeFilesState, filesHandle } from './handle'
 import { forgetLibraries } from './places/libraries'
 import { at, makeRig, phone, window, WS, type Rig } from './testkit'
@@ -61,5 +62,27 @@ describe('one request', () => {
     const held = (await withRequestMemo(() => stat(phone))) as { result: { entries: unknown[] } }
     expect(held.result.entries).toEqual(loose.result.entries)
     expect(held.result.entries.every((e) => e === null)).toBe(true)
+  })
+})
+
+describe('a request on Windows', () => {
+  afterEach(() => (setNativeRealpath(), setNativeRealpathAsync()))
+  it('resolves the paths it names off the loop first: its checks read them and call nothing on the loop', async () => {
+    let sync = 0
+    let off = 0
+    setNativeRealpath((p) => (sync++, p))
+    setNativeRealpathAsync(async (p) => (off++, p))
+    await withRequestMemo(async () => {
+      await primeReals(['C:\\Work\\Dummy', 'C:\\Work\\Dummy\\Events', 'C:\\Work\\Dummy'], { platform: 'win32' })
+      // The door's own check of a primed path is answered from the request (its maker never runs).
+      expect(inRequest('real:C:\\Work\\Dummy\\Events', () => (sync++, 'asked again'))).toBe('C:\\Work\\Dummy\\Events')
+      expect(inRequest('real:C:\\Work\\Dummy', () => (sync++, 'asked again'))).toBe('C:\\Work\\Dummy')
+    })
+    expect(off).toBe(2)
+    expect(sync).toBe(0)
+    // Elsewhere nothing is primed: the box resolves as before.
+    off = 0
+    await withRequestMemo(() => primeReals(['/w'], { platform: 'linux' }))
+    expect(off).toBe(0)
   })
 })

@@ -6,7 +6,7 @@ import type { FileOrigin, FileRef } from '@shared/contract-work-files'
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
 import { PLACE, questionFor, refusal, type FileEntry, type FilePlace, type FileVerb } from '@shared/work/files'
-import { FenceError, hostReal } from '../../remote/fence'
+import { FenceError, hostReal, hostRealAsync } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { cloudDirOf, libraryOf } from '../office/files/library'
 import { driveOf, driveUp } from '../office/files/reach'
@@ -15,7 +15,7 @@ import { vmAllowed, vmState } from '../office/vm/office'
 import { librariesHere, vmLibrariesHere } from './places/libraries'
 import { accountsHeld } from './places/drive'
 import { isSavingCopy } from './copyKept'
-import { inRequest } from '../../requestMemo'
+import { inRequest, primeInRequest } from '../../requestMemo'
 
 /**
  * The one door of the Files place (docs/agents/work-files.md "One door for every change"). Every method that
@@ -54,6 +54,26 @@ const real = (path: string): string | null =>
       return null
     }
   })
+/**
+ * The paths a request names, resolved off the event loop before its checks run (`hostRealAsync`, on Windows, where the
+ * resolve is Windows' own call and a mapped drive's round trip): the door's own sync check (`real`) then reads each from
+ * the request's memo, the same answer it would have made. Elsewhere nothing is done.
+ */
+export async function primeReals(paths: readonly string[], o: { platform?: NodeJS.Platform } = {}): Promise<void> {
+  if ((o.platform ?? process.platform) !== 'win32') return
+  await Promise.all(
+    [...new Set(paths)].map(async (path) => {
+      let real: string | null
+      try {
+        real = await hostRealAsync(path, o)
+      } catch {
+        real = null
+      }
+      primeInRequest(`real:${path}`, real)
+    })
+  )
+}
+
 /** Whether `path` is `dir` or under it, both as given (the caller passes real paths). */
 export const within = (path: string, dir: string): boolean => {
   const r = relative(dir, path)

@@ -64,6 +64,13 @@ The wire is `src/shared/contract-work-pdf.ts`: `Bbox`, `PdfField`,
   opened: open it again." So one load reads one version from its first
   range to its last. pdf.js reads by range, so the first page of a long
   file shows before the rest arrives.
+- `work.pdf.open` answers the pages before the file's form is read (a form
+  read parses the whole file): no field and no mark (`formPending`), and
+  no signature judged against fields not yet read. The form is parsed once
+  the answer is sent, and the whole view is pushed (`work.pdf`) once it is
+  in; a version whose form was read already is answered whole. The window
+  draws no field or mark and offers no Highlight while the form is
+  pending; they appear in place when the push lands.
 - A file that does not start with `%PDF-` in its first kilobyte is never
   served, a thread-made `file.pdf` included: "notes.pdf is not a PDF."
 - A remote key reaches an item only when it could name the item's file

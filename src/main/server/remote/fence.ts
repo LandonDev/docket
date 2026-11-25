@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs'
+import { realpath as realpathAsync } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
@@ -52,17 +53,28 @@ const plainUnc = (p: string): string => p.replace(UNC, '\\\\').replace(/\//g, '\
  */
 export function keepDrive(path: string, realpath: Realpath = realpathOf, shareOf: (drive: string) => string = (drive) => realpath(`${drive}\\`)): string {
   const real = realpath(path)
-  const drive = /^([a-zA-Z]:)[\\/]/.exec(path)
-  if (!drive || !UNC.test(real)) return real
+  const drive = driveOfPath(path, real)
+  if (!drive) return real
   let share: string
   try {
-    share = plainUnc(shareOf(drive[1]!)).toLowerCase()
+    share = shareOf(drive)
   } catch {
     return path
   }
+  return onDrive(path, drive, real, share)
+}
+
+/** The drive letter whose share a real path may be spelled back onto, or null (no letter, or a real path that is no share). */
+const driveOfPath = (path: string, real: string): string | null => {
+  const drive = /^([a-zA-Z]:)[\\/]/.exec(path)
+  return drive && UNC.test(real) ? drive[1]! : null
+}
+/** A share's real path spelled back onto the drive that maps it; one this drive does not map stays as he wrote it. */
+function onDrive(path: string, drive: string, real: string, shareOfDrive: string): string {
+  const share = plainUnc(shareOfDrive).toLowerCase()
   const at = plainUnc(real)
   if (!UNC.test(share) || (at.toLowerCase() !== share && !at.toLowerCase().startsWith(`${share}\\`))) return path
-  return `${drive[1]}\\${at.slice(share.length + 1)}`
+  return `${drive}\\${at.slice(share.length + 1)}`
 }
 
 let nativeOf: Realpath = realpathSync.native
@@ -90,6 +102,37 @@ export function hostReal(path: string, o: { platform?: NodeJS.Platform; now?: nu
     shares.set(key, { share, at: now })
     return share
   })
+}
+
+let nativeAsyncOf: (path: string) => Promise<string> = (path) => realpathAsync(path)
+/** A test stands in for Windows' own realpath run off the event loop (`fs.promises.realpath`); none: Node's again. */
+export const setNativeRealpathAsync = (fn?: (path: string) => Promise<string>): void => void (nativeAsyncOf = fn ?? ((path) => realpathAsync(path)))
+
+/**
+ * `hostReal`'s answer, the same spelling by the same rules, with Windows' own realpath run on libuv's threads instead
+ * of the event loop (`fs.promises.realpath` is the native one), and the share a drive maps kept as `hostReal` keeps it.
+ * A request primes the paths it names with it (requestMemo.ts), so the door's own sync check of them finds them
+ * resolved and holds nothing. Elsewhere it is `hostReal` itself.
+ */
+export async function hostRealAsync(path: string, o: { platform?: NodeJS.Platform; now?: number } = {}): Promise<string> {
+  if ((o.platform ?? process.platform) !== 'win32') return hostReal(path, o)
+  const now = o.now ?? Date.now()
+  const real = await nativeAsyncOf(path)
+  const drive = driveOfPath(path, real)
+  if (!drive) return real
+  let share: string
+  try {
+    const key = drive.toUpperCase()
+    const was = shares.get(key)
+    if (was && now - was.at < SHARE_FRESH_MS) share = was.share
+    else {
+      share = await nativeAsyncOf(`${drive}\\`)
+      shares.set(key, { share, at: now })
+    }
+  } catch {
+    return path
+  }
+  return onDrive(path, drive, real, share)
 }
 
 /** The real spelling of a path whose tail may not exist yet: the deepest

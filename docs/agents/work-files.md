@@ -2611,8 +2611,11 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   (`rootReal`, office/files/library.ts). The JavaScript realpath looked at every folder of the path, three
   times a call. Within one request (a window's, or another host's call served here) each path is resolved once
   (`inRequest`, requestMemo.ts): a look at a page of rows no longer resolves the workspace's folder and the
-  libraries' folder again for every row. Nothing is kept past the request. The resolve itself is still a sync
-  call on the loop.
+  libraries' folder again for every row. Nothing is kept past the request. On Windows a list or a look at rows
+  first resolves the paths it names off the event loop (`primeReals`, policy.ts: `hostRealAsync`, remote/fence.ts,
+  Windows' own realpath on libuv's threads, the same spelling by the same rules), so the door's own checks of them
+  read the request's answer and call nothing on the loop; a path the request does not name (a library's root, kept
+  30 s by `rootReal`) is resolved as before.
 - **A folder read once.** On Windows a folder on such a drive is read by a small C# helper
   (places/winDir.ts, compiled once with the csc.exe Windows carries, as procTree's job helper is) that
   answers every row's size, time and attributes from the one directory read; Node's own read keeps the

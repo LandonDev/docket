@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { hostReal, keepDrive, realSpelling, setNativeRealpath, setRealpath, SHARE_FRESH_MS } from './fence'
+import { hostReal, hostRealAsync, keepDrive, realSpelling, setNativeRealpath, setNativeRealpathAsync, setRealpath, SHARE_FRESH_MS } from './fence'
 
 /**
  * A mapped network drive keeps its letter. Windows' own realpath (Node's `fs.realpathSync.native`) answers the
@@ -16,7 +16,7 @@ const javascript = (path: string): string => {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }
 
-afterEach(() => (setRealpath(), setNativeRealpath()))
+afterEach(() => (setRealpath(), setNativeRealpath(), setNativeRealpathAsync()))
 
 describe('a mapped drive keeps its spelling', () => {
   it.each([
@@ -58,5 +58,27 @@ describe("a host's own reads of its files on Windows", () => {
       throw new Error('not on this host')
     })
     expect(hostReal('J:\\Esports', { platform: 'darwin' })).toBe('J:\\Esports')
+  })
+})
+
+describe('the same answer off the loop', () => {
+  it("gives hostReal's spelling for every path, a share this drive does not map and a path not there included, and never calls the sync one", async () => {
+    let sync = 0
+    setNativeRealpath((p) => (sync++, native(p)))
+    setNativeRealpathAsync(async (p) => native(p))
+    const other = (p: string): string => (/^j:\\?$/i.test(p) ? '\\\\files\\esports' : /away/i.test(p) ? '\\\\other\\share\\x' : native(p))
+    for (const path of ['J:\\Esports\\Budget.xlsx', 'J:\\', 'C:\\Users\\tc', 'J:\\Bench\\A\\B\\C\\Report.pdf']) {
+      const want = hostReal(path, { platform: 'win32', now: SHARE_FRESH_MS * 10 })
+      sync = 0
+      expect(await hostRealAsync(path, { platform: 'win32', now: SHARE_FRESH_MS * 20 })).toBe(want)
+      expect(sync).toBe(0)
+    }
+    // A link on the drive to another share stays as he wrote it, off the loop as on it.
+    setNativeRealpath(other)
+    setNativeRealpathAsync(async (p) => other(p))
+    expect(await hostRealAsync('J:\\Away', { platform: 'win32', now: SHARE_FRESH_MS * 30 })).toBe(hostReal('J:\\Away', { platform: 'win32', now: SHARE_FRESH_MS * 40 }))
+    // Not there: it throws as the sync one does.
+    await expect(hostRealAsync('Q:\\gone', { platform: 'win32' })).rejects.toThrow('ENOENT')
+    expect(() => hostReal('Q:\\gone', { platform: 'win32' })).toThrow('ENOENT')
   })
 })

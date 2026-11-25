@@ -33,7 +33,7 @@ import { forgetLibraries } from './places/libraries'
 import { changeElsewhere, farHostOf, filesAcross, restoreElsewhere, trashElsewhere } from './across'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace, type VmPage } from './places/teams'
 import { placeExtras } from './extras'
-import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
+import { admitCaller, admitWrite, primeReals, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
@@ -1050,6 +1050,14 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
   return null
 }
 
+/** The paths of this host a list or a look names: its folder or rows, and the workspace's own folder. */
+function namedPaths(ctx: WorkCtx, p: Record<string, unknown> & { workspaceId: string }): string[] {
+  const refs = [p.at, ...(Array.isArray(p.refs) ? p.refs : [])] as ({ at?: string; host?: string; path?: string } | undefined)[]
+  const out = refs.flatMap((r) => (r && r.at === 'file' && r.host === ctx.host && typeof r.path === 'string' ? [r.path] : []))
+  const folder = workspaceHere(ctx.db, p.workspaceId)?.path
+  return folder ? [...out, folder] : out
+}
+
 export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<Handled> {
   const m = req.method
   if (!m.startsWith('work.files.')) return NOT_HANDLED
@@ -1064,6 +1072,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     admitCaller(ctx, by, p.workspaceId)
     await driveAccounts(ctx, workspaceHere(ctx.db, p.workspaceId)?.sector ?? null)
   }
+  // A list or a look at rows on Windows: the paths it names are resolved off the loop first, and its checks read them.
+  if (m === 'work.files.list' || m === 'work.files.stat') await primeReals(namedPaths(ctx, p))
   // Put back is admitted for the whole selection before any of it runs: the LifeOS branch below puts its rows back first.
   // A delete, or its Put back, of files another host holds goes to that host, which keeps them in its own bin.
   if (m === 'work.files.trash' && !namesDrive(p) && !(p.refs as FileRef[]).some(isLifeosRef)) {
