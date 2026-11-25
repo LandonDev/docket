@@ -794,7 +794,7 @@ function BarShare(props: Props & { way: ShareWay }) {
   }, [way]);
   return (
     <span ref={whole} data-narrow-hide className="ms-auto flex shrink-0 @max-[560px]/bar:hidden">
-      <ShareButton env={props.env} source={props.source} kind="sheet" title={props.item.title} itemId={props.item.id} purdue={purdue} />
+      <ShareButton env={props.env} source={props.source} kind="sheet" title={props.item.title} itemId={props.item.id} workspaceId={props.item.workspaceId} purdue={purdue} />
     </span>
   );
 }

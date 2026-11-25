@@ -8,7 +8,8 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { copyText } from "../../lib/clipboard";
-import { dayOf, ROLE_WORDS, shareTargetOf, type GuestLinkRow } from "./api";
+import { dayOf, filePageOf, mayHavePage, ROLE_WORDS, shareHomeOf, shareTargetOf, type GuestLinkRow } from "./api";
+import { openUrl } from "../../lib/native";
 import { useShareAsked } from "./sharePort";
 import type { ShareTarget } from "./ShareSheet";
 
@@ -20,11 +21,40 @@ const ShareSheet = lazy(() => import("./ShareSheet"));
  * through `openShare(itemId)`. A LifeOS document or sheet and a TempCode one kept as a file make links; any other
  * document or sheet opens the sheet on the one line that says what to do instead; a mail's attachment draws none.
  */
-export function ShareButton({ env, source, kind, title, itemId, purdue = false }: { env: string; source: CanvasSource; kind: "document" | "sheet"; title: string; itemId?: string; purdue?: boolean }) {
+export function ShareButton({ env, source, kind, title, itemId, workspaceId, purdue = false }: { env: string; source: CanvasSource; kind: "document" | "sheet"; title: string; itemId?: string; /** the workspace the item is of: a file a library shows on its own page is shared there */ workspaceId?: string | null; purdue?: boolean }) {
   const key = JSON.stringify(source);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value: a new object each render is the same source.
   const target = useMemo(() => shareTargetOf(source, kind), [key, kind]);
+  // A file whose library shows it on its own web page is shared there: the host is asked once, and the button waits.
+  const asks = !!workspaceId && source.at === "file" && mayHavePage(source.path);
+  const [page, setPage] = useState<{ key: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!asks) return;
+    let live = true;
+    void filePageOf(env, workspaceId!, source).then((url) => live && setPage({ key, url }));
+    return () => void (live = false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value
+  }, [asks, env, workspaceId, key]);
+  if (asks && page?.key !== key) return null;
+  if (asks && page?.url) return <ShareInHome url={page.url} itemId={itemId} />;
   return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} /> : null;
+}
+
+/** Share in Teams (or OneDrive): the file's own page in his browser, where Teams shares it; File → Share… opens it too. */
+function ShareInHome({ url, itemId }: { url: string; itemId?: string | undefined }) {
+  const asked = useShareAsked(itemId);
+  const seen = useRef(asked);
+  useEffect(() => {
+    if (asked === seen.current) return;
+    seen.current = asked;
+    void openUrl(url);
+  }, [asked, url]);
+  return (
+    <Button data-share-button="" data-share-home="" variant="ghost" size="xs" className="ms-auto" onClick={() => void openUrl(url)}>
+      <ShareGlyph />
+      Share in {shareHomeOf(url)}
+    </Button>
+  );
 }
 
 /** Share on a project's bar (the Projects view): the same sheet, for a link that can only view. One of the bar's quiet 28px verbs. */

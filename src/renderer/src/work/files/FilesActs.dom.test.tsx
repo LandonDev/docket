@@ -38,7 +38,11 @@ const world = vi.hoisted(() => ({
   /** the platform every host of the window says it runs */
   platform: "linux",
   links: {} as Record<string, string>,
+  /** the web page the workspace's host knows for a library's file, by its path */
+  pages: {} as Record<string, string>,
+  opened: [] as string[],
 }));
+vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), openUrl: async (url: string) => void world.opened.push(url) }));
 
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (id: string) => {
@@ -276,6 +280,8 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
           const hits = [...disk.keys()].map(entry).filter((e) => words.every((w) => e.name.toLowerCase().includes(w)) && (!kinds?.length || kinds.includes(e.kind)));
           return { entries: hits.map((e) => ({ ...e, where: { place: "folder", name: pathOf(e.ref ?? e.folder).startsWith("/cloud") ? "General" : "Dummy Esports", trail: [] } })), place: "search" } satisfies FilesListing;
         }
+        case "work.office.live.address":
+          return { address: world.pages[pathOf(params.ref)] ?? null, app: null };
         case "work.files.read":
           return { data: btoa(`bytes of ${name(pathOf(params.ref))}`), version: "v1", end: true };
         case "work.files.home":
@@ -319,6 +325,8 @@ beforeEach(async () => {
   world.mayUse = [];
   world.links = {};
   world.platform = "linux";
+  world.pages = {};
+  world.opened.length = 0;
   localStorage.clear();
   sessionStorage.clear();
   resetFilesStore();
@@ -555,6 +563,39 @@ describe("Download from a row", () => {
     await waitFor(() => expect(saved).toEqual(["notes.txt"]));
     const asked = host.calls.map((c) => c.method).filter((m) => !/^work\.files\.(places|tabs|list|stat|home|searches|tabOpen)$|^work\.canvas\.list$|^work\.office\./.test(m));
     expect(asked).toEqual(["work.files.read"]);
+  });
+});
+
+describe("Share in Teams (decision 9)", () => {
+  const PAGE = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Agenda.docx?web=1";
+  const openGeneral = async (): Promise<void> => {
+    await mount();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
+    await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
+  };
+
+  it("opens a library file's own page, as the workspace's host knows it, and makes no guest link", async () => {
+    world.pages = { "/cloud/General/Agenda.docx": PAGE };
+    await openGeneral();
+    fireEvent.contextMenu(row("Agenda.docx"));
+    await waitFor(() => expect(calls("work.office.live.address")).toEqual([{ workspaceId: "w1", ref: at("/cloud/General/Agenda.docx") }]));
+    const share = await menuItem("Share in Teams");
+    await waitFor(() => expect(share.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(share);
+    expect(world.opened).toEqual([PAGE]);
+    expect(screen.queryByRole("dialog", { name: "Share" })).toBeNull();
+    expect(host.calls.filter((c) => c.method.startsWith("work.guests."))).toEqual([]);
+  });
+
+  it("is greyed with where to share it when the host knows no page for that file", async () => {
+    await openGeneral();
+    fireEvent.contextMenu(row("Agenda.docx"));
+    await waitFor(() => expect(calls("work.office.live.address")).toHaveLength(1));
+    const share = await menuItem("Share in Teams");
+    expect(share.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(share);
+    expect(world.opened).toEqual([]);
+    expect(screen.queryByRole("dialog", { name: "Share" })).toBeNull();
   });
 });
 

@@ -653,7 +653,7 @@ export interface ActRow {
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string }; /** Share… may be offered for a document or a sheet (its sheet says what to do where no link can be made) */ share?: boolean; /** Quick Look may be offered (a page's row, not a tab's ⋯) */ look?: boolean; /** the place's files may be downloaded to this window (`placeDownloads`) */ download?: boolean } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string }; /** Share… may be offered for a document or a sheet (its sheet says what to do where no link can be made) */ share?: boolean; /** Quick Look may be offered (a page's row, not a tab's ⋯) */ look?: boolean; /** the place's files may be downloaded to this window (`placeDownloads`) */ download?: boolean; /** a place others open: Share… is "Share in Teams" (or OneDrive), its file's own page, greyed with its sentence where the host knows none (decision 9) */ shareIn?: { home: string; refused?: string } } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
@@ -687,8 +687,9 @@ export function actsFor(
     if (o.reveal && one.where) rows.push({ act: "reveal", label: "Show in Its Folder" });
     if (!one.folder && place && LIBRARY.includes(place.kind) && o.app !== false) rows.push({ act: "open-app", label: appVerb(one) });
     // A document's or a sheet's Share sheet: a link where one can be made, else the line that says how to share it.
-    const shares = !!o.share && !one.folder && (one.kind === "document" || one.kind === "sheet");
-    if (shares) rows.push({ act: "share", label: "Share…", rule: true });
+    // In a place others open no guest link is made: the file is shared from its own page, a deck's too.
+    const shares = o.shareIn ? !one.folder && (one.kind === "document" || one.kind === "sheet" || one.kind === "deck") : !!o.share && !one.folder && (one.kind === "document" || one.kind === "sheet");
+    if (shares) rows.push(o.shareIn ? { act: "share", label: `Share in ${o.shareIn.home}`, rule: true, ...(o.shareIn.refused ? { refused: o.shareIn.refused } : {}) } : { act: "share", label: "Share…", rule: true });
     if (downloads) rows.push({ act: "download", label: "Download", rule: !shares });
     rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: !shares && !downloads });
   }

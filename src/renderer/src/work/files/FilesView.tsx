@@ -18,7 +18,7 @@ import { readyToClose } from "../canvas/closeDoor";
 import { liveSourceOf } from "../office/live/liveSwitch";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { invoke } from "../../lib/native";
+import { invoke, openUrl } from "../../lib/native";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { shell } from "../../stores/shell";
 import { openHeld } from "../canvas/held";
@@ -52,7 +52,7 @@ import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
-import { shareTargetOf } from "../guests/api";
+import { filePageOf, shareTargetOf } from "../guests/api";
 
 const ShareSheet = lazy(() => import("../guests/ShareSheet"));
 
@@ -924,6 +924,9 @@ function FolderPage({
   const into = (entry?: FileEntry): FolderRef => entry?.folder ?? page.at;
   // A document's or a sheet's Share sheet, from its row's menu: its links on the host that lists it.
   const [sharing, setSharing] = useState<FileEntry | null>(null);
+  // A file of a place others open is shared from its own page (decision 9): asked of the workspace's host, once a row.
+  const [pages, setPages] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const asking = useRef(new Set<string>());
   const shareTarget = sharing?.ref ? shareTargetOf(sharing.ref, sharing.kind === "sheet" ? "sheet" : "document") : null;
   const acts: PageActs | null =
     !team && copy && copy.wire === "files"
@@ -961,6 +964,23 @@ function FolderPage({
           // Download as a tab's own file is read: offered only where the host gives this window the bytes.
           ...(placeDownloads(copy.place, { here: copy.link === LOCAL_ENVIRONMENT_ID, ...farOf(copy, workspace.environmentId) }) && may(copy.link, "work.files.read") ? { download: (entries: readonly FileEntry[]) => void downloadAll(of, copy, entries) } : {}),
           share: (entry: FileEntry) => entry.ref && setSharing(entry),
+          ...(copy.place.shared && (copy.place.kind === "teams" || copy.place.kind === "onedrive" || copy.place.kind === "folder")
+            ? {
+                shareIn: {
+                  home: copy.place.kind === "teams" ? ("Teams" as const) : ("OneDrive" as const),
+                  pageOf: (entry: FileEntry) => pages.get(entry.key),
+                  ask: (entry: FileEntry) => {
+                    if (!entry.ref || entry.folder || pages.has(entry.key) || asking.current.has(entry.key)) return;
+                    asking.current.add(entry.key);
+                    void filePageOf(workspace.environmentId, workspace.id, entry.ref).then((url) => {
+                      asking.current.delete(entry.key);
+                      setPages((now) => new Map(now).set(entry.key, url));
+                    });
+                  },
+                  open: (url: string) => void openUrl(url),
+                },
+              }
+            : {}),
           ask: (entries) => verbs.ask(entries, copy),
           pickUpload: () => verbs.pickUpload(copy, page.at),
           // A Drive lists only what TempCode made or he picked: Add from Drive is the way more of it comes in.

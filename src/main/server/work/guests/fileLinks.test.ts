@@ -183,6 +183,10 @@ describe('what a file link can be for', () => {
     vi.stubEnv('TEMP_CODE_WORK_PUBLIC_ORIGIN', '')
     vi.stubEnv('TEMP_CODE_USER_DATA', join(r.folder, 'instance'))
     await expect(make(file(r.doc))).rejects.toThrow(SHARE_REFUSALS.noPage)
+    // A file others open is refused as one there too: it is shared where it lives, never by a guest link (decision 9).
+    shared.paths.add(r.doc)
+    await expect(make(file(r.doc))).rejects.toThrow(SHARE_REFUSALS.shared)
+    shared.paths.clear()
     expect(r.db.prepare('SELECT count(*) AS n FROM work_guest_links').get()).toEqual({ n: 0 })
   })
 

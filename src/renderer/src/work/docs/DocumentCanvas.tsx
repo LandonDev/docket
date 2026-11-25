@@ -322,7 +322,7 @@ export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   return (
     <>
       {workspace ? <DocSaveControls workspace={workspace} source={source} itemId={item.id} /> : null}
-      <ShareButton env={env} source={source} kind="document" title={item.title} itemId={item.id} purdue={workspace?.sector === "purdue"} />
+      <ShareButton env={env} source={source} kind="document" title={item.title} itemId={item.id} workspaceId={item.workspaceId} purdue={workspace?.sector === "purdue"} />
       <PageFact itemId={item.id} />
     </>
   );

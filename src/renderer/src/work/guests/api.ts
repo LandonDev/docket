@@ -47,6 +47,33 @@ export function shareTargetOf(source: CanvasSource, kind: "document" | "sheet"):
   return { why: SHARE_REFUSALS.other };
 }
 
+/** The files a library can show on its own web page: Office's, and a TempCode document kept for a Word file there. */
+export const mayHavePage = (path: string): boolean => /\.(docx|xlsx|xlsm|pptx|tcdoc)$/i.test(path);
+
+/** Where a file others open is shared from, by its page's address: his own OneDrive's (`-my.sharepoint.com`), else Teams. */
+export function shareHomeOf(url: string): "Teams" | "OneDrive" {
+  try {
+    return /-my\.sharepoint\.com$/i.test(new URL(url).hostname) ? "OneDrive" : "Teams";
+  } catch {
+    return "Teams";
+  }
+}
+
+/**
+ * A library file's own web page in his tenant, as the workspace's host knows it (`work.office.live.address`: the
+ * library's web folder from its sync, or the address he gave), for Share in Teams; the Word file's for a document kept
+ * for one. Null where the host knows none, or did not answer: Share in Teams is then greyed, never a guess.
+ */
+export async function filePageOf(env: string, workspaceId: string, source: CanvasSource): Promise<string | null> {
+  if (source.at !== "file" || !mayHavePage(source.path)) return null;
+  try {
+    const got = await registry.linkOf(env).request<{ address: string | null }>("work.office.live.address", { workspaceId, ref: source });
+    return got.address ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export const ROLE_WORDS: Record<GuestRole, string> = { view: "View", comment: "Comment", edit: "Edit" };
 
 /** The end a new link is offered, in days; thirty unless he picks. */

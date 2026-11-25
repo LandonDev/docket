@@ -116,10 +116,29 @@ async function libraryFile(ctx: WorkCtx, by: Caller, workspaceId: string, ref: {
   return { app, at, libraries: [...own.filter((l) => reachesPath(ctx, by, l.path)), ...far], read }
 }
 
-/** A Files entry's web address and its app, for the phone's Open in Word: nothing of the tab, the mode or the desktops. */
+/**
+ * The Word file a `.tcdoc` is kept for (`work_files_word.doc`), in this workspace: its document's Share in Teams goes to
+ * the Word file's own page. Null for any other file, and where the table is not made (a test's database).
+ */
+function keptFor(ctx: WorkCtx, workspaceId: string, source: { host: string; path: string }): { at: 'file'; host: string; path: string } | null {
+  if (source.host !== ctx.host || !source.path.toLowerCase().endsWith('.tcdoc')) return null
+  try {
+    const row = ctx.db.prepare(`SELECT host, path FROM work_files_word WHERE workspace_id = ? AND doc = ?`).get(workspaceId, source.path) as { host: string; path: string } | undefined
+    return row ? { at: 'file', host: row.host, path: row.path } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A Files entry's web address and its app: the phone's Open in Word, and Share in Teams on a library's file (its row, or
+ * the document kept for it). Nothing of the tab, the mode or the desktops; the Word file is located for the caller, so
+ * a key that could not name it learns nothing of it.
+ */
 async function addressOf(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource, signal?: AbortSignal): Promise<OfficeLiveAddress> {
   ownRows(ctx, by, workspaceId)
-  const found = source.at === 'file' ? await libraryFile(ctx, by, workspaceId, source, ADDRESS, signal) : null
+  const file = source.at === 'file' ? (keptFor(ctx, workspaceId, source) ?? source) : null
+  const found = file ? await libraryFile(ctx, by, workspaceId, file, ADDRESS, signal) : null
   const result = found?.at ? liveAddress(found.at.library, found.at.path, { libraries: found.libraries }) : null
   return found && result?.ok ? { address: result.url, app: found.app } : { address: null, app: null }
 }

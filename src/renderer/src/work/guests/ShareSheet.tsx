@@ -124,6 +124,23 @@ function Sharing({
     }
   };
 
+  // Until the host answers for this item the sheet is its bones: a form it would then refuse is never shown.
+  if (rows === null && !listError && !made)
+    return (
+      <>
+        <div data-share-bones="" aria-busy="true" aria-label="Loading" className="flex flex-col gap-4 px-5 py-4">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-4 w-8" />
+            <Skeleton className="h-8 w-full rounded-lg" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-6 w-40" />
+          </div>
+        </div>
+        <DialogFooter onCancel={onClose} confirmLabel="Create link" disabled onConfirm={() => undefined} />
+      </>
+    );
   return (
     <>
       {made ? (

@@ -53,10 +53,26 @@ of its own (`{at: 'file', host, path}`; its row adds `table` and `id`, a
 digest of the resolved path, `fileLinkId`, so the phone reads it as any row).
 `GuestRuntime.resolve` holds it: the host that has the file (another answers
 `served elsewhere`), the caller's reach (`ctx.reaches`; a thread's at its
-ask), a host whose pages a guest can reach (`servesPublic`), the file there,
-not in a place others open (`sharedOf`) and not a copy of a Teams file
-(`madeFromShared`). Each refusal is one line of `SHARE_REFUSALS`
+ask), the file there, not in a place others open (`sharedOf`) and not a copy
+of a Teams file (`madeFromShared`), then a host whose pages a guest can reach
+(`servesPublic`): a file others open is told it is shared where it lives on
+every host, never "the box only". Each refusal is one line of `SHARE_REFUSALS`
 (guestRoles.ts), which the Share sheet shows in the form's place.
+
+**Share in Teams** (decision 9 of the files pass). A file in a place others
+open is shared from its own page, never by a guest link. The window asks the
+workspace's host for that file's page with the existing read method
+`work.office.live.address` (office/live/handle.ts `addressOf`: the library's
+web folder from its sync, or the address he gave, through `liveAddress`; a
+`.tcdoc` kept for a Word file, `work_files_word.doc`, answers the Word file's
+page; the file is located for the caller, so a key that could not name it
+learns nothing). A Files row in a library or his OneDrive offers "Share in
+Teams" ("Share in OneDrive") for a document, sheet or deck: asked as its menu
+opens, live once the page is known, else greyed with "Share it from Teams."
+(`PageActs.shareIn`, `actsFor`'s `shareIn`). A document's or sheet's header
+Share reads the same and opens the page where the host names one
+(`ShareButton`'s `workspaceId`, `filePageOf`), else keeps the sheet. The page
+opens in his browser (`openUrl`); TempCode makes no link and sends nothing.
 
 ### A file's link is for one file
 
@@ -676,7 +692,9 @@ main frame alone (ios HostedItemView.swift).
   FilesView). On top For, Can, Ends; Create link shows the address once with
   Copy and New link. Under it the item's live links: who, then what they can
   do, made, last opened and until when in one muted line, and a menu:
-  Replace address… (asked first), Can view / comment / edit, Revoke. A
+  Replace address… (asked first), Can view / comment / edit, Revoke. Until
+  `work.guests.forItem` answers the sheet is the form's bones
+  (`data-share-bones`), so a form is never shown and then refused. A
   document or sheet no link can take opens on one line saying what to do
   instead (`shareTargetOf`, guests/api.ts, and the host's `SHARE_REFUSALS`);
   a mail's attachment draws no Share. A Purdue workspace's sheet says beside

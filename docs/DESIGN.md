@@ -1407,7 +1407,14 @@ thread; nothing answers inside the canvas.
   is no choice) and a ⋯ menu: Replace address…, the roles as radio rows,
   Revoke. No links: nothing under the form. A document or sheet no link can
   take shows one 13px muted line in the form's place, saying what to do
-  instead, and Done. A Purdue workspace's sheet holds one 12px muted line at
+  instead, and Done; until the host answers for the item the sheet is the
+  form's bones with Create link greyed, never a form it then refuses. A file
+  in a place others open takes no guest link: its Share reads "Share in
+  Teams" ("Share in OneDrive" for his own) and opens the file's own page in
+  his browser, only where the workspace's host knows that file's page in his
+  tenant (a document kept for a Teams Word file goes to the Word file's);
+  where it knows none, a Files row's is greyed with "Share it from Teams."
+  A Purdue workspace's sheet holds one 12px muted line at
   the footer's start, beside Create link. **History** opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare
   and History" below);

@@ -248,15 +248,16 @@ export class GuestRuntime {
     if (source.host !== this.ctx.host) throw new Error(`served elsewhere: ${source.host}`)
     if (!isAbsolute(source.path)) throw new Error(SHARE_REFUSALS.gone)
     if (by && !this.ctx.reaches(by, source.path)) throw new FenceError(method)
-    if (!servesPublic()) throw new Error(SHARE_REFUSALS.noPage)
     if (!existsSync(source.path)) throw new Error(SHARE_REFUSALS.gone)
     // Every rule is read of the file the spelling reaches now, as the service will open it.
     const real = canonicalPath(source.path)
     // The file the spelling reaches is what the service opens and writes: a name that links to a Word file or a workbook is not a document of ours.
     if (guestTableOf({ at: 'file', path: real }) !== table) throw new Error(SHARE_REFUSALS.other)
+    // A file others open is shared where it lives, whichever host has it: said before where guests can reach.
     if (sharedOf(this.ctx, { at: 'file', host: source.host, path: source.path }) || sharedOf(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.shared)
     // A document kept for a Word file in a library, or read from one, is a copy: the truth is the Teams file.
     if (table === 'docs' && madeFromShared(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.teamsCopy)
+    if (!servesPublic()) throw new Error(SHARE_REFUSALS.noPage)
     // Save As writes a linked document's edits to another file after each pause: a guest's edits would reach it.
     if (role === 'edit' && table === 'docs' && linkedOut(this.ctx, real)) throw new Error(SHARE_REFUSALS.linkedOut)
     return { at: 'file', table, id: fileLinkId(real), host: this.ctx.host, path: source.path }

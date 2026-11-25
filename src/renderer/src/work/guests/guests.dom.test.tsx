@@ -13,7 +13,7 @@ import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
 const NAMES: Record<string, string> = { box: "The box", win: "Windows PC" };
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null, pages: {} as Record<string, string>, opened: [] as string[] }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -30,6 +30,7 @@ vi.mock("../../lib/connection", async (original) => {
         calls.failOnce = false;
         throw new Error("LifeOS did not answer");
       }
+      if (method === "work.office.live.address") return { address: calls.pages[(params.ref as { path: string }).path] ?? null, app: null };
       if (method === "work.guests.forItem" || method === "work.guests.list") return calls.links;
       if (method === "work.guests.create")
         return { link: { ...LINK, name: params.name, role: params.role, expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/abc#k=secret" };
@@ -46,6 +47,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, onLink: () => () => undefined, environment: (id: string) => (NAMES[id] ? { id, name: NAMES[id] } : undefined) } };
 });
 
+vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), openUrl: async (url: string) => void calls.opened.push(url) }));
 const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string; body?: string; action: string }[] }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   ...(await original<object>()),
@@ -82,6 +84,9 @@ afterEach(() => {
   calls.downWords = {};
   calls.revokeGate = null;
   calls.revokeRefusal = null;
+  calls.itemGate = null;
+  calls.pages = {};
+  calls.opened.length = 0;
 });
 
 describe("Share", () => {
@@ -155,6 +160,42 @@ describe("Share", () => {
     await screen.findByPlaceholderText("Name");
     expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+  });
+
+  it("is its bones until the host answers for the item: never a form it then refuses", async () => {
+    const { ShareButton } = await import("./Share");
+    let answer!: () => void;
+    calls.itemGate = new Promise<void>((done) => (answer = done));
+    calls.down.add("box");
+    calls.downWords = { box: "This file is in a place others open. Share it from there." };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await waitFor(() => expect(document.querySelector("[data-share-bones]")).toBeTruthy());
+    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(screen.getByRole("button", { name: "Create link" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => answer());
+    expect(await screen.findByText("This file is in a place others open. Share it from there.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(document.querySelector("[data-share-bones]")).toBeNull();
+  });
+
+  it("reads Share in Teams on a library's file whose page the host knows, and opens that page; no guest link is asked", async () => {
+    const { ShareButton } = await import("./Share");
+    const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";
+    calls.pages = { "/w/Plan.tcdoc": page };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Share in Teams" }));
+    expect(calls.opened).toEqual([page]);
+    expect(calls.list.map((c) => c.method)).toEqual(["work.office.live.address"]);
+    expect(calls.list[0]!.params).toEqual({ workspaceId: "w1", ref: { at: "file", host: "box", path: "/w/Plan.tcdoc" } });
+    cleanup();
+    // His own OneDrive's page reads OneDrive; a file with no page keeps the Share sheet.
+    calls.pages = { "/w/Mine.xlsx": "https://purdue0-my.sharepoint.com/personal/l/Documents/Mine.xlsx?web=1" };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Mine.xlsx" }} kind="sheet" title="Mine" workspaceId="w1" />);
+    expect(await screen.findByRole("button", { name: "Share in OneDrive" })).toBeTruthy();
+    cleanup();
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Notes.tcdoc" }} kind="document" title="Notes" workspaceId="w1" />);
+    expect(await screen.findByRole("button", { name: "Share" })).toBeTruthy();
   });
 
   it("says a host's refusal of a file as the sheet's one line, not as a failure", async () => {

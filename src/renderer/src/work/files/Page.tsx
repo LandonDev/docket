@@ -643,6 +643,11 @@ export interface PageActs {
   download?(entries: readonly FileEntry[]): void;
   /** Share…: a document's or a sheet's Share sheet; absent where nothing of this place can be shared from this window */
   share?(entry: FileEntry): void;
+  /**
+   * A place others open (a library, his OneDrive): Share in Teams opens the file's own page, as the workspace's host knows
+   * it; `pageOf` is undefined until asked, null where it knows none. Present, no guest link is offered here.
+   */
+  shareIn?: { home: "Teams" | "OneDrive"; pageOf(entry: FileEntry): string | null | undefined; ask(entry: FileEntry): void; open(url: string): void };
   /** Add from Drive…: Google's Picker, for a Drive place; what he picks is what the place may list */
   addFromDrive?(): void;
   /** From a Template…: the templates pillar's own dialog, the file kept in this folder; absent where that pillar is not there */
@@ -731,6 +736,9 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
 /** The verbs a row's LifeOS session runs: none is offered for a row that session shuts. */
 const SESSION_ACTS: ReadonlySet<EntryAct> = new Set<EntryAct>(["open", "open-form", "open-side", "open-app", "share"]);
 const BULK_WORDS: Partial<Record<EntryAct, string>> = { move: "Move", copy: "Copy" };
+/** Share in Teams for one row of a place others open: live once the host names its page, else greyed with where to share it. */
+const shareInOf = (acts: PageActs, on: readonly FileEntry[]): { shareIn?: { home: string; refused?: string } } =>
+  acts.shareIn && on.length === 1 ? { shareIn: { home: acts.shareIn.home, ...(acts.shareIn.pageOf(on[0]!) ? {} : { refused: `Share it from ${acts.shareIn.home}.` }) } } : {};
 /** The key a row's verb answers to, shown at its row's end (a PC's Delete key alone deletes, so it is not shown there). */
 const ROW_KEYS: Partial<Record<EntryAct, string>> = { "quick-look": "Quick Look", rename: "Rename", delete: "Delete" };
 
@@ -1004,7 +1012,7 @@ export function PageView({
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
   // A row shut by its LifeOS session offers no verb that session runs: it can still be starred, or shown in its folder.
   const unshut = (list: ActRow[], on: readonly FileEntry[]): ActRow[] => (on.some((e) => sessionHeld?.has(e.key)) ? list.filter((row) => !SESSION_ACTS.has(row.act)) : list);
-  const verbs = unshut(acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen), chosen);
+  const verbs = unshut(acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...shareInOf(acts, chosen), ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen), chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
@@ -1022,7 +1030,10 @@ export function PageView({
     if (act === "keep") return acts.keep?.(on);
     if (act === "project-out") return one.project ? acts.project?.(one, one.project, false) : undefined;
     if (act === "open-app") return acts.openApp?.(one);
-    if (act === "share") return acts.share?.(one);
+    if (act === "share") {
+      const page = acts.shareIn?.pageOf(one);
+      return acts.shareIn ? (page ? acts.shareIn.open(page) : undefined) : acts.share?.(one);
+    }
     if (act === "download") return acts.download?.(on);
     if (act === "rename") return setRenaming(one.key);
     if (act === "move" || act === "copy") return acts.carry(act, on);
@@ -1033,7 +1044,7 @@ export function PageView({
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = unshut(acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...(acts.far ? { far: acts.far } : {}) }) : plain(on), on);
+    const list = unshut(acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...shareInOf(acts, on), ...(acts.far ? { far: acts.far } : {}) }) : plain(on), on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
@@ -1308,6 +1319,9 @@ export function PageView({
       }} onOpenChange={(opened, id) => {
         // A right-click on a row that is not selected selects it alone, so the menu is plainly about it.
         if (opened && id !== null && !picked.keys.has(id)) setPicked(pick(NOTHING_PICKED, order, id, "one"));
+        // Share in Teams asks the host for the file's page as the menu opens: greyed until it answers.
+        const shown = opened ? (id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen) : [];
+        if (shown.length === 1) acts?.shareIn?.ask(shown[0]!);
       }}>
         <div
           data-files-body

@@ -152,6 +152,19 @@ describe('the live Office wire', () => {
     await expect(servePeerWork({ ...deps, policyOf: () => 'read' }, 'env_mac', { kind: 'call', module: 'office', verb: 'live.libraryDefault', args: { libraryId: library } })).rejects.toThrow('needs operate')
   })
 
+  it('answers the Word file’s address for the document kept for it, so its Share in Teams opens the file’s own page', async () => {
+    const address = (path: string, by = window) => liveHandle(request('work.office.live.address', { workspaceId: WS, ref: at(path) }), rig.ctx, by, () => desktop)
+    setRoots(rig.db, [{ folder: rig.team, web: WEB }])
+    filesState(rig.ctx)
+    const word = join(rig.team, 'General', 'Plan.docx')
+    const kept = join(rig.folder, 'Plan.tcdoc')
+    rig.db.prepare(`INSERT INTO work_files_word (workspace_id, host, path, name, version, doc, at) VALUES (?, ?, ?, 'Plan.docx', 'v1', ?, 1)`).run(WS, HOST, word, kept)
+    expect(await address(kept)).toEqual({ handled: true, result: { address: `${WEB}/General/Plan.docx?web=1`, app: 'word' } })
+    // Another workspace's record names nothing here, and a key that may not name the library learns nothing of it.
+    expect(await liveHandle(request('work.office.live.address', { workspaceId: WS, ref: at(join(rig.folder, 'Other.tcdoc')) }), rig.ctx, window, () => desktop)).toEqual({ handled: true, result: { address: null, app: null } })
+    await expect(address(kept, phone)).rejects.toThrow()
+  })
+
   it('answers a Files entry’s web address and app with no tab, for the phone’s Open in Word', async () => {
     const address = (path: string, by = window, host = HOST) => liveHandle(request('work.office.live.address', { workspaceId: WS, ref: at(path, host) }), rig.ctx, by, () => desktop)
     const none = { handled: true, result: { address: null, app: null } }
