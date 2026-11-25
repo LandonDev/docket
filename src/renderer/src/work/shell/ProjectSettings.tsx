@@ -417,19 +417,22 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
             <SheetDescription className="min-w-0 truncate text-xs">{workspace.name}</SheetDescription>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-            <WorkProjectFields
-              name={name}
-              onName={setNameDraft}
-              state={state}
-              onState={setStateDraft}
-              target={target}
-              onTarget={setTargetDraft}
-              reach={reach}
-              rules={rulesLine(project)}
-              onEditRules={() => setEditingRules(true)}
-              accounts={accountRows}
-              sharing={lifeosId ? <ProjectShare env={workspace.environmentId} project={{ id: lifeosId, name: savedName }} /> : null}
-            />
+            {/* The fields hold still while Save writes, so the sheet never closes over a word typed after the press. */}
+            <fieldset disabled={pending} data-project-fields className="m-0 min-w-0 border-0 p-0">
+              <WorkProjectFields
+                name={name}
+                onName={setNameDraft}
+                state={state}
+                onState={setStateDraft}
+                target={target}
+                onTarget={setTargetDraft}
+                reach={reach}
+                rules={rulesLine(project)}
+                onEditRules={() => setEditingRules(true)}
+                accounts={accountRows}
+                sharing={lifeosId ? <ProjectShare env={workspace.environmentId} project={{ id: lifeosId, name: savedName }} /> : null}
+              />
+            </fieldset>
           </div>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. The foot's Save, still live, is its retry. */}
           {keptLine && stranded && !error ? (

@@ -40,7 +40,9 @@ import { useTranscriptHost } from "../transcriptSession";
  * read again when the thread's folded outcome or state moves, when one of its
  * held items changes in the Outbox, and when LifeOS says one of its open tasks
  * changed. A refresh that fails keeps the last facts, with a quiet line that
- * says they may be old.
+ * says they may be old; so does one whose LifeOS read failed (`worksDown`),
+ * which keeps the last task facts and reads again once the job's LifeOS
+ * session is back.
  */
 export function WorkHead({ sessionId }: { sessionId: string }) {
   const env = useTranscriptHost();
@@ -76,7 +78,12 @@ export function useThreadRecord(env: string | null | undefined, sessionId: strin
     if (!env) return;
     let live = true;
     readThreadRecord(env, sessionId).then(
-      (next) => live && setKept({ key, record: next, at: Date.now(), behind: false }),
+      (next) =>
+        live &&
+        setKept((was) =>
+          // LifeOS's links did not read: the waits and the made things are new, the tasks the last ones known, as of then.
+          next.worksDown && was?.key === key ? { key, record: { ...next, works: was.record.works }, at: was.at, behind: true } : { key, record: next, at: Date.now(), behind: false },
+        ),
       // A key that may not read it, or a host a release behind: the head is not drawn, the transcript is. Facts
       // already shown stay, marked as possibly old.
       () => live && setKept((was) => (was?.key === key && !was.behind ? { ...was, behind: true } : was)),
@@ -92,16 +99,26 @@ const taskGet = makeFunctionReference<"query">("tasks:get");
 
 /**
  * A count that moves when LifeOS changes one of the record's open tasks (done, moved, waiting on someone), on the
- * job's LifeOS session, which the job's column already holds open. Nothing while the record lists no open task.
+ * job's LifeOS session, which the job's column already holds open; and once that session connects again after the
+ * record's LifeOS read failed (`worksDown`), task ids or none. Nothing while the record lists no open task and read.
  */
 function useTaskPulse(env: string | null | undefined, record: ThreadRecord | null): number {
   const workspaces = useWorkspaces();
   const sector = (record?.workspaceId && workspaces.find((w) => w.id === record.workspaceId && w.environmentId === env)?.sector) || null;
   const ids = record?.works.filter((w) => w.table === "tasks" && w.state === "open").map((w) => w.id).join("\n") ?? "";
-  const session = useLifeosSession(ids && sector && env ? env : "", sector);
+  const down = !!record?.worksDown;
+  const session = useLifeosSession((ids || down) && sector && env ? env : "", sector);
   const client = ids ? session.client : null;
   const [pulse, setPulse] = useState(0);
   const seen = useRef(new Map<string, string>());
+  // The session back (connected after it was not) while the record says LifeOS did not read: read it again.
+  const connected = session.state === "connected" && !!session.client;
+  const wasConnected = useRef(connected);
+  useEffect(() => {
+    const was = wasConnected.current;
+    wasConnected.current = connected;
+    if (down && connected && !was) setPulse((n) => n + 1);
+  }, [down, connected]);
   useEffect(() => {
     if (!client || !ids) return;
     const offs = ids.split("\n").map((id) => {
@@ -141,20 +158,32 @@ function taskLine(work: RecordWork, now: number): { text: string; late: boolean 
 
 const failed = (error: unknown): void => void loadToast().then((toast) => toast.error(workErrorWords(error) || "Couldn't open it"));
 
+/** A question's card or an approval's row; a failure's card (FailureCard.tsx). */
+const QUESTION = '[data-slot="question-card"], [data-approval-mark]';
+const FAILURE = "[data-failure-kind]";
+
 /**
- * The question's own card, where the transcript asks it: the last one waiting, brought into view; else the
- * transcript's end, where a waiting card always sits.
+ * The card a row names, where the transcript draws it: the last one, brought into view; else the transcript's end,
+ * where a waiting card always sits. From the keyboard focus moves into it, on its first press, so he can answer
+ * (a question's keys work only while focus is in its card).
  */
-function goToQuestion(from: HTMLElement, keyboard: boolean): void {
-  const scroller = from.closest<HTMLElement>(".agent-transcript");
-  if (!scroller) return;
-  const cards = scroller.querySelectorAll<HTMLElement>('[data-slot="question-card"], [data-approval-mark]');
-  const card = cards[cards.length - 1];
-  // A press from the keyboard, or reduced motion, lands at once.
-  const behavior: ScrollBehavior = keyboard || reducedMotion() ? "auto" : "smooth";
-  if (card) card.scrollIntoView({ block: "center", behavior });
-  else scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+function goTo(selector: string): (from: HTMLElement, keyboard: boolean) => void {
+  return (from, keyboard) => {
+    const scroller = from.closest<HTMLElement>(".agent-transcript");
+    if (!scroller) return;
+    const found = scroller.querySelectorAll<HTMLElement>(selector);
+    const last = found[found.length - 1];
+    // An approval's mark stands in its row: the row is the card.
+    const card = last?.closest<HTMLElement>('[data-slot="approval"]') ?? last;
+    // A press from the keyboard, or reduced motion, lands at once.
+    const behavior: ScrollBehavior = keyboard || reducedMotion() ? "auto" : "smooth";
+    if (card) card.scrollIntoView({ block: "center", behavior });
+    else scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+    if (keyboard && card) card.querySelector<HTMLElement>("button:not(:disabled), [tabindex]:not([tabindex='-1'])")?.focus({ preventScroll: true });
+  };
 }
+const goToQuestion = goTo(QUESTION);
+const goToFailure = goTo(FAILURE);
 
 /** Where a made thing opens: a Files tab of its job, a page on the web, or its project. */
 function openMade(env: string, made: RecordMade): (() => void) | undefined {
@@ -253,7 +282,8 @@ function WaitRow({ wait, env, now, onOpenHeld }: { wait: RecordWait; env: string
       // The question's own card is in the transcript; the head names it once, amber.
       return <Row lead={<StatusMark state="waiting" word={false} />} title="Asks you" label="Go to the question" onOpen={goToQuestion} />;
     case "failed":
-      return <Row lead={<StatusMark state="failed" word={false} />} title={wait.words} detail={wait.cause ?? undefined} tone="failed" />;
+      // Its fix (Sign in, Retry) is on the transcript's failure card: the row takes him there, as Asks you does.
+      return <Row lead={<StatusMark state="failed" word={false} />} title={wait.words} detail={wait.cause ?? undefined} tone="failed" label={`Go to what failed: ${wait.words}`} onOpen={goToFailure} />;
     case "request":
       return (
         <Row

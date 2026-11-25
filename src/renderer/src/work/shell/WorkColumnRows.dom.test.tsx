@@ -30,11 +30,14 @@ vi.mock("../../lib/hoverPrefetch", async (original) => ({ ...(await original<obj
 
 const { ArchivedRow, WorkProjectsSection, WorkThreadsSection } = await import("./WorkColumnRows");
 const { setColumnProjects } = await import("./columnProjects");
+const { setProjectsBack, setProjectsHere } = await import("../projects/here");
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   openWorkView(null);
+  setProjectsHere("w-job", null);
+  setProjectsBack("w-job", null);
   store.metas = [];
   store.asked = [];
   restored.length = 0;
@@ -128,6 +131,42 @@ describe("the Projects section", () => {
     act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
     expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBeNull();
     expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("true");
+  });
+
+  it("keeps the project lit once the view takes the request, and lights one opened from elsewhere, from where the view stands", () => {
+    render(<Section />);
+    // The view takes the open request and clears it; where it stands now says the project.
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects", project: "lan" }));
+    act(() => setProjectsHere("w-job", { list: false, project: "lan" }));
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBeNull();
+    // A task or document of no known project lights neither a row nor the heading.
+    act(() => setProjectsHere("w-job", { list: false, project: null }));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBeNull();
+    act(() => setProjectsHere("w-job", { list: true }));
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("true");
+  });
+
+  it("opens the fold for a paused project whose page shows, lighting its row", () => {
+    render(<Section />);
+    expect(screen.queryByText("Fall league")).toBeNull();
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    act(() => setProjectsHere("w-job", { list: false, project: "fall" }));
+    expect(screen.getByRole("button", { name: "1 paused, 1 in backlog" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: /^Fall league/ }).getAttribute("aria-current")).toBe("true");
+  });
+
+  it("from inside a project, the heading takes him back to the job's list", () => {
+    const back = vi.fn();
+    setProjectsBack("w-job", back);
+    render(<Section />);
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    act(() => setProjectsHere("w-job", { list: false, project: "lan" }));
+    act(() => screen.getByRole("button", { name: "Projects" }).click());
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(workViewNow()).toEqual({ workspaceId: "w-job", view: "projects" });
   });
 
   it("opens a project's page from its row, and the job's Projects view from the heading, which then reads as open", () => {

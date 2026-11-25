@@ -45,6 +45,8 @@ const CODE_PROJECT: ProjectMeta = { id: "pc", workspaceId: "wc", name: "Alpha", 
 type Sent = { fn: string; args: Record<string, unknown> };
 let sent: Sent[] = [];
 let failWrites: string | null = null;
+/** A LifeOS write held until this settles: the sheet as it stands while Save writes. */
+let holdWrites: Promise<void> | null = null;
 /** The host refuses the accounts' save with these words. */
 let failAccounts: string | null = null;
 let hostCalls: { method: string; params: Record<string, unknown> }[] = [];
@@ -64,6 +66,7 @@ function lifeosClient(rows = [{ _id: "lp_1", name: "Spring LAN", status: "active
     }),
     mutation: async (ref: never, args: Record<string, unknown>) => {
       sent.push({ fn: getFunctionName(ref), args });
+      if (holdWrites) await holdWrites;
       if (failWrites) throw new Error(failWrites);
       return null;
     },
@@ -81,6 +84,7 @@ beforeEach(() => {
   sent = [];
   hostCalls = [];
   failWrites = null;
+  holdWrites = null;
   failAccounts = null;
   workspaceStore.reset();
   workspaceStore.hydrate([{ environmentId: BOX, workspaces: [WORK, CODE], projects: [MIRROR, CODE_PROJECT] }]);
@@ -188,6 +192,24 @@ describe("Name and State", () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]).toEqual({ fn: "projects:update", args: { id: "lp_1", patch: { name: "Fall LAN", status: "paused" } } });
     expect(hostCalls.filter((c) => c.method.startsWith("project."))).toEqual([]);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("hold the fields still while Save writes, so the sheet never closes over a later edit", async () => {
+    connected();
+    let release!: () => void;
+    holdWrites = new Promise((done) => (release = done));
+    const onClose = vi.fn();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={onClose} />);
+    const root = await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    const fields = root.querySelector<HTMLFieldSetElement>("[data-project-fields]")!;
+    expect(fields.disabled).toBe(true);
+    expect(fields.contains(screen.getByLabelText("Name"))).toBe(true);
+    await act(async () => release());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 

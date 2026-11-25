@@ -5,10 +5,9 @@ import { Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
 import { openUrl } from "../../lib/native";
-import { useSessionMeta } from "../../lib/tcserver/store";
-import { workOpenPort } from "../../lib/workSwitch";
 import { formatDue } from "work-kit/views/lib/format";
 import type { Task } from "./client";
+import { openTaskThread } from "./links";
 
 /**
  * A task's Open: the task in full in a sheet over the view, as LifeOS reads
@@ -50,8 +49,8 @@ export function TaskSheet({ open, ...props }: Props & { open: { id: string; row:
 
 function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
   const detail = useQuery(get, { id }) as Detail | undefined;
+  // A linked thread the window holds no meta for yet is still its thread: Open asks the hosts for it (links.ts).
   const threadId = useThread(id);
-  const thread = useSessionMeta(threadId) ? threadId : null;
   // LifeOS's read over the list's row; a task the list does not hold is its read alone.
   const full = row ? { ...row, ...detail?.task } : (detail?.task ?? undefined);
   // Asked for by id and not found (gone since): nothing to show, so the sheet closes, quietly.
@@ -111,8 +110,8 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread 
           <Button size="sm" aria-hidden tabIndex={-1} disabled className="invisible">
             Start thread
           </Button>
-        ) : thread ? (
-          <Button size="sm" onClick={() => (onClose(), workOpenPort.get()?.(thread))}>
+        ) : threadId ? (
+          <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId))}>
             Open thread
           </Button>
         ) : (

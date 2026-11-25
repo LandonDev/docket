@@ -20,6 +20,7 @@ import type { WorkViewProps } from "../views/registry";
 import { BackToList, Bar, BarControls, BarTitle } from "./bar";
 import { projectsKitFor, setProjectsHost, withHostDone } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
+import { setProjectsBack, setProjectsHere } from "./here";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
 
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -78,6 +79,19 @@ export function View(props: WorkViewProps) {
   const place = usePlace(workspace.id);
   const onPlace = useCallback((next: ProjectsPlace) => setPlace(workspace.id, next), [workspace.id]);
   const doc = useOpenedDoc(workspace.id);
+  // Where it stands, for the column's lit row (here.ts): a document or task counts as its project's page.
+  const hereProject = doc ? doc.project.id : place.at === "project" ? (place.id ?? null) : place.at === "task" ? (place.from ?? null) : undefined;
+  useLayoutEffect(() => setProjectsHere(workspace.id, hereProject === undefined ? { list: true } : { list: false, project: hereProject }), [workspace.id, hereProject]);
+  useEffect(() => {
+    setProjectsBack(workspace.id, () => {
+      openDoc(workspace.id, null);
+      setPlace(workspace.id, { ...LIST_PLACE, layout: placeOf(workspace.id).layout });
+    });
+    return () => {
+      setProjectsHere(workspace.id, null);
+      setProjectsBack(workspace.id, null);
+    };
+  }, [workspace.id]);
   // A card's Open project names where to stand: taken once, then cleared, so the row's own press comes back to where he was.
   const asked = useWorkView();
   const mine = asked?.workspaceId === workspace.id && asked.view === "projects" ? asked : null;

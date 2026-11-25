@@ -62,7 +62,23 @@ export function placeOf(workspaceId: string): ProjectsPlace {
   return place;
 }
 
+/** Where New project's dismissal goes instead of the job's list, a workspace: the tracker, when it opened the dialog. */
+const dismissTo = new Map<string, () => void>();
+
+/**
+ * Send New project's Cancel, Escape or outside press to `back` (the tracker's New project, tracker/open.ts), once:
+ * Create still lands on the new project, and a later New project from the job's own list goes back to the list.
+ * Set after the place is at `new`.
+ */
+export function whenNewDismissed(workspaceId: string, back: () => void): void {
+  dismissTo.set(workspaceId, back);
+}
+
 export function setPlace(workspaceId: string, place: ProjectsPlace): void {
+  const was = placeOf(workspaceId).at;
+  // Entering or leaving New project ends a return set for an earlier one; leaving it for the list is a dismissal.
+  const back = was === "new" && place.at === "list" ? dismissTo.get(workspaceId) : undefined;
+  if ((was === "new") !== (place.at === "new")) dismissTo.delete(workspaceId);
   places.set(workspaceId, place);
   try {
     globalThis.localStorage?.setItem(KEY, JSON.stringify({ ...readAll(), [workspaceId]: place }));
@@ -70,6 +86,7 @@ export function setPlace(workspaceId: string, place: ProjectsPlace): void {
     /* a window with no storage keeps the place for its own life */
   }
   tell();
+  back?.();
 }
 
 export function usePlace(workspaceId: string): ProjectsPlace {
@@ -94,6 +111,7 @@ export function useOpenedDoc(workspaceId: string): OpenedDoc | null {
 export function resetPlaces(): void {
   places.clear();
   opened.clear();
+  dismissTo.clear();
   try {
     globalThis.localStorage?.removeItem(KEY);
   } catch {

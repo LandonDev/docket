@@ -177,9 +177,31 @@ describe("the Tasks view", () => {
     expect(startThread).not.toHaveBeenCalled();
     // The lead (Book the ballroom) leads its Open thread with the thread's mark too.
     expect(document.querySelector("[data-lead-thread]")).toBeNull();
-    // A link to a thread this window does not know keeps Start.
+    workOpenPort.set(null);
+  });
+
+  it("a link to a thread the window holds no meta for yet offers Open thread, never Start, and Open asks the hosts for it first", async () => {
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    const { sessionStore } = await import("../../lib/tcserver/store");
+    const ensure = vi.spyOn(sessionStore, "ensureMeta").mockResolvedValue({ id: "gone" } as never);
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={(id) => (id === "t3" ? "gone" : null)} />);
     const waiting = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
-    expect(within(waiting).getByRole("button", { name: "Start" })).toBeTruthy();
+    expect(within(waiting).queryByRole("button", { name: "Start" })).toBeNull();
+    // No mark while its state is unknown.
+    expect(waiting.querySelector("[data-task-thread]")).toBeNull();
+    fireEvent.click(within(waiting).getByRole("button", { name: "Open thread" }));
+    await act(async () => {});
+    expect(ensure).toHaveBeenCalledWith("gone");
+    expect(opened).toEqual(["gone"]);
+    // Its sheet says the same.
+    fireEvent.click(screen.getByRole("button", { name: "Open Approve the scrim schedule" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).queryByRole("button", { name: "Start thread" })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Open thread" })).toBeTruthy();
+    expect(startThread).not.toHaveBeenCalled();
+    ensure.mockRestore();
     workOpenPort.set(null);
   });
 

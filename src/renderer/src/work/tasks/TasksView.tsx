@@ -30,7 +30,7 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
-import { useLinkedThread } from "./links";
+import { openTaskThread, useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
 import { keepPlace, keptPlace } from "../shell/place";
 import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
@@ -126,10 +126,11 @@ const noThread = (): string | null => null;
 
 /**
  * A task's thread as a row draws it: its id, its state in the one vocabulary and what it left him (`workOutcome`);
- * null when no thread this window knows works on it; undefined until the link read answers, so neither Start nor
- * Open thread is offered before it is known which is right.
+ * null when no link names a thread; undefined until the link read answers, so neither Start nor Open thread is
+ * offered before it is known which is right. A linked thread the window holds no meta for yet keeps its id with no
+ * state (and so no mark): it offers Open thread, never Start (links.ts `openTaskThread`).
  */
-export type TaskThread = { id: string; state: ReturnType<typeof rowState>; tone: OutcomeTone | null } | null | undefined;
+export type TaskThread = { id: string; state: ReturnType<typeof rowState> | null; tone: OutcomeTone | null } | null | undefined;
 /** The thread a task's open link names; null for none; undefined while the read is out or failed. */
 type UseThread = (taskId: string) => string | null | undefined;
 
@@ -137,7 +138,8 @@ function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
   const id = useThread(taskId);
   const meta = useSessionMeta(id);
   if (id === undefined) return undefined;
-  return id && meta ? { id, state: rowState({ status: meta.status }), tone: meta.workOutcome?.tone ?? null } : null;
+  if (!id) return null;
+  return { id, state: meta ? rowState({ status: meta.status }) : null, tone: meta?.workOutcome?.tone ?? null };
 }
 
 /**
@@ -146,10 +148,11 @@ function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
  */
 export function taskThreadMark(thread: NonNullable<TaskThread>): { key: string; mark: ReactNode } | null {
   if (hasOutcomeMark(thread.tone)) return { key: thread.tone!, mark: <OutcomeMark tone={thread.tone} /> };
-  return marksAtRest(thread.state) ? { key: thread.state, mark: <StatusMark state={thread.state} word={false} /> } : null;
+  return thread.state && marksAtRest(thread.state) ? { key: thread.state, mark: <StatusMark state={thread.state} word={false} /> } : null;
 }
 
-const openThread = (thread: NonNullable<TaskThread>): void => workOpenPort.get()?.(thread.id);
+/** A thread the window knows opens at once; one it holds no meta for is asked of the hosts first. */
+const openThread = (thread: NonNullable<TaskThread>): void => void (thread.state ? workOpenPort.get()?.(thread.id) : openTaskThread(thread.id));
 
 export function Tasks({
   client,

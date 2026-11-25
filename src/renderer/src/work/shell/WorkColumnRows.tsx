@@ -24,6 +24,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { WorkThreadItem } from "../../lib/sidebarRows";
 import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
 import { useColumnProjects } from "./columnProjects";
+import { projectsBack, useProjectsHere } from "../projects/here";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import type { ThreadRow } from "../../lib/workspaceSessions";
@@ -56,7 +57,8 @@ const leadWords = (lead: WorkLead): string | null => (!lead ? null : lead.kind =
 /**
  * The Projects section: its heading opens the job's Projects view (so the views have no Projects row), then a row a
  * project, then the paused and backlog ones behind one quiet row ("1 paused, 1 in backlog"). `onOpen` opens a
- * project's page. The heading reads as open while the job's list shows; a project's own page lights its row.
+ * project's page. The heading reads as open while the job's list shows; a project's own page (its task or document
+ * too) lights its row for as long as it shows, as the view tells it (projects/here.ts).
  */
 export const WorkProjectsSection = memo(function WorkProjectsSection({
   workspaceId,
@@ -77,7 +79,15 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   const [quietOpen, setQuietOpen] = useState(false);
   const shown = useWorkView();
   const here = shown?.workspaceId === workspaceId && shown.view === "projects" ? shown : null;
-  const on = !!here && !here.project;
+  // Where the view stands now (projects/here.ts), however he came to it; an open request not yet taken leads.
+  const at = useProjectsHere(workspaceId);
+  const current = here ? (here.project ?? (at && !at.list ? at.project : null)) : null;
+  const on = !!here && !here.project && (at?.list ?? true);
+  // A paused or backlog project's page opens its fold, so its row is seen lit; shut by hand, it stays shut.
+  const quietHit = !!current && projects.quiet.some((row) => isShown(row, current));
+  useEffect(() => {
+    if (quietHit) setQuietOpen(true);
+  }, [quietHit, current]);
   const now = Date.now();
   if (!linked && projects.rows.length === 0 && projects.quiet.length === 0) return null;
   return (
@@ -86,7 +96,12 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
         <Button
           variant="ghost"
           aria-current={on || undefined}
-          onClick={() => openWorkView(on ? null : { workspaceId, view: "projects" })}
+          onClick={() => {
+            // From inside a project, back to the job's list; on the list, the view closes.
+            const back = here && !on ? projectsBack(workspaceId) : undefined;
+            if (back) back();
+            else openWorkView(on ? null : { workspaceId, view: "projects" });
+          }}
           className={cn(HEADING, "justify-start font-medium transition-none hover:bg-foreground/5 hover:text-foreground", on && "bg-muted text-foreground hover:bg-muted")}
         >
           Projects
@@ -95,14 +110,14 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
         <h3 className={HEADING}>Projects</h3>
       )}
       {projects.rows.map((row) => (
-        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, here?.project)} onOpen={onOpen} />
+        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={onOpen} />
       ))}
       {projects.quiet.length > 0 ? (
         <>
           <Button variant="ghost" aria-expanded={quietOpen} onClick={() => setQuietOpen((was) => !was)} data-quiet-fold className={QUIET_ROW}>
             {quietWords(projects.quiet)}
           </Button>
-          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, here?.project)} onOpen={onOpen} />) : null}
+          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={onOpen} />) : null}
         </>
       ) : null}
     </section>
@@ -110,7 +125,7 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
 });
 
 /** Whether a project's page is the one the Projects view shows. */
-const isShown = (row: WorkProjectRow, project: string | undefined): boolean => !!project && row.lifeosProjectId === project;
+const isShown = (row: WorkProjectRow, project: string | null): boolean => !!project && row.lifeosProjectId === project;
 
 /** One project: what is live in the lead, its name, its target date at the end (red once it has passed). */
 function ProjectRow({ row, now, selected, onOpen }: { row: WorkProjectRow; now: number; selected: boolean; onOpen: (row: WorkProjectRow) => void }) {

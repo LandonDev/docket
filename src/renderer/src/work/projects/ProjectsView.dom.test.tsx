@@ -63,6 +63,7 @@ vi.mock("./Description", () => ({ Description: ({ docId, lead }: { docId: string
 const { View, Head, Title, Kept } = await import("./ProjectsView");
 const { addRows, hintKeys, openItemIn, projectChip, taskChip } = await import("./kit");
 const { placeOf, resetPlaces } = await import("./place");
+const { projectsBack, useProjectsHere } = await import("./here");
 const { openerOf } = await import("../canvas/SentChips");
 
 const BOX = "env_box";
@@ -206,6 +207,28 @@ describe("the Projects view", () => {
     expect(back.isConnected).toBe(false);
     fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" }));
     expect(placeOf("ws").at).toBe("list");
+  });
+
+  it("tells the column where it stands for as long as it is drawn, and gives the column's heading the way back to the list", () => {
+    const seen: unknown[] = [];
+    function Column() {
+      seen.push(useProjectsHere("ws"));
+      return null;
+    }
+    const view = render(
+      <>
+        <Column />
+        <Screen {...props()} />
+      </>,
+    );
+    expect(seen.at(-1)).toEqual({ list: true });
+    fireEvent.click(screen.getByText("Spring LAN"));
+    expect(seen.at(-1)).toEqual({ list: false, project: "p-lan" });
+    act(() => projectsBack("ws")!());
+    expect(placeOf("ws").at).toBe("list");
+    expect(seen.at(-1)).toEqual({ list: true });
+    view.unmount();
+    expect(projectsBack("ws")).toBeUndefined();
   });
 
   it("draws one way back on every screen: an arrow, then where it goes, then what the screen adds beside it", async () => {

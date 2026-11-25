@@ -134,6 +134,32 @@ describe('the words said in a thread', () => {
     expect(hit).toMatchObject({ detail: 'Archived', open: { to: 'thread', sessionId: 't-old', archived: true } })
     expect(hit.snippet).toContain('noon')
   })
+  it('find an archived thread by its words once its log has moved to the cold file', async () => {
+    say('t-old', 'Last year the pizza ran out by noon.')
+    expect(store.moveToCold('t-old').done).toBe(true)
+    // The hot file alone no longer holds it.
+    expect((await store.searchEvents({ query: 'noon', scope: 'work' })).hits).toEqual([])
+    const hit = (await threadWords.search(ask('noon', everywhere, 10), {} as never)).find((h) => h.key === 'thread:t-old')!
+    expect(hit).toMatchObject({ detail: 'Archived', open: { to: 'thread', sessionId: 't-old', archived: true } })
+    expect(hit.snippet).toContain('noon')
+  })
+  it('read the cold file only for archived threads, and only with room left by the live ones', async () => {
+    const asked: { ids: readonly string[]; cold: boolean; limit: number }[] = []
+    setSearchHost(
+      makeSearchHost({
+        sessions: (archived) => [...metas.values()].filter((m) => m.archived === archived),
+        session: (id) => metas.get(id) ?? null,
+        workspaceOfProject: (id) => projects[id] ?? null,
+        searchEvents: (o) => (asked.push({ ids: o.sessionIds, cold: !!o.archived, limit: o.limit }), store.searchEvents(o))
+      })
+    )
+    await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
+    expect(asked.map((a) => [a.ids.includes('t-old'), a.cold])).toEqual([
+      [false, false],
+      [true, true]
+    ])
+    expect(asked[1]!.ids).toEqual(['t-old'])
+  })
   it('list live threads before archived ones before the limit, whatever the index ranked first', async () => {
     for (let i = 0; i < 4; i++) {
       thread(`t-gone-${i}`, { title: `Gone ${i}`, scope: 'work', workspaceId: PURDUE, archived: true, at: 200 + i })

@@ -228,7 +228,10 @@ words. Both are held to rows stamped `scope: 'work'`, the words by the
 query itself (`Store.searchEvents` takes `scope`), so a code thread is never
 answered whatever it says. A thread in a project has no `workspace_id` on
 its row; its job is its project's. An archived thread is found too, by title
-and by its words: its hit's fact reads "Archived". Both sources list it after
+and by its words: its hit's fact reads "Archived". Words read the live
+threads first, from the hot file alone, and then fill the room left with the
+archived ones, the cold file read too (`archived: true`), since an archived
+thread's log moves there in the background (host.ts `words`). Both sources list it after
 every live one before their cap, and the window's Threads group keeps it under
 every live row whichever host or tier answered first, the row he has moved to
 excepted (model.ts `groupsOf`), so it never takes a live thread's place. The

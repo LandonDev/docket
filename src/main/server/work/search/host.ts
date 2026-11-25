@@ -28,7 +28,11 @@ export interface SearchHost {
   threads(archived?: boolean): WorkThread[]
   /** One Work thread by id; null for a code thread or an unknown id. */
   thread(id: string): WorkThread | null
-  /** The transcript index and the threads' notes, held to Work threads and to `within` (the threads in reach), one row a thread: best first. */
+  /**
+   * The transcript index and the threads' notes, held to Work threads and to `within` (the threads in reach), one row
+   * a thread: best first, the live threads' first; the archived ones fill what room is left, their logs in the cold
+   * file read too (an archived thread's rows move there in the background).
+   */
   words(query: string, limit: number, within: readonly string[]): Promise<SessionSearchHit[]>
 }
 
@@ -38,7 +42,7 @@ export interface SearchHostDeps {
   sessions(archived: boolean): SessionMeta[]
   session(id: string): SessionMeta | null
   workspaceOfProject(projectId: string): string | null
-  searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true; sessionIds: readonly string[] }): Promise<{ hits: SessionSearchHit[] }>
+  searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true; sessionIds: readonly string[]; archived?: true }): Promise<{ hits: SessionSearchHit[] }>
 }
 
 export function makeSearchHost(deps: SearchHostDeps): SearchHost {
@@ -62,8 +66,17 @@ export function makeSearchHost(deps: SearchHostDeps): SearchHost {
       return s && sessionScopeOf(s) === 'work' ? threadOf(s) : null
     },
     // One row a Work thread, its best, among the threads in reach: the index ranks rows and knows no job, and neither
-    // one long thread nor another job's many threads may fill the read.
-    words: async (query, limit, within) => (within.length ? (await deps.searchEvents({ query, limit, scope: 'work', perThread: true, sessionIds: within })).hits : [])
+    // one long thread nor another job's many threads may fill the read. The live threads are read first, from the hot
+    // file alone; the archived ones fill the room left, with the cold file read too.
+    async words(query, limit, within) {
+      const gone = (id: string): boolean => !!deps.session(id)?.archived
+      const live = within.filter((id) => !gone(id))
+      const archived = within.filter(gone)
+      const read = async (sessionIds: string[], cap: number, cold: boolean): Promise<SessionSearchHit[]> =>
+        sessionIds.length && cap > 0 ? (await deps.searchEvents({ query, limit: cap, scope: 'work', perThread: true, sessionIds, ...(cold ? { archived: true as const } : {}) })).hits : []
+      const hits = await read(live, limit, false)
+      return [...hits, ...(await read(archived, limit - new Set(hits.map((h) => h.sessionId)).size, true))]
+    }
   }
 }
 

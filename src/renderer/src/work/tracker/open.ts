@@ -4,7 +4,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { openWorkView, workEnterPort, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
 import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
-import { placeOf, setPlace } from "../projects/place";
+import { placeOf, setPlace, whenNewDismissed } from "../projects/place";
 
 /**
  * Where the tracker's presses go (docs/agents/work-tracker.md "The page"). Each leaves the page first, as Search's and
@@ -30,13 +30,18 @@ export const openProjectPage = (workspaceId: string, projectId: string): void =>
 
 /**
  * New project for a job: the kit's dialog, over the job's own projects list, where its session and the page Create
- * lands on already are. Cancel leaves him on that list.
+ * lands on already are. Create lands on the new project; Cancel, Escape or a press outside bring him back to the
+ * tracker he pressed it on, the job's list behind it.
  */
 export function openNewProject(workspaceId: string): void {
   const was = placeOf(workspaceId);
   setPlace(workspaceId, { ...LIST_PLACE, at: "new", layout: was.layout, ...(was.display ? { display: was.display } : {}) });
+  whenNewDismissed(workspaceId, () => shell.openWorkPlace(TRACKER));
   goToJob(workspaceId, { view: "projects" });
 }
+
+/** The tracker's place id (lib/workPlaces.ts). */
+const TRACKER = "projects";
 
 /** A Threads cell's press: the thread, wherever it lives. */
 export function openTrackerThread(sessionId: string): void {

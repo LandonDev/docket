@@ -85,7 +85,8 @@ into two lines. Loading is `ProjectFactsBones` under the header.
 - **New project.** A job's head shows a + on hover or focus (`reveal`); an empty job shows its name and a quiet New
   project alone. Either opens the job's Projects view with the kit's New project dialog over its list
   (`openNewProject` sets the job's place to `new`): the dialog needs the job's own LifeOS session, which the view
-  holds, and Create lands on the new project's page there. Cancel leaves him on that job's list.
+  holds, and Create lands on the new project's page there. Cancel, Escape or a press outside bring him back to the
+  tracker (`whenNewDismissed` in projects/place.ts, once, the job's list behind it).
 - **A job LifeOS could not be read for.** Where the window's own session for the job is down, `DownLine` says it in
   the shared words with its press (Retry, Sign in, Open Settings). Where that session reads and the host's read
   failed alone, the host's words with a Retry that asks the hosts again.

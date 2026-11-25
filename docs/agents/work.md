@@ -658,8 +658,11 @@ One record answers it for every screen (the thread's head, the column's outcome 
   layout measures it), again whenever the folded outcome or the thread's status moves, one of its held items changes in
   the Outbox's list (sent, discarded, edited in place), or LifeOS changes one of its open tasks (`tasks:get` watched on
   the job's LifeOS session, which the column already holds). A record read for another thread or host is never shown;
-  a refresh that fails keeps the last facts with one quiet line, "Couldn't refresh. As of 10:02 AM". A task is late
-  once its due time passes, as Tasks and Today say it. "Asks you" takes him to the question's card. A
+  a refresh that fails keeps the last facts with one quiet line, "Couldn't refresh. As of 10:02 AM". A record with
+  `worksDown` keeps the last task facts under that line, and is read again once the job's LifeOS session connects
+  after it was not, task ids or none (`useTaskPulse`). A task is late once its due time passes, as Tasks and Today
+  say it. "Asks you" takes him to the question's card and the red failure row to the transcript's failure card
+  (`goTo`), from the keyboard with focus in it. A
   held row opens the Outbox's own `HeldDetail` in a sheet; the held call in the transcript is one quiet line.
 - **The title bar** of a Work thread in front is its crumb (`WorkCrumb`, on the `work-head` chunk so the first paint holds none of it): the job's dot, its project (a press opens
   the project's page) or, loose, the job's name, then the title; no strip of chips. A code thread's bar is unchanged.

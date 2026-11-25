@@ -2942,7 +2942,9 @@ Around the canvas:
     back; under its title it names only a parent, where there is one
     (the peek, with no way back, names both). A Work project's settings are a sheet with its name, state,
     target, rules, accounts and sharing and nothing of code; what LifeOS
-    cannot take now is shown as words, never as disabled controls.
+    cannot take now is shown as words, never as disabled controls. While
+    Save writes, the fields hold still (disabled), so it never closes over
+    a later edit.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, the faces of who else is in the file and the
@@ -3195,8 +3197,9 @@ host anything per row: the rows read the session summaries (`workOutcome`) and L
   tabular ("Dec 12", the year only in another year), red once its day has passed. Rows sort by target, none last,
   so a row never moves for what its threads do. Paused and backlog fold into one quiet row on the names' column,
   "1 paused, 1 in backlog" as the tracker counts them, that shows them under it; one with something live keeps its
-  row in the list. A row opens the project's page in the Projects view and reads as selected while that page shows;
-  the heading reads as open only on the list. Held outranks working in the lead (a thread still working that holds a
+  row in the list. A row opens the project's page in the Projects view and reads as selected while that page (or a
+  task or document of it) shows, however he came to it; a paused or backlog project's page opens the fold. The
+  heading reads as open only on the list, and from inside a project it goes back to the list. Held outranks working in the lead (a thread still working that holds a
   mail shows the Outbox glyph): what waits on him comes first.
 - **Threads**: a 12px heading, then every root thread of the job, loose and in its projects, newest first, a page
   at a time. A row is two lines, 6px top and bottom: the lead slot (the same marks, and the thread's own at-rest
@@ -3225,7 +3228,9 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   then the first message.
 - **Tones**: held is muted, the Outbox's kind glyph and nothing amber; an out-of-date held act says "Out of date",
   muted. A question is the one amber row ("Asks you", the waiting mark); its card stays where the transcript asks it,
-  and the row takes him there. A failure is red, its words in the red tone and its cause muted under them; a failed
+  and the row takes him there, from the keyboard with focus in the card so he can answer. A failure is red, its words
+  in the red tone and its cause muted under them, and its row takes him to the transcript's failure card, where its
+  fix is, the same way; a failed
   send takes the red mark, its error is its red second line and its fact is "Failed 10:04 AM", never "Held".
 - **The task**: its title, then who it waits on and for how long ("Waiting on Sam Ortiz 6 days", as the plan row
   says it), else when it is due, late in red once its due time passes (as Tasks and Today); the row opens its sheet in Tasks. "From the task …" (12px muted, the title in foreground) sits
@@ -3238,7 +3243,8 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   "Held" then the act, all muted, in the call's place.
 - **Nothing left**: no head at all, no empty line. It is drawn once its record lands, with no bones: it sits above
   the thread's start, which a returning reader is rarely scrolled to. A refresh that fails keeps what it showed,
-  with one 12px muted line under the rows: "Couldn't refresh. As of 10:02 AM".
+  with one 12px muted line under the rows: "Couldn't refresh. As of 10:02 AM"; so does one whose LifeOS read
+  failed, which keeps the task as last known.
 - **The title bar** of a Work thread is its crumb: the job's dot (12px), the project (a muted button opening its
   page) or, loose in a job, the job's name, a 12px chevron, then the title in 13px medium; no strip of thread chips.
   A Work Chat shows its title alone. A code thread's bar and transcript are unchanged (pixel-diffed).

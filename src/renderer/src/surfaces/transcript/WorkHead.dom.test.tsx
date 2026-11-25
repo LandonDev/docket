@@ -58,7 +58,13 @@ const live = vi.hoisted(() => {
   const tasks = new Map<string, { result: unknown; tell: Set<() => void> }>();
   return {
     waiting: [] as unknown[],
+    /** The job's LifeOS session state as the head hears it. */
+    session: "connected" as string,
     listeners,
+    setSession(next: string) {
+      this.session = next;
+      listeners.forEach((fn) => fn());
+    },
     setWaiting(next: unknown[]) {
       this.waiting = next;
       listeners.forEach((fn) => fn());
@@ -92,10 +98,17 @@ vi.mock("../../work/outbox/store", async (original) => {
   const subscribe = (fn: () => void) => (live.listeners.add(fn), () => void live.listeners.delete(fn));
   return { ...real, useOutbox: () => ({ ...real.outboxNow(), waiting: useSyncExternalStore(subscribe, () => live.waiting) }) };
 });
-vi.mock("../../work/shell/lifeos", async (original) => ({
-  ...(await original<typeof import("../../work/shell/lifeos")>()),
-  useLifeosSession: (environmentId: string, sector: string | null) => ({ environmentId, sector, client: environmentId ? live.client : null, state: "connected" }),
-}));
+vi.mock("../../work/shell/lifeos", async (original) => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (fn: () => void) => (live.listeners.add(fn), () => void live.listeners.delete(fn));
+  return {
+    ...(await original<typeof import("../../work/shell/lifeos")>()),
+    useLifeosSession: (environmentId: string, sector: string | null) => {
+      const state = useSyncExternalStore(subscribe, () => (environmentId ? live.session : "connecting"));
+      return { environmentId, sector, client: environmentId && state === "connected" ? live.client : null, state };
+    },
+  };
+});
 vi.mock("../../lib/tcserver/workspaces", async (original) => {
   const ws = [{ id: "ws1", environmentId: "box", sector: "purdue", name: "Purdue Esports", kind: "work" }];
   return { ...(await original<typeof import("../../lib/tcserver/workspaces")>()), useWorkspaces: () => ws };
@@ -195,6 +208,43 @@ describe("the head", () => {
     scroller.remove();
   });
 
+  it("from the keyboard, Asks you puts focus in the question's card, so its keys answer; a click leaves focus be", () => {
+    const scroller = document.createElement("div");
+    scroller.className = "agent-transcript";
+    document.body.append(scroller);
+    const card = document.createElement("div");
+    card.dataset.slot = "question-card";
+    card.scrollIntoView = () => {};
+    const option = card.appendChild(document.createElement("button"));
+    option.textContent = "Yes";
+    render(<WorkHeadView record={empty({ waits: [{ kind: "asks", sessionId: "t1" }] })} environmentId="box" now={NOW} />, { container: scroller.appendChild(document.createElement("div")) });
+    scroller.append(card);
+    const row = screen.getByRole("button", { name: "Go to the question" });
+    row.focus();
+    fireEvent.click(row, { detail: 1 });
+    expect(document.activeElement).toBe(row);
+    fireEvent.click(row, { detail: 0 });
+    expect(document.activeElement).toBe(option);
+    scroller.remove();
+  });
+
+  it("the failure row takes him to the transcript's failure card, where its fix is", () => {
+    const scroller = document.createElement("div");
+    scroller.className = "agent-transcript";
+    document.body.append(scroller);
+    const card = document.createElement("div");
+    card.dataset.failureKind = "auth";
+    const seen: ScrollIntoViewOptions[] = [];
+    card.scrollIntoView = (options) => void seen.push(options as ScrollIntoViewOptions);
+    const signIn = card.appendChild(document.createElement("button"));
+    render(<WorkHeadView record={empty({ waits: [{ kind: "failed", sessionId: "t1", words: "Couldn't sign in", cause: null }] })} environmentId="box" now={NOW} />, { container: scroller.appendChild(document.createElement("div")) });
+    scroller.append(card);
+    fireEvent.click(screen.getByRole("button", { name: "Go to what failed: Couldn't sign in" }), { detail: 0 });
+    expect(seen).toEqual([{ block: "center", behavior: "auto" }]);
+    expect(document.activeElement).toBe(signIn);
+    scroller.remove();
+  });
+
   it("a failure: its words and cause, in red", () => {
     draw(empty({ waits: [{ kind: "failed", sessionId: "t1", words: "Couldn't sign in", cause: "The Purdue Outlook sign-in ran out" }] }));
     expect(rows()).toEqual(["Couldn't sign inThe Purdue Outlook sign-in ran out"]);
@@ -274,6 +324,7 @@ describe("the head", () => {
 describe("the record read", () => {
   beforeEach(() => {
     world.refuse = false;
+    live.session = "connected";
   });
 
   function Probe({ env = "box", id = "t1" }: { env?: string; id?: string }) {
@@ -328,6 +379,29 @@ describe("the record read", () => {
     const before = reads();
     act(() => live.setTask("task1", { task: { status: "done" } }));
     await waitFor(() => expect(reads()).toBe(before + 1));
+  });
+
+  it("a record whose LifeOS read failed keeps the last task facts, marked behind", async () => {
+    world.record = empty({ works: [task] });
+    const { rerender } = render(<Probe />);
+    await waitFor(() => expect(probe()).toBe("t1:Borrow two switches from ITaP"));
+    world.record = empty({ works: [], worksDown: "This host is not signed in to LifeOS" });
+    rerender(<Probe env="mac" />);
+    rerender(<Probe />);
+    await waitFor(() => expect(probe()).toBe("t1:Borrow two switches from ITaP:behind"));
+  });
+
+  it("reads again once the job's LifeOS session is back after a read with LifeOS down, with no task to watch", async () => {
+    live.setSession("unreachable");
+    world.record = empty({ works: [], worksDown: "LifeOS did not answer" });
+    render(<Probe />);
+    await waitFor(() => expect(probe()).toBe("t1:"));
+    await act(async () => {});
+    const before = reads();
+    world.record = empty({ works: [task] });
+    act(() => live.setSession("connected"));
+    await waitFor(() => expect(probe()).toBe("t1:Borrow two switches from ITaP"));
+    expect(reads()).toBe(before + 1);
   });
 
   it("a refresh that fails keeps the last facts, marked behind", async () => {
