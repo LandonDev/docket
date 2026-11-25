@@ -1147,7 +1147,7 @@ export function PageView({
   const parent = trail.length > 1 ? trail[trail.length - 2]! : null;
   const toParent = parent ? () => onGo({ at: parent.at, name: parent.name }) : undefined;
   // A search that left a place out says so, with Retry, whether or not anything came back.
-  const gap = results && listing?.loaded && !listing.error ? searchGap(listing) : null;
+  const gap = results && listing?.loaded && !listing.error ? searchGap(listing, entries.length > 0) : null;
   // A folder that is gone, or one he may not read, cannot come back on Retry: the folder above it is the way on, else
   // Back, else nothing to press. Retry is for a host that did not answer.
   const refused = !!listing?.error && readRefused(listing.error);

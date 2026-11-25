@@ -2314,7 +2314,8 @@ Around the canvas:
   searched" is muted, a fact about the list and no heading; so is a
   place whose files were matched by name alone, the words inside them
   not read: "Searched by name only: Events and General", or "…: TempCode
-  documents and sheets"); a machine
+  documents and sheets", said under "Nothing found" or beside a place
+  left out, never alone over hits); a machine
   asleep is one
   line over the list it kept ("The Windows VM is asleep", "This is the
   list from 1:40 PM.", Wake it) in the state line's shape with no failed

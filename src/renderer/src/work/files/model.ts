@@ -790,9 +790,11 @@ const andList = (names: readonly string[]): string => (names.length < 2 ? (names
 /**
  * What a search left out, as one note over its results: places whose machine sleeps, desktops whose folders were
  * not searched (none of the window's links reaches them, or theirs is down), or a search that stopped before it
- * looked everywhere. Retry only where asking again could help. Null when it read every place.
+ * looked everywhere. Retry only where asking again could help. Null when it read every place. Places searched by name
+ * alone are said beside a place left out, or alone only when nothing was found (`hits` false): over hits they change
+ * nothing he sees, and would sit over nearly every search.
  */
-export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[]; unsearched?: readonly string[]; byName?: readonly string[] }): FilesNote | null {
+export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[]; unsearched?: readonly string[]; byName?: readonly string[] }, hits = false): FilesNote | null {
   const asleep = found.asleep ?? [];
   const desks = found.unsearched ?? [];
   // A place with no content index here (a library on this disk or in the VM) was searched by its files' names alone.
@@ -805,7 +807,7 @@ export function searchGap(found: { incomplete?: boolean; asleep?: readonly strin
   }
   if (desks.length) return { title: `Folders on ${andList(desks)} were not searched`, ...(byName ? { line: `${byName}.` } : {}), ...(found.incomplete ? { fix: { kind: "retry" as const } } : {}) };
   if (found.incomplete) return { title: "Not every place was searched", ...(byName ? { line: `${byName}.` } : {}), fix: { kind: "retry" } };
-  return byName ? { title: byName } : null;
+  return byName && !hits ? { title: byName } : null;
 }
 
 // ── a desktop's own search ────────────────────────────────────────────

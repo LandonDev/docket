@@ -822,6 +822,9 @@ describe("the list's rules of round 1", () => {
     expect(searchGap({ byName: ["Events", "General"], unsearched: ["Purdue laptop"] })).toEqual({ title: "Folders on Purdue laptop were not searched", line: "Searched by name only: Events and General." });
     expect(searchGap({ byName: ["General"], incomplete: true })).toEqual({ title: "Not every place was searched", line: "Searched by name only: General.", fix: { kind: "retry" } });
     expect(searchGap({ byName: ["TempCode documents and sheets"] })).toEqual({ title: "Searched by name only: TempCode documents and sheets" });
+    // Over hits it changes nothing he sees, so it is said only beside a place left out, or under Nothing found.
+    expect(searchGap({ byName: ["General"] }, true)).toBeNull();
+    expect(searchGap({ byName: ["General"], unsearched: ["Purdue laptop"] }, true)).toEqual({ title: "Folders on Purdue laptop were not searched", line: "Searched by name only: General." });
   });
 });
 

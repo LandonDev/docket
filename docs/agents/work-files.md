@@ -1940,8 +1940,9 @@ the walk on this disk (`searchLibraries`) and the guest's in the VM
 (`vmSearch`) match names alone. Each such source names the places it searched
 in `byName` (`SourceAnswer`, the answer's optional `FilesListing.byName`), and
 the window says so in the search's line (`searchGap`): "Searched by name only:
-Events and General", muted with nothing to press, over the results or under
-"Nothing found". His desktops' own walks (`work.office.filesSearch`) match
+Events and General", muted with nothing to press, under "Nothing found", or over
+results only as the second line of a place left out (asleep, unsearched, not fully
+searched): over hits alone it changes nothing he sees (`searchGap(listing, hits)`). His desktops' own walks (`work.office.filesSearch`) match
 names alone too: each desktop that answered adds its libraries (`DeskSearch.libraries`,
 the sidebar's), joined with the host's (`namedOnly`, store.ts). Only the
 workspace folder's small text files are read for words: a `.tcdoc`'s or a
