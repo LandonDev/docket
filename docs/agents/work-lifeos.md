@@ -191,9 +191,15 @@ reader in each down state. A reader that keeps the cause of a failed read
 wait, Files' LifeOS place, a dashboard's tile) asks `useLiveDown`
 (`shell/lifeosLive.ts`) what to say now: the host's live status over the saved
 cause, so a sign-in begun elsewhere is Show the code at once and connecting a
-wait; a status heard since that says connected reads again. A control whose act
-runs on the host through the host's own session (a clash's ways out, a
-recording's Accept) asks `useHostDown`. LifeOS on its way reads one way
+wait; a status heard since that says connected reads again, and while that read
+is out (the promise its `onBack` returns) the answer is `again`: the reader
+draws its own loading state (Files' bones, a review line's bone, a canvas
+item's spinner), never the saved cause. A control whose act runs on the host
+through the host's own session (a clash's ways out, a recording's Accept,
+Files' search and Home, a routine's wait) asks `useHostLive`: down, or a wait
+while the host says it is connecting, each said by `HostLine` (the wait with
+no press) and each holding the control; an open form keeps its text and holds
+its submit until the host says connected. LifeOS on its way reads one way
 everywhere, `connectingWords`: "LifeOS is still connecting on the box". One
 JWT ask is out a session at a time (`openSession`): Retry and the session's
 own opening share it, and a failure never takes the place of a client that

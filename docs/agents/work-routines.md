@@ -80,7 +80,8 @@ counted from the tree's transcripts; unread), `asked`
   `filter` keys `table` and `id` match the event's row. With LifeOS down
   the row says "Waiting on LifeOS"; its detail says the host's LifeOS state
   by the rule instead, the computer named with its press, from the host's live
-  status (`DownLine`, `useHostDown`); a workspace with no sector says so.
+  status (`HostLine`, `useHostLive`), and "LifeOS is still connecting on the
+  box" with no press while it connects; a workspace with no sector says so.
 - **read** (`{addon, tool, args, fire, everySec}`): the host calls the
   add-on's tool itself (`AddonHost.call`, `sessionId: null`, `work:
   true`), which M10's gate runs only when the owner set the tool to Runs;
