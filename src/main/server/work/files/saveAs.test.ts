@@ -13,6 +13,7 @@ import type { DocRevision } from '../service/wire'
 import { forgetLibraries } from './places/libraries'
 import { NOT_REACHED, NotReachable, setThreadsMayWrite } from './policy'
 import { AGENT_JUST_WROTE, autosaveLinks, linkTiming, resetLinkState } from './saveAs'
+import { writeSeams } from './write'
 import { linkedOut, privateWrite } from '../docs/target'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 
@@ -331,6 +332,27 @@ describe('a linked file someone changed there', () => {
     await edit('two')
     expect((await links())[0]!.state).toBe('gone')
     expect(existsSync(file)).toBe(false)
+  })
+})
+
+describe("a linked file's version is its make's own receipt", () => {
+  afterEach(() => void delete writeSeams.afterMake)
+  // A colleague saves the new file there just after it is made, before anyone looks at it again.
+  const colleagueSaves = () =>
+    (writeSeams.afterMake = (to) => {
+      delete writeSeams.afterMake
+      writeFileSync(to, 'a colleague saved')
+    })
+  it.each([
+    ['a library here', () => ({ host: HOST, dir: join(box.team, 'General') })],
+    ['a library on his Mac', () => ({ host: MAC, dir: join(mac.team, 'General') })]
+  ])('in %s: the next write finds his save a change made there and writes nothing over it', async (_, where) => {
+    const { host, dir } = where()
+    colleagueSaves()
+    expect(await save({ at: { at: 'file', host, path: dir }, name: 'Budget', place: 'General' })).toMatchObject({ saved: { name: 'Budget.docx', linked: true } })
+    await edit('two')
+    expect(readFileSync(join(dir, 'Budget.docx'), 'utf8')).toBe('a colleague saved')
+    expect(await links()).toMatchObject([{ state: 'changed' }])
   })
 })
 

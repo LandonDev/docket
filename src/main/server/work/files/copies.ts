@@ -699,9 +699,9 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     const make = async (): Promise<WrittenBack> => {
       const done = await makeBytes(ctx, by, { workspaceId: p.workspaceId, at: folder, name: basename(path), data, op: p.op ?? randomUUID() }, method)
       const made = done.entries[0]?.ref
-      if (made?.at !== 'file') throw new Error('The file was not made.')
-      const v = await versionOf(made.path)
-      return { copy: { path: made.path, name: basename(made.path), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+      if (made?.at !== 'file' || !done.version) throw new Error('The file was not made.')
+      // The make's own receipt: a look after would answer a colleague's save just after as ours.
+      return { copy: { path: made.path, name: basename(made.path), version: done.version, changed: Number(done.version.split(':')[1]) } }
     }
     // The press's id: the same press sent again (its answer was lost on the way back) answers the file it made, never a second one.
     return p.op ? runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'writeBack.into', refs: { ref: p.ref } }, make) : make()

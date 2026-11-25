@@ -2595,6 +2595,10 @@ picks, and stays linked to that file: each later edit is written to it.
   `changed`, `gone`, `refused`). Only a `.tcdoc` of this host links (its live revision is the Work service's); a LifeOS
   or Google document saves as a copy. A document may have several links, but one a file: Save As to a file the
   document is already linked to takes that link (by host and path, case-blind in the VM), never a second writer.
+  The version a new link starts from is the make's own receipt (write.ts `makeFileReceipt`; in the VM the helper's
+  look at the file it made with these bytes' hash; another computer's `writeBack` with `into` answers its own), never
+  a look at the path after: a colleague's save just after the make is a change made there, not a version to write
+  over. With no receipt the link starts from none, and its first write waits for his press.
 - **One at a time a link** (audit A5; saveAs.ts `onRow`). A link's presses and its writes take turns: Keep Both,
   Replace, Retry and Unlink wait for a write of it under way, and a write that waited reads the row as it is then, so
   an older write never lands its receipt on a row Keep Both moved to another file, and Unlink answers only once a send

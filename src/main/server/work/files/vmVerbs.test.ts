@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { NAME_TAKEN } from './write'
 import { join } from 'node:path'
@@ -16,6 +17,7 @@ import { copyRecord } from './copies'
 import { closeFilesState } from './handle'
 import { files } from './index'
 import { forgetVmLists } from './places/teams'
+import { makeBytes } from './verbs'
 import { setThreadsMayWrite } from './policy'
 import { settleTrash } from './trash'
 import { cloudOf, forgetUploads, lookAll } from './uploads'
@@ -61,9 +63,10 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     return { name: f.path.slice(f.path.lastIndexOf('\\') + 1), path: f.path, dir: f.dir, size: f.dir ? 0 : Buffer.from(f.data, 'base64').length, modified: f.modified, local: true, link: false }
   }
   const put = (path: string, dir = false, data = '') => disk.set(path.toLowerCase(), { path, dir, data: Buffer.from(data).toString('base64'), modified: 1000 })
+  /** The helper's `VersionOf`: size, change time and the bytes' sha256. */
   const versionOf = (path: string) => {
     const e = entryOf(path)
-    return `${e.size}:${e.modified}:h${disk.get(path.toLowerCase())!.data}`
+    return `${e.size}:${e.modified}:${createHash('sha256').update(Buffer.from(disk.get(path.toLowerCase())!.data, 'base64')).digest('hex')}`
   }
   const dirOf = (p: string) => p.slice(0, p.lastIndexOf('\\'))
 
@@ -539,6 +542,22 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(changes()).toEqual([])
     })
 
+  })
+
+  describe("a file made from bytes (Save As)", () => {
+    const made = (data: Buffer) => makeBytes(rig.ctx, window, { workspaceId: WS, at: { at: 'file', host: HOST, path: GENERAL }, name: 'Budget.docx', data, op: op() }, 'work.files.saveAs')
+    it("answers its receipt: the helper's look at the file it made, with these bytes' hash", async () => {
+      const data = Buffer.from('docx one')
+      expect((await made(data)).version).toBe(`${data.length}:1000:${createHash('sha256').update(data).digest('hex')}`)
+    })
+    it('answers none when the file the helper looked at is not these bytes', async () => {
+      // A colleague's save landed between the helper's make and its look.
+      setVmCall(async (verb, args) => {
+        const got = (await guest(verb, (args ?? {}) as Record<string, unknown>)) as { entry?: { size: number } }
+        return verb === 'files.write' && got.entry ? { entry: { ...got.entry, size: got.entry.size + 9 } } : got
+      })
+      expect((await made(Buffer.from('docx one'))).version).toBeUndefined()
+    })
   })
 
   describe('a lost answer', () => {

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FileDone, FileMakeKind } from '@shared/contract-work-files'
@@ -16,7 +16,7 @@ import type { ShownWrites } from './copies'
 import { dropName } from './names'
 import { workspaceHere, type DoorPlace } from './policy'
 import type { Caller } from '../modules'
-import { fileLocked, FileRefused, NAME_TAKEN, OpLost, withFileLocks } from './write'
+import { fileLocked, FileRefused, HASH_MAX, NAME_TAKEN, OpLost, withFileLocks } from './write'
 
 /**
  * New, rename, move, edit and delete in a library OneDrive syncs in the Windows VM this host keeps
@@ -98,7 +98,7 @@ function said(ctx: WorkCtx, workspaceId: string, at: LibraryPlace, dirs: Iterabl
  * anything. `data`: the new file's bytes made elsewhere (Save as Word to…, saveAsWord.ts) in place of a blank.
  * `exact`: a held act's press, which makes the name its card showed or nothing.
  */
-export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string; data?: Buffer; exact?: boolean }): Promise<FileDone> {
+export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere, p: { kind: FileMakeKind; name?: string; op: string; data?: Buffer; exact?: boolean }): Promise<FileDone & { version?: string }> {
   const form = formIn(folder.place, p.kind)
   const ext = form ? `.${form}` : ''
   const named = p.name?.trim()
@@ -115,7 +115,10 @@ export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere,
     return (await guestChange<{ entry: GuestEntry }>('files.write', { dir: folder.path, name, data: data.toString('base64'), op: guestOp(p.op) })).entry
   })
   said(ctx, workspaceId, folder.library, [folder.path])
-  return { entries: [entryOf(ctx, workspaceId, folder.library, made)], refused: [], op: p.op }
+  // Bytes he gave are made with their receipt: the helper's look at the file it made, in its version's words
+  // (`VersionOf`), with these bytes' hash; a size that is not theirs is no receipt.
+  const version = p.data && made.size === p.data.length ? `${made.size}:${made.modified}:${made.size <= HASH_MAX ? createHash('sha256').update(p.data).digest('hex') : ''}` : undefined
+  return { entries: [entryOf(ctx, workspaceId, folder.library, made)], refused: [], op: p.op, ...(version ? { version } : {}) }
 }
 
 /** A blank Office file from its kind's maker, written in a private folder here and read back. */

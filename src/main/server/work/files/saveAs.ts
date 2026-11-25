@@ -155,8 +155,10 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
     const done = await makeBytes(ctx, by, { workspaceId: p.workspaceId, at: p.at, name: p.name, data: p.data, op: p.op }, METHOD)
     const ref = done.entries[0]?.ref
     if (!ref || ref.at !== 'file') throw new Error('The file was not made.')
-    // Only a linked file needs the version it was made at: the next write goes over it by that version alone.
-    const version = !p.linked ? '' : p.vm ? (await vmReadVersioned(ref.path, 0, 1)).version : versionWord(await versionOf(ref.path))
+    // Only a linked file needs the version it was made at: the next write goes over it by that version alone. It is
+    // the make's own receipt, never a look after, which a colleague's save just after would answer as ours; none
+    // given, the next write finds a change made there and waits for his press.
+    const version = p.linked ? (done.version ?? '') : ''
     // A file made in the VM's library is followed until OneDrive has it, as any write of ours there is (uploads.ts).
     if (p.vm) uploadWrote(ctx, { workspace_id: p.workspaceId, host: ctx.host, path: ref.path, vm: true })
     return { path: ref.path, name: done.entries[0]!.name, version }

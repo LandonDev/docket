@@ -17,7 +17,8 @@ import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmBound, type VmW
 import { vmStat } from '../office/vm/files'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
-import { checkName, HELD_MOVED, isHeldMoved, notAsNamed, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
+import { checkName, HELD_MOVED, isHeldMoved, notAsNamed, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFileReceipt, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
+import { versionWord } from './save'
 
 /**
  * New, rename, move and copy (docs/agents/work-files.md "New, rename, move and copy"), for the workspace's folder
@@ -308,17 +309,18 @@ export async function makeVerb(ctx: WorkCtx, by: Caller, p: MakeAsk, method: str
  * under a free name, never over anything: a lens means the workspace's folder, as for New. The door has been passed
  * by the caller (`admitChange` as `make`); the Windows VM's file is written by its helper (`vmMake` with the bytes).
  */
-export async function makeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; name: string; data: Buffer; op: string }, method: string): Promise<FileDone> {
+/** A file made from bytes under a free name; `version` is the receipt of the bytes made, where the holder gave one. */
+export async function makeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; name: string; data: Buffer; op: string }, method: string): Promise<FileDone & { version?: string }> {
   const folder = where(ctx, by, p.workspaceId, makeFolderRef(ctx, by, p.at), method)
   checkName(p.name)
   if (folder.vm) return vmMake(ctx, p.workspaceId, vmOf(folder), { kind: 'document', name: p.name, op: p.op, data: p.data })
   asFolder(folder)
   const name = freeIn(folder.path, p.name)
-  const made = await withFileLocks([keyIn(ctx, folder, join(folder.path, name))], () => makeFile(fenceOf(folder.root), folder.path, name, p.data))
+  const { path: made, version } = await withFileLocks([keyIn(ctx, folder, join(folder.path, name))], () => makeFileReceipt(fenceOf(folder.root), folder.path, name, p.data))
   said(ctx, by, p.workspaceId, [folder.path], method)
   // The file made is its own receipt: a look at it that misses just after (a sync folder's fresh file) never says it was not made.
   const entry = await entryOf(ctx, by, p.workspaceId, made, method).catch(() => null)
-  return { entries: [entry ?? madeEntry(ctx.host, made)], refused: [], op: p.op }
+  return { entries: [entry ?? madeEntry(ctx.host, made)], refused: [], op: p.op, version: versionWord(version) }
 }
 
 /** A file just made, by what its making knows: its path and name. */

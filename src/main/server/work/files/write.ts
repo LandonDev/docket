@@ -34,13 +34,13 @@ export interface WriteFence {
 }
 
 /**
- * Test seams, set only from write.test.ts. `beforeWrite` runs after a target is admitted and just before it
+ * Test seams, set only from tests. `beforeWrite` runs after a target is admitted and just before it
  * is written, so a test can swap a folder for a link there. `beforeCheck` runs after a copy is synced and
  * before it is read back, so a test can spoil it. `beforeRename` runs just before a folder is renamed onto the
  * empty folder reserved for it, so a test can take that name there. `across` makes every move take the path
- * between volumes.
+ * between volumes. `afterMake` runs once a file is made, so a test can save over it there.
  */
-export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; beforeRemove?: (src: string) => Promise<void> | void; across?: boolean } = {}
+export const writeSeams: { afterMake?: (to: string) => Promise<void> | void; beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; beforeRemove?: (src: string) => Promise<void> | void; across?: boolean } = {}
 
 /** A file at most this big is checked by its sha256; a bigger one by its size alone. */
 export const HASH_MAX = 64 * 1024 * 1024
@@ -268,7 +268,21 @@ export async function makeFolder(fence: WriteFence, dir: string, name: string): 
  * refuses a taken one; a stop mid-copy leaves no part of a file under the name (`copyAside`).
  */
 export async function makeFile(fence: WriteFence, dir: string, name: string, data: Uint8Array | { from: string; aside?: true }): Promise<string> {
+  return (await makeAt(fence, dir, name, data)).to
+}
+
+/**
+ * `makeFile` from bytes, answering the version of the bytes it wrote: its receipt, read off the file it opened, never a
+ * look at the path after, which a colleague's save just after would answer as ours.
+ */
+export async function makeFileReceipt(fence: WriteFence, dir: string, name: string, data: Uint8Array): Promise<{ path: string; version: Version }> {
+  const { to, wrote } = await makeAt(fence, dir, name, data)
+  return { path: to, version: wrote! }
+}
+
+async function makeAt(fence: WriteFence, dir: string, name: string, data: Uint8Array | { from: string; aside?: true }): Promise<{ to: string; wrote?: Version }> {
   const { parent, to } = await targetOf(fence, dir, name)
+  let wrote: Version | undefined
   try {
     if (!(data instanceof Uint8Array) && data.aside) await copyAside(data.from, parent, to)
     else if (data instanceof Uint8Array) {
@@ -276,6 +290,8 @@ export async function makeFile(fence: WriteFence, dir: string, name: string, dat
       try {
         await out.writeFile(data)
         await out.sync()
+        const made = await out.stat()
+        wrote = { size: made.size, mtimeMs: made.mtimeMs, ...(made.size <= HASH_MAX && !driveOf(to) ? { sha256: createHash('sha256').update(data).digest('hex') } : {}) }
       } catch (e) {
         await unlink(to).catch(() => {})
         throw e
@@ -287,7 +303,8 @@ export async function makeFile(fence: WriteFence, dir: string, name: string, dat
     throw codeOf(e) === 'EEXIST' ? await taken(name, to) : e
   }
   await landed(parent, to, removeIfSame(await lstat(to)))
-  return to
+  await writeSeams.afterMake?.(to)
+  return { to, wrote }
 }
 
 /**
