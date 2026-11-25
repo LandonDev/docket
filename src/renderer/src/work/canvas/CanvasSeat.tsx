@@ -108,7 +108,7 @@ export function CanvasSeat({
     ...(own.length > 0 ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(review
       ? ([
-          { kind: "item", id: "accept-all", label: "Accept all", icon: Check, disabled: review.held || review.verdictsHeld },
+          ...(review.acceptHeld ? [] : ([{ kind: "item", id: "accept-all", label: "Accept all", icon: Check, disabled: review.held || review.verdictsHeld }] satisfies MenuRow[])),
           { kind: "item", id: "reject-all", label: "Reject all", icon: X, disabled: review.held || review.verdictsHeld },
           { kind: "sep" },
         ] satisfies MenuRow[])
@@ -146,7 +146,7 @@ export function CanvasSeat({
     if (id === "open-file") void import("./openOutside").then(({ pickAndOpen }) => pickAndOpen({ at: "thread", sessionId })).catch((error: unknown) => sayError(error, "Couldn't open the file"));
     if (id === "close") close(shown.id);
     if (id === "close-others") void closeMany(view.items.filter((item) => item.id !== shown.id).map((item) => item.id));
-    if (review && !review.held && !review.verdictsHeld && (id === "accept-all" || id === "reject-all")) {
+    if (review && !review.held && !review.verdictsHeld && (id === "reject-all" || (id === "accept-all" && !review.acceptHeld))) {
       const accept = id === "accept-all";
       review[accept ? "accept" : "reject"]("all").catch((error: unknown) => sayError(error, accept ? "Couldn't accept the changes" : "Couldn't reject the changes"));
     }

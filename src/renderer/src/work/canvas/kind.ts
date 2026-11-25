@@ -147,6 +147,8 @@ export interface ReviewAdapter {
   held?: boolean;
   /** The changes can be stepped through but not yet decided (a slide whose picture is still coming or failed to paint): only Reject and Accept rest, with More's Accept all and Reject all; Previous and Next stay live, so focus stays in the bar and the other changes stay reachable. */
   verdictsHeld?: boolean;
+  /** Accept cannot be made now and the kind's body says why (a recording's tasks while its host's LifeOS is down): Accept and More's Accept all are not offered; Reject, Reject all and the steps stay. */
+  acceptHeld?: boolean;
   accept(which: number | { group: string } | "all"): Promise<void>;
   reject(which: number | { group: string } | "all"): Promise<void>;
 }

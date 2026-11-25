@@ -197,6 +197,43 @@ describe("the meeting canvas", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  /** Council round 10 (Sol kinds 1): a task is filed through the host's own LifeOS session, so Accept waits for it. */
+  it("while the host's LifeOS is down, Accept and Accept all give way to the one line with its press; Reject, the turns and playback stay", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    const { registry } = await import("../../lib/connection");
+    // The line names the computer the recording's item is on.
+    Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+    const st = (state: string) => ({ lifeos: { state }, keys: [] }) as never;
+    host.decide = () => ({ meeting: host.meeting, failed: [{ id: "a1", error: "LifeOS is not connected on this host." }] });
+    try {
+      const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+      const bar = await waitFor(() => container.querySelector("[data-canvas-bar]") as HTMLElement);
+      await waitFor(() => expect(within(bar).getByText("1/3")).toBeTruthy());
+      // A filing that failed before the drop gives way to the line: a new cause replaces the old.
+      fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")).toBeTruthy());
+      act(() => setLifeosStatus("local", st("signed-out")));
+      await waitFor(() => expect(container.querySelector("[data-tasks-down]")?.textContent).toBe("Not signed in to LifeOS on the boxSign in"));
+      expect(container.querySelector("[data-canvas-state=failed]")).toBeNull();
+      expect(within(bar).queryByRole("button", { name: "Accept" })).toBeNull();
+      expect(within(bar).getByRole("button", { name: "Reject" })).toBeTruthy();
+      expect(container.querySelector("[data-meeting-player]")).toBeTruthy();
+      expect(container.querySelector('[data-turn="s2"]')).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+      expect(rows).toContain("Reject all");
+      expect(rows).not.toContain("Accept all");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      // Back: the line goes by itself and Accept is offered again.
+      act(() => setLifeosStatus("local", st("connected")));
+      await waitFor(() => expect(container.querySelector("[data-tasks-down]")).toBeNull());
+      expect(within(bar).getByRole("button", { name: "Accept" })).toBeTruthy();
+    } finally {
+      resetLifeos();
+      delete (registry as { environment?: unknown }).environment;
+    }
+  });
+
   it("Find marks every hit, steps the current one, and says how many", async () => {
     const { container } = await seat(sampleMeeting());
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());

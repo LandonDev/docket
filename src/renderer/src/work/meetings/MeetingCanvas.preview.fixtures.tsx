@@ -8,4 +8,6 @@ export default [
   { name: "Nothing yet", props: { moment: "empty" } },
   { name: "3 hours, Find", props: { moment: "long" } },
   { name: "Could not transcribe", props: { moment: "error" } },
+  // Last: it sets the box's LifeOS status, which every later fixture on the same host would hear.
+  { name: "Tasks while the box's LifeOS is signed out", props: { moment: "tasks-down" } },
 ];

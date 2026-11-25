@@ -266,9 +266,11 @@ function Stepper({ review }: { review: ReviewAdapter }) {
       <Button variant="ghost" size="xs" disabled={off} onClick={() => decide("reject")}>
         <BusyLabel busy={pending === "reject"} label="Reject" />
       </Button>
-      <Button variant="secondary" size="xs" disabled={off} onClick={() => decide("accept")}>
-        <BusyLabel busy={pending === "accept"} label="Accept" />
-      </Button>
+      {review.acceptHeld ? null : (
+        <Button variant="secondary" size="xs" disabled={off} onClick={() => decide("accept")}>
+          <BusyLabel busy={pending === "accept"} label="Accept" />
+        </Button>
+      )}
     </div>
   );
 }
