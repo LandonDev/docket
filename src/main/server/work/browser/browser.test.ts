@@ -246,7 +246,8 @@ describe('a Teams reply', () => {
     expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: a!.ref })).toMatchObject({ state: 'stale' })
     configureTeamsCarrier(carrier({ fail: 'error' }))
     await tool('teams_reply', reply)
-    const [b] = await rig.waiting()
+    // the stale one still waits beside it
+    const b = (await rig.waiting()).find((i) => JSON.stringify(i.ref) !== JSON.stringify(a!.ref))
     expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: b!.ref })).toMatchObject({ state: 'failed' })
   })
 

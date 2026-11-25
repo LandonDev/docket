@@ -67,10 +67,10 @@ describe("the motion tokens", () => {
     expect(token("ease-layout")).toBe(spring.easing);
   });
 
-  it("keeps one layout spring and no CSS copies of the curves", () => {
+  // A curve's string form stays only while a Web Animation reads it (EASE_OUT_CSS: the column's glide).
+  it("keeps one layout spring and no unused CSS copies of the curves", () => {
     expect(Object.keys(ease)).not.toContain("SPRING_SWAP");
     expect(Object.keys(ease)).not.toContain("EASE_DRAWER_CSS");
-    expect(Object.keys(ease)).not.toContain("EASE_OUT_CSS");
   });
 });
 

@@ -207,6 +207,7 @@ describe('fake tc-computer wire', () => {
     expect(batch.steps.map((step) => step.status)).toEqual(['ok', 'ok'])
     expect(batch.observation).toMatchObject({ kind: 'diff', seq: 4, base: 3 })
     checkShot(await c.call('capture.screenshot', c.target()), 'screenshot')
+    expect(await c.call('browser.target', c.target())).toEqual({ browser: false })
     expect(await c.call('capture.stream.start', { ...c.target(), stream: 'preview' })).toEqual({ stream: 'preview', width: 960, height: 804 })
     await c.call('capture.stream.stop', { stream: 'preview' })
     const video = await c.call('capture.video.start', { ...c.target(), maxEdge: 1280, mode: 'budget' })

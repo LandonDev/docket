@@ -216,7 +216,7 @@ describe('with Work on', () => {
     expect(seen.handled).toEqual([
       { method: 'work.mail.ping', by: { kind: 'local', caps: ['read', 'operate', 'approve', 'admin', 'give'] }, host: 'env_test' },
       // a remote caller carries its key's id, which binds an upload to the key that began it
-      { method: 'work.mail.ping', by: { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1' }, host: 'env_test' },
+      { method: 'work.mail.ping', by: { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1', audience: 'client' }, host: 'env_test' },
       // a bridge method is a thread's own call: the model's, never a person's
       { method: 'app.workMailPing', by: { kind: 'model', caps: [], sessionId: 't1' }, host: 'env_test' }
     ])

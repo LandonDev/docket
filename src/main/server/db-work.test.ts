@@ -84,9 +84,11 @@ describe("Work's core columns", () => {
     before.insertProject(project('p-old', { workspaceId: 'w-old' }))
     before.insertSession(meta('s-old'))
     first.close()
-    // Back to the old shape: none of the columns existed.
+    // Back to the old shape: none of the columns existed, nor the indexes on them.
     const raw = new DatabaseSync(path)
     for (const stmt of [
+      `DROP INDEX sessions_work_scope`,
+      `DROP INDEX sessions_routine_run`,
       `ALTER TABLE workspaces DROP COLUMN kind`,
       `ALTER TABLE workspaces DROP COLUMN sector`,
       `ALTER TABLE workspaces DROP COLUMN work_settings`,

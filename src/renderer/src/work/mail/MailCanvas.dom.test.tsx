@@ -40,7 +40,7 @@ vi.mock("work-kit/mail", async (original) => ({
   useMailClient: () => ({ useComposeDoc: () => lifeos.doc, useMailAccounts: () => [] }),
 }));
 vi.mock("./kit", () => ({ tempcodeMailKit: {} }));
-vi.mock("./client", () => ({ mailClientFor: () => ({}) }));
+vi.mock("./client", async (original) => ({ ...(await original<typeof import("./client")>()), mailClientFor: () => ({}) }));
 // The real store under the one hook this test answers: a mail's attachment opens in its canvas kind, and the PDF kind's module reads sessionStore.
 vi.mock("../../lib/tcserver/store", async (original) => ({ ...(await original<typeof import("../../lib/tcserver/store")>()), useSessionMeta: () => ({ workspaceId: "w1" }) }));
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [{ id: "w1", sector: "unify" }] }));

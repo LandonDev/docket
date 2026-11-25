@@ -61,7 +61,7 @@ beforeAll(async () => {
   measured.set('claude.research', bytes(researchSpawnPrompt(research)))
   measured.set('claude.master', bytes(chatSpawnPrompt(registry.get(master.id)!)))
   measured.set('claude.subagent', bytes(implementerSpawnPrompt(child)))
-  ;(registry as unknown as { away: { enabled: boolean } | null }).away = { enabled: true }
+  ;(registry as unknown as { away: { on: () => boolean } | null }).away = { on: () => true }
   measured.set('claude.implementation.away', bytes(implementerSpawnPrompt(impl)))
   ;(registry as unknown as { away: unknown }).away = null
 

@@ -916,7 +916,7 @@ module's `mentions` for a kind still untaken (`listSources`, search/run.ts).
 
 | Pillar | Health | Tells | Search | `@` |
 |---|---|---|---|---|
-| outbox | — | `outbox.held`, `outbox.failed`, `outbox.offer` | — (its `@` kind is found through it) | `held` |
+| outbox | — | `outbox.held`, `outbox.failed`, `outbox.offer`, `outbox.request` | — (its `@` kind is found through it) | `held` |
 | canvas | — | — | — (its `@` kind) | `item` |
 | lifeos | yes: LifeOS, Mail and calendar (for mail, agenda, tasks, people, prep) | — | — (the search pillar's LifeOS sources) | `task`, `mail`, `event`, `project`, `person`, `doc` |
 | routines | — | — (the digest's: routine done, failed, stuck, asks) | — (its `@` kind) | `routine` |
@@ -950,6 +950,7 @@ module's `mentions` for a kind still untaken (`listSources`, search/run.ts).
 | review | — | `review.ready` | — | — |
 | clashes | — | `clashes.new` | — | — |
 | templates | — | — | — | — |
+| msforms | yes: Microsoft Forms, on the host whose box browser carries Forms | `msforms.responses` | `msform` | `msform` |
 | digest | — | `routines.done`, `routines.failed`, `routines.stuck`, `routines.asks`, `connections.ending`, `mail.waiting`, `mail.missed`, `docs.guest`, `capture.unsorted`, `winvm.failed`, `prep.starting`, `prep.ready` (read from those pillars by digest/sources/) | — | — |
 
 ## How a pillar registers

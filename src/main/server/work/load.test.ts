@@ -114,13 +114,18 @@ describe('the registry', () => {
 
 describe('the host code around Work', () => {
   const source = (file: string): string => readFileSync(resolve(import.meta.dirname, '..', file), 'utf8')
-  /** The files under work/ a host file may load when it loads: the guarded door and the helper that imports nothing of Work. */
-  const SAFE = ['./work/load', './work/toolInput']
+  /**
+   * The files under work/ a host file may load when it loads: the guarded door, the helper that imports nothing of Work,
+   * and the PC's folder reader (the Windows helper the host hands the remote listener, which imports only procTree).
+   */
+  const SAFE = ['./work/load', './work/toolInput', './work/files/places/winDir']
   it('imports nothing of Work that could load a pillar: only types, the guarded loader and the input helper', () => {
     for (const file of ['index.ts', 'apptools.ts']) {
       const eager = [...source(file).matchAll(/^import (type )?[^\n]*? from '(\.\/work\/[^']+)'/gm)].filter((m) => !m[1] && !SAFE.includes(m[2])).map((m) => m[2])
       expect(eager, file).toEqual([])
     }
+    // the folder reader stays a leaf: nothing of Work loads through it
+    expect([...source('work/files/places/winDir.ts').matchAll(/^import [^\n]*? from '(\.[^']+)'/gm)].map((m) => m[1])).toEqual(['../../../procTree'])
   })
   it('the registry, the loader and the helper import no pillar when they load', () => {
     for (const file of ['work/modules.ts', 'work/load.ts', 'work/toolInput.ts']) {

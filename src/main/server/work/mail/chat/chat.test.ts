@@ -249,6 +249,7 @@ const REFUSED_WORK = [
   'dashboard_refresh', 'browser_open', 'browser_needs_you', 'browser_sources', 'project_link_item', 'files_open', 'files_make', 'files_move',
   'files_copy', 'files_trash', 'files_undo', 'prep_read', 'prep_today', 'prep_write', 'prep_follow_up', 'money_read', 'money_add', 'money_receipt',
   'week_review', 'clashes_list', 'template_list', 'template_make', 'template_save', 'work_connections',
+  'msform_list', 'msform_read', 'msform_answers', 'msform_find', 'msform_create', 'msform_edit', 'msform_settings', 'msform_publish', 'msform_close',
   // other threads' words, and places on his Mac, the Windows VM and Google Drive
   'work_search', 'files_places', 'files_list', 'files_search'
 ]
