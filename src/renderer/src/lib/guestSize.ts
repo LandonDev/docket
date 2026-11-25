@@ -27,3 +27,13 @@ export function guestSizeAsk(
   if (!(room.width > 0 && room.height > 0)) return null;
   return { width: room.width, height: room.height, mode, scale: pixelRatioOf(element), detail };
 }
+
+/**
+ * The host's Size and Detail as the viewer's setting (`work.winvm.settings`, read from the keeper's state): Fit to
+ * window, or one fixed size of the guest's pixels; Sharp or Faster. A host that says nothing leaves the default.
+ */
+export function guestSizeSettingOf(display: { screen: string; detail: VideoDetail } | null | undefined): GuestSizeSetting | undefined {
+  if (!display) return undefined;
+  const fixed = VIDEO_FIXED_SIZES.find(({ width, height }) => `${width}x${height}` === display.screen);
+  return fixed ? { mode: "fixed", fixed: { width: fixed.width, height: fixed.height }, detail: display.detail } : { mode: "fit", detail: display.detail };
+}

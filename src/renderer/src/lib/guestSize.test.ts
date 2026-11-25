@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { VIDEO_FIXED_SIZES } from "@server/shared/contract-video";
-import { guestSizeAsk } from "./guestSize";
+import { guestSizeAsk, guestSizeSettingOf } from "./guestSize";
 
 const room = { width: 1123.5, height: 740 };
 
@@ -17,5 +17,14 @@ describe("the place's guest size ask", () => {
     }
     expect(guestSizeAsk(room, null, { mode: "fixed", detail: "sharp" })).toBeNull();
     expect(guestSizeAsk(room, null, { mode: "fixed", fixed: room, detail: "sharp" })).toBeNull();
+  });
+});
+
+describe("the host's Size and Detail as the viewer's setting", () => {
+  it("is Fit or a fixed size, Sharp or Faster, as the keeper says it (Faster changed nothing on his Mac until it was passed on)", () => {
+    expect(guestSizeSettingOf({ screen: "fit", detail: "faster" })).toEqual({ mode: "fit", detail: "faster" });
+    expect(guestSizeSettingOf({ screen: "2560x1600", detail: "sharp" })).toEqual({ mode: "fixed", fixed: { width: 2560, height: 1600 }, detail: "sharp" });
+    expect(guestSizeSettingOf(null)).toBeUndefined();
+    expect(guestSizeAsk({ width: 1023, height: 819 }, null, guestSizeSettingOf({ screen: "fit", detail: "faster" }))).toMatchObject({ mode: "fit", detail: "faster" });
   });
 });

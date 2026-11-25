@@ -15,6 +15,8 @@ import type { StreamReading } from "../../../lib/video/messages";
 import type { BarReading } from "./ComputerBar";
 import { CursorImages } from "../../../lib/video/cursor";
 import { useComputerVideo, type GuestSizeSetting, type VideoDrive } from "../../../lib/computerVideo";
+import { guestSizeSettingOf } from "../../../lib/guestSize";
+import { useVmStates } from "../../../lib/winvmWake";
 import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
@@ -520,8 +522,11 @@ export function useLiveStream(
   );
 
   const on = run && !!entry && boxWidth > 0;
+  // the Windows VM's Size and Detail are the host's setting: every place that drives it asks by them
+  const vms = useVmStates();
+  const hostSize = entry?.row.computer === "vm:windows" ? guestSizeSettingOf(vms[entry.host]?.display) : undefined;
   // he drives the page of a row kept for him: its stream is the one his input goes down
-  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner", room, guestSize, onReading: read ? setTiming : undefined });
+  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner", room, guestSize: guestSize ?? hostSize, onReading: read ? setTiming : undefined });
   const picture = useComputerPreview(entry ?? NO_ENTRY, { run: on && video.gaveWay, boxWidth, canvas: pictureCanvas, box, onClick });
   const frame = streamSize(video.state);
   usePictureCursor(videoCanvas, video.drive && !video.gaveWay ? video.cursor : null, frame?.width);
