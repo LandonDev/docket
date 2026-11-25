@@ -15,7 +15,12 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
 - The guests live in one layer on the page's body, outside React (`src/renderer/src/work/office/live/layer.ts`):
   Files draws only the tab on screen, and a `<webview>` moved in the DOM loads again (25 to 35 s for Word). Each is
   laid over its tab's body (`LiveBody.tsx` reports the rectangle), hidden when that body is not on screen or a chat
-  or side file lies over it, never moved. At most three stay loaded per window; the one shown least recently goes.
+  or side file lies over it, never moved. A body can stay mounted where he cannot see it: the board parked under a
+  full-screen page (`.board-parked`), a thread tab parked behind another (`.tab-parked`), both content-visibility:
+  hidden with their old rectangles, or a thread's pane inert under a Work view. `seatShown` (its `checkVisibility()`
+  and no `[inert]` above it) hides the guest then, once, and a MutationObserver on the classes, `inert`, `hidden` and
+  styles above the body hears it at once; the guest comes back in place, still loaded, when the body shows again.
+  At most three stay loaded per window; the one shown least recently goes.
 - A browser window (`/ui`) has no guest tag: Live there opens the address in a tab of its own.
 
 ## The fence (`src/main/officeLive.ts`)
