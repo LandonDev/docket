@@ -150,6 +150,9 @@ struct RootView: View {
             // A held act's notice: the item over the Outbox, so Back is the list.
             if let list = ShellPaths.list(under: route) {
                 Task { await navigator.open(route, over: list) }
+            } else if WorkTab.noticeLands(route) {
+                // A list (the Digest): seen where he looks, over wide Mail or a hidden sidebar (`landOnList`).
+                navigator.landOnList(route)
             } else {
                 navigator.open(route)
             }

@@ -345,3 +345,35 @@ struct TodayModelTests {
         #expect(TodaySources.settle(lead: .answered, othersAnswered: false, read: &none, leadLost: leadLost))
     }
 }
+
+/// Each Today action keeps its own Undo until it ends (council 18, Sol 3).
+struct CapsuleQueueTests {
+    @Test(arguments: [false, true])
+    func `two Done answers, in either order, each keep their own Undo for their own time`(_ swapped: Bool) {
+        var queue = CapsuleQueue<String>()
+        let (first, second) = swapped ? ("Done: B", "Done: A") : ("Done: A", "Done: B")
+        queue.add(first, undoable: true)
+        queue.add(second, undoable: true)
+        // The first stays up; the second waits its turn rather than replace it.
+        #expect(queue.shown?.item == first)
+        let one = queue.shown!.id
+        queue.ended(one)
+        // Its time ended: the second shows now, with its own id, so its own time starts.
+        #expect(queue.shown?.item == second && queue.shown?.id != one)
+        queue.ended(queue.shown!.id)
+        #expect(queue.shown == nil)
+    }
+
+    @Test func `a refusal behind a live Undo waits, and a line with nothing to take back gives way at once`() {
+        var queue = CapsuleQueue<String>()
+        queue.add("Done: A", undoable: true)
+        queue.add("Couldn’t move it", undoable: false)
+        #expect(queue.shown?.item == "Done: A")
+        // He takes A back: the refusal shows next.
+        queue.ended(queue.shown!.id)
+        #expect(queue.shown?.item == "Couldn’t move it")
+        // A later Done takes the plain line's place at once, with its Undo.
+        queue.add("Done: B", undoable: true)
+        #expect(queue.shown?.item == "Done: B" && queue.waiting.count == 1)
+    }
+}

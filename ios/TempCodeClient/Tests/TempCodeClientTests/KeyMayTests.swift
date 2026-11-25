@@ -104,5 +104,9 @@ import TempCodeContract
         #expect(KeyMay(caps: [.read], lane: .relayedLocked).lifeosRefusal(hostName: "Studio Mac") == "This iPhone’s key can’t read LifeOS.")
         #expect(KeyMay(caps: [.read]).lifeosRefusal(hostName: "Box") == "This iPhone’s key can’t read LifeOS.")
         #expect(KeyMay(caps: [.read, .approve]).lifeosRefusal(hostName: "Box") == nil)
+        // The same fact Today and the every-job places read (council 18, Opus 3.1).
+        #expect(locked.lifeosLocked)
+        #expect(!KeyMay(caps: [.read], lane: .relayedLocked).lifeosLocked)
+        #expect(!KeyMay(caps: [.read, .approve], lane: .relayed).lifeosLocked)
     }
 }

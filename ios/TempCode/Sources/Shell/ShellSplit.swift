@@ -11,9 +11,10 @@ import UIKit
 /// or the placeholder when nothing is open. A project's shell keeps its
 /// identity while its thread changes (`ShellPaths.identity(of:)`).
 ///
-/// The style is the system's automatic one, which is `SidebarMode`'s rule:
-/// the sidebar tiles beside the detail when the window is wider than tall
-/// and overlays it behind the system toggle when taller than wide.
+/// The style is `.balanced`, which is `SidebarMode`'s rule: the sidebar tiles
+/// beside the detail in every regular pose, and a window taller than wide
+/// (unfolded portrait, tabletop) asks a 320 pt list. The plan's overlay
+/// there, with a 640 pt reading width, is the owner's flip.
 /// `columnVisibility` always carries the expanded preference (the remembered
 /// toggle), never the collapsed state, so the sidebar arrives with the
 /// expansion and never flickers in.
@@ -169,8 +170,8 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
 }
 
 /// The shell's sidebar button on one page of a column, in place of the system's toggle, on the side the toggle used:
-/// the sidebar's bar at its trailing edge while the sidebar shows, the detail's at its leading edge while it does not
-/// (the overlay pose keeps it there under the overlay too). Never in a stack. Every page of each column wears it, the
+/// the sidebar's bar at its trailing edge while the sidebar shows, the detail's at its leading edge while it does not.
+/// Never in a stack. Every page of each column wears it, the
 /// root and each page pushed over it, so the system's toggle never comes back on a pushed page.
 struct SidebarButtonItem: ViewModifier {
     typealias Column = SidebarButtonPlace.Column

@@ -48,8 +48,9 @@ final class ShellNavigator {
     private(set) var itemsRev = 0
     /// This tab is the one on screen: its split writes the proofs' layout notes (`ShellSplit`).
     @ObservationIgnored var focused = false
-    /// The shell's pose, set by the root: a detail opened in the overlay pose
-    /// hides the overlay, the way Mail's sidebar closes on a pick.
+    /// The shell's pose, set by the root (tiled in every regular pose): a detail
+    /// opened in the overlay mode hides the overlay, the way Mail's sidebar
+    /// closes on a pick.
     var pose = ShellPose.stack(short: false) {
         didSet { if pose != oldValue { poseChangedAt = Date(); heldWrite = nil } }
     }
@@ -131,8 +132,8 @@ final class ShellNavigator {
 
     /// His press on the sidebar button: the route's override on a wide route, his toggle otherwise.
     func showSidebar(_ shown: Bool) {
-        // His own choice ends a landing: from here his toggle decides.
-        landing = nil
+        // A press that writes his toggle ends a landing; one over a wide route is the route's alone and keeps it.
+        landing = WorkTab.ListLanding.afterPress(landing, wide: wide)
         var visibility = SidebarVisibility(preference: sidebarShown, override: sidebarOverride)
         visibility.toggled(to: shown, route: ShellPaths.identity(of: detailRoot), wide: wide)
         sidebarShown = visibility.preference
@@ -273,7 +274,7 @@ final class ShellNavigator {
 
     /// A list he must see after this landing: the tab's root (a press on the tab he is on), or the day's first place
     /// opened over it. The detail is cleared; the sidebar shows over his hidden toggle, following him within it, until
-    /// he presses the sidebar button or a pick closes an overlay, and his toggle is never written.
+    /// his press on the sidebar button writes his toggle or a pick closes an overlay, and his toggle is never written.
     func landOnList(_ route: Route? = nil) {
         popToRoot()
         if let route { open(route) }

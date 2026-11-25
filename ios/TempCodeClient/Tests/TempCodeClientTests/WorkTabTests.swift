@@ -319,4 +319,44 @@ import TempCodeContract
         #expect(ShellPose.pickHidesSidebar(pose: pose, wide: false) == pose.isOverlay)
         #expect(ShellPose.pickHidesSidebar(pose: .split(sidebar: .overlay), wide: false))
     }
+
+    // MARK: - his press over a wide route is the route's alone (council 18, Opus 2.2)
+
+    @Test(arguments: poses.map(\.name))
+    func `his press over a wide route keeps the landing, so the list he goes back to shows at his next pick; over an ordinary route it ends it`(_ name: String) throws {
+        let pose = try #require(Self.poses.first { $0.name == name }).pose
+        // Today landed over his hidden toggle; Back to the Work list, then Mail, a wide route: the list goes.
+        var visibility = SidebarVisibility(preference: false)
+        var landing = WorkTab.ListLanding(top: nil)
+        #expect(!landing.showsSidebar(pose: pose, top: nil, wide: true))
+        // He presses the sidebar button over Mail: Mail's own choice, his toggle untouched, the landing kept.
+        visibility.toggled(to: true, route: "mail", wide: true)
+        #expect(visibility.preference == false && visibility.shown(route: "mail", wide: true))
+        let kept = try #require(WorkTab.ListLanding.afterPress(landing, wide: true))
+        landing = kept
+        // He taps the Outbox, then an item: Mail's choice is gone with Mail, and the landing still shows the list.
+        landing.followed(to: .place(.outbox))
+        #expect(!visibility.shown(route: "outbox-item", wide: false))
+        #expect(landing.showsSidebar(pose: pose, top: .place(.outbox), wide: false) == pose.isSplit)
+        // His press over an ordinary route writes his toggle and ends the landing.
+        #expect(WorkTab.ListLanding.afterPress(landing, wide: false) == nil)
+    }
+
+    // MARK: - a Digest notice lands where he sees it (council 18, Sol 2)
+
+    @Test(arguments: poses.map(\.name))
+    func `a Digest notice over wide Mail or a hidden sidebar lands on the Digest; one that names an item opens over its list`(_ name: String) throws {
+        let pose = try #require(Self.poses.first { $0.name == name }).pose
+        let digest = PushTarget(environmentId: "", sessionId: "", work: true).route
+        #expect(digest == .place(.digest) && WorkTab.noticeLands(digest))
+        // Wide Mail in the detail with no draft, or his sidebar hidden: the landing clears the detail and shows the list.
+        let hidden = SidebarVisibility(preference: false)
+        #expect(!hidden.shown(route: "mail", wide: true) && !hidden.shown(route: "", wide: false))
+        let landed = WorkTab.ListLanding(top: digest)
+        #expect(landed.showsSidebar(pose: pose, top: digest, wide: false, detailEmpty: true) == pose.isSplit)
+        // A held item, a thread or a Mail page open in the detail by their own rule.
+        #expect(!WorkTab.noticeLands(.outboxItem(environmentId: "mac", ref: "held:1")))
+        #expect(!WorkTab.noticeLands(.thread(environmentId: "mac", sessionId: "s1", seq: nil)))
+        #expect(!WorkTab.noticeLands(.place(.mail)))
+    }
 }

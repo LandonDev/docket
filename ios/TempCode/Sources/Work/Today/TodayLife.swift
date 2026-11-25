@@ -48,7 +48,7 @@ enum TodayLife {
         guard onScreen else { return nil }
         let workClients = clients.filter(\.work.isOn)
         let jobs = workClients.flatMap { LifeReach.jobs(environmentId: $0.environment.id, workspaces: $0.workspaces) }
-        let hosts = workClients.map { LifeReach.Host(environmentId: $0.environment.id, open: $0.work.linked, mayToken: $0.work.may(.lifeosJwt)) }
+        let hosts = workClients.map { LifeReach.Host(environmentId: $0.environment.id, name: $0.environment.name, open: $0.work.linked, key: $0.work.key) }
         let refused = Set(workClients.filter { WorkLifeHost.every($0).refusedWhole }.map(\.environment.id))
         // A whole session known down gives way to the next host's (the desktop's `pickHost`). It is made again here when
         // its host says LifeOS connected (`prepared`), but takes the day back only once the host read in its place is
@@ -69,8 +69,10 @@ enum TodayLife {
             // No host linked yet, but one is on its first try (a cold launch, a return from the background): the store
             // keeps what LifeOS last gave, so no section blanks while it links.
             if workClients.contains(where: { !$0.work.linked && TodayFeed.open($0) }) { return nil }
-            let anyOpen = hosts.contains { host in host.open && jobs.contains { $0.environmentId == host.environmentId } }
-            return TodayLifeInput(host: "", reach: anyOpen ? .down(.withheld) : .offline)
+            let open = hosts.filter { host in host.open && jobs.contains { $0.environmentId == host.environmentId } }
+            // A locked Mac reached through the box says so, as a job's page does, not that the key can't.
+            let why: TodayDown = open.contains { $0.locked != nil } ? .locked : .withheld
+            return TodayLifeInput(host: "", reach: open.isEmpty ? .offline : .down(why))
         case .whole(let environmentId):
             guard let client = workClients.first(where: { $0.environment.id == environmentId }) else { return nil }
             let main = Reader(environmentId: environmentId, host: prepared(WorkLifeHost.every(client), client), sectors: nil, connecting: connecting(client))

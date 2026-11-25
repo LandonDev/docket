@@ -34,11 +34,20 @@ public enum LifeReach {
         public var open: Bool
         /// This key may ask it for a LifeOS token (`KeyMay`, `work.lifeos.jwt`).
         public var mayToken: Bool
+        /// Its name when it is a Mac reached through the box with its screen locked, whose key would read LifeOS once
+        /// it unlocks (`KeyMay.lifeosLocked`): the places say that, not the key (council 18, Opus 3.1).
+        public var locked: String?
 
-        public init(environmentId: String, open: Bool, mayToken: Bool) {
+        public init(environmentId: String, open: Bool, mayToken: Bool, locked: String? = nil) {
             self.environmentId = environmentId
             self.open = open
             self.mayToken = mayToken
+            self.locked = locked
+        }
+
+        /// A host as its key reads on its lane now.
+        public init(environmentId: String, name: String, open: Bool, key: KeyMay) {
+            self.init(environmentId: environmentId, open: open, mayToken: key(.lifeosJwt), locked: key.lifeosLocked ? name : nil)
         }
     }
 
@@ -69,7 +78,10 @@ public enum LifeReach {
         let open = hosts.filter { $0.open && holding.contains($0.environmentId) }
         guard !open.isEmpty else { return .unavailable("No computer that holds a job is online.") }
         let signers = open.filter(\.mayToken)
-        guard !signers.isEmpty else { return .unavailable("This iPhone’s key can’t read LifeOS.") }
+        guard !signers.isEmpty else {
+            if let name = open.lazy.compactMap(\.locked).first { return .unavailable("\(name) is locked.") }
+            return .unavailable("This iPhone’s key can’t read LifeOS.")
+        }
         let homeHost = hosts.first { $0.environmentId == home && $0.open && $0.mayToken }
         let order = (homeHost.map { [$0] } ?? []) + signers.filter { $0.environmentId != home }
         let whole = order.filter { !refused.contains($0.environmentId) }

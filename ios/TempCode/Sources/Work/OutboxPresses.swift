@@ -518,7 +518,7 @@ struct OutboxUndoInset: ViewModifier {
         let enabled = covering || (fallback ? presses.surfaces == 0 : enabled)
         // The tab's foot also keeps every other countdown's Undo in reach once its own page is off screen: one capsule
         // each, its Undo bound to its own press, through its whole wait.
-        let elsewhere = fallback || covering ? ElsewhereUndo.all : []
+        let elsewhere = (fallback || covering ? ElsewhereUndo.all : []).filter { $0.id != own.map { "request:\($0)" } }
         content
             // A surface of its own counts while shown; the shell's copy steps back for it.
             .task(id: !fallback && !covering && enabled) {

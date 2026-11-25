@@ -15,7 +15,7 @@ struct TodayScreen: View {
     @Environment(\.shellPose) private var pose
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = TodayFeed.store
-    @State private var undo: TodayUndo?
+    @State private var undos = CapsuleQueue<TodayUndo>()
     @State private var nudging: Set<String> = []
 
     var body: some View {
@@ -45,8 +45,8 @@ struct TodayScreen: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Group {
-                if let undo {
-                    UndoCapsule(line: undo.line, identifier: "today-undo", undo: undo.action.map { action in { press(undoing: action) } })
+                if let shown = undos.shown {
+                    UndoCapsule(line: shown.item.line, identifier: "today-undo", undo: shown.item.action.map { action in { press(undoing: action, from: shown.id) } })
                 }
             }
             .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: Motion.travel * 3)))
@@ -58,11 +58,12 @@ struct TodayScreen: View {
                 ToolbarItem(placement: .primaryAction) { CaptureButton() }
             }
         }
-        .animation(Motion.base, value: undo?.id)
-        .task(id: undo?.id) {
-            guard undo != nil else { return }
+        .animation(Motion.base, value: undos.shown?.id)
+        // Each capsule's own time, started when it shows: the next answer waits its turn (`CapsuleQueue`).
+        .task(id: undos.shown?.id) {
+            guard let id = undos.shown?.id else { return }
             try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
-            if !Task.isCancelled { undo = nil }
+            if !Task.isCancelled { undos.ended(id) }
         }
         .task {
             TodayFeed.start(model.registry)
@@ -95,7 +96,7 @@ struct TodayScreen: View {
         case .lifeos(let down):
             Section {
                 // Only silence may answer another try: a sign-out, a refusal or Work off needs him elsewhere.
-                TodayLine(words: Self.downWords(down, host: store.lifeHost.isEmpty ? nil : hostName(store.lifeHost)), late: Self.silent(down), retry: Self.silent(down) ? { await store.retry(.lifeos(what: "")) } : nil)
+                TodayLine(words: Self.downWords(down, host: store.lifeHost.isEmpty ? (down == .locked ? lockedName : nil) : hostName(store.lifeHost)), late: Self.silent(down), retry: Self.silent(down) ? { await store.retry(.lifeos(what: "")) } : nil)
             }
         case .connecting:
             Section {
@@ -266,10 +267,10 @@ struct TodayScreen: View {
         guard let client = client(sector: sector), let workspaceId = row.workspace?.workspaceId ?? jobOf(sector)?.workspaceId else { return comeBack(row) }
         do {
             if !TestHooks.lifeFixtures { _ = try await client.work.completeTask(taskId, workspaceId: workspaceId) }
-            undo = TodayUndo(line: "Done: \(row.title)", action: .reopen(row: row, sector: sector, taskId: taskId))
+            say(TodayUndo(line: "Done: \(row.title)", action: .reopen(row: row, sector: sector, taskId: taskId)))
         } catch {
             comeBack(row)
-            undo = TodayUndo(line: "Couldn’t mark it done", action: nil)
+            say(TodayUndo(line: "Couldn’t mark it done", action: nil))
         }
     }
 
@@ -279,10 +280,10 @@ struct TodayScreen: View {
         let until = Snooze.morning(after: .now, in: life.timeZone)
         do {
             _ = try await life.mutate("tasks:snooze", ["id": Self.json(taskId), "until": String(until.timeIntervalSince1970 * 1000)])
-            undo = TodayUndo(line: "Moved to tomorrow", action: .unsnooze(row: row, sector: sector, taskId: taskId))
+            say(TodayUndo(line: "Moved to tomorrow", action: .unsnooze(row: row, sector: sector, taskId: taskId)))
         } catch {
             comeBack(row)
-            undo = TodayUndo(line: "Couldn’t move it", action: nil)
+            say(TodayUndo(line: "Couldn’t move it", action: nil))
         }
     }
 
@@ -291,7 +292,7 @@ struct TodayScreen: View {
     private func dismiss(_ row: TodayRow, threadId: String, since: Double) async {
         // The proof's fixture day has no LifeOS behind its wait: it leaves, with nothing to put back.
         if TestHooks.lifeFixtures {
-            undo = TodayUndo(line: "Dismissed", action: nil)
+            say(TodayUndo(line: "Dismissed", action: nil))
             return
         }
         guard let life = TodayLife.store(for: row, model.registry.ordered) else { return stopped(row) }
@@ -302,10 +303,10 @@ struct TodayScreen: View {
             } else {
                 nil
             }
-            undo = TodayUndo(line: "Dismissed", action: back)
+            say(TodayUndo(line: "Dismissed", action: back))
         } catch {
             comeBack(row)
-            undo = TodayUndo(line: "Couldn’t dismiss it", action: nil)
+            say(TodayUndo(line: "Couldn’t dismiss it", action: nil))
         }
     }
 
@@ -318,7 +319,7 @@ struct TodayScreen: View {
             store.markedRead(chatId: chatId, at: at)
         } catch {
             comeBack(row)
-            undo = TodayUndo(line: "Couldn’t mark it read", action: nil)
+            say(TodayUndo(line: "Couldn’t mark it read", action: nil))
         }
     }
 
@@ -329,13 +330,13 @@ struct TodayScreen: View {
             let sessionId = try await client.work.nudge(threadId, workspaceId: place.workspaceId)
             navigator.open(.thread(environmentId: place.environmentId, sessionId: sessionId, seq: nil))
         } catch {
-            undo = TodayUndo(line: "Couldn’t start the nudge", action: nil)
+            say(TodayUndo(line: "Couldn’t start the nudge", action: nil))
         }
     }
 
     /// Undo: the task shows again only once LifeOS took it back; a refusal keeps it off and says so.
-    private func press(undoing action: TodayUndo.Action) {
-        undo = nil
+    private func press(undoing action: TodayUndo.Action, from id: UUID) {
+        undos.ended(id)
         Task {
             // The same session the act went through: the one that read the row (`TodayLife.store(for:)`).
             let (row, write, args): (TodayRow, String, [String: String]) = switch action {
@@ -349,13 +350,13 @@ struct TodayScreen: View {
                 guard let life = TodayLife.store(for: row, model.registry.ordered) else {
                     // The session the act went through has gone: Undo tries no other, and says why.
                     let on = TodaySources.sessionOf(row).map { " on \(hostName($0.environmentId))" } ?? ""
-                    undo = TodayUndo(line: "Couldn’t undo: LifeOS\(on) is not connected", action: nil)
+                    say(TodayUndo(line: "Couldn’t undo: LifeOS\(on) is not connected", action: nil))
                     return
                 }
                 _ = try await life.mutate(write, args)
                 comeBack(row)
             } catch {
-                undo = TodayUndo(line: "Couldn’t undo", action: nil)
+                say(TodayUndo(line: "Couldn’t undo", action: nil))
             }
         }
     }
@@ -425,7 +426,17 @@ struct TodayScreen: View {
         comeBack(row)
         // The host the session belongs to; a row with no supplier names none, since LifeOS never runs on the phone.
         let on = TodaySources.sessionOf(row).map { " on \(hostName($0.environmentId))" } ?? ""
-        undo = TodayUndo(line: "LifeOS\(on) is not connected, so nothing changed", action: nil)
+        say(TodayUndo(line: "LifeOS\(on) is not connected, so nothing changed", action: nil))
+    }
+
+    /// An answer in the capsule, after the one it shows (`CapsuleQueue`).
+    private func say(_ undo: TodayUndo) {
+        undos.add(undo, undoable: undo.action != nil)
+    }
+
+    /// The locked Mac reached through the box that Today cannot read through (`KeyMay.lifeosLocked`).
+    private var lockedName: String? {
+        model.registry.ordered.first { $0.work.isOn && $0.work.linked && $0.work.key.lifeosLocked }?.environment.name
     }
 
     private func hostName(_ environmentId: String) -> String {
@@ -467,6 +478,7 @@ struct TodayScreen: View {
             case .pairing: "The LifeOS sign-in waits for your approval"
             case .off: "Work is off"
             case .withheld: "This iPhone’s key can’t read LifeOS"
+            case .locked: "Your Mac is locked"
             }
         }
         return switch down {
@@ -477,6 +489,7 @@ struct TodayScreen: View {
         case .pairing: "The LifeOS sign-in on \(host) waits for your approval"
         case .off: "Work is off on \(host)"
         case .withheld: "This iPhone’s key can’t read LifeOS through \(host)"
+        case .locked: "\(host) is locked"
         }
     }
 

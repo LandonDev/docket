@@ -86,6 +86,21 @@ import TempCodeContract
         #expect(LifeReach.reach(jobs: box, hosts: [LifeReach.Host(environmentId: "box", open: true, mayToken: false)]) == .unavailable("This iPhone’s key can’t read LifeOS."))
     }
 
+    @Test func `a locked Mac through the box says it is locked; a read-only key says the key; an eligible second host still reads`() {
+        // The Mac holds the only job, reached through the box with its screen locked, its key with approve.
+        let locked = LifeReach.Host(environmentId: "mac", name: "Studio Mac", open: true, key: KeyMay(caps: [.read, .approve], lane: .relayedLocked))
+        #expect(LifeReach.reach(jobs: mac, hosts: [locked]) == .unavailable("Studio Mac is locked."))
+        // A read-only pairing: the key's own state, locked or not.
+        let readOnly = LifeReach.Host(environmentId: "mac", name: "Studio Mac", open: true, key: KeyMay(caps: [.read], lane: .relayedLocked))
+        #expect(LifeReach.reach(jobs: mac, hosts: [readOnly]) == .unavailable("This iPhone’s key can’t read LifeOS."))
+        // The box holds a job too and may sign: it reads, the locked Mac passed over.
+        let boxHost = LifeReach.Host(environmentId: "box", name: "Box", open: true, key: KeyMay(caps: [.read, .approve]))
+        #expect(LifeReach.reach(jobs: box + mac, hosts: [boxHost, locked]) == .whole(environmentId: "box"))
+        // Unlocked, the Mac signs again.
+        let open = LifeReach.Host(environmentId: "mac", name: "Studio Mac", open: true, key: KeyMay(caps: [.read, .approve], lane: .relayed))
+        #expect(open.locked == nil && LifeReach.reach(jobs: mac, hosts: [open]) == .whole(environmentId: "mac"))
+    }
+
     // MARK: - the job filter
 
     @Test func `on the whole session the filter offers All Jobs, then a job a sector, the signer's own first`() {

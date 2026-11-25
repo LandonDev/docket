@@ -22,7 +22,7 @@ struct PeopleScreen: View {
     var body: some View {
         let clients = model.registry.ordered.filter(\.work.isOn)
         let jobs = clients.flatMap { LifeReach.jobs(environmentId: $0.environment.id, workspaces: $0.workspaces) }
-        let hosts = clients.map { LifeReach.Host(environmentId: $0.environment.id, open: $0.work.linked, mayToken: $0.work.may(.lifeosJwt)) }
+        let hosts = clients.map { LifeReach.Host(environmentId: $0.environment.id, name: $0.environment.name, open: $0.work.linked, key: $0.work.key) }
         let reach = LifeReach.reach(jobs: jobs, hosts: hosts, refused: refused)
         let offered = LifeReach.offered(reach, jobs: jobs)
         let all = LifeReach.offersAll(reach)

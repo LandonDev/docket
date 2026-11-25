@@ -127,6 +127,11 @@ struct OutboxRequestSheet: View {
     @State private var pressError: String?
     /// The owner's check is asking for his Send: no second one meanwhile.
     @State private var checking = false
+    /// Row pages pushed over the list now: while one covers it, what became of his press is said over the page.
+    @State private var rowsOpen = 0
+    /// What became of his press, as it landed while a row's page covered the list; gone once he is back on the list,
+    /// which shows each row's own result.
+    @State private var coveredLine: String?
 
     private var wait: RequestPressWait { RequestPresses.wait }
     /// The host refused this key: nothing of the request, its quote or a receipt, is drawn.
@@ -162,6 +167,15 @@ struct OutboxRequestSheet: View {
         // Every countdown's Undo over this sheet, outside its stack: this request's own (so a row he opens during the
         // wait never covers it), another request's (Send, Close, then this one opened), a reply's or the Outbox's own,
         // since the sheet covers the tab's foot. One copy of each.
+        // While a row's page covers the list: his press on its way, then its sum or refusal, over the page, as its Undo
+        // was. Back on the list, each row's result is there and this goes.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if rowsOpen > 0, let line = wait.sending.contains(requestId) ? "Sending…" : coveredLine {
+                UndoCapsule(line: line, identifier: "outbox-request-covered", undo: nil)
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: rowsOpen) { if rowsOpen == 0 { coveredLine = nil } }
         .outboxUndoOverSheet(own: requestId)
         .tcSheet(.editor)
         .task { await load() }
@@ -217,8 +231,10 @@ struct OutboxRequestSheet: View {
             request = after
             fresh = [:]
             pressError = nil
+            if rowsOpen > 0 { coveredLine = RequestSheetModel.resultsHead(after) ?? "Done" }
         case .failed(let line)?:
             pressError = line
+            if rowsOpen > 0 { coveredLine = line }
             Task { await load() }
         case .checking?:
             // Gone with no answer: never "Not sent"; the head says Checking… until the request is read back.
@@ -426,6 +442,8 @@ private struct RequestRowView: View {
                 .accessibilityIdentifier("outbox-request-tick")
             NavigationLink {
                 RequestRowDetail(row: row, request: request, client: client, opened: opened)
+                    .onAppear { rowsOpen += 1 }
+                    .onDisappear { rowsOpen -= 1 }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(words.title)

@@ -41,6 +41,13 @@ public enum WorkTab {
         opensFirstPlace(stamp: stamp, today: today, saved: saved, draft: draft) ? .place(firstPlace) : nil
     }
 
+    /// Whether a notice's route is a list he must see (the Digest, a place a tell names): it lands as the day's first
+    /// place does (`ListLanding`), the detail cleared and the list shown over his hidden sidebar, so it never opens in
+    /// a column that wide Mail keeps away (council 18, Sol 2). A notice that names an item opens over its list instead.
+    public static func noticeLands(_ route: Route) -> Bool {
+        ShellPaths.list(under: route) == nil && ShellPaths.column(of: route) == .sidebar
+    }
+
     /// A landing on a list he must see: the day's first place opened by his entry, or the Work list after a press on the
     /// tab he is on. Both clear the detail, so with his sidebar hidden the split would show "Nothing Selected" alone
     /// (council 16, Sol 3). `top` is the sidebar's top route the landing put there (nil: the Work list itself).
@@ -61,6 +68,13 @@ public enum WorkTab {
         /// sidebar button, or where the pose closes the column on its own (a pick in the overlay pose).
         public mutating func followed(to now: Route?) {
             top = now
+        }
+
+        /// His press on the sidebar button: over an ordinary route it writes his toggle and ends the landing; over a
+        /// wide route it is that route's alone (`SidebarVisibility.toggled`), so the landing stays, and the list he
+        /// goes back to still shows at his next pick (council 18, Opus 2.2).
+        public static func afterPress(_ landing: ListLanding?, wide: Bool) -> ListLanding? {
+            wide ? landing : nil
         }
     }
 

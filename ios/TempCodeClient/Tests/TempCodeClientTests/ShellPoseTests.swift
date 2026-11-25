@@ -100,6 +100,8 @@ import Testing
         #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
         // A window taller than wide asks the widest, so the list's rows keep their words (iw13 measured 250 there).
         #expect(SidebarColumn.of(halfOpen: false, foldX: 334, tall: true) == SidebarColumn(min: 320, ideal: 320, max: 320))
+        // Tabletop: half open, but its fold runs across, so the tall rule answers, not a seam at 334.
+        #expect(SidebarColumn.of(halfOpen: true, foldX: 334, tall: true) == SidebarColumn(min: 320, ideal: 320, max: 320))
     }
 
     @Test("the unfolded Duo's detail as measured: 547 pt beside the 320 pt sidebar iOS keeps and the 84 pt tab rail, the pager; 680 and up, two panes") func theUnfoldedDuoDetail() {

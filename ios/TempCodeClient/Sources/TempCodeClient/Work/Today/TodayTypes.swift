@@ -261,7 +261,7 @@ public struct TodaySection: Hashable, Sendable {
 
 /// A LifeOS session that is down, in its true state (the desktop's `LifeosDown`).
 public enum TodayDown: String, Hashable, Sendable, Codable {
-    case unreachable, unanswered, refused, pairing, off, withheld
+    case unreachable, unanswered, refused, pairing, off, withheld, locked
     case signedOut = "signed-out"
 }
 
@@ -370,3 +370,34 @@ public struct TodayReadState: Hashable, Sendable {
         TodayAnswer(rows: rows, loading: loading, stale: stale, away: away, failed: failed)
     }
 }
+
+/// Today's answers in the one undo capsule, one at a time: each with an Undo keeps it until he takes it back or its
+/// own time ends, and the next waits its turn and starts its time when it shows (council 18, Sol 3). A line with
+/// nothing to take back gives way to the next answer at once.
+public struct CapsuleQueue<Item: Equatable>: Equatable {
+    public struct Entry: Equatable, Identifiable {
+        public let id: UUID
+        public let item: Item
+        public let undoable: Bool
+    }
+
+    public private(set) var waiting: [Entry] = []
+
+    public init() {}
+
+    /// The capsule on screen.
+    public var shown: Entry? { waiting.first }
+
+    public mutating func add(_ item: Item, undoable: Bool, id: UUID = UUID()) {
+        if let first = waiting.first, !first.undoable { waiting.removeFirst() }
+        waiting.append(Entry(id: id, item: item, undoable: undoable))
+    }
+
+    /// Its time ended, or he pressed its Undo.
+    public mutating func ended(_ id: UUID) {
+        waiting.removeAll { $0.id == id }
+    }
+}
+
+extension CapsuleQueue: Sendable where Item: Sendable {}
+extension CapsuleQueue.Entry: Sendable where Item: Sendable {}

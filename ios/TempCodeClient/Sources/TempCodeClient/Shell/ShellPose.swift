@@ -8,8 +8,10 @@ public enum SizeClass: Sendable, Hashable {
 }
 
 /// How the split lays its sidebar when the width is regular: beside the
-/// detail (the window wider than tall) or over it behind the system toggle
-/// (taller than wide: the detail takes the width).
+/// detail (every regular pose, upright too, where the list asks 320 pt), or
+/// over it behind the toggle, a mode kept for a split told otherwise. The
+/// plan's overlay upright, with a 640 pt reading width, is the owner's flip
+/// (council 18 Opus 2.1).
 public enum SidebarMode: Sendable, Hashable {
     case tiled
     case overlay
@@ -98,8 +100,8 @@ public enum SidebarButtonPlace: Sendable, Hashable {
     /// The edge of that bar: the system's toggle sat at the sidebar bar's trailing edge and the detail bar's leading.
     public enum Edge: Sendable, Hashable { case leading, trailing }
 
-    /// Whether the column's bar holds the button: the sidebar's while the sidebar shows, the detail's while it does not
-    /// (the overlay pose keeps it there under the overlay too); never in a stack.
+    /// Whether the column's bar holds the button: the sidebar's while the sidebar shows, the detail's while it does not;
+    /// never in a stack.
     public static func shows(in column: Column, pose: ShellPose, sidebarShown: Bool) -> Bool {
         guard pose.isSplit else { return false }
         switch column {
@@ -163,8 +165,8 @@ public struct HeldVisibilityWrite: Sendable, Hashable {
 extension ShellPose {
 
     /// Whether the split, once a pose has settled, shows other than what the shell
-    /// remembers: a write it made was dropped as a fold's (a tab built in the overlay
-    /// pose hides its own column), and the binding, unchanged on our side, is never
+    /// remembers: a write it made was dropped as a fold's (a tab built mid-fold
+    /// hides its own column), and the binding, unchanged on our side, is never
     /// read again. Then the shell asks the split to read it once more.
     public static func splitStrays(pose: ShellPose, splitShows: Bool?, shows: Bool) -> Bool {
         guard pose.isSplit, let splitShows else { return false }
@@ -186,9 +188,9 @@ extension ShellPose {
 }
 
 /// What the split's visibility binding answers. NavigationSplitView acts on a change of the value it reads, never on
-/// a value it already read: a tab built in the overlay pose (unfolded-portrait, tabletop) writes `.detailOnly` as it
-/// is built, that write is dropped as a fold's, and a binding that keeps answering `.all` is a value the split has
-/// already seen, so its list never comes back (iw12, Work's tab). Once a pose has settled and the split strays
+/// a value it already read: a tab built as the window settles (iw12: unfolded-portrait, then read as overlay) writes
+/// `.detailOnly` as it is built, that write is dropped as a fold's, and a binding that keeps answering `.all` is a value
+/// the split has already seen, so its list never comes back (iw12, Work's tab). Once a pose has settled and the split strays
 /// (`ShellPose.splitStrays`), the binding answers what the split shows for one turn (`ShellPose.echoTurn`), then the
 /// shell's again: a real change, which the split takes.
 public struct SplitAnswer: Sendable, Hashable {
@@ -227,10 +229,11 @@ public struct SidebarColumn: Sendable, Hashable {
     public static let widest: CGFloat = 320
 
     public static func of(halfOpen: Bool, foldX: CGFloat, tall: Bool = false) -> SidebarColumn {
-        if halfOpen, foldX > width { return SidebarColumn(min: width, ideal: foldX, max: Swift.max(widest, foldX)) }
         // A window taller than wide (unfolded portrait, tabletop): the list asks its widest, so its rows are not cut to a
-        // few letters (iw13 measured 250 there and cut "Send to Kare…").
+        // few letters (iw13 measured 250 there and cut "Send to Kare…"). First: tabletop is half open, but its fold runs
+        // across, so no seam to follow (council 18 Opus 2.3).
         if tall { return SidebarColumn(min: widest, ideal: widest, max: widest) }
+        if halfOpen, foldX > width { return SidebarColumn(min: width, ideal: foldX, max: Swift.max(widest, foldX)) }
         return SidebarColumn(min: width, ideal: width, max: widest)
     }
 }

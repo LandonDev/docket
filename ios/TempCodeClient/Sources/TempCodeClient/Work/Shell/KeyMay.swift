@@ -45,10 +45,13 @@ public struct KeyMay: Sendable, Hashable {
     /// when it unlocks (council 17, Opus 3.1). A key without approve says the key can't.
     public func lifeosRefusal(hostName: String) -> String? {
         if self(.lifeosJwt) { return nil }
-        if lane == .relayedLocked, KeyMay(caps: caps, revoked: revoked, lane: .relayed)(.lifeosJwt) {
-            return "\(hostName) is locked."
-        }
+        if lifeosLocked { return "\(hostName) is locked." }
         return "This iPhone’s key can’t read LifeOS."
+    }
+
+    /// A Mac reached through the box with its screen locked, whose key would read LifeOS once it unlocks.
+    public var lifeosLocked: Bool {
+        !self(.lifeosJwt) && lane == .relayedLocked && KeyMay(caps: caps, revoked: revoked, lane: .relayed)(.lifeosJwt)
     }
 
     /// Whether the phone may draw a press of `method` for this key.

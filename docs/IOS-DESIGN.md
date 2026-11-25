@@ -85,10 +85,17 @@ The rules, all pure and tested in WorkTabTests:
   sidebar shows its list while that list stays on top, beside the row it
   picks or over the empty detail, without writing his toggle. It follows him
   within that column (a place tapped in the Work list, Back from Today), and is
-  kept across a same-day relaunch; his own press on the sidebar button, or a
-  pick that closes an overlay, ends it, and his saved choice decides again. A
-  job's LifeOS page on a Mac reached through the box with its screen locked says
-  "<Mac> is locked.", not that the key can't read LifeOS (`KeyMay.lifeosRefusal`).
+  kept across a same-day relaunch; his own press on the sidebar button over an
+  ordinary route, or a pick that closes an overlay, ends it, and his saved
+  choice decides again. His press over a wide route (Mail) is that route's
+  alone and keeps the landing (`ListLanding.afterPress`), so the list he goes
+  back to still shows at his next pick. A notice that names a list (the day's
+  Digest) lands the same way (`WorkTab.noticeLands`), never behind wide Mail or
+  a hidden sidebar; one that names an item opens over its list.
+- **A locked Mac.** Through the box with its screen locked, a Mac's job page,
+  the places for every job and Today say "<Mac> is locked.", not that the key
+  can't read LifeOS (`KeyMay.lifeosLocked`, `LifeReach.Host.locked`,
+  `TodayDown.locked`). A key without approve says the key.
 - **What opens where.** A route something outside a tab names opens in the
   tab `ShellPaths.tab(of:isWork:)` gives: Work's places and screens, a Work
   thread (its scope), a Work workspace and Work Chats in the Work tab, the
@@ -268,7 +275,9 @@ pose, upright too: iOS 27.1 lays the open Duo's split side by side at
 669×951 (iw13 measured a 250 pt list beside the detail), and the split asks
 the balanced style so the rule and the drawing stay one. The overlay mode is
 kept for a split told otherwise; in it a pick hides the sidebar. In a window
-taller than wide the list asks its widest, 320 pt, so its rows keep their words. A screen
+taller than wide the list asks its widest, 320 pt, so its rows keep their words,
+tabletop too, whose fold runs across. The plan's overlay there, with a 640 pt
+reading width, is the owner's flip (council 18, Opus 2.1). A screen
 reads `\.shellPose`, never `horizontalSizeClass`, for a shell decision; the
 detail column's own size class is the system's and is not promised.
 `columnVisibility` always carries the expanded preference (the remembered
@@ -2579,7 +2588,9 @@ milestone 46 built, where it lives now:
   and "Send N" ("Approve N" when the ticked actions mix). Send freezes
   exactly the ticked receipts and waits the phone's five seconds: the
   sheet's foot, outside its stack so a row opened during the wait never
-  covers it, becomes the undo capsule naming what goes ("Sending 2 mails to 2
+  covers it (nor, after it, what became of the press: "Sending…", then the
+  sum or the refusal, over the row's page until he is back on the list),
+  becomes the undo capsule naming what goes ("Sending 2 mails to 2
   people", Undo), each ticked row keeps its own words (its act, and when a
   later one goes), and the rows left out dim. Closing the sheet never sends it early: the frozen press waits
   out its five seconds (`RequestPresses`) with its Undo at the tab's foot (or over another request's sheet that
@@ -3106,7 +3117,8 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   the verb shows when the key may ask that host for a token, whoever homes the job, and never goes through another
   host's session or a scope read later. If that session has gone, nothing is written and the line says so ("LifeOS on
   Box is not connected, so nothing changed"). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
-  capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
+  capsule, one at a time: an answer with an Undo keeps it for its own time, the next waiting its turn, and a line
+  with nothing to take back gives way at once (`CapsuleQueue`); its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
   passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
@@ -4552,9 +4564,9 @@ needs on this Mac (the Xcode, the 27.1 runtime, the device type, the
 size classes and its own bounds, never from the idiom, the orientation or
 `UIScreen.main`: compact width is the three stacks (the outer display; short
 titles when the height is compact too, the folded landscape pose); regular
-width is a split per tab, the sidebar tiled beside the detail when the
-window is wider than tall (unfolded landscape) and overlaid behind the
-sidebar button when taller than wide (unfolded portrait). The rule is the
+width is a split per tab, the sidebar tiled beside the detail in every
+regular pose, upright too with a 320 pt list (the plan's overlay there, with
+a 640 pt reading width, is the owner's flip). The rule is the
 client package's `ShellPose`; the shell publishes it as `\.shellPose` and
 every screen reads that, never `horizontalSizeClass`, for a shell decision.
 
@@ -4702,7 +4714,7 @@ displays, so every presentation can show.
 The Work tab is one more split on the shell's engine, so everything above holds for
 it. What Work adds (the plan "All of Work on the iPhone", M0d):
 
-- **The pick.** On the open Duo, wider than tall, a place's list in the sidebar fills
+- **The pick.** On the open Duo, upright too, a place's list in the sidebar fills
   an empty detail with its first row that needs him, so the right side is never
   blank on arrival. A pick still in the list stays; when the picked row leaves (sent,
   discarded) the next takes the detail, or the detail clears. Nothing is picked in a
