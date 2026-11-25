@@ -2214,7 +2214,9 @@ Around the canvas:
   names the count, "Archive 3"; a row still reading its mail draws a tick,
   subject and date bone, and the press says its verb alone, inactive,
   until every row has answered); a task or an event (one 44px row: a 14px
-  glyph, the title at 13px medium, one 12px muted line, Add…). A mail or a
+  glyph, the title at 13px medium, one 12px muted line, Add…; after his
+  Add, an event's Queued mark until the calendar has it, then Added with
+  Open, or the refusal in red in the line's place with Add… again). A mail or a
   person named in an answer is a 20px chip on `muted` at radius 6 with a
   12px glyph.
   Mail's settings are flat groups of 44px rows; in Settings → Work they
@@ -4137,7 +4139,8 @@ offered (a view's New task, New event, Add people, a clash's Running late),
 and a press made while it was on its way is dropped, never opened later by
 itself. A form he has open over a view (New task, New event, Add people, a
 project's settings) is the frame's, not the body's (`WorkViewModule.Kept`;
-a mail chat card's Add… form is the card's keeper's, above its gate):
+a mail chat card's Add… form is its keeper's, above the card's gate, and in
+Mail's dock Mail's frame's, above the view's):
 a session that drops keeps it and what he typed, says `DownLine` in it and
 holds its submit until the session is back. A failed Retry
 is said once, by the line, with the newest cause: a Retry the host does not

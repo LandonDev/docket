@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider } from "work-kit/mail";
 import "work-kit/mail/styles.css";
@@ -30,7 +30,7 @@ export function MailOfferRow({ block }: { block: Block }) {
   const host = useTranscriptHost();
   if (!offer || !sessionId || !host) return null;
   return (
-    <OfferSession sessionId={sessionId} env={host} offer={offer}>
+    <OfferSession sessionId={sessionId} env={host} offer={offer} cardKey={`${sessionId}:${block.id}`}>
       {(at) => <OfferCard offer={offer} at={at} />}
     </OfferSession>
   );
@@ -53,21 +53,24 @@ export function OfferCard({ offer, at }: { offer: MailOffer; at: OfferAt }) {
 
 /**
  * The window's LifeOS session for the thread's sector, with Mail's client over it. A proposed task's or event's form is
- * kept above the gate (`AddKeeper`): a drop swaps the card for its line, never the form he has open.
+ * kept above the gate (`AddKeeper`): a drop swaps the card for its line, never the form he has open. Of a thread's cards
+ * whose session is down, one says the line with its press (`useSaysLine`); the rest draw nothing until it is back.
  */
-function OfferSession({ sessionId, env, offer, children }: { sessionId: string; env: string; offer: MailOffer; children(at: OfferAt): ReactNode }) {
+function OfferSession({ sessionId, env, offer, cardKey, children }: { sessionId: string; env: string; offer: MailOffer; cardKey: string; children(at: OfferAt): ReactNode }) {
   const meta = useSessionMeta(sessionId);
   const workspace = useWorkspaces().find((w) => w.id === meta?.workspaceId);
   const sector = (workspace?.sector ?? null) as SectorKey | null;
   const lifeos = useLifeosSession(env, sector);
+  const down = !!sector && !lifeos.client && !sessionWaits(lifeos);
+  const says = useSaysLine(down ? `${sessionId}|${env}|${sector}` : null, cardKey);
   if (!workspace || !sector) return null;
   const at = { sessionId, workspaceId: workspace.id, sector };
   const card = !lifeos.client ? (
-    sessionWaits(lifeos) ? (
+    !down ? (
       <CardBones />
-    ) : (
+    ) : says ? (
       <SessionLine session={lifeos} env={env} sector={sector} />
-    )
+    ) : null
   ) : (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector)}>
@@ -77,11 +80,43 @@ function OfferSession({ sessionId, env, offer, children }: { sessionId: string; 
   );
   if ("task" in offer || "event" in offer)
     return (
-      <AddKeeper {...("task" in offer ? { task: offer.task } : { event: offer.event })} at={at} session={lifeos}>
+      <AddKeeper {...("task" in offer ? { task: offer.task } : { event: offer.event })} at={at} session={lifeos} cardKey={cardKey}>
         {card}
       </AddKeeper>
     );
   return card;
+}
+
+// A thread's cards whose session is down, by thread, host and sector, in the order they went down: the first says
+// the line, so one outage is said once however many cards it stops (the owner's rule: the state once a screen).
+const downCards = new Map<string, readonly string[]>();
+const downHeard = new Set<() => void>();
+const hearDown = (listener: () => void): (() => void) => {
+  downHeard.add(listener);
+  return () => void downHeard.delete(listener);
+};
+function putDown(scope: string, cards: readonly string[]): void {
+  if (cards.length) downCards.set(scope, cards);
+  else downCards.delete(scope);
+  for (const listener of downHeard) listener();
+}
+
+/**
+ * Whether this card says its down session's line: the first of its thread's down cards does, the rest do not. Taken
+ * before paint, so a second card never shows the line for a frame. A card that leaves (scrolled out, or its session
+ * back) hands the line to the next.
+ */
+export function useSaysLine(scope: string | null, card: string): boolean {
+  useLayoutEffect(() => {
+    if (!scope) return;
+    putDown(scope, [...(downCards.get(scope) ?? []), card]);
+    return () => putDown(scope, (downCards.get(scope) ?? []).filter((c) => c !== card));
+  }, [scope, card]);
+  return useSyncExternalStore(hearDown, () => {
+    if (!scope) return false;
+    const first = downCards.get(scope)?.[0];
+    return first === undefined || first === card;
+  });
 }
 
 /**

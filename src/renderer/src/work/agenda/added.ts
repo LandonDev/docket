@@ -1,4 +1,6 @@
+import { useConvex } from "convex/react";
 import { makeFunctionReference } from "convex/server";
+import { useEffect, useState } from "react";
 import type { ToastApi } from "../../components/ui/toaster";
 
 const get = makeFunctionReference<"query">("calendarOps:get");
@@ -8,6 +10,45 @@ type Op = { status?: string; error?: string } | null | undefined;
 /** What of LifeOS's client the watch needs. */
 export interface OpWatcher {
   watchQuery(query: typeof get, args: { id: string }): { onUpdate(cb: () => void): () => void; localQueryResult(): unknown };
+}
+
+/** Where LifeOS's row says the change stands: on its way (or not read yet), done, or refused with its reason. */
+export type OpOutcome = { status: "pending" } | { status: "done" } | { status: "failed"; reason: string };
+
+/** The row's status as an outcome, read the same by the toast and a mail chat card. */
+export function outcomeOf(row: Op): OpOutcome {
+  if (row?.status === "done") return { status: "done" };
+  if (row?.status === "failed") return { status: "failed", reason: row.error || "Google refused it." };
+  return { status: "pending" };
+}
+
+const sameOutcome = (a: OpOutcome, b: OpOutcome): boolean => a.status === b.status && (a.status !== "failed" || a.reason === (b as { reason: string }).reason);
+
+/**
+ * The calendar change `id` as LifeOS's row says it stands now, read through the Convex client around it; null for no
+ * id. A row that cannot be read keeps the last outcome read (pending at first): nothing is said done before LifeOS
+ * says so.
+ */
+export function useOpOutcome(id: string | null): OpOutcome | null {
+  const client = useConvex() as unknown as OpWatcher | undefined;
+  const [read, setRead] = useState<{ id: string; outcome: OpOutcome } | null>(null);
+  useEffect(() => {
+    if (!id || !client) return;
+    const watch = client.watchQuery(get, { id });
+    const take = (): void => {
+      try {
+        const outcome = outcomeOf(watch.localQueryResult() as Op);
+        setRead((was) => (was?.id === id && sameOutcome(was.outcome, outcome) ? was : { id, outcome }));
+      } catch {
+        // LifeOS refused the query: the last outcome read stands.
+      }
+    };
+    const off = watch.onUpdate(take);
+    take();
+    return off;
+  }, [id, client]);
+  if (!id) return null;
+  return read?.id === id ? read.outcome : { status: "pending" };
 }
 
 /** How long the toast waits on LifeOS before it says where the event stands instead. */
@@ -40,12 +81,13 @@ export function tellAdded(client: OpWatcher, toast: ToastApi, op: { id: string; 
       // The row could not be read (LifeOS refused the query): the wait's own line says where the event stands.
       return;
     }
-    if (row?.status === "done") {
+    const outcome = outcomeOf(row);
+    if (outcome.status === "done") {
       stop();
       toast.success(op.invites ? `Invites sent: ${op.title}` : `Added ${op.title}`, { id });
-    } else if (row?.status === "failed") {
+    } else if (outcome.status === "failed") {
       stop();
-      toast.error(`${op.title} was not added`, { id, description: row.error || "Google refused it." });
+      toast.error(`${op.title} was not added`, { id, description: outcome.reason });
     }
   };
   off = watch.onUpdate(read);

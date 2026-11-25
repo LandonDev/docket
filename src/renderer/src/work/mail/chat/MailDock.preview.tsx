@@ -1,7 +1,8 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/mail/chat/MailDock.preview.tsx#ChatFirstAsk` (and
-// #ChatPicked, #ChatAnswered, #ChatNewMail, #ChatSessionFailed): the chat beside the mail on work-kit's fixture mail, a fresh draft about the open mail,
+// #ChatPicked, #ChatAnswered, #ChatNewMail, #ChatSessionFailed, #ChatAddStates): the chat beside the mail on work-kit's fixture mail, a fresh draft about the open mail,
 // the same about ticked rows, and a mail chat's answers as cards. Rendered by nothing in the app; no host, no LifeOS.
 import type { ReactNode } from "react";
+import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, type MailClient, type ThreadSummary } from "work-kit/mail";
 import { corpusThreads, createFixtureMailClient } from "work-kit/mail/fixtures";
 import { registry } from "../../../lib/connection";
@@ -16,6 +17,7 @@ import { SessionActionsContext, type SessionActions } from "../../../surfaces/th
 import { tempcodeMailKit } from "../kit";
 import { MailScreen, mailChatChunk, patch } from "../MailView";
 import { OfferCard, SessionLine } from "./OfferCard";
+import { AddKeeper, AddRow, markAdded } from "./AddRow";
 
 void mailChatChunk.load();
 void workCanvasChunk.load();
@@ -145,5 +147,41 @@ export function ChatRowsReading() {
         </div>
       </MailClientProvider>
     </TranscriptSessionContext.Provider>
+  );
+}
+
+/** LifeOS's calendar change rows as they stand: one waiting on Google, one done, one Google refused. */
+const ops: Record<string, { status: string; error?: string }> = {
+  "op-queued": { status: "queued" },
+  "op-done": { status: "done" },
+  "op-failed": { status: "failed", error: "This calendar is read-only for this account." },
+};
+const opsClient = {
+  watchQuery: (_ref: unknown, args: { id: string }) => ({ onUpdate: () => () => undefined, localQueryResult: () => ops[args.id] }),
+};
+
+const CHANGES = [
+  ["op-queued", "Call with Marisol about billing"],
+  ["op-done", "Walk the venue with Dana"],
+  ["op-failed", "Budget review"],
+] as const;
+for (const [id] of CHANGES) markAdded(`preview-${id}`, { op: id });
+
+/** An event he added from the chat: Queued until Google has it, then Added with Open; refused, why, with Add… again. */
+export function ChatAddStates() {
+  const at = { sessionId: "s1", workspaceId: ID, sector: "unify" as const };
+  const event = (title: string) => ({ title, start: "2026-11-26T14:00:00", end: "2026-11-26T14:30:00" });
+  return (
+    <ConvexProvider client={opsClient as never}>
+      <MailClientProvider client={answered}>
+        <div className="flex w-[560px] flex-col gap-4 p-6">
+          {CHANGES.map(([id, title]) => (
+            <AddKeeper key={id} event={event(title)} at={at} cardKey={`preview-${id}`}>
+              <AddRow event={event(title)} at={at} />
+            </AddKeeper>
+          ))}
+        </div>
+      </MailClientProvider>
+    </ConvexProvider>
   );
 }

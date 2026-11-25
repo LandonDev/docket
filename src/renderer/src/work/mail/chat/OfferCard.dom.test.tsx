@@ -9,11 +9,28 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailClient, ThreadSummary } from "work-kit/mail";
 
-const convex = vi.hoisted(() => ({ proposed: null as null | { subject?: string; text: string; html: string; at: number; by: string }, settle: vi.fn(), mutations: [] as unknown[], sources: [] as unknown[] }));
+const convex = vi.hoisted(() => ({
+  proposed: null as null | { subject?: string; text: string; html: string; at: number; by: string },
+  settle: vi.fn(),
+  mutations: [] as unknown[],
+  sources: [] as unknown[],
+  // LifeOS's calendar change rows (calendarOps:get), as the toast and the card watch them (agenda/added.ts).
+  op: undefined as unknown,
+  heard: new Set<() => void>(),
+  client: {
+    watchQuery: () => ({
+      onUpdate: (fn: () => void) => {
+        convex.heard.add(fn);
+        return () => void convex.heard.delete(fn);
+      },
+      localQueryResult: () => convex.op,
+    }),
+  },
+}));
 vi.mock("convex/react", () => ({
   ConvexProvider: ({ children }: { children: unknown }) => children,
-  // The New event dialog watches LifeOS's own row for its toast (agenda/added.ts): no row comes in a test.
-  useConvex: () => ({ watchQuery: () => ({ onUpdate: () => () => undefined, localQueryResult: () => undefined }) }),
+  // One client for the window's life, as Convex's provider hands it.
+  useConvex: () => convex.client,
   useQuery: (ref: unknown) => {
     const name = String((ref as Record<symbol, string>)[Symbol.for("functionName")] ?? "");
     if (name.includes("sources")) return convex.sources;
@@ -34,6 +51,9 @@ vi.mock("../../../components/ui/toaster", () => {
   });
   return { loadToast: async () => toast, toast };
 });
+// The form's Mail actions are made over its own session (`MailActionsLive`): the test's client stands in for it.
+const mailClients = vi.hoisted(() => ({ client: null as unknown }));
+vi.mock("../client", async (original) => ({ ...(await original<object>()), mailClientFor: () => mailClients.client }));
 const submits = vi.hoisted(() => [] as string[]);
 vi.mock("../../../surfaces/threadChat", () => ({ useSessionActions: () => ({ onSubmit: (_id: string, text: string) => void submits.push(text) }) }));
 const views = vi.hoisted(() => [] as unknown[]);
@@ -86,6 +106,7 @@ const client = {
     makeTask: (threadId: string, draft: unknown) => void made.push({ threadId, draft }),
   }),
 } as unknown as MailClient;
+mailClients.client = client;
 
 const draw = (offer: Parameters<typeof OfferCard>[0]["offer"]) =>
   render(
@@ -108,6 +129,8 @@ beforeEach(() => {
   convex.proposed = null;
   convex.settle = vi.fn(async () => true);
   convex.mutations.length = 0;
+  convex.op = undefined;
+  convex.sources = [];
   patch("w1", { threadId: null, compose: null, chat: false, chatAt: null });
 });
 afterEach(cleanup);
@@ -379,6 +402,64 @@ describe("a task or an event", () => {
     expect(screen.getByDisplayValue("12:30")).toBeTruthy();
     expect(screen.getByDisplayValue("13:30")).toBeTruthy();
     expect(screen.getByDisplayValue("Harry's")).toBeTruthy();
+  });
+});
+
+describe("an event's Added", () => {
+  // Council round 10 (Sol Mail 2, P1): his Add queues a calendar change; Added is said once Google has it.
+  const answer = (row: unknown) =>
+    act(() => {
+      convex.op = row;
+      for (const fn of convex.heard) fn();
+    });
+  const add = async () => {
+    convex.sources = [{ _id: "cal1", kind: "gcal", account: "me@example.com", sector: "life", enabled: true }];
+    draw({ event: { title: "Lunch with Dana", start: "2026-12-04T12:30:00", end: "2026-12-04T13:30:00", where: "Harry's" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    fireEvent.submit((await screen.findByDisplayValue("Lunch with Dana")).closest("form")!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  };
+
+  it("says Queued while LifeOS's change waits on Google, with no Open, then Added with Open once it is done", async () => {
+    await add();
+    expect(document.querySelector("[data-add-queued]")!.textContent).toBe("Queued");
+    expect(screen.queryByText("Added")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    answer({ status: "sending" });
+    expect(document.querySelector("[data-add-queued]")).toBeTruthy();
+    answer({ status: "done" });
+    expect(screen.getByText("Added")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(views).toContainEqual({ workspaceId: "w1", view: "agenda" });
+  });
+
+  it("gives Add… back with Google's reason when the change failed", async () => {
+    await add();
+    answer({ status: "failed", error: "This calendar is read-only." });
+    expect(document.querySelector("[data-add-refused]")!.textContent).toBe("This calendar is read-only.");
+    expect(screen.queryByText("Added")).toBeNull();
+    expect(document.querySelector("[data-add-queued]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    expect(await screen.findByDisplayValue("Lunch with Dana")).toBeTruthy();
+  });
+});
+
+describe("a task's Added", () => {
+  it("is said only once LifeOS took Make task's write; a refusal is said in the form, which stays", async () => {
+    const was = client.useMailActions;
+    (client as { useMailActions: unknown }).useMailActions = () => ({ makeTask: () => void write({ run: async () => Promise.reject(new Error("thread is gone")), failed: "add the task", message: "Task added" }) });
+    try {
+      draw({ task: { title: "Book the room", threadId: "t1" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+      fireEvent.submit((await screen.findByDisplayValue("Book the room")).closest("form")!);
+      expect(await screen.findByText("Thread is gone")).toBeTruthy();
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.queryByText("Added")).toBeNull();
+      // The refusal is the form's to say: no toast says it twice.
+      expect(toasts.filter((t) => t.error)).toEqual([]);
+    } finally {
+      (client as { useMailActions: unknown }).useMailActions = was;
+    }
   });
 });
 

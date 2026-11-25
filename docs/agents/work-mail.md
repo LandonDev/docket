@@ -649,13 +649,24 @@ docs/DESIGN.md "The Mail view"):
   job's mail does not hold has no tick; a row still reading draws its bones,
   and the press waits with no count until every row has answered), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
-  `NewEventDialog.initial`); the form and its Added are kept above the card's
-  session gate (`AddKeeper`, AddRow.tsx), so a drop swaps the card for its
-  line but keeps the open form with what he typed, its `DownLine` and Add
-  held, and it files through the new client once the session is back. Nothing sends, schedules or archives but his
-  press. A card whose LifeOS session failed is one line with the press
-  that mends it, as the mail canvas has (`SessionLine`): Sign in, Open
-  Settings or Retry.
+  `NewEventDialog.initial`); the open form and what his Add came to are kept
+  above the card's session gate (`AddKeeper`, AddRow.tsx), so a drop swaps
+  the card for its line but keeps the open form with what he typed, its
+  `DownLine` and Add held, and it files through the new client once the
+  session is back. In Mail's dock the form is Mail's frame's (`Kept`,
+  `MailAddKept`, under `AddHoldScope`), since a sign-out or LifeOS's
+  silence takes the whole Mail view and the dock with it; it writes
+  through its own session's Mail actions (`MailActionsLive`), never a
+  card's. A task says Added, with Open, once LifeOS took the write (Make
+  task through `answerOf`; a refusal stays in the form); an event says
+  Queued until LifeOS's calendar change is done, read from its row as the
+  toast reads it (`useOpOutcome`, agenda/added.ts), then Added with Open,
+  or, refused, the reason in its line's place and Add… again. Nothing
+  sends, schedules or archives but his press. A card whose LifeOS session
+  failed is one line with the press that mends it, as the mail canvas has
+  (`SessionLine`): Sign in, Open Settings or Retry; of a thread's cards on
+  one down session the first says it and the rest draw nothing until it
+  is back (`useSaysLine`).
 - **Chips in prose**: `[subject](#lifeos:mailThreads:<id>)` and
   `[name](#lifeos:people:<id>)` draw as chips (`lifeosLinkOf`,
   surfaces/lifeosLink.ts; LifeosChip.tsx) that open through SentChips'

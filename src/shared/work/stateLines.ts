@@ -85,7 +85,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Sending", "queued"],
   ],
   [`${R}/mail/chat/AddRow.tsx`]: [
-    ["Added", "read"],
+    // A task once LifeOS took the write; an event once LifeOS's calendar change is done (agenda/added.ts useOpOutcome).
+    ["Added", "answer"],
   ],
   [`${R}/mail/sentState.ts`]: [
     ["Sent", "read"],

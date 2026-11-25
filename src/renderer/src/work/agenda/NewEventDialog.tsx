@@ -73,8 +73,8 @@ export function NewEventDialog({
   startsAt: number | null;
   /** what the form starts with (a mail chat's proposed event); he still saves it */
   initial?: Partial<EventForm>;
-  /** after his Add went through */
-  onAdded?: () => void;
+  /** after his Add went through: LifeOS queued the change `op` (calendarOps), which Google has not taken yet */
+  onAdded?: (op: string) => void;
   onClose: () => void;
   /**
    * The session it writes through, where the form outlives the view's body (`WorkViewModule.Kept`): while it is down,
@@ -113,7 +113,7 @@ function Body({
   sector: SectorKey;
   startsAt: number | null;
   initial?: Partial<EventForm>;
-  onAdded?: () => void;
+  onAdded?: (op: string) => void;
   onClose: () => void;
   pending: boolean;
   setPending: (p: boolean) => void;
@@ -147,7 +147,7 @@ function Body({
       .then(
         (id) => {
           setPending(false);
-          onAdded?.();
+          onAdded?.(id);
           // LifeOS has it queued: the toast says Adding, and Added (or why not) only once LifeOS's own row says so.
           void loadToast().then((toast) => tellAdded(convex, toast, { id, title: made.title, invites: asks }));
           close ? close(onClose) : onClose();

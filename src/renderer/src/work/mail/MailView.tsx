@@ -24,6 +24,7 @@ import { Ask as AskGlyph } from "../icons";
 import { mailChatWithheld } from "@shared/work/mailChat";
 import { mailChatSubject, type MailInView } from "./chat/subject";
 import { mailDockPort } from "./chat/port";
+import { AddHoldScope, MailAddKept } from "./chat/AddRow";
 import { keptMailOf, liveDraftIds, liveViews, pageOf, patch, showMail, usePage, type MailPage } from "./page";
 
 export { patch, showMail, type MailPage } from "./page";
@@ -65,6 +66,12 @@ function readListWidth(): number {
 
 const NO_TASKS: ReadonlySet<string> = new Set();
 
+/**
+ * The Add… form a card in the chat opened (New task, New event), drawn by the view's frame above its gates: a sign-out
+ * or LifeOS's silence takes the mail and the chat away, never the form and what he typed (`AddHoldScope`).
+ */
+export const Kept = MailAddKept;
+
 export function View(props: WorkViewProps) {
   const { lifeos, env, sector } = props;
   const convex = lifeos.client;
@@ -98,7 +105,12 @@ function MailPageBody({ workspace, startThread, env, sector }: WorkViewProps) {
   // Waiting on's Draft a nudge: the host starts a thread that drafts it, and the thread opens.
   const nudge = useCallback((thread: { id: string }) => void startNudge(env, id, thread.id), [env, id]);
   const chat = useMemo(() => chatSeat({ id, environmentId: env, path: workspace.path }, sector as SectorKey), [id, env, workspace.path, sector]);
-  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} chat={chat} />;
+  // The chat's Add… forms are this view's frame's (`Kept`), not the dock's.
+  return (
+    <AddHoldScope.Provider value={id}>
+      <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} chat={chat} />
+    </AddHoldScope.Provider>
+  );
 }
 
 /** Where the chat beside the mail is made, or none: while the chat is off (`MAIL_CHAT.on`) or the job is withheld, Mail has no Ask and no ⌘L. */
