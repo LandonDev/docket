@@ -14,7 +14,7 @@ import { vmState } from '../office/vm/office'
 import { hostReadOf } from '../peer'
 import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
-import { admitCaller, admitWrite, locate, type DoorPlace } from './policy'
+import { admitCaller, admitWrite, isNotReachable, locate, type DoorPlace } from './policy'
 import { saveCopy, saveFile, versionWord, workDone } from './save'
 import { uploadPending, uploadWrote } from './uploads'
 import { keepBody, sameBody } from './body'
@@ -156,9 +156,12 @@ function letGo(ctx: WorkCtx, r: CopyRow): void {
 
 // ── the one send ──────────────────────────────────────────────────────
 
-/** Whether a send failed because the other computer did not answer, rather than refused. */
+/**
+ * Whether a send failed because the other computer, or the drive its file lies on, did not answer, rather than refused.
+ * A refusal (the fence, a bridge policy, a place not his) is none of these: it is said, and nothing is sent again.
+ */
 export const unreachable = (err: unknown): boolean =>
-  err instanceof VmUnreachable || err instanceof OpLost || (err as { name?: string })?.name === 'PeerOfflineError' || /offline|no live link|timed out|timeout|unreachable|not answer|ECONNRE|socket hang up/i.test(message(err))
+  isNotReachable(err) || err instanceof VmUnreachable || err instanceof OpLost || (err as { name?: string })?.name === 'PeerOfflineError' || /offline|no live link|timed out|timeout|unreachable|not answer|ECONNRE|socket hang up/i.test(message(err))
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
 export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {

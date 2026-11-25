@@ -660,7 +660,9 @@ be there is never touched: `librariesOf` lists it with `away`, its place is
 `unreachable` ("<host> is out of reach.", with Retry), and the fence passes
 nothing in it. A listing or an open there answers "J: is not reachable now."
 (files/policy.ts `locate`) without looking at the drive, so a tab left open
-on it reads as away, never as a folder that is gone.
+on it reads as away, never as a folder that is gone. That sentence is typed
+(`NotReachable`, `isNotReachable`): a copy or a linked file whose save met it
+waits as away, the laptop still online, and is sent once the drive is back.
 
 ## Tests
 

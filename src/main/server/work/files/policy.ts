@@ -97,6 +97,18 @@ export const NO_WORKSPACE = 'No such Work workspace on this host.'
 export const THREAD_ELSEWHERE = "A thread reaches only its own workspace's files."
 export const PEER_LIBRARIES = "Another host reaches only this host's libraries."
 export const NOT_DRIVE = "That Google account is not one of this workspace's."
+/**
+ * A place that is there but cannot be reached now (a mapped drive with the VPN down, a desktop asleep): an away, never
+ * a refusal, so what waits for it is sent once it answers. Its sentence crosses the host link as it is, so the words
+ * are the type on the far side (`isNotReachable`).
+ */
+export class NotReachable extends Error {
+  constructor(place: string) {
+    super(`${place} is not reachable now.`)
+    this.name = 'NotReachable'
+  }
+}
+export const isNotReachable = (err: unknown): boolean => err instanceof NotReachable || / is not reachable now\.$/.test(err instanceof Error ? err.message : String(err))
 export const NOT_VM = 'This workspace may not use the Windows VM (its Work settings: Computer use on the Windows VM).'
 
 /** Whether the caller may use what is in the Windows VM: a thread only where its workspace turns the VM on; his own windows always. */
@@ -156,7 +168,7 @@ export function locate(ctx: Pick<WorkCtx, 'db' | 'host' | 'reaches' | 'scopeOf' 
     return { in: 'library', ...inVm }
   }
   // A path on a drive not known to be there now (the VPN down) is never looked at: a sync look can hold the host, and the file is not gone.
-  if (!driveUp(path)) throw new Error(`${driveOf(path)} is not reachable now.`)
+  if (!driveUp(path)) throw new NotReachable(driveOf(path) ?? path)
   const at = real(path)
   if (!at) throw new Error(`${path.slice(path.lastIndexOf(sep) + 1)} is not there any more.`)
   const workspace = workspaceHere(ctx.db, workspaceId)

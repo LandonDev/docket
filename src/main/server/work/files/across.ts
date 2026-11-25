@@ -5,7 +5,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { hostReadOf } from '../peer'
 import { noteRequest } from '../../stalls'
 import { WORK_OFF } from '../scope'
-import { NEEDS_PRESS, NO_WORKSPACE, PEER_LIBRARIES, pressesFor, workspaceHere } from './policy'
+import { NEEDS_PRESS, NO_WORKSPACE, NotReachable, PEER_LIBRARIES, pressesFor, workspaceHere } from './policy'
 
 /**
  * Files from another window (docs/agents/work-files.md "A desktop the window cannot reach"): his Mac's window has
@@ -96,7 +96,7 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
     } else answer = await joinedOrAsked(ctx, workspace.id, p, ask, signal)
   } catch (err) {
     // Asleep, off its VPN or TempCode closed: it is not linked now. Said so, in words a window reads as away.
-    if (AWAY.test(err instanceof Error ? err.message : String(err))) throw new Error(`${name ?? 'That computer'} is not reachable now.`)
+    if (AWAY.test(err instanceof Error ? err.message : String(err))) throw new NotReachable(name ?? 'That computer')
     throw err
   }
   if (p.method !== 'work.files.places') return answer

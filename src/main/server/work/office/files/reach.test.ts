@@ -6,6 +6,7 @@ import { setRealpath } from '../../../remote/fence'
 import { closeFilesState, filesHandle } from '../../files/handle'
 import { forgetLibraries } from '../../files/places/libraries'
 import { HOST, makeRig, window, WS, type Rig } from '../../files/testkit'
+import { isNotReachable, NOT_REACHED, NotReachable } from '../../files/policy'
 import { libraryOf, librariesOf } from './library'
 import { driveOf, driveUp, probeDrive, setDriveLook } from './reach'
 
@@ -70,6 +71,11 @@ describe('a folder on a network drive', () => {
     const started = Date.now()
     const listed = filesHandle({ id: 'x', method: 'work.files.list', params: { workspaceId: WS, at: { at: 'file', host: HOST, path: J } } } as ClientRequest, rig.ctx, window).finally(() => Object.defineProperty(process, 'platform', platform))
     await expect(listed).rejects.toThrow(/^J: is not reachable now\.$/)
+    // Typed: an away, never a refusal, here and in its words on the far side of the host link.
+    const err = await listed.catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(NotReachable)
+    expect(isNotReachable(new Error((err as Error).message))).toBe(true)
+    expect(isNotReachable(new Error(NOT_REACHED))).toBe(false)
     expect(Date.now() - started).toBeLessThan(1_000)
     expect(asked).toEqual([])
   })

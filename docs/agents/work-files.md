@@ -2225,8 +2225,12 @@ over a file that changed there.
 - **The states**, on the tab (`FileTab.back`, `CopyBack`; every change bumps the tabs' revision, so each window
   asks the list again): `ok` (`at`: when the host last found the file holds these bytes, by a send or by a look;
   the tab says Saved only for the newest write, as above), `sending`, `changed` (the file changed there: nothing
-  is sent over it until he chooses), `gone`, `away` (its computer did not answer: the changes wait here), `refused`
-  (`detail`, its sentence). An `away` copy is sent again when its computer answers: another host once its link is
+  is sent over it until he chooses), `gone`, `away` (its computer, or the drive its file lies on, did not answer: the
+  changes wait here), `refused` (`detail`, its sentence). One classifier tells them apart (copies.ts `unreachable`):
+  a PC that answers "J: is not reachable now." (its mapped drive away, the VPN down) is away, since that sentence is
+  the type `NotReachable` (files/policy.ts) as it crosses the host link; the fence, a bridge policy or a place not
+  his is refused, and nothing is sent again on its own. The same rule holds for a link's autosave (`waiting` against
+  `refused`, saveAs.ts) and a Word file's. An `away` copy is sent again when its computer answers: another host once its link is
   up, the VM once it is awake (looked at every 30 s while any copy waits; a send never wakes the VM from there), and
   on his next save. A send a dead process left under way waits as `away` (`settleCopies`).
 - **Reload** (`work.files.copyReload {tabId, writes?}`): the file read again into the copy's place, a new record, and
@@ -2525,7 +2529,9 @@ over a colleague's Word file but his own press.
   Both. The Work service posts the file's live revision to main. Main queues one save per document and keeps
   a newer edit pending through any export already under way. One sweep every 30 s checks for missed notices
   and retries linked files whose place was away. It also drops Word records for documents gone from both disk
-  and Files' Trash. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
+  and Files' Trash. An autosave the holder refuses (not a computer or drive that did not answer) is said on the
+  tab's `word.refused` until a save lands, "MacBook refused the save." and its reason, never Saving; one that met an
+  away drive keeps saving and is tried on the next look. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
   ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
   file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
   Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.

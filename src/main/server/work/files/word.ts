@@ -9,7 +9,7 @@ import type { Caller, WorkCtx } from '../modules'
 import type { DocRevision } from '../service/wire'
 import { blankOf } from './make'
 import { workspaceHere } from './policy'
-import { admitOwner, deliver, freshBytes, freshVersion, NOT_SAVING } from './copies'
+import { admitOwner, deliver, freshBytes, freshVersion, NOT_SAVING, unreachable } from './copies'
 import { filesState } from './handle'
 import { sameBody } from './body'
 import { wordStore } from './wordStore'
@@ -229,7 +229,10 @@ function recordOfWordTab(ctx: WorkCtx, workspaceId: string, tabId: string): Word
 export function wordBackOf(r: WordRow): WordBack | null {
   if (!r.doc) return null
   const since = editsSince(r)
-  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped, ...(r.stopped_version ? { stoppedVersion: r.stopped_version } : {}) } : {}) }
+  // A refusal stands until a save lands after it: the line never sits at Saving over one.
+  const refused = refusedWords.get(keyOf(r))
+  const stands = refused && !(r.saved_at && r.saved_at >= refused.at)
+  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped, ...(r.stopped_version ? { stoppedVersion: r.stopped_version } : {}) } : {}), ...(stands ? { refused: refused.words } : {}) }
 }
 
 /** `work.files.wordAuto`: his choice for the file, kept on its record: save by itself, or ask each time. */
@@ -410,6 +413,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
 /** `pause`: how long his document must be still before the host saves it as Word by itself; `read`: a live revision's wait. */
 export const wordTiming = { pause: 3000, read: 2000 }
 const saving = new Set<string>()
+/** The last autosave's refusal of each record, and when (`wordBackOf`): kept in memory, the next look tries again. */
+const refusedWords = new Map<string, { words: string; at: number }>()
 
 function wordRows(ctx: WorkCtx, doc: string): WordRow[] {
   return ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc = ?`).all(doc) as unknown as WordRow[]
@@ -492,8 +497,17 @@ async function saveDueWords(ctx: WorkCtx, rows: WordRow[], now: number, active =
           return latest?.doc === r.doc && latest.version === r.version && latest.auto === 1 && !latest.stopped
         }
       })
+      // Answered: a refusal before it no longer stands.
+      if (refusedWords.delete(key)) filesState(ctx).tabs.touch(r.workspace_id)
     } catch (err) {
-      ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
+      const words = err instanceof Error ? err.message : String(err)
+      // A computer or drive that did not answer is tried again on the next look, the line still saving; anything else
+      // is a refusal his line says, in its own words, until a save lands.
+      const before = refusedWords.get(key)?.words
+      if (unreachable(err)) refusedWords.delete(key)
+      else refusedWords.set(key, { words: words.slice(0, 300), at: Date.now() })
+      if (before !== refusedWords.get(key)?.words) filesState(ctx).tabs.touch(r.workspace_id)
+      ctx.log(`files: a Word file was not saved by itself: ${words}`)
     } finally {
       saving.delete(key)
     }

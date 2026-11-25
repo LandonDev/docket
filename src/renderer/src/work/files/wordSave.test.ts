@@ -15,6 +15,11 @@ describe("the header of a Word file opened as its document", () => {
     // A save is said of the computer that holds the file: OneDrive has not said it has it.
     expect(wordLine({ since: false, at: AT }, "OneDrive", "MacBook", NOW)).toMatchObject({ state: "saved", words: "Saved to MacBook as Word 9:12 PM" });
     expect(serviceOf(TAB)).toBe("Teams");
+    // A refusal of the save by itself is said in the holder's words, never as still saving.
+    expect(wordLine({ since: true, at: AT, auto: true, refused: "That is not in this workspace's folder or a library it may use." }, "Teams", "the Windows VM", NOW)).toEqual({
+      state: "conflict",
+      words: "The Windows VM refused the save. That is not in this workspace's folder or a library it may use",
+    });
     expect(serviceOf({ key: "lib:mine:Notes.docx" })).toBe("OneDrive");
   });
 });

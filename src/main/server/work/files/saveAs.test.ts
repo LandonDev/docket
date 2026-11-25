@@ -11,7 +11,7 @@ import { startFileAutosaves } from './autosave'
 import { liveRev, wordTiming } from './word'
 import type { DocRevision } from '../service/wire'
 import { forgetLibraries } from './places/libraries'
-import { setThreadsMayWrite } from './policy'
+import { NOT_REACHED, NotReachable, setThreadsMayWrite } from './policy'
 import { AGENT_JUST_WROTE, autosaveLinks, linkTiming, resetLinkState } from './saveAs'
 import { linkedOut, privateWrite } from '../docs/target'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
@@ -50,6 +50,8 @@ let macUp: boolean
 let beforeWrite: (() => void) | null
 /** the Mac's next writeBack answer is lost on the way back, after it was done there */
 let loseAnswer: boolean
+/** the Mac is online and answers each writeBack with this sentence, as its door says it over the link */
+let farSays: string | null
 
 beforeEach(() => {
   box = makeRig()
@@ -68,6 +70,7 @@ beforeEach(() => {
   macUp = true
   beforeWrite = null
   loseAnswer = false
+  farSays = null
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -75,6 +78,7 @@ beforeEach(() => {
           far.push({ verb, args })
           if (!macUp || host !== MAC) throw new Error(`host offline: ${host} has no live link to this host`)
           if (verb === 'writeBack') beforeWrite?.()
+          if (verb === 'writeBack' && farSays) throw new Error(farSays)
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
           if (!out.handled) throw new Error(`${req.method} is not answered there`)
@@ -345,6 +349,33 @@ describe('a library on his Mac', () => {
     await autosaveLinks(box.ctx, later)
     expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('docx two')
     expect((await links())[0]!.state).toBe('saved')
+  })
+
+  it("with the Mac online and its mapped drive gone for one save, the document waits and is written once, when the drive is back", async () => {
+    await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })
+    farSays = new NotReachable('J:').message
+    await edit('two')
+    expect(await links()).toMatchObject([{ state: 'waiting' }])
+    farSays = null
+    const writes = far.filter((c) => c.verb === 'writeBack').length
+    const later = Date.now() + linkTiming.retry + linkTiming.pause + 10
+    await autosaveLinks(box.ctx, later)
+    await autosaveLinks(box.ctx, later + linkTiming.retry + linkTiming.pause + 10)
+    expect(far.filter((c) => c.verb === 'writeBack').length).toBe(writes + 1)
+    expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('docx two')
+    expect((await links())[0]!.state).toBe('saved')
+  })
+
+  it('a policy refusal there stays a refusal: said in its words, nothing written, never sent again on its own', async () => {
+    await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })
+    farSays = NOT_REACHED
+    await edit('two')
+    expect(await links()).toMatchObject([{ state: 'refused', detail: NOT_REACHED }])
+    const writes = far.filter((c) => c.verb === 'writeBack').length
+    farSays = null
+    await autosaveLinks(box.ctx, Date.now() + linkTiming.retry + linkTiming.pause + 10)
+    expect(far.filter((c) => c.verb === 'writeBack').length).toBe(writes)
+    expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('docx one')
   })
 })
 

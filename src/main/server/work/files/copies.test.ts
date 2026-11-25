@@ -14,7 +14,7 @@ import { setCloudDir, setCopyAllowed } from '../office/files/library'
 import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, ownCopyFolders, retryWaiting, sendBack, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone } from './handle'
 import { forgetLibraries } from './places/libraries'
-import { NEEDS_PRESS, setThreadsMayWrite, sharedOf } from './policy'
+import { NEEDS_PRESS, NOT_REACHED, NotReachable, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf, withFileLocks } from './write'
@@ -56,6 +56,8 @@ let readGate: (() => Promise<void>) | null
 let loseReply: boolean
 /** the Mac answers its file's reads with no version, as a build before versions did */
 let noVersion: boolean
+/** the Mac is online and answers each writeBack with this sentence, as its door says it over the link */
+let farSays: string | null
 let offSaved: () => void
 
 beforeEach(() => {
@@ -75,6 +77,7 @@ beforeEach(() => {
   readGate = null
   loseReply = false
   noVersion = false
+  farSays = null
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -83,6 +86,7 @@ beforeEach(() => {
           if (!macUp || host !== MAC) throw new Error(`host offline: ${host} has no live link to this host`)
           if (refuse) throw new Error(refuse)
           if (hold && verb === 'writeBack') await hold
+          if (farSays && verb === 'writeBack') throw new Error(farSays)
           if (verb === 'filesRead') await readGate?.()
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
@@ -519,6 +523,40 @@ describe('the other computer not answering, or refusing', () => {
     await settled()
     expect(readFileSync(path, 'utf8')).toBe('three')
     expect((await backOf(tabId))?.is).toBe('ok')
+  })
+
+  it('with the laptop online and its mapped drive gone for one save, waits as away and is sent once when the drive is back', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    // The PC's door says it in these words (policy.ts): the drive is away, the laptop is not.
+    farSays = new NotReachable('J:').message
+    await editorSaves(copy, 'two')
+    await settled()
+    expect(await backOf(tabId)).toMatchObject({ is: 'away', held: 0 })
+    expect(readFileSync(path, 'utf8')).toBe('one')
+    farSays = null
+    const before = writes()
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(writes()).toBe(before + 1)
+    expect(readFileSync(path, 'utf8')).toBe('two')
+    expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
+  })
+
+  it('a policy refusal stays a refusal: said, nothing written, and never sent again on its own', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    farSays = NOT_REACHED
+    await editorSaves(copy, 'two')
+    await settled()
+    expect(await backOf(tabId)).toMatchObject({ is: 'refused', detail: NOT_REACHED, held: 0 })
+    farSays = null
+    const before = writes()
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(writes()).toBe(before)
+    expect(readFileSync(path, 'utf8')).toBe('one')
+    expect((await backOf(tabId))?.is).toBe('refused')
   })
 
   it("says the Mac's refusal in its own words", async () => {
@@ -1157,6 +1195,26 @@ describe('a Word file saved by itself', () => {
     } finally {
       wordTiming.read = was
     }
+  })
+
+  it("shows a refusal of the save by itself on its line, never Saving; a drive away keeps it saving, and the save that lands clears it", async () => {
+    const { path, tabId } = await opened('Refused.docx', BLANK)
+    await looks(1_000_000)
+    rev = 'r1'
+    farSays = NOT_REACHED
+    await looks(2_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ auto: true, since: true, refused: NOT_REACHED })
+    expect(readFileSync(path).equals(BLANK)).toBe(true)
+    // The laptop answers, its drive does not: no refusal, the line still saving, tried again on the next look.
+    farSays = new NotReachable('J:').message
+    await looks(3_000_000)
+    expect((await tabOf(tabId))?.word?.refused).toBeUndefined()
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
+    farSays = null
+    await looks(4_000_000)
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: false })
+    expect((await tabOf(tabId))?.word?.refused).toBeUndefined()
   })
 
   it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {
