@@ -294,6 +294,15 @@ describe("rows kept", () => {
     expect(await keptThenRemount(() => setWorkOn("env_box", false))).toBe("loading");
   });
 
+  it("drops, and closes the session, when Work goes off on its host alone (Sol round 1, S8)", async () => {
+    fakeHost();
+    setWorkOn("env_box", true);
+    setWorkOn("env_mac", true);
+    setLifeosStatus("env_box", connected);
+    expect(await keptThenRemount(() => setWorkOn("env_box", false))).toBe("loading");
+    expect(clients[0]!.closed).toBe(true);
+  });
+
   it("drops for a session gone down", async () => {
     vi.useFakeTimers();
     fakeHost();
@@ -345,6 +354,24 @@ describe("rows kept", () => {
     await flush();
     expect(seen.every((s) => s === "loading")).toBe(true);
     other.unmount();
+  });
+});
+
+describe("Work off on one host (Sol round 1, S8)", () => {
+  it("a JWT still out when Work goes off on its host makes no client", async () => {
+    fakeHost();
+    setWorkOn("env_box", true);
+    setWorkOn("env_mac", true);
+    setLifeosStatus("env_box", connected);
+    let release: (v: unknown) => void = () => {};
+    jwt = () => new Promise((resolve) => (release = resolve));
+    startLifeosSession("env_box", "purdue");
+    act(() => setWorkOn("env_box", false));
+    await act(async () => {
+      release({ ok: true, jwt: "late", expiresAt: 2, url: "https://lifeos.test" });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(clients).toHaveLength(0);
   });
 });
 

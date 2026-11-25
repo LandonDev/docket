@@ -295,11 +295,13 @@ function retain(key: string): () => void {
   };
 }
 
-// Work off on every host: no client of this window stays open to LifeOS, and no row it read stays kept.
+// Work off on a host: no client of this window stays open to LifeOS through it, a JWT still out for it makes none
+// (its key's generation moves on), and no row read through it stays kept, whatever other host has Work on.
 workSwitch.subscribe(() => {
-  if (workSwitch.anyOn()) return;
-  for (const key of [...sessions.keys()]) closeSession(key);
-  dropKept("");
+  const on = workSwitch.hosts();
+  const off = (key: string): boolean => !on.has(key.slice(0, key.indexOf("|")));
+  for (const key of new Set([...sessions.keys(), ...opening.keys()])) if (off(key)) closeSession(key);
+  for (const key of keptSessions()) if (off(key)) dropKept(`${key}|`);
 });
 
 /**
