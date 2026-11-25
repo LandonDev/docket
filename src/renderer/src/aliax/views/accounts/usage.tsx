@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { AccountHeadroom } from "@shared/accounts";
-import { windowName } from "@shared/usageMeter";
+import { drawnWindows, windowName } from "@shared/usageMeter";
 import type { PlanInfo, UsageReport, UsageWindow } from "aliax-core/shared/types";
 import { Tip, useTruncated } from "@renderer/components/tip";
 import { StatusMark } from "@renderer/components/ui/status";
@@ -55,9 +55,9 @@ const RATE_TEXT: Record<HeadroomLook["tone"], string> = {
 /** The bar columns the page reserves: as many window columns as its busiest row, then one Rate column when any row has one. */
 export type BarColumns = { windows: number; rate: boolean };
 
-export function barColumns(rows: { report: UsageReport | undefined; headroom: AccountHeadroom | undefined }[]): BarColumns {
+export function barColumns(rows: { report: UsageReport | undefined; headroom: AccountHeadroom | undefined }[], now: number): BarColumns {
   const rate = rows.some((r) => r.headroom !== undefined);
-  const windows = Math.min(MAX_BARS - (rate ? 1 : 0), Math.max(0, ...rows.map((r) => r.report?.windows.length ?? 0)));
+  const windows = Math.min(MAX_BARS - (rate ? 1 : 0), Math.max(0, ...rows.map((r) => (r.report ? drawnWindows(r.report.windows, now).length : 0))));
   return { windows, rate };
 }
 
@@ -149,7 +149,7 @@ const cellSkeleton = (key: number) => (
 
 /** The reset times a row's bars already say under them, as words: the state line never says one twice. */
 export function barResets(report: UsageReport | undefined, columns: BarColumns, now: number): string[] {
-  return (report?.windows.slice(0, columns.windows) ?? []).flatMap((w) => (w.resetsAt !== undefined && w.resetsAt > now ? [resetWords(w.resetsAt, now)] : []));
+  return (report ? drawnWindows(report.windows, now).slice(0, columns.windows) : []).flatMap((w) => (w.resetsAt !== undefined && w.resetsAt > now ? [resetWords(w.resetsAt, now)] : []));
 }
 
 /**
@@ -229,13 +229,15 @@ export function UsageBars({
   // Rate bar, which a refresh never masks, stays.
   const loading = report === undefined;
   const shape = (report ?? last)!;
-  const windows = shape.windows.slice(0, columns.windows);
+  // Each window as read now (drawnWindows): one past its reset reads unused, never its last poll's 0% left.
+  const drawn = drawnWindows(shape.windows, now);
+  const windows = drawn.slice(0, columns.windows);
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
   const status = keyed && !loading ? keyStatus(shape) : null;
-  const note = keyed || loading ? null : shape.windows.length === 0 ? (shape.rateLimit ? "No usage yet" : (shape.note ?? shape.extra ?? "Usage unavailable")) : null;
+  const note = keyed || loading ? null : drawn.length === 0 ? (shape.rateLimit ? "No usage yet" : (shape.note ?? shape.extra ?? "Usage unavailable")) : null;
   const words: ReactNode =
-    loading && (keyed || shape.windows.length === 0) ? (
+    loading && (keyed || drawn.length === 0) ? (
       <span className="flex h-4 items-center">
         <Skeleton className="h-3 w-24 max-w-full" />
       </span>
@@ -317,7 +319,7 @@ export function UsageBars({
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 gap-3 p-3">
               {/* Every window, even one past the bar cap: the popover is where all of them live. */}
-              {report.windows.map((w) => (
+              {drawn.map((w) => (
                 <WindowDetail key={w.label} w={w} now={now} />
               ))}
               {rate ? (

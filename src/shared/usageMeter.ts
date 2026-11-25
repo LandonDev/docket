@@ -57,7 +57,22 @@ export const windowName = (label: string): string =>
 
 type Window = UsageReport['windows'][number]
 
-const isLive = (w: Window, now: number): boolean => !(w.resetsAt !== undefined && w.resetsAt <= now)
+/** A window whose reset is still ahead, or that names none. One whose reset passed is spent no more: every reader asks this. */
+export const isLive = (w: Window, now: number): boolean => !(w.resetsAt !== undefined && w.resetsAt <= now)
+
+/** A window as read at `now`: past its reset it is unused and names no reset, whatever it last said. */
+export const windowAsOf = (w: Window, now: number): Window => (isLive(w, now) ? w : { label: w.label, usedPercent: 0, ...(w.periodMs !== undefined ? { periodMs: w.periodMs } : {}) })
+
+const GENERAL = new Set(Object.values(GENERAL_LABELS).flat())
+
+/**
+ * The windows an account's bars draw at `now`, each as `windowAsOf` reads it.
+ * A scoped cap (Fable, Codex's extra caps) earns a bar only once something
+ * is spent on it: the providers list it at 0% from the start of its week,
+ * and a bar for an untouched cap says nothing the weekly bar does not.
+ */
+export const drawnWindows = (windows: Window[], now: number): Window[] =>
+  windows.map((w) => windowAsOf(w, now)).filter((w) => GENERAL.has(w.label) || w.usedPercent > 0)
 const roomOfWindow = (w: Window): number => Math.min(1, Math.max(0, (100 - w.usedPercent) / 100))
 
 interface AccountRoom {
@@ -158,7 +173,7 @@ function keyMeter(accounts: ProviderAccounts, now: number): UsageMeter | null {
 
 function windowsOf(reports: UsageReport[], labels: string[], now: number): MeterWindow[] {
   const seen: string[] = []
-  for (const r of reports) for (const w of r.windows) if (!seen.includes(w.label)) seen.push(w.label)
+  for (const r of reports) for (const w of drawnWindows(r.windows, now)) if (!seen.includes(w.label)) seen.push(w.label)
   const ordered = [...labels.filter((l) => seen.includes(l)), ...seen.filter((l) => !labels.includes(l))]
   return ordered.map((label) => {
     const rows = reports.flatMap((r) => r.windows.filter((w) => w.label === label))

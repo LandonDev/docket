@@ -224,6 +224,7 @@ export function AccountsView(props: AccountsViewProps) {
     props.views
       .filter((s) => s.installed)
       .flatMap((s) => s.profiles.map((p) => ({ report: reports[s.id]?.find((r) => r.profileName === p.name), headroom: props.headroom[s.id]?.[p.name] }))),
+    now,
   );
   return (
     <div data-slot="accounts" className="@container/accounts flex flex-col gap-6">

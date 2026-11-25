@@ -64,7 +64,7 @@ export function AccountsList({
 }) {
   const reportOf = (name: string) => accounts.reports.find((r) => r.profileName === name);
   // Every row reserves the same columns so bars line up down the list.
-  const columns = barColumns(accounts.profiles.map((p) => ({ report: reportOf(p.name), headroom: accounts.headroom?.[p.name] })));
+  const columns = barColumns(accounts.profiles.map((p) => ({ report: reportOf(p.name), headroom: accounts.headroom?.[p.name] })), now);
   const n = barCount(columns);
   const checked = scope ? scope.shown : accounts.pinned;
 

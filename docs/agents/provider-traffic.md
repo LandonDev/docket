@@ -369,9 +369,34 @@ routed to (aliax-core's `forward`). Two listeners:
   run tools before it failed. Muse uses only real observed `usage/changed`
   windows; refresh never runs `muse usage` against a copy. Meta's existing
   key probe has no quota windows and cannot prove a quota refill.
-  Tests: accounts.recovery.test.ts, headroom.test.ts,
-  remote/accountSync.headroom.test.ts, sessions-limits.test.ts and the
-  Accounts page and FailureCard jsdom tests.
+  A scoped cap (Claude's Fable and other per-model weeks, Codex's extra
+  caps) after a reset, early or on its clock: aliax-core keeps a scoped cap
+  at 0% in both of Anthropic's shapes, and after a fresh poll with windows
+  and no note fires `onUsageAnswer` once with every label it read
+  (usageSamples.ts `usageAnswers`). The host stores that as its entry's
+  `answer: {at, labels}` (headroom.ts `observeAnswer`), shared with the
+  samples. The newest answer on any host retires every sample at or before
+  it whose label it does not list, on every host: `windows()` skips them,
+  `reconcileUsage` adds none back and drops the report's own row, and
+  `quotaLifted` lifts a refusal of that window made before the answer,
+  whatever its until. An older sample that arrives later still loses: it is
+  at or before the answer. One marker, not a tombstone per label, because
+  absence is the evidence and the answer already names what it saw. A cache
+  hit, a failed poll, a header's lone window or an empty answer fires no
+  answer and retires nothing. A Fable still full in a whole answer still
+  blocks Fable alone.
+  Readers: a window past its reset is spent no more. Routing reads it
+  through aliax-core's `liveWindow`; the window through
+  src/shared/usageMeter.ts `isLive`, `windowAsOf` (unused, no reset) and
+  `drawnWindows` (the bars and popover rows: a non-general label at 0%
+  gets none, so the 0% caps core now keeps draw nothing new). The Accounts
+  row's bars and popover read the poll's raw percent before; the guard
+  src/renderer/src/lib/usageResetGuard.test.ts fails a renderer file that
+  reads a window's use without the rule.
+  Tests: accounts.recovery.test.ts, accounts.scopedReset.test.ts,
+  headroom.test.ts, remote/accountSync.headroom.test.ts,
+  sessions-limits.test.ts, usageMeter.test.ts and the Accounts page and
+  FailureCard jsdom tests.
 
 - Upstream connections (src/main/server/upstream.ts, the fetch aliax-core
   is configured with; core itself needed no change): api.anthropic.com rides

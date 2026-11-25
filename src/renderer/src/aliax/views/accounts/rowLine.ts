@@ -1,5 +1,6 @@
 import type { AccountHeadroom, MintState } from "@shared/accounts";
-import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import type { ProfileView, UsageReport } from "aliax-core/shared/types";
+import { isLive } from "@shared/usageMeter";
 import { percentLeft } from "@aliax/lib/accounts";
 import { clockTime } from "@renderer/lib/duration";
 
@@ -74,8 +75,6 @@ export function resetWords(resetsAt: number, now: number, locale?: string): stri
   return `Resets ${sameDay(resetsAt, now) ? clockTime(resetsAt, locale) : dayClockTime(resetsAt, now, locale)}`;
 }
 
-/** A window that has a reset still ahead of it; one whose reset passed is stale, as the meter reads it. */
-const liveWindow = (w: UsageWindow, now: number): boolean => w.resetsAt === undefined || w.resetsAt > now;
 
 /**
  * Whether an account is out of room now, and when it lifts: the gateways'
@@ -89,7 +88,7 @@ export function limitOf(report: UsageReport | undefined, headroom: AccountHeadro
   if (headroom?.throttledUntil !== undefined && headroom.throttledUntil > now) binding.push(headroom.throttledUntil);
   const limit = report?.rateLimit;
   if (limit && (limit.until === undefined || limit.until > now)) binding.push(limit.until ?? null);
-  const live = report?.windows.filter((w) => liveWindow(w, now)) ?? [];
+  const live = report?.windows.filter((w) => isLive(w, now)) ?? [];
   if (live.length > 0 && live.every((w) => percentLeft(w) <= 0)) binding.push(...live.map((w) => w.resetsAt ?? null));
   if (binding.length === 0) return null;
   return { resetsAt: binding.includes(null) ? null : Math.max(...(binding as number[])) };

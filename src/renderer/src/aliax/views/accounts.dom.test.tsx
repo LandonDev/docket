@@ -135,6 +135,25 @@ describe("AccountsView", () => {
     expect(within(screen.getByRole("dialog")).getByText("Fable")).toBeTruthy();
   });
 
+  it("reads a window past its reset as reset, and draws no bar for a scoped cap at 0%", async () => {
+    const windows = [
+      { label: "5h", usedPercent: 0, resetsAt: NOW + 5 * HOUR, periodMs: 5 * HOUR },
+      { label: "Weekly", usedPercent: 100, resetsAt: NOW - HOUR, periodMs: 168 * HOUR },
+      { label: "Fable", usedPercent: 100, resetsAt: NOW - HOUR, periodMs: 168 * HOUR },
+      { label: "Opus", usedPercent: 0, resetsAt: NOW + 50 * HOUR, periodMs: 168 * HOUR },
+    ];
+    render(<AccountsView {...props} usage={{ "claude-code": [{ profileName: "a@x.com", windows }] }} />);
+    expect(screen.getByRole("progressbar", { name: "Week: 100 percent left" })).toBeTruthy();
+    expect(screen.queryByRole("progressbar", { name: /^Fable/ })).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: /^Opus/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Usage details for Main" }));
+    await flush();
+    const pop = screen.getByRole("dialog");
+    expect(within(pop).getAllByText("100% left")).toHaveLength(2);
+    expect(within(pop).queryByText("0% left")).toBeNull();
+    expect(within(pop).queryByText("Fable")).toBeNull();
+  });
+
   it("says No answer yet once for an account no host has heard from", async () => {
     render(<AccountsView {...props} headroom={{ "claude-code": { "a@x.com": { room: null, ratePerMin: 0, seenAt: null } as never } }} />);
     fireEvent.click(screen.getByRole("button", { name: "Usage details for Main" }));

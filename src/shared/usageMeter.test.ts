@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from './accounts'
-import { GENERAL_LABELS, isLow, meterFor, NO_CAPS_NOTE, PROVIDER_NAME, untilShort, untilWords, windowName } from './usageMeter'
+import { drawnWindows, GENERAL_LABELS, isLow, meterFor, NO_CAPS_NOTE, PROVIDER_NAME, untilShort, untilWords, windowAsOf, windowName } from './usageMeter'
 
 const NOW = 1_000_000_000
 const MIN = 60_000
@@ -154,6 +154,15 @@ describe('meterFor', () => {
     expect(m.windows[0]).toEqual({ label: '5h', name: '5h', share: 1, resetsAt: null })
   })
 
+  it('lists a scoped cap only once something is spent on it, and one past its reset not at all', () => {
+    const s = snapshot([
+      report('a', [['5h', 10, NOW + HOUR], ['Weekly', 20, NOW + 50 * HOUR], ['Fable', 100, NOW - 1], ['Opus', 0, NOW + 50 * HOUR]]),
+      report('b', [['5h', 10, NOW + HOUR], ['Weekly', 20, NOW + 50 * HOUR], ['Fable', 40, NOW + 50 * HOUR]])
+    ])
+    const m = meterFor('claude', s, NOW)!
+    expect(m.windows.map((w) => [w.label, Math.round(w.share * 100)])).toEqual([['5h', 90], ['Weekly', 80], ['Fable', 80]])
+  })
+
   it('uses every window when the provider reports none of its general labels', () => {
     const s = snapshot(
       [report('a', [['Cursor models', 40, NOW + HOUR], ['other models', 90, NOW + 2 * HOUR]])],
@@ -244,3 +253,16 @@ describe("meterFor('meta'): pay as you go", () => {
   })
 })
 
+
+describe('windowAsOf and drawnWindows', () => {
+  it('reads a window past its reset as unused with no reset, and leaves a live one as it is', () => {
+    const live = { label: 'Weekly', usedPercent: 60, resetsAt: NOW + HOUR }
+    expect(windowAsOf(live, NOW)).toBe(live)
+    expect(windowAsOf({ label: 'Weekly', usedPercent: 100, resetsAt: NOW, periodMs: 7 }, NOW)).toEqual({ label: 'Weekly', usedPercent: 0, periodMs: 7 })
+  })
+  it("keeps every provider's general windows and a scoped cap only once spent, with no list of scoped names", () => {
+    const w = (label: string, usedPercent: number) => ({ label, usedPercent, resetsAt: NOW + HOUR })
+    const drawn = drawnWindows([w('5h', 0), w('Weekly', 0), w('week', 0), w('Fable', 0), w('GPT-5.3-Codex-Spark', 0), w('Opus', 1)], NOW)
+    expect(drawn.map((x) => x.label)).toEqual(['5h', 'Weekly', 'week', 'Opus'])
+  })
+})
