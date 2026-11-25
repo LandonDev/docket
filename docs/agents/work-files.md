@@ -2286,7 +2286,9 @@ picks, and stays linked to that file: each later edit is written to it.
   - a file of that name already there is never written over unasked: the answer is `{exists: {name}}` and nothing is
     written; the window asks "Replace Plan.docx in General?" with Replace and Keep Both (Keep Both holds the focus).
     Keep Both (`exists: 'keep'`) makes it under a free name read case-blind ("Plan 2.docx"); Replace (`exists:
-    'replace'`) writes over the file by the version read now (a change made since is refused, never written over).
+    'replace'`) names the version the question answered (`exists.version`) and writes over that version alone, by it.
+    A newer file there (a colleague saved while he read the question), or a Replace that names none, answers `exists`
+    again with the newer version, and the window asks "Plan.docx changed in General just now. Replace it?".
     Whether it is there: this host's disk by its version, the VM's folder listed case-blind as Windows reads it, another
     computer by `files.stat` there;
   - made as before: `makeBytes` here and in this host's VM (`vmMake`), that host's `writeBack` with `into` on another
@@ -2327,7 +2329,9 @@ picks, and stays linked to that file: each later edit is written to it.
   own. A place that does not answer (`unreachable`: the computer asleep, the VPN down) keeps the document as it is,
   is `waiting`, and is tried again every 30 s (`linkTiming.retry`); any other refusal is `refused` with its sentence.
 - **His presses** (`work.files.linkAct {workspaceId, id, act}`): `unlink` stops it and leaves the file as it is;
-  `retry` writes now; `replace` writes over the file as it is there now (read for its version first); `keep` makes
+  `retry` writes now; `replace` writes over the change the link showed him (`DocLink.version`, the version a conflict
+  found there, `seen_version`) and no later one: a newer change, or a Replace naming none, leaves the link `changed`
+  at the newer version for him to see; `keep` makes
   the document again beside it under a free name and links that file instead. A thread is refused; a key needs his
   own edit there (`admitOwner`: `approve`). `work.files.links {workspaceId, source}` answers the links as `DocLink`s,
   oldest first, read again by the window on every `work.files` push with `tabs` (`tabs.touch` on each change).
@@ -2405,8 +2409,13 @@ over a colleague's Word file but his own press.
   never looked at, and one any other open item shows (a thread's pane too). The close of a remote key, a pane's
   removal and a thread's own close are judged the same way.
 - **Save as Word's revision and Replace.** The document's live revision is read before the export, so an edit made
-  while the export runs is never marked saved. Replace over a file that changed there carries the change time its
-  dialog named (`seen`): a later change there is said again, never written over.
+  while the export runs is never marked saved. Replace is bound to the version he saw: each conflict answers the
+  file's opaque version there (`WordSaved` `conflict.version`), the dialog's Replace sends it back (`version`), and the
+  host writes over that version alone, by it, in its final conditional write (`deliver`). A change made there after he
+  read it, even in the same millisecond, is said again, never written over; a Replace that names none (a window a
+  release behind, which sends only `seen`) is asked again. A stopped autosave keeps the version it met
+  (`stopped_version`, the tab's `word.stoppedVersion`), which the header's Replace names; a newer change moves the line
+  to it.
 
 ## Saved is not uploaded
 

@@ -63,6 +63,8 @@ export interface LinkRow {
   computer: string | null
   version: string
   sha: string
+  /** the version a change made there was found at: his Replace names it */
+  seen_version: string | null
   saved_rev: string | null
   saved_at: number | null
   state: 'ok' | 'waiting' | 'changed' | 'gone' | 'refused'
@@ -169,9 +171,9 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
 }
 
 /** A file written over by version: this host's through its door, another computer's by its own (`writeBack`). */
-async function putOver(ctx: WorkCtx, r: Spot & { version: string }, data: Buffer): Promise<{ version: string } | { conflict: { changed: number } | { gone: true } }> {
+async function putOver(ctx: WorkCtx, r: Spot & { version: string }, data: Buffer): Promise<{ version: string } | { conflict: { changed: number; version: string } | { gone: true } }> {
   const got = r.host === ctx.host ? await writeBytes(ctx, LOCAL, { workspaceId: r.workspace_id, ref: { at: 'file', host: r.host, path: r.path }, data, version: r.version }, METHOD) : await deliver(ctx, { ...r, vm: 0 }, data, false)
-  if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
+  if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) throw new Error('The file was not written.')
   return { version: got.version }
 }
@@ -183,7 +185,7 @@ async function putOver(ctx: WorkCtx, r: Spot & { version: string }, data: Buffer
 export async function saveAs(
   ctx: WorkCtx,
   by: Caller,
-  p: { workspaceId: string; source: CanvasSource; at: FolderRef; name?: string; format: SaveAsFormat; link?: boolean; place?: string; computer?: string; exists?: 'replace' | 'keep'; op: string },
+  p: { workspaceId: string; source: CanvasSource; at: FolderRef; name?: string; format: SaveAsFormat; link?: boolean; place?: string; computer?: string; exists?: 'replace' | 'keep'; version?: string; op: string },
   method = METHOD
 ): Promise<SavedAs> {
   if (by.kind === 'model') throw new Error(THREADS_BY_TOOLS)
@@ -243,11 +245,14 @@ async function saveAsReserved(
   // The same press sent again (its answer was lost) is answered by what it made, never asked about the file it made.
   const again = p.exists !== 'replace' && (lostOps.has(p.op) || opKnown(ctx.db, p.op))
   const version = p.exists === 'keep' || again ? null : await versionNow(ctx, there)
-  if (version !== null && p.exists === undefined) return { exists: { name } }
+  // The question names the version it found: his Replace writes over that one alone.
+  if (version !== null && p.exists === undefined) return { exists: { name, version } }
   if (version !== null && p.exists === 'replace') {
-    // His Replace: over the file as it is now, by its version; a change made since he pressed is a conflict, never written over.
+    // His Replace: over the version its question showed him, by that version. None named (a window a release behind),
+    // or a newer file there (a colleague saved while he read the question), is asked again, never written over.
+    if (p.version !== version) return { exists: { name, version } }
     const got = await putOver(ctx, { ...there, version }, out.data)
-    if ('conflict' in got) throw new Error(`${name} changed there just now. Save again to choose.`)
+    if ('conflict' in got) return 'gone' in got.conflict ? { exists: { name } } : { exists: { name, version: got.conflict.version } }
     made = { path: there.path, name, version: got.version }
     linkTo(made)
   } else {
@@ -281,6 +286,7 @@ function viewOf(r: LinkRow): DocLink {
     ref: { at: 'file', host: r.host, path: r.path },
     folder: { at: 'file', host: r.host, path: folder },
     state,
+    ...(r.state === 'changed' && r.seen_version ? { version: r.seen_version } : {}),
     ...(r.saved_at ? { at: r.saved_at } : {}),
     ...(r.changed_at ? { changedAt: r.changed_at } : {}),
     ...(r.detail ? { detail: r.detail } : {})
@@ -304,7 +310,7 @@ export const linkLine = (r: LinkRow): string => linkWords(viewOf(r), (at) => new
  * `replace` writes the document over the file as it is there now (after a change made there); `keep` puts the
  * document beside it under a free name and links that file instead.
  */
-export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string; id: string; act: 'unlink' | 'retry' | 'replace' | 'keep' }): Promise<DocLink[]> {
+export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string; id: string; act: 'unlink' | 'retry' | 'replace' | 'keep'; version?: string }): Promise<DocLink[]> {
   if (by.kind === 'model') throw new Error(THREADS_BY_TOOLS)
   admitCaller(ctx, by, p.workspaceId)
   const r = rowOf(ctx, p.id)
@@ -325,7 +331,13 @@ export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string
     if (p.act === 'replace') {
       const version = await versionNow(ctx, r)
       if (version === null) throw new Error(`${r.name} is not in ${r.place} any more: Keep Both saves it there again.`)
-      ctx.db.prepare(`UPDATE work_files_links SET version = ?, state = 'ok', changed_at = NULL, detail = NULL WHERE id = ?`).run(version, r.id)
+      // His Replace goes over the change the link showed him (its `version`) and no later one: that is shown instead.
+      if (p.version !== version) {
+        ctx.db.prepare(`UPDATE work_files_links SET state = 'changed', seen_version = ?, changed_at = ? WHERE id = ?`).run(version, Date.now(), r.id)
+        filesState(ctx).tabs.touch(p.workspaceId)
+        return linksOf(ctx, by, { workspaceId: p.workspaceId, source })
+      }
+      ctx.db.prepare(`UPDATE work_files_links SET version = ?, seen_version = NULL, state = 'ok', changed_at = NULL, detail = NULL WHERE id = ?`).run(version, r.id)
     } else ctx.db.prepare(`UPDATE work_files_links SET state = 'ok', detail = NULL WHERE id = ?`).run(r.id)
     await writeLink(ctx, rowOf(ctx, r.id)!, await liveRev(ctx, r.doc).catch(() => null))
   }
@@ -345,7 +357,7 @@ async function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<
     if ('conflict' in got) {
       // A change made there, or the file gone: nothing is written over it until his press.
       if ('gone' in got.conflict) ctx.db.prepare(`UPDATE work_files_links SET state = 'gone', changed_at = ?, tried_at = ? WHERE id = ?`).run(now, now, r.id)
-      else ctx.db.prepare(`UPDATE work_files_links SET state = 'changed', changed_at = ?, tried_at = ? WHERE id = ?`).run(got.conflict.changed, now, r.id)
+      else ctx.db.prepare(`UPDATE work_files_links SET state = 'changed', seen_version = ?, changed_at = ?, tried_at = ? WHERE id = ?`).run(got.conflict.version, got.conflict.changed, now, r.id)
     } else {
       ctx.db
         .prepare(`UPDATE work_files_links SET version = ?, sha = ?, saved_rev = ?, saved_at = ?, state = 'ok', changed_at = NULL, detail = NULL, tried_at = ? WHERE id = ?`)

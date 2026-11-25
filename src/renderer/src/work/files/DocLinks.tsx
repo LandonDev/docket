@@ -67,7 +67,8 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
     setBusy(`${act}:${l.id}`);
     void registry
       .linkOf(link)
-      .request<DocLink[]>("work.files.linkAct", { workspaceId: workspace.id, id: l.id, act }, { timeoutMs: 180_000 })
+      // Replace names the version the link showed changed: a newer change there is shown instead, never written over.
+      .request<DocLink[]>("work.files.linkAct", { workspaceId: workspace.id, id: l.id, act, ...(act === "replace" && l.version ? { version: l.version } : {}) }, { timeoutMs: 180_000 })
       .then(putLinks, (err: unknown) => void loadToast().then((toast) => toast.error(act === "unlink" ? "Not unlinked" : `${l.name} was not saved`, { description: workErrorWords(err) || undefined })))
       .finally(() => setBusy(null));
   };

@@ -255,7 +255,7 @@ export const FilesRequestSchemas = [
    * file by the version it was read at, never over a file that changed there; `keep` puts it beside the file under
    * the keep-both name instead. His own edit of that file: his window, or a key that may approve.
    */
-  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional(), /** the change time the Replace dialog named: a later change there is asked again, never written over */ seen: z.number().int().optional(), /** the window's own save after a pause in his typing */ auto: z.boolean().optional() })),
+  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional(), /** the change time the Replace dialog named (a window a release behind; it alone is asked again) */ seen: z.number().int().optional(), /** the file's version the Replace named (its conflict's `version`): Replace writes over that version alone, and none named is asked again */ version: z.string().max(200).optional(), /** the window's own save after a pause in his typing */ auto: z.boolean().optional() })),
   /** → FilesTabs: his choice for a Word file opened as its document: save it by itself (`on`), or ask each time. */
   request('work.files.wordAuto', z.object({ workspaceId: Workspace, tabId: z.string().max(100), on: z.boolean() })),
   /**
@@ -284,11 +284,11 @@ export const FilesRequestSchemas = [
    * is false: each later edit is written to the file again by the host. `place` and `computer` are the names the
    * header says it by. His press alone, through Files' door as New there.
    */
-  request('work.files.saveAs', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, at: FolderRefSchema, name: Name.optional(), format: z.enum(SAVE_AS_IDS), link: z.boolean().optional(), place: Name.optional(), computer: Name.optional(), exists: z.enum(['replace', 'keep']).optional(), op: Op })),
+  request('work.files.saveAs', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, at: FolderRefSchema, name: Name.optional(), format: z.enum(SAVE_AS_IDS), link: z.boolean().optional(), place: Name.optional(), computer: Name.optional(), exists: z.enum(['replace', 'keep']).optional(), /** with Replace: the version its question named (`exists.version`); none, or a newer file there, is asked again */ version: z.string().max(200).optional(), op: Op })),
   /** → DocLink[]: the files a document is linked to, oldest first, with how each stands. */
   request('work.files.links', z.object({ workspaceId: Workspace, source: CanvasSourceSchema })),
   /** → DocLink[]: his press on a linked file: Unlink, Retry, Replace (over a change made there) or Keep Both. */
-  request('work.files.linkAct', z.object({ workspaceId: Workspace, id: z.string().max(100), act: z.enum(['unlink', 'retry', 'replace', 'keep']) })),
+  request('work.files.linkAct', z.object({ workspaceId: Workspace, id: z.string().max(100), act: z.enum(['unlink', 'retry', 'replace', 'keep']), /** with Replace: the version the link showed changed (`DocLink.version`); none, or a newer one there, is asked again */ version: z.string().max(200).optional() })),
   /** → FilesTabs: moves a tab before `before` (last when null). */
   request('work.files.tabMove', z.object({ workspaceId: Workspace, tabId: z.string().max(100), before: z.string().max(100).nullable() })),
   /** → FilesTabs: where a page tab stands now. */
@@ -460,9 +460,11 @@ export interface WordBack {
   auto?: boolean
   /** an autosave met a change made there at this time: nothing is written until his Replace or Keep Both */
   stopped?: number
+  /** the version of that change: his Replace writes over it alone */
+  stoppedVersion?: string
 }
 /** What Save as Word answers: written over the file, the file changed there or went (nothing written), or kept beside it. */
-export type WordSaved = { at: number } | { conflict: { changed: number } | { gone: true } } | { copy: { name: string } }
+export type WordSaved = { at: number } | { conflict: { changed: number; version?: string } | { gone: true } } | { copy: { name: string } }
 /** What a copy's own host answers a send back: the file's version after it, the conflict, or the keep-both file it made. */
 /** Save as Word to…: the Word file made, by its name and where it lies. */
 export interface SavedAsWord {

@@ -665,9 +665,12 @@ export async function closeTab(link: string, workspaceId: string, tabId: string,
 /** A copy's kind saved: the workspace's host sends the copy to the file it is a copy of, when the two differ (files/copies.ts). Its tab says how that stands. */
 export const sendCopyBack = (link: string, workspaceId: string, tabId: string): Promise<CopyBack> => ask<CopyBack>(link, "work.files.copyBack", { workspaceId, tabId });
 
-/** Save as Word: the document a Word file of another computer became, written over that file by its version, or beside it with `keep` (files/word.ts). */
-export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false, seen?: number): Promise<WordSaved> =>
-  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}), ...(replace && seen !== undefined ? { seen } : {}) }, { timeoutMs: 180_000 });
+/**
+ * Save as Word: the document a Word file of another computer became, written over that file by its version, or beside
+ * it with `keep` (files/word.ts). Replace names the version of the change it goes over (`version`); none is asked again.
+ */
+export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false, version?: string): Promise<WordSaved> =>
+  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}), ...(replace && version !== undefined ? { version } : {}) }, { timeoutMs: 180_000 });
 
 /** His choice for a Word file opened as its document: save it by itself, or ask each time (files/word.ts). */
 export async function setWordAuto(link: string, workspaceId: string, tabId: string, on: boolean): Promise<void> {

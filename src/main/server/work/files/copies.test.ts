@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { shiftMtime } from '../mtime.testkit'
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -958,9 +958,9 @@ describe('a Word file of another computer', () => {
   it('Replace on his press writes over a file that changed there, the file as it was kept first in the workspace folder', async () => {
     const { tabId, path } = await imported('Plan.docx', 'word bytes')
     writeFileSync(path, 'a colleague saved')
-    const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId })
+    const clash = await call<{ conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId })
     expect(clash.conflict?.changed).toBeGreaterThan(0)
-    const got = await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true })
+    const got = await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, version: clash.conflict!.version })
     expect(got.at).toBeGreaterThan(0)
     expect(readFileSync(path, 'utf8')).toBe('word export')
     const original = join(box.folder, 'Plan (before TempCode saved it).docx')
@@ -975,13 +975,30 @@ describe('a Word file of another computer', () => {
     const { tabId, path } = await imported('Brief.docx', 'word bytes')
     writeFileSync(path, 'a colleague saved')
     shiftMtime(path, -60_000)
-    const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId })
+    const clash = await call<{ conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId })
     // Another save lands there while his dialog is open.
     writeFileSync(path, 'and saved again')
-    const got = await call<{ at?: number; conflict?: { changed: number } }>('work.files.wordSave', { tabId, replace: true, seen: clash.conflict!.changed })
+    const got = await call<{ at?: number; conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId, replace: true, version: clash.conflict!.version })
     expect(got.conflict?.changed).toBeGreaterThan(clash.conflict!.changed)
     expect(readFileSync(path, 'utf8')).toBe('and saved again')
-    expect((await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, seen: got.conflict!.changed })).at).toBeGreaterThan(0)
+    expect((await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, version: got.conflict!.version })).at).toBeGreaterThan(0)
+  })
+
+  it('Replace by its version tells apart a change made there in the same millisecond, and one that names none is asked again', async () => {
+    const { tabId, path } = await imported('Roster.docx', 'word bytes')
+    writeFileSync(path, 'colleague A')
+    const when = statSync(path).mtime
+    const clash = await call<{ conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId })
+    // B lands in the very millisecond A had, the same size: only its bytes differ.
+    writeFileSync(path, 'colleague B')
+    utimesSync(path, when, when)
+    const got = await call<{ at?: number; conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId, replace: true, version: clash.conflict!.version, seen: clash.conflict!.changed })
+    expect(got.conflict?.changed).toBe(clash.conflict!.changed)
+    expect(got.conflict?.version).not.toBe(clash.conflict!.version)
+    expect(readFileSync(path, 'utf8')).toBe('colleague B')
+    // A window a release behind sends the time alone: asked again, never written over.
+    expect(await call('work.files.wordSave', { tabId, replace: true, seen: got.conflict!.changed })).toMatchObject({ conflict: { changed: got.conflict!.changed } })
+    expect(readFileSync(path, 'utf8')).toBe('colleague B')
   })
 
   it('refuses a thread, a read key and a key that may not approve', async () => {
@@ -1192,7 +1209,15 @@ describe('a Word file saved by itself', () => {
     rev = 'r3'
     await looks(5_000_000)
     expect(readFileSync(path, 'utf8')).toBe('a colleague saved')
-    await call('work.files.wordSave', { tabId, replace: true })
+    // The header's Replace names the change the line shows; one made after it stops it again, said by the line.
+    const stopped = (await tabOf(tabId))!.word!
+    expect(stopped.stoppedVersion).toEqual(expect.any(String))
+    writeFileSync(path, 'a colleague saved twice')
+    expect(await call('work.files.wordSave', { tabId, replace: true, version: stopped.stoppedVersion })).toMatchObject({ conflict: {} })
+    expect(readFileSync(path, 'utf8')).toBe('a colleague saved twice')
+    const again = (await tabOf(tabId))!.word!
+    expect(again.stoppedVersion).not.toBe(stopped.stoppedVersion)
+    await call('work.files.wordSave', { tabId, replace: true, version: again.stoppedVersion })
     expect(readFileSync(path, 'utf8')).toBe('word export')
     expect((await tabOf(tabId))?.word?.stopped).toBeUndefined()
   })

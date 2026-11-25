@@ -28,7 +28,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.list") return { entries: [], trail: [{ name: "General", at: at("/cloud/General") }] };
       if (method === "work.files.saveAs") {
         if (world.fail > 0 && world.fail--) throw new Error("The request timed out.");
-        if (world.exists && !params.exists) return { exists: { name: params.name } };
+        if (world.exists && !params.exists) return { exists: { name: params.name, version: "v-there" } };
         return { saved: { name: params.name, ref: at(`/cloud/General/${String(params.name)}`), linked: params.link !== false } };
       }
       if (method === "work.files.linkAct" && world.acting) return world.acting;
@@ -180,6 +180,16 @@ describe("the Save As… sheet", () => {
     expect(saved()[1]).toMatchObject({ name: "Run of show.pdf", format: "pdf", exists: "keep" });
   });
 
+  it("sends Replace with the version its question named", async () => {
+    world.exists = true;
+    world.choice = "action";
+    const dialog = await sheet();
+    await intoGeneral(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(2));
+    expect(saved()[1]).toMatchObject({ exists: "replace", version: "v-there" });
+  });
+
   it("Just a copy links nothing, and says where it went with Show", async () => {
     const dialog = await sheet();
     await intoGeneral(dialog);
@@ -269,6 +279,14 @@ describe("the header's linked files", () => {
     expect(within(menu).getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Keep Both", "Replace", "Open", "Show in Files", "Unlink"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Unlink" }));
     await waitFor(() => expect(world.calls.find((c) => c.method === "work.files.linkAct")?.params).toMatchObject({ id: "l1", act: "unlink" }));
+  });
+
+  it("sends Replace with the version the link showed changed", async () => {
+    world.links = [link({ state: "changed", changedAt: 1, version: "v-there" })];
+    controls();
+    fireEvent.click(await screen.findByRole("button", { name: /Changed in General/ }));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Replace" }));
+    await waitFor(() => expect(world.calls.find((c) => c.method === "work.files.linkAct")?.params).toMatchObject({ id: "l1", act: "replace", version: "v-there" }));
   });
 
   it("offers Save Again for a PDF changed or deleted there, and Retry for a place that did not answer", async () => {

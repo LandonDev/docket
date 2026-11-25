@@ -60,13 +60,15 @@ export interface DocLink {
    * - `refused`: the place refused the write (`detail` says why)
    */
   state: 'saved' | 'saving' | 'waiting' | 'changed' | 'gone' | 'refused'
+  /** `changed`: the version found there, which his Replace names */
+  version?: string
   at?: number
   changedAt?: number
   detail?: string
 }
 
 /** What Save As… answers: the file made (and linked, unless he chose Just a copy), or that a file of that name is there. */
-export type SavedAs = { saved: { name: string; ref: { at: 'file'; host: string; path: string }; linked: boolean } } | { exists: { name: string } }
+export type SavedAs = { saved: { name: string; ref: { at: 'file'; host: string; path: string }; linked: boolean } } | { exists: { name: string; version?: string } }
 
 /** The one line under the form that says what Save will do. */
 export function saveAsOutcome(o: { name: string; place: string | null; link: boolean }): string {

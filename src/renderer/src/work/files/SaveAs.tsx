@@ -91,19 +91,22 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const drops = [...(format === own?.format && own.note ? [own.note] : []), ...dropsOf(itemId, format)];
   const close = (): void => closeSaveAs();
 
-  const save = async (exists?: "replace" | "keep"): Promise<void> => {
+  // `version`: with Replace, the file's version its question named; a newer file there is asked about again.
+  const save = async (exists?: "replace" | "keep", version?: string): Promise<void> => {
     if (!at || pending) return;
     setPending(true);
-    const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link: !copyOnly, place: at.folder.name, ...(exists ? { exists } : {}) };
+    const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link: !copyOnly, place: at.folder.name, ...(exists ? { exists } : {}), ...(exists === "replace" && version ? { version } : {}) };
     const said = JSON.stringify(asks);
     if (press.current?.said !== said) press.current = { said, op: opId() };
     try {
       const got = await registry.linkOf(workspace.environmentId).request<SavedAs>("work.files.saveAs", { ...asks, op: press.current.op }, { timeoutMs: 180_000 });
       press.current = null;
       if ("exists" in got) {
-        const choice = await confirmChoice({ title: `Replace ${got.exists.name} in ${at.folder.name}?`, action: "Replace", other: "Keep Both", focusOther: true });
+        // Asked again after his Replace: someone saved it there while he read the question, and that is said.
+        const title = exists === "replace" ? `${got.exists.name} changed in ${at.folder.name} just now. Replace it?` : `Replace ${got.exists.name} in ${at.folder.name}?`;
+        const choice = await confirmChoice({ title, action: "Replace", other: "Keep Both", focusOther: true });
         setPending(false);
-        if (choice) await save(choice === "action" ? "replace" : "keep");
+        if (choice) await save(choice === "action" ? "replace" : "keep", got.exists.version);
         return;
       }
       keepRecent(workspace, { ...at.folder, where: at.where });

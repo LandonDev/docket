@@ -40,6 +40,8 @@ export interface WordRow {
   original: string | null
   auto: number | null
   stopped: number | null
+  /** the version of the change an autosave stopped at */
+  stopped_version?: string | null
   /** the document's live revision last written to the Word file, and as it stood when made of the file */
   saved_rev: string | null
   base_rev: string | null
@@ -129,7 +131,7 @@ export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; h
   ctx.db
     .prepare(
       `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
-       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, saved_rev = NULL, base_rev = NULL, stopped = NULL, at = excluded.at`
+       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, saved_rev = NULL, base_rev = NULL, stopped = NULL, stopped_version = NULL, at = excluded.at`
     )
     .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, w.sha, Date.now())
   // A Word file still exactly our blank (New → Document) holds only what our editor makes: it saves by itself, unasked.
@@ -223,7 +225,7 @@ function recordOfWordTab(ctx: WorkCtx, workspaceId: string, tabId: string): Word
 export function wordBackOf(r: WordRow): WordBack | null {
   if (!r.doc) return null
   const since = editsSince(r)
-  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped } : {}) }
+  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped, ...(r.stopped_version ? { stoppedVersion: r.stopped_version } : {}) } : {}) }
 }
 
 /** `work.files.wordAuto`: his choice for the file, kept on its record: save by itself, or ask each time. */
@@ -313,14 +315,14 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
  * over it. Before the first write over the file its bytes are kept in the workspace's folder. `keep` puts his
  * version beside the file instead.
  */
-export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }): Promise<WordSaved> {
+export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; version?: string; auto?: boolean }): Promise<WordSaved> {
   const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
   return (await saveRow(ctx, r, p))!
 }
 
 /** One save of a Word file's document as Word, as `wordSave` and the host's autosave run it. */
-async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }, observed?: { rev: string; current: () => boolean }): Promise<WordSaved | undefined> {
+async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; seen?: number; version?: string; auto?: boolean }, observed?: { rev: string; current: () => boolean }): Promise<WordSaved | undefined> {
   const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
   let version = r.version
   if (!p.keep) {
@@ -349,17 +351,19 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
     const nowVersion = now?.version ?? seen!
     // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
     const same = nowVersion === r.version || (!!now && ((knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)))
-    // His Replace covers the change its dialog named (`seen`), never one made there after he read it.
-    if (!same && (!p.replace || (p.seen !== undefined && changedOf(nowVersion) !== p.seen))) {
-      // An autosave that meets a change made there stops for this file until his press: never a silent overwrite.
-      if (p.auto) {
-        ctx.db.prepare(`UPDATE work_files_word SET stopped = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(nowVersion), r.workspace_id, r.host, r.path)
+    // His Replace covers the change its dialog named by its version, never one made there after he read it, even in
+    // the same millisecond; a Replace that names none (a window a release behind) is asked again.
+    if (!same && (!p.replace || p.version !== nowVersion)) {
+      // An autosave that meets a change made there stops for this file until his press: never a silent overwrite. A
+      // stopped file that changed again says the newer change, which his next Replace names.
+      if (p.auto || r.stopped) {
+        ctx.db.prepare(`UPDATE work_files_word SET stopped = ?, stopped_version = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(nowVersion), nowVersion, r.workspace_id, r.host, r.path)
         filesState(ctx).tabs.touch(p.workspaceId)
       }
-      return { conflict: { changed: changedOf(nowVersion) } }
+      return { conflict: { changed: changedOf(nowVersion), version: nowVersion } }
     }
     // An autosave goes only where he chose it and nothing stopped it.
-    if (p.auto && (r.auto !== 1 || r.stopped)) return { conflict: { changed: r.stopped ?? changedOf(nowVersion) } }
+    if (p.auto && (r.auto !== 1 || r.stopped)) return { conflict: { changed: r.stopped ?? changedOf(nowVersion), version: r.stopped_version ?? nowVersion } }
     // Written over by the version just seen: the write itself is checked against it there (deliver), so a change made
     // between this look and the write is a conflict, never a silent overwrite.
     version = nowVersion
@@ -375,10 +379,10 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
   const data = Buffer.from(out.data, 'base64')
   const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
-  if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
+  if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
-  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, saved_rev = ?, stopped = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, writtenRev, r.workspace_id, r.host, r.path)
+  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, saved_rev = ?, stopped = NULL, stopped_version = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, writtenRev, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
   return { at }
 }

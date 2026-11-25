@@ -350,7 +350,7 @@ export function FileTabView({
     saveAsWord(tab, {
       choose: confirmChoice,
       confirm: confirmAction,
-      save: (keep, replace, seen) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, seen),
+      save: (keep, replace, version) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version),
       said: (text) => void loadToast().then((toast) => toast.message(text)),
     }).then(() => undefined);
   // The first time a Word file holds edits not in it: one notice, and his choice for the file (wordSave.ts).
@@ -364,8 +364,9 @@ export function FileTabView({
   }, [copy, word?.auto, word?.since]);
   const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
     const service = serviceOf(tab);
-    const save = (keep: boolean, replace = false): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace).then(() => undefined);
-    if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true) }];
+    const save = (keep: boolean, replace = false, version?: string): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version).then(() => undefined);
+    // Replace goes over the change the line names (its version); a newer one there stops it again, and the line says so.
+    if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true, w.stoppedVersion) }];
     return w.auto || !w.since ? [] : [{ id: "word", label: `Save to ${service} as Word`, run: saveWord }];
   };
   const said: HeaderLine | null =

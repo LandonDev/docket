@@ -46,12 +46,13 @@ describe("Save as Word", () => {
   });
 
   it("over a file that changed there says when, holds Keep Both in focus, and Replace on his press writes over it", async () => {
-    const d = deps("action", [{ conflict: { changed: AT } }, { at: NOW }]);
+    const d = deps("action", [{ conflict: { changed: AT, version: "v-colleague" } }, { at: NOW }]);
     d.choose.mockResolvedValueOnce("action").mockResolvedValueOnce("action");
     expect(await saveAsWord(TAB, d, NOW)).toBe("saved");
     expect(d.choose.mock.calls[1]![0]).toMatchObject({ title: "AD Screening 9-2.docx changed in Teams 9:12 PM, after you opened it.", action: "Replace", other: "Keep Both", focusOther: true });
     expect(d.choose.mock.calls[1]![0].body).toContain("version history");
-    expect(d.save.mock.calls).toEqual([[false], [false, true, AT]]);
+    // Replace names the version of the change the line said, never only its time.
+    expect(d.save.mock.calls).toEqual([[false], [false, true, "v-colleague"]]);
     const both = deps("action", [{ conflict: { changed: AT } }, { copy: { name: "AD Screening 9-2 (mine).docx" } }]);
     both.choose.mockResolvedValueOnce("action").mockResolvedValueOnce("other");
     expect(await saveAsWord(TAB, both, NOW)).toBe("kept");

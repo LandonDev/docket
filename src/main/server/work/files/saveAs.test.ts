@@ -114,7 +114,7 @@ describe('Save As… formats', () => {
     const insertWord = box.db.prepare(`INSERT INTO work_files_word
       (workspace_id, host, path, name, version, doc, at, auto, base_rev) VALUES (?, ?, ?, ?, '', ?, 0, 1, ?)`)
     const insertLink = box.db.prepare(`INSERT INTO work_files_links
-      SELECT ?, workspace_id, ?, format, host, ?, vm, name, place, computer, version, sha, saved_rev, saved_at, state, changed_at, detail, tried_at, made_at
+      SELECT ?, workspace_id, ?, format, host, ?, vm, name, place, computer, version, sha, saved_rev, saved_at, state, changed_at, detail, tried_at, made_at, seen_version
       FROM work_files_links WHERE name = 'Plan.docx' AND path = ?`)
     const target = join(box.folder, 'Plan.docx')
     for (let i = 0; i < 5; i++) {
@@ -230,12 +230,52 @@ describe('a file of that name is there', () => {
   const general = () => join(box.team, 'General')
   it('answers so and writes nothing; Keep Both saves beside it, Replace over it by the version read now', async () => {
     const at = { at: 'file', host: HOST, path: general() }
-    expect(await save({ at })).toEqual({ exists: { name: 'Plan.docx' } })
+    const asked = await save({ at })
+    expect(asked).toEqual({ exists: { name: 'Plan.docx', version: expect.any(String) } })
     expect(readFileSync(join(general(), 'Plan.docx'), 'utf8')).toBe('word')
     expect(await save({ at, exists: 'keep' })).toMatchObject({ saved: { name: 'Plan 2.docx' } })
     expect(readFileSync(join(general(), 'Plan.docx'), 'utf8')).toBe('word')
-    expect(await save({ at, exists: 'replace' })).toMatchObject({ saved: { name: 'Plan.docx', linked: true } })
+    const version = 'exists' in asked ? asked.exists.version : undefined
+    expect(await save({ at, exists: 'replace', version })).toMatchObject({ saved: { name: 'Plan.docx', linked: true } })
     expect(readFileSync(join(general(), 'Plan.docx'), 'utf8')).toBe('docx one')
+  })
+})
+
+describe('Replace, bound to the version he saw', () => {
+  const general = () => join(box.team, 'General')
+  it('the first Save As: a colleague who saves while the question is up keeps his file, and the question comes again with his version', async () => {
+    const at = { at: 'file', host: HOST, path: general() }
+    const path = join(general(), 'Plan.docx')
+    const asked = await save({ at })
+    if (!('exists' in asked)) throw new Error('no question')
+    writeFileSync(path, 'newer colleague edit after the question')
+    const again = await save({ at, exists: 'replace', version: asked.exists.version })
+    expect(readFileSync(path, 'utf8')).toBe('newer colleague edit after the question')
+    expect(again).toEqual({ exists: { name: 'Plan.docx', version: expect.any(String) } })
+    expect('exists' in again && again.exists.version).not.toBe(asked.exists.version)
+    // A window that names no version is asked again, never written over (the audit's scratch case).
+    expect(await save({ at, exists: 'replace' })).toMatchObject({ exists: { name: 'Plan.docx' } })
+    expect(readFileSync(path, 'utf8')).toBe('newer colleague edit after the question')
+    // His Replace of what he was shown now goes over it.
+    expect(await save({ at, exists: 'replace', version: 'exists' in again ? again.exists.version : '' })).toMatchObject({ saved: { name: 'Plan.docx' } })
+    expect(readFileSync(path, 'utf8')).toBe('docx one')
+  })
+
+  it('a link: a change made there after the one he was shown is shown instead of written over', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    const file = join(box.folder, 'Plan.docx')
+    writeFileSync(file, 'a colleague saved')
+    await edit('two')
+    const [l] = await links()
+    writeFileSync(file, 'a colleague saved again')
+    const after = await call<DocLink[]>('work.files.linkAct', { id: l!.id, act: 'replace', version: l!.version })
+    expect(readFileSync(file, 'utf8')).toBe('a colleague saved again')
+    expect(after[0]).toMatchObject({ state: 'changed' })
+    expect(after[0]!.version).not.toBe(l!.version)
+    expect(await call<DocLink[]>('work.files.linkAct', { id: l!.id, act: 'replace' })).toMatchObject([{ state: 'changed' }])
+    expect(readFileSync(file, 'utf8')).toBe('a colleague saved again')
+    await call('work.files.linkAct', { id: l!.id, act: 'replace', version: after[0]!.version })
+    expect(readFileSync(file, 'utf8')).toBe('docx two')
   })
 })
 
@@ -251,7 +291,8 @@ describe('a linked file someone changed there', () => {
     // Nothing more is tried on its own.
     await edit('three')
     expect(readFileSync(file, 'utf8')).toBe('a colleague saved')
-    await call('work.files.linkAct', { id: l!.id, act: 'replace' })
+    expect(l!.version).toEqual(expect.any(String))
+    await call('work.files.linkAct', { id: l!.id, act: 'replace', version: l!.version })
     expect(readFileSync(file, 'utf8')).toBe('docx three')
     await call('work.files.linkAct', { id: l!.id, act: 'unlink' })
     await edit('four')
@@ -341,7 +382,7 @@ describe('a file made but not found again at once', () => {
     expect(budgets(general())).toEqual(['Budget.docx'])
     expect(await links()).toHaveLength(1)
     // A new press is his own choice again: the file is there, so he is asked.
-    expect(await save({ ...params, op: op() })).toEqual({ exists: { name: 'Budget.docx' } })
+    expect(await save({ ...params, op: op() })).toMatchObject({ exists: { name: 'Budget.docx' } })
   })
 })
 
