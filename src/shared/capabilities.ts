@@ -33,8 +33,9 @@ export const CONTRACT_VERSION = 1
 
 /** What this host's server takes beyond the contract number, listed in its hello: a client asks for one only of a host
  *  that names it. `create.steps`: `session.create` runs a draft's first-send steps itself (`items`, `mailAdopt`,
- *  `bridge`, the first message's `attachments`), which an older host would drop unread. */
-export const HOST_FEATURES = ['create.steps'] as const
+ *  `bridge`, the first message's `attachments`), which an older host would drop unread. `defaults.list`: every
+ *  scope's thread defaults in one ask. */
+export const HOST_FEATURES = ['create.steps', 'defaults.list'] as const
 export type HostFeature = (typeof HOST_FEATURES)[number]
 
 /** Every contract method and the capability it needs. A new method without
@@ -143,6 +144,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'rules.get': 'read',
   'plans.get': 'read',
   'defaults.get': 'read',
+  'defaults.list': 'read',
   'turnpass.get': 'read',
   'review.get': 'read',
   'appshots.get': 'read',

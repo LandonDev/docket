@@ -3221,6 +3221,13 @@ grant counts), `work_held_acts_owed` (the tasks a sent act owes),
 M5, `work_canvas_items_by_workspace`. src/main/server/db-work-indexes.test.ts
 holds each query to `SEARCH`, never `SCAN`, by its own plan.
 
+A window's catalog refresh reads every scope's thread defaults in one
+`defaults.list` (the global set under `''`, each workspace by id) where
+the host's hello names `defaults.list` in its features; an older host, or
+a failed list, is asked one `defaults.get` a scope as before
+(lib/tcserver/workspaces.ts). With his six Work workspaces and the code
+ones that was 2 + 1 + W round trips a refresh; now 3.
+
 The Work switch is read on every Work request; `WorkSettingsStore` keeps
 it in memory and drops it on any write of that setting, whoever made it
 (`Store.onSettingSet`), so Work turned off is seen by the very next call.

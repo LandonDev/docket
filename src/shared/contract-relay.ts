@@ -157,6 +157,7 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'rules.get': 'link',
   'plans.get': 'link',
   'defaults.get': 'link',
+  'defaults.list': 'link',
   'review.get': 'link',
   // threads
   'session.list': 'link',

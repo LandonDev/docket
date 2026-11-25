@@ -2890,6 +2890,16 @@ export async function startServer(
       return answer.result
     }
 
+    /** A scope's thread defaults as `defaults.get` answers them: its own set, else the global set, else the built-in one. */
+    const defaultsScope = (workspaceId: string | null) => {
+      const scoped = registry.getThreadDefaults(workspaceId)
+      return {
+        defaults: scoped ?? (workspaceId ? registry.getThreadDefaults(null) : null) ?? DEFAULT_THREAD_DEFAULTS,
+        overridden: scoped !== null,
+        home: rulesSync.homeFor(workspaceId)
+      }
+    }
+
     /** One request, answered through `sendFrame`: the socket's own, or a
      *  bulk request's capture (captureAnswer). Pushes a handler makes go to
      *  the socket either way. */
@@ -3606,22 +3616,16 @@ export async function startServer(
               registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'defaults.get': {
-            const scoped = registry.getThreadDefaults(req.params.workspaceId)
+          case 'defaults.get':
+            sendFrame({ id: req.id, ok: true, result: defaultsScope(req.params.workspaceId) })
+            break
+          case 'defaults.list':
             sendFrame({
               id: req.id,
               ok: true,
-              result: {
-                defaults:
-                  scoped ??
-                  (req.params.workspaceId ? registry.getThreadDefaults(null) : null) ??
-                  DEFAULT_THREAD_DEFAULTS,
-                overridden: scoped !== null,
-                home: rulesSync.homeFor(req.params.workspaceId)
-              }
+              result: Object.fromEntries([null, ...req.params.workspaceIds].map((id) => [id ?? '', defaultsScope(id)]))
             })
             break
-          }
           case 'defaults.set':
             if (!(await rulesSync.forward(req.method, req.params.workspaceId, req.params.defaults)))
               registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)

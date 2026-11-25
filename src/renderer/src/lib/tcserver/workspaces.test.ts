@@ -235,6 +235,53 @@ describe("thread defaults", () => {
     expect(workspaceStore.defaultsFor("local", null)?.reasoning).toBe("high");
   });
 
+  it("asks every scope in one defaults.list of a host whose hello names it, with each scope as defaults.get would answer", async () => {
+    link.stored.set("", set({ reasoning: "high" }));
+    link.stored.set("w2", set({ provider: "codex", model: "gpt-6-astra" }));
+    const answer = (id: string | null) => {
+      const own = link.stored.get(id ?? "");
+      return { defaults: own ?? (id ? link.stored.get("") : undefined) ?? set(), overridden: own !== undefined };
+    };
+    const ask = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method !== "defaults.list") return ask(method, params);
+      link.calls.push({ method, params });
+      const { workspaceIds } = params as { workspaceIds: string[] };
+      return Promise.resolve(Object.fromEntries([null, ...workspaceIds].map((id) => [id ?? "", answer(id)])) as T);
+    }) as typeof link.request;
+    vi.spyOn(registry, "statusOf").mockReturnValue({ lastHello: { features: ["defaults.list"] } } as never);
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    expect(link.calls.filter((c) => c.method === "defaults.get")).toEqual([]);
+    expect(link.calls.filter((c) => c.method === "defaults.list")).toEqual([{ method: "defaults.list", params: { workspaceIds: ["w1", "w2"] } }]);
+    expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set({ reasoning: "high" }), overridden: true });
+    expect(workspaceStore.defaultsAt("local", "w1")).toEqual({ defaults: set({ reasoning: "high" }), overridden: false });
+    expect(workspaceStore.defaultsFor("local", "w2")?.provider).toBe("codex");
+  });
+
+  it("asks one defaults.get a scope of a host that does not name defaults.list, and of one whose list failed", async () => {
+    vi.spyOn(registry, "statusOf").mockReturnValue({ lastHello: { features: [] } } as never);
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    expect(link.calls.filter((c) => c.method === "defaults.get").length).toBe(3);
+    workspaceStore.reset();
+    link.calls = [];
+    const ask = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method !== "defaults.list") return ask(method, params);
+      link.calls.push({ method, params });
+      return Promise.reject(new Error("unknown method: defaults.list"));
+    }) as typeof link.request;
+    vi.spyOn(registry, "statusOf").mockReturnValue({ lastHello: { features: ["defaults.list"] } } as never);
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    await tick();
+    expect(link.calls.map((c) => c.method).filter((m) => m.startsWith("defaults."))).toEqual(["defaults.list", "defaults.get", "defaults.get", "defaults.get"]);
+  });
+
   it("is undefined before anything loads, then the built-in set when nothing is stored", async () => {
     expect(workspaceStore.defaultsFor("local", "w1")).toBeUndefined();
     workspaceStore.attach(link);

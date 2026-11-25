@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { normalizeProjectPath } from "../recents";
 import { aliasKeys } from "../linkedRail";
-import type { Link } from "../connection";
+import { registry, type Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
 import { BUILT_IN_SCOPE, modelSeed, parseDefaultsScope, type DefaultsScope } from "./defaults";
@@ -265,7 +265,34 @@ class WorkspaceStore {
       workspaces.map((w) => ({ ...w, environmentId })),
       projects.map((p) => ({ ...p, environmentId })),
     );
-    await Promise.all([null, ...workspaces.map((w) => w.id)].map((id) => this.loadDefaults(environmentId, id)));
+    const ids = workspaces.map((w) => w.id);
+    // One ask for every scope where the host takes it (its hello lists `defaults.list`), else one a scope.
+    if (registry.statusOf(environmentId).lastHello?.features?.includes("defaults.list")) await this.loadAllDefaults(link, ids);
+    else await Promise.all([null, ...ids].map((id) => this.loadDefaults(environmentId, id)));
+  }
+
+  /** Every scope's defaults on a host in one `defaults.list`; a scope it did not answer, or a failed ask, is read alone. */
+  private async loadAllDefaults(link: Link, ids: string[]): Promise<void> {
+    const environmentId = link.environmentId;
+    let answer: Record<string, unknown>;
+    try {
+      answer = await withDeadline(link.request<Record<string, unknown>>("defaults.list", { workspaceIds: ids }));
+    } catch {
+      await Promise.all([null, ...ids].map((id) => this.loadDefaults(environmentId, id)));
+      return;
+    }
+    const next = new Map<string, DefaultsScope>();
+    const missing: (string | null)[] = [];
+    for (const id of [null, ...ids]) {
+      const raw = answer[id ?? ""];
+      if (raw === undefined) missing.push(id);
+      else {
+        next.set(scopeKey(environmentId, id), parseDefaultsScope(raw));
+        this.setDefaultsError(scopeKey(environmentId, id), null);
+      }
+    }
+    this.setDefaults(next);
+    await Promise.all(missing.map((id) => this.loadDefaults(environmentId, id)));
   }
 
   /** Replace one environment's slice of the lists; the other hosts' rows stay. */

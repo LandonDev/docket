@@ -633,6 +633,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('defaults.get'),
     params: z.object({ workspaceId: z.string().nullable().default(null) })
   }),
+  // Every scope's defaults in one ask: the global set (null) and each workspace named, keyed by id ('' for the global
+  // set), each as defaults.get answers it. A window's catalog refresh asks this of a host whose hello lists
+  // `defaults.list` (HOST_FEATURES) in place of one defaults.get a workspace.
+  z.object({
+    id: z.string(),
+    method: z.literal('defaults.list'),
+    params: z.object({ workspaceIds: z.array(z.string()).max(500) })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('defaults.set'),
