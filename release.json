@@ -1,5 +1,5 @@
 {
-  "n": 386,
-  "notes": "Three fixes he reported: the chat beside a file shows the agent's reply again (no more stuck \"Sending\" ending in only \"Worked for\"); a new Work thread always starts on the workspace's own host (no more \"unknown workspace\"); a Microsoft form or live Office file no longer stays on screen after he leaves its tab.",
-  "ts": 1795595490851
+  "n": 387,
+  "notes": "Overnight work so far. Files and the editors: drafts survive a crash or a dropped link; the hold and daily data losses fixed; a Word file's store moved out of the workspace folder with the same reach; the Files place's daily verbs polished. Threads, projects and the tracker made for Work: threads file into their projects, a Work composer with no code controls, each thread says what it left him, a new column and rail, project target dates, a project page and a tracker across jobs. Phone read-backs on the host. Windows VM screen's last pieces.",
+  "ts": 1795607997369
 }
