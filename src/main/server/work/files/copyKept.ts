@@ -46,6 +46,20 @@ export function copyKeptIn(db: DatabaseSync, dir: string): boolean {
 }
 
 /**
+ * Whether a copy's folder is another file's: a live copy record of another file lies in it (Keep Both re-pointed that
+ * record to the new file, or its file moved), or a Word file's kept document. A copy of `file` made there would write
+ * over that record's bytes, so it is made in a folder of its own (copies.ts `copyFolderFor`).
+ */
+export function copyFolderTaken(db: DatabaseSync, workspaceId: string, dir: string, file: { host: string; path: string }): boolean {
+  const at = real(dir)
+  const others = [at, workspaceId, file.host, file.path]
+  return (
+    ask(db, `SELECT 1 FROM work_files_copies WHERE dir = ? AND NOT (workspace_id = ? AND host = ? AND path = ?) LIMIT 1`, ...others) ||
+    ask(db, `SELECT 1 FROM work_files_word WHERE doc LIKE ? || '/%' AND NOT (workspace_id = ? AND host = ? AND path = ?) LIMIT 1`, ...others)
+  )
+}
+
+/**
  * Whether a copy holds changes that have not reached its file: its computer did not answer, a send is under way or
  * was refused, the file changed there, its tab closed before it was sent, or its bytes are not what the file holds.
  */

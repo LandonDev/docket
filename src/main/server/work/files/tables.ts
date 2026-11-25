@@ -68,6 +68,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
   const copyCols = new Set((db.prepare(`SELECT name FROM pragma_table_info('work_files_copies')`).all() as { name: string }[]).map((c) => c.name))
   if (!copyCols.has('writes')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN writes INTEGER NOT NULL DEFAULT 0`)
   if (!copyCols.has('held')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN held INTEGER NOT NULL DEFAULT 0`)
+  // A Keep Both press whose answer has not come back (copies.ts `copyKeep`): its op id, the hash of the bytes it sent
+  // and the writes they held, as JSON; the same op again is answered by the file's host with what the first did.
+  if (!copyCols.has('keep_press')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN keep_press TEXT`)
   // The body of a file of another computer as we last read or wrote it (files/body.ts): what SharePoint's own rewrite
   // of an Office file in a Teams library leaves as it was.
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_bodies (

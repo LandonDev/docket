@@ -1545,9 +1545,9 @@ while its screen is unlocked.
 | `fetch {workspaceId, ref}` | read | screen | downloads a cloud-only file on its own host |
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
-| `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent, `approve` for a key |
+| `copyBack {tabId}`, `copyReload {tabId, writes?}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent, `approve` for a key |
 | `writeBackPiece {upload, index, data}` | operate; another host of his only | screen | one piece (at most 4 MiB) of the bytes the next `writeBack` names by `pieces`, kept for that write (files/pieces.ts) |
-| `writeBack {ref, data, pieces?, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
+| `writeBack {ref, data, pieces?, version, copy?, into?, op?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`); `op` with `copy` or `into` is the press's id, run through `runOp` so the same press again answers the file it made |
 | `saveAs {source, at, name?, format, link?, place?, computer?, exists?, op}` | operate, and `approve` where others can open the folder | screen | a document saved in a format as a new file in the folder, or over the one of that name on his Replace, linked unless `link` is false ("Save As…"): `SavedAs` |
 | `links {source}`, `linkAct {id, act}` | read; operate and his own edit there | screen | the files a document is linked to (`DocLink[]`); Unlink, Retry, Replace or Keep Both on one |
 | `saveAsWord {source, at, name?, op}` | operate, as `saveAs` | screen | an older window's Save as Word to…: `saveAs` with Word, Keep Both and no link (`SavedAsWord {name, ref}`) |
@@ -2181,10 +2181,27 @@ over a file that changed there.
   (`detail`, its sentence). An `away` copy is sent again when its computer answers: another host once its link is
   up, the VM once it is awake (looked at every 30 s while any copy waits; a send never wakes the VM from there), and
   on his next save. A send a dead process left under way waits as `away` (`settleCopies`).
-- **Reload** (`work.files.copyReload`): the file read again into the copy's place, a new record, and the kind drawn
-  again from the copy. **Keep Both** (`work.files.copyKeep`): his copy saved beside the file on its own computer
+- **Reload** (`work.files.copyReload {tabId, writes?}`): the file read again into the copy's place, a new record, and
+  the kind drawn again from the copy. It drops only what the question he answered named: `writes` is the copy's
+  writes that question showed (`CopyBack.writes`; absent, those at the press). The file is read first; then, under
+  the copy's lock (the `refKey` of the copy every editor's save takes) and once the deck's work on it has ended, the
+  copy must still be at those writes, or Reload is refused "This copy was edited since you chose Reload, so nothing
+  was dropped." and the copy keeps what it holds. The bytes go into a staging file beside the copy and take its place
+  in one rename (`replaceWhole`): a reader sees the old copy or the new one, never part. Before, it truncated the copy
+  in place, unlocked. **Keep Both** (`work.files.copyKeep`): his copy saved beside the file on its own computer
   under the keep-both name ("Roster (mine).xlsx", through `saveCopy` there, or `files.write {dir, name}` in the VM),
-  and the tab re-pointed to that file (`TabStore.repoint`): its name, its key and `copyOf`.
+  and the tab re-pointed to that file (`TabStore.repoint`): its name, its key and `copyOf`. The press is kept on the
+  record before it goes (`keep_press`: an op id, the hash of the bytes and the writes they held): pressed again after
+  its answer was lost, the same op goes (`writeBack {copy, op}`, run through that host's `runOp` journal; the guest's
+  own journal in the VM), and the file the first made is answered, never a second. A refusal clears the press; the
+  record then holds the bytes that press sent, and anything written since is sent to the new file after it.
+- **Each live copy has its own file.** Keep Both leaves the kept tab's copy where it lies (its editor's source stays),
+  so a copy of the original opened again, or of a new file that took a moved file's name, is made in a folder no
+  other live record holds (`copyFolderFor`: `copyFolderOf` with a count, `copyFolderTaken` in copyKept.ts). Before,
+  it was read into the kept tab's copy, over his bytes, and closing either tab could take the other's folder. Records
+  an older build left on one copy are each given their own at start (`ownCopyFolders`): the newest keeps it, each other
+  gets a copy of those bytes in a folder of its own and its tab a new item; one whose bytes are not its file's is
+  marked `changed`, so nothing is sent from it and Reload brings its file back.
 - **The shared-place rule holds on a copy.** A recorded copy, and what lies beside it in its folder, is as shared as
   its file (`sharedOf`, over `isSavingCopy` in copyKept.ts): the sheet's agent only suggests on it, the deck's
   too (it already read every copy as shared), a key without approve cannot edit it, a preview of it is kept in
@@ -2234,7 +2251,9 @@ over a file that changed there.
     closed item's folder leaves any folder a record names (`copyKeptIn`), so the order the pillars hear in never
     matters. The copy goes with its record only once nothing waits in it: the file holds the copy's latest write and
     the copy's bytes are the ones last sent (`letGoIfHeld`, then `letGo`). A write that lands while a send is on its
-    way keeps the copy, and its own send runs next, even after the tab closed.
+    way keeps the copy, and its own send runs next, even after the tab closed. The last look and the let-go hold the
+    copy's lock, so an editor's save under way lands first and is seen. Only a copy that is not there (ENOENT) is let
+    go unread: one that cannot be read (EIO, no access) keeps its record and folder and is looked at again.
   - Opened again, a copy whose bytes are not what its file holds is shown as it is, never read over (`copyWaits`).
   - At start an open copy holding bytes its file does not (the host stopped before it was sent) is sent once its
     computer answers (`settleCopies`, `retryWaiting`).

@@ -677,9 +677,9 @@ export async function setWordAuto(link: string, workspaceId: string, tabId: stri
   putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.wordAuto", { workspaceId, tabId, on }));
 }
 
-/** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
-export async function reloadCopy(link: string, workspaceId: string, tabId: string): Promise<void> {
-  putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.copyReload", { workspaceId, tabId }));
+/** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. `writes`: the copy's writes the question showed, so an edit made since is never dropped. */
+export async function reloadCopy(link: string, workspaceId: string, tabId: string, writes?: number): Promise<void> {
+  putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.copyReload", { workspaceId, tabId, ...(writes !== undefined ? { writes } : {}) }));
 }
 
 /** Keep Both: his copy saved beside the file on its computer under the keep-both name, and the tab shows that file. */

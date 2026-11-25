@@ -1,7 +1,7 @@
 import { filesPaneWorkspace } from '@shared/work'
 import { resetStaged } from './pieces'
 import type { ActKindDef, WorkModule } from '../modules'
-import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
+import { copiesLeft, copySaved, ownCopyFolders, retryWaiting, settleCopies } from './copies'
 import { startFileAutosaves } from './autosave'
 import { adoptWordCopies, wordFollowed, wordImportPlace, wordsLeft } from './word'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
@@ -101,6 +101,9 @@ export const files: WorkModule = {
     // is sent once that computer answers, looked at every 30 s while any waits.
     try {
       settleCopies(ctx)
+      // Records an older build left on one copy are each given their own (copies.ts).
+      const own = ownCopyFolders(ctx)
+      if (own) ctx.log(`files: gave ${own} copy record(s) a copy of their own`)
       // A Word file's document an older build left in a copy's folder is kept, never dropped with its tab (word.ts).
       const adopted = adoptWordCopies(ctx, (id) => filesState(ctx).tabs.list(id).tabs)
       if (adopted) ctx.log(`files: kept ${adopted} Word document(s) an older build left in a copy's folder`)

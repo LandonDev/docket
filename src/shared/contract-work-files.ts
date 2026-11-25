@@ -246,8 +246,11 @@ export const FilesRequestSchemas = [
    * key that may approve. Nothing is read or written on a disk.
    */
   request('work.files.copiesMoved', z.object({ workspaceId: Workspace, moves: z.array(z.object({ from: FileRefSchema, to: FileRefSchema })).min(1).max(100) })),
-  /** → FilesTabs: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
-  request('work.files.copyReload', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  /**
+   * → FilesTabs: the file as it is on its computer now, in the copy's place; what was not sent is dropped. `writes`: the
+   * copy's writes the question he answered showed (`CopyBack.writes`); a copy written since keeps what it holds.
+   */
+  request('work.files.copyReload', z.object({ workspaceId: Workspace, tabId: z.string().max(100), writes: z.number().int().min(0).optional() })),
   /** → FilesTabs: his copy saved beside the file that changed, under the keep-both name, and the tab shows that file now. */
   request('work.files.copyKeep', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
   /**
@@ -267,7 +270,7 @@ export const FilesRequestSchemas = [
   /** `refs`: every file one sweep asks of this host at once, answered `{ results: FileUploaded[] }` in their order (`ref` then stands for the first). */
   request('work.files.uploaded', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, refs: z.array(CanvasSourceSchema).min(1).max(50).optional() })),
   /** `pieces`: the bytes came before it as `work.files.writeBackPiece` (`data` is then empty), named by `upload`, their count and the whole's SHA-256 */
-  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), pieces: z.object({ upload: z.string().uuid(), count: z.number().int().min(1).max(64), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).optional(), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), /** with `into`: the press's operation id, so the same press sent again answers the file it made */ op: Op.optional(), origin: FileOriginSchema })),
+  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), pieces: z.object({ upload: z.string().uuid(), count: z.number().int().min(1).max(64), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).optional(), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), /** with `into` (Save As) or `copy` (Keep Both): the press's operation id, so the same press sent again answers the file it made */ op: Op.optional(), origin: FileOriginSchema })),
   /** → { ok: true }: one piece (at most 4 MiB) of the bytes a `work.files.writeBack` names next, from the workspace's host alone (its peer verb), kept for that write */
   request('work.files.writeBackPiece', z.object({ workspaceId: Workspace, upload: z.string().uuid(), index: z.number().int().min(0).max(63), data: z.string().max(Math.ceil((4 * 1024 * 1024 * 4) / 3) + 4) })),
   /**

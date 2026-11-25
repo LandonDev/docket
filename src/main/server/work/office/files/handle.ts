@@ -218,9 +218,12 @@ export function dropItemCopies(ctx: Pick<WorkCtx, 'dataDir' | 'canvas' | 'db'>, 
   }
 }
 
-/** The folder in an owner's copies that holds the copy of one source file. */
-export const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
-  join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
+/**
+ * The folder in an owner's copies that holds the copy of one source file. `n` past 0: another folder for the same file,
+ * for a Files tab whose first folder another copy's record holds (files/copies.ts `copyFolderFor`).
+ */
+export const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }, n = 0): string =>
+  join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}${n ? `\u0000${n}` : ''}`).digest('hex').slice(0, 12))
 
 /** A Word, OpenDocument, RTF, markdown or text file: what the document kind imports into a `.tcdoc` beside it. */
 const IMPORTED = /\.(docx|doc|odt|rtf|md|markdown|txt)$/i
@@ -390,7 +393,7 @@ class Staging {
  * the first piece and held to the last, and the copy is handed out with its SHA-256 and the bytes in hand, so nothing
  * reads it back.
  */
-export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string; sha256: string; bytes: Buffer }> {
+export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal, progress?: (done: number, total: number) => void, folder?: string): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string; sha256: string; bytes: Buffer }> {
   const pane = filesPaneWorkspace(sessionId)
   const scope = pane === null ? ctx.scopeOf(sessionId) : null
   if (pane === null && !scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
@@ -398,8 +401,9 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   const workspaceId = pane ?? scope!.workspaceId
   if (!workspaceId || !copyAllowed(ctx.db, workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   if (source.at !== 'file') throw new Error('A copy comes from a file on another host.')
-  // One folder per source file, so two files of one name in one owner's copies never share a folder.
-  const dir = copyFolderOf(ctx.dataDir, sessionId, source)
+  // One folder per source file, so two files of one name in one owner's copies never share a folder; a Files tab's
+  // caller names another when that one is a live copy's of another file (Keep Both re-pointed it, files/copies.ts).
+  const dir = folder ?? copyFolderOf(ctx.dataDir, sessionId, source)
   let name: string
   let read: (into: Staging) => Promise<string | undefined>
   if (source.host === ctx.host) {

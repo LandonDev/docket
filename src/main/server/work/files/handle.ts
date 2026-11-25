@@ -19,7 +19,7 @@ import { copyWaits } from './copyKept'
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
-import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
+import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyFolderFor, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { bodyOfAsync, keepBodyHash } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
@@ -486,7 +486,8 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
     return { kind, source: { at: 'file', host: ctx.host, path: waiting.copy }, copyOf }
   }
   // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
-  const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal, progress)
+  // In a folder no other live copy holds: after Keep Both the first folder of this file may be the kept tab's.
+  const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal, progress, copyFolderFor(ctx, workspaceId, file))
   // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
   const path = (copy.source as { path: string }).path
   // the body as read, for SharePoint's own rewrite of it to be told from an edit (body.ts): made from the bytes the

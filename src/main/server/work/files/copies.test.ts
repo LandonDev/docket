@@ -11,13 +11,13 @@ import { copySavesBack, refKey } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { copyCounts, copyDirOf, dropItemCopies, filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
-import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
+import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, ownCopyFolders, retryWaiting, sendBack, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone } from './handle'
 import { forgetLibraries } from './places/libraries'
 import { NEEDS_PRESS, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
-import { versionOf } from './write'
+import { versionOf, withFileLocks } from './write'
 import { startFileAutosaves } from './autosave'
 import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
@@ -1516,5 +1516,163 @@ describe('a far copy in one pass', () => {
     readGate = null
     expect(scratch()).toEqual([])
     expect(await tabs()).toEqual([])
+  })
+})
+
+describe('each copy its own file', () => {
+  /** His other window's save of the copy, under the lock every editor of it takes (`refKey` of the copy here). */
+  const secondWindowSaves = async (copy: string, bytes: string): Promise<void> => {
+    const got = await saveFile({ roots: [dirname(copy)] }, refKey({ at: 'file', host: HOST, path: copy }), copy, Buffer.from(bytes), versionWord(await versionOf(copy)))
+    expect('version' in got).toBe(true)
+  }
+
+  it('Keep Both, then the original opened again: two copies, each with its own bytes and its own file, and closing either leaves the other', async () => {
+    const { path, tabId, copy } = await openFar('Roster.xlsx', 'original')
+    writeFileSync(path, 'colleague')
+    await editorSaves(copy, 'my edits')
+    await settled()
+    await call<FilesTabs>('work.files.copyKeep', { tabId })
+    const mine = join(dirname(path), 'Roster (mine).xlsx')
+    const second = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path } })
+    const theirs = canvasSourcePath(second.item!.source)!
+    expect(theirs).not.toBe(copy)
+    expect(dirname(theirs)).not.toBe(dirname(copy))
+    expect(readFileSync(copy, 'utf8')).toBe('my edits')
+    expect(readFileSync(theirs, 'utf8')).toBe('colleague')
+    // Each edit goes to its own file.
+    await editorSaves(copy, 'my edits, again')
+    await editorSaves(theirs, 'colleague, with mine')
+    await settled()
+    expect(readFileSync(mine, 'utf8')).toBe('my edits, again')
+    expect(readFileSync(path, 'utf8')).toBe('colleague, with mine')
+    // Closing the original's tab takes its copy alone.
+    await call('work.files.tabClose', { tabId: second.tabId })
+    await new Promise((r) => setTimeout(r, 5))
+    await settled()
+    expect(existsSync(theirs)).toBe(false)
+    expect(readFileSync(copy, 'utf8')).toBe('my edits, again')
+    await editorSaves(copy, 'my edits, thrice')
+    await settled()
+    expect(readFileSync(mine, 'utf8')).toBe('my edits, thrice')
+  })
+
+  it('a Keep Both whose answer was lost after the file was made makes no second file when he presses it again', async () => {
+    const { path, tabId, copy } = await openFar('Roster.xlsx', 'original')
+    writeFileSync(path, 'colleague')
+    await editorSaves(copy, 'my edits')
+    await settled()
+    loseReply = true
+    await expect(call('work.files.copyKeep', { tabId })).rejects.toThrow()
+    const kept = await call<FilesTabs>('work.files.copyKeep', { tabId })
+    expect(readdirSync(dirname(path)).filter((name) => name.includes('(mine)'))).toEqual(['Roster (mine).xlsx'])
+    expect(kept.tabs.find((t) => t.id === tabId)).toMatchObject({ copyOf: { host: MAC, path: join(dirname(path), 'Roster (mine).xlsx') } })
+    // A later conflict's Keep Both is a new press: it makes its own file.
+    writeFileSync(join(dirname(path), 'Roster (mine).xlsx'), 'colleague again')
+    await editorSaves(copy, 'my edits again')
+    await settled()
+    await call('work.files.copyKeep', { tabId })
+    expect(readdirSync(dirname(path)).filter((name) => name.includes('(mine')).sort()).toEqual(['Roster (mine) (mine).xlsx', 'Roster (mine).xlsx'])
+  })
+
+  it('Reload puts the file in the copy whole: a reader that had the copy open reads its old bytes, never part of the new', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'ours')
+    writeFileSync(path, 'theirs, a good deal longer')
+    await editorSaves(copy, 'mine')
+    await settled()
+    const { openSync, closeSync } = await import('node:fs')
+    const fd = openSync(copy, 'r')
+    try {
+      await call('work.files.copyReload', { tabId })
+      expect(readFileSync(fd, 'utf8')).toBe('mine')
+    } finally {
+      closeSync(fd)
+    }
+    expect(readFileSync(copy, 'utf8')).toBe('theirs, a good deal longer')
+  })
+
+  it('Reload drops nothing his other window saved while the file was read, or after the question he answered', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'ours')
+    writeFileSync(path, 'theirs')
+    await editorSaves(copy, 'mine')
+    await settled()
+    let go!: () => void
+    const gate = new Promise<void>((r) => (go = r))
+    readGate = () => gate
+    const reloading = call('work.files.copyReload', { tabId })
+    await new Promise((r) => setTimeout(r, 5))
+    await secondWindowSaves(copy, 'his other window')
+    go()
+    await expect(reloading).rejects.toThrow(/edited/)
+    readGate = null
+    expect(readFileSync(copy, 'utf8')).toBe('his other window')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ state: 'changed', writes: 2 })
+    // The question he answered named one write; the copy holds two now: nothing is dropped.
+    await expect(call('work.files.copyReload', { tabId, writes: 1 })).rejects.toThrow(/edited/)
+    expect(readFileSync(copy, 'utf8')).toBe('his other window')
+    // Asked again with what it holds now, Reload takes theirs.
+    await call('work.files.copyReload', { tabId, writes: 2 })
+    expect(readFileSync(copy, 'utf8')).toBe('theirs')
+  })
+
+  it('a closed copy that cannot be read keeps its record and folder, and goes once it reads as held', async () => {
+    const { chmodSync } = await import('node:fs')
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    chmodSync(copy, 0)
+    await call('work.files.tabClose', { tabId })
+    await new Promise((r) => setTimeout(r, 5))
+    await settled()
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ closed: 1 })
+    chmodSync(copy, 0o600)
+    expect(readFileSync(copy, 'utf8')).toBe('one')
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+    expect(existsSync(copy)).toBe(false)
+  })
+
+  it('an edit landing while a closed copy is let go keeps the copy, and that edit is sent', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    let free!: () => void
+    const freed = new Promise<void>((r) => (free = r))
+    // An editor's last save under way, holding the copy's lock as it writes.
+    const last = withFileLocks([refKey({ at: 'file', host: HOST, path: copy })], async () => {
+      await freed
+      writeFileSync(copy, 'two')
+      fileWritten(copy)
+    })
+    await call('work.files.tabClose', { tabId })
+    await new Promise((r) => setTimeout(r, 5))
+    free()
+    await last
+    await new Promise((r) => setTimeout(r, 5))
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('two')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+  })
+
+  it('two records an older build left on one copy are each given their own: the newer keeps it, the older a copy of it that sends nothing', async () => {
+    const roster = await openFar('Roster.xlsx', 'roster')
+    const plan = await openFar('Plan.xlsx', 'plan')
+    // As an older build left them: Plan's record and its tab's item name Roster's copy, and Roster's copy is the newer.
+    box.db.prepare(`UPDATE work_files_copies SET copy = ?, dir = ?, at = 1 WHERE path = ?`).run(roster.copy, dirname(roster.copy), plan.path)
+    box.db.prepare(`UPDATE work_files_tabs SET item_id = ? WHERE id = ?`).run(roster.item.id, plan.tabId)
+    ownCopyFolders(box.ctx)
+    const r = copyRecord(box.ctx, WS, MAC, roster.path)!
+    const p = copyRecord(box.ctx, WS, MAC, plan.path)!
+    expect(r.copy).toBe(realpathSync(roster.copy))
+    expect(p.copy).not.toBe(r.copy)
+    expect(p.dir).not.toBe(r.dir)
+    expect(readFileSync(p.copy, 'utf8')).toBe('roster')
+    // Its bytes are not its file's: nothing goes to Plan until his Reload or Keep Both.
+    expect(p.state).toBe('changed')
+    const planTab = (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === plan.tabId)!
+    expect(canvasSourcePath(box.canvas.get(planTab.itemId!)!.source)).toBe(p.copy)
+    const rosterTab = (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === roster.tabId)!
+    expect(canvasSourcePath(box.canvas.get(rosterTab.itemId!)!.source)).toBe(roster.copy)
+    await settled()
+    expect(readFileSync(plan.path, 'utf8')).toBe('plan')
+    // Run again, it finds nothing to do.
+    ownCopyFolders(box.ctx)
+    expect(copyRecord(box.ctx, WS, MAC, plan.path)!.copy).toBe(p.copy)
   })
 })

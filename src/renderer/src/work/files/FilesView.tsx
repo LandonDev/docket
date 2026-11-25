@@ -1086,7 +1086,7 @@ function OpenFile({
         ...(farCopy && opensInApp(farCopy) ? { openThere: () => void openInApp({ name: tab.name, key: tab.key ?? tab.id, ref: { at: "file", host: tab.copyOf!.host, path: tab.copyOf!.path } }, farCopy, { busy: () => undefined }) } : {}),
         // A copy that saves back: its line's presses, each asked of the workspace's host (files/copies.ts).
         ...(tab.back
-          ? { send: () => sendCopyBack(link, workspace.id, tab.id), reload: () => reloadCopy(link, workspace.id, tab.id), keepBoth: () => keepBothCopy(link, workspace.id, tab.id) }
+          ? { send: () => sendCopyBack(link, workspace.id, tab.id), reload: () => reloadCopy(link, workspace.id, tab.id, tab.back?.writes), keepBoth: () => keepBothCopy(link, workspace.id, tab.id) }
           : {}),
       }
     : null;

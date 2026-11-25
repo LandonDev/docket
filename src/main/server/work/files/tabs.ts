@@ -230,6 +230,11 @@ export class TabStore {
     this.change(workspaceId, () => void this.db.prepare(`UPDATE work_files_tabs SET page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(JSON.stringify(next), Date.now(), workspaceId, tabId))
   }
 
+  /** A tab shows another item now (a copy given a file of its own at start, files/copies.ts `ownCopyFolders`). */
+  reseat(workspaceId: string, tabId: string, itemId: string): void {
+    this.change(workspaceId, () => void this.db.prepare(`UPDATE work_files_tabs SET item_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(itemId, Date.now(), workspaceId, tabId))
+  }
+
   /** The tab that holds a file, by its key: the file he opened in it, or the file that took its place there. */
   tabOf(workspaceId: string, key: string): FileTab | null {
     if (!key) return null

@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { takePieces, writeBackInPieces, type PieceRef } from './pieces'
-import { constants, readFileSync, realpathSync, rmSync } from 'node:fs'
-import { open, readFile } from 'node:fs/promises'
+import { constants, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { open, readFile, rename, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { CopyBack, FileOrigin, FileTab, WrittenBack } from '@shared/contract-work-files'
 import { filesPaneOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
-import { COPY_ACROSS_MAX, freeName, splitName } from '@shared/work/files'
+import { COPY_ACROSS_MAX, freeName, refKey, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { copyAllowed } from '../office/files/library'
 import { vmList } from '../office/vm/files'
@@ -21,8 +21,9 @@ import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
 import { farMoved } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
-import { FileRefused, OpLost, runOp, versionOf } from './write'
-import { bytesSink, farBytes, type FarPiece } from '../office/files/handle'
+import { FileRefused, OpLost, runOp, versionOf, withFileLocks } from './write'
+import { bytesSink, copyFolderOf, farBytes, type FarPiece } from '../office/files/handle'
+import { copyFolderTaken } from './copyKept'
 
 /**
  * A copy saves back (docs/agents/work-files.md "A copy saves back"). A Files tab's copy of a file on another
@@ -61,7 +62,12 @@ export interface CopyRow {
   writes: number
   /** the last of those writes the file is known to hold */
   held: number
+  /** a Keep Both press whose answer has not come back (`KeepPress` as JSON), else null */
+  keep_press: string | null
 }
+
+/** A Keep Both press under way: its op id, the hash of the bytes it sent and the copy's writes they held. */
+type KeepPress = { op: string; sha: string; writes: number }
 
 /** His window: what the workspace's host itself sends as when the press was his. */
 const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
@@ -73,6 +79,11 @@ const TOO_BIG = (name: string): string => `${name} is over ${COPY_ACROSS_MAX / 1
 export const NOT_SAVING = "This copy's changes stay here."
 const ONLY_HOST = "A copy is sent back by the workspace's own host."
 const sha = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex')
+/** The lock every editor of a copy here takes as it saves it (`saveFile` with the copy's `refKey`). */
+const copyKey = (ctx: Pick<WorkCtx, 'host'>, copy: string): string => refKey({ at: 'file', host: ctx.host, path: copy })
+const missing = (err: unknown): boolean => (err as NodeJS.ErrnoException)?.code === 'ENOENT'
+export const RELOAD_EDITED = 'This copy was edited since you chose Reload, so nothing was dropped.'
+const RELOAD_MOVED = 'The file moved while it reloaded, so nothing was dropped.'
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 const real = (path: string): string => {
   try {
@@ -103,7 +114,7 @@ export function recordCopy(ctx: Pick<WorkCtx, 'db'>, c: { workspaceId: string; h
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', NULL, NULL, NULL, 0, ?)
        ON CONFLICT (workspace_id, host, path) DO UPDATE SET copy = excluded.copy, dir = excluded.dir, name = excluded.name, kind = excluded.kind,
          version = excluded.version, sent = excluded.sent, state = 'ok', detail = NULL, saved_at = NULL, changed_at = NULL, closed = 0, at = excluded.at,
-         held = work_files_copies.writes`
+         held = work_files_copies.writes, keep_press = NULL`
     )
     .run(randomUUID(), c.workspaceId, c.host, c.path, c.vm ? 1 : 0, copy, dirname(copy), c.name, c.kind, c.version, c.sha256, Date.now())
   return copyRecord(ctx, c.workspaceId, c.host, c.path)!
@@ -150,8 +161,8 @@ export const unreachable = (err: unknown): boolean =>
   err instanceof VmUnreachable || err instanceof OpLost || (err as { name?: string })?.name === 'PeerOfflineError' || /offline|no live link|timed out|timeout|unreachable|not answer|ECONNRE|socket hang up/i.test(message(err))
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
-export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean): Promise<WrittenBack> {
-  let got = await deliverOnce(ctx, r, data, keep)
+export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {
+  let got = await deliverOnce(ctx, r, data, keep, op)
   // SharePoint's own rewrite of an Office file in a Teams library, seconds after its upload, is no one's edit
   // (body.ts): found changed with its body as we last read or wrote it, the file is written over by its new version.
   if (!keep && 'conflict' in got && !('gone' in got.conflict)) {
@@ -172,7 +183,8 @@ export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'h
   return got
 }
 
-async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean): Promise<WrittenBack> {
+/** `op`: Keep Both's press, kept across a lost answer, so the file's computer answers it again rather than make a second file. */
+async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {
   const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
   if (r.vm) {
     // The Windows VM's file: through this host's own door for his edit of that library, then the guest's versioned write.
@@ -185,7 +197,7 @@ async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host
     const names = new Set((await vmList(w.library.library, dir)).map((e) => e.name.toLowerCase()))
     const { stem, ext } = splitName(r.name)
     const name = freeName(`${stem} (mine)${ext}`, (n) => names.has(n.toLowerCase()))
-    const made = await guestChange<{ entry: { path: string } }>('files.write', { dir, name, data: data.toString('base64'), op: guestOp(randomUUID()) })
+    const made = await guestChange<{ entry: { path: string } }>('files.write', { dir, name, data: data.toString('base64'), op: guestOp(op ?? randomUUID()) })
     forgetVmList(w.library.library.id, dir)
     const now = await vmReadVersioned(made.entry.path, 0, 1)
     return { copy: { path: made.entry.path, name: basename(made.entry.path.replaceAll('\\', '/')), version: now.version, changed: now.changed } }
@@ -194,7 +206,7 @@ async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host
   const origin: FileOrigin = { from: 'window' }
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id } } as never, r.host)
   // In pieces when it is over one (pieces.ts): never the whole file as one frame of the peer link.
-  return (await writeBackInPieces((method, params) => far.call('files', method, params), { workspaceId: r.workspace_id, ref, version: r.version, origin, ...(keep ? { copy: true } : {}) }, data)) as WrittenBack
+  return (await writeBackInPieces((method, params) => far.call('files', method, params), { workspaceId: r.workspace_id, ref, version: r.version, origin, ...(keep ? { copy: true, ...(op ? { op } : {}) } : {}) }, data)) as WrittenBack
 }
 
 /** One look: the copy's bytes as they lie, sent when they differ from what the file holds. */
@@ -208,9 +220,11 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
   let data: Buffer
   try {
     data = await readFile(r.copy)
-  } catch {
-    // The copy went (Copy Teams files turned off, the workspace gone): so does what was kept of it.
-    return letGo(ctx, r)
+  } catch (err) {
+    // The copy went (Copy Teams files turned off, the workspace gone): so does what was kept of it. A copy that is there
+    // and could not be read keeps its record: it is looked at again (`retryWaiting`), never let go unread.
+    if (missing(err)) return letGo(ctx, r)
+    return ctx.log(`files: a copy could not be read to send it: ${message(err)}`)
   }
   const hash = sha(data)
   if (hash === r.sent) {
@@ -248,15 +262,33 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
 
 /**
  * A closed tab's copy goes only once its file holds the copy's latest write: a write that landed while a send was on
- * its way (counted, or found in the bytes) keeps the copy, and its send runs next, never a let-go that takes it.
+ * its way (counted, or found in the bytes) keeps the copy, and its send runs next, never a let-go that takes it. The
+ * last look and the let-go hold the copy's lock, so an editor's save under way lands first and is seen; a copy that
+ * is there and cannot be read is kept, and looked at again.
  */
 async function letGoIfHeld(ctx: WorkCtx, id: string): Promise<void> {
   const r = row(ctx, id)
   if (!r) return
-  const now = await readFile(r.copy).catch(() => null)
-  const after = row(ctx, id)
-  if (!after) return
-  if (after.held >= after.writes && (!now || sha(now) === after.sent)) return letGo(ctx, after)
+  const owed = await withFileLocks([copyKey(ctx, r.copy)], async () => {
+    await workDone(r.copy)
+    let now: Buffer | null = null
+    try {
+      now = await readFile(r.copy)
+    } catch (err) {
+      if (!missing(err)) {
+        ctx.log(`files: a closed copy could not be read, and is kept: ${message(err)}`)
+        return false
+      }
+    }
+    const after = row(ctx, id)
+    if (!after) return false
+    if (after.held >= after.writes && (!now || sha(now) === after.sent)) {
+      letGo(ctx, after)
+      return false
+    }
+    return true
+  })
+  if (!owed) return
   const flight = flights.get(id)
   if (flight) flight.again = true
   else void sendBack(ctx, id)
@@ -440,48 +472,87 @@ export async function freshVersion(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id'
 /**
  * `work.files.copyReload`: the file as it is on its computer now, written into the copy the tab's item already names
  * (after Keep Both that file is another than the one first copied, and its copy stays in the tab's one folder); what
- * was not sent is dropped. The copy is written without following a link, as `copyIn` writes one.
+ * was not sent is dropped. Only what the question he answered named is dropped: `writes`, the copy's writes it showed
+ * (else those at the press). The file is read first; then, with the copy's lock held, the copy must still be at those
+ * writes, or nothing is dropped. The bytes go into a staging file beside the copy and take its place in one rename, so
+ * a reader sees the old copy or the new one, never part, and a link there is replaced, never followed.
  */
-export async function copyReload(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string }, signal?: AbortSignal): Promise<void> {
+export async function copyReload(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; writes?: number }, signal?: AbortSignal): Promise<void> {
   const { tab, r } = recordOfTab(ctx, by, p.workspaceId, p.tabId)
   admitOwner(by, r)
   await flights.get(r.id)?.run
+  const asked = p.writes ?? row(ctx, r.id)?.writes ?? r.writes
+  if ((row(ctx, r.id)?.writes ?? r.writes) !== asked) throw new Error(RELOAD_EDITED)
   const fresh = await freshBytes(ctx, r, signal)
-  const out = await open(r.copy, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), 0o600)
-  try {
-    await out.writeFile(fresh.data)
-    await out.sync()
-  } finally {
-    await out.close()
-  }
-  recordCopy(ctx, { workspaceId: p.workspaceId, host: r.host, path: r.path, vm: !!r.vm, copy: r.copy, name: tab.name, kind: r.kind as CanvasKind, version: fresh.version, sha256: sha(fresh.data) })
+  await withFileLocks([copyKey(ctx, r.copy)], async () => {
+    await workDone(r.copy)
+    const now = row(ctx, r.id)
+    if (!now || now.copy !== r.copy || now.path !== r.path) throw new Error(RELOAD_MOVED)
+    if (now.writes !== asked) throw new Error(RELOAD_EDITED)
+    await replaceWhole(r.copy, fresh.data)
+    recordCopy(ctx, { workspaceId: p.workspaceId, host: r.host, path: r.path, vm: !!r.vm, copy: r.copy, name: tab.name, kind: r.kind as CanvasKind, version: fresh.version, sha256: sha(fresh.data) })
+  })
   keepBody(ctx, r, fresh.data)
   said(ctx, p.workspaceId)
 }
 
+/** A copy's bytes replaced whole: a staging file made new beside it (never through a link), synced, renamed over it. */
+async function replaceWhole(path: string, data: Buffer): Promise<void> {
+  const temp = join(dirname(path), `.${basename(path)}.reload-${randomUUID().slice(0, 8)}`)
+  const out = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
+  try {
+    try {
+      await out.writeFile(data)
+      await out.sync()
+    } finally {
+      await out.close()
+    }
+    await rename(temp, path)
+  } finally {
+    await unlink(temp).catch(() => {})
+  }
+}
+
 /**
  * `work.files.copyKeep`, Keep Both: his copy saved beside the file that changed, under the keep-both name
- * ("Roster (mine).xlsx"), on the file's own computer through the same door; the tab then shows that new file.
+ * ("Roster (mine).xlsx"), on the file's own computer through the same door; the tab then shows that new file. The press
+ * is kept on the record with an op id before it goes: pressed again after its answer was lost, the same op goes, and
+ * the file's computer answers what the first made (`runOp` there, the guest's journal in the VM), never a second file.
+ * The record then holds the bytes that press sent; anything written since is sent to the new file after it.
  */
 export async function copyKeep(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string }): Promise<void> {
   const { tab, r } = recordOfTab(ctx, by, p.workspaceId, p.tabId)
   admitOwner(by, r)
   await flights.get(r.id)?.run
-  const writes = row(ctx, r.id)?.writes ?? r.writes
+  const was = row(ctx, r.id) ?? r
   const data = await readFile(r.copy)
   if (data.length > COPY_ACROSS_MAX) throw new Error(TOO_BIG(r.name))
-  const got = await deliver(ctx, r, data, true)
-  if (!('copy' in got)) throw new Error('The other computer did not keep the copy.')
+  const press: KeepPress = was.keep_press ? (JSON.parse(was.keep_press) as KeepPress) : { op: randomUUID(), sha: sha(data), writes: was.writes }
+  ctx.db.prepare(`UPDATE work_files_copies SET keep_press = ? WHERE id = ?`).run(JSON.stringify(press), r.id)
+  let got: WrittenBack
+  try {
+    got = await deliver(ctx, r, data, true, press.op)
+  } catch (err) {
+    // A refusal is the press's answer: the next is a new press. No answer keeps it, to be asked again.
+    if (!unreachable(err)) ctx.db.prepare(`UPDATE work_files_copies SET keep_press = NULL WHERE id = ?`).run(r.id)
+    throw err
+  }
+  if (!('copy' in got)) {
+    ctx.db.prepare(`UPDATE work_files_copies SET keep_press = NULL WHERE id = ?`).run(r.id)
+    throw new Error('The other computer did not keep the copy.')
+  }
   const made = got.copy
   ctx.db
-    .prepare(`UPDATE work_files_copies SET path = ?, name = ?, version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL, held = MAX(held, ?) WHERE id = ?`)
-    .run(made.path, made.name, made.version, sha(data), Date.now(), writes, r.id)
+    .prepare(`UPDATE work_files_copies SET path = ?, name = ?, version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL, held = MAX(held, ?), keep_press = NULL WHERE id = ?`)
+    .run(made.path, made.name, made.version, press.sha, Date.now(), press.writes, r.id)
   const copyOf = { host: r.host, path: made.path, ...(r.vm ? { vm: true } : {}) }
   filesState(ctx).tabs.repoint(p.workspaceId, tab.id, { name: made.name, copyOf })
   if (tab.itemId) {
     const item = ctx.canvas.get(tab.itemId)
     if (item) ctx.canvas.replace(item.sessionId, item.id, item.kind, item.source, made.name)
   }
+  // Bytes written since the press first went are not in the new file yet: they go now, by its version.
+  if (sha(await readFile(r.copy).catch(() => data)) !== press.sha) void sendBack(ctx, r.id)
 }
 
 /**
@@ -513,6 +584,63 @@ export function copyClosing(ctx: WorkCtx, workspaceId: string, tab: FileTab | un
   // He chose to drop what waits: the copy goes with its tab, now.
   ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
   rmSync(r.dir, { recursive: true, force: true })
+}
+
+/**
+ * The folder a Files tab's copy of `file` is made in: its own (office/files/handle.ts `copyFolderOf`), or, when a live
+ * copy of another file holds that one (Keep Both re-pointed its record, or its file moved and a new one took the old
+ * name), the next that none holds. Each live copy has its own file, so opening one never writes over another's bytes.
+ * `fresh`: one that is not on the disk either.
+ */
+export function copyFolderFor(ctx: Pick<WorkCtx, 'db' | 'dataDir'>, workspaceId: string, file: { host: string; path: string }, fresh = false): string {
+  for (let n = 0; ; n++) {
+    const dir = copyFolderOf(ctx.dataDir, filesPaneOf(workspaceId), file, n)
+    if (!copyFolderTaken(ctx.db, workspaceId, dir, file) && !(fresh && existsSync(dir))) return dir
+  }
+}
+
+/**
+ * At start: records an older build left on one copy (Keep Both, then the original opened again, wrote the original's
+ * bytes into the kept tab's copy) are each given their own. The newest keeps the copy, whose bytes its open wrote; each
+ * other gets a copy of those bytes in a folder of its own, and its tab's item follows. One whose bytes are not what its
+ * file holds is marked changed: nothing is sent from it, and his Reload brings its file back (or Keep Both keeps them).
+ * Answers how many moved.
+ */
+export function ownCopyFolders(ctx: WorkCtx): number {
+  const shared = ctx.db.prepare(`SELECT workspace_id, copy FROM work_files_copies GROUP BY workspace_id, copy HAVING COUNT(*) > 1`).all() as { workspace_id: string; copy: string }[]
+  let moved = 0
+  for (const s of shared) {
+    const rows = ctx.db.prepare(`SELECT * FROM work_files_copies WHERE workspace_id = ? AND copy = ? ORDER BY at DESC`).all(s.workspace_id, s.copy) as unknown as CopyRow[]
+    let bytes: Buffer
+    try {
+      bytes = readFileSync(s.copy)
+    } catch (err) {
+      ctx.log(`files: a shared copy could not be read, and is left as it is: ${message(err)}`)
+      continue
+    }
+    for (const r of rows.slice(1)) {
+      const dir = copyFolderFor(ctx, r.workspace_id, r, true)
+      mkdirSync(dir, { recursive: true, mode: 0o700 })
+      const to = join(dir, basename(r.copy))
+      const temp = `${to}.part-${randomUUID().slice(0, 8)}`
+      writeFileSync(temp, bytes, { flag: 'wx', mode: 0o600 })
+      renameSync(temp, to)
+      const theirs = sha(bytes) === r.sent
+      ctx.db.prepare(`UPDATE work_files_copies SET copy = ?, dir = ?, state = ?, changed_at = ? WHERE id = ?`).run(real(to), real(dir), theirs ? r.state : 'changed', theirs ? r.changed_at : Date.now(), r.id)
+      // Its tab shows an item of its own copy: one item showed both tabs (an item is one a source), so a new one opens.
+      const tabs = filesState(ctx).tabs
+      for (const tab of tabs.list(r.workspace_id).tabs) {
+        if (tab.copyOf?.host !== r.host || tab.copyOf.path !== r.path || !tab.itemId) continue
+        const item = ctx.canvas.get(tab.itemId)
+        if (!item) continue
+        const mine = ctx.canvas.open(item.sessionId, item.kind, { at: 'file', host: ctx.host, path: real(to) }, item.title)
+        tabs.reseat(r.workspace_id, tab.id, mine.id)
+      }
+      moved++
+    }
+  }
+  if (moved) for (const s of new Set(shared.map((x) => x.workspace_id))) said(ctx, s)
+  return moved
 }
 
 /** A copy a closed tab kept, opened again: the tab shows it with what waits in it, and it is a tab's again. */
@@ -557,9 +685,13 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [folder], origin: p.origin }, method)
     const at = locate(ctx, by, p.workspaceId, folder, method)
     if (at.in !== 'library' || at.library.vm) throw new Error("Another host reaches only this host's libraries.")
-    const made = await saveCopy({ roots: [at.library.path] }, join(at.path, basename(path)), data)
-    const v = await versionOf(made)
-    return { copy: { path: made, name: basename(made), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+    const keep = async (): Promise<WrittenBack> => {
+      const made = await saveCopy({ roots: [at.library.path] }, join(at.path, basename(path)), data)
+      const v = await versionOf(made)
+      return { copy: { path: made, name: basename(made), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+    }
+    // Keep Both's press asked again after its answer was lost: the file it made is answered, and nothing is made twice.
+    return p.op ? runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'writeBack.copy', refs: { ref: p.ref } }, keep) : keep()
   }
   let at: ReturnType<typeof locate>
   try {
