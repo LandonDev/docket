@@ -4,16 +4,25 @@
  * without loading Work.
  */
 const flushers = new Map<string, () => Promise<unknown>>();
+/** Items whose kind keeps what it holds on this computer when its send fails (a text file's draft, src/main/drafts.ts). */
+const keeping = new Set<() => Promise<unknown>>();
 
 export const canvasFlushPort = {
   /** The kind's own send for its item while its body is drawn. Returns its off, which leaves a newer body's in place. */
-  set(itemId: string, flush: () => Promise<unknown>): () => void {
+  set(itemId: string, flush: () => Promise<unknown>, keeps = false): () => void {
     flushers.set(itemId, flush);
+    if (keeps) keeping.add(flush);
     return () => {
+      keeping.delete(flush);
       if (flushers.get(itemId) === flush) flushers.delete(itemId);
     };
   },
   get: (itemId: string): (() => Promise<unknown>) | undefined => flushers.get(itemId),
+  /** What the item holds is kept on this computer if its send fails, and offered when it opens again. */
+  keeps: (itemId: string): boolean => {
+    const flush = flushers.get(itemId);
+    return !!flush && keeping.has(flush);
+  },
 };
 
 /** The longest quit and window close wait for the items' sends: under the 2 s main gives each window but the first to persist (src/main/windows.ts `PERSIST_TIMEOUT_MS`). */

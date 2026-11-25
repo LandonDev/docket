@@ -85,6 +85,8 @@ export const webApi: Api = {
   captureKey: { get: () => Promise.reject(new Error("desktop only")), set: () => Promise.reject(new Error("desktop only")) },
   // The page at /ui has one host and no main process: nothing to paint from before its socket.
   launchMirror: { read: () => null, write: noop },
+  // No main process here to keep his drafts: a browser keeps none, and says nothing of keeping them.
+  drafts: undefined,
   appshots: {
     onCapture: () => noop,
     onError: () => noop,

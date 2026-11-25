@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { FileBytes } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneWorkspace } from "@shared/work";
 import { extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
@@ -28,18 +28,38 @@ import { hostFrom, useArchive } from "./previews";
 /** The workspace an item's files are asked in: the Files pane's own, else its thread's. */
 const workspaceOf = (owner: string): string | null => filesPaneWorkspace(owner) ?? sessionStore.metaOf(owner)?.workspaceId ?? null;
 
+/**
+ * Sessions whose body went (another tab chosen, or the tab closed from another window) with words the host has not
+ * taken: they stay, with their send for a close and quit and their send on the link's return, until the words land.
+ * The body drawn again takes its session back with what waits in it.
+ */
+const kept = new Map<string, { session: FileSession; off(): void }>();
+/** Every kept session let go, its words unsent: a test's window starting clean. */
+export function dropKeptSessions(): void {
+  for (const k of kept.values()) k.off();
+  kept.clear();
+}
+const keptKey = (env: string, itemId: string, workspaceId: string): string => `${env}\0${itemId}\0${workspaceId}`;
+
 export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
   const workspaceId = workspaceOf(item.sessionId);
+  // The kind's line goes to the shell drawn now: a session kept from an earlier body speaks to this one.
+  const shellNow = useRef(shell);
+  useEffect(() => void (shellNow.current = shell), [shell]);
   const session = useMemo(() => {
     if (!workspaceId) return null;
+    // Looked at, not taken: the effect takes it, so a render that is thrown away changes nothing.
+    const back = kept.get(keptKey(env, item.id, workspaceId));
+    if (back) return back.session;
     const link = registry.linkOf(env);
     return new FileSession(
       {
         request: (method, params) => link.request(method, params),
-        saved: (line) => shell.saved?.(line),
+        saved: (line) => shellNow.current.saved?.(line),
         say: (text) => void loadToast().then((toast) => toast.message(text)),
+        ...(window.api?.drafts ? { drafts: window.api.drafts } : {}),
       },
-      { workspaceId, itemId: item.id, source, name: item.title },
+      { workspaceId, itemId: item.id, source, name: item.title, holder: env },
     );
     // One session for the item's life: a rename or move re-points it (`follow`, below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,7 +72,14 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
 
   useEffect(() => {
     if (!session || !workspaceId) return;
-    void session.load();
+    const back = kept.get(keptKey(env, item.id, workspaceId));
+    if (back?.session === session) {
+      kept.delete(keptKey(env, item.id, workspaceId));
+      back.off();
+    }
+    // A session kept from an earlier body shows what waits in it; a new one reads the file.
+    if (session.getSnapshot().is === "loading") void session.load();
+    else session.shown();
     // A change in the file's folder, and the window coming forward, are when a second writer shows.
     const look = (): void => void session.check();
     const link = registry.linkOf(env);
@@ -64,17 +91,36 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
     window.addEventListener("focus", look);
     // A tab's close waits for what waits here (canvas/flush.ts); words still here after the send (refused, or the file
     // changed under them) fail it, so the close asks before they go.
-    const offFlush = registerFlush(item.id, async () => {
-      await session.flush();
-      if (session.dirty) throw new Error("Your words are not in the file yet");
-    });
+    const offFlush = registerFlush(
+      item.id,
+      async () => {
+        await session.flush();
+        if (session.dirty) throw new Error("Your words are not in the file yet");
+      },
+      { keeps: !!window.api?.drafts },
+    );
     return () => {
       off();
-      offOpen();
-      offFlush();
       window.removeEventListener("focus", look);
-      // A tab can close under the editor, from this window or another: what waits is sent.
-      session.dispose();
+      if (!session.dirty) {
+        offOpen();
+        offFlush();
+        // A tab can close under the editor, from this window or another: nothing waits, and the session goes.
+        return session.dispose();
+      }
+      // Words the host does not have yet: sent now, and kept sendable (a close, quit, the link's return) until they land.
+      offOpen();
+      const key = keptKey(env, item.id, workspaceId);
+      const settle = (): void => {
+        if (session.dirty || kept.get(key) !== mine) return;
+        kept.delete(key);
+        mine.off();
+        session.dispose();
+      };
+      const offAgain = link.onOpen(() => void session.reopened().then(settle));
+      const mine = { session, off: () => (offAgain(), offFlush()) };
+      kept.set(key, mine);
+      void session.flush().then(settle);
     };
   }, [session, env, workspaceId, item.id]);
 
@@ -90,7 +136,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
   if (view.is === "facts") return <Facts name={item.title} entry={view.entry} why={view.why} env={env} workspaceId={workspaceId} itemId={item.id} source={source} />;
   return (
     <Suspense fallback={<ItemSkeleton />}>
-      <TextEditor key={view.rev} name={item.title} path={canvasSourcePath(source) ?? item.title} text={view.text} readOnly={view.locked !== null} onChange={(text) => session.edit(text)} />
+      <TextEditor key={view.rev} name={item.title} path={canvasSourcePath(source) ?? item.title} text={view.text} readOnly={view.locked !== null || view.offer === true} onChange={(text) => session.edit(text)} />
     </Suspense>
   );
 }

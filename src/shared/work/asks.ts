@@ -441,6 +441,7 @@ export const WORK_PRELOAD = {
   "app.saveDownload": true,
   "captureKey": false,
   "dialog.open": false,
+  "drafts": false,
   "dragFilesOut": false,
   "getPathForFile": false,
   "platform": false,

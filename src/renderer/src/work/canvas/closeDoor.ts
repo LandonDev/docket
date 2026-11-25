@@ -1,13 +1,20 @@
 import type { CanvasItem } from "@shared/work";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { leaveLive } from "../office/live/leave";
+import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { flushItem, type Sent } from "./flush";
 import { closeItem } from "./store";
 
-/** His word on closing an item whose last send did not land: true closes it, and what it held may be lost. Asked as a live file still saving is (office/live/leave.ts). */
-export function askCloseUnsent(name: string, sent: Exclude<Sent, "sent">): Promise<boolean> {
+/**
+ * His word on closing an item whose last send did not land: true closes it, and what it held may be lost. Asked as a
+ * live file still saving is (office/live/leave.ts). `kept`: its kind keeps it on this computer as a draft, offered when
+ * the file opens again, so nothing is said to be lost.
+ */
+export function askCloseUnsent(name: string, sent: Exclude<Sent, "sent">, kept = false): Promise<boolean> {
   return confirmAction(
-    sent === "late"
+    kept
+      ? { title: `Changes to ${name} are not saved.`, body: "Close it anyway? They are kept on this computer and offered when you open it again.", action: "Close Anyway" }
+      : sent === "late"
       ? { title: `${name} is still saving`, body: "Close it anyway? What it has not saved may be lost.", action: "Close Anyway", danger: true }
       : { title: `Changes to ${name} are not saved.`, body: "Close it anyway? They will be lost.", action: "Close Anyway", danger: true },
   );
@@ -21,8 +28,9 @@ export function askCloseUnsent(name: string, sent: Exclude<Sent, "sent">): Promi
  * the item may go; false when he keeps it.
  */
 export async function readyToClose(itemId: string, name: string, leave: typeof leaveLive = leaveLive, ask: typeof askCloseUnsent = askCloseUnsent): Promise<boolean> {
+  const kept = canvasFlushPort.keeps(itemId);
   const sent = await flushItem(itemId);
-  if (sent !== "sent" && !(await ask(name, sent))) return false;
+  if (sent !== "sent" && !(await ask(name, sent, kept))) return false;
   return leave(itemId, name);
 }
 

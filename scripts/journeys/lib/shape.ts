@@ -277,7 +277,8 @@ export class Pair {
       this.winRelay = this.windowLink = await shapedRelay(this.box.remote, options.link)
       this.relays.push(this.winRelay)
     } else if (options.cut) {
-      this.winRelay = await relay('127.0.0.1', this.box.remote)
+      // A hop with no delay that presents box's own Host, as his tunnel does: box refuses a page's socket with another.
+      this.winRelay = await shapedRelay(this.box.remote, { delayMs: 0, rateMbit: 0 })
       this.relays.push(this.winRelay)
     }
     if (options.guestTheme) {
@@ -439,11 +440,12 @@ export class Pair {
     this.winRelay.cut(on)
   }
 
-  async halt(inst: Instance): Promise<void> {
+  /** Stops an instance: asked first (SIGTERM), then by force; `abrupt` is a crash, by force at once, with no word to it. */
+  async halt(inst: Instance, abrupt = false): Promise<void> {
     inst.halted = true
     const pid = inst.proc?.pid
-    if (pid) kill(-pid, 'SIGTERM')
-    await sleep(750)
+    if (pid && !abrupt) kill(-pid, 'SIGTERM')
+    if (!abrupt) await sleep(750)
     if (pid) kill(-pid, 'SIGKILL')
     inst.port = 0
     for (const owned of instancePids(inst.data)) kill(owned, 'SIGKILL')

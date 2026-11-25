@@ -84,6 +84,7 @@ vi.mock("./FileTextEditor", () => ({
 const { FileTabView } = await import("./FileTabView");
 const { SAVE_AFTER_MS } = await import("./fileSession");
 const { flushItem } = await import("../canvas/flush");
+const { dropKeptSessions } = await import("./FileKind");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w" } as Pick<WorkspaceMeta, "id" | "environmentId" | "path">;
 const AT = new Date(2026, 10, 23, 13, 52).getTime();
@@ -108,6 +109,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  dropKeptSessions();
   vi.useRealTimers();
 });
 
@@ -229,6 +231,77 @@ describe("a text file in a tab", () => {
     Object.assign(kept("/w/Events/Notes.md"), { text: "changed by a thread\n", version: 2, changed: AT + 120_000 });
     act(() => disk.pushes.forEach((listener) => listener({ push: "work.files", workspaceId: "w1", at: "file:env_box:/w/Events" })));
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Notes.md" }) as HTMLTextAreaElement).value).toBe("changed by a thread\n"));
+  });
+});
+
+describe("words the host has not taken, when the editor goes", () => {
+  it("keeps a switched-away editor's send for a close and the link's return, and shows its words when drawn again", async () => {
+    const shown = show("/w/Events/Notes.md");
+    const field = await screen.findByRole("textbox", { name: "Notes.md" });
+    await waitFor(() => expect(line()).toContain("Saved"));
+    disk.down = true;
+    fireEvent.change(field, { target: { value: "typed, then another tab\n" } });
+    // Another tab chosen: the body goes, its words are not in the file.
+    shown.unmount();
+    await expect(flushItem("i1")).resolves.toBe("failed");
+    const back = show("/w/Events/Notes.md");
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Notes.md" }) as HTMLTextAreaElement).value).toBe("typed, then another tab\n"));
+    back.unmount();
+    disk.down = false;
+    act(() => disk.opens.forEach((listener) => listener()));
+    await waitFor(() => expect(kept("/w/Events/Notes.md").text).toBe("typed, then another tab\n"));
+    // Landed: nothing is held for the item any more.
+    await expect(flushItem("i1")).resolves.toBe("sent");
+  });
+
+  it("sends the first window's words when a second window closes the shared tab while its link is down", async () => {
+    const shown = show("/w/Events/Notes.md");
+    const field = await screen.findByRole("textbox", { name: "Notes.md" });
+    await waitFor(() => expect(line()).toContain("Saved"));
+    disk.down = true;
+    fireEvent.change(field, { target: { value: "typed here, closed there\n" } });
+    // The other window's close takes the item from this one (handle.ts tabClose).
+    shown.unmount();
+    disk.down = false;
+    act(() => disk.opens.forEach((listener) => listener()));
+    await waitFor(() => expect(kept("/w/Events/Notes.md").text).toBe("typed here, closed there\n"));
+  });
+
+  it("offers an unsent draft after the app went with no word, and Restore puts it in the file by its version", async () => {
+    const { DraftStore } = await import("../../../../main/drafts");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const dir = join(mkdtempSync(join(tmpdir(), "tc-drafts-")), "drafts");
+    const portOf = (store: InstanceType<typeof DraftStore>) => ({ put: (d: never) => store.put(d, 1), drop: (k: never) => store.drop(k), release: (k: never) => store.release(k), list: (k: never) => store.list(k) });
+    const first = new DraftStore(dir);
+    const second = new DraftStore(dir);
+    Object.assign(window, { api: { drafts: portOf(first) } });
+    try {
+      const shown = show("/w/Events/Notes.md");
+      const field = await screen.findByRole("textbox", { name: "Notes.md" });
+      await waitFor(() => expect(line()).toContain("Saved"));
+      disk.down = true;
+      fireEvent.change(field, { target: { value: "first line\none\n" } });
+      fireEvent.change(field, { target: { value: "first line\none\ntwo\n" } });
+      await first.settled();
+      // Killed: no close, no send, and the app starts again on the same folder.
+      shown.unmount();
+      dropKeptSessions();
+      disk.down = false;
+      Object.assign(window, { api: { drafts: portOf(second) } });
+      show("/w/Events/Notes.md");
+      await waitFor(() => expect(line()).toBe("Edits from 2:30 PM were not saved"));
+      expect((screen.getByRole("textbox", { name: "Notes.md" }) as HTMLTextAreaElement).readOnly).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+      await waitFor(() => expect(kept("/w/Events/Notes.md").text).toBe("first line\none\ntwo\n"));
+      expect(writes().at(-1)).toMatchObject({ version: "v1" });
+      await waitFor(() => expect((screen.getByRole("textbox", { name: "Notes.md" }) as HTMLTextAreaElement).readOnly).toBe(false));
+    } finally {
+      Object.assign(window, { api: undefined });
+      await Promise.all([first.settled(), second.settled()]);
+      rmSync(join(dir, ".."), { recursive: true, force: true });
+    }
   });
 });
 

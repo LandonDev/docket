@@ -10,6 +10,7 @@ import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shar
 import type { ShowAsk, ShowDisplay, ShowFrames } from '../shared/slidesShow'
 import type { LiveTicketAsk } from '../shared/work/officeLive'
 import type { CodeUpdateStatus } from '../shared/codeUpdate'
+import type { Draft, DraftKey } from '../shared/work/drafts'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -31,6 +32,13 @@ interface AskOptions {
 interface MessageOptions {
   title?: string
   kind?: DialogKind
+}
+
+interface DraftsApi {
+  put(draft: Draft): void
+  drop(key: DraftKey): void
+  release(key: DraftKey): void
+  list(key: Omit<DraftKey, 'base'>): Promise<Draft[]>
 }
 
 interface PtySpawnArgs {
@@ -103,6 +111,13 @@ const api = {
       (ipcRenderer.sendSync('launch-mirror:read') as LaunchMirrorSnapshot | null) ?? null,
     write: (write: MirrorWrite): void => ipcRenderer.send('launch-mirror:write', write)
   },
+  /** His unacknowledged edits, kept by this computer's main process (src/main/drafts.ts); writes are fire-and-forget. Absent in a browser, which keeps none. */
+  drafts: {
+    put: (draft: Draft): void => ipcRenderer.send('drafts:put', draft),
+    drop: (key: DraftKey): void => ipcRenderer.send('drafts:drop', key),
+    release: (key: DraftKey): void => ipcRenderer.send('drafts:release', key),
+    list: (key: Omit<DraftKey, 'base'>): Promise<Draft[]> => ipcRenderer.invoke('drafts:list', key)
+  } as DraftsApi | undefined,
   appshots: {
     /** Mounts the capture listener and flushes any queued captures. */
     onCapture: (cb: (a: AppshotAttachment) => void): (() => void) => {

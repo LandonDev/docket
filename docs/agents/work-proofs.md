@@ -133,12 +133,13 @@ their files.
 | J53 | A, K | Work writes only to hosts the key can manage. Workspace creation and Add folder persist or say who can act. |
 | J54 | K | The pairing dialog gives a reachable link and matching QR or explains why there is none. Cancel revokes its pairing. |
 | J56 | A, B1 | Text typed before and during a cut to box reaches the file after reconnect. |
+| J75 | A, B1 | Two text edits typed with win's link cut, then win killed with no word (SIGKILL) and started again: the reopened file offers the draft, and Restore puts both edits on the holder. Again, with the file changed on its holder while win was gone: in A the offer says the file changed since and Keep Both puts the draft beside the newer file; in B1 the draft goes back into box's copy and the copy's own line offers Keep Both. The holder keeps the newer file and the draft beside it. |
 | J57 | A, K | An owner's edit reaches the open tab in a second window. The given computer's key limits its controls. |
 | J58 | A | New chats keep box's access, provider, model, effort and Work scope across start surfaces. The walks that need LifeOS are skipped. |
 
 For both guest walks, use `--only J20 --shape S,U --no-table`.
 For the rest of the first run, use
-`--only J27,J28,J29,J30,J31,J52,J53,J54,J56,J57,J58 --shape A,B1,K,U --no-table`.
+`--only J27,J28,J29,J30,J31,J52,J53,J54,J56,J57,J58,J75 --shape A,B1,K,U --no-table`.
 Run `--only J21,J24,J29 --shape B2 --desk --no-table` for the far library.
 Use `heavy` for both. With `--no-table`, the runner keeps its evidence in
 the run folder and skips the shared Journeys table.
@@ -147,7 +148,7 @@ K uses a second window with the given computer's actual device key, bound
 through the app's isolated device proof. The owner window stays connected.
 U uses Playwright's Chromium with a new profile for each pairing or guest
 visit. The runner waits for Chromium to exit before removing its profile.
-A TCP relay cuts just win's link to box in J56. J24 stops and restarts
+A hop with no delay that presents box's own Host (`shapedRelay`; box refuses a page's socket with another Host) cuts just win's link to box in J56 and J75; J75 kills win at once (`halt(win, true)`). J24 stops and restarts
 desk on the same data. The thread journeys call the Work bridge with the
 run's own thread tokens. J29 pairs a dummy Word add-in on the isolated
 Work service. It answers reads of the fixture and writes only the named

@@ -76,7 +76,9 @@ still holds reaches the host first (`flushItem`: a sheet's waiting cells, a deck
 text's waiting words), then a live Office guest unloads (`leaveLive`), and only then does
 `closeItem` tell the host. A send that failed or ran past 8 s asks first in the house confirm
 (`askCloseUnsent`, Close Anyway; docs/agents/work-files.md "Closing the tab"), and Cancel keeps the
-item. Before 2026-11-24 the pane beside a chat called `closeItem` alone, so a
+item. A kind that keeps what fails as a draft on this computer registers with `keeps` (a text file:
+work-files.md "Drafts survive a crash"), and the ask then says its words are kept and offered when
+the file opens again, never that they will be lost. Before 2026-11-24 the pane beside a chat called `closeItem` alone, so a
 cell typed just before a close from there was refused by a host that had already closed the item
 (the loss of landed/F-workbook-not-saved.md, by the chat's pane). Closing one item shows its
 neighbour (`selectedAfter`); closing the last gives the chat the whole pane. A closed item opens

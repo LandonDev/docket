@@ -196,6 +196,9 @@ export function targetWindow(accept?: (win: BrowserWindow) => boolean): BrowserW
   return candidates.find((win) => win && !win.isDestroyed() && (!accept || (entryOf(win) && accept(win)))) ?? null
 }
 
+/** Whether a sender is one of the app's own windows: never a guest page, a webview in one, or a window of another kind. */
+export const isAppWindow = (webContentsId: number): boolean => windows.has(webContentsId)
+
 export function slotOf(win: BrowserWindow): string | null {
   return entryOf(win)?.slot ?? null
 }

@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FileSaved } from "@shared/contract-work-files";
 import type { SavedLine } from "../canvas/kind";
-import { FileSession, SAVE_AFTER_MS, type FileSessionHost } from "./fileSession";
+import { DraftStore } from "../../../../main/drafts";
+import { FileSession, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
 import { decodeText, encodeText, savedWords, triedAsText, whenWords } from "./fileText";
 
 /** The file kind's session (fileSession.ts) against a stand-in host that keeps one file, and the words of the save line. */
@@ -11,8 +15,8 @@ const NOW = new Date(2026, 10, 23, 14, 30).getTime();
 const AT = (h: number, m: number): number => new Date(2026, 10, 23, h, m).getTime();
 
 /** A host holding one file: versions are counted, a write names the version it read. */
-function standIn(start: string, o: { locked?: string; name?: string } = {}) {
-  const file = { text: start, version: 1, changed: AT(13, 52), gone: false, path: `/w/${o.name ?? "Notes.md"}` };
+function standIn(start: string, o: { locked?: string; name?: string; drafts?: DraftsPort; file?: { text: string; version: number; changed: number; gone: boolean; path: string } } = {}) {
+  const file = o.file ?? { text: start, version: 1, changed: AT(13, 52), gone: false, path: `/w/${o.name ?? "Notes.md"}` };
   /** The file is not at the path a call names: deleted, or renamed away from it. */
   const goneFrom = (params: Record<string, unknown>): boolean => file.gone || ((params.ref ?? (params.refs as unknown[])?.[0]) as { path: string }).path !== file.path;
   const lines: (SavedLine | null)[] = [];
@@ -42,8 +46,9 @@ function standIn(start: string, o: { locked?: string; name?: string } = {}) {
     now: () => NOW,
     setTimeout: (fn) => timers.push(fn),
     clearTimeout: () => void timers.splice(0),
+    ...(o.drafts ? { drafts: o.drafts } : {}),
   };
-  const session = new FileSession(host, { workspaceId: "w1", itemId: "i1", source: { at: "file", host: "box", path: `/w/${o.name ?? "Notes.md"}` }, name: o.name ?? "Notes.md" });
+  const session = new FileSession(host, { workspaceId: "w1", itemId: "i1", source: { at: "file", host: "box", path: `/w/${o.name ?? "Notes.md"}` }, name: o.name ?? "Notes.md", holder: "box" });
   /** Another writer changes the file under the session. */
   const theirs = (text: string): void => void Object.assign(file, { text, version: file.version + 1, changed: Math.max(AT(14, 4), file.changed + 60_000) });
   const words = (): string | null => {
@@ -302,5 +307,130 @@ describe("the words", () => {
     expect(say({ state: "downloading", detail: "2.1 of 8.4 MB" })).toBe("Downloading 2.1 of 8.4 MB");
     expect(say({ state: "asleep", detail: "The Windows VM", at: AT(13, 40) })).toBe("The Windows VM is asleep. This is the copy from 1:40 PM");
     expect(whenWords(AT(9, 5), NOW)).toBe("9:05 AM");
+  });
+});
+
+/** The draft store main keeps (src/main/drafts.ts) on a scratch folder, as one window reaches it; a new store on the folder is the app started again. */
+const scratch: string[] = [];
+const stores: DraftStore[] = [];
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((s) => s.settled()));
+  scratch.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+});
+function draftsAt(dir = (scratch.push(mkdtempSync(join(tmpdir(), "tc-drafts-"))), join(scratch.at(-1)!, "drafts")), window = 1) {
+  const store = new DraftStore(dir);
+  stores.push(store);
+  const port: DraftsPort = { put: (d) => store.put(d, window), drop: (k) => store.drop(k), release: (k) => store.release(k), list: (k) => store.list(k) };
+  const place = { workspaceId: "w1", holder: "box", file: JSON.stringify({ at: "file", host: "box", path: "/w/Notes.md" }) };
+  return { store, port, dir, kept: async () => (store.releaseOwner(window), store.list(place)) };
+}
+const labels = (line: SavedLine | null | undefined): string[] => line?.actions?.map((a) => a.label) ?? [];
+
+describe("drafts survive a crash, a close and a link drop", () => {
+  it("keeps each edit the host has not taken on this computer, by the version it was made on, and lets it go once taken", async () => {
+    const d = draftsAt();
+    const h = standIn("first\n", { drafts: d.port });
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("first\nsecond\n");
+    await h.fire();
+    expect((await d.kept()).map((x) => [x.base, x.body.text])).toEqual([["v1", "first\nsecond\n"]]);
+    h.setDown(false);
+    await h.session.reopened();
+    await d.store.settled();
+    expect(await d.kept()).toEqual([]);
+  });
+
+  it("moves a draft typed after a save onto the version that save answered", async () => {
+    const d = draftsAt();
+    const h = standIn("first\n", { drafts: d.port });
+    await h.session.load();
+    h.session.edit("one\n");
+    await h.fire();
+    h.setDown(true);
+    h.session.edit("one\ntwo\n");
+    await d.store.settled();
+    expect((await d.kept()).map((x) => [x.base, x.body.text])).toEqual([["v2", "one\ntwo\n"]]);
+  });
+
+  it("types with the link closed, quits, restarts: the draft is offered first, and Restore sends it by its version", async () => {
+    const before = draftsAt();
+    const h = standIn("first\n", { drafts: before.port });
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("first\nsecond\n");
+    h.session.edit("first\nsecond\nthird\n");
+    await h.fire();
+    await before.store.settled();
+    // The window went with no word: the app starts again on the same folder.
+    const after = draftsAt(before.dir, 2);
+    const again = standIn("", { drafts: after.port, file: h.file });
+    await again.session.load();
+    expect(again.session.getSnapshot()).toMatchObject({ is: "text", text: "first\n", offer: true });
+    expect(again.words()).toBe("Edits from 2:30 PM were not saved");
+    expect(labels(again.lines.at(-1))).toEqual(["Restore", "Discard"]);
+    // Nothing is typed over the offer: he answers it first.
+    again.session.edit("typed over it\n");
+    expect(again.calls.filter((c) => c.method === "work.files.write")).toEqual([]);
+    await again.lines.at(-1)!.actions![0]!.run();
+    expect(again.file.text).toBe("first\nsecond\nthird\n");
+    expect(again.calls.find((c) => c.method === "work.files.write")?.params).toMatchObject({ version: "v1" });
+    expect(again.session.getSnapshot()).toEqual({ is: "text", text: "first\nsecond\nthird\n", rev: 1, locked: null });
+    expect(again.words()).toBe("Saved 1:53 PM in Events");
+    await after.store.settled();
+    expect(await after.kept()).toEqual([]);
+  });
+
+  it("keeps both when the file changed since: the draft goes beside it, never over the newer file", async () => {
+    const before = draftsAt();
+    const h = standIn("first\n", { drafts: before.port });
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("mine\n");
+    await h.fire();
+    h.theirs("theirs, later\n");
+    await before.store.settled();
+    const after = draftsAt(before.dir, 2);
+    const again = standIn("", { drafts: after.port, file: h.file });
+    await again.session.load();
+    expect(again.words()).toBe("Edits from 2:30 PM were not saved. The file changed since");
+    expect(labels(again.lines.at(-1))).toEqual(["Keep Both", "Discard"]);
+    await again.lines.at(-1)!.actions![0]!.run();
+    expect(again.calls.find((c) => c.method === "work.files.write")?.params).toMatchObject({ copy: true, text: "mine\n", version: "v1" });
+    expect(again.file.text).toBe("theirs, later\n");
+    expect(again.said).toEqual(["Kept as Notes (mine).md"]);
+    expect(again.session.getSnapshot()).toEqual({ is: "text", text: "theirs, later\n", rev: 0, locked: null });
+    await after.store.settled();
+    expect(await after.kept()).toEqual([]);
+  });
+
+  it("drops a draft the file already holds (its save landed, its answer did not), and one he discards", async () => {
+    const before = draftsAt();
+    before.port.put({ workspaceId: "w1", holder: "box", file: JSON.stringify({ at: "file", host: "box", path: "/w/Notes.md" }), base: "v0", name: "Notes.md", at: AT(13, 0), body: { kind: "text", text: "first\n", bom: false, crlf: false } });
+    before.port.put({ workspaceId: "w1", holder: "box", file: JSON.stringify({ at: "file", host: "box", path: "/w/Notes.md" }), base: "v1", name: "Notes.md", at: AT(14, 0), body: { kind: "text", text: "unwanted\n", bom: false, crlf: false } });
+    await before.store.settled();
+    const after = draftsAt(before.dir, 2);
+    const h = standIn("first\n", { drafts: after.port });
+    await h.session.load();
+    expect(h.words()).toBe("Edits from 2:00 PM were not saved");
+    h.lines.at(-1)!.actions![1]!.run();
+    expect(h.words()).toBe("Saved 1:52 PM in Events");
+    await after.store.settled();
+    expect(await after.kept()).toEqual([]);
+    expect(h.file.text).toBe("first\n");
+  });
+
+  it("lets a closed tab's unsent draft go to the next open in the same window", async () => {
+    const d = draftsAt();
+    const h = standIn("first\n", { drafts: d.port });
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("closed while away\n");
+    h.session.dispose();
+    await new Promise((r) => setTimeout(r, 0));
+    h.setDown(false);
+    const again = standIn("", { drafts: d.port, file: h.file });
+    await again.session.load();
+    expect(again.words()).toBe("Edits from 2:30 PM were not saved");
   });
 });

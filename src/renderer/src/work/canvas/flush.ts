@@ -9,8 +9,8 @@ import { canvasFlushPort } from "../../lib/canvasFlushPort";
  */
 export { flushAll, QUIT_FLUSH_MS, type Unsent } from "../../lib/canvasFlushPort";
 
-/** The kind's own send for its item while its body is drawn. Returns its off. */
-export const registerFlush = (itemId: string, flush: () => Promise<unknown>): (() => void) => canvasFlushPort.set(itemId, flush);
+/** The kind's own send for its item while its body is drawn; `keeps`: what fails to go is kept on this computer (a draft). Returns its off. */
+export const registerFlush = (itemId: string, flush: () => Promise<unknown>, o: { keeps?: boolean } = {}): (() => void) => canvasFlushPort.set(itemId, flush, o.keeps === true);
 
 /** The longest a close waits before it asks him (canvas/closeDoor.ts); the send still on its way may yet land. */
 export const FLUSH_WAIT_MS = 8000;

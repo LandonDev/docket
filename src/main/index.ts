@@ -45,9 +45,11 @@ import { registerCapture } from './capture'
 import { registerPresent } from './present'
 import { queueNextPick, registerDialogs } from './dialogs'
 import { registerDownloads } from './downloads'
+import { registerDrafts } from './drafts'
 import { dragOutPaths } from './dragOut'
 import {
   activateWindows,
+  isAppWindow,
   createWindow,
   describeWindows,
   hasQuitSubscriber,
@@ -326,6 +328,8 @@ app.whenReady().then(async () => {
   if (!headless) registerPresent()
   registerDialogs()
   registerDownloads()
+  // Drafts his windows journal while he edits (drafts.ts): under this computer's own data, for app windows alone.
+  void registerDrafts(app.getPath('userData'), isAppWindow).catch((err: unknown) => console.error('[drafts] not registered', err))
   if (!headless) {
     registerMenu()
     registerDock()

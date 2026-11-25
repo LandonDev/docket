@@ -2254,12 +2254,37 @@ over a file that changed there.
   Work stays out of the entry chunk; canvas/flush.ts re-exports it) beside the layout's snapshot, for 1.5 s at most
   (`QUIT_FLUSH_MS`: main gives each window but the first 2 s, `PERSIST_TIMEOUT_MS` in src/main/windows.ts; the first
   and a window's own close have no cap of main's). Past it the app quits and the window goes anyway; the items whose
-  send failed or was late are named in the console (`[quit]`). No kind keeps a draft of its own in the window, so
-  what did not reach the host by then is lost: a text file's words (saved 700 ms after typing), a deck's open box
-  (2 s), a sheet's cells (150 ms) or an open grid cell, a document's last frames. A send that reached the host is
-  safe: a copy's changes are kept and sent from there ("Nothing he changed is dropped in silence"). A window that
-  hides because a thread is busy keeps its tabs and sends nothing yet. Before, quit and window close sent the chat
-  drafts alone, and every such edit was lost.
+  send failed or was late are named in the console (`[quit]`). A text file's words are kept on this computer as a
+  draft ("Drafts survive a crash" below) and offered when the file opens again; the other kinds keep no draft yet, so
+  what did not reach the host by then is lost: a deck's open box (2 s), a sheet's cells (150 ms) or an open grid cell,
+  a document's last frames. A send that reached the host is safe: a copy's changes are kept and sent from there
+  ("Nothing he changed is dropped in silence"). A window that hides because a thread is busy keeps its tabs and sends
+  nothing yet. Before, quit and window close sent the chat drafts alone, and every such edit was lost.
+- **Drafts survive a crash** (decision 14 of plan cBclQIRDtvVS, audit A3). Each text edit the host has not
+  acknowledged is journaled as he types into a store this computer's main process writes (src/main/drafts.ts
+  `DraftStore`, types in src/shared/work/drafts.ts): one JSON file a draft under `<userData>/drafts`, a folder per
+  workspace, holder (the host the window asked) and file (its canvas source, `draftFileOf`), a file per base (the
+  version the edit was made on). Writes are fire-and-forget IPC (`drafts:put`, `drafts:drop`, `drafts:release`;
+  `drafts:list` answered) that main takes only from the app's own windows (`isAppWindow`, src/main/windows.ts), never
+  a guest page or a webview; no wire method reads it, so no thread, remote key or other host can, and it never sits
+  in a folder OneDrive or Teams syncs. A browser (`/ui`) has no store (`drafts: undefined`, lib/nativeWeb.ts).
+  `FileSession` (work/files/fileSession.ts) puts the newest text on each edit, moves it to the new base when a save
+  is answered with text still waiting, and drops it once the host has it, on Reload and on Keep Both. A draft a live
+  window is editing is claimed by it and offered nowhere; main lets it go when its editor goes unsent (`release`), or
+  the window reloads, crashes or closes; a fresh start claims nothing. On the next open the file is read, then its
+  unclaimed drafts are asked: one the file already holds (its save landed, the answer did not) is dropped; the
+  newest other is offered in the save line, foreground, with the editor read only until he answers: "Edits from
+  2:14 PM were not saved" with Restore (the draft in the editor, sent by its base through `work.files.write` as any
+  save, so the door's version, fence and hold checks are the live edit's) and Discard; over a base the file no longer
+  is, "Edits from 2:14 PM were not saved. The file changed since" with Keep Both (written beside the file under its
+  keep-both name, `copy: true`, never over the newer file) and Discard. Sheets, decks and documents keep no draft
+  yet.
+- **An editor that goes keeps its words sendable.** A text file's body that unmounts (another tab chosen, or its tab
+  closed from another window, handle.ts `tabClose`) with words the host has not taken keeps its session (`kept` in
+  work/files/FileKind.tsx): its send stays registered for a close and quit (`canvasFlushPort`) and it sends again
+  when the link opens, until the words land; drawn again, the body takes the session back with its words. A close
+  whose send failed asks as before, but where the kind keeps a draft (`registerFlush(…, { keeps })`) it says "They
+  are kept on this computer and offered when you open it again." in place of "They will be lost.
 - **Nothing he changed is dropped in silence** (.temp-code/plans/landed/F-edits-lost.md). Only his Discard, his
   Reload after its confirm, and a delete of the file after its confirm drop changes that have not reached the file.
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is

@@ -8,6 +8,15 @@ the Preview contract, and the conversion runner's rules for a renderer that is
 an app or a machine. The plan that set them is
 `.temp-code/plans/editors/shared.md`.
 
+## Drafts
+
+An edit the host has not acknowledged is kept on his computer by one store main writes (src/main/drafts.ts,
+`DraftKey`: workspace, holder, file, base) and offered when the file opens again, through the same version checks
+as a live save; a changed base keeps both (work-files.md "Drafts survive a crash"). The text file's editor journals
+today (`DraftBody` kind `text`). The document, the sheet and the deck keep no draft yet: their kinds are the next
+`DraftBody` kinds (a sheet's queued cells and their base, a deck's open box with its pack state, a document's sync
+update).
+
 ## Who hears a key
 
 In this order:
