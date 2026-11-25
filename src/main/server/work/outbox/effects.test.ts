@@ -19,17 +19,24 @@ describe('what a press does, in one sentence', () => {
       ['msform.publish', { act: 'audience', title: 'Survey' }, 'Changes who can answer Survey.'],
       ['portal.submit', {}, 'Carries this out as you.']
     ]
-    for (const [kind, payload, words] of cases) expect(effectOf(kind, payload), kind).toBe(words)
+    for (const [kind, payload, words] of cases) expect(effectOf(kind, payload, 'America/Chicago'), kind).toBe(words)
   })
 
   it('says a scheduled item goes at the time he set, whatever its kind', () => {
-    expect(effectOf('office.mail.send', { to: ['a@x'] }, undefined, true)).toBe('Goes at the time you set, as you.')
+    expect(effectOf('office.mail.send', { to: ['a@x'] }, 'America/Chicago', undefined, true)).toBe('Goes at the time you set, as you.')
   })
 
   it('takes a kind\'s own words first, and never throws on a payload it cannot read', () => {
-    expect(effectOf('teams.post', { chat: 'x' }, () => 'Its own words.')).toBe('Its own words.')
-    expect(effectOf('mail.send', null)).toBe('Carries this out as you.')
-    expect(effectOf('office.edit', null)).toBe('Changes the file for everyone who can open it, the moment you press.')
+    expect(effectOf('teams.post', { chat: 'x' }, 'America/Chicago', () => 'Its own words.')).toBe('Its own words.')
+    expect(effectOf('mail.send', null, 'America/Chicago')).toBe('Carries this out as you.')
+    expect(effectOf('office.edit', null, 'America/Chicago')).toBe('Changes the file for everyone who can open it, the moment you press.')
+  })
+
+  it("dates a guest link's end on his wall clock, never the host's", () => {
+    // 2026-11-25 03:30 UTC: still Tuesday the 24th in Chicago, Wednesday the 25th in UTC
+    const link = { name: 'Dana', role: 'edit', title: 'Plan', expiresAt: Date.UTC(2026, 10, 25, 3, 30) }
+    expect(effectOf('share.guestLink', link, 'America/Chicago')).toBe('Makes a link Dana opens without signing in. They can edit Plan until Tue, Nov 24.')
+    expect(effectOf('share.guestLink', link, 'UTC')).toContain('until Wed, Nov 25.')
   })
 
   it('names three people, then how many more', () => {

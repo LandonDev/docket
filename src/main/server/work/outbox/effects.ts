@@ -29,12 +29,12 @@ export function people(list: readonly unknown[]): string {
   return `${names.slice(0, 2).join(', ')} and ${names.length - 2} others`
 }
 
-const day = (at: number): string => new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(at)
+const day = (zone: string, at: number): string => new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' }).format(at)
 const ROLE = { view: 'view', comment: 'comment on', edit: 'edit' } as Record<string, string>
 const GOOGLE_ROLE = { reader: 'view', commenter: 'comment on', writer: 'edit' } as Record<string, string>
 const ANSWER = { accept: 'you will come to', decline: 'you will not come to', tentative: 'you might come to' } as Record<string, string>
 
-const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
+const EFFECTS: Partial<Record<ActKind, (p: P, zone: string) => string | undefined>> = {
   // Mail, posts and replies draw their From, To and place right under the sentence: it says only when, and who sees it.
   'mail.send': (p) => (p?.message ? 'Goes as your mail after your undo time.' : undefined),
   'calendar.op': (p) => {
@@ -58,8 +58,8 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
   },
   'teams.post': () => 'Posts as you; everyone in the chat sees it.',
   'chat.reply': () => 'Sends as you; everyone in the conversation sees it.',
-  'share.guestLink': (p) => {
-    const until = typeof p?.expiresAt === 'number' ? ` until ${day(p.expiresAt)}` : ''
+  'share.guestLink': (p, zone) => {
+    const until = typeof p?.expiresAt === 'number' ? ` until ${day(zone, p.expiresAt)}` : ''
     return `Makes a link ${str(p?.name) ?? 'your guest'} opens without signing in. They can ${ROLE[str(p?.role) ?? ''] ?? 'view'} ${str(p?.title) ?? 'it'}${until}.`
   },
   'share.google': (p) =>
@@ -80,12 +80,12 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
   'file.act': () => 'Changes files in a place others can open, the moment you press.'
 }
 
-/** The sentence for an item: the kind's own, else the table's, else the plain line. Never throws. */
-export function effectOf(kind: ActKind, payload: unknown, own?: (p: unknown) => string, scheduled = false): string {
+/** The sentence for an item: the kind's own, else the table's, else the plain line; a date on `zone`'s wall clock (his). Never throws. */
+export function effectOf(kind: ActKind, payload: unknown, zone: string, own?: (p: unknown) => string, scheduled = false): string {
   // A time he set is what decides when it goes: "as soon as you press" would be untrue.
   if (scheduled) return 'Goes at the time you set, as you.'
   try {
-    const said = own?.(payload) ?? EFFECTS[kind]?.((payload ?? null) as P)
+    const said = own?.(payload) ?? EFFECTS[kind]?.((payload ?? null) as P, zone)
     if (said) return said
   } catch {
     // a payload the words cannot read: the plain line

@@ -3,6 +3,7 @@ import { hasFormLink, payloadText } from '@shared/work/msforms'
 import { ACT_PILLAR, errorText, needsHim, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
 import { canonical } from '../../addonStore'
+import { hisZone } from '../clock'
 import { EARN_DAYS, earn, sameWords, wireOffer, wordsOf, type EarnedStore, type StoredOffer } from './earned'
 import { effectOf } from './effects'
 import type { SentFact } from './confirmed'
@@ -1032,7 +1033,7 @@ export class Outbox {
   /** What a press does, in one sentence. */
   effect(kind: ActKind, payload: unknown, scheduled = false): string {
     const own = this.deps.kinds.get(kind)?.effect
-    return effectOf(kind, payload, own ? (p) => own(p as never) : undefined, scheduled)
+    return effectOf(kind, payload, hisZone(this.deps.ctx), own ? (p) => own(p as never) : undefined, scheduled)
   }
 
   /** The words as first written, kept by earned.ts; null when the host never saw them. */
