@@ -234,6 +234,42 @@ describe("the meeting canvas", () => {
     }
   });
 
+  /** Council round 11 (Sol kinds 1 and 2, Opus kinds 2): connecting is a wait, and a filing error goes once the host is back. */
+  it("while the host's LifeOS connects, Accept and Accept all are held under the one wait with no press; an old filing error goes then, and on connected", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    const { registry } = await import("../../lib/connection");
+    Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+    const st = (state: string) => ({ lifeos: { state }, keys: [] }) as never;
+    host.decide = () => ({ meeting: host.meeting, failed: [{ id: "a1", error: "LifeOS is not connected on this host." }] });
+    try {
+      act(() => setLifeosStatus("local", st("connected")));
+      const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+      const bar = await waitFor(() => container.querySelector("[data-canvas-bar]") as HTMLElement);
+      await waitFor(() => expect(within(bar).getByText("1/3")).toBeTruthy());
+      fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")).toBeTruthy());
+      // A status heard since the failure that says connected ends the old line and its Retry.
+      act(() => setLifeosStatus("local", st("connected")));
+      await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")).toBeNull());
+      act(() => setLifeosStatus("local", st("connecting")));
+      const wait = await waitFor(() => container.querySelector("[data-tasks-down]") as HTMLElement);
+      expect(wait.textContent).toBe("LifeOS is still connecting on the box");
+      expect(within(wait).queryByRole("button")).toBeNull();
+      expect(within(bar).queryByRole("button", { name: "Accept" })).toBeNull();
+      expect(within(bar).getByRole("button", { name: "Reject" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+      expect(rows).not.toContain("Accept all");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      act(() => setLifeosStatus("local", st("connected")));
+      await waitFor(() => expect(container.querySelector("[data-tasks-down]")).toBeNull());
+      expect(within(bar).getByRole("button", { name: "Accept" })).toBeTruthy();
+    } finally {
+      resetLifeos();
+      delete (registry as { environment?: unknown }).environment;
+    }
+  });
+
   it("Find marks every hit, steps the current one, and says how many", async () => {
     const { container } = await seat(sampleMeeting());
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());

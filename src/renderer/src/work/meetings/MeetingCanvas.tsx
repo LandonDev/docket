@@ -17,7 +17,9 @@ import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeetin
 import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsSkeleton } from "./MeetingView";
 import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
 import { downloadRecording, saveBlob, usePlayer } from "./player";
-import { DownLine } from "../shell/DownLine";
+import { HostLine } from "../shell/DownLine";
+import { useLifeosStatusHeard } from "../shell/lifeos";
+import type { LifeosStatus } from "@shared/contract-work-lifeos";
 import { useHostLive } from "../shell/lifeosLive";
 import { SpeakerName } from "./Speaker";
 
@@ -41,12 +43,14 @@ type Failure = { error: string; retry(): void };
 /**
  * The pane's feeds from the meeting: the mode, what the agent wrote, the tasks to step through, and the one state line (a
  * read, a filing or a playback that failed). A task is filed through the host's own LifeOS session (filing.ts): while
- * that session is down (`hostDown`), Accept is not offered and the body says why; a filing that failed before gives way
- * to that line.
+ * that session is down or on its way (`held`), Accept is not offered and the body says why; a filing that failed before
+ * gives way to that line, and goes once the host says connected again.
  */
-function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, current: string | null, onStep: (id: string) => void, unread: Failure | null, unplayed: Failure | null, hostDown: boolean) {
-  const [fileError, setFileError] = useState<{ error: string; ids: string[] } | null>(null);
-  if (hostDown && fileError) setFileError(null);
+function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, current: string | null, onStep: (id: string) => void, unread: Failure | null, unplayed: Failure | null, held: boolean) {
+  const [fileError, setFileError] = useState<{ error: string; ids: string[]; status: LifeosStatus | null } | null>(null);
+  const status = useLifeosStatusHeard(env);
+  // The live line takes the place of an older filing error, and a status heard since it that says connected ends it.
+  if (fileError && (held || (status !== fileError.status && status?.lifeos.state === "connected"))) setFileError(null);
   const ready = meeting?.status === "ready";
   const notes = meeting?.notes ?? null;
   const itemId = meeting?.itemId ?? null;
@@ -64,11 +68,13 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
     return () => shell.written(null);
   }, [shell, env, ready, itemId, notes?.canUndo, notes?.writtenAt]);
 
+  const heard = useRef(status);
+  heard.current = status;
   const decide = useCallback(
     async (ids: string[], decision: "accept" | "reject"): Promise<void> => {
       if (!itemId || ids.length === 0) return;
       const failed = await decideTasks(env, itemId, ids, decision);
-      setFileError(failed.length ? { error: failed[0].error, ids: failed.map((f) => f.id) } : null);
+      setFileError(failed.length ? { error: failed[0].error, ids: failed.map((f) => f.id), status: heard.current } : null);
     },
     [env, itemId],
   );
@@ -87,11 +93,11 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
       step: (to) => proposed[to] && onStep(proposed[to].id),
       accept: (w) => decide(which(w), "accept"),
       reject: (w) => decide(which(w), "reject"),
-      ...(hostDown ? { acceptHeld: true } : {}),
+      ...(held ? { acceptHeld: true } : {}),
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, env, ready, proposed, current, onStep, decide, meeting?.sessionId, hostDown]);
+  }, [shell, env, ready, proposed, current, onStep, decide, meeting?.sessionId, held]);
 
   const unreadError = unread?.error ?? null;
   const retry = unread?.retry;
@@ -231,8 +237,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   );
   const retry = useCallback(() => loadMeeting(env, item.id), [env, item.id]);
   const { toggle } = player;
-  const hostDown = useHostLive(env).down;
-  const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null, !!hostDown);
+  const hostLive = useHostLive(env);
+  const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null, !!hostLive.down || hostLive.waits);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
   useMore(shell, env, meeting, item.source.at === "file" ? (item.source.path.split(/[\\/]/).pop() ?? item.title) : item.source.at === "mail" ? item.source.name : item.title);
@@ -295,8 +301,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   return (
     <div data-meeting={meeting.status} className="flex min-h-0 flex-1 flex-col">
       {hasPlayer ? <PlayerRow meeting={meeting} player={player} span={span} /> : null}
-      {/* Tasks wait while the host cannot file them: the one line, with its press; playback, the transcript and Reject stay. */}
-      {hostDown && meeting.status === "ready" && proposed.length ? <DownLine data-tasks-down session={hostDown} className="min-h-8 shrink-0 border-b border-border px-3 py-0.5" /> : null}
+      {/* Tasks wait while the host cannot file them, or while its LifeOS connects: the one line, with its press for a state
+          that has one; playback, the transcript and Reject stay. */}
+      {(hostLive.down || hostLive.waits) && meeting.status === "ready" && proposed.length ? <HostLine data-tasks-down live={hostLive} className="min-h-8 shrink-0 border-b border-border px-3 py-0.5" /> : null}
       {/* Focusable from code alone (no Tab stop of its own): where Find gives the focus back when the bar holds no Find. */}
       <div ref={scroller} data-meeting-pane={item.id} tabIndex={-1} className="focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {meeting.status === "failed" ? (

@@ -237,13 +237,15 @@ title, description, dueAt? })`, the sector being the thread's workspace's
 the host's clock. A task that cannot be filed stays waiting, and the canvas
 says why on the pane's state line with Try again: no sector ("This thread's
 workspace is not linked to a LifeOS sector …"), LifeOS not connected, or
-LifeOS's own refusal. While the host's own LifeOS session is down (its live
-status, `useHostDown`) no task is offered for filing: the stepper's Accept and
-More's Accept all are not drawn (`ReviewAdapter.acceptHeld`), one `DownLine`
-under the player says the state with the computer named and the rule's press,
-and a filing line from before gives way to it; playback, the transcript,
-Reject and Reject all stay. When the host is back the line goes and Accept
-comes back.
+LifeOS's own refusal. While the host's own LifeOS session is down or still
+connecting (its live status, `useHostLive`) no task is offered for filing: the
+stepper's Accept and More's Accept all are not drawn
+(`ReviewAdapter.acceptHeld`), one `HostLine` under the player says the state
+with the computer named and the rule's press ("LifeOS is still connecting on
+the box" with none), and a filing line from before gives way to it; playback,
+the transcript, Reject and Reject all stay. When the host is back the line goes
+and Accept comes back; a filing line goes too once a status heard since it says
+connected.
 
 meetings.test.ts proves the filing against fakes of `ctx.scopeOf` and
 `ctx.lifeos`. `LIFEOS_CREATE_TASK` is the one place that names LifeOS's
