@@ -51,7 +51,9 @@ describe("sectionsFor", () => {
     }
   });
 
-  it("a Work thread with Results lists them after Computer, and opens on them before its notes", () => {
+  it("a Work thread with Results lists them after Computer, and opens on them only when he asks: its head says what it made", () => {
+    expect(sectionsFor({ ...quiet, work: true, results: 2 })).toEqual({ sections: ["results", "notes"], defaultSection: "notes" });
+    expect(shownSection("results", sectionsFor({ ...quiet, work: true, results: 2 }))).toBe("results");
     expect(sectionsFor({ ...quiet, results: 2 })).toEqual({ sections: ["results", "notes"], defaultSection: "results" });
     expect(sectionsFor({ ...quiet, results: 2, activity: 1 }).defaultSection).toBe("activity");
     expect(sectionsFor({ ...quiet, results: 0 }).sections).toEqual(["notes"]);

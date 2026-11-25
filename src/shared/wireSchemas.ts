@@ -3,6 +3,7 @@ import { StartOnSchema } from './defaults'
 import { SectorKeySchema, SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { WorkSettingsSchema } from './work/scope'
 import { PillarIdSchema } from './work/ids'
+import { ThreadOutcomeSchema } from './work/threadRecord'
 import { TellGroupSchema, type TellHow, type TellOpen, type TellRow } from './work/tell'
 import { DigestLevelsSchema, type DigestDay, type DigestList, type DigestSettings } from './contract-work-digest'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
@@ -447,6 +448,7 @@ export const SessionMetaSchema = z.object({
   readAt: z.number().int().optional(),
   scope: SessionScopeSchema.optional(),
   routineRunId: z.string().nullable().optional(),
+  workOutcome: ThreadOutcomeSchema.nullable().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

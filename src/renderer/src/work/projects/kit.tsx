@@ -1,4 +1,5 @@
 import type { ContextChip, SectorKey } from "@shared/work";
+import type { TasksDone } from "@shared/contract-work-tasks";
 import type { MenuRow, Project, ProjectItem, ProjectsKit, ProjectTask } from "work-kit/projects";
 import { MessageSquare, Settings } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -185,6 +186,19 @@ export function addRows(env: string, workspaceId: string, project: Project): Men
     { id: "link-document", label: "Link a document or sheet…", icon: Link, run: () => hostOf(workspaceId).link(project, "document") },
     { id: "link-item", label: "Link a file or item…", icon: File, run: () => hostOf(workspaceId).link(project, "item") },
   ];
+}
+
+/**
+ * The projects client with Done going through the host (`work.tasks.done`), as Tasks and Today's Done do: a task a
+ * thread here worked completes with the thread's reason and link. Each sub-task closing with it is credited the same.
+ */
+export function withHostDone<C extends { completeTask(id: string, options?: { children?: readonly string[] }): Promise<void> }>(client: C, env: string, workspaceId: string): C {
+  return {
+    ...client,
+    completeTask: async (id, options) => {
+      await Promise.all([id, ...(options?.children ?? [])].map((taskId) => registry.linkOf(env).request<TasksDone>("work.tasks.done", { workspaceId, taskId })));
+    },
+  };
 }
 
 const kits = new Map<string, ProjectsKit>();

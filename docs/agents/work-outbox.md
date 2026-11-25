@@ -1162,12 +1162,18 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
 - **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
   root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
   only while it has a row: "Can undo" and "Can't undo", each row with its
-  way back.
+  way back. The panel never opens on it by itself: the thread's head says
+  what it made (work.md "What a thread left him").
 - **The held line** (`heldOf` and `HeldLine` in
-  surfaces/transcript/ApprovalCard.tsx): under a call whose answer is "Held
-  as item N: …", one muted line, the Outbox glyph, "Held" then the act; it
-  opens the Outbox on that item (`wantOutbox({environmentId, n})` through
-  lib/outboxWant.ts, the first paint's door, with the thread's host).
+  surfaces/transcript/ApprovalCard.tsx): a call whose answer is "Held as
+  item N: …" is one quiet line in the call's place (ActionRow draws no call
+  line over it), the Outbox glyph, "Held" then the act, all muted, since
+  the thread's head lists what waits; it opens the Outbox on that item
+  (`wantOutbox({environmentId, n})` through lib/outboxWant.ts, the first
+  paint's door, with the thread's host).
+- **The thread's head** opens a held item in a sheet whose body is
+  `HeldDetail` (`alone`, `via: 'outbox'`), as Today's does; its press is the
+  Outbox's own `decide`.
 - **A thread's request** (`RequestCard.tsx`, `requests.ts`): the
   transcript draws an `outbox_request` call (`isOutboxRequestBlock`,
   surfaces/outboxRequestBlock.ts, the parse in the chunk) as the card from

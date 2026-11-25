@@ -18,7 +18,7 @@ import { DocumentFrame, MARGIN_FROM, Scroller, useDocument, useOpened } from "..
 import { CodeThreadDialog } from "../tasks/CodeThreadDialog";
 import type { WorkViewProps } from "../views/registry";
 import { BackToList, Bar, BarControls, BarTitle } from "./bar";
-import { projectsKitFor, setProjectsHost } from "./kit";
+import { projectsKitFor, setProjectsHost, withHostDone } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
 
@@ -70,7 +70,8 @@ export function View(props: WorkViewProps) {
   const { env, workspace, sector, lifeos, startThread } = props;
   const convex = lifeos.client;
   // Made once a session: the screens call the client's hooks in a fixed order.
-  const client = useMemo(() => (convex ? createLifeosProjectsClient({ convex }) : null), [convex]);
+  // Done goes through the host, so a task a thread worked completes with its thread's link (kit.tsx `withHostDone`).
+  const client = useMemo(() => (convex ? withHostDone(createLifeosProjectsClient({ convex }), env, workspace.id) : null), [convex, env, workspace.id]);
   const kit = projectsKitFor(env, workspace.id);
   const place = usePlace(workspace.id);
   const onPlace = useCallback((next: ProjectsPlace) => setPlace(workspace.id, next), [workspace.id]);

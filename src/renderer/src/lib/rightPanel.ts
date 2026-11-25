@@ -123,7 +123,8 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (project) sections.push("build");
   if (project && facts.debug) sections.push("debug");
   // Subagents first: what a thread watches is its agents far more often than a shell. Then the Mac while the
-  // thread uses it; its kept steps alone never take the default.
+  // thread uses it; its kept steps alone never take the default. A Work thread's Results open only when he asks:
+  // its head (transcript/WorkHead.tsx) already says what it made and what waits.
   const defaultSection: Section | null = facts.agents > 0
     ? "agents"
     : facts.computer && facts.computerLive
@@ -132,7 +133,7 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
         ? "activity"
         : checkout
           ? "changes"
-          : facts.results > 0
+          : facts.results > 0 && !facts.work
             ? "results"
             : facts.notes
               ? "notes"

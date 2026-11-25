@@ -48,6 +48,7 @@ import type {
   SteerState
 } from '@shared/events'
 import { type AgentTitleOf, waitLine, watchSubject } from '@shared/watch'
+import type { ThreadOutcome } from '@shared/work/threadRecord'
 import { blockedDetail, blockedWords } from '@shared/batchWords'
 import { classifyFailure, type GatewayRefusal, NO_META_KEY_MESSAGE } from './failureKind'
 import {
@@ -6555,7 +6556,7 @@ export class SessionRegistry {
     }
     const background = this.backgroundOf(session, index)
     const awaiting = this.awaiting.get(session.id)
-    return {
+    const decorated: SessionMeta = {
       ...session,
       ...(awaiting?.size ? { awaiting: [...awaiting.keys()] } : {}),
       background,
@@ -6571,6 +6572,21 @@ export class SessionRegistry {
       treeHasLiveWork: tree.hasLiveWork,
       treeHasPaused: tree.hasPaused,
       treeFrozenActiveElapsed: tree.frozenActiveElapsed
+    }
+    // A Work root's outcome line, read from what it is decorated with (work/threads/record.ts); a code thread's meta is as it was.
+    if (session.scope !== 'work' || session.parentId || !this.workOutcomeOf) return decorated
+    return { ...decorated, workOutcome: this.workOutcomeOf(decorated) }
+  }
+
+  /** A Work root's outcome line from its decorated meta; set by Work (work/threads/record.ts). */
+  workOutcomeOf: ((session: SessionMeta) => ThreadOutcome | null) | null = null
+
+  /** Says these threads' metas again: what Work folds into them changed (an Outbox item, a Result). Unknown ids are skipped. */
+  refreshMeta(ids: Iterable<string>): void {
+    const index = this.indexOf()
+    for (const id of ids) {
+      const meta = index.byId.get(id)
+      if (meta) this.notifyMeta(meta, 'work')
     }
   }
 

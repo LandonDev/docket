@@ -4,6 +4,7 @@ import { ReviewNoticeSchema } from './review'
 import type { AgentType, ProviderId, Reasoning } from './catalog'
 import type { ThreadType } from './domain'
 import type { SessionScope } from './work/ids'
+import type { ThreadOutcome } from './work/threadRecord'
 
 /**
  * The normalized event schema. Every driver (Claude Agent SDK, Codex
@@ -697,6 +698,9 @@ export interface SessionMeta {
   scope?: SessionScope
   /** Work: the routine run that started the thread (`sessions.routine_run_id`); absent otherwise. */
   routineRunId?: string | null
+  /** Work: a root's outcome line ("1 mail to send") and its tone, folded by the host from what the thread left him
+   *  (work/threads/record.ts); null when there is none; absent on a code thread and a subagent. */
+  workOutcome?: ThreadOutcome | null
   createdAt: number
   updatedAt: number
 }

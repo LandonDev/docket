@@ -39,10 +39,11 @@ export function heldOf(block: Pick<Block, "tool" | "approval">): { n: number; ac
 }
 
 /**
- * The held line under a Work thread's call (docs/DESIGN.md "Held is not
- * Needs you"): the Outbox glyph in the row's glyph column, "Held" then the
- * act in his words, muted; it opens the Outbox on that item (its host's
- * number, the thread's host). Never amber, never a card: the turn went on.
+ * A Work thread's held call, as one quiet line in the call's place (docs/DESIGN.md
+ * "Held is not Needs you", "A thread's head"): the Outbox glyph in the row's glyph
+ * column, "Held" then the act in his words, all muted, since the thread's head
+ * says what waits; it opens the Outbox on that item (its host's number, the
+ * thread's host). Never amber, never a card: the turn went on.
  */
 function HeldLine({ n, act }: { n: number; act: string }) {
   const host = useTranscriptHost();
@@ -60,7 +61,7 @@ function HeldLine({ n, act }: { n: number; act: string }) {
         <Outbox className="size-3.5" />
       </span>
       <span className="min-w-0 truncate">
-        Held <span className="text-foreground">{act}</span>
+        Held {act}
       </span>
     </button>
   );

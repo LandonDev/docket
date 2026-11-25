@@ -55,6 +55,7 @@ import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
 import { Button } from "../components/ui/button";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
+import { ThreadHeadContext, WorkHeadSlot } from "./transcript/WorkHeadSlot";
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
  * bottom on a spring, `parked` holds the prompt at the top of the viewport
@@ -649,6 +650,8 @@ export const AgentTranscript = memo(function AgentTranscript({
   // Remote profile: the next page of history comes from the server and
   // lands above; the reader's anchor row keeps them where they were.
   const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
+  // The thread's first message, while the transcript holds the thread from its start: a Work thread's head sits over it.
+  const headBlock = moreHistory ? null : (turns[0] ? (turnUserBlock(turns[0])?.id ?? null) : null);
   // A turn paused mid-way, or queued before it ran, is not over: no closing line until it settles.
   const paused = !busy && !!turnState && isTurnHeld(turnState);
   const { rows, rowOfBlock } = useMemo(
@@ -1079,6 +1082,7 @@ export const AgentTranscript = memo(function AgentTranscript({
     <TranscriptSessionContext.Provider value={sessionId}>
     <TurnStateContext.Provider value={turnState ?? null}>
     <ParkPendingContext.Provider value={isParking}>
+    <ThreadHeadContext.Provider value={headBlock}>
     <div className="relative h-full">
     <div
       ref={setScroller}
@@ -1153,6 +1157,7 @@ export const AgentTranscript = memo(function AgentTranscript({
       ) : null}
     </div>
     </div>
+    </ThreadHeadContext.Provider>
     </ParkPendingContext.Provider>
     </TurnStateContext.Provider>
     </TranscriptSessionContext.Provider>
@@ -1299,6 +1304,7 @@ const RowView = memo(function RowView({
         />
       ) : row.item.block.role === "user" ? (
         <div data-block={row.item.block.id} className="flex min-w-0 flex-col">
+          <WorkHeadSlot blockId={row.item.block.id} />
           <TranscriptBlock
             block={row.item.block}
             stickyIndex={row.turn.index + 1}

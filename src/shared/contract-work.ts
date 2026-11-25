@@ -78,6 +78,8 @@ export const WorkCoreRequestSchemas = [
   request('work.health', z.object({ fresh: z.boolean().optional() }).optional()),
   /** → Lapse[]: what ends on this host and when, read from what it holds, soonest first */
   request('work.lapses', z.object({}).optional()),
+  /** → ThreadRecord: what a Work thread left him, its waits, the LifeOS records it works on and what it made (work/threads/record.ts); a subagent's id answers its root's */
+  request('work.threads.record', z.object({ sessionId: z.string().min(1).max(200) })),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never lists or calls as another.
   /** → AppWorkToolsAnswer: the Work tools of the thread's scope, as the bridge lists them */
@@ -101,6 +103,7 @@ export const WORK_CORE_CAPS = {
   'work.health': 'read',
   'work.reveal': 'approve',
   'work.lapses': 'read',
+  'work.threads.record': 'approve',
   'app.workTools': 'local',
   'app.workCall': 'local',
   'app.workCancel': 'local'

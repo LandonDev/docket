@@ -3046,6 +3046,38 @@ own selected fill is a card's fill at rest in light.
   with, and those his own unfold shows, do not move. This is the rule for a
   row leaving any list by his act.
 
+#### A thread's head
+
+A Work thread opens on what it left him (surfaces/transcript/WorkHead.tsx; the record is the host's,
+docs/agents/work.md "What a thread left him"). It is the transcript's own top, in the first message's row on the
+768px column, and scrolls with the thread: no band under the title bar, no card.
+
+- **Rows, one grid**: a 14px lead in the transcript's glyph column, the title in 13px foreground over an optional
+  12px muted second line, and a trailing fact in 12px muted tabular ("Held 10:02 AM", "Made 10:04 AM"). A row is
+  32px, 48px with its second line; one with somewhere to go is a button whose fill reaches 8px past the column so
+  its glyph stays on the transcript's: hover `foreground/5`, press `foreground/12`, at once.
+- **The order**: what waits (a question, a failure, a thread's request, each held act, a failed send first), then
+  the open task it works on, then what it made or changed, newest first. Under the last row a hairline and 20px,
+  then the first message.
+- **Tones**: held is muted, the Outbox's kind glyph and nothing amber. A question is the one amber row ("Asks you",
+  the waiting mark); its card stays where the transcript asks it. A failure is red, its words in the red tone and its
+  cause muted under them; a failed send's error is its red second line.
+- **The task**: its title, then who it waits on and for how long ("Waiting on Sam Ortiz, 6 days"), else when it is
+  due, late in red; the row opens its sheet in Tasks. "From the task …" (12px muted, the title in foreground) sits
+  over the first message, right-aligned as the message, only when the head has no row for that task (it is done):
+  nothing is said twice.
+- **Made and changed**: the file's own name with its kind glyph, the verb and time as the fact; the row opens it in a
+  Files tab of the job (`openInFiles`), a Google upload on the web, a link into a project on its page.
+- **A held row** opens the Outbox's own detail in a 520px sheet from the right (`HeldDetail`, as Today's sheet), with
+  its Send, Edit and Discard; the head adds no Send of its own. In the transcript a held call is one quiet line,
+  "Held" then the act, all muted, in the call's place.
+- **Nothing left**: no head at all, no empty line. It is drawn once its record lands, with no bones: it sits above
+  the thread's start, which a returning reader is rarely scrolled to.
+- **The title bar** of a Work thread is its crumb: the job's dot (12px), the project (a muted button opening its
+  page) or, loose in a job, the job's name, a 12px chevron, then the title in 13px medium; no strip of thread chips.
+  A Work Chat shows its title alone. A code thread's bar and transcript are unchanged (pixel-diffed).
+- **The right panel** lists Results but opens on them only when he picks them.
+
 #### Work editors
 
 What the document, the sheet and the deck share on screen. Who hears a key,

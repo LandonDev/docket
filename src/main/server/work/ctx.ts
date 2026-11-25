@@ -64,6 +64,7 @@ import { WorkSettingsStore } from './settings'
 import { inputShapeOf } from './toolInput'
 import { inputProblemWords, unknownToolWords, WORK_OFF_WORDS } from './inputWords'
 import { threadsPart } from './threads'
+import { threadRecordsOf, threadRecordsPart } from './threads/record'
 import { shortHostName } from '@shared/hostNames'
 import { hostLabel } from '../../hostLabel'
 
@@ -206,7 +207,9 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     // Not a member: the Work threads' rows and the thread index, for Work search.
     part('search/host.ts', [], () => (searchHostPart(deps), {})),
     // Not a member: the mirrors of LifeOS's projects follow LifeOS while Work is on.
-    part('projects/mirrors.ts', [], () => (mirrorsPart(ctx, deps), {}))
+    part('projects/mirrors.ts', [], () => (mirrorsPart(ctx, deps), {})),
+    // Not a member: what each thread left him, folded into its session summary (threads/record.ts).
+    part('threads/record.ts', [], () => (threadRecordsPart(ctx, deps), {}))
   )
   return { ctx, admission }
 }
@@ -548,6 +551,12 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         case 'work.lapses':
           if (!settings.enabled()) throw new Error('Work is off on this host')
           return handled(lapsesOf(ctx, sound))
+        case 'work.threads.record': {
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          const records = threadRecordsOf(ctx)
+          if (!records) throw new Error("work: this host keeps no thread records")
+          return handled(await records.record(req.params.sessionId))
+        }
         case 'app.workTools':
           return handled({ tools: tools.listing(bridgeSession(req.params)) })
         case 'app.workCall': {

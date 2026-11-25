@@ -17,6 +17,7 @@ import {
 import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
+import { WorkCrumb } from "./WorkCrumb";
 import { useMasterIds } from "../lib/masterThread";
 import { useWorkSessionId } from "../lib/workRow";
 
@@ -128,10 +129,13 @@ export function ThreadHeader({
   };
 
   const empty = model.live.length === 0 && model.dormant.length === 0;
+  // A Work thread in front has no strip of chips: the bar is its crumb, the job's dot, its project and its title.
+  const workHeading = work && activeChip;
   return (
     <>
       <ThreadHeaderStrip
-        model={model}
+        model={workHeading ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: activeChip } : model}
+        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} /> : undefined}
         planReady={planReady}
         renamingId={renamingId}
         onSelect={onSelect}

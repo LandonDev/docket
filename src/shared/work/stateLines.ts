@@ -298,6 +298,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${H}/templates/tools.ts`]: [
     ["`Saved ${saved.name} to Templates${saved.fields.length ? `. It asks for ${fieldList(saved.fields)}` : ''}.`", "answer"],
   ],
+  [`${H}/threads/record.ts`]: [
+    ["Moved", "answer"],
+    ["Copied", "answer"],
+  ],
   [`${H}/winvm/files.ts`]: [
     ["`Copied ${name} from ${from} on the Windows VM into the workspace as ${relative(into.folder, dest) || free}.`", "answer"],
   ],

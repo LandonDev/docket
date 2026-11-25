@@ -84,7 +84,26 @@ export class Results {
       .run(id, r.sessionId, this.rootOf(r.sessionId), workspaceId, r.kind, r.summary, r.account ?? null, r.ref === undefined ? null : JSON.stringify(r.ref), r.undo ? JSON.stringify(r.undo) : null, this.now())
     const result = this.get(id)!
     this.ctx.push({ push: 'work.outbox.result', result }, { need: 'read' })
+    this.told(result)
     return result
+  }
+
+  private readonly listeners = new Set<(result: WorkResult) => void>()
+
+  /** Hears each Result made or undone (a thread's record folds them, work/threads/record.ts); returns its off. */
+  onChange(fn: (result: WorkResult) => void): () => void {
+    this.listeners.add(fn)
+    return () => void this.listeners.delete(fn)
+  }
+
+  private told(result: WorkResult): void {
+    for (const fn of [...this.listeners]) {
+      try {
+        fn(result)
+      } catch (err) {
+        this.ctx.log(`results: a listener failed: ${errorText(err)}`)
+      }
+    }
   }
 
   get(id: string): WorkResult | null {
@@ -137,6 +156,7 @@ export class Results {
     }
     const done = this.get(id)!
     this.ctx.push({ push: 'work.outbox.result', result: done }, { need: 'read' })
+    this.told(done)
     return done
   }
 

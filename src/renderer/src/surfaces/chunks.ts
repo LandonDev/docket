@@ -25,6 +25,8 @@ export const htmlRenderChunk = defineChunk("htmlRender", () => import("./HtmlRen
 /** A mail chat's cards in the transcript (`mail_offer`), and the mail and person chips in its answers. */
 export const mailOfferChunk = defineChunk("work-mail-offer", () => import("../work/mail/chat/OfferCard"));
 export const lifeosChipChunk = defineChunk("work-lifeos-chip", () => import("../work/mail/chat/LifeosChip"));
+/** A Work thread's head over its first message: what it left him (transcript/WorkHead.tsx). */
+export const workHeadChunk = defineChunk("work-head", () => import("./transcript/WorkHead"));
 /** Images, media and their review (MediaViewer). */
 export const mediaChunk = defineChunk("media", () => import("./MediaViewer"));
 /** The full-window image viewer. */

@@ -404,7 +404,9 @@ async function change(ctx: ToolCtx, workspaceId: string, a: Asked): Promise<Work
   if (!done.entries.length && !done.trashed?.length) return fail(left.join('\n') || 'Nothing was done.')
   const shown = a.verb === 'trash' ? things.map((t) => t.name) : what
   const summary = `${PAST[a.verb]} ${names(shown)}${a.into ? ` in ${whereWords(whereOf(a.into.named.place, a.into.words), a.into.named.place.group)}` : ` in ${place.name}`}`
-  ctx.results.add({ sessionId: ctx.sessionId, kind: `file.${a.verb}`, summary, undo: { pillar: 'files', verb: 'files_undo', args: { op }, label: UNDO_LABEL[a.verb] } })
+  // What it left, for the thread's head to open in Files (work/threads/record.ts `openOf`).
+  const opens = done.entries.flatMap((e) => (e.ref ? [{ ref: e.ref, name: e.name }] : [])).slice(0, 8)
+  ctx.results.add({ sessionId: ctx.sessionId, kind: `file.${a.verb}`, summary, ...(opens.length ? { ref: { at: 'files', workspaceId, files: opens } } : {}), undo: { pillar: 'files', verb: 'files_undo', args: { op }, label: UNDO_LABEL[a.verb] } })
   return {
     ...workText([`${summary}.`, ...(left.length ? [`Not done: ${left.join('; ')}`] : []), `Undo: files_undo with {"op": "${op}"}. The owner can undo it from Results too.`].join('\n')),
     structuredContent: { done: what, refused: done.refused, undo: { op } }

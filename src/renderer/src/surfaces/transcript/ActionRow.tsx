@@ -16,7 +16,7 @@ import { useTranscriptHost } from "../transcriptSession";
 import { ActionLine } from "./ActionLine";
 import { CommandCard } from "./CommandCard";
 import { useAction, type Action } from "./actionModel";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, heldOf } from "./ApprovalCard";
 import { ToolGlyph } from "./ToolGlyph";
 import { useGroupHand } from "./groupHand";
 import { openedLive } from "./workingOpen";
@@ -59,6 +59,14 @@ export function ActionRow({
   }, [openedThere, hand]);
   const threadHost = useTranscriptHost();
   const openThread = useThreadOpener(action);
+  // A Work call the host held is one quiet line, Held then the act: the thread's head says what waits (WorkHead.tsx).
+  if (approval && heldOf(block)) {
+    return (
+      <div data-block={block.id} className="flex min-w-0 flex-col">
+        <ApprovalCard block={block} onApproval={onApproval} />
+      </div>
+    );
+  }
   const hasBody = action.opens !== "file" && action.opens !== "none";
   // While the call waits on the person its body shows what it asks, and stays open.
   const shown = open || (action.pending && hasBody);

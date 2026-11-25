@@ -969,6 +969,50 @@ public struct SessionMeta: Codable, Hashable, Sendable {
             try container.encode(window, forKey: .window)
         }
     }
+    public struct WorkOutcome: Codable, Hashable, Sendable {
+        public enum Tone: RawRepresentable, Codable, Hashable, Sendable {
+            case asks
+            case failed
+            case held
+            case working
+            case made
+            case done
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "asks": self = .asks
+                case "failed": self = .failed
+                case "held": self = .held
+                case "working": self = .working
+                case "made": self = .made
+                case "done": self = .done
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .asks: "asks"
+                case .failed: "failed"
+                case .held: "held"
+                case .working: "working"
+                case .made: "made"
+                case .done: "done"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let words: String
+        public let tone: Tone
+
+        public init(words: String, tone: Tone) {
+            self.words = words
+            self.tone = tone
+        }
+    }
 
     public let id: String
     public let parentId: String?
@@ -1020,10 +1064,11 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let readAt: Int?
     public let scope: SessionScope?
     public let routineRunId: String?
+    public let workOutcome: WorkOutcome?
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, statusDetail: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, lastEventAt: Int? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, readAt: Int? = nil, scope: SessionScope? = nil, routineRunId: String? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, statusDetail: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, lastEventAt: Int? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, readAt: Int? = nil, scope: SessionScope? = nil, routineRunId: String? = nil, workOutcome: WorkOutcome? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -1074,12 +1119,13 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.readAt = readAt
         self.scope = scope
         self.routineRunId = routineRunId
+        self.workOutcome = workOutcome
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, statusDetail, activityKind, background, awaiting, lastEventAt, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, readAt, scope, routineRunId, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, statusDetail, activityKind, background, awaiting, lastEventAt, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, readAt, scope, routineRunId, workOutcome, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1134,6 +1180,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(readAt, forKey: .readAt)
         try container.encodeIfPresent(scope, forKey: .scope)
         try container.encodeIfPresent(routineRunId, forKey: .routineRunId)
+        try container.encodeIfPresent(workOutcome, forKey: .workOutcome)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }

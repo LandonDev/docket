@@ -530,6 +530,50 @@ with a LifeOS in memory), routines/plays.rig.test.ts (`loose`),
 work/tasks/startScope.test.ts, tasks/TasksView.dom.test.tsx,
 lib/sourceDraft.test.ts, lib/railWorking.test.ts; journey J61.
 
+## What a thread left him
+
+One record answers it for every screen (the thread's head, the column's outcome line, a project's log, the tracker):
+`src/main/server/work/threads/record.ts`, its shapes and words in `src/shared/work/threadRecord.ts`.
+
+- **The record** (`threadRecord`, pure, from records that exist): `waits` (a question or approval the root asks; a
+  turn's failure with its words and cause; each open `outbox_request` of the tree; each held item of the tree that
+  `needsHim`, a failed send first, then oldest first), `works` (the root's LifeOS `workLinks`, an open task first, a
+  task with its `status`, `due`, `projectId` and `waitingOn {name, since}` from `tasks:get`, at most five read), `made`
+  (the tree's Results of a made kind, `isMadeKind`: `file.*`, `docs.*`, `sheets.*`, `google.*`, `windows.put`,
+  `projects.link`; newest first, undone ones left out, each with `verb`, `name` and `open`), `outcome`, `workspaceId`
+  and `worksDown` (LifeOS could not be read, in words; the rest still answers). A subagent's waits and writes are its
+  root's (`canvas.paneOf`). `open` is where the window opens it: `{at: 'files', workspaceId, ref, name}` (a files
+  Result's ref, which files/tools.ts now writes: `{at: 'files', workspaceId, files: [{ref, name}]}`), `{at: 'url'}`
+  (a Google upload), `{at: 'project'}` (`projects.link`), else null.
+- **The outcome line** (`outcomeOf`): the most pressing, in his words and a tone: `asks` "Asks you" (the root waits on
+  him), `failed` (`failedWords`: "Couldn't sign in", "Out of usage", "Couldn't reach the model", "Stopped on an error";
+  then "Couldn't send" for a held send that failed), `held` (`heldWords`: "1 mail to send", "2 file changes to approve",
+  "3 items to approve" across kinds), `working` (the host's status detail, "Editing Budget FY27.xlsx", else "Working"),
+  then the newest Result: `made` ("Made Seat map.xlsx") or `done` ("Mail sent", else its summary). Held outranks
+  working: it needs his press, working does not.
+- **Folded into the summary**: `SessionMeta.workOutcome` (`{words, tone}`, optional, null for none) on a Work root
+  alone; a code thread and a subagent never carry it. sessions.ts `decorate` asks `registry.workOutcomeOf` with the
+  decorated meta; the keeper (`ThreadRecords`) answers from memory: one Outbox read (`outbox.list` waiting, this host's
+  and LifeOS's held items) grouped by root, and each root's Results, both kept until they change. While Work is on it
+  hears `outbox.onChange` and `Results.onChange` (outbox/results.ts), drops what moved and says the touched roots'
+  metas again (`registry.refreshMeta`). No LifeOS call is in this path. The Swift contract carries it
+  (`SessionMeta.WorkOutcome`).
+- **`work.threads.record {sessionId}`** (core, `approve`, read only; a subagent's id answers its root's; a code thread
+  is refused): the whole record, reading the Outbox and Results fresh and the links from LifeOS at the ask.
+- **The thread's head** (surfaces/transcript/WorkHead.tsx, its own chunk `work-head`; docs/DESIGN.md "A thread's
+  head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`WorkHeadSlot`,
+  inside that message's row so the transcript's row
+  layout measures it), again whenever the folded outcome, the thread's status or the host's waiting count moves. A
+  held row opens the Outbox's own `HeldDetail` in a sheet; the held call in the transcript is one quiet line.
+- **The title bar** of a Work thread in front is its crumb (`WorkCrumb`): the job's dot, its project (a press opens
+  the project's page) or, loose, the job's name, then the title; no strip of chips. A code thread's bar is unchanged.
+- **The right panel** lists Results but opens on them only when he asks (lib/rightPanel.ts): the head says it.
+- **Done in Projects** goes through `work.tasks.done` (work/projects/kit.tsx `withHostDone`), so a task a thread
+  worked completes with the thread's reason and link, as Tasks and Today do.
+- Proof: `threads/record.test.ts`, `WorkHead.dom.test.tsx`, `WorkHeadSlot.dom.test.tsx`,
+  `ThreadHeader.work.dom.test.tsx`, `projects/hostDone.dom.test.ts`; journey J62 (a thread holds a mail, its head
+  shows it, Send from the head's sheet queues it and the head lets it go).
+
 ## The core columns
 
 All defaulted, so the build before them still reads and writes the database

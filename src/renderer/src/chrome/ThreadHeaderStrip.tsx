@@ -125,8 +125,11 @@ export function ThreadHeaderStrip({
   onScrollBy,
   trailing,
   end,
+  crumb,
   ...events
 }: ChipEvents & {
+  /** Before the heading's title, where the bar draws one (a Work thread's: chrome/WorkCrumb.tsx). */
+  crumb?: ReactNode;
   model: HeaderModel<ChipThread>;
   onSelect: (id: string) => void;
   /** The live row's scroller, for the title bar's overflow measurement. */
@@ -186,7 +189,7 @@ export function ThreadHeaderStrip({
           {model.heading !== undefined ? (
             // The home has no strip: its chats are the column's Chats list,
             // so the row holds the thread on screen's title alone.
-            model.heading ? <HomeHeading chip={model.heading} {...events} /> : null
+            model.heading ? <HomeHeading chip={model.heading} crumb={crumb} {...events} /> : null
           ) : (
           <div className="relative flex min-w-0 self-stretch" style={pad}>
             {overflow?.left && onScrollBy ? <ScrollArrow side="left" onClick={() => onScrollBy(-1)} /> : null}
@@ -516,7 +519,7 @@ function dropChip(id: string, paneId: string, edge: PaneEdge): void {
  * the thread's menu, as on a chip; nothing else is drawn, since the column's
  * Chats list already says its type and state.
  */
-function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
+function HomeHeading({ chip, crumb, ...events }: { chip: StripChip; crumb?: ReactNode } & ChipEvents) {
   if (events.renamingId === chip.id)
     return (
       <div className="flex min-w-0 pl-1.5">
@@ -525,14 +528,15 @@ function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
     );
   const title = chipTitle(chip);
   return (
-    <div className="flex min-w-0 pl-1.5">
+    <div className={crumb ? "flex min-w-0 items-center pl-1.5" : "flex min-w-0 pl-1.5"}>
+      {crumb}
       <TruncateTip text={title} side="bottom">
       <h1
         data-home-heading
         data-menu-id={chip.id}
         data-tauri-drag-region="false"
         onDoubleClick={() => events.onStartRename(chip.id)}
-        className="min-w-0 truncate px-3 text-[13px] leading-5 font-medium text-foreground"
+        className={`min-w-0 truncate ${crumb ? "ps-1 pe-3" : "px-3"} text-[13px] leading-5 font-medium text-foreground`}
       >
         {title}
       </h1>
