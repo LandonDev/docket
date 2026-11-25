@@ -11,7 +11,7 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 app.whenReady().then(() => {
-  app.setActivationPolicy('accessory')
+  if (process.platform === 'darwin') app.setActivationPolicy('accessory')
   app.dock?.hide()
   const win = new BrowserWindow({
     width: 1320, height: 900, x: 60, y: 60, show: false, focusable: false, skipTaskbar: true,
@@ -27,12 +27,25 @@ app.whenReady().then(() => {
   })
   win.loadURL(process.env.TC_VIEWER_PAGE)
   let input = ''
+  // A series of timestamped Chromium mouse samples for the isolated Linux proof.
+  let motion
+  win.on('closed', () => clearInterval(motion))
+  const movePointer = () => {
+    win.webContents.debugger.attach('1.3')
+    let x = 24
+    motion = setInterval(() => {
+      x = x < 600 ? x + 1 : 24
+      const timestamp = (performance.timeOrigin + performance.now()) / 1000
+      void win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: 50, timestamp }).catch(() => {})
+    }, 11)
+  }
   process.stdin.on('data', (chunk) => {
     input += chunk
     for (let at = input.indexOf('\n'); at >= 0; at = input.indexOf('\n')) {
       const line = input.slice(0, at).trim()
       input = input.slice(at + 1)
       if (line === 'quit') app.quit()
+      else if (line === 'motion' && process.env.TC_VIEWER_MOTION === '1' && !motion) movePointer()
       else if (line.startsWith('eval ')) win.webContents.executeJavaScript(line.slice(5))
     }
   })

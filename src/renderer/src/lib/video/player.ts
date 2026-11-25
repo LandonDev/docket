@@ -1,11 +1,11 @@
 import { encodeAck, encodeInput, h264Codec, parseFrame, SUBPROTOCOL, type InputEvent } from "@server/shared/video/nsl1";
-import { ArrivalClock, Presenter, type Decoded } from "./pacing";
+import { ArrivalClock, DRIVE_HOLD_MS, Presenter, type Decoded } from "./pacing";
 
 /**
  * One live stream in the viewer's worker (docs/agents/live-video.md "The
  * viewer"): its socket, its decoder, the line of decoded frames and the
  * canvases it draws on. Bytes come in as NSL1 frames, go through WebCodecs,
- * wait in the presenter for their refresh, and are drawn on every canvas
+ * wait in the presenter until due, and are drawn on every canvas
  * shown; each frame is then acked with how long it waited here, drawn or
  * passed over, in the order it came.
  *
@@ -24,7 +24,10 @@ export const MAX_PENDING = 360;
 export const STALL_MS = 5000;
 
 /** Why a player stopped by itself; a socket's own close carries its code instead. */
-export type PlayerFault = "unsupported" | "decode" | "wire" | "stalled";
+export type PlayerFault = "unsupported" | "decode" | "wire" | "stalled" | "behind";
+
+const BEHIND_MS = 250;
+const BEHIND_FOR_MS = 500;
 
 export interface PlayerSocket {
   binaryType: string;
@@ -62,7 +65,7 @@ export interface PlayerDeps<F extends { timestamp: number; close(): void }> {
   /** `VideoDecoder.isConfigSupported` */
   supported(config: DecoderConfig): Promise<boolean>;
   now(): number;
-  /** a refresh is wanted: the worker's frame clock calls `refresh` */
+  /** a frame still waits: schedule its draw */
   wake(): void;
 }
 
@@ -88,7 +91,8 @@ interface Waiting {
 export class StreamPlayer<F extends { timestamp: number; close(): void }> {
   private readonly socket: PlayerSocket;
   private decoder: PlayerDecoder | null = null;
-  private readonly clock = new ArrivalClock();
+  private readonly clock: ArrivalClock;
+  private behind: { since: number; base: number } | null = null;
   private readonly presenter: Presenter<F>;
   private readonly surfaces = new Set<Surface<F>>();
   /** frames in the decoder, by the number they went in under */
@@ -107,7 +111,9 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     url: string,
     private readonly deps: PlayerDeps<F>,
     private readonly events: PlayerEvents,
+    private drive = false,
   ) {
+    this.clock = new ArrivalClock(drive ? DRIVE_HOLD_MS : undefined);
     this.presenter = new Presenter(this.clock, {
       draw: (item) => this.draw(item),
       retire: (item, waitMs) => {
@@ -142,7 +148,7 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
    * that number, and the host passes it on only on a stream he drives.
    */
   input(event: InputEvent): void {
-    if (this.over || !this.generation || this.socket.readyState !== OPEN) return;
+    if (this.over || !this.size || this.socket.readyState !== OPEN) return;
     try {
       this.socket.send(encodeInput(event, this.generation));
     } catch {
@@ -150,9 +156,19 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     }
   }
 
-  /** One tick of the frame clock. True when another is wanted. */
+  get nextDrawAt(): number | undefined {
+    return this.presenter.nextDrawAt;
+  }
+
+  watch(): void {
+    this.drive = false;
+    this.behind = null;
+    this.clock.watch();
+  }
+
+  /** Draw a frame that has waited until its deadline. True when another still waits. */
   refresh(now: number): boolean {
-    return !this.over && this.presenter.refresh(now);
+    return !this.over && this.presenter.refresh(now, this.drive);
   }
 
   /** Called now and then: a stream whose first frame never came, or whose decoder went quiet, is given up on. */
@@ -179,7 +195,9 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
       if (this.generation && frame.generation < this.generation) throw new Error("a stale generation");
       if (frame.generation !== this.generation) {
         // a new encoder at the source: nothing of the old one is of use to the new
+        this.presenter.flush(this.deps.now());
         this.resetDecoder();
+        this.behind = null;
         this.generation = frame.generation;
         this.sequence = 0;
         if (!frame.keyframe || frame.sequence !== 1) throw new Error("a generation must start with a keyframe");
@@ -187,6 +205,7 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
       if (frame.sequence !== this.sequence + 1 || this.pending.size >= MAX_PENDING) throw new Error("a frame out of order");
       this.sequence = frame.sequence;
       const arrived = this.deps.now();
+      if (this.drive && this.fellBehind(frame.timestamp, arrived)) return this.fail("behind");
       const waiting: Waiting = { generation: frame.generation, sequence: frame.sequence, timestamp: frame.timestamp, arrived, base: this.clock.observe(frame.timestamp, arrived), width: frame.width, height: frame.height };
       if (!this.decoder) {
         const config: DecoderConfig = { codec: h264Codec(frame.data), codedWidth: frame.width, codedHeight: frame.height, optimizeForLatency: true };
@@ -205,6 +224,17 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     }
   }
 
+  private fellBehind(timestampUs: number, arrived: number): boolean {
+    // Keep the low offset that started the wait, even if it ages out while frames are late.
+    const base = this.behind?.base ?? this.clock.base;
+    if (base === undefined || arrived - timestampUs / 1000 - base < BEHIND_MS) {
+      this.behind = null;
+      return false;
+    }
+    this.behind ??= { since: arrived, base };
+    return arrived - this.behind.since >= BEHIND_FOR_MS;
+  }
+
   private makeDecoder(): PlayerDecoder {
     const generation = this.generation;
     return this.deps.decoder({
@@ -214,8 +244,7 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
         this.pending.delete(frame.timestamp);
         this.sizes.set(waiting.sequence, { width: waiting.width, height: waiting.height });
         const item: Decoded<F> = { generation: waiting.generation, sequence: waiting.sequence, timestamp: waiting.timestamp, arrived: waiting.arrived, base: waiting.base, frame };
-        this.presenter.push(item, this.deps.now());
-        this.deps.wake();
+        if (this.presenter.push(item, this.deps.now())) this.deps.wake();
       },
       error: () => {
         if (generation === this.generation) this.fail("decode");

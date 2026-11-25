@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ArrivalClock, MAX_HOLD_MS, Presenter, presenterPhase, type Decoded } from "./pacing";
+import { ArrivalClock, DRIVE_HOLD_MS, MAX_HOLD_MS, Presenter, presenterPhase, type Decoded } from "./pacing";
 
 /** Frames 1/120 s apart at the source, each arriving `late(i)` ms after it would on an even link. */
 function feed(clock: ArrivalClock, count: number, late: (i: number) => number, start = 0): { base: number; at: number }[] {
@@ -19,6 +19,32 @@ describe("the hold", () => {
     expect(clock.holdMs).toBeCloseTo(0, 6);
   });
 
+  it.each([
+    { name: "drive", cap: DRIVE_HOLD_MS },
+    { name: "watch", cap: MAX_HOLD_MS },
+  ])("replays even arrivals and the owner's uneven link with the $name hold cap", ({ cap }) => {
+    // Arrival traces in ms, with an even 16 ms capture period. On the uneven link
+    // every eighth frame is 60–100 ms late and the following frames cannot pass it.
+    const even = [30, 46, 62, 78, 94, 110, 126, 142];
+    const uneven = [
+      30, 46, 62, 78, 94, 110, 126, 202,
+      202, 202, 202, 206, 222, 238, 254, 370,
+      370, 370, 370, 370, 370, 370, 382, 478,
+      478, 478, 478, 478, 478, 494, 510, 626,
+      626, 626, 626, 626, 626, 626, 638, 654,
+    ];
+    const replay = (arrivals: number[]) => {
+      const clock = new ArrivalClock(cap);
+      return arrivals.map((arrived, i) => {
+        clock.observe(i * 16_000, arrived);
+        return clock.holdMs;
+      });
+    };
+    expect(replay(even)).toEqual(even.map(() => 0));
+    const trace = Array.from({ length: 6 }, (_, lap) => uneven.map((at) => at + lap * 640)).flat();
+    expect(Math.max(...replay(trace))).toBe(cap);
+  });
+
   it("covers the lateness of most recent frames: its 95th percentile", () => {
     const clock = new ArrivalClock();
     // one frame in ten is 20 ms late, the rest on time: the hold must cover the late ones
@@ -33,6 +59,16 @@ describe("the hold", () => {
   it("is never more than 100 ms, however uneven the link", () => {
     const clock = new ArrivalClock();
     feed(clock, 240, (i) => (i % 3 === 0 ? 400 : 0));
+    expect(clock.holdMs).toBe(MAX_HOLD_MS);
+  });
+
+  it("uses the watch hold limit after the driver hands back", () => {
+    const clock = new ArrivalClock(DRIVE_HOLD_MS);
+    const late = (i: number) => (i % 8 === 7 ? 120 : 0);
+    feed(clock, 120, late);
+    expect(clock.holdMs).toBe(DRIVE_HOLD_MS);
+    clock.watch();
+    feed(clock, 120, late, 1000);
     expect(clock.holdMs).toBe(MAX_HOLD_MS);
   });
 
@@ -111,16 +147,22 @@ describe("the line of decoded frames", () => {
     expect(presenter.waiting).toBe(0);
   });
 
-  it("draws one frame a refresh, and a second that came in the same refresh waits for the next", () => {
+  it("draws a second due frame from the decoder before any refresh runs", () => {
     const { presenter, log, frame } = line();
     presenter.push(frame(1, 0, 4), 5);
-    presenter.push(frame(2, 8, 6), 8);
-    expect(log.drawn).toEqual([1]);
-    expect(presenter.waiting).toBe(1);
-    expect(presenter.refresh(16)).toBe(true);
+    presenter.push(frame(2, 8, 8), 8);
     expect(log.drawn).toEqual([1, 2]);
-    // nothing left and nothing drawn: no further refresh is asked for
-    expect(presenter.refresh(24)).toBe(false);
+    expect(presenter.waiting).toBe(0);
+    expect(presenter.refresh(16)).toBe(false);
+  });
+
+  it("draws already due held frames in order before the new due frame", () => {
+    const { presenter, log, frame } = line(24);
+    presenter.push(frame(1, 0, 0), 0);
+    expect(presenter.nextDrawAt).toBe(24);
+    presenter.push(frame(2, 8, 32), 32);
+    expect(log.drawn).toEqual([1, 2]);
+    expect(presenter.nextDrawAt).toBeUndefined();
   });
 
   it("holds a frame until its capture time plus the hold has passed", () => {
@@ -135,12 +177,11 @@ describe("the line of decoded frames", () => {
   });
 
   it("retires every frame in the order it came, drawn or passed over", () => {
-    const { presenter, log, frame } = line();
-    // a burst: fourteen frames due at once is past what a display can catch up on by drawing
-    for (let i = 1; i <= 14; i++) presenter.push(frame(i, i, 100), 100 + i * 0.01);
+    const { presenter, log, frame } = line(100);
+    // A late refresh finds fourteen held frames due at once.
+    for (let i = 1; i <= 14; i++) presenter.push(frame(i, i, 30), 30);
     presenter.refresh(120);
     presenter.refresh(128);
-    presenter.refresh(136);
     const order = log.retired.map((r) => r.sequence);
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(new Set(order).size).toBe(order.length);
@@ -150,7 +191,7 @@ describe("the line of decoded frames", () => {
     expect(presenter.waiting).toBe(0);
   });
 
-  it("on a 60 Hz screen under a 120 fps stream, keeps up by passing frames over, never by falling behind", () => {
+  it("draws each due decode even when the stream runs faster than the display clock", () => {
     const { presenter, log, frame } = line();
     let now = 0;
     let sequence = 0;
@@ -163,12 +204,9 @@ describe("the line of decoded frames", () => {
       now = (tick + 1) * (1000 / 60);
       presenter.refresh(now);
     }
-    // the line grows by a frame a refresh until it passes twelve, then drops to two: it never grows without bound
-    expect(presenter.waiting).toBeLessThanOrEqual(13);
-    expect(log.retired.length).toBeGreaterThanOrEqual(sequence - 13);
-    // about half are drawn, and no frame waits longer than that line is long
-    expect(log.drawn.length).toBeGreaterThan(500);
-    expect(Math.max(...log.retired.map((r) => r.wait))).toBeLessThan(250);
+    expect(presenter.waiting).toBe(0);
+    expect(log.drawn).toHaveLength(sequence);
+    expect(log.retired.every((r) => r.wait === 0)).toBe(true);
     const order = log.retired.map((r) => r.sequence);
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });

@@ -11,7 +11,8 @@ import type { PlayerFault } from "./player";
 
 /** Window to worker. A canvas is handed over once (`surface`) and then bound to a stream, or to none. */
 export type ToWorker =
-  | { t: "open"; stream: number; url: string }
+  | { t: "open"; stream: number; url: string; drive?: true }
+  | { t: "watch"; stream: number }
   | { t: "close"; stream: number }
   | { t: "surface"; surface: number; canvas: OffscreenCanvas }
   | { t: "bind"; surface: number; stream: number | null }
@@ -55,5 +56,5 @@ export function afterClose(code: number, fault: PlayerFault | undefined, tries: 
   const shows = fault ? { face: "again" as const } : videoCloseShows(code);
   if (shows.face !== "again") return { then: "over", face: shows.face, ...(shows.retry ? { retry: true as const } : {}) };
   if (tries >= VIDEO_RETRIES) return { then: "over", face: "picture" };
-  return { then: "again", delayMs: RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)] };
+  return { then: "again", delayMs: fault === "behind" ? 0 : RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)] };
 }

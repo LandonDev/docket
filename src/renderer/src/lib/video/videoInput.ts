@@ -93,6 +93,8 @@ function wheelNotches(e: WheelLike, axis: 0 | 1): number {
   return delta / WHEEL_PIXELS_PER_NOTCH;
 }
 
+const MOVE_INTERVAL_MS = 1000 / 250;
+
 const share = (v: number): number => Math.min(1, Math.max(0, v));
 
 export class VideoInput {
@@ -103,6 +105,9 @@ export class VideoInput {
   private readonly wheelRemainder = [0, 0];
   /** Ctrl and Alt are down and nothing else has been pressed since: letting one go leaves the picture */
   private leaving = false;
+  private readonly queued: InputEvent[] = [];
+  private nextMoveAt = -Infinity;
+  private moveTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly send: (event: InputEvent) => void,
@@ -111,7 +116,31 @@ export class VideoInput {
   ) {}
 
   private emit(event: InputEvent): void {
-    this.send({ ...event, buttons: this.buttons, modifiers: this.modifiers });
+    const record = { ...event, buttons: this.buttons, modifiers: this.modifiers };
+    const move = this.queued[0];
+    if (this.queued.length === 1 && move.type === "pointerMove" && (event.type === "keyDown" || event.type === "keyUp")) {
+      // A waiting position alone does not hold up a key. It will go out with the new modifiers.
+      move.modifiers = this.modifiers;
+      this.send(record);
+    } else if (this.queued.length) this.queued.push(record);
+    else this.send(record);
+  }
+
+  private sendQueued(): void {
+    while (this.queued.length) {
+      const event = this.queued[0];
+      if (event.type === "pointerMove") {
+        const now = performance.now();
+        if (now < this.nextMoveAt) {
+          this.moveTimer = setTimeout(() => this.sendQueued(), this.nextMoveAt - now);
+          return;
+        }
+        this.nextMoveAt = now + MOVE_INTERVAL_MS;
+      }
+      this.queued.shift();
+      this.send(event);
+    }
+    this.moveTimer = undefined;
   }
 
   private setModifier(code: number, down: boolean): void {
@@ -204,6 +233,14 @@ export class VideoInput {
     this.emit({ type: "pointerMove", x: share(x), y: share(y) });
   }
 
+  /** Raw motion takes the next free slot. A button keeps its place behind any preceding move. */
+  pointerRaw(x: number, y: number): void {
+    const record: InputEvent = { type: "pointerMove", x: share(x), y: share(y), buttons: this.buttons, modifiers: this.modifiers };
+    if (this.queued.at(-1)?.type === "pointerMove") this.queued[this.queued.length - 1] = record;
+    else this.queued.push(record);
+    if (this.moveTimer === undefined) this.sendQueued();
+  }
+
   /** `button` is the DOM's: 0 left, 1 middle, 2 right. False for any other. */
   buttonDown(button: number, x: number, y: number): boolean {
     if (button < 0 || button > 2) return false;
@@ -240,7 +277,11 @@ export class VideoInput {
 
   /** Everything he holds is let go there: the picture lost the keyboard, the window lost focus, the pointer was taken away. */
   release(): void {
-    const had = this.held.size > 0 || this.buttons !== 0 || this.modifiers !== 0;
+    const had = this.held.size > 0 || this.buttons !== 0 || this.modifiers !== 0 || this.queued.some((event) => event.type !== "pointerMove");
+    // No queued press can arrive after release-all, even when focus goes during a drag.
+    clearTimeout(this.moveTimer);
+    this.moveTimer = undefined;
+    this.queued.length = 0;
     this.held.clear();
     this.leaving = false;
     this.buttons = 0;
@@ -266,7 +307,12 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
   };
   const onKeyDown = (e: KeyboardEvent): void => void (input.keyDown(key(e)) && stop(e));
   const onKeyUp = (e: KeyboardEvent): void => void (input.keyUp(key(e)) && stop(e));
-  const onMove = (e: PointerEvent): void => input.pointerMove(...at(e));
+  const moveEvent = "onpointerrawupdate" in el ? "pointerrawupdate" : "pointermove";
+  const onMove = (event: Event): void => {
+    const e = event as PointerEvent;
+    if (moveEvent === "pointerrawupdate") input.pointerRaw(...at(e.getCoalescedEvents?.().at(-1) ?? e));
+    else input.pointerMove(...at(e));
+  };
   const onDown = (e: PointerEvent): void => {
     if (!input.buttonDown(e.button, ...at(e))) return;
     e.preventDefault();
@@ -287,7 +333,7 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
   const onMenu = (e: Event): void => e.preventDefault();
   el.addEventListener("keydown", onKeyDown);
   el.addEventListener("keyup", onKeyUp);
-  el.addEventListener("pointermove", onMove);
+  el.addEventListener(moveEvent, onMove);
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointerup", onUp);
   el.addEventListener("pointercancel", release);
@@ -301,7 +347,7 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
   return () => {
     el.removeEventListener("keydown", onKeyDown);
     el.removeEventListener("keyup", onKeyUp);
-    el.removeEventListener("pointermove", onMove);
+    el.removeEventListener(moveEvent, onMove);
     el.removeEventListener("pointerdown", onDown);
     el.removeEventListener("pointerup", onUp);
     el.removeEventListener("pointercancel", release);

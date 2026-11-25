@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InputEvent } from "@server/shared/video/nsl1";
 import { encodeInput, parseInput } from "@server/shared/video/nsl1";
 import { HID_KEYS, VideoInput, attachInput, drivenScreen, type DrivenScreen } from "./videoInput";
@@ -289,5 +289,89 @@ describe("the window the picture is in", () => {
     // the far side lets go of everything at once
     expect(r.keys()).toEqual(["+4", "releaseAll"]);
     detach();
+  });
+});
+
+describe("pointer delivery", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] }));
+  afterEach(() => vi.useRealTimers());
+
+  function picture(raw: boolean) {
+    const r = rig();
+    const el = Object.assign(new EventTarget(), {
+      ownerDocument: { defaultView: new EventTarget() },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+      focus: () => undefined,
+      ...(raw ? { onpointerrawupdate: null } : {}),
+    }) as unknown as HTMLElement;
+    const detach = attachInput(el, r.input);
+    const emit = (type: string, x: number, samples: number[] = []) =>
+      el.dispatchEvent(Object.assign(new Event(type), {
+        clientX: x, clientY: 50, button: 0, pointerId: 1,
+        getCoalescedEvents: () => samples.map((clientX) => ({ clientX, clientY: 50 })),
+      }));
+    return { ...r, el, emit, detach };
+  }
+
+  it("uses the last coalesced point and sends each pending move before its button", () => {
+    const r = picture(true);
+    r.emit("pointerrawupdate", 5);
+    r.emit("pointerrawupdate", 20, [10, 20]);
+    r.emit("pointerdown", 20);
+    r.emit("pointerrawupdate", 50, [30, 40]);
+    r.emit("pointerup", 40);
+    expect(r.keys()).toEqual(["pointerMove"]);
+    vi.advanceTimersByTime(4);
+    expect(r.sent.slice(1)).toMatchObject([{ type: "pointerMove", x: 0.2, buttons: 0 }, { type: "buttonDown", x: 0.2, buttons: 1 }]);
+    vi.advanceTimersByTime(4);
+    expect(r.sent.slice(3)).toMatchObject([{ type: "pointerMove", x: 0.4, buttons: 1 }, { type: "buttonUp", x: 0.4, buttons: 0 }]);
+    r.detach();
+  });
+
+  it("sends at most 250 moves per second and sends the last position after the pointer stops", () => {
+    const r = picture(true);
+    r.emit("pointermove", 90);
+    for (let i = 0; i < 1000; i++) {
+      r.emit("pointerrawupdate", i === 999 ? 99 : 40);
+      vi.advanceTimersByTime(1);
+      if (i === 998) expect(r.sent).toHaveLength(250);
+    }
+    expect(r.sent).toHaveLength(251);
+    expect(r.sent.at(-1)).toMatchObject({ type: "pointerMove", x: 0.99 });
+    r.detach();
+  });
+
+  it("sends a key at once if only a move is waiting for the cap", () => {
+    const r = picture(true);
+    r.emit("pointerrawupdate", 5);
+    r.emit("pointerrawupdate", 20);
+    r.input.keyDown({ code: "ShiftLeft" });
+    expect(r.keys()).toEqual(["pointerMove", "+225"]);
+    vi.advanceTimersByTime(4);
+    expect(r.sent.at(-1)).toMatchObject({ type: "pointerMove", x: 0.2, modifiers: 2 });
+    r.detach();
+  });
+
+  it("falls back to pointermove when the element does not support raw input", () => {
+    const r = picture(false);
+    r.emit("pointerrawupdate", 90);
+    r.emit("pointermove", 10);
+    r.emit("pointermove", 20);
+    expect(r.sent).toMatchObject([{ type: "pointerMove", x: 0.1 }, { type: "pointerMove", x: 0.2 }]);
+    r.detach();
+    r.emit("pointermove", 30);
+    expect(r.sent).toHaveLength(2);
+  });
+
+  it("cancels an unsent press on blur so it cannot land after release-all", () => {
+    const r = picture(true);
+    r.emit("pointerrawupdate", 5);
+    r.emit("pointerdown", 5);
+    r.emit("pointerrawupdate", 20);
+    r.emit("pointerup", 20);
+    r.el.dispatchEvent(new Event("blur"));
+    vi.advanceTimersByTime(20);
+    expect(r.keys()).toEqual(["pointerMove", "buttonDown", "releaseAll"]);
+    r.detach();
   });
 });

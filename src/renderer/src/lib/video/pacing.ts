@@ -8,7 +8,7 @@
  * `trimDecoded`, `presentDecoded`, `present`), licensed under the Apache
  * License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). Changed
  * here: the same rules as two classes with no DOM in them, so they run in a
- * worker and under test; the numbers are theirs.
+ * worker and under test. Drive has its own hold limit and due frames draw on decode.
  */
 
 /** How far back the smallest arrival-minus-capture offset is searched, in ms. */
@@ -19,6 +19,7 @@ export const JITTER_WINDOW_MS = 2000;
 export const JITTER_QUANTILE = 0.95;
 /** Longest hold in ms; a longer hold smooths more but delays what he sees after he types. */
 export const MAX_HOLD_MS = 100;
+export const DRIVE_HOLD_MS = 24;
 /** Milliseconds the hold shrinks per millisecond that passes. */
 export const HOLD_DECAY = 0.05;
 /** Change in the offset, in ms, that restarts the clock. */
@@ -34,13 +35,23 @@ interface Sample {
  * The source stamps each frame with its capture time on a clock of its own.
  * The smallest recent difference between arrival and capture is the base a
  * frame is timed against; the hold is a high percentile of how much later
- * than that frames arrive, capped at `MAX_HOLD_MS`, and it shrinks slowly
+ * than that frames arrive, capped by the kind of stream, and it shrinks slowly
  * once arrival is even again.
  */
 export class ArrivalClock {
   holdMs = 0;
   private samples: Sample[] = [];
   private lows: Sample[] = [];
+
+  constructor(private maxHoldMs = MAX_HOLD_MS) {}
+
+  get base(): number | undefined {
+    return this.lows[0]?.offset;
+  }
+
+  watch(): void {
+    this.maxHoldMs = MAX_HOLD_MS;
+  }
 
   /** One frame arrived: the base it is timed against. `timestampUs` is the source's capture time. */
   observe(timestampUs: number, arrivedMs: number): number {
@@ -62,7 +73,7 @@ export class ArrivalClock {
     const recent: number[] = [];
     for (let i = this.samples.length - 1; i >= 0 && this.samples[i].time >= arrivedMs - JITTER_WINDOW_MS; i--) recent.push(this.samples[i].late);
     recent.sort((a, b) => a - b);
-    const target = Math.min(MAX_HOLD_MS, recent[Math.floor(JITTER_QUANTILE * (recent.length - 1))]);
+    const target = Math.min(this.maxHoldMs, recent[Math.floor(JITTER_QUANTILE * (recent.length - 1))]);
     this.holdMs = target >= this.holdMs ? target : Math.max(target, this.holdMs - (arrivedMs - previous) * HOLD_DECAY);
     return base;
   }
@@ -109,16 +120,14 @@ export interface PresenterHooks<F> {
 }
 
 /**
- * The line of decoded frames. One frame at most is drawn per refresh, and
- * every frame is retired in the order it came, drawn or passed over, since
+ * The line of decoded frames. Every frame is retired in the order it
+ * came, drawn or passed over, since
  * the source credits only its oldest outstanding frame.
  */
 export class Presenter<F> {
   private readonly decoded: Decoded<F>[] = [];
   private backlogSince: number | null = null;
   private lastCatchUp = -Infinity;
-  /** a frame was drawn since the last refresh began */
-  private drawnThisFrame = false;
 
   constructor(
     private readonly clock: ArrivalClock,
@@ -129,9 +138,17 @@ export class Presenter<F> {
     return this.decoded.length;
   }
 
-  /** A frame is due once its capture time on the clock it arrived under, plus the hold, has passed; 1e-6 ms absorbs float rounding. */
+  get nextDrawAt(): number | undefined {
+    const head = this.decoded[0];
+    return head && this.dueAt(head);
+  }
+
+  private dueAt(item: Decoded<F>): number {
+    return item.timestamp / 1000 + item.base + this.clock.holdMs;
+  }
+
   private due(item: Decoded<F>, now: number): boolean {
-    return item.timestamp / 1000 + item.base + this.clock.holdMs <= now + 1e-6;
+    return this.dueAt(item) <= now + 1e-6;
   }
 
   private dueCount(now: number): number {
@@ -159,31 +176,23 @@ export class Presenter<F> {
     if (phase === "catchUp") this.lastCatchUp = now;
   }
 
-  private show(item: Decoded<F>, now: number): void {
-    this.hooks.draw(item);
-    this.drawnThisFrame = true;
-    this.hooks.retire(item, now - item.arrived, true);
-  }
-
-  /** A frame came out of the decoder. Drawn at once when nothing waits, nothing was drawn this refresh and it is due. True when a refresh is wanted. */
+  /** Draw the head as soon as it is due, including inside the decoder's callback. */
   push(item: Decoded<F>, now: number): boolean {
-    const immediate = !this.decoded.length && !this.drawnThisFrame;
     this.decoded.push(item);
-    this.trim(now);
-    if (immediate && this.decoded.length && this.due(this.decoded[0], now)) this.show(this.decoded.shift()!, now);
-    return true;
+    return this.refresh(now, true);
   }
 
-  /** One refresh. True when another is wanted: a frame was drawn, or frames still wait. */
-  refresh(now: number): boolean {
-    this.drawnThisFrame = false;
+  /** Draw due frames and say whether another still waits. A watch refresh draws one. */
+  refresh(now: number, all = false): boolean {
     this.trim(now, 1);
-    let drew = false;
-    if (this.decoded.length && this.due(this.decoded[0], now)) {
-      this.show(this.decoded.shift()!, now);
-      drew = true;
-    }
-    return drew || this.decoded.length > 0;
+    do {
+      const item = this.decoded[0];
+      if (!item || !this.due(item, now)) break;
+      this.decoded.shift();
+      this.hooks.draw(item);
+      this.hooks.retire(item, now - item.arrived, true);
+    } while (all);
+    return this.decoded.length > 0;
   }
 
   /** Every waiting frame is retired undrawn, in order: the stream is going, and the source is owed its acks. */
@@ -191,6 +200,5 @@ export class Presenter<F> {
     for (const item of this.decoded.splice(0)) this.hooks.retire(item, now - item.arrived, false);
     this.backlogSince = null;
     this.lastCatchUp = -Infinity;
-    this.drawnThisFrame = false;
   }
 }

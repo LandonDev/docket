@@ -142,6 +142,40 @@ describe("the window's streams", () => {
     expect(r.posted.at(-1)).toMatchObject({ t: "open", stream: 2 });
   });
 
+  it("reopens a behind drive stream with a fresh ticket and keeps its live canvas bound", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
+    await settle();
+    h.show(r.canvas());
+    r.say({ t: "drawn", stream: 1, width: 1280, height: 800 });
+    r.say({ t: "closed", stream: 1, code: 0, fault: "behind" });
+    expect(r.calls.slice(-2)).toEqual([
+      { method: "video.close", params: { stream: "s1" } },
+      { method: "video.open", params: { threadId: "t1", maxEdge: 640, take: true, drive: true } },
+    ]);
+    expect(h.view()).toEqual({ status: "live", width: 1280, height: 800 });
+    await settle();
+    expect(r.posted.at(-1)).toEqual({ t: "open", stream: 1, url: "wss://box.example/video/s2?ticket=t2", drive: true });
+    expect(r.posted.filter((m) => m.t === "bind")).toEqual([{ t: "bind", surface: 1, stream: 1 }]);
+  });
+
+  it("switches the worker to watch on hand back and waits for a new ticket before driving again", async () => {
+    const r = rig();
+    const watch = r.streams.acquire("box", "t1", { edge: 640, take: true });
+    await settle();
+    const drive = r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
+    await settle();
+    expect(r.posted.at(-1)).toMatchObject({ t: "open", drive: true });
+    drive.release();
+    expect(r.posted.at(-1)).toEqual({ t: "watch", stream: 1 });
+    expect(r.opens()).toHaveLength(2);
+    const again = r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
+    await settle();
+    expect(r.posted.at(-1)).toMatchObject({ t: "open", drive: true, url: "wss://box.example/video/s3?ticket=t3" });
+    again.release();
+    watch.release();
+  });
+
   it("hands a canvas to the worker once, and binds it to the stream it shows", async () => {
     const r = rig();
     const a = r.streams.acquire("box", "t1", { edge: 640, take: true });

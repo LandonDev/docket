@@ -389,14 +389,15 @@ first wanted; nothing of it is in the first paint.
 
 - **A worker** (`video.worker.ts` on `StreamPlayer`, player.ts) owns each
   stream's socket and a WebCodecs `VideoDecoder`, and draws each frame on
-  every canvas the window handed over (`transferControlToOffscreen`), on
-  the worker's own frame clock. React work in the window cannot make the
-  video stutter. The decoder is configured from the first keyframe's SPS
+  every canvas the window handed over (`transferControlToOffscreen`). The
+  decoder callback draws a due frame right away. React work stays on the
+  window's thread. The decoder is configured from the first keyframe's SPS
   (`h264Codec`), for low latency.
 - **Pacing** (pacing.ts, ported from screen-relay's viewer with its notice):
-  frames are held up to 100 ms when they arrive unevenly, one frame at most
-  is drawn per refresh, and a line that grows is caught up by passing
-  frames over. A 60 Hz screen draws 60 and acks the rest as passed over.
+  the hold covers the 95th percentile of recent arrival jitter. It caps at
+  24 ms while driving and 100 ms while watching. Held drive frames get a
+  timer for their deadline. Held watch frames check the worker's refresh
+  clock. The presenter can pass over frames when the queue grows.
 - **Acks.** Every frame is acked in the order it came, drawn or passed
   over, with how long it waited in the viewer. Closing a stream acks what
   still waits.
@@ -426,8 +427,11 @@ first wanted; nothing of it is in the first paint.
   again is. On the Computers page a picture whose host's link is not open asks
   for no stream at all and shows the waiting box, "Reconnecting to …", at the
   picture's own size (`pictureFrame`), never "The preview stopped" with Retry.
-- **A closed stream** (`afterClose`, messages.ts). A drop that named no
-  reason, `slow`, a decoder that failed or stalled: opened again with a
+- **A closed stream** (`afterClose`, messages.ts). When drive frames arrive
+  at least 250 ms behind the recent low offset between the capture and
+  viewer clocks for 500 ms, the viewer drops the queue and reopens at once
+  with a fresh ticket and keyframe. The last frame stays on the canvas.
+  A drop that named no reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
   the canvas, then the 4 fps picture. A frame drawn in between starts the
   count again. `moved`, `busy` and `held` give way to the picture at once
@@ -588,6 +592,13 @@ phone's full screen ("The phone" below), and from then on:
   buttons, the wheel in whole notches, and keys by their place on the
   keyboard (HID usage codes), each with the buttons and modifiers held.
   Letting go sends one release-all.
+- **Pointer motion.** The desktop listens for `pointerrawupdate` where
+  supported and takes the latest coalesced sample. It sends the first move
+  at once and leaves at least 4 ms between moves (250 per second). The most
+  recent waiting position goes out when the next slot opens, even if the
+  pointer stops. A button follows the move before it. Losing input focus
+  clears pending input and releases what the far side may still hold.
+  Browsers without raw updates use `pointermove`.
 - **A Mac's Command key** never crosses. ⌘C, ⌘X, ⌘A and ⌘Z go to the page
   as the Ctrl chords; every other ⌘ chord stays the app's. The Control key
   is Ctrl there.
@@ -1013,6 +1024,15 @@ after the owner installs the tools and updates the box), and the box's
 browser stream through the desktop's viewer (the viewer below ran on a Mac
 window's stream only).
 
+### The desktop viewer's latency on Linux
+
+Run `xvfb-run -a bun scripts/e2e-video-viewer.ts --latency <before-commit>`
+through `heavy` on the box. The script alternates the two viewer versions
+on an even loopback link and on one where the proxy delays every eighth
+frame by 60–100 ms. It replays the recorded box stream in isolated Electron
+and reports arrival-to-draw and pointer event-to-worker handoff times.
+The report records timing without thresholds.
+
 ### The desktop's viewer, on the Mac
 
 `bun run script:e2e-video-viewer` (scripts/e2e-video-viewer.ts): the
@@ -1157,7 +1177,8 @@ is first seen in the owner's own use:
   refusals; `src/main/server/remote/relay.test.ts` "video.open … on the box"
 - `src/renderer/src/lib/video/`: `pacing.test.ts`, `player.test.ts` (the
   stream's rules over a fake socket and decoder), `streams.test.ts` (the
-  registry and the retry rule)
+  registry and the retry rule), `videoInput.test.ts` (raw motion, the cap,
+  button order and fallback)
 - `src/renderer/src/surfaces/threads/computer/ViewportVideo.dom.test.tsx`
   (live, ended, gave way, shown again), `FullWindow.dom.test.tsx` (its
   size, its caption's fade, its controls, Escape),

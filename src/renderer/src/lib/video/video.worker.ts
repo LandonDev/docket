@@ -5,7 +5,7 @@ import { StreamPlayer, type PlayerDeps, type Surface } from "./player";
 /**
  * The viewer's worker (docs/agents/live-video.md "The viewer"): every live
  * stream of a window lives here, with its socket and its decoder, and draws
- * on the canvases the window handed over, on this thread's own frame clock.
+ * on the canvases the window handed over, on this thread.
  * React work in the window cannot make the video stutter, and the video
  * costs the window's thread nothing but a count four times a second.
  */
@@ -32,7 +32,16 @@ class CanvasSurface implements Surface<VideoFrame> {
   }
 }
 
-const players = new Map<number, { player: StreamPlayer<VideoFrame>; counted: number; at: number }>();
+interface Playing {
+  player: StreamPlayer<VideoFrame>;
+  counted: number;
+  at: number;
+  drive: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  deadline?: number;
+}
+
+const players = new Map<number, Playing>();
 const surfaces = new Map<number, CanvasSurface>();
 
 let waking = false;
@@ -40,7 +49,7 @@ const tick = (): void => {
   waking = false;
   const now = performance.now();
   let again = false;
-  for (const { player } of players.values()) again = player.refresh(now) || again;
+  for (const { player, drive } of players.values()) if (!drive) again = player.refresh(now) || again;
   if (again) wake();
 };
 function wake(): void {
@@ -51,7 +60,7 @@ function wake(): void {
   else setTimeout(tick, 8);
 }
 
-const deps: PlayerDeps<VideoFrame> = {
+const deps: Omit<PlayerDeps<VideoFrame>, "wake"> = {
   socket: (url, protocols) => new WebSocket(url, protocols) as never,
   decoder: (init) => {
     const decoder = new VideoDecoder(init);
@@ -63,30 +72,62 @@ const deps: PlayerDeps<VideoFrame> = {
   },
   supported: async (config) => (await VideoDecoder.isConfigSupported(config)).supported === true,
   now: () => performance.now(),
-  wake,
 };
 
-function open(stream: number, url: string): void {
-  players.get(stream)?.player.close();
-  const player = new StreamPlayer<VideoFrame>(url, deps, {
+function stopTimer(entry: Playing): void {
+  clearTimeout(entry.timer);
+  entry.timer = entry.deadline = undefined;
+}
+
+function schedule(entry: Playing): void {
+  if (!entry.drive) return wake();
+  const deadline = entry.player.nextDrawAt;
+  if (deadline === entry.deadline) return;
+  stopTimer(entry);
+  if (deadline === undefined) return;
+  entry.deadline = deadline;
+  entry.timer = setTimeout(() => {
+    entry.timer = entry.deadline = undefined;
+    entry.player.refresh(performance.now());
+    schedule(entry);
+  }, Math.max(0, Math.ceil(deadline - performance.now())));
+}
+
+function close(stream: number): void {
+  const entry = players.get(stream);
+  if (!entry) return;
+  players.delete(stream);
+  stopTimer(entry);
+  entry.player.close();
+}
+
+function open(stream: number, url: string, drive: boolean): void {
+  close(stream);
+  const player = new StreamPlayer<VideoFrame>(url, { ...deps, wake: () => schedule(entry) }, {
     drawn: (width, height) => post({ t: "drawn", stream, width, height }),
     closed: (code, fault) => {
-      if (players.get(stream)?.player !== player) return;
+      if (players.get(stream) !== entry) return;
       players.delete(stream);
+      stopTimer(entry);
       post({ t: "closed", stream, code, ...(fault ? { fault } : {}) });
     },
-  });
-  players.set(stream, { player, counted: 0, at: performance.now() });
+  }, drive);
+  const entry: Playing = { player, drive, counted: 0, at: performance.now() };
+  players.set(stream, entry);
   for (const surface of surfaces.values()) if (surface.stream === stream) player.show(surface);
 }
 
 scope.onmessage = (event: MessageEvent<ToWorker>) => {
   const message = event.data;
-  if (message.t === "open") open(message.stream, message.url);
-  else if (message.t === "close") {
+  if (message.t === "open") open(message.stream, message.url, !!message.drive);
+  else if (message.t === "close") close(message.stream);
+  else if (message.t === "watch") {
     const entry = players.get(message.stream);
-    players.delete(message.stream);
-    entry?.player.close();
+    if (!entry) return;
+    entry.drive = false;
+    entry.player.watch();
+    stopTimer(entry);
+    if (entry.player.nextDrawAt !== undefined) wake();
   } else if (message.t === "surface") surfaces.set(message.surface, new CanvasSurface(message.canvas));
   else if (message.t === "bind") {
     const surface = surfaces.get(message.surface);
@@ -106,6 +147,7 @@ setInterval(() => {
   const now = performance.now();
   for (const [stream, entry] of [...players]) {
     entry.player.check(now);
+    if (!players.has(stream)) continue;
     const frames = entry.player.frames;
     if (frames === entry.counted) {
       entry.at = now;

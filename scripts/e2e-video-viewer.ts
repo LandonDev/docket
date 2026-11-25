@@ -15,6 +15,8 @@
  * moment input returns. Nothing stays but report.json and trace.log under /tmp/tc-video-viewer-proof.
  *
  * Run on the Mac: bun run script:e2e-video-viewer (esbuild → node).
+ * For the isolated Linux latency comparison:
+ * xvfb-run -a bun scripts/e2e-video-viewer.ts --latency <before-commit>
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -27,6 +29,12 @@ import { waitForComputerProof } from './lib/computerProofGate'
 import { sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { startVideoRig, type VideoRig } from './lib/videoRig'
 import { idleGate, InputReturned, percentile, watchInput } from './lib/videoProof'
+
+if (process.argv[2] === '--latency') {
+  const { viewerLatency } = await import('./lib/videoViewerLatency')
+  await viewerLatency(repoRoot(), process.argv[3])
+  process.exit(0)
+}
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')

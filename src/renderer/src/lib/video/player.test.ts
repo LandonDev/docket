@@ -37,7 +37,7 @@ class FakeSocket implements PlayerSocket {
 const KEY = Uint8Array.of(0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x2a, 0xda, 0x01, 0, 0, 0, 1, 0x65, 0x88);
 const DELTA = Uint8Array.of(0, 0, 0, 1, 0x41, 0x9a, 0x24);
 
-function rig(opts: { supported?: boolean; auto?: boolean } = {}) {
+function rig(opts: { supported?: boolean; auto?: boolean; drive?: boolean } = {}) {
   const state = { now: 1000, wakes: 0 };
   let socket!: FakeSocket;
   const configs: DecoderConfig[] = [];
@@ -74,7 +74,7 @@ function rig(opts: { supported?: boolean; auto?: boolean } = {}) {
   };
   const drawn: [number, number][] = [];
   const closed: [number, PlayerFault | undefined][] = [];
-  const player = new StreamPlayer<FakeFrame>("ws://127.0.0.1:1/video/s?ticket=t", deps, { drawn: (w, h) => drawn.push([w, h]), closed: (code, fault) => closed.push([code, fault]) });
+  const player = new StreamPlayer<FakeFrame>("ws://127.0.0.1:1/video/s?ticket=t", deps, { drawn: (w, h) => drawn.push([w, h]), closed: (code, fault) => closed.push([code, fault]) }, opts.drive);
   const send = (sequence: number, more: { generation?: number; keyframe?: boolean; width?: number; height?: number; at?: number } = {}): void => {
     const keyframe = more.keyframe ?? sequence === 1;
     const bytes = encodeFrame({ generation: more.generation ?? 1, sequence, keyframe, width: more.width ?? 1280, height: more.height ?? 800, timestamp: (more.at ?? state.now) * 1000, data: keyframe ? KEY : DELTA });
@@ -128,37 +128,81 @@ describe("a live stream in the worker", () => {
     expect(r.drawn).toHaveLength(1);
   });
 
-  it("acks every frame in the order it came, with how long it waited here, drawn or passed over", () => {
-    const r = rig();
+  it("acks frames in order with arrival-to-draw time and retires held frames on close", () => {
+    const r = rig({ auto: false });
     r.send(1);
-    // three more inside one refresh: one frame at most is drawn per refresh, the rest wait their turn
+    r.state.now += 8;
     r.send(2);
-    r.send(3);
-    r.send(4);
-    expect(r.socket().acks()).toEqual([[1, 1]]);
-    for (let i = 0; i < 3; i++) {
-      r.state.now += 8;
-      r.player.refresh(r.state.now);
-    }
-    expect(r.socket().acks()).toEqual([
-      [1, 1],
-      [1, 2],
-      [1, 3],
-      [1, 4],
-    ]);
-    const waits = r.socket().sent.map((b) => parseAck(b).waitMicros);
-    expect(waits[0]).toBe(0);
-    expect(waits[1]).toBe(8000);
-    expect(waits[3]).toBe(24000);
-    expect(r.frames.every((f) => f.closed)).toBe(true);
-    // closing with frames in line acks them all first: the source is owed every one
+    r.state.now += 16;
+    r.decoders[0].out(1);
+    r.decoders[0].out(2);
+    expect(r.socket().acks()).toEqual([[1, 1], [1, 2]]);
+    expect(r.socket().sent.map((b) => parseAck(b).waitMicros)).toEqual([24000, 16000]);
+    r.send(3, { at: r.state.now - 20 });
+    r.decoders[0].out(3);
+    r.state.now += 4;
+    r.send(4, { at: r.state.now - 20 });
+    r.decoders[0].out(4);
+    r.state.now += 20;
     r.send(5);
-    r.send(6);
-    r.send(7);
+    r.decoders[0].out(5);
+    expect(r.frames[4].closed).toBe(false);
     r.player.close();
-    expect(r.socket().acks().map(([, s]) => s)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(r.socket().acks()).toEqual([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]]);
+    expect(r.frames.every((f) => f.closed)).toBe(true);
     expect(r.socket().closedWith).toBe(1000);
     expect(r.closed).toEqual([]);
+  });
+
+  it.each([true, false])("reopens a drive stream alone after 500 ms of frames at least 250 ms behind (drive: %s)", (drive) => {
+    const r = rig({ drive });
+    const picture = r.surface();
+    r.player.show(picture);
+    r.send(1, { at: 900 });
+    for (let i = 0; i < 10; i++) {
+      r.state.now = 1300 + i * 50;
+      r.send(i + 2, { at: r.state.now - 350 });
+    }
+    expect(r.closed).toEqual([]);
+    const last = picture.drew.at(-1);
+    r.state.now = 1800;
+    r.send(12, { at: 1450 });
+    expect(r.closed).toEqual(drive ? [[0, "behind"]] : []);
+    expect(r.socket().closedWith).toBe(drive ? 1000 : null);
+    if (drive) {
+      expect(picture.drew.at(-1)).toBe(last);
+      expect(r.decoders[0].chunks).toHaveLength(11);
+      r.send(13);
+      expect(picture.drew.at(-1)).toBe(last);
+    }
+  });
+
+  it("starts the late span over after a fresh frame and clears it when the driver hands back", () => {
+    const r = rig({ drive: true });
+    r.send(1);
+    r.state.now = 1300;
+    r.send(2, { at: 1050 });
+    r.state.now = 1600;
+    r.send(3, { at: 1351 });
+    r.state.now = 1800;
+    r.send(4, { at: 1550 });
+    r.state.now = 2100;
+    r.send(5, { at: 1850 });
+    expect(r.closed).toEqual([]);
+    r.player.watch();
+    r.state.now = 2300;
+    r.send(6, { at: 2050 });
+    expect(r.closed).toEqual([]);
+  });
+
+  it("waits for a draw on the new stream before sending input", () => {
+    const r = rig({ drive: true, auto: false });
+    r.send(1);
+    r.player.input({ type: "keyDown", key: 4 });
+    expect(r.socket().sent).toEqual([]);
+    r.decoders[0].out(1);
+    r.player.input({ type: "keyDown", key: 4 });
+    expect(parseInput(r.socket().sent[1]).type).toBe("keyDown");
   });
 
   it("takes a new generation only from a keyframe numbered 1, with a decoder of its own", () => {
@@ -184,6 +228,27 @@ describe("a live stream in the worker", () => {
     bad.send(5, { generation: 2, keyframe: false });
     expect(bad.closed).toEqual([[0, "wire"]]);
     expect(bad.socket().closedWith).toBe(1000);
+  });
+
+  it("retires held frames of an old generation before a new keyframe can reuse their sequences", () => {
+    const r = rig({ drive: true });
+    const picture = r.surface();
+    r.player.show(picture);
+    r.send(1);
+    r.state.now = 1040;
+    r.send(2, { at: 1010 });
+    r.state.now = 1050;
+    r.send(3, { at: 1020 });
+    r.state.now = 1060;
+    r.send(4);
+    expect(r.frames[3].closed).toBe(false);
+    r.state.now = 1070;
+    r.send(1, { generation: 2, width: 640, height: 400 });
+    expect(r.frames[3].closed).toBe(true);
+    expect(r.socket().acks().at(-1)).toEqual([1, 4]);
+    r.player.refresh(1100);
+    expect(r.socket().acks().at(-1)).toEqual([2, 1]);
+    expect(picture.drew.slice(-2)).toEqual([[3, 1280, 800], [1, 640, 400]]);
   });
 
   it("gives up on a gap, an older generation, bytes that are no frame, and a decoder that fails", () => {

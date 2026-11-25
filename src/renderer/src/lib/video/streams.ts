@@ -185,7 +185,10 @@ export class VideoStreams {
         released = true;
         mine.wants.delete(token);
         // nobody drives it from here any more: the host has made it a watch stream, and the next driver asks for a new one
-        if (mine.opened?.drive && !this.want(mine).drive) mine.opened.drive = false;
+        if (mine.opened?.drive && !this.want(mine).drive) {
+          mine.opened.drive = false;
+          this.post({ t: "watch", stream: mine.id });
+        }
         if (mine.wants.size && this.entries.get(id) === mine) this.shrunk(mine);
         if (mine.wants.size || this.entries.get(id) !== mine) return;
         mine.linger = setTimeout(() => this.drop(mine), LINGER_MS);
@@ -280,9 +283,10 @@ export class VideoStreams {
         }
         // every refusal gives way to the picture, which says what there is to say (Screen Recording off, no window)
         if (!answer.ok) return this.set(entry, { status: "over", face: "picture" });
-        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, drive: !!want.drive, long: Math.max(answer.width, answer.height) };
+        const drive = !!want.drive && !!this.want(entry).drive;
+        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, drive, long: Math.max(answer.width, answer.height) };
         if (entry.view.status === "opening") this.set(entry, { status: "opening", width: answer.width, height: answer.height });
-        this.post({ t: "open", stream: entry.id, url: streamUrl(rpcUrl, answer.stream, answer.ticket) });
+        this.post({ t: "open", stream: entry.id, url: streamUrl(rpcUrl, answer.stream, answer.ticket), ...(drive ? { drive: true } : {}) });
       })
       .catch(() => {
         // a host that does not know the call, or a socket that dropped: the picture says which
@@ -373,6 +377,7 @@ export class VideoStreams {
     }
     // the last frame stays on the canvases while the stream is opened again
     entry.tries++;
+    if (!next.delayMs && entry.wants.size) return this.open(entry);
     const round = ++entry.round;
     entry.timer = setTimeout(() => {
       entry.timer = null;
