@@ -813,7 +813,10 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   refused batch no more, nor what waited behind it: its cells named the
   older sheet. It is said once as a toast, cell by cell with what he put
   there ("The file changed before this was saved: B4 1200, C5 Hotel and 2
-  more. Make it again.", `notSavedWords`), and the grid shows the file.
+  more. Your cells are kept to copy when the file opens again.",
+  `notSavedWords` with `kept`; a move with them adds "Make the move again.";
+  where there is no draft store, a browser's `/ui`, "Make it again."), and
+  the grid shows the file.
   His cells are set aside first as a sheet draft (canvas/drafts.ts
   `setAside`): the refused mutations, each with its tab, row and column,
   under the revision and cache they were made on (`<rev>@<gen> refused`),

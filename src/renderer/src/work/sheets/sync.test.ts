@@ -131,6 +131,13 @@ describe("what a dropped edit held, in his words", () => {
     expect(notSavedWords([cellsAt("s1", { 3: { 1: { v: 1200 } } }), move], names)).toBe("The file changed before this was saved: B4 1200, and a move. Make it again.");
     expect(notSavedWords([move], names)).toBe("The file changed before your move was saved, so it was not made. Make it again.");
   });
+  it("says his cells are kept, never to make them again, where they were kept as a draft the next open offers", () => {
+    const move = { id: "sheet.mutation.move-rows", params: {} };
+    expect(notSavedWords([cellsAt("s1", { 1: { 1: { v: 42 } } })], names, true)).toBe("The file changed before this was saved: B2 42. Your cells are kept to copy when the file opens again.");
+    expect(notSavedWords([cellsAt("s1", { 1: { 1: { v: 42 } } }), move], names, true)).toBe("The file changed before this was saved: B2 42, and a move. Your cells are kept to copy when the file opens again. Make the move again.");
+    // A move alone is no cell to copy.
+    expect(notSavedWords([move], names, true)).toBe("The file changed before your move was saved, so it was not made. Make it again.");
+  });
   it("says a change with no cell's contents (a style, a rule) as one", () => {
     expect(notSavedWords([cellsAt("s1", { 0: { 0: { s: { bl: 1 } } } }), { id: "tempcode.sheet.rules", params: {} }], names)).toBe("The file changed before your last change was saved, so it was not made. Make it again.");
   });

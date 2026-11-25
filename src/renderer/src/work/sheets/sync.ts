@@ -129,8 +129,10 @@ const NAMED_MOST = 3;
 /**
  * What a batch the file no longer takes held, said once as it is dropped: each cell he wrote and what he put in it,
  * so he can make it again on the sheet as it is now. A sheet is named only when the cells lie on more than one.
+ * `kept`: his cells were set aside as a draft the next open offers to copy, so the words say that, never to make
+ * them again; a move is no cell to copy and is still his to make again.
  */
-export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined): string {
+export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined, kept = false): string {
   const cells = cellsOf(batch);
   const moves = batch.filter((m) => SHEET_MOVES.has(m.id)).length;
   const moved = moves === 1 ? "a move" : moves > 1 ? `${moves} moves` : "";
@@ -138,7 +140,8 @@ export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (i
   const many = new Set(cells.map((x) => x.sheet)).size > 1;
   const named = cells.slice(0, NAMED_MOST).map((x) => `${many ? `${sheetName(x.sheet) ?? x.sheet}!` : ""}${x.at} ${x.put}`);
   const more = cells.length - named.length;
-  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}${moved ? `, and ${moved}` : ""}. Make it again.`;
+  const then = kept ? ` Your cells are kept to copy when the file opens again.${moved ? ` Make the ${moves === 1 ? "move" : "moves"} again.` : ""}` : " Make it again.";
+  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}${moved ? `, and ${moved}` : ""}.${then}`;
 }
 
 /** A kept draft's cells as lines to copy: "Sheet1!A1<tab>42", each he wrote, what he put in it whole. */
@@ -881,7 +884,7 @@ export class SheetSync {
           // His cells are set aside as a draft before the book is read again under them: each where he put it, over the
           // revision and cache it was made on, which the file no longer is, so the next open offers them to copy.
           if (lost.length) this.journal?.setAside(`${this.rev}${this.gen ? `@${this.gen}` : ""} refused`, { kind: "sheet", mutations: lost });
-          this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name), n: (this.state.stopped?.n ?? 0) + 1 } });
+          this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name, !!this.journal), n: (this.state.stopped?.n ?? 0) + 1 } });
           this.drop("the file changed before it was saved");
         } else {
           // What waits goes first: the host moves an edit through what it missed (a rule's list, a shared workbook's
