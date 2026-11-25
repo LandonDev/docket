@@ -150,6 +150,63 @@ describe("a mail's attachment read as a document", () => {
   });
 });
 
+describe("an open that comes ready", () => {
+  const file = { at: "file", host: "box", path: "/Cosmic/Plan.tcdoc" } as const;
+  const opened = { doc: "file:1", source: file, title: "Plan", role: "edit", shared: false, mode: "writes", written: null, me: "owner", names: {}, schema: 1 };
+  const answering = (ready: unknown) =>
+    link.request.mockImplementation(async (method) => {
+      if (method === "work.docs.open") return { ...opened, ...(ready ? { ready } : {}) };
+      if (method === "work.docs.connect") return { socket: "c".repeat(24) };
+      if (method === "work.docs.token") return { token: "asked", expiresAt: Date.now() + 60_000 };
+      if (method === "work.docs.recv") return new Promise(() => undefined);
+      return { ok: true };
+    });
+
+  it("is two requests to the first frame: the open and the frame, with no connect and no token", async () => {
+    answering({ socket: "r".repeat(24), token: { token: "minted", expiresAt: Date.now() + 60_000 }, schema: 1 });
+    const h = docHost("box", file);
+    const open = await h.open({ schema: 1 });
+    expect(open).not.toHaveProperty("ready");
+    const ws = new h.socket("ws://x/w/doc/file%3A1?schema=1");
+    await new Promise((resolve) => ws.addEventListener("open", resolve));
+    expect((await h.token()).token).toBe("minted");
+    ws.send(new Uint8Array([1, 2, 3]));
+    await vi.waitFor(() => expect(link.request.mock.calls.some(([m]) => m === "work.docs.send")).toBe(true));
+    const asked = link.request.mock.calls.filter(([m]) => m !== "work.docs.recv").map(([m]) => m);
+    expect(asked).toEqual(["work.docs.open", "work.docs.send"]);
+    expect(link.request.mock.calls.find(([m]) => m === "work.docs.send")![1]).toMatchObject({ socket: "r".repeat(24) });
+    // The minted token is used once: the next ask (the provider's refresh) goes to the host.
+    expect((await h.token()).token).toBe("asked");
+    ws.close();
+  });
+
+  it("asks for its own socket when the one the open made was for another schema, and closes that one", async () => {
+    answering({ socket: "r".repeat(24), token: { token: "minted", expiresAt: Date.now() + 60_000 }, schema: 1 });
+    const h = docHost("box", file);
+    await h.open({ schema: 1 });
+    const ws = new h.socket("ws://x/w/doc/file%3A1?schema=2");
+    await new Promise((resolve) => ws.addEventListener("open", resolve));
+    const asked = link.request.mock.calls.filter(([m]) => m !== "work.docs.recv").map(([m, p]) => [m, (p as { socket?: string }).socket]);
+    expect(asked).toEqual([
+      ["work.docs.open", undefined],
+      ["work.docs.close", "r".repeat(24)],
+      ["work.docs.connect", undefined],
+    ]);
+    ws.close();
+  });
+
+  it("an open that came without them connects and asks a token as before", async () => {
+    answering(null);
+    const h = docHost("box", file);
+    await h.open({ schema: 1 });
+    const ws = new h.socket("ws://x/w/doc/file%3A1?schema=1");
+    await new Promise((resolve) => ws.addEventListener("open", resolve));
+    expect((await h.token()).token).toBe("asked");
+    expect(link.request.mock.calls.filter(([m]) => m !== "work.docs.recv").map(([m]) => m)).toEqual(["work.docs.open", "work.docs.connect", "work.docs.token"]);
+    ws.close();
+  });
+});
+
 describe("the relayed socket", () => {
   it("opens once the host made its socket, sends frames in order, hands down what the host received, and closes when the host says", async () => {
     let recvs = 0;

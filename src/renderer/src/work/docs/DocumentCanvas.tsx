@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { DOCUMENT_SCHEMA } from "work-kit/collab";
 import { createPortal } from "react-dom";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
 import type { CanvasSource, ContextChip, Principal } from "@shared/work";
@@ -144,7 +145,8 @@ export function useOpened(env: string, source: CanvasSource, attempt: number, it
     const tryOn = async (on: string, again: boolean): Promise<void> => {
       const host = docHost(on, latest.current, itemId);
       try {
-        const open = await host.open();
+        // The editor's socket and first token come with the open: the editor's first request is then its first frame.
+        const open = await host.open({ schema: DOCUMENT_SCHEMA });
         if (live) setOpened({ host, open });
       } catch (err) {
         const other = servedBy(err);

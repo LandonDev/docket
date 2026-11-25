@@ -9,6 +9,8 @@ import { sessionStore } from "../../lib/tcserver/store";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workOpenPort } from "../../lib/workSwitch";
 import { openItem, setFolded } from "../canvas/store";
+import { CANVAS } from "../canvas/registry";
+import { importAhead } from "../formats/importOnce";
 import { appOpens, openWay, type PlaceCopy } from "./model";
 import { openFileTab } from "./store";
 
@@ -126,6 +128,8 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     await openInApp(entry, copy, from);
     return null;
   }
+  // The kind's code loads beside the open (and a download before it), not after: the tab draws its body once the host has answered.
+  preloadKind(entry.name);
   let stopHearing: (() => void) | null = null;
   try {
     if (here) {
@@ -148,6 +152,8 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
         if (here && opened.item?.source.at === "microsoft") await registry.linkOf(copy.link).request("work.office.filesOpen", { source: ref });
       },
     });
+    // A Word file's import into a document starts as soon as the item is there, beside the editor's code.
+    if (answer.item) importAhead(workspaceLink, answer.item);
     // A thread already holds it and its kind keeps its marks by item: that thread's item is shown, and no second seat is made.
     if (answer.held) await showInThread(workspaceLink, answer.held.sessionId, { itemId: answer.held.itemId }, true);
     return answer.tabId ?? null;
@@ -158,6 +164,12 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     stopHearing?.();
     from.busy(null);
   }
+}
+
+/** Starts loading the code of the kind a file opens in (its chunk loads once, whoever asks). */
+export function preloadKind(name: string): void {
+  const kind = kindOfEntry(name).canvas;
+  if (kind && Object.hasOwn(CANVAS, kind)) CANVAS[kind].chunk.load().catch(() => undefined);
 }
 
 /** How far a copy from another computer has got, in the words of the row that opened it. */

@@ -1,4 +1,4 @@
-import type { DocMode, DocOpen, DocsPush, DocThreadOp, DocThreadRow, DocToken } from "@shared/contract-work-docs";
+import type { DocMode, DocOpen, DocReady, DocsPush, DocThreadOp, DocThreadRow, DocToken } from "@shared/contract-work-docs";
 import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
 
@@ -14,7 +14,12 @@ export interface DocHost {
   env: string;
   /** The item a mail's attachment is named by, alongside its source (`namedBy`); absent for every other document. */
   itemId?: string;
-  open(): Promise<DocOpen>;
+  /**
+   * `ready`: the host makes the editor's socket (for the schema the editor knows) and its first token in the same answer
+   * (`work.docs.open {ready}`), which `token` and the socket class then use once, so the open needs no `connect` and
+   * no `token` of its own.
+   */
+  open(ready?: { schema: number }): Promise<DocOpen>;
   token(): Promise<DocToken>;
   threads(): Promise<{ rows: DocThreadRow[]; names: Record<string, string> }>;
   thread<T = unknown>(change: DocThreadOp): Promise<T>;
@@ -60,11 +65,25 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
   const call = <T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> =>
     link().request<T>(method, { ...named, ...params }, timeoutMs ? { timeoutMs } : undefined);
   const socket = relaySocket(env, source, itemId);
+  /** The token the open came with, used by the first ask for one while it has a while to run. */
+  let minted: DocToken | null = null;
   return {
     env,
     ...(named.itemId ? { itemId: named.itemId } : {}),
-    open: () => call("work.docs.open"),
-    token: () => call("work.docs.token"),
+    open: async (ready) => {
+      if (!ready) return call("work.docs.open");
+      const { ready: made, ...open } = await call<DocOpen & { ready?: DocReady }>("work.docs.open", { ready });
+      if (made) {
+        minted = made.token;
+        handOver(socket, { socket: made.socket, schema: made.schema ?? 0 });
+      }
+      return open;
+    },
+    token: () => {
+      const got = minted;
+      minted = null;
+      return got && got.expiresAt - Date.now() > MINTED_LEFT_MS ? Promise.resolve(got) : call("work.docs.token");
+    },
     threads: () => call("work.docs.threads"),
     thread: (change) => call("work.docs.thread", { change }),
     mode: (mode) => call("work.docs.mode", { mode }),
@@ -85,6 +104,8 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
 }
 
 const READY = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 } as const;
+/** A token the open came with is used only while it has at least this long to run. */
+const MINTED_LEFT_MS = 10_000;
 
 function toBase64(bytes: Uint8Array): string {
   let text = "";
@@ -138,8 +159,19 @@ type Relayed = {
   dropped: boolean;
   /** Told when the provider's next socket is made. */
   arrived: Set<() => void>;
+  /** A socket the host made with the open (`work.docs.open {ready}`), for the class's next socket of that schema, once. */
+  premade: { socket: string; schema: number } | null;
 };
 const relayedOf = new WeakMap<object, Relayed>();
+
+/**
+ * Hands the class a socket the host made with the open: its next socket for that schema takes it instead of asking
+ * `work.docs.connect`. One it does not take (another schema) is closed on the host. Unused, the host closes it when idle.
+ */
+export function handOver(socket: new (url: string) => WebSocket, made: { socket: string; schema: number }): void {
+  const relayed = relayedOf.get(socket);
+  if (relayed) relayed.premade = made;
+}
 
 /** Said when the window has no connection to tell the host what it typed: the flush fails, never passes. */
 export const NOT_SENT = "The document is not connected, so its last edits have not reached the host";
@@ -183,7 +215,7 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
  */
 export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set() };
+  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null };
   const open = relayed.open;
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
@@ -226,7 +258,12 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
       try {
         // The provider says the schema it knows in its socket's address; the relay carries it to the host's own socket.
         const schema = Number(new URL(this.url, "ws://relay").searchParams.get("schema")) || 0;
-        const { socket } = await link().request<{ socket: string }>("work.docs.connect", { ...namedBy(source, itemId), ...(schema > 0 ? { schema } : {}) });
+        // The socket the host made with the open is this one's, when it was made for the same schema; else it is closed.
+        const premade = relayed.premade;
+        relayed.premade = null;
+        if (premade && premade.schema !== schema) void link().request("work.docs.close", { socket: premade.socket }).catch(() => undefined);
+        // (awaited even when made: the provider listens to the socket only once its constructor has returned)
+        const { socket } = premade && premade.schema === schema ? await Promise.resolve(premade) : await link().request<{ socket: string }>("work.docs.connect", { ...namedBy(source, itemId), ...(schema > 0 ? { schema } : {}) });
         if (this.readyState !== READY.CONNECTING) return void link().request("work.docs.close", { socket }).catch(() => undefined);
         this.id = socket;
         this.readyState = READY.OPEN;

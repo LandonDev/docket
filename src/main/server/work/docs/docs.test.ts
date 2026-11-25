@@ -634,6 +634,40 @@ describe('opening a document', () => {
   })
 })
 
+describe('an open that comes ready', () => {
+  it("answers the editor's socket, made for the window's schema, and its first token beside the document; a plain open makes neither", async () => {
+    const r = await rig()
+    const roles: string[] = []
+    ;(r.ctx as unknown as { service: Record<string, unknown> }).service.token = async (t: { role: string }) => (roles.push(t.role), 'tok')
+    const asked: string[] = []
+    const relay = docsOf(r.ctx).relay
+    const connect = relay.connect.bind(relay)
+    relay.connect = (url: string, doc: string) => (asked.push(url), connect(url, doc))
+    const plain = await r.ask<DocOpen & { ready?: unknown }>('work.docs.open', { source: r.source })
+    expect(plain.ready).toBeUndefined()
+    expect(asked).toEqual([])
+    const open = await r.ask<DocOpen & { ready?: { socket: string; token: { token: string; expiresAt: number }; schema?: number } }>('work.docs.open', { source: r.source, ready: { schema: 1 } })
+    expect(open.doc).toBe(plain.doc)
+    expect(open.ready).toMatchObject({ token: { token: 'tok' }, schema: 1 })
+    expect(open.ready!.socket).toMatch(/.{8,}/)
+    expect(asked[0]).toMatch(/\/w\/doc\/[^?]+\?schema=1$/)
+    expect(roles).toEqual(['edit'])
+    // The socket is the relay's own, as one `connect` made: frames go up it and it closes.
+    await r.ask('work.docs.send', { socket: open.ready!.socket, frames: [Buffer.from([0]).toString('base64')] })
+    await r.ask('work.docs.close', { socket: open.ready!.socket })
+  })
+
+  it('leaves out what it cannot make now, and still answers the document', async () => {
+    const r = await rig()
+    ;(r.ctx as unknown as { service: Record<string, unknown> }).service.token = async () => {
+      throw new Error('The service is starting')
+    }
+    const open = await r.ask<DocOpen & { ready?: unknown }>('work.docs.open', { source: r.source, ready: {} })
+    expect(open.doc).toBeTruthy()
+    expect(open.ready).toBeUndefined()
+  })
+})
+
 describe('the schema a window knows', () => {
   it("is said to the service in the socket's address, for the window whose socket this host opens; a window that says none says nothing", async () => {
     const r = await rig()

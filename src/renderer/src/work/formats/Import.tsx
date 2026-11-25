@@ -8,6 +8,7 @@ import { ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./model";
+import { IMPORT_MS, importItem, importOnce } from "./importOnce";
 
 /**
  * Import (docs/agents/work-formats.md "Import and export"): a Word,
@@ -17,23 +18,6 @@ import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./mo
  * where there is a DOM, and goes to the host as blocks.
  */
 
-const IMPORT_MS = 5 * 60_000;
-
-/**
- * One import per key: an effect run again (React's dev check, a remount, a new shell before the host's
- * push closes the item) gets the same answer and makes no second document. A key that failed is
- * forgotten, so Retry asks again.
- */
-const imports = new Map<string, Promise<ImportAnswer>>();
-
-function importOnce(env: string, key: string, params: Record<string, unknown>): Promise<ImportAnswer> {
-  const known = imports.get(key);
-  if (known) return known;
-  const p = registry.linkOf(env).request<ImportAnswer>("work.formats.import", params, { timeoutMs: IMPORT_MS });
-  p.catch(() => imports.delete(key));
-  imports.set(key, p);
-  return p;
-}
 
 /**
  * A mail's attachment read as a document, once per item: the host makes `<name>.tcdoc` beside its fetched copy and
@@ -72,8 +56,9 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   useEffect(() => {
     let live = true;
     setFailed(null);
-    // Keyed as the effect is, by host and source too: a file renamed while it imports is a new import, not the old one's answer.
-    importOnce(env, `${env}#${item.id}#${sourceKey}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: latest.current } }).then(
+    // Keyed by host, item and source: a file renamed while it imports is a new import, not the old one's answer. The
+    // Files row that opened the item started this same import already (`importAhead`): its answer is this one.
+    importItem(env, { id: item.id, sessionId: item.sessionId, source: latest.current }, attempt).then(
       (a) => {
         if (said.current) return;
         said.current = true;

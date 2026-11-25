@@ -61,6 +61,13 @@ export interface DocToken {
   expiresAt: number
 }
 
+/** What `work.docs.open {ready}` adds to its answer: the editor's relayed socket, made for `schema`, and its first token. */
+export interface DocReady {
+  socket: string
+  token: DocToken
+  schema?: number
+}
+
 /** A thread row as the shared editor reads it (work-kit `ThreadRow`); ids are the store's own. */
 export interface DocThreadRow {
   thread: {
@@ -145,7 +152,11 @@ const itemId = z.string().min(1).max(80).optional()
 
 export const DocsRequestSchemas = [
   /** → DocOpen */
-  request('work.docs.open', z.object({ source: CanvasSourceSchema, itemId })),
+  /**
+   * `ready`: the answer also carries `ready` (`DocReady`), the editor's relayed socket and its first token, made as
+   * `work.docs.connect` (with `ready.schema`) and `work.docs.token` make them, when the host can make them now.
+   */
+  request('work.docs.open', z.object({ source: CanvasSourceSchema, itemId, ready: z.object({ schema: z.number().int().min(0).max(1000).optional() }).optional() })),
   /** → DocToken: a collaboration token for the document, as this caller (edit, or view for a read-only key) */
   request('work.docs.token', z.object({ source: CanvasSourceSchema, itemId })),
   /** → { socket }: a socket to the document on the host that serves it, relayed over this link */

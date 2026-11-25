@@ -84,6 +84,9 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
   }
 }
 
+/** The schema the window's editor knows, as the service's socket address says it (work-kit's schema gate); none for none. */
+const schemaQuery = (said: unknown): string => (typeof said === 'number' && Number.isInteger(said) && said > 0 && said <= 1000 ? `?${SCHEMA_PARAM}=${said}` : '')
+
 /** A collaboration token from this host's service; a LifeOS document served by another host says which. */
 async function tokenFor(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocToken> {
   try {
@@ -108,8 +111,19 @@ export const docs: WorkModule = {
     if (!(req.method in DOCS_CAPS)) return NOT_HANDLED
     const s = docsOf(ctx)
     switch (req.method) {
-      case 'work.docs.open':
-        return handled(await opened(ctx, by, await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)))
+      case 'work.docs.open': {
+        const t = await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)
+        const open = await opened(ctx, by, t)
+        if (!req.params.ready) return handled(open)
+        // The editor's socket and its first token come with the open, as `connect` and `token` would make them, so the
+        // window's next request is its first frame. One that cannot be made now is left out: the window asks for it.
+        try {
+          const token = await tokenFor(ctx, by, t)
+          return handled({ ...open, ready: { socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.ready.schema)}`), t.doc), token, ...(req.params.ready.schema !== undefined ? { schema: req.params.ready.schema } : {}) } })
+        } catch {
+          return handled(open)
+        }
+      }
       case 'work.docs.token':
         return handled(await tokenFor(ctx, by, await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)))
       case 'work.docs.connect': {
@@ -117,9 +131,7 @@ export const docs: WorkModule = {
         // Asked first, so a document another host serves says so before a socket is made.
         await tokenFor(ctx, by, t)
         // The window's editor says what schema it knows; this socket says it for it (work-kit's schema gate).
-        const said: unknown = req.params.schema
-        const known = typeof said === 'number' && Number.isInteger(said) && said > 0 && said <= 1000 ? `?${SCHEMA_PARAM}=${said}` : ''
-        return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${known}`), t.doc) })
+        return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.schema)}`), t.doc) })
       }
       case 'work.docs.send': {
         s.relay.send(req.params.socket, req.params.frames)
