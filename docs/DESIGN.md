@@ -2181,7 +2181,7 @@ Around the canvas:
   it: Retry where a save was refused or did not land ("Not saved." and its
   reason), else Reload and Keep Both, the one conflict press everywhere; a file moved or deleted under it reads "This file was
   moved or deleted" with Keep Both, which puts what the tab holds back where the file was, a sheet's too). Edits a crash left unsent come back in the same
-  foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" with
+  foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" (a deck names the place, "Words on slide 3 …", "Notes on slide 5 …") with
   Restore and Discard, or over a file that changed since, "… The file changed since" with Keep Both (a text file), Copy
   Edits (a sheet) or Copy Words (a deck's box, "The slide changed since") beside Discard. A copy that saves back to its file on
   another computer names that computer as its tab does: "On MacBook" until

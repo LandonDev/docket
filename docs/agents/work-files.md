@@ -2503,18 +2503,23 @@ over a file that changed there.
   file that moved on dropped, are set aside apart (`setAside`: under their own base, released at once), so nothing
   kept after drops them and the next open offers them to copy.
 - **A deck's draft** (`DraftBody` kind `deck`): the open box's model (its words, runs and the looks they carry), the
-  slide and shape it is on (its base, `slide:shape`) and that shape's words as the box opened on them, kept while the
-  box holds words the host has not written and dropped once written. As the deck opens: over a shape that still holds
-  those words, Restore sends one `runs` edit with them as its check, as the box's commit does; over one that changed,
-  "The slide changed since" with Copy Words and Discard, nothing sent. No box opens while the offer stands. A box on
-  a table's cell keeps its `cell` too, and Restore sends to that cell.
+  slide and shape it is on (its base, `slide:shape:<session>`: each session its own slot, as for notes) and that
+  shape's words as the box opened on them, kept while the box holds words the host has not written and dropped once
+  written. As the deck opens: over a shape that still holds those words, Restore sends one `runs` edit with them as
+  its check, as the box's commit does; over one that changed, "The slide changed since" with Copy Words and Discard,
+  nothing sent. No box opens while the offer stands, nor while the first look for kept drafts is still out, so no new
+  words are written before he has answered what was kept. A box on a table's cell keeps its `cell` too, and Restore
+  sends to that cell.
 - **A deck's notes** (`DraftBody` kind `notes`): a slide's speaker notes he typed and the notes they were typed over
   (`was`), kept from his first key under `notes:<slide>:<session>` by a second journal of the file
   (`DraftJournal.twin`), so a crash in the 2 s pause loses nothing, and dropped once the host has them (refused, they
   stay). Each session keeps its own slot, so his new words never go over a draft kept from before. As the deck opens
   every kept draft is offered in turn, the box's first, the next once he answers the one shown (`offerNext`): Restore
   sends one `notes` edit with `was` as its check; notes changed since read "The slide changed since", with Copy Words
-  and Discard.
+  and Discard. Each offer names its place, "Words on slide 3 from 2:30 PM were not saved" or "Notes on slide 5 …"
+  ("Edits …" once its slide is gone), and the line is drawn again for each (the draft's `key` in its key), so Copy
+  Words copies the offer shown. Restore hands its send back to the line, which holds its presses until it answers;
+  Discard waits for it too, and only that draft's own answer moves the offers on.
 - **A document's draft** (`DraftBody` kind `document`): the sync updates its socket sent that the service has not
   answered applied (`asUpdate` frames, base64, in host.ts's relay socket), under a base of the open's own so an earlier
   draft is never written over while he edits; all of it dropped once every update is applied. As the document opens

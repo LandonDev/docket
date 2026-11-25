@@ -649,7 +649,8 @@ function useFeeds(
   // Saving… only once an edit has been out a while, or the box's words waited past its pause (canvas/calm.ts).
   const saving = useSaving(unsavedOf(hand));
   const saved = editable ? session.saved(reload, copyDraft, saving) : null;
-  const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}:${saved.actions?.map((a) => a.id).join() ?? ""}` : "";
+  // The offered draft's own key too: two offers in turn may read alike, and the line's presses must be the new one's.
+  const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}:${saved.actions?.map((a) => a.id).join() ?? ""}:${hand.offer?.key ?? ""}` : "";
   useEffect(() => {
     shell.saved?.(saved);
     return () => shell.saved?.(null);

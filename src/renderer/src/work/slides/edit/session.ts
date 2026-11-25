@@ -143,9 +143,10 @@ export interface HandState {
   /**
    * A box's words a window kept on this computer and never sent (canvas/drafts.ts), offered as the deck opens: `same`
    * when the shape still holds the words the box opened on (Restore sends them as a commit does), else they are offered
-   * to copy, never written over the shape. No box opens until he answers.
+   * to copy, never written over the shape. No box opens until he answers. `where` names what it is and its slide
+   * ("Words on slide 3", "Notes on slide 5"), so two offers in turn never read the same; `key`, the draft's own.
    */
-  offer?: { at: number; same: boolean; text: string } | null;
+  offer?: { at: number; same: boolean; text: string; where: string; key: string } | null;
 }
 
 /** The host's word when the file moved between the read and the write (src/main/server/work/slides/view.ts). */
@@ -213,12 +214,16 @@ export class HandSession {
   private offered: Draft | null = null;
   /** The drafts kept from before still to offer, in turn, once he answers the one shown (`offered`). */
   private offers: Draft[] = [];
-  private looked = false;
+  /** The first look for kept drafts, once asked; no box opens until it has answered (`read`). */
+  private looking: Promise<void> | null = null;
+  private read = false;
+  /** The offered draft Restore is sending: only its own answer moves the offers on, and Discard waits for it. */
+  private restoring: Draft | null = null;
   /**
-   * This session's own slot for each slide's notes on this computer: a draft kept from before, offered or still to
-   * be, is never written over by his new words, even ones typed before the offers are read.
+   * This session's own slot for a box's words and each slide's notes on this computer: a draft kept from before,
+   * offered or still to be, is never written over by his new words, even ones typed before the offers are read.
    */
-  private readonly notesSlot = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  private readonly slot = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
   constructor(
     private host: DeckHost,
@@ -247,7 +252,7 @@ export class HandSession {
     const json = body ? JSON.stringify(body) : "";
     if (json === this.keptJson) return;
     this.keptJson = json;
-    this.journal.keep(body ? `${body.slideId}:${body.shapeId}${box?.cell ? `:${box.cell.row}:${box.cell.col}` : ""}` : "", body);
+    this.journal.keep(body ? `${body.slideId}:${body.shapeId}${box?.cell ? `:${box.cell.row}:${box.cell.col}` : ""}:${this.slot}` : "", body);
   }
 
   /** Where the box's unsent words are kept (SlidesCanvas, as the item is drawn); a deck already read asks for an earlier draft now. */
@@ -261,11 +266,15 @@ export class HandSession {
    * Once, as the deck is read: every draft no live window holds is offered, one at a time, newest first, and no box
    * opens until he answers. A box's words first, then notes he typed.
    */
-  async lookForDrafts(): Promise<void> {
-    if (this.looked || !this.journal || !this.store.get().view) return;
-    this.looked = true;
-    this.offers = [...(await this.journal.offered("deck")), ...(await this.journal.offered("notes"))];
-    this.offerNext();
+  lookForDrafts(): Promise<void> {
+    if (this.looking || !this.journal || !this.store.get().view) return this.looking ?? Promise.resolve();
+    const journal = this.journal;
+    this.looking = (async () => {
+      this.offers = [...(await journal.offered("deck")), ...(await journal.offered("notes"))];
+      this.read = true;
+      this.offerNext();
+    })();
+    return this.looking;
   }
 
   /** The next kept draft offered, read against the deck as it is now: a slide's notes must still be what they were typed over. */
@@ -274,24 +283,28 @@ export class HandSession {
     const draft = this.offers.shift() ?? null;
     this.offered = draft;
     if (!draft || !view) return this.set({ offer: null });
+    if (draft.body.kind !== "deck" && draft.body.kind !== "notes") return this.offerNext();
+    const slide = view.slides.find((s) => s.id === draft.body.slideId && s.tint !== "del");
+    // Its place, by what it is and its slide's number: a slide gone since leaves only "Edits".
+    const where = slide ? `${draft.body.kind === "notes" ? "Notes" : "Words"} on slide ${slide.number}` : "Edits";
+    const key = draft.base;
     if (draft.body.kind === "notes") {
-      const { slideId, text, was } = draft.body;
-      const now = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.notes;
-      this.set({ offer: { at: draft.at, same: now === was, text } });
+      const { text, was } = draft.body;
+      this.set({ offer: { at: draft.at, same: slide?.notes === was, text, where, key } });
       return;
     }
-    if (draft.body.kind !== "deck") return this.offerNext();
-    const { slideId, shapeId, cell, words, model } = draft.body;
-    const found = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
+    const { shapeId, cell, words, model } = draft.body;
+    const found = slide?.shapes.find((s) => s.id === shapeId);
     const shape = found && cell ? cellShape(found, cell) : found;
-    this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model) } });
+    this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model), where, key } });
   }
 
   /** Restore: the kept words, over a shape that still holds what the box opened on, sent as the box's commit sends them. A shape that moved on meanwhile turns the offer to Copy. */
   async restoreDraft(): Promise<void> {
     const draft = this.offered;
-    if (!draft || (draft.body.kind !== "deck" && draft.body.kind !== "notes") || !this.state.offer?.same) return;
+    if (!draft || this.restoring || (draft.body.kind !== "deck" && draft.body.kind !== "notes") || !this.state.offer?.same) return;
     const body = draft.body;
+    this.restoring = draft;
     this.set({ busy: this.state.busy + 1 });
     try {
       const op: SlideOp =
@@ -299,20 +312,23 @@ export class HandSession {
       this.store.view(await this.host.edit([op]));
       this.journal?.drop(draft);
       this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
-      this.offerNext();
+      // Only this draft's own answer moves the offers on.
+      if (this.offered === draft) this.offerNext();
     } catch (error) {
       const said = message(error, "The host did not answer");
-      if (MOVED.test(said)) this.set({ busy: this.state.busy - 1, offer: { ...this.state.offer!, same: false } });
+      if (MOVED.test(said) && this.offered === draft) this.set({ busy: this.state.busy - 1, offer: { ...this.state.offer!, same: false } });
       else {
         this.set({ busy: this.state.busy - 1 });
-        sayError(error, "Couldn't restore your words");
+        if (!MOVED.test(said)) sayError(error, "Couldn't restore your words");
       }
+    } finally {
+      this.restoring = null;
     }
   }
 
-  /** Discard: the kept words go. */
+  /** Discard: the kept words go. Not while Restore is sending them: its answer says what became of them. */
   discardDraft(): void {
-    if (!this.offered) return;
+    if (!this.offered || this.restoring) return;
     this.journal?.drop(this.offered);
     this.offerNext();
   }
@@ -366,8 +382,9 @@ export class HandSession {
   open(slide: DeckSlide, shape: DeckShape, start: Start, cell?: Cell): boolean {
     // While his last words are on their way the deck's words are about to change: a box now would be built on the old ones.
     if (this.state.box?.phase === "saving") return false;
-    // Words kept from before wait for his answer first: a box now could be built over the shape they belong to.
-    if (this.state.offer) return false;
+    // Words kept from before wait for his answer first: a box now could be built over the shape they belong to. So does
+    // the first look for them, still out: words typed now would be written before he saw what was kept.
+    if (this.state.offer || (this.journal && !this.read)) return false;
     // Words still in a box (a conflict that waits for Reload, a send the host refused) are never drawn over by another.
     const was = this.state.box;
     if (was?.phase === "typing" && (was.conflict || !unchanged(was.model, was.initial))) {
@@ -779,7 +796,7 @@ export class HandSession {
       // In conflict with a save made elsewhere: his words stay his, kept on this computer, and nothing is sent until
       // he presses Replace or Reload.
       this.notesRefused.set(slide, { ...refused, text });
-      this.notesJournal(slide)?.keep(`notes:${slide}:${this.notesSlot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
+      this.notesJournal(slide)?.keep(`notes:${slide}:${this.slot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
       return;
     }
     const waiting = this.notesWaiting;
@@ -791,7 +808,7 @@ export class HandSession {
     this.set({ notesEditedAt: Date.now(), ...this.refusedLine() });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
-    this.notesJournal(slide)?.keep(`notes:${slide}:${this.notesSlot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
+    this.notesJournal(slide)?.keep(`notes:${slide}:${this.slot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
   }
 
   /**
@@ -974,8 +991,12 @@ export class HandSession {
       const when = whenWords(offer.at);
       return {
         state: "conflict",
-        detail: offer.same ? `Edits from ${when} were not saved` : `Edits from ${when} were not saved. The slide changed since`,
-        actions: [offer.same ? { id: "restore", label: "Restore", run: () => void this.restoreDraft() } : { id: "copy", label: "Copy Words", run: () => void copyText(offer.text) }, { id: "discard", label: "Discard", run: () => this.discardDraft() }],
+        detail: offer.same ? `${offer.where} from ${when} were not saved` : `${offer.where} from ${when} were not saved. The slide changed since`,
+        // Each press reads the offer shown at its press, and Restore hands back its send, so the line waits for it.
+        actions: [
+          offer.same ? { id: "restore", label: "Restore", run: () => this.restoreDraft() } : { id: "copy", label: "Copy Words", run: () => void copyText(this.state.offer?.text ?? offer.text) },
+          { id: "discard", label: "Discard", run: () => this.discardDraft() },
+        ],
       };
     }
     if (failure?.message === SHAPE_GONE && copy) return { state: "conflict", detail: failure.message, actions: [{ id: "copy", label: "Copy words", run: copy }] };
