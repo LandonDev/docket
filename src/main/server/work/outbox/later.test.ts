@@ -163,7 +163,9 @@ describe('Send later for a mail LifeOS holds', () => {
     await settled()
     const row = outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)!
     expect(row.state).toBe('sent')
-    expect(rig.whispers.filter((w) => /queued held item/.test(w.text))).toHaveLength(1)
+    // told once, that it went at his time
+    expect(rig.whispers.filter((w) => /went at the time the owner set/.test(w.text))).toHaveLength(1)
+    expect(rig.whispers.filter((w) => /queued held item/.test(w.text))).toHaveLength(0)
   })
 
   it('Cancel send puts it back only once LifeOS took it back; Mail\'s own cancel is the same verb', async () => {
@@ -195,6 +197,24 @@ describe('Send later for a mail LifeOS holds', () => {
     await settled()
     expect(store.byRef(item.ref)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
     expect(rig.lifeos.rows.get(id)!.status).toBe('draft')
+  })
+
+  it('every schedule of a removed thread is marked before LifeOS is asked, and the drain asks again on its own beat', async () => {
+    const a = await draft()
+    rig.lifeos.draft({ subject: 'Re: second' })
+    rig.lifeos.fire()
+    await settled()
+    const b = (await rig.waiting()).find((i) => i.kind === 'mail.send' && (i.ref as { id: string }).id !== (a.ref as { id: string }).id)!
+    await decide([{ ref: a.ref, do: 'later', at: Date.now() + HOUR, rev: a.updatedAt }])
+    await decide([{ ref: b.ref, do: 'later', at: Date.now() + HOUR, rev: b.updatedAt }])
+    const store = outboxHostOf(rig.work.ctx)!.store
+    rig.lifeos.connected = false
+    // marked in one statement, both, before any call could stop half way
+    expect(store.markCancelFor({ sessionIds: ['t-work'] }).map((r) => r.cancelWanted)).toEqual([true, true])
+    rig.lifeos.connected = true
+    // no watch fires: the drain alone takes them back
+    await outboxHostOf(rig.work.ctx)!.outbox.drainCancels()
+    expect([store.byRef(a.ref)!.state, store.byRef(b.ref)!.state]).toEqual(['stale', 'stale'])
   })
 
   it('a listing read before his Send later never puts the row back: only a fresh read does', async () => {

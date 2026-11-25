@@ -508,32 +508,35 @@ export class LifeosHeldItems implements LifeosHeld {
    */
   async settleScheduled(items: readonly OutboxItem[]): Promise<void> {
     const { outbox, ctx } = this.deps
-    for (const row of outbox.store.scheduledInLifeos()) {
-      const m = /^lifeos:outbox:(.+)$/.exec(row.runKey)
+    for (const seen of outbox.store.scheduledInLifeos()) {
+      const m = /^lifeos:outbox:(.+)$/.exec(seen.runKey)
       if (!m) continue
-      const listed = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === m[1])
+      const id = m[1]!
+      const listed = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === id)
+      // Listed with its time and not to be taken back, it still waits for LifeOS's timer.
+      if (listed?.scheduledFor !== undefined && !seen.cancelWanted) continue
       try {
-        // Its thread was removed while LifeOS held the time, and LifeOS could not be reached then: ask again.
-        if (row.cancelWanted) {
-          if (await this.cancelMail(m[1]!).catch(() => false)) {
+        // Under the item's own lock: a Send later, a move or a Cancel send under way finishes first, and what is read
+        // here is read after it. Every write names the generation read here.
+        await outbox.withLock({ at: 'lifeos', table: 'outbox', id }, async () => {
+          const row = outbox.store.get(seen.id)
+          if (!row || row.state !== 'scheduled') return
+          // Its thread was removed while LifeOS held the time: taken back first (the drain asks again on its beat too).
+          if (row.cancelWanted && (await this.cancelMail(id).catch(() => false))) {
             outbox.store.putAwayScheduled(row.id, 'The thread that made this was deleted.')
-            continue
+            return
           }
-        }
-        // Listed with its time, it still waits for LifeOS's timer.
-        if (listed?.scheduledFor !== undefined) continue
-        // Anything else is read fresh before the row moves, and moved only from the generation read here: a listing
-        // read before his Send later never puts the row back.
-        const gen = row.scheduleGen
-        const status = await this.mailStatus(m[1]!)
-        if (status === null) outbox.store.settleScheduled(row.id, 'stale', 'LifeOS no longer has this mail')
-        else if (status === 'sent') {
-          // Told once, and only once LifeOS says it went.
-          const went = outbox.store.settleScheduled(row.id, 'sent')
-          if (went) outbox.scheduledWent(went)
-        } else if (status === 'draft' || status === 'failed') outbox.store.unschedule(row.id, status === 'failed' ? 'LifeOS could not send it' : null, gen)
+          const gen = row.scheduleGen
+          const status = await this.mailStatus(id)
+          if (status === null) outbox.store.settleScheduled(row.id, 'stale', 'LifeOS no longer has this mail', gen)
+          else if (status === 'sent') {
+            // Told once, and only once LifeOS says it went.
+            const went = outbox.store.settleScheduled(row.id, 'sent', null, gen)
+            if (went) outbox.scheduledWent(went)
+          } else if (status === 'draft' || status === 'failed') outbox.store.unschedule(row.id, status === 'failed' ? 'LifeOS could not send it' : null, gen)
+        })
       } catch (err) {
-        ctx.log(`outbox: could not ask LifeOS about scheduled item ${row.n}: ${errorText(err)}`)
+        ctx.log(`outbox: could not ask LifeOS about scheduled item ${seen.n}: ${errorText(err)}`)
       }
     }
   }

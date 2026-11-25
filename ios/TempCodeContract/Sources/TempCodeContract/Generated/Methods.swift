@@ -2733,11 +2733,13 @@ public enum Methods {
             public let ref: HeldRef
             public let reason: String?
             public let via: Via?
+            public let rev: Int?
 
-            public init(ref: HeldRef, reason: String? = nil, via: Via? = nil) {
+            public init(ref: HeldRef, reason: String? = nil, via: Via? = nil, rev: Int? = nil) {
                 self.ref = ref
                 self.reason = reason
                 self.via = via
+                self.rev = rev
             }
         }
 

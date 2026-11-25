@@ -555,8 +555,9 @@ export class HeldStore {
   }
 
   /** What LifeOS's own timer did with a scheduled mail: it went, or LifeOS no longer has it. */
-  settleScheduled(id: string, state: 'sent' | 'stale', error: string | null = null): HeldRow | null {
-    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = ?, error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled'`).run(state, error, this.now(), id)
+  settleScheduled(id: string, state: 'sent' | 'stale', error: string | null = null, gen?: number): HeldRow | null {
+    const g = gen ?? null
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = ?, error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled' AND (? IS NULL OR schedule_gen = ?)`).run(state, error, this.now(), id, g, g)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
@@ -573,7 +574,24 @@ export class HeldStore {
 
   /** Every scheduled row LifeOS's timer holds, to read what became of it. */
   scheduledInLifeos(): HeldRow[] {
-    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' LIMIT 200`).all() as unknown as Row[]).map(decode)
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' ORDER BY cancel_wanted DESC, schedule_at ASC LIMIT 500`).all() as unknown as Row[]).map(decode)
+  }
+
+  /** Scheduled LifeOS mail marked to be taken back, oldest time first: what the drain asks LifeOS about. */
+  cancelsWanted(limit = 50): HeldRow[] {
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND cancel_wanted = 1 ORDER BY schedule_at ASC LIMIT ?`).all(limit) as unknown as Row[]).map(decode)
+  }
+
+  /**
+   * Every scheduled LifeOS mail of these threads, or of this workspace, marked to be taken back, in one statement and
+   * before any call to LifeOS: a stop in the middle leaves each of them marked, never one missed.
+   */
+  markCancelFor(q: { sessionIds?: readonly string[]; workspaceId?: string }): HeldRow[] {
+    const where = q.sessionIds ? `session_id IN (${marks(q.sessionIds)})` : 'workspace_id = ?'
+    const args = q.sessionIds ? [...q.sessionIds] : [q.workspaceId ?? '']
+    if (q.sessionIds && !q.sessionIds.length) return []
+    this.db.prepare(`UPDATE ${HELD_TABLE} SET cancel_wanted = 1 WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' AND ${where}`).run(...args)
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND cancel_wanted = 1 AND ${where}`).all(...args) as unknown as Row[]).map(decode)
   }
 
   /** Mark a scheduled LifeOS mail to be taken back from LifeOS (its thread or workspace was removed). */
@@ -592,8 +610,7 @@ export class HeldStore {
 
   /** The scheduled LifeOS mail of these threads, or of this workspace: LifeOS's to take back before they are put away. */
   scheduledLifeosOf(q: { sessionIds?: readonly string[]; workspaceId?: string }): HeldRow[] {
-    const rows = this.scheduledInLifeos()
-    return rows.filter((r) => (q.sessionIds ? !!r.sessionId && q.sessionIds.includes(r.sessionId) : r.workspaceId === q.workspaceId))
+    return this.markCancelFor(q)
   }
 
   /** A LifeOS mail he took back in its undo time: it waits on him again as held. */

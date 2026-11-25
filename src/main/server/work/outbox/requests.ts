@@ -44,6 +44,7 @@ export const ASK_TWICE = 'Refused: an item is listed twice.'
 export const NO_SUCH_REQUEST = 'There is no such request on this host.'
 export const REQUEST_CLOSED = 'This request was already answered, or it ran out.'
 export const BAD_RECEIPT = 'refused: a press on a request names only the rows this host showed for it'
+export const MOVED = 'Its thread or this item moved to another job, or the thread was archived. Nothing was sent.'
 
 type RequestState = OutboxRequest['state']
 interface Asked {
@@ -174,7 +175,7 @@ export class OutboxRequests {
     if (!job) return []
     const root = this.deps.rootOf(sessionId)
     // The job's whole waiting set, filtered by job before any cap: a cut list could pass part of a group as all of it.
-    const listed = this.deps.outbox.list({ show: 'waiting', ...(job.workspaceId ? { workspaceId: job.workspaceId } : {}), limit: REACH_MAX })
+    const listed = this.deps.outbox.list({ show: 'waiting', workspaceId: job.workspaceId ?? null, limit: REACH_MAX })
     if (listed.items.length >= REACH_MAX) throw new Error(ASK_TOO_MANY)
     return listed.items
       .filter((i) => needsHim(i) && (i.workspaceId ?? null) === (job.workspaceId ?? null) && (i.sector ?? null) === (job.sector ?? null))
@@ -227,6 +228,9 @@ export class OutboxRequests {
       }
       asked.push({ ref: item.ref, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), rev: item.updatedAt })
     }
+    // The fresh LifeOS reads above yield: where the thread stands is read again before anything is stored.
+    const still = this.deps.ctx.scopeOf(sessionId)
+    if (!this.deps.alive(sessionId) || !still || (still.workspaceId ?? null) !== (job.workspaceId ?? null) || (still.sector ?? null) !== (job.sector ?? null)) return refuse(ASK_NO_THREAD)
     const now = this.now()
     const messages = this.deps.ctx.threads.ownerRecent(sessionId, OWNER_MESSAGES).filter((m) => m.at <= now && now - m.at <= REQUEST_TTL_MS)
     const items: AskItem[] = reach.map(({ item, own }) => ({ ref: toolRef(item), n: item.n, kind: item.kind, names: namesOf(item), own, heldAt: item.createdAt, ...(item.ref.at === 'host' ? { chipId: item.ref.id } : {}), ...(opOf(item) ? { op: opOf(item)! } : {}) }))
@@ -321,12 +325,27 @@ export class OutboxRequests {
       .run(by, this.now(), JSON.stringify(unique), id, row.generation, this.now())
     if (Number(claimed.changes) !== 1) return this.view(this.row(id)!)
     const root = row.root_id
+    // What became of each item is kept as it settles: a press cut off keeps what it reached, and what it never reached
+    // reads as not started, never as done.
+    const kept: { ref: HeldRef; ok: boolean; error?: string; state?: string }[] = []
+    const keep = (r: DecisionResult): void => {
+      kept.push({ ref: r.ref, ok: r.ok, ...(r.error ? { error: r.error } : {}), ...(r.item ? { state: r.item.state } : {}) })
+      this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET results = ? WHERE id = ?`).run(JSON.stringify(kept), id)
+    }
     const results = await this.deps.outbox.decide(
       chosen.map((r) => ({ ref: r!.ref, do: r!.do, rev: r!.rev, ...(r!.at !== undefined ? { at: r!.at } : {}) })),
-      // The asking thread hears one note for the whole press, in place of a note per item of its own.
-      { by, via: `request:${id}`, many: true, quiet: (item) => !!item.sessionId && this.deps.rootOf(item.sessionId) === root }
+      {
+        by,
+        via: `request:${id}`,
+        many: true,
+        // The asking thread hears one note for the whole press, in place of a note per item of its own.
+        quiet: (item) => !!item.sessionId && this.deps.rootOf(item.sessionId) === root,
+        // Where it stands is checked again inside each item's own lock, just before its claim: a thread archived or an
+        // item moved while earlier items were going stops the rest.
+        admit: (item) => (this.placedNow(row, item) ? null : MOVED),
+        onResult: keep
+      }
     )
-    this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET results = ? WHERE id = ?`).run(JSON.stringify(results.map((r) => ({ ref: r.ref, ok: r.ok, ...(r.error ? { error: r.error } : {}), ...(r.item ? { state: r.item.state } : {}) }))), id)
     const left = asked.length - chosen.length
     this.tellThread(row, answerNote(row.n, results, left))
     this.deps.ctx.tell.done(requestKey(id))
@@ -351,6 +370,18 @@ export class OutboxRequests {
   /** The threads that asked are gone: their open requests end. */
   sessionsRemoved(ids: readonly string[]): void {
     for (const id of ids) for (const r of this.db.prepare(`SELECT rowid AS n, * FROM ${REQUESTS_TABLE} WHERE (session_id = ? OR root_id = ?) AND state = 'open'`).all(id, id) as unknown as Row[]) this.void(r, 'Its thread was removed.', false)
+  }
+
+  /**
+   * Every open request told again in the notice's words of now: a row the ledger kept from before, with his quote in
+   * it, is replaced under its key by one without (the digest keeps one row a key).
+   */
+  retell(): void {
+    try {
+      for (const r of this.open()) this.told(r, { push: false })
+    } catch (err) {
+      this.deps.ctx.log(`outbox: open requests were not told again: ${errorText(err)}`)
+    }
   }
 
   /** Every open request that ran out or whose items were all decided elsewhere, ended now. */
@@ -389,15 +420,30 @@ export class OutboxRequests {
     if (!job || (job.workspaceId ?? null) !== row.workspace_id || (job.sector ?? null) !== row.sector) return false
     return refs.every((ref) => {
       const item = this.itemOf(ref)
-      return !!item && (item.workspaceId ?? null) === row.workspace_id && (item.sector ?? null) === row.sector
+      return !!item && this.itemPlaced(row, item)
     })
+  }
+
+  /** The request's thread still stands where it asked, and this row's item too (`admit`, inside the item's lock). */
+  private placedNow(row: Row, item: { workspaceId: string | null; sector: string | null; sessionId: string | null }): boolean {
+    return this.placed(row, []) && this.itemPlaced(row, item)
+  }
+
+  /** An item is of the request's job by its stamp and by where its own thread stands now. */
+  private itemPlaced(row: Row, item: { workspaceId: string | null; sector: string | null; sessionId: string | null }): boolean {
+    if ((item.workspaceId ?? null) !== row.workspace_id || (item.sector ?? null) !== row.sector) return false
+    if (!item.sessionId) return true
+    const now = this.deps.ctx.scopeOf(item.sessionId)
+    return !!now && (now.workspaceId ?? null) === row.workspace_id && (now.sector ?? null) === row.sector
   }
 
   /** How many of the asking tree's items, held before `at` and waiting then, were decided after it. */
   private decidedSince(root: string, workspaceId: string | null, at: number): number {
     const rows = this.db
-      .prepare(`SELECT session_id FROM work_held_acts WHERE ${workspaceId === null ? 'workspace_id IS NULL' : 'workspace_id = ?'} AND created_at <= ? AND decided_at IS NOT NULL AND decided_at > ?`)
-      .all(...(workspaceId === null ? [] : [workspaceId]), at, at) as { session_id: string | null }[]
+      .prepare(
+        `SELECT session_id FROM work_held_acts WHERE ${workspaceId === null ? 'workspace_id IS NULL' : 'workspace_id = ?'} AND created_at <= ? AND ((decided_at IS NOT NULL AND decided_at > ?) OR (dismissed_at IS NOT NULL AND dismissed_at > ?))`
+      )
+      .all(...(workspaceId === null ? [] : [workspaceId]), at, at, at) as { session_id: string | null }[]
     return rows.filter((r) => !!r.session_id && this.deps.rootOf(r.session_id) === root).length
   }
 
@@ -407,11 +453,14 @@ export class OutboxRequests {
 
   private view(row: Row): OutboxRequest {
     const asked = json<Asked[]>(row.items, [])
+    const issued = json<Record<string, Receipt>>(row.receipts, {})
+    const answeredRefs = new Set(json<string[]>(row.answer, []).flatMap((rid) => (issued[rid] ? [refKey(issued[rid]!.ref)] : [])))
     const results = json<{ ref: HeldRef; ok: boolean; error?: string; state?: string }[]>(row.results, [])
     const rows: OutboxRequestRow[] = asked.map((a) => {
       const item = this.itemOf(a.ref)
       // A press cut off before its results were kept still says what became of each item it reached.
-      const result = results.find((r) => refKey(r.ref) === refKey(a.ref)) ?? (row.state === 'answered' && item?.via === `request:${row.id}` ? { ok: item.state !== 'failed' && item.state !== 'stale', state: item.state } : undefined)
+      const chosenHere = row.state === 'answered' && answeredRefs.has(refKey(a.ref))
+      const result = results.find((r) => refKey(r.ref) === refKey(a.ref)) ?? (chosenHere && results.length ? { ok: false, error: 'not started' } : undefined)
       return { ref: a.ref, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), ...(item ? { item } : {}), changed: !!item && item.updatedAt !== a.rev, open: !!item && needsHim(item), ...(result ? { result } : {}) }
     })
     return {
@@ -476,14 +525,14 @@ export class OutboxRequests {
   }
 
   /** The notice: he asked for it and waits on it, so it does not wait for the digest. It opens the thread, where the card is. */
-  private told(r: OutboxRequest): void {
+  private told(r: OutboxRequest, opts: { push?: boolean } = {}): void {
     try {
       // Counts and verbs alone: a digest read needs only read, and his quote can name a person or a file.
-      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${r.head}`, key: requestKey(r.id), open: { thread: r.sessionId }, by: this.now() + 60_000 })
+      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${r.head}`, key: requestKey(r.id), open: { thread: r.sessionId }, by: r.createdAt + 60_000 })
     } catch (err) {
       this.deps.ctx.log(`outbox: request ${r.n} was not told: ${errorText(err)}`)
     }
-    this.pushed(r.id)
+    if (opts.push !== false) this.pushed(r.id)
   }
 
   private pushed(id: string): void {

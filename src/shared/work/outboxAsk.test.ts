@@ -129,3 +129,26 @@ describe('the review\'s cases', () => {
     expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })
+
+describe('the second review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('a sentence that only mentions a send tells nobody', () => {
+    const words = 'Dana plans to send the reply to Coach 1'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(NOT_A_COMMAND)
+    const polite = 'ok, please send the reply to Coach 1'
+    expect(refusal(ask({ quote: polite, messages: [msg(polite)], asked: one }))).toBeNull()
+  })
+  it('a time that reads as no one moment still rules out a send now', () => {
+    const words = 'send the reply to Coach 1 tomorrow at 9 am or 10 am'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(SAYS_LATER)
+    expect(laterTimeIn('send it tomorrow at noon or 3 pm', AT, 'America/Chicago')).toBeNull()
+  })
+  it('"one of those" is a count of one, never the whole set', () => {
+    const words = 'send one of those roster mails'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: ROSTER.map((i) => ({ ref: i.ref, do: 'send' })) }))).toBe(COUNT_OFF(1, 3))
+  })
+  it('a pasted quoted block is never his command', () => {
+    const text = '> send the reply to Coach 1\n\nthat is what Dana wrote'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
+  })
+})

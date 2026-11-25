@@ -233,3 +233,35 @@ describe('the review\'s cases', () => {
     expect(text(await call('outbox_list', {}))).toBe('#2 · Post in Coaches · held · this thread')
   })
 })
+
+describe('the second review\'s cases', () => {
+  it('an item whose thread moved to another job is never sent from the request', async () => {
+    rig.workspace('ws-cosmic', { sector: 'cosmic' } as never)
+    rig.thread('t-sub', { scope: 'work', workspaceId: 'ws-purdue', parentId: 't-work' } as Partial<SessionMeta>)
+    const items = ['Staff', 'Coaches'].map((c) => post(c, 't-sub'))
+    rig.say('t-work', 'send both posts')
+    const r = await call('outbox_request', { items: items.map((i) => ({ ref: `#${i.n}`, do: 'send' })), quote: 'send both posts' })
+    expect(r.isError, text(r)).toBeUndefined()
+    const id = asked(r)
+    const drawn = await card(id)
+    rig.thread('t-sub', { scope: 'work', workspaceId: 'ws-cosmic', parentId: 't-work' } as Partial<SessionMeta>)
+    const { request } = await press(id, drawn.rows.map((row) => row.receipt!))
+    expect(sent).toEqual([])
+    // checked before the claim, and again inside each item's lock: here the whole request ends at once
+    expect(request.state).toBe('void')
+  })
+
+  it('a discard from an older view is refused', async () => {
+    const a = post('Staff')
+    outboxHostOf(rig.work.ctx)!.store.edit((a.ref as { id: string }).id, { payload: { chat: 'Staff', text: 'moved' }, summary: 'Post in Staff', verb: 'Post' })
+    await expect(rig.rpc('work.outbox.discard', { ref: a.ref, rev: a.updatedAt })).rejects.toThrow(/changed since/)
+  })
+
+  it('every open request is told again at start without his quote', async () => {
+    await threeAsked()
+    rig.tells.length = 0
+    outboxHostOf(rig.work.ctx)!.requests.retell()
+    expect(rig.tells).toEqual([expect.objectContaining({ kind: 'outbox.request', title: 'Asked: Post 3 messages' })])
+    expect(rig.tells[0]!.detail).toBeUndefined()
+  })
+})

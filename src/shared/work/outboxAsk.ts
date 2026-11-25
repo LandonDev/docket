@@ -107,6 +107,8 @@ export function ownWords(text: string): { words: string; held: string[] } {
     // blank line is a chip's, its quoted lines and any line its label ran onto.
     if (inChip && line.trim() !== '') continue
     inChip = false
+    // A quoted block is someone else's words he pasted, never his command.
+    if (/^\s*>/.test(line)) continue
     kept.push(line)
   }
   return { words: kept.join('\n'), held }
@@ -158,8 +160,21 @@ function tellsAction(clause: string, action: AskAction, kind: ActKind, op?: stri
 function countsIn(clause: string): number[] {
   const found = new Set<number>()
   for (const m of clause.matchAll(/(?<![#\d:])\b(\d{1,2})\b(?!\s*(?::|am\b|pm\b|a\.m\.|p\.m\.|o'clock))/g)) found.add(Number(m[1]))
-  for (const [word, n] of Object.entries(COUNT_OF)) if (has(clause, word) && !new RegExp(`\\b${word}\\s*(am|pm|o'clock)\\b`).test(clause) && n > 1) found.add(n)
+  for (const [word, n] of Object.entries(COUNT_OF)) if (has(clause, word) && !new RegExp(`\\b${word}\\s*(am|pm|o'clock)\\b`).test(clause) && !(n === 1 && /\bone (by one|at a time)\b/.test(clause))) found.add(n)
   return [...found]
+}
+
+/** Words that put a send at a time: a day, a part of a day, a clock. */
+function timeWords(clause: string): boolean {
+  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause)
+}
+
+const FILLERS = /^(?:(?:please|ok|okay|yes|yeah|sure|now|then|and|so|just|alright|right|great|thanks|go ahead and|you can|feel free to|can you|could you|would you|will you)[\s,]+)*/
+
+/** Whether his sentence starts with a command verb, after the words people put before one. */
+function commandStart(clause: string): boolean {
+  const rest = clause.replace(FILLERS, '')
+  return [...Object.keys(SEND_VERBS), ...DISCARD_VERBS].some((verb) => rest.startsWith(`${verb} `) || rest === verb || rest.startsWith(`${verb},`))
 }
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
@@ -200,12 +215,11 @@ export function laterTimeIn(clause: string, from: number, zone: string): number 
   if (addDays === null) return null
   let h: number
   let min = 0
+  const all = [...clause.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/g)]
+  // Two clock times, noon beside another, or midnight, are no one time.
+  if (has(clause, 'midnight') || all.length + (has(clause, 'noon') ? 1 : 0) !== 1) return null
   if (has(clause, 'noon')) h = 12
-  else if (has(clause, 'midnight')) return null
   else {
-    const all = [...clause.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/g)]
-    // Two clock times are no one time.
-    if (all.length !== 1) return null
     const t = all[0]!
     h = Number(t[1]) % 12 + (t[3]!.startsWith('p') ? 12 : 0)
     min = Number(t[2] ?? 0)
@@ -254,6 +268,9 @@ export function judgeAsk(input: AskInput): AskVerdict {
   // A short clause tells only when it names its item exactly ("send #12").
   if (want.length < 12 && !input.asked.some((a) => byRef.get(a.ref) && namesN(byRef.get(a.ref)!))) return { ok: false, refusal: TOO_SHORT }
   if (clause.endsWith('?') && !POLITE.test(clause)) return { ok: false, refusal: NOT_A_COMMAND }
+  // A command begins his sentence: "send …", "please discard …", "can you post …". A sentence that mentions a send
+  // somewhere in it ("Dana plans to send them") tells nobody to do anything.
+  if (!commandStart(clause)) return { ok: false, refusal: NOT_A_COMMAND }
   if (QUESTION_START.test(clause) || NEGATION.test(clause) || CONDITION.test(clause)) return { ok: false, refusal: NOT_A_COMMAND }
   const heldBy = source.at
   const all = ALL_WORDS.some((w) => has(clause, w))
@@ -269,8 +286,8 @@ export function judgeAsk(input: AskInput): AskVerdict {
     if (!tellsAction(clause, a.do, item.kind, item.op)) return { ok: false, refusal: VERB_MISSING(a.do) }
     const timed = laterTimeIn(clause, source.at, input.zone)
     if (a.do === 'later' && (timed === null || a.at !== timed)) return { ok: false, refusal: NO_TIME }
-    // A time in his words is a later send: never a send now.
-    if (a.do === 'send' && timed !== null) return { ok: false, refusal: SAYS_LATER }
+    // Any time in his words, even one that reads as no single moment, makes it a later send: never a send now.
+    if (a.do === 'send' && (timed !== null || timeWords(clause))) return { ok: false, refusal: SAYS_LATER }
     if (item.heldAt > heldBy) return { ok: false, refusal: HELD_AFTER(tag(item)) }
     // Named exactly, or one of the asking tree's own items an "all" word covers.
     const unique = item.names.some((name) => {

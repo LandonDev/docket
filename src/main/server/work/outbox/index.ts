@@ -148,7 +148,7 @@ export const outbox: WorkModule = {
         return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), ...(req.params.via ? { via: req.params.via } : {}), by: person(by) }))
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
-        return handled(await box.discard(req.params.ref, person(by), { ...(req.params.reason ? { reason: req.params.reason } : {}), ...(req.params.via ? { via: req.params.via } : {}) }))
+        return handled(await box.discard(req.params.ref, person(by), { ...(req.params.reason ? { reason: req.params.reason } : {}), ...(req.params.via ? { via: req.params.via } : {}), ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}) }))
       case 'work.outbox.decide': {
         mustBePerson(by, 'approve')
         // His Send on a thread's request card names only the receipts the card drew (requests.ts `answer`).
@@ -243,6 +243,8 @@ export const outbox: WorkModule = {
   start(ctx) {
     const host = outboxHostOf(ctx)
     if (!host) return () => {}
+    // A request's notice once carried his quote; told again now, the ledger keeps the words without it.
+    host.requests.retell()
     // One push per change, to the keys that may decide: a held item names recipients and text a read-only key should not get unasked.
     let last = ''
     return host.outbox.onChange((item) => {

@@ -425,6 +425,13 @@ each refusal is words an agent can act on):
   or repeated at a clock change). A chip's lines run to the blank line
   before his words, so a label that ran onto a second line is the chip's,
   and the composer writes every label on one line.
+- **A command.** His sentence must begin with the command, after the words
+  people put before one ("ok, please send …", "can you post …"): a sentence
+  that only mentions a send tells nobody. Any time words at all (a day, a
+  part of a day, a clock) make it a later send, never a send now, even when
+  they read as no one moment. "One" is a count. A quoted block (`>`) is
+  someone else's words, never his command. Noon beside another clock time
+  is no time.
 - **What a thread learns.** `outbox_list` shows only what waits on him
   (`needsHim`), from the job's whole set (never a cut list: past 1,000 the
   host refuses rather than judge part); another job's ref is refused in
@@ -447,6 +454,15 @@ and, for a row unchanged since the ask and still waiting, a receipt),
 `request.view` (he opened a changed row: a fresh receipt at what he sees,
 which he then ticks himself), `decide({request, receipts})` and `decline`.
 The push `work.outbox.request` goes to approve keys alone.
+
+**Where it stands** is checked when the request is stored (after any
+fresh read), before the claim, and again inside each item's own lock just
+before that item's claim (`decide`'s `admit`): the thread still here,
+unarchived and in the request's job, and each item's own thread too. What
+became of each item is kept as it settles, so a press cut off keeps what
+it reached, and an item it never reached reads "not started". At start the
+host tells each open request again in the notice's words of now, so a
+ledger row from before keeps no quote.
 
 **His Send.** One check of the whole press (open, not run out, the
 generation, every receipt this request's and none twice, each the action
@@ -498,7 +514,7 @@ the fences.
 | Method | Needs | |
 |---|---|---|
 | `work.outbox.list`, `get`, `grants`, `rules` | read | `get` adds a computer act's picture |
-| `work.outbox.send`, `discard`, `edit`, `askAgain`, `decide`, `cancelSend`, `sendNow`, `undoSend` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
+| `work.outbox.send`, `discard` (with `rev`), `edit`, `askAgain`, `decide`, `cancelSend`, `sendNow`, `undoSend` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
 | `work.outbox.grant`, `ungrant`, `setRules`, `setForWork` | admin | |
 
 A window whose key may not make grants on that host (`linkMay`, docs/agents/work.md
@@ -571,15 +587,18 @@ counted. A scheduled send earns no offered grant.
   an older view never takes a time set again since. Mail's own cancel,
   move and Send now of a thread's draft go through the same row, under the
   item's own lock. Removing a thread or workspace settles its schedules: a
-  host timer's at once; a LifeOS mail is taken back from LifeOS first
-  (`cancelForRemoval`) and only then put away, and one LifeOS cannot reach
-  then stays scheduled, marked `cancel_wanted`, and the watcher asks again
-  each pass.
-- **What LifeOS's timer did** is read fresh before the row moves, from the
-  generation read then: a listing read before his Send later never puts
-  the row back, an answer lost on the way leaves the row scheduled when
-  LifeOS took the time, and the thread hears it went only once LifeOS says
-  `sent`.
+  host timer's at once; every LifeOS mail of theirs is marked
+  `cancel_wanted` in one statement before LifeOS is asked anything
+  (`markCancelFor`), each is taken back from LifeOS under its own lock and
+  only then put away, and one LifeOS cannot reach stays scheduled and
+  marked: the drain asks again every minute while Work is on
+  (`drainCancels`), whatever LifeOS's watch says.
+- **What LifeOS's timer did** is read under the item's own lock, fresh,
+  and every write names the generation read then: a Send later, a move or a
+  Cancel send under way finishes first, a listing read before his Send
+  later never puts the row back, an answer lost on the way leaves the row
+  scheduled when LifeOS took the time, and the thread hears "went at the
+  time the owner set" once LifeOS says `sent`.
 - **Work off** ends the rest of a due batch: each wake belongs to one Work
   period, and an item is claimed only while that period lasts.
 - **Undo** (`work.outbox.undoSend`, the press's toast): a LifeOS mail
