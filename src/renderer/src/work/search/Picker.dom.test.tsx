@@ -47,6 +47,7 @@ vi.mock("./open", () => ({
   canStartAbout: (hit: SearchHit) => !!hit.chip,
 }));
 const { WorkSearch, SPIN_AFTER_MS, SPIN_FOR_MS } = await import("./Picker");
+const { TYPE_WAIT_MS } = await import("./controller");
 const { openWorkSearch } = await import("../../lib/workSearchPort");
 
 const hit = (key: string, kind: string, over: Partial<SearchHit> = {}): SearchHit => ({ key, kind, title: `Budget ${key}`, workspaceId: "w-purdue", open: { to: "view", view: kind }, ...over });
@@ -118,7 +119,13 @@ async function mount(seed: Record<string, unknown> = {}) {
   return view;
 }
 const field = (): HTMLInputElement => document.querySelector<HTMLInputElement>("[data-work-search] [data-slot=input]")!;
-const type = async (text: string): Promise<void> => void (await act(async () => fireEvent.change(field(), { target: { value: text } })));
+/** Words typed, then the pause after them: a run of keys is asked once its last key is `TYPE_WAIT_MS` old (controller.ts). */
+const type = async (text: string): Promise<void> =>
+  void (await act(async () => {
+    fireEvent.change(field(), { target: { value: text } });
+    // A test on a clock of its own moves it itself.
+    if (!vi.isFakeTimers()) await new Promise((settle) => setTimeout(settle, TYPE_WAIT_MS));
+  }));
 const land = async (index: number, a: SearchAnswer): Promise<void> => void (await act(async () => asks[index].answer(a)));
 const press = async (key: string, mods: Record<string, boolean> = {}): Promise<void> => void (await act(async () => fireEvent.keyDown(field(), { key, ...mods })));
 const list = (): HTMLElement => document.querySelector<HTMLElement>("[data-work-search-list]")!;

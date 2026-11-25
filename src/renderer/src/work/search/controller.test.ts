@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchAnswer, SearchGroup } from "@shared/work/search";
-import { SearchController } from "./controller";
+import { SearchController, TYPE_WAIT_MS } from "./controller";
 import type { AskedHost } from "./hosts";
 import { busy, rowsOf } from "./model";
 
@@ -12,10 +12,10 @@ const group = (kind: string, keys: string[], source = `search.${kind}`): SearchG
 
 function rig() {
   let now = 0;
-  const asked: { host: string; params: Record<string, unknown>; answer(a: SearchAnswer): void; fail(): void }[] = [];
+  const asked: { host: string; params: Record<string, unknown>; signal?: AbortSignal; answer(a: SearchAnswer): void; fail(): void }[] = [];
   const timers: { at: number; run(): void; off: boolean }[] = [];
   const controller = new SearchController({
-    ask: (host, params) => new Promise((answer, fail) => void asked.push({ host, params, answer, fail: () => fail(new Error("gone")) })),
+    ask: (host, params, signal) => new Promise((answer, fail) => void asked.push({ host, params, signal, answer, fail: () => fail(new Error("gone")) })),
     now: () => now,
     later(run, ms) {
       const timer = { at: now + ms, run, off: false };
@@ -154,5 +154,31 @@ describe("a search as it runs", () => {
     expect(r.controller.model.active).toBe("hit:t2");
     r.controller.point("hit:t3");
     expect(r.controller.model).toMatchObject({ active: "hit:t3", moved: true });
+  });
+});
+
+describe("a run of keys", () => {
+  it(`asks each host at most twice for 7 keys in 300 ms: the first at once, the last ${TYPE_WAIT_MS} ms after it, and stops the asks it replaced`, async () => {
+    const r = rig();
+    const words = ["b", "bu", "bud", "budg", "budge", "budget", "budgets"];
+    for (const [i, text] of words.entries()) {
+      if (i) await r.tick(43);
+      r.controller.search(text, null, [box, mac]);
+    }
+    await r.tick(TYPE_WAIT_MS);
+    const perHost = (host: string) => r.asked.filter((a) => a.host === host).map((a) => a.params.text);
+    expect(perHost("box")).toEqual(["b", "budgets"]);
+    expect(perHost("mac")).toEqual(["b", "budgets"]);
+    // The first words' asks were stopped by the later ones; the last words' are live.
+    expect(r.asked.filter((a) => a.params.text === "b").every((a) => a.signal?.aborted)).toBe(true);
+    expect(r.asked.filter((a) => a.params.text === "budgets").every((a) => !a.signal?.aborted)).toBe(true);
+  });
+
+  it("asks at once for words typed after a pause", async () => {
+    const r = rig();
+    r.controller.search("budget", null, [box]);
+    await r.tick(500);
+    r.controller.search("budgets", null, [box]);
+    expect(r.asked.map((a) => a.params.text)).toEqual(["budget", "budgets"]);
   });
 });
