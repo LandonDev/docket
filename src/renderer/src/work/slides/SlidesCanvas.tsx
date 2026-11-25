@@ -30,6 +30,7 @@ import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
 import { CONFLICT_WORD, HandSession, SHAPE_GONE, type HandState, type Start } from "./edit/session";
 import { Prompt, TypingBox } from "./edit/TypingBox";
+import { NotesField } from "./edit/NotesField";
 import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
 import type { NameAsk } from "./edit/slides";
@@ -978,8 +979,11 @@ function Main({
       {under ?? (
         <>
           {edits.length > 0 ? <Edits edits={edits} /> : null}
-          {/* A slide with no notes draws no Notes block: an empty heading over "None yet" said nothing he can act on here. */}
-          {notesEdit || slide.notes.trim() ? (
+          {/* Where his hand may change the slide its notes are a field he types in, empty or not. Elsewhere a slide with no
+              notes draws no Notes block: an empty heading over "None yet" said nothing he can act on there. */}
+          {!notesEdit && session.slideRefusal(slide) === null ? (
+            <NotesField slide={slide} session={session} />
+          ) : notesEdit || slide.notes.trim() ? (
             <div data-slide-notes className="shrink-0 px-5 pt-4 pb-5">
               <div className="text-xs font-medium text-muted-foreground">Notes</div>
               {notesEdit ? (

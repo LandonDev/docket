@@ -156,6 +156,12 @@ export class HandSession {
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
   /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
   private sending: Promise<void> | null = null;
+  /** His notes waiting for the typing pause, the send of them on its way, and what the host last took for each slide. */
+  private notesWaiting: { slide: number; text: string; began: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  private notesSending: { slide: number; done: Promise<boolean> } | null = null;
+  private notesHeld = new Map<number, string>();
+  /** His notes the host refused, still in the field until he types again. */
+  private notesRefused: { slide: number; text: string } | null = null;
   /** where the open box's unsent words are kept on this computer; null where there is no store */
   private journal: DraftJournal | null = null;
   /** what was last kept, as its JSON: the same box said again is not written again */
@@ -556,6 +562,12 @@ export class HandSession {
    * when they are still not in the file, so the tab stays open with them and the line's Retry or Reload.
    */
   async flush(): Promise<void> {
+    // His notes go first, and a close waits for them as for the box. Notes refused before (changed elsewhere, said
+    // then) go once more over the notes as they are now, the other save kept in the deck's versions; refused again,
+    // the tab stays with them in the field.
+    const refused = this.notesRefused;
+    if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
+    if (!(await this.keepNotes())) throw new CloseRefused("Your notes are not in the file yet");
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = await Promise.race([
       (async () => {
@@ -658,6 +670,59 @@ export class HandSession {
     this.store.view(next);
     this.set({ savedAt: Date.now() });
     return next;
+  }
+
+  /**
+   * His words in a slide's notes field, kept as the box's are (docs/agents/work-slides.md "Notes he types"): one
+   * `notes` edit after a pause of `TYPING_SAVE_MS`, or at once (`keepNotes`: the field left, Escape, the stage leaving
+   * the slide, the tab closing). Until they are in the file the line says saving. Each edit names the notes it was
+   * written over (`was`): what the host last took from this field, else what the field began from.
+   */
+  typeNotes(slide: number, text: string, began: string): void {
+    const waiting = this.notesWaiting;
+    if (waiting && waiting.slide !== slide) void this.keepNotes();
+    this.notesRefused = null;
+    if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
+    else this.set({ busy: this.state.busy + 1 });
+    this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
+  }
+
+  /** The notes waiting for the pause, sent now; resolves once every notes edit on its way has its answer. False: refused. */
+  async keepNotes(): Promise<boolean> {
+    const waiting = this.notesWaiting;
+    if (!waiting) return (await this.notesSending?.done) ?? true;
+    clearTimeout(waiting.timer);
+    this.notesWaiting = null;
+    const was = this.notesHeld.get(waiting.slide) ?? waiting.began;
+    if (waiting.text === was) {
+      this.set({ busy: this.state.busy - 1 });
+      return (await this.notesSending?.done) ?? true;
+    }
+    // The edit counts itself on its way before the wait lets go, so the line never says saved between the two.
+    this.notesHeld.set(waiting.slide, waiting.text);
+    const sent = this.edit([{ op: "notes", slide: waiting.slide, text: waiting.text, was }], "Couldn't save the notes");
+    this.set({ busy: this.state.busy - 1 });
+    const sending = {
+      slide: waiting.slide,
+      done: sent.then((next) => {
+        // Refused (the notes changed elsewhere, said as a toast): his words stay in the field, and his next keep writes
+        // over the notes as the deck has them now.
+        if (!next) {
+          this.notesHeld.set(waiting.slide, this.store.get().view?.slides.find((s) => s.id === waiting.slide)?.notes ?? was);
+          this.notesRefused = { slide: waiting.slide, text: waiting.text };
+        }
+        return next !== null;
+      }),
+    };
+    this.notesSending = sending;
+    const ok = await sending.done;
+    if (this.notesSending === sending) this.notesSending = null;
+    return ok;
+  }
+
+  /** Whether his notes for a slide are not yet the deck's: waiting, on their way or refused. The field keeps them over a view that comes meanwhile. */
+  notesPending(slide: number): boolean {
+    return this.notesWaiting?.slide === slide || this.notesSending?.slide === slide || this.notesRefused?.slide === slide;
   }
 
   /** A picture or a video on its way to the host: where it will lie, or null once it is there or failed. */

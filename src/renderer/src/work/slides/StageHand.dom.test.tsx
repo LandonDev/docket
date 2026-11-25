@@ -172,3 +172,40 @@ describe("the pointer's cue", () => {
     expect(layer.style.cursor).toBe("");
   });
 });
+
+describe("notes he types", () => {
+  it("are a field under the stage, empty or not, whose words go into the file when he leaves it", async () => {
+    await t.stage();
+    const field = (await t.found("[data-slide-notes-field]")) as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+    expect(field.placeholder).toBe("Add notes");
+    expect(document.querySelector("[data-slide-notes] label")!.textContent).toBe("Notes");
+    field.focus();
+    fireEvent.change(field, { target: { value: "Open with the turnout." } });
+    expect(t.edits()).toEqual([]);
+    fireEvent.blur(field);
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "notes", slide: 3, text: "Open with the turnout.", was: "" }]]));
+  });
+
+  it("Escape keeps his words and gives the keyboard back to the slide", async () => {
+    const { layer } = await t.stage(handView({ slides: [slide(3, { number: 1, page: 1, notes: "Say hello", shapes: [TITLE] }), slide(5, { number: 2, page: 2 })] }));
+    const field = (await t.found("[data-slide-notes-field]")) as HTMLTextAreaElement;
+    expect(field.value).toBe("Say hello");
+    field.focus();
+    fireEvent.change(field, { target: { value: "Say hello, then the plan" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "notes", slide: 3, text: "Say hello, then the plan", was: "Say hello" }]]));
+    expect(document.activeElement).toBe(layer);
+  });
+
+  it("are read only where his hand cannot change the slide: a deck he cannot edit draws them as words, and none when there are none", async () => {
+    await t.stage(handView({ hand: undefined, slides: [slide(3, { number: 1, page: 1, notes: "Say hello", shapes: [TITLE] }), slide(5, { number: 2, page: 2 })] }));
+    expect(document.querySelector("[data-slide-notes-field]")).toBeNull();
+    expect(document.querySelector("[data-slide-notes] p")!.textContent).toBe("Say hello");
+    cleanup();
+    resetCanvasStore();
+    t.reset();
+    await t.stage(handView({ hand: undefined }));
+    expect(document.querySelector("[data-slide-notes]")).toBeNull();
+  });
+});

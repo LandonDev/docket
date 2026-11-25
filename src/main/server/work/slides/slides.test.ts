@@ -2017,6 +2017,19 @@ describe('his own edits to a deck', () => {
     expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
   })
 
+  it('writes his notes only over the notes his field began from: a save from PowerPoint since refuses them, and the file keeps that save', async () => {
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: [slide(256, 'One', { notes: 'Say hello' }), ...FAKE_DECK.slides.slice(1)] }))
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    const saved = fakeBytes({ ...FAKE_DECK, slides: [slide(256, 'One', { notes: 'Changed in PowerPoint' }), ...FAKE_DECK.slides.slice(1)] })
+    writeFileSync(path, saved)
+    const notes = (was: string): SlideOp => ({ op: 'notes', slide: 256, text: 'Say hello, then the plan', was })
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [notes('Say hello')] })).rejects.toThrow('The deck changed while this was being made')
+    expect(readFileSync(path, 'utf8')).toBe(saved)
+    await call('work.slides.edit', { itemId: item.id, ops: [notes('Changed in PowerPoint')] })
+    expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
+  })
+
   it("refuses a box's words over a look changed in PowerPoint that cut a run in two, the words alike", async () => {
     const shaped = (runs: string[]): SlideInfo => slide(256, 'One', { shapes: [{ id: 3, name: 'Body 2', kind: 'text', placeholder: 'body', bbox: [0.05, 0.25, 0.95, 0.9], text: runs.join(''), paragraphs: [{ level: 0, align: 'left', list: 'none', runs: runs.map((text) => ({ text })) }] }] })
     writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: [shaped(['About One']), ...FAKE_DECK.slides.slice(1)] }))

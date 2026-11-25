@@ -1467,7 +1467,10 @@ The kinds, each a hand-made body built from components/ui:
 - **Slides.** A 96px thumbnail in a 140px strip, a 3px tint frame at 6px
   radius round a 3px-radius slide, the stage at most 760px with a 16px
   inset, a four-column grid at 12 by 16 gaps, a 164px outline preview.
-  Notes under the stage are 14/22 under a 12px medium muted "Notes". The
+  Notes under the stage are 14/22 under a 12px medium muted "Notes": where
+  he can edit the deck by hand a borderless field in the same type, "Add
+  notes" when empty, kept after a 2s pause, on leaving it and on Escape,
+  as the typing box is. The
   TempCode and PowerPoint switch sits in the tab row, as the sheet's does.
 - **Images and video.** The frame at radius 8 on `stage` with a 12px
   inset; the scrubber a 24px hit row with a 4px `track`, a 12px head and

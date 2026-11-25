@@ -113,6 +113,8 @@ function arranged(view: DeckView, op: SlideOp): DeckView {
       });
     case "hide":
       return onSlide(op.slide, (s) => ({ ...s, hidden: op.hidden }));
+    case "notes":
+      return onSlide(op.slide, (s) => ({ ...s, notes: op.text }));
     case "layout":
       return onSlide(op.slide, (s) => ({ ...s, layout: op.layout }));
     case "transition":

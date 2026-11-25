@@ -1,0 +1,51 @@
+import { useEffect, useId, useRef, useState } from "react";
+import type { DeckSlide } from "@shared/contract-work-slides";
+import { Textarea } from "../../../components/ui/textarea";
+import type { HandSession } from "./session";
+
+/**
+ * The slide's speaker notes as a field he types in (docs/DESIGN.md "The slide editor"), where he can edit the deck
+ * by hand: plain words under a 12px "Notes", in the notes' own 14/22, kept as the box's words are (a 2 s pause,
+ * leaving the field, Escape, the stage leaving the slide), each one `notes` edit over the notes it began from.
+ */
+export function NotesField({ slide, session }: { slide: DeckSlide; session: HandSession }) {
+  const id = useId();
+  const [text, setText] = useState(slide.notes);
+  const began = useRef(slide.notes);
+  // The deck's notes as they come, unless his own are not in the file yet: those stay in the field.
+  useEffect(() => {
+    if (session.notesPending(slide.id)) return;
+    setText(slide.notes);
+    began.current = slide.notes;
+  }, [session, slide.id, slide.notes]);
+  // The stage leaving the slide (or the tab closing) keeps what he typed.
+  useEffect(() => () => void session.keepNotes(), [session]);
+  return (
+    <div data-slide-notes className="shrink-0 px-5 pt-4 pb-4">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        Notes
+      </label>
+      <Textarea
+        id={id}
+        data-slide-notes-field
+        value={text}
+        rows={1}
+        placeholder="Add notes"
+        className="-mx-2.5 min-h-0 max-w-[70ch] resize-none border-transparent px-2.5 py-1 text-sm leading-[22px] text-pretty"
+        onChange={(event) => {
+          setText(event.target.value);
+          session.typeNotes(slide.id, event.target.value, began.current);
+        }}
+        onBlur={() => void session.keepNotes()}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+          // Escape keeps his words and gives the keyboard back to the slide, as the typing box does.
+          event.preventDefault();
+          event.stopPropagation();
+          void session.keepNotes();
+          event.currentTarget.closest("[data-slides-main]")?.querySelector<HTMLElement>("[data-slides-shapes]")?.focus({ preventScroll: true });
+        }}
+      />
+    </div>
+  );
+}

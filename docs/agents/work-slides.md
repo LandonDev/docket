@@ -1412,7 +1412,9 @@ How it works:
 - **What changed**, under the stage: each edit's place (a shape, a cell,
   the notes) at 12px muted, then the words before, struck, on `--del-bg`
   and the words after on `--add-bg`. Then Notes, 14/22 under a 12px medium
-  muted "Notes"; a slide with no notes draws no Notes block.
+  muted "Notes": a field he types in where his hand can change the slide
+  ("Notes he types" below), else words, and no Notes block for a slide with
+  none.
 - **The stepper** counts one change a slide (`SlideChange`), in the view's
   order; stepping moves the stage to the slide where the change lands, or
   to the place a removed slide leaves. Accept and Reject call
@@ -1704,6 +1706,26 @@ through the real pdf.js (`src/renderer/src/work/pdf/proof/run.ts` with
 bar with a move tinted where it lands and where it leaves, a shape asked
 about, the push, the PowerPoint switch, a deck with no picture and the
 written line.
+
+
+### Notes he types
+
+Where his hand can change the slide (the view carries `hand`, no suggestion
+changes the slide), its speaker notes under the stage are a field
+(`edit/NotesField.tsx`), shown empty too, with "Add notes" in it. His words
+are kept as the box's are (`HandSession.typeNotes`, `keepNotes`): one
+`notes` edit after a 2 s pause (`TYPING_SAVE_MS`), or at once when he
+leaves the field, presses Escape (which gives the keyboard back to the
+slide), the stage leaves the slide or the tab closes (`flush` waits for
+them). Each edit names the notes it was written over (`was`: what the host
+last took from the field, else what the field began from); the host
+refuses one whose slide's notes changed since (`handEdit`, the box's
+`CHANGED_WHILE`), and the toast says so. His words stay in the field
+(`notesPending`), and his next keep, or the close, writes them over the
+notes as they are now, the other save kept in the deck's versions. While
+his notes wait or travel the save line says saving. A slide an agent's
+suggestion changes, and a deck he cannot edit, draw the notes as words (a
+change to them as the struck and added words), and none when there are none.
 
 ## The show
 

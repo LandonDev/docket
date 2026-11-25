@@ -60,8 +60,8 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('text'), slide, shape, paragraphs: z.array(text).min(1).max(200) }),
   /** One cell of a table, row and column from 0. */
   z.object({ op: z.literal('cell'), slide, shape, row: z.number().int().min(0), col: z.number().int().min(0), text }),
-  /** The slide's speaker notes. */
-  z.object({ op: z.literal('notes'), slide, text }),
+  /** The slide's speaker notes. `was`, his notes field's: the notes it began from; notes that changed since are not written over. */
+  z.object({ op: z.literal('notes'), slide, text, was: z.string().max(100_000).optional() }),
   /** A chart's data; its look is kept. */
   z.object({
     op: z.literal('chart'),

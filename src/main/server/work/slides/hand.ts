@@ -57,10 +57,13 @@ export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signa
       const was = hashFile(base)
       // A box's words go only over the words it was opened on: saved over since (in PowerPoint, from another window),
       // the edit is refused before it is made, and his window keeps the words for Reload.
+      // So do his notes, over the notes his field began from.
       const boxes = ops.filter((op): op is Extract<SlideOp, { op: 'runs' }> => op.op === 'runs' && op.was !== undefined && op.row === undefined)
-      if (boxes.length) {
+      const notes = ops.filter((op): op is Extract<SlideOp, { op: 'notes' }> => op.op === 'notes' && op.was !== undefined)
+      if (boxes.length || notes.length) {
         const info = await outlineAt(ctx, item, base, was, signal)
         if (!boxes.every((op) => sameWords(info, op))) throw new Error(CHANGED_WHILE)
+        if (!notes.every((op) => info.slides.find((s) => s.id === op.slide)?.notes === op.was)) throw new Error(CHANGED_WHILE)
       }
       const hand = lineOf(handKey(ctx, item), dir, was)
       // The files his edit brings (a picture, a video) ride with the deck as one input, and go once they are in the file.
