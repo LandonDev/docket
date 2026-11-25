@@ -1680,25 +1680,29 @@ export default function App() {
   );
 
   const onSelectHistorySession = useCallback(
-    async (sessionId: string, seq?: number) => {
+    /**
+     * `behind`: the app fills the pane under what is on screen (a neighbour after an archive or a delete): not his
+     * choice, so no older door is cancelled and a Work view over the pane stays up.
+     */
+    async (sessionId: string, seq?: number, o: { behind?: boolean } = {}) => {
       // A search hit's row: the transcript picks the request up once its
       // history holds that seq (lib/transcriptJump.ts), whether the thread is
       // already on screen or opens below.
       perfMark("open-click", sessionId);
       // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts);
       // one that waits on its transcript opens only if nothing was chosen meanwhile.
-      const mine = choose();
+      const mine = o.behind ? null : choose();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
-      if (!session || !stillChosen(mine, null, "")) return;
+      if (!session || (mine !== null && !stillChosen(mine, null, ""))) return;
       perfMark("open-ready", sessionId);
       // A tab may have landed during the await (a background open racing an
       // explicit ask for the same thread): show that one, never a second.
       if (focusOpenSession(sessionId)) return;
       // The thread takes the pane: a Work view over it (Tasks, Projects) leaves, as it does for a thread already open
       // (activateTab), so a press on a thread whose tab was closed never opens it under the view.
-      openWorkView(null);
+      if (!o.behind) openWorkView(null);
       selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
@@ -1706,7 +1710,7 @@ export default function App() {
         const { tabs } = workspaceTabsStore.getState();
         if (!tabs.some((tab) => leafIds(tab.layout).includes(parentId))) {
           const parent = await ensureOpenSession(parentId);
-          if (!parent || !stillChosen(mine, null, "")) return;
+          if (!parent || (mine !== null && !stillChosen(mine, null, ""))) return;
           const tab = newTab(parent.id);
           appendTab(tab, parent.cwd);
           setActiveTabId(tab.id);
@@ -1851,7 +1855,7 @@ export default function App() {
         // The chip leaves the strip; its neighbour takes selection as a click
         // on it would, so a neighbour sharing a split takes the pane's focus.
         const next = archiveNeighbour(headerStore.getState().model, sessionId);
-        if (next) void onSelectHistorySession(next.id);
+        if (next) void onSelectHistorySession(next.id, undefined, { behind: true });
       }
       try {
         await setSessionArchived(sessionId, archived);
@@ -1967,7 +1971,7 @@ export default function App() {
       if (plan.activeTabId !== workspaceTabsStore.getState().activeTabId) {
         activateTab(plan.activeTabId);
       }
-      if (plan.select) void onSelectHistorySession(plan.select);
+      if (plan.select) void onSelectHistorySession(plan.select, undefined, { behind: true });
       else {
         const tab = plan.tabs.find((entry) => entry.id === plan.activeTabId);
         setComposerFocused(!!tab && plan.sessions.some((session) => session.id === tab.focusedId));

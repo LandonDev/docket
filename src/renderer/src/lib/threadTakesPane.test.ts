@@ -11,14 +11,21 @@ const app = readFileSync(join(__dirname, "..", "App.tsx"), "utf8");
 const body = (name: string): string => {
   const start = app.indexOf(`const ${name} = useCallback(`);
   expect(start, name).toBeGreaterThan(-1);
-  return app.slice(start, app.indexOf("\n  );\n", start));
+  // To the hook's own dependency list: never into the next handler.
+  return app.slice(start, app.indexOf("\n  }, [", start));
 };
 
 describe("a thread or a draft he opens takes the pane", () => {
   it("the history opener clears the Work view once its open still holds, and claims his choice at the press", () => {
     const opener = body("onSelectHistorySession");
-    expect(opener).toMatch(/const mine = choose\(\)/);
+    expect(opener).toMatch(/const mine = o\.behind \? null : choose\(\)/);
+    expect(opener).toMatch(/if \(!o\.behind\) openWorkView\(null\)/);
     expect(opener.indexOf("openWorkView(null)")).toBeGreaterThan(opener.indexOf('stillChosen(mine, null, "")'));
+  });
+
+  it("the neighbour the app picks after an archive or a delete fills the pane behind: no Work view leaves", () => {
+    expect(app).toMatch(/onSelectHistorySession\(next\.id, undefined, \{ behind: true \}\)/);
+    expect(app).toMatch(/onSelectHistorySession\(plan\.select, undefined, \{ behind: true \}\)/);
   });
 
   it("New thread and a project's New chat clear the Work view and claim his choice", () => {
