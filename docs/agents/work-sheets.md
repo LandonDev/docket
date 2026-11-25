@@ -481,7 +481,10 @@ uses the same words when reading older restore labels.
   gone too is said, and nothing is made. `sheets.test.ts` holds it.
 - **The saved line** (`shell.saved`, `savedLine` in model.ts) is said for
   every sheet: "saving" only once a send has been out 600 ms or his edits
-  waited past the pause (canvas/calm.ts), "saved" with the time the host
+  waited past the pause (canvas/calm.ts); edits are on their way from the
+  150 ms pause's end (`flush` sets `sentAt`), even behind a catch-up the host
+  still answers, so the pause's end never flashes Saving… nor starts a copy's
+  send before the host has his edit (the M11 walk's N1), "saved" with the time the host
   answered, a refusal as "Not saved." with the host's reason in Work's words
   and its press (Reload on an opened Excel file, whose grid no longer matches it;
   Retry elsewhere, where the edits wait), and why a file cannot be changed

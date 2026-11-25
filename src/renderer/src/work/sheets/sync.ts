@@ -610,7 +610,11 @@ export class SheetSync {
     this.settle?.();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    if (this.queue.length > 0) this.run(() => this.send());
+    if (this.queue.length === 0) return;
+    // Handed over to be sent once the pause ends: on their way from now, even behind a catch-up the host still answers,
+    // so the line's clock is the send's (canvas/calm.ts) and never says Saving… at the pause's end.
+    if (this.state.sentAt === null) this.set({ sentAt: Date.now() });
+    this.run(() => this.send());
   }
 
   /**
