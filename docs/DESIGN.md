@@ -1983,7 +1983,8 @@ Around the canvas:
   28px heading over it (12px medium muted) on the rows' title edge, 8px clear of the group above.
   With Show Details on, a 288px pane at the list's right (past 640px of
   the folder's body) shows the one selected file's picture in a 160px box on `stage`,
-  its name, its facts as a two-column list and Open.
+  its name, its facts as a two-column list and Open, the three on one left
+  edge under the picture.
   **Grid** is tiles at 96, 144 or 208px: the file's own picture where its
   host draws one, on `stage` inside the image outline with 4px around it,
   else the kind's glyph large (28, 36, 48px); under it the name on two
@@ -2000,10 +2001,11 @@ Around the canvas:
   76px strip of the folder (60px cells, a small picture or the glyph, the
   selected ones held in `muted`, the one shown where none is); the arrows
   walk, Return opens. **Beside** is the list at 280px (down to 200px as
-  the page narrows) in two-line 44px rows (the name and when; under it
-  the one state in words, a thread's writing as its spinner and "A thread
-  is writing", else who changed it; a row with neither, a folder, is its
-  one line centred) and the selected file at
+  the page narrows) in two-line 44px rows (the name alone on the first line,
+  so it is cut as little as can be; under it the one state in words, a
+  thread's writing as its spinner and "A thread is writing", else who
+  changed it, then when, the day alone ("Sam Ortiz, Nov 18"; the clock only
+  today); a folder with neither is its one line centred) and the selected file at
   its right, the right half empty on `stage` while nothing is selected;
   under 520px the two take turns, a press on a file showing it under a
   32px line led by Back:

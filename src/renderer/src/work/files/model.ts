@@ -567,6 +567,25 @@ export function factOf(entry: Pick<FileEntry, "state" | "changed" | "kind">, whe
   return entry.changed ? when(entry.changed) : "";
 }
 
+const besideDays = new Map<string, Intl.DateTimeFormat>();
+/**
+ * When, on a Beside row's second line: the clock today, else the day alone ("Fri", "Nov 18"), since a row 280px wide
+ * has no room for a clock time it does not need. `now` and `locale` for a test.
+ */
+export function dayWords(ts: number, now = Date.now(), locale?: string): string {
+  const day = (t: number): number => new Date(t).setHours(0, 0, 0, 0);
+  const ago = Math.round((day(now) - day(ts)) / 86_400_000);
+  if (ago === 0) return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(ts);
+  const near = ago > 0 && ago < 7;
+  const key = `${locale ?? ""}:${near}`;
+  let fmt = besideDays.get(key);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, near ? { weekday: "short" } : { month: "short", day: "numeric" });
+    besideDays.set(key, fmt);
+  }
+  return fmt.format(ts);
+}
+
 // ── what is selected ──────────────────────────────────────────────────
 
 /**

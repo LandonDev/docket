@@ -19,7 +19,7 @@ import { ItemSkeleton } from "../canvas/ItemBones";
 import type { SavedAction } from "../canvas/kind";
 import { busyOf } from "./busy";
 import { KindGlyph } from "./KindGlyph";
-import { answersWords, factOf } from "./model";
+import { answersWords, dayWords, factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
 import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
 import { dragProps, heldRow, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
@@ -182,7 +182,8 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
         <div className="grid h-40 w-full max-w-64 shrink-0 place-items-center rounded-md bg-(--stage) p-2 outline-1 -outline-offset-1 outline-(--image-outline)">
           {text ? <TextThumb key={entry.key} from={from!} entry={entry} /> : <Thumb from={from} entry={entry} tile={208} glyph="size-10" />}
         </div>
-        <h3 className="max-w-64 text-center text-sm leading-5 font-semibold break-words text-foreground">{entry.name}</h3>
+        {/* The name, the facts and Open share one left edge under the picture. */}
+        <h3 className="w-full max-w-64 text-sm leading-5 font-semibold break-words text-foreground">{entry.name}</h3>
         {/* Each value 8px after the widest label, so a label and its value read as one pair. */}
         <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
           {factRows(entry).map(([label, value]) => (
@@ -192,9 +193,11 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
             </div>
           ))}
         </dl>
-        <Button variant="secondary" size="sm" onClick={() => onOpen(entry)}>
-          {entry.folder ? "Open Folder" : "Open"}
-        </Button>
+        <div className="w-full max-w-64">
+          <Button variant="secondary" size="sm" onClick={() => onOpen(entry)}>
+            {entry.folder ? "Open Folder" : "Open"}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -430,8 +433,11 @@ export function FileBeside({
     const on = picked.keys.has(entry.key);
     const mine = busyOf(busy, entry.key);
     const over = drag?.over === entry.key;
-    // Under the name: the one state in words, else who changed it; a row with neither is one line, centred.
+    // The name has the first line to itself. Under it: the one state in words, else who changed it, then when ("Sam
+    // Ortiz, Nov 18"); a folder with neither is one line, centred.
     const who = entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by);
+    const when = entry.changed && !entry.folder ? dayWords(entry.changed) : null;
+    const after = when ? <span className="shrink-0 tabular-nums">, {when}</span> : null;
     const second: ReactNode = mine ? (
       // His act on it, as a thread's writing is said: the spinner and its word.
       <>
@@ -446,11 +452,22 @@ export function FileBeside({
         <span className="truncate">{factOf(entry, dayTime)}</span>
       </>
     ) : entry.state?.is === "cloud" ? (
-      <span className="truncate">In the cloud</span>
+      <>
+        <span className="truncate">In the cloud</span>
+        {after}
+      </>
     ) : entry.state ? (
-      <RowState entry={entry} />
+      <>
+        <RowState entry={entry} />
+        {after}
+      </>
     ) : who ? (
-      <span className="truncate">{who}</span>
+      <>
+        <span className="truncate">{who}</span>
+        {after}
+      </>
+    ) : when ? (
+      <span className="tabular-nums">{when}</span>
     ) : null;
     return (
       <div
@@ -483,9 +500,8 @@ export function FileBeside({
                 {mine?.name ?? entry.name}
               </span>
             )}
-            {entry.changed ? <span className="shrink-0 text-xs leading-4 text-muted-foreground tabular-nums">{dayTime(entry.changed)}</span> : null}
           </span>
-          {second ? <span className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">{second}</span> : null}
+          {second ? <span className="flex h-4 min-w-0 items-center text-xs leading-4 text-muted-foreground [&>[data-slot=spinner]]:me-1.5">{second}</span> : null}
         </span>
       </div>
     );

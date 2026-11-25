@@ -4,7 +4,7 @@
  * Beside and its one seat, headings and the details pane, against a stand-in host that only records what it is
  * asked. The rule the walk tests hold: the arrow keys ask for pictures and nothing else.
  */
-import { act, cleanup, configure, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, configure, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FilePage } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -278,6 +278,11 @@ describe("headings and details", () => {
     expect(pane.textContent).toContain("KindPDF");
     await waitFor(() => expect(pane.querySelector("img")).not.toBeNull());
     expect(asked("work.files.thumbs")[0]!.size).toBe(416);
+    // The name, the facts and Open share one left edge: none is centred over the others.
+    const name = pane.querySelector("h3")!;
+    expect(name.className).not.toContain("text-center");
+    expect(name.className.split(" ")).toEqual(expect.arrayContaining(["w-full", "max-w-64"]));
+    expect(within(pane).getByRole("button", { name: "Open" }).parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["w-full", "max-w-64"]));
   });
 });
 
@@ -585,6 +590,23 @@ describe("after the council's first round", () => {
     const folder = document.querySelector<HTMLElement>('[data-files-row="file:env_box:/w/Events"]')!;
     expect(folder.className).toContain("items-center");
     expect(folder.textContent).not.toContain("A thread");
+  });
+
+  it("gives the name the first line to itself, and says who and when under it, the day alone", async () => {
+    const { dayWords } = await import("./model");
+    keepPageLook(PAGE.at, { shape: "beside" });
+    const by = file("Sponsor list 2026 for the Spring LAN.xlsx", "sheet", { by: "Sam Ortiz" });
+    const said = file("Vendor contacts.xlsx", "sheet", { state: { is: "present", who: "Dana" } });
+    draw({ listing: { entries: [FOLDER, by, said], trail: [{ name: "Dummy Esports", at: at("/w") }], loaded: true, more: false, loading: false, error: null, away: false, loadMore: () => undefined, retry: () => undefined } });
+    const lines = (name: string): string[] => [...row(name).querySelectorAll(":scope > span > span")].map((l) => l.textContent ?? "");
+    const day = dayWords(1_700_000_000_000);
+    expect(lines(by.name)).toEqual([by.name, `Sam Ortiz, ${day}`]);
+    // A state's words, then when.
+    expect(lines(said.name)).toEqual([said.name, `Dana is in it, ${day}`]);
+    // No clock time where the day is not today.
+    expect(day).not.toMatch(/\d:\d\d/);
+    // A folder no one is named for keeps one line.
+    expect(lines("Events")).toEqual(["Events"]);
   });
 
   it("narrows Beside's list before the file gets tight", async () => {

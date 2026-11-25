@@ -240,7 +240,8 @@ folder's own, `PageLook`). List; Grid (tiles at 96, 144 or 208px); Columns
 (a column a folder from the place's top down, asked of the host a folder
 each); Gallery (one large read-only preview over a strip of the folder,
 the strip mounting only the cells near what it shows); Beside (the list in
-two-line rows, the selected file at its right). View options is one menu:
+two-line rows, the name alone on the first, under it the state or who and
+the day, `dayWords`; the selected file at its right). View options is one menu:
 rows, tile size, the order (name, when changed, size, kind: the host
 sorts), headings by kind, date or place (`groupEntries`, the list alone
 draws them, and the arrows walk the rows in the grouped order), and Show
