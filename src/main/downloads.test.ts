@@ -101,4 +101,29 @@ describe('a download written part by part', () => {
     expect(await parts.end(lost, false)).toBeNull()
     expect(readdirSync(dir).sort()).toEqual(['Budget (1).xlsx', 'Budget.xlsx'])
   })
+
+  it('never puts a part-written file under its real name: it is written as .download and named only once whole, and its window gone takes it away', async () => {
+    const { mkdtempSync, readFileSync, readdirSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    const parts = partWriter(() => dir)
+    let close!: () => void
+    const id = await parts.begin('Video.mov', (gone) => (close = gone))
+    await parts.part(id, new Uint8Array(5))
+    expect(readdirSync(dir)).toEqual(['Video.mov.download'])
+    // His window closes halfway: nothing is left, under either name.
+    close()
+    await new Promise((ok) => setTimeout(ok, 20))
+    expect(readdirSync(dir)).toEqual([])
+    await expect(parts.part(id, new Uint8Array(1))).rejects.toThrow('not open')
+    // A whole one is named at its end, never over a file that took the name meanwhile.
+    const whole = await parts.begin('Video.mov')
+    await parts.part(whole, new TextEncoder().encode('all'))
+    writeFileSync(join(dir, 'Video.mov'), 'came meanwhile')
+    expect(await parts.end(whole, true)).toBe(join(dir, 'Video (1).mov'))
+    expect(readdirSync(dir).sort()).toEqual(['Video (1).mov', 'Video.mov'])
+    expect(readFileSync(join(dir, 'Video.mov'), 'utf8')).toBe('came meanwhile')
+  })
 })

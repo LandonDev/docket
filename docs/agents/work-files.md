@@ -387,8 +387,10 @@ others open (a library, a folder kept in OneDrive) and the VM only in the window
 only where the window's key may read (`work.files.read` is a read method, so a read-only key downloads too). A folder
 has no bytes, so none is offered with one selected, nor a file the VM keeps in the cloud. Each file goes in turn,
 its row saying "Downloading… 2.1 of 8.4 MB". Each part goes straight to the disk as it comes, never whole in the
-window: main begins the file in Downloads under a safe, free name (`wx`) with the first part, adds each part, and on
-the last answers its path; a part that did not come takes the unfinished file away (`partWriter`, src/main/downloads.ts;
+window: main begins the file in Downloads with the first part under a free ".download" name (`wx`), adds each part,
+and on the last names it under its own safe, free name (a link, never over a file that took the name meanwhile) and
+answers its path; a part that did not come, or the window closed or reloaded mid-file, takes the unfinished file away,
+and a part-written file never wears the real name (`partWriter`, src/main/downloads.ts;
 `files:download-begin`, `-part`, `-end`; a browser at /ui keeps the parts and hands them over as its own download).
 No save panel is shown. Only main's answer is said: one toast says what came ("Downloaded Budget.xlsx", "Downloaded 3
 files", with Show), and what did not, file by file (`downloadAll`). A tab's Download says it in the same toast. Quick Look is a

@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { open, rm, writeFile, type FileHandle } from 'node:fs/promises'
+import { link, open, rename, rm, writeFile, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { freeName, safeFileName } from '@shared/fileName'
 
@@ -20,49 +20,83 @@ export { freeName, safeFileName } from '@shared/fileName'
 
 /**
  * A download written part by part as the window reads it (the Files place's Download): begun under a safe, free
- * name in `dir`, each part added in turn, and ended kept (its path) or taken away, so a file of any size never sits
- * whole in the window and "Downloaded" is said only once the file is on the disk. A part for an id it never began,
- * or one already ended, is refused.
+ * name in `dir` with ".download" after it, each part added in turn, and ended kept (named then: the file under its
+ * own free name, its path answered) or taken away, so a file of any size never sits whole in the window, "Downloaded"
+ * is said only once the file is on the disk, and a part-written file never wears the real name. `watch` hands the
+ * caller the way to take it away when the window that reads it goes (closed or reloaded mid-file). A part for an id
+ * it never began, or one already ended, is refused.
  */
 export function partWriter(dir: () => string): {
-  begin(name: unknown): Promise<string>
+  begin(name: unknown, watch?: (gone: () => void) => (() => void) | void): Promise<string>
   part(id: unknown, bytes: unknown): Promise<void>
   end(id: unknown, keep: unknown): Promise<string | null>
 } {
-  const writing = new Map<string, { path: string; file: FileHandle }>()
-  const of = (id: unknown): { path: string; file: FileHandle } => {
+  const writing = new Map<string, { at: string; name: string; path: string; file: FileHandle; unwatch?: () => void }>()
+  const of = (id: unknown): { at: string; name: string; path: string; file: FileHandle; unwatch?: () => void } => {
     const one = typeof id === 'string' ? writing.get(id) : undefined
     if (!one) throw new Error('that download is not open')
     return one
   }
+  const end = async (id: unknown, keep: unknown): Promise<string | null> => {
+    const one = of(id)
+    writing.delete(id as string)
+    one.unwatch?.()
+    await one.file.close()
+    if (keep === true) {
+      // Named under a name free now; `link` never goes over a file that took it since the check.
+      for (;;) {
+        const path = join(one.at, freeName(one.name, (candidate) => existsSync(join(one.at, candidate))))
+        try {
+          await link(one.path, path)
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue
+          // A disk with no links (FAT): renamed, the name checked free a moment ago.
+          await rename(one.path, path)
+          return path
+        }
+        await rm(one.path, { force: true })
+        return path
+      }
+    }
+    await rm(one.path, { force: true })
+    return null
+  }
   return {
-    async begin(name) {
+    async begin(name, watch) {
       const at = dir()
-      const path = join(at, freeName(safeFileName(String(name ?? '')), (candidate) => existsSync(join(at, candidate))))
+      const safe = safeFileName(String(name ?? ''))
+      const path = join(at, freeName(`${safe}.download`, (candidate) => existsSync(join(at, candidate))))
       // `wx`: never over a file that appeared since the check.
       const file = await open(path, 'wx')
       const id = randomUUID()
-      writing.set(id, { path, file })
+      writing.set(id, { at, name: safe, path, file })
+      const unwatch = watch?.(() => void end(id, false).catch(() => undefined))
+      if (unwatch) writing.get(id)!.unwatch = unwatch
       return id
     },
     async part(id, bytes) {
       if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error('nothing to save')
       await of(id).file.write(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
     },
-    async end(id, keep) {
-      const one = of(id)
-      writing.delete(id as string)
-      await one.file.close()
-      if (keep === true) return one.path
-      await rm(one.path, { force: true })
-      return null
-    },
+    end,
   }
 }
 
 export function registerDownloads(): void {
   const parts = partWriter(() => app.getPath('downloads'))
-  ipcMain.handle('files:download-begin', (_e, name: unknown) => parts.begin(name))
+  // A window closed or reloaded mid-file takes its part-written file away.
+  ipcMain.handle('files:download-begin', (e, name: unknown) =>
+    parts.begin(name, (gone) => {
+      const sender = e.sender
+      sender.once('destroyed', gone)
+      sender.once('did-navigate', gone)
+      return () => {
+        if (sender.isDestroyed()) return
+        sender.off('destroyed', gone)
+        sender.off('did-navigate', gone)
+      }
+    })
+  )
   ipcMain.handle('files:download-part', (_e, id: unknown, bytes: unknown) => parts.part(id, bytes))
   ipcMain.handle('files:download-end', (_e, id: unknown, keep: unknown) => parts.end(id, keep))
   ipcMain.handle('files:save-download', async (_e, name: unknown, bytes: unknown): Promise<string> => {
