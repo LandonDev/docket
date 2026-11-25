@@ -53,7 +53,7 @@ import {
 import { aheadTime, changesOf, isScheduled, laterChoices, type Piece } from "./waiting";
 import { heldWhen } from "./when";
 import { unreadDown, useMailUnread } from "./MailUnread";
-import { useLifeosStatusHeard } from "../shell/lifeos";
+import { refreshLifeos, useLifeosStatusHeard } from "../shell/lifeos";
 
 /**
  * A held item whole, with its verbs (docs/DESIGN.md "The Outbox"): what the
@@ -138,17 +138,25 @@ export function DetailFacts({ item, job, when, onOpenSession, extra }: { item: H
  * press approves what he read (the hold review's finding 28). Every other kind is read whole too, for what only `get`
  * says (the thread's first words for Show changes, a reply that came in), but its Send never waits on that read.
  */
-function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; error: unknown; retry(): void } {
+function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; error: unknown; retry(): Promise<void> } {
   const gate = item.kind === "mail.send";
   const key = JSON.stringify([item.environmentId, item.ref, item.updatedAt]);
   const [read, setRead] = useState<{ key: string; item: HostItem | null; error?: unknown } | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  // `kept`: his Retry, which keeps the failed read (the note, its Retry spinning) until the answer replaces it. A read the
+  // detail asks by itself (another item, the host's LifeOS back) draws the quote's bone meanwhile.
+  const [attempt, setAttempt] = useState({ n: 0, kept: false });
+  const pressing = useRef(false);
   useEffect(() => {
     let live = true;
-    setRead(null);
+    if (!attempt.kept) setRead(null);
+    const answer = (next: { key: string; item: HostItem | null; error?: unknown }): void => {
+      if (!live) return;
+      pressing.current = false;
+      setRead(next);
+    };
     fetchDetail(item).then(
-      (whole) => live && setRead({ key, item: { ...item, ...whole, environmentId: item.environmentId } as HostItem }),
-      (error: unknown) => live && setRead({ key, item: null, error }),
+      (whole) => answer({ key, item: { ...item, ...whole, environmentId: item.environmentId } as HostItem }),
+      (error: unknown) => answer({ key, item: null, error }),
     );
     return () => {
       live = false;
@@ -158,13 +166,21 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
   const mine = read?.key === key ? read : null;
   const failed = gate && !!mine && !mine.item;
   // A mail's read its host's LifeOS failed is read again once that host says LifeOS is back (the note goes by itself).
+  // Not while his Retry is out: that read is already asked, and its note stays until it answers.
   const status = useLifeosStatusHeard(gate ? item.environmentId : null);
   useEffect(() => {
-    if (failed && status?.lifeos.state === "connected") setAttempt((n) => n + 1);
+    if (failed && status?.lifeos.state === "connected" && !pressing.current) setAttempt((a) => ({ n: a.n + 1, kept: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a fresh answer of the host, not the failure itself
   }, [status]);
+  // His Retry asks the host's LifeOS status first (a silence it clears, a sign-out it names), then the item.
+  const env = item.environmentId;
+  const retry = async (): Promise<void> => {
+    pressing.current = true;
+    await refreshLifeos(env).catch(() => {});
+    setAttempt((a) => ({ n: a.n + 1, kept: true }));
+  };
   // A kind whose read failed still shows as listed: only a mail's Send waits on it.
-  return { shown: mine?.item ?? item, ready: gate ? !!mine?.item : true, failed, error: mine?.error, retry: () => setAttempt((n) => n + 1) };
+  return { shown: mine?.item ?? item, ready: gate ? !!mine?.item : true, failed, error: mine?.error, retry };
 }
 
 /** A note under the sentence: one line, its 14px glyph in the column the title's text starts on. */
@@ -317,7 +333,7 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
   unread?: boolean;
   /** why the mail's read failed: its cause is said by the LifeOS rule (`useMailUnread`) */
   unreadError?: unknown;
-  onRetry?: () => void;
+  onRetry?: () => void | Promise<void>;
   showChanges?: boolean;
   onShowChanges?: (on: boolean) => void;
   noteRef?: RefObject<HTMLDivElement | null>;
@@ -369,8 +385,8 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
         <span data-mail-unread={said.cause ?? "failed"}>
           {said.words}
           {said.action ? (
-            <Button variant="ghost" size="xs" className="-my-0.5 ms-1" onClick={said.action.run}>
-              {said.action.label}
+            <Button variant="ghost" size="xs" className="-my-0.5 ms-1" disabled={said.busy} onClick={said.action.run}>
+              <BusyLabel busy={said.busy} label={said.action.label} />
             </Button>
           ) : null}
           {said.elsewhere ? <span className="block">{said.elsewhere}</span> : null}
