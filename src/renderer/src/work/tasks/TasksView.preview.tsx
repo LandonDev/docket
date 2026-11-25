@@ -41,7 +41,7 @@ export function TasksPreview({ state = "list" }: { state?: State }) {
   if (!ready) {
     ready = true;
     const rows = state === "loading" ? undefined : state === "empty" ? [] : state === "long" ? LONG : TASKS;
-    standUpView("tasks", { "tasks:list": rows, "projects:list": PROJECTS, "tasks:get": (args) => (args.id === "d1" ? DONE : DETAIL), "workLinks:byEntity": [] });
+    standUpView("tasks", { "tasks:list": rows, "projects:list": PROJECTS, "tasks:get": (args: Record<string, unknown>) => (args.id === "d1" ? DONE : DETAIL), "workLinks:byEntity": [] });
     // The visit opens on the sheet the workspace kept.
     if (state === "sheet") keepPlace(JOB.id, "tasks", { task: "t6" });
     // Work Search's Return on a done task: the view asked for it by id.
