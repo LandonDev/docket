@@ -282,11 +282,12 @@ public final class WorkHost: CaptureHost {
         return out
     }
 
-    /// Discard; `reason` is his line for the thread ("Why, for the thread"), sent only when he wrote one.
+    /// Discard; `reason` is his line for the thread ("Why, for the thread"), sent only when he wrote one. `rev` is the
+    /// item's `updatedAt` as his screen read it: one that moved since is not discarded on this press.
     @discardableResult
     public func discard(_ item: OutboxItem, reason: String? = nil) async throws -> OutboxItem {
         let words = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let out = try await socket.request(Methods.WorkOutboxDiscard.self, .init(ref: item.ref, reason: words?.isEmpty == false ? String(words!.prefix(500)) : nil, via: .phone))
+        let out = try await socket.request(Methods.WorkOutboxDiscard.self, .init(ref: item.ref, reason: words?.isEmpty == false ? String(words!.prefix(500)) : nil, via: .phone, rev: item.updatedAt))
         merge(out)
         return out
     }

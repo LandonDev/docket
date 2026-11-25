@@ -236,10 +236,44 @@ public enum RequestSheetModel {
         row.open && row.receipt != nil && row.result == nil
     }
 
-    /// The rows that start ticked: every one he may press, but one that changed since the thread asked, which
-    /// starts unticked until he opens it (`request.view`) and ticks it himself.
+    /// The ticks a sheet starts with, as receipt ids: every row he may press as drawn, but one that changed since
+    /// the thread asked, which has no receipt until he opens it (`request.view`) and ticks it himself. A tick is a
+    /// receipt, never an item: the press names exactly what he saw ticked.
     public nonisolated static func initialTicks(_ request: OutboxRequest) -> Set<String> {
-        Set(request.rows.filter { pressable($0) && !$0.changed }.map { OutboxModel.key($0.ref) })
+        Set(request.rows.filter { pressable($0) && !$0.changed }.compactMap(\.receipt))
+    }
+
+    /// The ticks that still hold on the request as drawn now: a receipt no pressable row carries any more (the row
+    /// changed, moved on to a fresh receipt, was decided elsewhere) loses its tick; a fresh receipt starts unticked.
+    public nonisolated static func reconcile(_ ticks: Set<String>, with request: OutboxRequest) -> Set<String> {
+        ticks.intersection(request.rows.filter(pressable).compactMap(\.receipt))
+    }
+
+    /// Whether a row is ticked: its receipt as drawn is among the ticks.
+    public nonisolated static func ticked(_ row: OutboxRequestRow, _ ticks: Set<String>) -> Bool {
+        pressable(row) && row.receipt.map(ticks.contains) == true
+    }
+
+    /// The request as the sheet draws it: each row he opened through `request.view` in its fresh form, while the
+    /// host's own row still waits at that same revision; a reload that moved the item drops the opened form (and so
+    /// its receipt and tick).
+    public nonisolated static func merged(_ request: OutboxRequest, opened: [String: OutboxRequestRow]) -> OutboxRequest {
+        guard !opened.isEmpty else { return request }
+        let rows = request.rows.map { row -> OutboxRequestRow in
+            guard let fresh = opened[OutboxModel.key(row.ref)], row.open, row.result == nil, let now = row.item, fresh.item?.updatedAt == now.updatedAt else { return row }
+            return fresh
+        }
+        return OutboxRequest(id: request.id, n: request.n, sessionId: request.sessionId, workspaceId: request.workspaceId, sector: request.sector, quote: request.quote, head: request.head, state: request.state, why: request.why,
+                             createdAt: request.createdAt, expiresAt: request.expiresAt, answeredBy: request.answeredBy, answeredAt: request.answeredAt, rows: rows)
+    }
+
+    /// His Send as it stood at the press: exactly the ticked rows' receipts, in the request's order, frozen for the
+    /// five seconds; nil with nothing ticked. A tick moved or a row reloaded during the wait changes nothing here.
+    public nonisolated static func freeze(_ request: OutboxRequest, ticks: Set<String>, environmentId: String, now: Date = .now, calendar: Calendar = .current) -> RequestPress? {
+        let held = reconcile(ticks, with: request)
+        let rows = request.rows.filter { ticked($0, held) }
+        guard !rows.isEmpty else { return nil }
+        return RequestPress(environmentId: environmentId, requestId: request.id, receipts: rows.compactMap(\.receipt), word: pressWord(request, ticked: held), lines: pendingLines(request, ticked: held, now: now, calendar: calendar))
     }
 
     /// What a row does, in his words: the item's act, and under it what it is about, "Changed since asked", when a
@@ -256,7 +290,7 @@ public enum RequestSheetModel {
 
     /// The sheet's primary word: "Send 9", or "Approve 3" when the ticked rows' actions mix.
     public nonisolated static func pressWord(_ request: OutboxRequest, ticked: Set<String>) -> String {
-        let rows = request.rows.filter { ticked.contains(OutboxModel.key($0.ref)) }
+        let rows = request.rows.filter { self.ticked($0, ticked) }
         let actions = Set(rows.map(\.do.rawValue))
         let word: String = switch actions.count == 1 ? rows.first?.do : nil {
         case .discard?: "Discard"
@@ -269,7 +303,7 @@ public enum RequestSheetModel {
 
     /// The capsule's line while his press waits its five seconds: each ticked row's action, target and time.
     public nonisolated static func pendingLines(_ request: OutboxRequest, ticked: Set<String>, now: Date = .now, calendar: Calendar = .current) -> [String] {
-        request.rows.filter { ticked.contains(OutboxModel.key($0.ref)) }.compactMap { row in
+        request.rows.filter { self.ticked($0, ticked) }.compactMap { row in
             guard let item = row.item else { return nil }
             switch row.do {
             case .discard: return "Discarding \(OutboxModel.rowWords(item).title)"
@@ -312,6 +346,103 @@ public enum RequestSheetModel {
         case .declined: return "Not now. The items still wait in your Outbox."
         case .void: return request.why.map { "Ran out: \($0)" } ?? "Ran out. The items still wait in your Outbox."
         case .unknown: return nil
+        }
+    }
+}
+
+/// His Send on a request's sheet, frozen at the press: the host, the request, exactly the receipts he had ticked,
+/// and the words the wait shows.
+public struct RequestPress: Sendable, Hashable {
+    public var environmentId: String
+    public var requestId: String
+    public var receipts: [String]
+    /// "Send 2", "Approve 3"
+    public var word: String
+    /// Each ticked row's action, target and time.
+    public var lines: [String]
+
+    public init(environmentId: String, requestId: String, receipts: [String], word: String, lines: [String]) {
+        self.environmentId = environmentId
+        self.requestId = requestId
+        self.receipts = receipts
+        self.word = word
+        self.lines = lines
+    }
+
+    /// "Sending 2", "Approving 3": the capsule's line.
+    public var waitingLine: String {
+        let parts = word.split(separator: " ")
+        let verb = switch parts.first {
+        case "Send": "Sending"
+        case "Discard": "Discarding"
+        case "Schedule": "Scheduling"
+        default: "Approving"
+        }
+        return "\(verb) \(parts.last ?? "")"
+    }
+}
+
+/// The phone's five seconds for a request's Send (Outbox 2, the review's finding 3): the press is frozen when it
+/// starts, the host hears nothing until the seconds end, Undo drops it, and nothing sends it early: the sheet
+/// closing or the app leaving the screen leaves it to wait out its own time. One press at a time per request; its
+/// answer, or why it failed, is kept by request id for the sheet that shows it (open now or opened later).
+@MainActor @Observable
+public final class RequestPressWait {
+    public enum Outcome: Sendable, Hashable {
+        case answered(OutboxRequest)
+        case failed(String)
+    }
+
+    /// The presses waiting their seconds, by request id.
+    public private(set) var pending: [String: RequestPress] = [:]
+    /// The presses on their way to the host.
+    public private(set) var sending: Set<String> = []
+    /// What each press's host answered, by request id.
+    public private(set) var outcomes: [String: Outcome] = [:]
+
+    @ObservationIgnored private var waits: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private let sleep: @Sendable () async throws -> Void
+
+    /// `seconds`: the wait; `sleep` stands in for it in a test.
+    public init(seconds: Double = 5, sleep: (@Sendable () async throws -> Void)? = nil) {
+        self.sleep = sleep ?? { try await Task.sleep(for: .seconds(seconds)) }
+    }
+
+    /// Starts the wait for a frozen press. When it ends (and only then) `answer` runs with exactly its receipts.
+    /// A second press on the same request while one waits is ignored.
+    public func start(_ press: RequestPress, answer: @escaping @MainActor (RequestPress) async throws -> OutboxRequest) {
+        guard pending[press.requestId] == nil, !sending.contains(press.requestId) else { return }
+        outcomes[press.requestId] = nil
+        pending[press.requestId] = press
+        let sleep = self.sleep
+        waits[press.requestId] = Task { [weak self] in
+            do { try await sleep() } catch { return }
+            guard !Task.isCancelled else { return }
+            await self?.commit(press, answer: answer)
+        }
+    }
+
+    /// Undo: the press never reaches the host.
+    public func undo(_ requestId: String) {
+        waits.removeValue(forKey: requestId)?.cancel()
+        pending[requestId] = nil
+    }
+
+    /// The sheet took in an outcome: it is not offered again.
+    public func clear(_ requestId: String) {
+        outcomes[requestId] = nil
+    }
+
+    private func commit(_ press: RequestPress, answer: @MainActor (RequestPress) async throws -> OutboxRequest) async {
+        guard pending[press.requestId] == press else { return }
+        pending[press.requestId] = nil
+        waits[press.requestId] = nil
+        sending.insert(press.requestId)
+        defer { sending.remove(press.requestId) }
+        do {
+            outcomes[press.requestId] = .answered(try await answer(press))
+        } catch {
+            outcomes[press.requestId] = .failed(ActionError.wrap(error).message)
         }
     }
 }

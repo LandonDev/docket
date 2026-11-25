@@ -2403,12 +2403,17 @@ phone does everything the desktop does. What milestone 46 built:
   "Changed since asked" for a row that changed since the ask, which starts
   unticked and can be ticked only once he opens it (the chevron pushes the
   item as it will go, and opening it asks the host for a fresh receipt,
-  `request.view`). The foot is two wide glass capsules, Not Now and "Send
-  N" ("Approve N" when the ticked actions mix). Send waits the phone's
-  five seconds: the foot becomes the undo capsule ("Sending 9", Undo), each
-  ticked row's line says its action, target and time ("Sending to Alex Kim
-  now"), and the rows left out dim; leaving the sheet or the app sends the
-  waiting press at once. Then each row's result lands in its line (a muted
+  `request.view`). A tick is the receipt the host issued for the row as
+  drawn, never the item: a reload that moves a row's receipt or marks it
+  changed clears its tick, and a row opened through `request.view` starts
+  unticked until he ticks it. The foot is two wide glass capsules, Not Now
+  and "Send N" ("Approve N" when the ticked actions mix). Send freezes
+  exactly the ticked receipts and waits the phone's five seconds: the foot
+  becomes the undo capsule ("Sending 9", Undo), each ticked row's line says
+  its action, target and time ("Sending to Alex Kim now"), and the rows
+  left out dim. Closing the sheet or leaving the app never sends it early:
+  the frozen press waits out its five seconds (`RequestPresses`), and a
+  sheet opened again shows it waiting, then its answer. Then each row's result lands in its line (a muted
   check and "Queued in LifeOS", "Posted", "Discarded", "Scheduled", or the
   destructive dot and the reason) and the foot is Done. Not Now declines
   and closes. A key without approve reads why and cannot press. Nothing

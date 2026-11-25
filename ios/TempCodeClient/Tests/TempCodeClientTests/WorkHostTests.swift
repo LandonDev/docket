@@ -176,6 +176,26 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(rig.work.awayEnd?.until == 3_000)
     }
 
+    @Test func `every phone press on one item binds the revision its screen read`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        let shown = try JSONDecoder().decode(OutboxItem.self, from: Data(item("a", at: 42).utf8))
+        let discarded = Task { try await rig.work.discard(shown, reason: "  Wrong date  ") }
+        let discard = try #require(await rig.request(fake, "work.outbox.discard"))
+        let params = try #require(fake.sentRequests.first { $0.id == discard }?.params)
+        #expect(params == .object(["ref": .object(["at": .string("host"), "id": .string("a")]), "reason": .string("Wrong date"), "via": .string("phone"), "rev": .number(42)]))
+        fake.answer(id: discard, result: item("a", state: "discarded", at: 43))
+        #expect(try await discarded.value.state == .discarded)
+        for (method, press) in [("work.outbox.send", { try await rig.work.send(shown) }), ("work.outbox.cancelSend", { try await rig.work.cancelSend(shown) }), ("work.outbox.sendNow", { try await rig.work.sendNow(shown) })] as [(String, () async throws -> OutboxItem)] {
+            let pressed = Task { try await press() }
+            let id = try #require(await rig.request(fake, method))
+            guard case .object(let sent)? = fake.sentRequests.first(where: { $0.id == id })?.params else { Issue.record("\(method) sent no params"); continue }
+            #expect(sent["rev"] == .number(42), "\(method)")
+            fake.answer(id: id, result: item("a", at: 44))
+            _ = try await pressed.value
+        }
+    }
+
     @Test func `a voice note reads the capture state, then files with its key and Unsorted as null`() async throws {
         let rig = try WorkRig()
         let fake = await rig.open()

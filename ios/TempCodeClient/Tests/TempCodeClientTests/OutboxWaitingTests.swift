@@ -77,8 +77,10 @@ import TempCodeContract
         OutboxRequest(id: id, n: 1, sessionId: "t1", workspaceId: "w1", sector: "purdue", quote: "send the roster mails", head: "Send \(rows.count) mails", state: state, createdAt: at, expiresAt: at + 86_400_000, answeredBy: nil, answeredAt: answeredAt, rows: rows)
     }
 
-    private func row(_ item: OutboxItem, do action: OutboxRequestRow.Do = .send, changed: Bool = false, receipt: String? = "r", open: Bool = true, at: Int? = nil, result: OutboxRequestRow.Result? = nil) -> OutboxRequestRow {
-        OutboxRequestRow(ref: item.ref, do: action, at: at, item: item, changed: changed, open: open, receipt: receipt, result: result)
+    /// A request's row; its receipt is "r-<id>" unless one is named (nil: none issued).
+    private func row(_ item: OutboxItem, do action: OutboxRequestRow.Do = .send, changed: Bool = false, receipt: String? = "", open: Bool = true, at: Int? = nil, result: OutboxRequestRow.Result? = nil) -> OutboxRequestRow {
+        let id = if case .host(let ref) = item.ref { ref.id } else { "x" }
+        return OutboxRequestRow(ref: item.ref, do: action, at: at, item: item, changed: changed, open: open, receipt: receipt == "" ? "r-\(id)" : receipt, result: result)
     }
 
     @Test func waitingIsAskedNotSentStartsSoonThreadBandsByJobThenScheduled() {
@@ -162,7 +164,8 @@ import TempCodeContract
     @Test func aRowThatChangedSinceAskedStartsUnticked() {
         let a = item("a", at: 1), b = item("b", at: 2), c = item("c", at: 3), d = item("d", at: 4)
         let req = request("q", rows: [row(a), row(b, changed: true, receipt: nil), row(c, open: false), row(d, changed: true)])
-        #expect(RequestSheetModel.initialTicks(req) == ["host:a"])
+        // A tick is a receipt: the changed row with a receipt (d) is pressable once opened, never ticked at the start.
+        #expect(RequestSheetModel.initialTicks(req) == ["r-a"])
         #expect(RequestSheetModel.rowWords(req.rows[1]).line == "Changed since asked")
         #expect(RequestSheetModel.rowWords(req.rows[2]).line == "No longer waits")
         #expect(RequestSheetModel.pressable(req.rows[3]))
@@ -173,13 +176,126 @@ import TempCodeContract
         let a = item("Dana", at: 1), b = item("Sam", at: 2)
         let laterAt = ms(25, 8)
         let req = request("q", rows: [row(a), row(b, do: .later, at: laterAt)])
-        #expect(RequestSheetModel.pressWord(req, ticked: ["host:Dana"]) == "Send 1")
-        #expect(RequestSheetModel.pressWord(req, ticked: ["host:Dana", "host:Sam"]) == "Approve 2")
+        #expect(RequestSheetModel.pressWord(req, ticked: ["r-Dana"]) == "Send 1")
+        #expect(RequestSheetModel.pressWord(req, ticked: ["r-Dana", "r-Sam"]) == "Approve 2")
+        // An item's key is not a tick.
+        #expect(RequestSheetModel.pressWord(req, ticked: ["host:Dana"]) == "Approve 0")
         #expect(RequestSheetModel.rowWords(req.rows[1], now: now, calendar: calendar).line == "Goes Wed 8:00 AM")
-        #expect(RequestSheetModel.pendingLines(req, ticked: ["host:Dana", "host:Sam"], now: now, calendar: calendar) == ["Sending to Dana now", "Sending to Sam Wed 8:00 AM"])
+        #expect(RequestSheetModel.pendingLines(req, ticked: ["r-Dana", "r-Sam"], now: now, calendar: calendar) == ["Sending to Dana now", "Sending to Sam Wed 8:00 AM"])
         let done = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, do: .later, at: laterAt, result: .init(ok: false, error: "Teams did not answer"))], state: .answered, answeredAt: 1)
         #expect(RequestSheetModel.resultsHead(done) == "Sent 1, 1 not sent")
         #expect(RequestSheetModel.resultWords(done.rows[1])?.text == "Teams did not answer")
         #expect(RequestSheetModel.closedLine(done, time: { _ in "9:41 AM" }) == "By you at 9:41 AM")
+    }
+
+    // MARK: - ticks bound to receipts (the review's finding 3)
+
+    @Test func aReloadThatChangesARowsReceiptOrMarksItChangedClearsItsTick() {
+        let a = item("a", at: 1), b = item("b", at: 2), c = item("c", at: 3)
+        let first = request("q", rows: [row(a), row(b), row(c)])
+        let ticks = RequestSheetModel.initialTicks(first)
+        #expect(ticks == ["r-a", "r-b", "r-c"])
+        // The reload: a's receipt moved on (a fresh one for the same row), b changed and has none, c went elsewhere.
+        let again = request("q", rows: [row(a, receipt: "r-a2"), row(b, changed: true, receipt: nil), row(c, open: false)])
+        #expect(RequestSheetModel.reconcile(ticks, with: again).isEmpty)
+        #expect(RequestSheetModel.freeze(again, ticks: ticks, environmentId: "box") == nil)
+        #expect(RequestSheetModel.pressWord(again, ticked: ticks) == "Approve 0")
+    }
+
+    @Test func aRowOpenedThroughViewStartsUntickedUntilHeTicksIt() {
+        let a = item("a", at: 1), b = item("b", at: 7)
+        let req = request("q", rows: [row(a), row(b, changed: true, receipt: nil)])
+        var ticks = RequestSheetModel.initialTicks(req)
+        // He opens b: the host issues a fresh receipt at what he sees now; it is drawn, not ticked.
+        let opened = ["host:b": row(b, receipt: "r-b-seen")]
+        let drawn = RequestSheetModel.merged(req, opened: opened)
+        #expect(drawn.rows[1].receipt == "r-b-seen")
+        #expect(RequestSheetModel.pressable(drawn.rows[1]))
+        #expect(!RequestSheetModel.ticked(drawn.rows[1], RequestSheetModel.reconcile(ticks, with: drawn)))
+        #expect(RequestSheetModel.freeze(drawn, ticks: ticks, environmentId: "box")?.receipts == ["r-a"])
+        // His own tick on it, then the press names both receipts in the request's order.
+        ticks.insert("r-b-seen")
+        #expect(RequestSheetModel.freeze(drawn, ticks: ticks, environmentId: "box")?.receipts == ["r-a", "r-b-seen"])
+        // A reload that moved b again drops the opened form, its receipt and so its tick.
+        let moved = request("q", rows: [row(a), row(item("b", at: 9), changed: true, receipt: nil)])
+        let redrawn = RequestSheetModel.merged(moved, opened: opened)
+        #expect(redrawn.rows[1].receipt == nil)
+        #expect(RequestSheetModel.reconcile(ticks, with: redrawn) == ["r-a"])
+    }
+
+    @Test func thePressIsFrozenAtSendAndATickMovedDuringTheWaitChangesNothing() {
+        let a = item("Dana", at: 1), b = item("Sam", at: 2)
+        let req = request("q", rows: [row(a), row(b)])
+        var ticks: Set<String> = ["r-Dana"]
+        let press = RequestSheetModel.freeze(req, ticks: ticks, environmentId: "box", now: now, calendar: calendar)
+        ticks.insert("r-Sam")
+        #expect(press == RequestPress(environmentId: "box", requestId: "q", receipts: ["r-Dana"], word: "Send 1", lines: ["Sending to Dana now"]))
+        #expect(press?.waitingLine == "Sending 1")
+    }
+}
+
+/// A gate a test opens: the wait's stand-in for its five seconds.
+private actor Gate {
+    private var open = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if open { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func release() {
+        open = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
+@Suite(.serialized) @MainActor struct RequestPressWaitTests {
+    private let press = RequestPress(environmentId: "box", requestId: "q", receipts: ["r-a", "r-b"], word: "Send 2", lines: [])
+    private func answered() -> OutboxRequest {
+        OutboxRequest(id: "q", n: 1, sessionId: "t1", workspaceId: "w1", sector: "purdue", quote: "send them", head: "Send 2 mails", state: .answered, createdAt: 1, expiresAt: 2, answeredBy: "owner:remote", answeredAt: 3, rows: [])
+    }
+
+    private func settle(_ until: () -> Bool) async {
+        for _ in 0..<500 where !until() { try? await Task.sleep(for: .milliseconds(2)) }
+    }
+
+    @Test func nothingReachesTheHostUntilTheSecondsEndAndThenExactlyTheFrozenReceipts() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var sent: [[String]] = []
+        wait.start(press) { p in sent.append(p.receipts); return self.answered() }
+        // The sheet closing or the app leaving the screen has no way to send it early: nothing goes while it waits.
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent.isEmpty)
+        #expect(wait.pending["q"] == press)
+        // A second press on the same request meanwhile is ignored.
+        wait.start(RequestPress(environmentId: "box", requestId: "q", receipts: ["r-c"], word: "Send 1", lines: [])) { p in sent.append(p.receipts); return self.answered() }
+        await gate.release()
+        await settle { wait.outcomes["q"] != nil }
+        #expect(sent == [["r-a", "r-b"]])
+        #expect(wait.pending["q"] == nil)
+        #expect(wait.outcomes["q"] == .answered(answered()))
+    }
+
+    @Test func undoDropsThePressAndTheHostNeverHearsIt() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var sent = 0
+        wait.start(press) { _ in sent += 1; return self.answered() }
+        wait.undo("q")
+        await gate.release()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent == 0)
+        #expect(wait.pending.isEmpty)
+        #expect(wait.outcomes.isEmpty)
+    }
+
+    @Test func aRefusalIsKeptForTheSheetThatShowsIt() async {
+        let wait = RequestPressWait(sleep: {})
+        wait.start(press) { _ in throw ActionError.refused(message: "refused: that receipt is not this request's", forbidden: false) }
+        await settle { wait.outcomes["q"] != nil }
+        #expect(wait.outcomes["q"] == .failed("refused: that receipt is not this request's"))
+        wait.clear("q")
+        #expect(wait.outcomes.isEmpty)
     }
 }

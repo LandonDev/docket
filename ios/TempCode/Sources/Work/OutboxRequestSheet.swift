@@ -39,35 +39,44 @@ struct OutboxRequestSheetHost: ViewModifier {
     }
 }
 
+/// The phone's one wait for a request's Send, kept outside any sheet: a sheet closed or the app gone to the
+/// background never sends a press early; it goes when its five seconds end, or never if he pressed Undo.
+@MainActor
+enum RequestPresses {
+    static let wait = RequestPressWait(seconds: OutboxPresses.waitSeconds)
+}
+
 /// A thread's request for his press (Outbox 2's phone.html, "The request"): what goes in one sentence, his own
-/// words the thread quoted, a row per item with its tick, and Not Now and Send N at the foot. A row that changed
-/// since the thread asked starts unticked and says so; opening it asks the host for a fresh receipt
-/// (`request.view`), and he ticks it himself. Send waits the phone's five seconds with Undo, each ticked row saying
-/// what it does, to whom and when; then each row's result lands in place. Held is not Needs you: nothing here wears
-/// the warning colour.
+/// words the thread quoted, a row per item with its tick, and Not Now and Send N at the foot. A tick is the
+/// receipt the host issued for the row as drawn (`RequestSheetModel`): a reload that moves a row's receipt or marks
+/// it changed clears its tick, and a row that changed since the thread asked starts unticked; opening it asks the
+/// host for a fresh receipt (`request.view`), which starts unticked too until he ticks it. Send freezes exactly the
+/// ticked receipts and waits the phone's five seconds with Undo (`RequestPresses`), each ticked row saying what it
+/// does, to whom and when; then each row's result lands in place. Held is not Needs you: nothing here wears the
+/// warning colour.
 struct OutboxRequestSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let client: EnvironmentClient
     let requestId: String
 
-    private enum Phase: Equatable { case choosing, waiting, sending, done }
+    private enum Phase: Equatable { case choosing, waiting(RequestPress), sending, done }
 
     @State private var request: OutboxRequest?
     @State private var loadError: String?
+    /// His ticks, as receipt ids. Only those still drawn count (`reconcile`).
     @State private var ticks: Set<String> = []
     /// Rows he opened since the sheet loaded, with the fresh receipt the host gave each.
     @State private var fresh: [String: OutboxRequestRow] = [:]
-    @State private var phase: Phase = .choosing
-    @State private var wait: Task<Void, Never>?
     @State private var pressError: String?
+
+    private var wait: RequestPressWait { RequestPresses.wait }
 
     var body: some View {
         NavigationStack {
             Group {
                 if let request {
-                    content(merged(request))
+                    content(drawn(request))
                 } else if let loadError {
                     ContentUnavailableView {
                         Label("Can’t Open This", systemImage: "exclamationmark.triangle")
@@ -99,9 +108,8 @@ struct OutboxRequestSheet: View {
             press()
         }
         #endif
-        // A Send still waiting goes at once when the sheet leaves or the app does, as every phone Send does.
-        .onDisappear { flush() }
-        .onChange(of: scenePhase) { _, phase in if phase == .background { flush() } }
+        // His press's answer, whenever it lands: in this sheet, or in one opened after the first was closed.
+        .onChange(of: wait.outcomes[requestId], initial: true) { _, outcome in take(outcome) }
         .accessibilityIdentifier("outbox-request")
     }
 
@@ -110,22 +118,39 @@ struct OutboxRequestSheet: View {
             let answer = try await client.work.request(requestId)
             if request == nil { ticks = RequestSheetModel.initialTicks(answer) }
             request = answer
-            if answer.state != .open, phase == .choosing { phase = .done }
         } catch {
             loadError = ActionError.wrap(error).message
         }
     }
 
-    /// The request with every row he opened at its fresh receipt.
-    private func merged(_ request: OutboxRequest) -> OutboxRequest {
-        guard !fresh.isEmpty, phase != .done else { return request }
-        return OutboxRequest(id: request.id, n: request.n, sessionId: request.sessionId, workspaceId: request.workspaceId, sector: request.sector, quote: request.quote, head: request.head, state: request.state, why: request.why,
-                             createdAt: request.createdAt, expiresAt: request.expiresAt, answeredBy: request.answeredBy, answeredAt: request.answeredAt,
-                             rows: request.rows.map { fresh[OutboxModel.key($0.ref)] ?? $0 })
+    private func take(_ outcome: RequestPressWait.Outcome?) {
+        switch outcome {
+        case .answered(let after)?:
+            request = after
+            fresh = [:]
+        case .failed(let message)?:
+            pressError = "Not sent: \(message)"
+            Task { await load() }
+        case nil:
+            return
+        }
+        wait.clear(requestId)
+    }
+
+    /// The request as drawn: every row he opened at its fresh receipt while the item stays as he saw it.
+    private func drawn(_ request: OutboxRequest) -> OutboxRequest {
+        request.state == .open ? RequestSheetModel.merged(request, opened: fresh) : request
+    }
+
+    private var phase: Phase {
+        if let press = wait.pending[requestId] { return .waiting(press) }
+        if wait.sending.contains(requestId) { return .sending }
+        return request?.state == .open || request == nil ? .choosing : .done
     }
 
     private func content(_ request: OutboxRequest) -> some View {
         let thread = client.session(request.sessionId)?.title
+        let held = RequestSheetModel.reconcile(ticks, with: request)
         return List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
@@ -158,67 +183,55 @@ struct OutboxRequestSheet: View {
             }
             Section {
                 ForEach(request.rows, id: \.ref) { row in
-                    RequestRowView(row: row, request: request, client: client, ticked: ticks.contains(OutboxModel.key(row.ref)), phase: rowPhase(row), toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
+                    let (ticked, rowPhase) = look(row, held: held)
+                    RequestRowView(row: row, request: request, client: client, ticked: ticked, phase: rowPhase, toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
                 }
             }
         }
         .listStyle(.plain)
         .animation(reduceMotion ? nil : Motion.base, value: phase)
-        .safeAreaInset(edge: .bottom, spacing: 0) { foot(request) }
+        .safeAreaInset(edge: .bottom, spacing: 0) { foot(request, held: held) }
     }
 
-    private func rowPhase(_ row: OutboxRequestRow) -> RequestRowView.Phase {
-        let ticked = ticks.contains(OutboxModel.key(row.ref))
+    /// A row's tick and phase: his ticks while he chooses; once he pressed, exactly the receipts the press froze.
+    private func look(_ row: OutboxRequestRow, held: Set<String>) -> (Bool, RequestRowView.Phase) {
         switch phase {
-        case .choosing: return .choosing
-        case .waiting: return ticked ? .waiting : .left
-        case .sending: return ticked ? .sending : .left
-        case .done: return row.result == nil ? .left : .done
+        case .choosing: return (RequestSheetModel.ticked(row, held), .choosing)
+        case .waiting(let press):
+            let inPress = row.receipt.map(press.receipts.contains) == true
+            return (inPress, inPress ? .waiting : .left)
+        case .sending: return (RequestSheetModel.ticked(row, held), RequestSheetModel.ticked(row, held) ? .sending : .left)
+        case .done: return (false, row.result == nil ? .left : .done)
         }
     }
 
     private func toggle(_ row: OutboxRequestRow) {
-        guard phase == .choosing, RequestSheetModel.pressable(row) else { return }
-        let key = OutboxModel.key(row.ref)
-        if ticks.contains(key) { ticks.remove(key) } else { ticks.insert(key) }
+        guard phase == .choosing, RequestSheetModel.pressable(row), let receipt = row.receipt else { return }
+        if ticks.contains(receipt) { ticks.remove(receipt) } else { ticks.insert(receipt) }
     }
 
     // MARK: - the foot
 
     @ViewBuilder
-    private func foot(_ request: OutboxRequest) -> some View {
+    private func foot(_ request: OutboxRequest, held: Set<String>) -> some View {
         switch phase {
-        case .waiting:
-            UndoCapsule(line: waitingLine(request), identifier: "outbox-request-undo") { undo() }
+        case .waiting(let press):
+            UndoCapsule(line: press.waitingLine, identifier: "outbox-request-undo") { wait.undo(requestId) }
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12)))
         case .done:
             wide("Done", prominent: true, identifier: "outbox-request-done") { dismiss() }
                 .padding(.horizontal, Layout.textEdge)
                 .padding(.vertical, 8)
         case .choosing, .sending:
-            let count = request.rows.filter { ticks.contains(OutboxModel.key($0.ref)) && RequestSheetModel.pressable($0) }.count
             HStack(spacing: 10) {
                 wide("Not Now", prominent: false, identifier: "outbox-request-decline") { Task { await decline() } }
-                wide(RequestSheetModel.pressWord(request, ticked: ticks), prominent: true, identifier: "outbox-request-send", busy: phase == .sending) { press() }
-                    .disabled(count == 0)
+                wide(RequestSheetModel.pressWord(request, ticked: held), prominent: true, identifier: "outbox-request-send", busy: phase == .sending) { press() }
+                    .disabled(held.isEmpty)
             }
             .disabled(phase == .sending || !client.work.canApprove)
             .padding(.horizontal, Layout.textEdge)
             .padding(.vertical, 8)
         }
-    }
-
-    /// "Sending 9", "Approving 3": the capsule's line while his press waits; each row says its own action and time.
-    private func waitingLine(_ request: OutboxRequest) -> String {
-        let word = RequestSheetModel.pressWord(request, ticked: ticks)
-        let parts = word.split(separator: " ")
-        let verb = switch parts.first {
-        case "Send": "Sending"
-        case "Discard": "Discarding"
-        case "Schedule": "Scheduling"
-        default: "Approving"
-        }
-        return "\(verb) \(parts.last ?? "")"
     }
 
     private func wide(_ title: String, prominent: Bool, identifier: String, busy: Bool = false, action: @escaping () -> Void) -> some View {
@@ -237,58 +250,14 @@ struct OutboxRequestSheet: View {
 
     // MARK: - the press
 
-    /// His Send: nothing reaches the host for five seconds, so Undo is a true undo.
+    /// His Send: exactly the ticked receipts as drawn, frozen now; nothing reaches the host for five seconds, so Undo
+    /// is a true undo, and nothing sends it sooner.
     private func press() {
-        guard phase == .choosing, let request else { return }
+        guard phase == .choosing, let request, let press = RequestSheetModel.freeze(drawn(request), ticks: ticks, environmentId: client.environment.id) else { return }
         pressError = nil
-        phase = .waiting
-        AccessibilityNotification.Announcement("\(waitingLine(merged(request))). Undo for five seconds.").post()
-        wait = Task {
-            try? await Task.sleep(for: .seconds(OutboxPresses.waitSeconds))
-            guard !Task.isCancelled else { return }
-            await commit()
-        }
-    }
-
-    private func undo() {
-        wait?.cancel()
-        wait = nil
-        phase = .choosing
-    }
-
-    /// The sheet or the app leaves while a Send waits: it goes now rather than drop it.
-    private func flush() {
-        guard phase == .waiting else { return }
-        wait?.cancel()
-        wait = nil
-        let client = client
-        let id = requestId
-        let receipts = ticketed()
-        phase = .sending
-        Task { _ = try? await client.work.answer(id, receipts: receipts) }
-    }
-
-    /// The receipts of exactly the ticked rows he may press as drawn.
-    private func ticketed() -> [String] {
-        guard let request else { return [] }
-        return merged(request).rows.compactMap { row in
-            ticks.contains(OutboxModel.key(row.ref)) && RequestSheetModel.pressable(row) ? row.receipt : nil
-        }
-    }
-
-    private func commit() async {
-        let receipts = ticketed()
-        guard !receipts.isEmpty else { return phase = .choosing }
-        phase = .sending
-        do {
-            request = try await client.work.answer(requestId, receipts: receipts)
-            fresh = [:]
-            phase = .done
-        } catch {
-            pressError = "Not sent: \(ActionError.wrap(error).message)"
-            phase = .choosing
-            await load()
-        }
+        let work = client.work
+        wait.start(press) { press in try await work.answer(press.requestId, receipts: press.receipts) }
+        AccessibilityNotification.Announcement("\(press.waitingLine). Undo for five seconds.").post()
     }
 
     private func decline() async {
@@ -353,7 +322,7 @@ private struct RequestRowView: View {
     /// While his press waits, each ticked row says what it does, to whom and when; once it landed, its result.
     private func line(_ line: String?, result: (ok: Bool, text: String)?) -> String? {
         if let result { return result.text }
-        if phase == .waiting { return RequestSheetModel.pendingLines(request, ticked: [OutboxModel.key(row.ref)]).first }
+        if phase == .waiting, let receipt = row.receipt { return RequestSheetModel.pendingLines(request, ticked: [receipt]).first }
         return line
     }
 

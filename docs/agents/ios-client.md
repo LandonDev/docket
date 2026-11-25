@@ -809,8 +809,14 @@
   `listed` the item's (those, an out-of-date one not put away, a mail Mail
   timed); `waitingSections` the order (Work/Outbox/OutboxWaiting.swift with
   `rowSide`, `aheadTime`, `notes`, `laterChoices`, `requestOf` and
-  `RequestSheetModel`, all tested in OutboxWaitingTests); `WorkHost`
-  keeps `requests` (open ones, approve keys) and presses `discard(reason:)`,
+  `RequestSheetModel`, all tested in OutboxWaitingTests: a tick is a
+  receipt id, `reconcile` drops one no pressable row carries any more,
+  `merged` keeps a row opened through `request.view` only at the revision
+  it was opened, `freeze` takes the press at Send; `RequestPressWait` holds
+  each frozen press its five seconds with no early send and keeps the
+  answer by request id, RequestPressWaitTests); `WorkHost`
+  keeps `requests` (open ones, approve keys) and presses `discard(reason:)`
+  (with `rev`, as Send, Cancel Send and Send Now),
   `later`, `cancelSend`, `sendNow`, `undoSend`, `askAgain`, `request`,
   `viewRow`, `answer`, `decline`, every one `via: .phone`. The app's
   Work/OutboxRequestSheet.swift holds `OutboxRequestCenter` (RootView's
