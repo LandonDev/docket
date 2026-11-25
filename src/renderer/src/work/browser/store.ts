@@ -103,12 +103,13 @@ export async function setDriver(env: string, sessionId: string, driver: BrowserD
 }
 
 /** His press on the held submit: it runs once, as it was held, if the page still shows what he saw. */
-export function submitHeld(env: string, ref: HeldRef): Promise<OutboxItem> {
-  return registry.linkOf(env).request<OutboxItem>("work.outbox.send", { ref });
+export function submitHeld(env: string, item: Pick<OutboxItem, "ref" | "updatedAt">): Promise<OutboxItem> {
+  // `rev`: the item as the bar showed it; a row that moved since is refused rather than run unseen.
+  return registry.linkOf(env).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt });
 }
 
-export function discardHeld(env: string, ref: HeldRef): Promise<OutboxItem> {
-  return registry.linkOf(env).request<OutboxItem>("work.outbox.discard", { ref });
+export function discardHeld(env: string, item: Pick<OutboxItem, "ref" | "updatedAt">): Promise<OutboxItem> {
+  return registry.linkOf(env).request<OutboxItem>("work.outbox.discard", { ref: item.ref, rev: item.updatedAt });
 }
 
 /** The held page's picture, for a desktop that cannot draw the live window (the box, the browser /ui): null when none was kept. */

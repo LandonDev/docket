@@ -192,7 +192,7 @@ function FaceEnd({
     case "done":
       return <span className="ms-auto min-w-0 truncate">{face.words}</span>;
     case "held": {
-      const ref = face.item.ref;
+      const held = face.item;
       return (
         // The verbs stay whole; the primary takes the room left beside Discard and cuts its words there, never its box or its ring.
         <span className="ms-auto flex min-w-0 items-center gap-1">
@@ -205,10 +205,10 @@ function FaceEnd({
               <BusyLabel busy={busy === "take"} label="Take over" />
             </Button>
           )}
-          <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, ref))}>
+          <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, held))}>
             <BusyLabel busy={busy === "discard"} label="Discard" />
           </Button>
-          <Primary label={face.act} busy={busy === "submit"} disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, ref))} />
+          <Primary label={face.act} busy={busy === "submit"} disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, held))} />
         </span>
       );
     }

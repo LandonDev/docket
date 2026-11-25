@@ -34,7 +34,9 @@ export function linkFormHost(env: string, item: CanvasItem): FormHost {
     async publish() {
       const view = await ask<FormView>("work.forms.publish");
       if (!view.held) return view;
-      const sent = await link().request<OutboxItem>("work.outbox.send", { ref: view.held.ref });
+      // The held item as the host holds it now, and its revision with the press: a row that moved since is refused, not sent.
+      const held = await link().request<OutboxItem>("work.outbox.get", { ref: view.held.ref });
+      const sent = await link().request<OutboxItem>("work.outbox.send", { ref: view.held.ref, rev: held.updatedAt });
       const after = await ask<FormView>("work.forms.open");
       if (after.state !== "open") throw new Error(sent.state === "stale" ? "The form changed after it was held. Publish it again." : "The form was not published.");
       return after;

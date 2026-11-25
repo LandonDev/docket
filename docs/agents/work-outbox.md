@@ -1093,10 +1093,12 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   press is `decide({request, receipts})` with the ticked rows' receipts alone
   (Send N, Discard N, Approve N when the actions mix); Not now is `decline`.
   Results land per row; then "by you at 9:41 AM" and, for rows that did not
-  go: Send again (`decide` with `many` and the revision the card drew) for a
-  Send; Pick a new time… (a dialog that says when it goes, then `decide`
-  `later` with `many`) for a Later; and Open in the Outbox, never a retry
-  here, for a row whose item moved since or may have gone. Not now,
+  go: Send again (`decide` with `many` and the revision his press attempted,
+  which the card keeps) for a Send; Pick a new time… (a dialog that says
+  when it goes, then `decide` `later` with `many`) for a Later; and Open in
+  the Outbox, never a retry here, for a row whose item stands at another
+  revision than the press attempted (though its copies agree), whose press
+  this card did not make, or that may have gone. Not now,
   void and a refused ask are one muted line. Never the warning colour
   (RequestCard.dom.test.tsx holds it). The Outbox lists open requests first,
   in **Asked in threads** (one row each, its items not again under their

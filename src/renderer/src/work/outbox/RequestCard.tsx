@@ -196,6 +196,9 @@ function useRequestPress(request: HostRequest) {
   const [sending, setSending] = useState<ReadonlySet<string> | null>(null);
   const [busy, setBusy] = useState<"send" | "decline" | "again" | null>(null);
   const [again, setAgain] = useState<ReadonlyMap<string, RowResult>>(new Map());
+  // The revision each row showed when he pressed: what his press attempted (its receipt was issued at it). A retry
+  // stays on the card only while the item still stands at that revision (review round 3, finding 4).
+  const [attempted, setAttempted] = useState<ReadonlyMap<string, number>>(new Map());
   const open = request.state === "open";
   const ticked = request.rows.filter(isOn);
 
@@ -203,6 +206,7 @@ function useRequestPress(request: HostRequest) {
     if (!open || !ticked.length || busy) return;
     setBusy("send");
     setSending(new Set(ticked.map((r) => rowKey(env, r))));
+    setAttempted(new Map(ticked.flatMap((r) => (r.item ? [[rowKey(env, r), r.item.updatedAt] as const] : []))));
     try {
       await answerRequest(env, request.id, ticked.map((r) => r.receipt!));
       // The Outbox's list read again at once: a retry on the card is judged against what the host now holds.
@@ -229,16 +233,20 @@ function useRequestPress(request: HostRequest) {
   // keeps the request's many-ness and the revision the card drew; a Later takes a new time he picks and is told; a row
   // that moved since, or that may have gone, is his to look at in its own detail, never retried from here.
   const failedRows = request.rows.filter((r) => r.result && !r.result.ok && r.item && r.do !== "discard" && !again.has(rowKey(env, r)));
+  // To the detail when the press's revision is not known here (another device pressed, the card was drawn again), when
+  // the item stands at another revision than the one the press attempted, though its copies now agree, or when it may
+  // have gone.
   const moved = (r: Row): boolean => {
+    const tried = attempted.get(rowKey(env, r));
     const now = waiting.find((i) => i.environmentId === env && i.ref.at === r.ref.at && i.ref.id === r.ref.id);
-    return !!r.item!.outcomeUnknown || !now || now.updatedAt !== r.item!.updatedAt || !!now.outcomeUnknown;
+    return tried === undefined || !!r.item!.outcomeUnknown || !now || !!now.outcomeUnknown || r.item!.updatedAt !== tried || now.updatedAt !== tried;
   };
   const toDetail = failedRows.filter(moved);
   const failed = failedRows.filter((r) => r.do === "send" && !moved(r));
   const failedLater = failedRows.filter((r) => r.do === "later" && !moved(r));
   const retry = async (rows: readonly Row[], choice: DecideDo) => {
-    // The item as the card drew it: its revision is the one the retry names.
-    const items = rows.map((r) => ({ ...r.item!, environmentId: env }));
+    // The revision the press attempted, which `moved` found the item still at: the one the retry names.
+    const items = rows.map((r) => ({ ...r.item!, environmentId: env, updatedAt: attempted.get(rowKey(env, r)) ?? r.item!.updatedAt }));
     if (!items.length || busy) return;
     setBusy("again");
     setAgain((prev) => new Map([...prev, ...items.map((i) => [itemKey(i), { state: "working" } as RowResult] as const)]));

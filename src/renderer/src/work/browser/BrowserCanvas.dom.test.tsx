@@ -173,7 +173,16 @@ describe("the browser's bar", () => {
     fireEvent.click(submit);
     fireEvent.click(submit);
     await waitFor(() => expect(methods()).toEqual(["work.outbox.send"]));
-    expect(host.calls.find((c) => c.method === "work.outbox.send")?.params).toEqual({ ref: { at: "host", id: "h1" } });
+    // The revision the bar showed goes with the press: a row that moved since is refused, not run unseen.
+    expect(host.calls.find((c) => c.method === "work.outbox.send")?.params).toEqual({ ref: { at: "host", id: "h1" }, rev: 200 });
+  });
+
+  it("a held submit's Discard names the revision the bar showed", async () => {
+    host.items = [HELD];
+    render(<Pane />);
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(methods()).toEqual(["work.outbox.discard"]));
+    expect(host.calls.find((c) => c.method === "work.outbox.discard")?.params).toEqual({ ref: { at: "host", id: "h1" }, rev: 200 });
   });
 
   it("who drives sits 8px before its verb, in one group at the bar's end", async () => {

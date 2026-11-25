@@ -351,3 +351,36 @@ describe("Send again on an answered request (review finding 10)", () => {
     expect(within(el).queryByRole("button", { name: "Send again" })).toBeNull();
   });
 });
+
+describe("Send again binds the revision the press attempted (review round 3, finding 4)", () => {
+  const answered = (rows: OutboxRequest["rows"]) => () => ({ ...world.request, state: "answered" as const, answeredBy: "owner", answeredAt: Date.now(), rows });
+
+  it("a row refused because its item moved after the receipt opens in the Outbox, though the copies of the new item agree", async () => {
+    // He pressed at revision 500; the item became 900 before its claim, and the host answered with the new item.
+    world.waiting = [item("m2", { state: "held", updatedAt: 900 })];
+    world.answer = answered([{ ...request().rows[1]!, item: item("m2", { updatedAt: 900 }), result: { ok: false, error: "Changed, open it again" } }]);
+    const el = await drawn();
+    await act(async () => fireEvent.click(sendButton()));
+    await waitFor(() => expect(within(el).getByRole("button", { name: "Open in the Outbox" })).toBeTruthy());
+    expect(within(el).queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("a request answered elsewhere, whose press this card did not make, sends a failed row to its detail", async () => {
+    world.request = request({ state: "answered", answeredBy: "owner:remote", answeredAt: Date.now(), rows: [{ ...request().rows[0]!, result: { ok: false, error: "Outlook did not answer in time" } }] });
+    world.waiting = [item("m1", { state: "failed" })];
+    render(<OutboxRequestRow block={asked} />);
+    await waitFor(() => expect(within(card()).getByRole("button", { name: "Open in the Outbox" })).toBeTruthy());
+    expect(within(card()).queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("a row whose item still stands at the attempted revision is sent again with that revision", async () => {
+    world.waiting = [item("m2", { state: "failed" })];
+    world.answer = answered([{ ...request().rows[1]!, result: { ok: false, error: "Outlook did not answer in time" } }]);
+    const el = await drawn();
+    await act(async () => fireEvent.click(sendButton()));
+    await act(async () => fireEvent.click(await within(el).findByRole("button", { name: "Send again" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.decide" && c.params.items).map((c) => c.params)).toEqual([
+      { items: [{ ref: { at: "lifeos", table: "outbox", id: "m2" }, do: "send", rev: 500 }], many: true, via: "outbox" },
+    ]);
+  });
+});
