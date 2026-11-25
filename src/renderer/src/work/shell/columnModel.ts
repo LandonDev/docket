@@ -66,14 +66,23 @@ export type WorkProjectRow = {
   name: string;
   lead: WorkLead;
   target: number | null;
+  /** LifeOS's state where it says paused or backlog (the fold's words count each); else null. */
+  rest?: "paused" | "backlog";
 };
 
 export type WorkProjects = {
   /** The projects under way, by target date, none last. */
   rows: WorkProjectRow[];
-  /** Paused and backlog with nothing live, behind the one "N paused" row. */
+  /** Paused and backlog with nothing live, behind the one quiet row ("1 paused, 1 in backlog"). */
   quiet: WorkProjectRow[];
 };
+
+/** The quiet fold's words, as the tracker says them: "1 paused, 2 in backlog". */
+export function quietWords(quiet: readonly Pick<WorkProjectRow, "rest">[]): string {
+  const paused = quiet.filter((p) => p.rest !== "backlog").length;
+  const backlog = quiet.length - paused;
+  return [paused ? `${paused} paused` : null, backlog ? `${backlog} in backlog` : null].filter(Boolean).join(", ");
+}
 
 /** The tracker's one order (src/shared/work/tracker.ts `byTarget`): by target date, none last, then by name. */
 const byTarget = (a: WorkProjectRow, b: WorkProjectRow): number => trackerOrder({ targetDate: a.target, name: a.name }, { targetDate: b.target, name: b.name });
@@ -91,14 +100,16 @@ export function workProjectRows(groups: readonly ProjectGroup[], lifeos: readonl
   for (const group of groups) {
     const lifeosProjectId = group.project.lifeosProjectId ?? null;
     const from = lifeosProjectId ? listed.get(lifeosProjectId) : undefined;
+    const status = from?.status;
     const row: WorkProjectRow = {
       id: group.project.id,
       lifeosProjectId,
       name: from?.name ?? group.project.name,
       lead: projectLead(group.threads),
       target: from?.targetDate ?? null,
+      ...(status === "paused" || status === "backlog" ? { rest: status } : {}),
     };
-    (from?.status && QUIET.has(from.status) && !row.lead ? quiet : rows).push(row);
+    (status && QUIET.has(status) && !row.lead ? quiet : rows).push(row);
   }
   return { rows: rows.sort(byTarget), quiet: quiet.sort(byTarget) };
 }

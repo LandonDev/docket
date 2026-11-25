@@ -5,6 +5,7 @@ import { Outbox } from "../../chrome/icons";
 import { RailRow } from "../../chrome/RailRow";
 import { ThreadListPopover } from "../../chrome/ThreadListPopover";
 import { InlineRename, MoreMenu, MoreRow, PlanReadyContext, type RowActions } from "../../chrome/WorkspaceSessions";
+import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
@@ -12,6 +13,7 @@ import { ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { yields } from "../../components/ui/reveal";
 import { STATUS_WORD, StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { whenIdle } from "../../lib/hoverPrefetch";
 import { sessionPrefetch } from "../../lib/sessionPrefetch";
@@ -20,7 +22,7 @@ import { setSessionArchived } from "../../lib/sessionStore";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { WorkThreadItem } from "../../lib/sidebarRows";
-import { archivedThreads, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
+import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
 import { useColumnProjects } from "./columnProjects";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
@@ -35,7 +37,7 @@ import type { ThreadRow } from "../../lib/workspaceSessions";
 
 /** A section's name over its rows: 28px, 12px medium muted, on the rows' 12px inset. */
 const HEADING = "flex h-7 w-full items-center rounded-md px-3 text-xs font-medium text-muted-foreground";
-/** A quiet row on the names' column (12px inset, the 16px lead, 8px: 36px): "1 paused", "3 archived". */
+/** A quiet row on the names' column (12px inset, the 16px lead, 8px: 36px): "1 paused, 1 in backlog", "3 archived". */
 const QUIET_ROW =
   "h-7 w-full justify-start rounded-md pr-3 pl-9 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/5";
 
@@ -53,7 +55,8 @@ const leadWords = (lead: WorkLead): string | null => (!lead ? null : lead.kind =
 
 /**
  * The Projects section: its heading opens the job's Projects view (so the views have no Projects row), then a row a
- * project, then the paused and backlog ones behind one "N paused" row. `onOpen` opens a project's page.
+ * project, then the paused and backlog ones behind one quiet row ("1 paused, 1 in backlog"). `onOpen` opens a
+ * project's page. The heading reads as open while the job's list shows; a project's own page lights its row.
  */
 export const WorkProjectsSection = memo(function WorkProjectsSection({
   workspaceId,
@@ -73,7 +76,8 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   const projects = useMemo(() => workProjectRows(groups, lifeos), [groups, lifeos]);
   const [quietOpen, setQuietOpen] = useState(false);
   const shown = useWorkView();
-  const on = shown?.workspaceId === workspaceId && shown.view === "projects";
+  const here = shown?.workspaceId === workspaceId && shown.view === "projects" ? shown : null;
+  const on = !!here && !here.project;
   const now = Date.now();
   if (!linked && projects.rows.length === 0 && projects.quiet.length === 0) return null;
   return (
@@ -91,22 +95,25 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
         <h3 className={HEADING}>Projects</h3>
       )}
       {projects.rows.map((row) => (
-        <ProjectRow key={row.id} row={row} now={now} onOpen={onOpen} />
+        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, here?.project)} onOpen={onOpen} />
       ))}
       {projects.quiet.length > 0 ? (
         <>
           <Button variant="ghost" aria-expanded={quietOpen} onClick={() => setQuietOpen((was) => !was)} data-quiet-fold className={QUIET_ROW}>
-            {projects.quiet.length} paused
+            {quietWords(projects.quiet)}
           </Button>
-          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} onOpen={onOpen} />) : null}
+          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, here?.project)} onOpen={onOpen} />) : null}
         </>
       ) : null}
     </section>
   );
 });
 
+/** Whether a project's page is the one the Projects view shows. */
+const isShown = (row: WorkProjectRow, project: string | undefined): boolean => !!project && row.lifeosProjectId === project;
+
 /** One project: what is live in the lead, its name, its target date at the end (red once it has passed). */
-function ProjectRow({ row, now, onOpen }: { row: WorkProjectRow; now: number; onOpen: (row: WorkProjectRow) => void }) {
+function ProjectRow({ row, now, selected, onOpen }: { row: WorkProjectRow; now: number; selected: boolean; onOpen: (row: WorkProjectRow) => void }) {
   const target = row.target === null ? null : targetWords(row.target, now);
   const words = [row.name, leadWords(row.lead), target ? `${target.late ? "late, was due" : "target"} ${target.words}` : null].filter(Boolean).join(", ");
   return (
@@ -115,6 +122,7 @@ function ProjectRow({ row, now, onOpen }: { row: WorkProjectRow; now: number; on
       glyph={<LeadMark lead={row.lead} />}
       label={row.name}
       ariaLabel={words}
+      selected={selected}
       trailing={target ? <span className={cn(target.late && "text-destructive")}>{target.words}</span> : null}
       onClick={() => onOpen(row)}
     />
@@ -179,6 +187,8 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
   const renaming = actions.renamingId === row.id;
   const working = lead?.kind === "state" && lead.state === "working";
   const label = [title, leadWords(lead), line].filter(Boolean).join(", ");
+  // A title or second line the column cuts is said whole on hover and focus, only while one is cut (as Today's rows).
+  const { ref: measure, cut } = useTruncated(`${title}\n${line ?? ""}`);
   return (
     <div
       data-thread-row
@@ -194,11 +204,19 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
         offline && "opacity-50",
       )}
     >
-      {renaming ? null : <ItemButton data-row-open aria-current={selected || undefined} aria-label={label} onClick={() => actions.onOpen(row.id)} className={ROW_OPEN} />}
+      {renaming ? null : (
+        <Tooltip disabled={!cut}>
+          <TooltipTrigger render={<ItemButton data-row-open aria-current={selected || undefined} aria-label={label} onClick={() => actions.onOpen(row.id)} className={ROW_OPEN} />} />
+          <TooltipContent side="top" align="start" data-thread-tip>
+            {title}
+            {line ? <span className="block">{line}</span> : null}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <span aria-hidden className={cn(ROW_SHOWS, "grid h-5 w-4 shrink-0 place-items-center")}>
         <LeadMark lead={lead} />
       </span>
-      <span aria-hidden={!renaming || undefined} className={cn(!renaming && ROW_SHOWS, "flex min-w-0 flex-1 flex-col")}>
+      <span ref={measure} aria-hidden={!renaming || undefined} className={cn(!renaming && ROW_SHOWS, "flex min-w-0 flex-1 flex-col")}>
         <span className="flex h-5 min-w-0 items-baseline gap-1">
           {renaming ? (
             <InlineRename

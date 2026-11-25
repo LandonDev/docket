@@ -3173,14 +3173,17 @@ host anything per row: the rows read the session summaries (`workOutcome`) and L
   held act, never amber; the spinner for work), else nothing; the name; the target date at the end in 12px muted
   tabular ("Dec 12", the year only in another year), red once its day has passed. Rows sort by target, none last,
   so a row never moves for what its threads do. Paused and backlog fold into one quiet row on the names' column,
-  "1 paused", that shows them under it; one with something live keeps its row in the list. A row opens the
-  project's page in the Projects view.
+  "1 paused, 1 in backlog" as the tracker counts them, that shows them under it; one with something live keeps its
+  row in the list. A row opens the project's page in the Projects view and reads as selected while that page shows;
+  the heading reads as open only on the list. Held outranks working in the lead (a thread still working that holds a
+  mail shows the Outbox glyph): what waits on him comes first.
 - **Threads**: a 12px heading, then every root thread of the job, loose and in its projects, newest first, a page
   at a time. A row is two lines, 6px top and bottom: the lead slot (the same marks, and the thread's own at-rest
   marks: watching, paused, …), the title in 13px (medium foreground while unread) and its time at the end in 12px
   muted tabular ("10:02 AM" today, "Tue" this week, "Nov 3" before), none while it works, since the spinner says
   now; under them in 12px muted the project, then what it left him, one comma sentence ("Spring LAN, 1 mail to
   send"), or nothing when it has neither. A row with neither is its first line alone. Done and idle draw no mark.
+  A title or second line the column cuts is said whole in a tip on hover and focus, only while one is cut.
   Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it.
 - **Archived**: a quiet row on the names' column at the end of Threads, "3 archived", opening the archived list
   (`ThreadListPopover`, Restore on hover) of the job's threads, loose and in projects; a pick restores and opens
@@ -3199,11 +3202,12 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
 - **The order**: what waits (a question, a failure, a thread's request, each held act, a failed send first), then
   the open task it works on, then what it made or changed, newest first. Under the last row a hairline and 20px,
   then the first message.
-- **Tones**: held is muted, the Outbox's kind glyph and nothing amber. A question is the one amber row ("Asks you",
-  the waiting mark); its card stays where the transcript asks it. A failure is red, its words in the red tone and its
-  cause muted under them; a failed send's error is its red second line.
-- **The task**: its title, then who it waits on and for how long ("Waiting on Sam Ortiz, 6 days"), else when it is
-  due, late in red; the row opens its sheet in Tasks. "From the task …" (12px muted, the title in foreground) sits
+- **Tones**: held is muted, the Outbox's kind glyph and nothing amber; an out-of-date held act says "Out of date",
+  muted. A question is the one amber row ("Asks you", the waiting mark); its card stays where the transcript asks it,
+  and the row takes him there. A failure is red, its words in the red tone and its cause muted under them; a failed
+  send takes the red mark, its error is its red second line and its fact is "Failed 10:04 AM", never "Held".
+- **The task**: its title, then who it waits on and for how long ("Waiting on Sam Ortiz 6 days", as the plan row
+  says it), else when it is due, late in red once its due time passes (as Tasks and Today); the row opens its sheet in Tasks. "From the task …" (12px muted, the title in foreground) sits
   over the first message, right-aligned as the message, only when the head has no row for that task (it is done):
   nothing is said twice.
 - **Made and changed**: the file's own name with its kind glyph, the verb and time as the fact; the row opens it in a
@@ -3212,7 +3216,8 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   its Send, Edit and Discard; the head adds no Send of its own. In the transcript a held call is one quiet line,
   "Held" then the act, all muted, in the call's place.
 - **Nothing left**: no head at all, no empty line. It is drawn once its record lands, with no bones: it sits above
-  the thread's start, which a returning reader is rarely scrolled to.
+  the thread's start, which a returning reader is rarely scrolled to. A refresh that fails keeps what it showed,
+  with one 12px muted line under the rows: "Couldn't refresh. As of 10:02 AM".
 - **The title bar** of a Work thread is its crumb: the job's dot (12px), the project (a muted button opening its
   page) or, loose in a job, the job's name, a 12px chevron, then the title in 13px medium; no strip of thread chips.
   A Work Chat shows its title alone. A code thread's bar and transcript are unchanged (pixel-diffed).
@@ -3232,7 +3237,8 @@ box's right edge, ghost controls in 12px muted text (`ROW_CONTROL`).
   live projects, a project with no mirror yet among them; the one it files in checked), No project, a separator,
   Another job (a submenu of the other jobs, each with its dot). A pick moves the unsent draft whole: its words, files
   and chips stay. Picking a project with no mirror opens it first (`work.project.open`): the trigger shows its name
-  with a 12px spinner just after it until it lands. A Work Chat's draft reads "Work Chats" and its menu lists the
+  with a 12px spinner just after it until it lands; the field keeps taking words but Send waits until the move
+  lands or fails. A failure says so in a toast in plain words, and the control names the old place again. A Work Chat's draft reads "Work Chats" and its menu lists the
   jobs. There is no type picker, Master thread, name field, host picker or context meter.
 - **The thread** asks "Reply, or steer the work", and its row holds the settings glyph alone.
 - **One settings glyph** at the right (`SlidersHorizontal`, 24px, "Thread settings"): a 288px popover over it, aligned

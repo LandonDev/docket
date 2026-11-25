@@ -1,3 +1,4 @@
+import { byTarget } from "@shared/work/tracker";
 import type { DraftPlace } from "../../lib/projectDrafts";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { LIFEOS_CARD, type LifeosProjectRow } from "../../lib/workSwitch";
@@ -5,8 +6,9 @@ import { withLifeosCards } from "../../lib/workspaceSessions";
 
 /**
  * Where a Work draft files, and where else it may (docs/agents/work.md "A Work draft"): its job, its project, the
- * job's projects as the column lists them (LifeOS's live projects, a card for one with no mirror yet, then the job's
- * own), and the other jobs. Pure: the row reads the catalog and hands it here.
+ * job's projects in the column's order (LifeOS's live projects, a card for one with no mirror yet, and the job's own,
+ * by target date, none last, then by name: `byTarget`), and the other jobs. Pure: the row reads the catalog and hands
+ * it here.
  */
 
 /** A project the menu offers: a mirror (or a project of the job's own), or a LifeOS project's card, opened first. */
@@ -29,7 +31,10 @@ export function filingOf(
   workspaces: readonly WorkspaceMeta[],
   catalog: readonly ProjectMeta[],
   lifeos: readonly LifeosProjectRow[],
+  /** LifeOS's target dates by project id, as the column keeps them (columnProjects.ts); none reads as no target. */
+  targets: readonly { id: string; targetDate: number | null }[] = [],
 ): Filing {
+  const target = new Map(targets.map((t) => [t.id, t.targetDate]));
   const job = workspaces.find((w) => w.id === draft.workspaceId && w.kind === "work") ?? null;
   const own = job ? catalog.filter((p) => p.workspaceId === job.id && p.environmentId === job.environmentId && !p.archived) : [];
   const projects: FilingProject[] = job
@@ -39,6 +44,12 @@ export function filingOf(
         lifeosProjectId: p.lifeosProjectId ?? null,
         card: p.id.startsWith(LIFEOS_CARD),
       }))
+        .sort((a, b) =>
+          byTarget(
+            { name: a.name, targetDate: (a.lifeosProjectId && target.get(a.lifeosProjectId)) || null },
+            { name: b.name, targetDate: (b.lifeosProjectId && target.get(b.lifeosProjectId)) || null },
+          ),
+        )
     : [];
   // A draft under a project the list does not hold (finished in LifeOS since) still names it.
   const known = catalog.find((p) => p.id === draft.projectId);

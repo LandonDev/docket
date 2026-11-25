@@ -46,11 +46,12 @@ const task: RecordWork = {
 
 const record = (over: Partial<ThreadRecord>): ThreadRecord => ({ sessionId: "t1", workspaceId: "ws1", waits: [], works: [task], made: [], outcome: null, ...over });
 
-const STATES: { name: string; record: ThreadRecord }[] = [
+const STATES: { name: string; record: ThreadRecord; behind?: number }[] = [
   { name: "Held", record: record({ waits: [{ kind: "held", item: mail }], outcome: { words: "1 mail to send", tone: "held" } }) },
   { name: "Asks you", record: record({ waits: [{ kind: "asks", sessionId: "t1" }] }) },
   { name: "Failed", record: record({ waits: [{ kind: "failed", sessionId: "t1", words: "Couldn't sign in", cause: "The Purdue Outlook sign-in ran out" }, { kind: "held", item: { ...mail, state: "failed", error: "Outlook refused it" } }] }) },
   { name: "Working", record: record({ outcome: { words: "Writing the mail", tone: "working" } }) },
+  { name: "Out of date, a refresh failed", record: record({ waits: [{ kind: "held", item: { ...mail, state: "stale", error: "The chat moved" } }] }), behind: AT },
   {
     name: "Made",
     record: record({
@@ -70,7 +71,7 @@ export function WorkHeadPreview() {
       {STATES.map((state) => (
         <div key={state.name} className="mx-auto flex w-full max-w-[768px] min-w-0 flex-col">
           <div className="pb-3 text-xs text-muted-foreground">{state.name}</div>
-          <WorkHeadView record={state.record} environmentId="box" now={NOW} />
+          <WorkHeadView record={state.record} environmentId="box" now={NOW} behind={state.behind ?? null} />
           <div className="flex justify-end">
             <div className="w-fit max-w-[85%] rounded-xl bg-card px-3 py-2 text-sm leading-[22px] text-foreground">Ask ITaP if we can borrow two 48-port switches for the LAN. We need them Feb 13 to 15.</div>
           </div>

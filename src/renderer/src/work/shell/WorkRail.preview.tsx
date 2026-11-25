@@ -3,7 +3,7 @@
 // Today, Projects, Review and Work Chats, the Work workspaces led by their sectors' dots (one with a long name), and
 // the Outbox row. States: `waiting` (the Outbox with a count), `failed` (its failed mark) and `quiet` (nothing
 // waits). `#WorkColumnPreview` draws a Work job's whole column (docs/DESIGN.md "The column"): its four daily views
-// and More, its Projects (a working one, a held one, one past its target, one paused), its Threads on two lines and
+// and More, its Projects (a working one, a held one, one past its target, one paused, one in backlog), its Threads on two lines and
 // the archived row. Rendered by nothing in the app.
 import { useState } from "react";
 import { ProjectRail } from "../../chrome/ProjectRail";
@@ -67,12 +67,13 @@ const DAY = 86_400_000;
 const today = new Date().setHours(0, 0, 0, 0);
 const at = (days: number, hour = 9, minute = 0): number => today + days * DAY + (hour * 60 + minute) * 60_000;
 
-/** The job's LifeOS projects: two under way with targets, one with none, one paused. */
+/** The job's LifeOS projects: three under way with targets, one paused, one in backlog. */
 const LIFEOS_PROJECTS = [
   { _id: "lan", name: "Spring LAN", sector: "purdue", status: "active", targetDate: at(81, 0), _creationTime: 2 },
   { _id: "budget", name: "FY27 budget", sector: "purdue", status: "active", targetDate: at(17, 0), _creationTime: 1 },
   { _id: "kit", name: "Club kit order", sector: "purdue", status: "active", targetDate: at(-3, 0), _creationTime: 3 },
   { _id: "fall", name: "Fall league", sector: "purdue", status: "paused", _creationTime: 0 },
+  { _id: "alumni", name: "Alumni night", sector: "purdue", status: "backlog", _creationTime: 4 },
 ];
 const MIRRORS: ProjectMeta[] = [
   { id: "m-lan", workspaceId: JOB.id, name: "Spring LAN", mode: "local", branch: null, cwd: JOB.path, archived: false, createdAt: 2, lifeosProjectId: "lan", environmentId: "local" },

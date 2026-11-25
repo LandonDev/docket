@@ -266,6 +266,9 @@ export function Composer({
   const [attachNote, setAttachNote] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const uploadingRef = useRef(false)
+  // A Work draft whose filing pick waits on its project's mirror: typing goes on, Send waits until the move lands or
+  // fails, so the first send never files under the place he just left (work/composer/WorkComposerRow.tsx).
+  const [filing, setFiling] = useState(false)
   const [fileDrag, setFileDrag] = useState(false)
   const reduce = useReducedMotion()
   const midTurnDefault = useSyncExternalStore(subscribeMidTurnDefault, loadMidTurnDefault)
@@ -754,7 +757,7 @@ export function Composer({
   }, [admitAttachments, attachFailed, attachmentsSupported, enabled])
 
   const submit = (value: string, invert = false) => {
-    if (blocked || uploadingRef.current) return
+    if (blocked || filing || uploadingRef.current) return
     const text = composeInboxMessage(inboxCard, value)
     const files = attachments
     if (!text && files.length === 0 && !noteCard && !handoffCard && chips === 0) return
@@ -1053,7 +1056,7 @@ export function Composer({
               />
               <SendButton
                 intent={intent}
-                disabled={!!blocked || (intent !== 'pause' && !sendable)}
+                disabled={!!blocked || filing || (intent !== 'pause' && !sendable)}
                 onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                 onPause={() => onPause?.()}
               />
@@ -1077,6 +1080,7 @@ export function Composer({
               onFile={onDraftFile}
               beforeFile={saveProjectDraft}
               fieldOf={fieldOf}
+              onFiling={setFiling}
             />
           ) : (
             <>

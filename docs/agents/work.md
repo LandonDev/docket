@@ -276,13 +276,16 @@ Settings → Work.
   The lead slot is the most pressing of its root threads' (`projectLead`:
   asks, failed, held, working), the end its target date, red once passed;
   rows sort by target, none last, so nothing moves for what threads do;
-  paused and backlog with nothing live fold into one "N paused" row. A row
-  opens the project's page in the Projects view (`openWorkView {project}`).
+  paused and backlog with nothing live fold into one quiet row counted as
+  the tracker counts them ("1 paused, 1 in backlog", `quietWords`). A row
+  opens the project's page in the Projects view (`openWorkView {project}`)
+  and is lit while that page shows; the heading is lit only on the list.
   **Threads** (`workThreadItems`): every root of the job, loose and in its
   projects, newest first, a page at a time, two lines each: `threadLead`
   (question, failure, held, the row's own mark), title and time; then the
   project's name and the thread's `workOutcome.words` (the host's fold,
-  "What a thread left him"), `threadLine`. No row asks a host anything. A
+  "What a thread left him"), `threadLine`; a title or line the column cuts is
+  said whole in a tip on hover and focus, as Today's rows. No row asks a host anything. A
   thread of the open job is never repeated in the rail's Working section
   (`withoutOpenWork`, below). **Archived**: the last row, "3 archived",
   opens `ThreadListPopover` with Restore over the job's archived threads,
@@ -575,9 +578,14 @@ loads the chunk and is pixel-identical.
 - **Where it files.** The draft's filing control (`FilingControl`,
   work/composer/filing.ts `filingOf`) names the job and the project and lists
   the job's projects as the column does (`withLifeosCards` over the LifeOS
-  rows the column publishes, `useLifeosProjects`), No project and Another
-  job. A LifeOS project with no mirror yet is opened first with
-  `work.project.open` (`openLifeosProject`), as the column's card is.
+  rows the column publishes, `useLifeosProjects`), in the column's order
+  (`byTarget` over the targets `setColumnProjects` keeps), No project and
+  Another job. A LifeOS project with no mirror yet is opened first with
+  `work.project.open` (`openLifeosProject`), as the column's card is; while it
+  opens he can type but Send and Return wait (`onFiling`, the composer's
+  `filing`), so the first send never files under the place he left. A mirror
+  that fails says so in plain words (`workErrorWords`) and the control shows
+  the old place again.
 - **A move keeps the draft.** App's `onDraftFile` (the `SessionActions`
   row) moves the unsent draft in place: the composer writes the field into
   its record first, `projectDrafts.move` re-keys the record to the new
@@ -641,7 +649,11 @@ One record answers it for every screen (the thread's head, the column's outcome 
 - **The thread's head** (surfaces/transcript/WorkHead.tsx, its own chunk `work-head`; docs/DESIGN.md "A thread's
   head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`ThreadHeadSlot` in surfaces/transcriptSession.ts,
   inside that message's row so the transcript's row
-  layout measures it), again whenever the folded outcome, the thread's status or the host's waiting count moves. A
+  layout measures it), again whenever the folded outcome or the thread's status moves, one of its held items changes in
+  the Outbox's list (sent, discarded, edited in place), or LifeOS changes one of its open tasks (`tasks:get` watched on
+  the job's LifeOS session, which the column already holds). A record read for another thread or host is never shown;
+  a refresh that fails keeps the last facts with one quiet line, "Couldn't refresh. As of 10:02 AM". A task is late
+  once its due time passes, as Tasks and Today say it. "Asks you" takes him to the question's card. A
   held row opens the Outbox's own `HeldDetail` in a sheet; the held call in the transcript is one quiet line.
 - **The title bar** of a Work thread in front is its crumb (`WorkCrumb`, on the `work-head` chunk so the first paint holds none of it): the job's dot, its project (a press opens
   the project's page) or, loose, the job's name, then the title; no strip of chips. A code thread's bar is unchanged.

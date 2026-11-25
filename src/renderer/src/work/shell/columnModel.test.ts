@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { WORK_CHATS } from "../../lib/tcserver/workspaces";
 import { workThreadItems } from "../../lib/sidebarRows";
-import { archivedThreads, projectLead, targetWords, threadLead, threadLine, threadTime, workProjectRows } from "./columnModel";
+import { archivedThreads, projectLead, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows } from "./columnModel";
 import type { ProjectGroup, ThreadRow, WorkspaceSessionGroups } from "../../lib/workspaceSessions";
 
 const row = (over: Partial<ThreadRow> = {}): ThreadRow => ({
@@ -76,6 +76,13 @@ describe("the Projects section's rows", () => {
     expect(rows.map((r) => r.name)).toEqual(["FY27 budget", "Spring LAN", "Club kit"]);
     expect(rows[0]).toMatchObject({ id: "lifeos:budget", lifeosProjectId: "budget", target: new Date(2026, 11, 12).getTime(), lead: null });
     expect(quiet.map((r) => r.name)).toEqual(["Fall league", "Alumni night"]);
+    expect(quiet.map((r) => r.rest)).toEqual(["paused", "backlog"]);
+  });
+
+  it("counts the fold as the tracker does: paused and backlog each, never backlog as paused", () => {
+    expect(quietWords([{ rest: "backlog" }, { rest: "backlog" }])).toBe("2 in backlog");
+    expect(quietWords([{ rest: "paused" }, { rest: "backlog" }])).toBe("1 paused, 1 in backlog");
+    expect(quietWords([{ rest: "paused" }])).toBe("1 paused");
   });
 
   it("keeps a paused project with something live in the list, and names a mirror as LifeOS does", () => {

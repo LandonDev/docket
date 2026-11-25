@@ -32,10 +32,12 @@ import { PICKER_RUNTIME_MODES, shownRuntimeMode, type HarnessId, type RuntimeMod
 import { sessionStore } from "../../lib/tcserver/store";
 import type { ThreadType, WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../../lib/tcserver/workspaces";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useLifeosProjects } from "../../lib/workSwitch";
 import { THREAD_LABELS, WORK_THREAD_TYPES } from "../../surfaces/threads/threadTypes";
 import { WORK_PROVIDERS } from "@shared/work/providers";
 import { openLifeosProject } from "../shell/actions";
+import { useColumnProjects } from "../shell/columnProjects";
 import { WORK_ACCESS_HINT, WORK_ACCESS_HOLD, WORK_ACCESS_LABEL } from "./access";
 import { filingOf, jobLabel, placeOf, type FilingProject } from "./filing";
 
@@ -66,13 +68,15 @@ export type WorkComposerRowProps = {
   beforeFile?: () => void;
   /** The composer's field: a filing pick hands the caret back to it. */
   fieldOf: () => HTMLElement | null;
+  /** Told true while a pick waits on its project's mirror, false once the move lands or fails: Send waits for it. */
+  onFiling?: (busy: boolean) => void;
 };
 
 export function WorkComposerRow(props: WorkComposerRowProps) {
   const { sessionId, draft, onFile } = props;
   return (
     <div data-composer-bar data-work-row className="@container/composer-bar mt-1 flex h-6 min-w-0 items-center gap-1 px-1.5">
-      {draft && sessionId && onFile ? <FilingControl sessionId={sessionId} onFile={onFile} beforeFile={props.beforeFile} fieldOf={props.fieldOf} /> : null}
+      {draft && sessionId && onFile ? <FilingControl sessionId={sessionId} onFile={onFile} beforeFile={props.beforeFile} fieldOf={props.fieldOf} onFiling={props.onFiling} /> : null}
       <div className="ms-auto flex shrink-0 items-center">
         <WorkSettings {...props} />
       </div>
@@ -82,8 +86,9 @@ export function WorkComposerRow(props: WorkComposerRowProps) {
 
 const hostName = (environmentId: string): string => registry.environments().find((e) => e.id === environmentId)?.name ?? environmentId;
 
-const sayError = (error: unknown): void =>
-  void loadToast().then((toast) => toast.error(error instanceof Error ? error.message : String(error)));
+/** A mirror that did not open, in plain words; the draft still files where the control shows. */
+const sayNotOpened = (name: string, error: unknown, host: string): void =>
+  void loadToast().then((toast) => toast.error(`Couldn't file it under ${name}`, { description: workErrorWords(error, { host, write: true }) || undefined }));
 
 const draftWhere = (id: string) => {
   const s = sessionStore.get(id);
@@ -95,11 +100,13 @@ function FilingControl({
   onFile,
   beforeFile,
   fieldOf,
+  onFiling,
 }: {
   sessionId: string;
   onFile: (to: DraftPlace) => void;
   beforeFile?: () => void;
   fieldOf: () => HTMLElement | null;
+  onFiling?: (busy: boolean) => void;
 }) {
   // One string of the two ids, so a push that moves anything else renders nothing here.
   const where = useSyncExternalStore(sessionStore.subscribe, () => draftWhere(sessionId));
@@ -107,11 +114,18 @@ function FilingControl({
   const { workspaces, projects: catalog } = useWorkspaceCatalog();
   const jobRow = workspaces.find((w) => w.id === workspaceId && w.kind === "work");
   const lifeos = useLifeosProjects(jobRow?.sector ? jobRow.id : null);
-  const filing = filingOf({ workspaceId: workspaceId || null, projectId: projectId || null }, workspaces, catalog, lifeos);
+  // The targets the column sorts by, where its head keeps them; the menu lists the projects in the column's order.
+  const targets = useColumnProjects(jobRow?.id ?? "");
+  const filing = filingOf({ workspaceId: workspaceId || null, projectId: projectId || null }, workspaces, catalog, lifeos, targets);
   const { job, project } = filing;
   // A LifeOS project with no mirror yet is made at the pick (`work.project.open`, as the column does): its name shows,
-  // with a spinner after the control, until the mirror lands.
+  // with a spinner after the control, until the mirror lands; Send waits until the move lands or fails.
   const [opening, setOpening] = useState<string | null>(null);
+  useEffect(() => {
+    if (!opening || !onFiling) return;
+    onFiling(true);
+    return () => onFiling(false);
+  }, [opening, onFiling]);
 
   const file = (to: DraftPlace) => {
     beforeFile?.();
@@ -123,7 +137,10 @@ function FilingControl({
     if (!p.card || !p.lifeosProjectId) return file(placeOf(job, p.id));
     setOpening(p.name);
     void openLifeosProject(job, p.lifeosProjectId, p.name)
-      .then((mirror) => file(placeOf(job, mirror.id)), sayError)
+      .then(
+        (mirror) => file(placeOf(job, mirror.id)),
+        (error) => sayNotOpened(p.name, error, hostName(job.environmentId)),
+      )
       .finally(() => setOpening(null));
   };
 

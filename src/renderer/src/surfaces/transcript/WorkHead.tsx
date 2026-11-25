@@ -1,5 +1,6 @@
 // A Work thread's head: what it left him, at the top of its transcript (docs/DESIGN.md "A thread's head").
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { makeFunctionReference } from "convex/server";
 import type { ThreadRecord, RecordMade, RecordWait, RecordWork } from "@shared/work/threadRecord";
 import { kindOfEntry } from "@shared/work/files";
 import { Outbox, X } from "../../chrome/icons";
@@ -18,6 +19,7 @@ import { shell } from "../../stores/shell";
 import { KindGlyph as FileGlyph } from "../../work/files/KindGlyph";
 import { openInFiles } from "../../work/files/openFrom";
 import { Task } from "../../work/icons";
+import { useLifeosSession } from "../../work/shell/lifeos";
 import { readThreadRecord } from "../../work/threads/record";
 import { HeldDetail, rememberOutboxTab } from "../../work/outbox/OutboxView";
 import { KindGlyph, rowWords } from "../../work/outbox/parts";
@@ -34,55 +36,124 @@ import { useTranscriptHost } from "../transcriptSession";
  * longer lists (one now done). Quiet: one row
  * grid, no card, held muted, amber only for a question, red for a failure.
  * The record is the host's (`work.threads.record`, work/threads/record.ts),
- * read again when the thread's folded outcome or state moves.
+ * read again when the thread's folded outcome or state moves, when one of its
+ * held items changes in the Outbox, and when LifeOS says one of its open tasks
+ * changed. A refresh that fails keeps the last facts, with a quiet line that
+ * says they may be old.
  */
 export function WorkHead({ sessionId }: { sessionId: string }) {
   const env = useTranscriptHost();
-  const record = useThreadRecord(env, sessionId);
-  if (!env || !record) return null;
-  return <WorkHeadView record={record} environmentId={env} />;
+  const head = useThreadRecord(env, sessionId);
+  if (!env || !head) return null;
+  return <WorkHeadView record={head.record} environmentId={env} behind={head.behind ? head.at : null} />;
 }
 
-/** The record, read at mount and again when what the rail shows of the thread moves; null until it lands, or where the host refuses it. */
-export function useThreadRecord(env: string | null | undefined, sessionId: string): ThreadRecord | null {
-  const [record, setRecord] = useState<ThreadRecord | null>(null);
+/** The record the head shows: when it was read, and whether a later refresh failed while it shows. */
+export type HeadRecord = { record: ThreadRecord; at: number; behind: boolean };
+
+const keyOf = (item: Pick<HostItem, "ref">): string => `${item.ref.at}:${item.ref.id}`;
+
+/**
+ * The record, read at mount and again when what it says may have moved; null until it lands, or where the host
+ * refuses it. A record read for another thread or host is never shown for this one.
+ */
+export function useThreadRecord(env: string | null | undefined, sessionId: string): HeadRecord | null {
+  const key = `${env ?? ""}\n${sessionId}`;
+  const [kept, setKept] = useState<(HeadRecord & { key: string }) | null>(null);
+  const record = kept?.key === key ? kept.record : null;
   // What moves when the record does: the folded outcome (an Outbox item, a Result) and the thread's own state.
   const outcome = useSessionMetaValue(sessionId, (meta) => `${meta.status}|${meta.workOutcome?.tone ?? ""}|${meta.workOutcome?.words ?? ""}`);
-  // A held item decided anywhere moves the Outbox's own list, whatever the thread's outcome says.
-  const waiting = useOutbox().waiting.filter((item) => item.environmentId === env).length;
+  // This thread's held items as the Outbox's pushes keep them (its own, and its subagents' the record lists): one
+  // sent, discarded or edited in place reads the record again, whatever the outcome's words say.
+  const listed = new Set(record?.waits.flatMap((w) => (w.kind === "held" ? [keyOf(w.item)] : [])) ?? []);
+  const held = useOutbox()
+    .waiting.filter((item) => item.environmentId === env && (item.sessionId === sessionId || listed.has(keyOf(item))))
+    .map((item) => `${keyOf(item)}:${item.state}:${item.updatedAt}`)
+    .join("|");
+  const tasks = useTaskPulse(env, record);
   useEffect(() => {
     if (!env) return;
     let live = true;
     readThreadRecord(env, sessionId).then(
-        (next) => live && setRecord(next),
-        // A key that may not read it, or a host a release behind: the head is not drawn, the transcript is.
-        () => undefined,
-      );
+      (next) => live && setKept({ key, record: next, at: Date.now(), behind: false }),
+      // A key that may not read it, or a host a release behind: the head is not drawn, the transcript is. Facts
+      // already shown stay, marked as possibly old.
+      () => live && setKept((was) => (was?.key === key && !was.behind ? { ...was, behind: true } : was)),
+    );
     return () => {
       live = false;
     };
-  }, [env, sessionId, outcome, waiting]);
-  return record;
+  }, [env, sessionId, key, outcome, held, tasks]);
+  return kept?.key === key ? kept : null;
 }
 
-/** "Waiting on Sam Ortiz, 6 days": who, and for how long once it is a day. */
+const taskGet = makeFunctionReference<"query">("tasks:get");
+
+/**
+ * A count that moves when LifeOS changes one of the record's open tasks (done, moved, waiting on someone), on the
+ * job's LifeOS session, which the job's column already holds open. Nothing while the record lists no open task.
+ */
+function useTaskPulse(env: string | null | undefined, record: ThreadRecord | null): number {
+  const workspaces = useWorkspaces();
+  const sector = (record?.workspaceId && workspaces.find((w) => w.id === record.workspaceId && w.environmentId === env)?.sector) || null;
+  const ids = record?.works.filter((w) => w.table === "tasks" && w.state === "open").map((w) => w.id).join("\n") ?? "";
+  const session = useLifeosSession(ids && sector && env ? env : "", sector);
+  const client = ids ? session.client : null;
+  const [pulse, setPulse] = useState(0);
+  const seen = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (!client || !ids) return;
+    const offs = ids.split("\n").map((id) => {
+      const watch = client.watchQuery(taskGet, { id });
+      return watch.onUpdate(() => {
+        let now: string;
+        try {
+          now = JSON.stringify(watch.localQueryResult() ?? null);
+        } catch {
+          return;
+        }
+        const was = seen.current.get(id);
+        seen.current.set(id, now);
+        if (was !== undefined && was !== now) setPulse((n) => n + 1);
+      });
+    });
+    return () => offs.forEach((off) => off());
+  }, [client, ids]);
+  return pulse;
+}
+
+/** "Waiting on Sam Ortiz 6 days": who, and for how long once it is a day, as the plan row and the tracker say it. */
 export function waitingWords(name: string, since: number | null, now = Date.now()): string {
   const days = since === null ? 0 : Math.floor((now - since) / 86_400_000);
-  return days >= 1 ? `Waiting on ${name}, ${days} ${days === 1 ? "day" : "days"}` : `Waiting on ${name}`;
+  return days >= 1 ? `Waiting on ${name} ${days} ${days === 1 ? "day" : "days"}` : `Waiting on ${name}`;
 }
 
-/** A task's second line: who it waits on, else when it is due; late in red. */
+/** A task's second line: who it waits on, else when it is due; late in red once its due time has passed, as Tasks and Today say it. */
 function taskLine(work: RecordWork, now: number): { text: string; late: boolean } | null {
   if (work.state === "done") return { text: "Done", late: false };
   const task = work.task;
   if (!task) return null;
   if (task.waitingOn) return { text: waitingWords(task.waitingOn.name, task.waitingOn.since, now), late: false };
   if (task.due === null) return null;
-  const today = new Date(now).setHours(0, 0, 0, 0);
-  return { text: `Due ${heldWhen(task.due, now)}`, late: task.due < today };
+  return { text: `Due ${heldWhen(task.due, now)}`, late: task.due < now };
 }
 
-const failed = (error: unknown): void => void loadToast().then((toast) => toast.error(workErrorWords(error)));
+const failed = (error: unknown): void => void loadToast().then((toast) => toast.error(workErrorWords(error) || "Couldn't open it"));
+
+/**
+ * The question's own card, where the transcript asks it: the last one waiting, brought into view; else the
+ * transcript's end, where a waiting card always sits.
+ */
+function goToQuestion(from: HTMLElement, keyboard: boolean): void {
+  const scroller = from.closest<HTMLElement>(".agent-transcript");
+  if (!scroller) return;
+  const cards = scroller.querySelectorAll<HTMLElement>('[data-slot="question-card"], [data-approval-mark]');
+  const card = cards[cards.length - 1];
+  // A press from the keyboard, or reduced motion, lands at once.
+  const behavior: ScrollBehavior = keyboard || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  if (card) card.scrollIntoView({ block: "center", behavior });
+  else scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+}
 
 /** Where a made thing opens: a Files tab of its job, a page on the web, or its project. */
 function openMade(env: string, made: RecordMade): (() => void) | undefined {
@@ -93,7 +164,7 @@ function openMade(env: string, made: RecordMade): (() => void) | undefined {
   return () => openWorkView({ workspaceId: open.workspaceId, view: "projects", project: open.projectId });
 }
 
-export function WorkHeadView({ record, environmentId: env, now = Date.now() }: { record: ThreadRecord; environmentId: string; now?: number }) {
+export function WorkHeadView({ record, environmentId: env, now = Date.now(), behind = null }: { record: ThreadRecord; environmentId: string; now?: number; behind?: number | null }) {
   const [heldKey, setHeldKey] = useState<string | null>(null);
   const outbox = useOutbox().waiting;
   const workspaces = useWorkspaces();
@@ -135,6 +206,11 @@ export function WorkHeadView({ record, environmentId: env, now = Date.now() }: {
       {rows.length ? (
         <section data-work-head aria-label="What this thread left you" className="mb-5 flex min-w-0 flex-col border-b border-border pb-3">
           {rows}
+          {behind !== null ? (
+            <p data-head-behind className="pt-1 text-xs leading-4 text-muted-foreground">
+              Couldn't refresh. As of {heldWhen(behind, now)}
+            </p>
+          ) : null}
         </section>
       ) : null}
       {from ? <FromTask title={from.title} onOpen={openTask(from)} /> : null}
@@ -168,14 +244,13 @@ export function WorkHeadView({ record, environmentId: env, now = Date.now() }: {
   );
 }
 
-const keyOf = (item: Pick<HostItem, "ref">): string => `${item.ref.at}:${item.ref.id}`;
 const waitKey = (wait: RecordWait): string => (wait.kind === "held" ? `held:${keyOf(wait.item)}` : wait.kind === "request" ? `request:${wait.id}` : wait.kind);
 
 function WaitRow({ wait, env, now, onOpenHeld }: { wait: RecordWait; env: string; now: number; onOpenHeld: (key: string) => void }) {
   switch (wait.kind) {
     case "asks":
       // The question's own card is in the transcript; the head names it once, amber.
-      return <Row lead={<StatusMark state="waiting" word={false} />} title="Asks you" />;
+      return <Row lead={<StatusMark state="waiting" word={false} />} title="Asks you" label="Go to the question" onOpen={goToQuestion} />;
     case "failed":
       return <Row lead={<StatusMark state="failed" word={false} />} title={wait.words} detail={wait.cause ?? undefined} tone="failed" />;
     case "request":
@@ -194,15 +269,16 @@ function WaitRow({ wait, env, now, onOpenHeld }: { wait: RecordWait; env: string
     case "held": {
       const item = wait.item;
       const { act, about } = rowWords(item);
+      // A failed send is drawn as failed: the red mark, why in red, and when it failed. Out of date is muted.
       const sendFailed = item.state === "failed";
       const detail = sendFailed ? (item.error ?? "Couldn't send") : item.state === "stale" ? "Out of date" : (about ?? item.account ?? undefined);
       return (
         <Row
-          lead={<KindGlyph kind={item.kind} className="size-3.5" />}
+          lead={sendFailed ? <StatusMark state="failed" word={false} /> : <KindGlyph kind={item.kind} className="size-3.5" />}
           title={act}
           detail={detail}
-          late={sendFailed || item.state === "stale"}
-          fact={`Held ${heldWhen(item.createdAt, now)}`}
+          late={sendFailed}
+          fact={sendFailed ? `Failed ${heldWhen(item.updatedAt, now)}` : `Held ${heldWhen(item.createdAt, now)}`}
           label={`Open ${act}`}
           onOpen={() => onOpenHeld(keyOf(item))}
         />
@@ -218,7 +294,7 @@ function WaitRow({ wait, env, now, onOpenHeld }: { wait: RecordWait; env: string
  * once); its fill reaches 8px past the column so the glyphs sit on the
  * transcript's own.
  */
-function Row({ lead, title, detail, late, fact, tone, onOpen, label }: { lead: ReactNode; title: string; detail?: string; late?: boolean; fact?: string; tone?: "failed"; onOpen?: () => void; label?: string }) {
+function Row({ lead, title, detail, late, fact, tone, onOpen, label }: { lead: ReactNode; title: string; detail?: string; late?: boolean; fact?: string; tone?: "failed"; onOpen?: (from: HTMLElement, keyboard: boolean) => void; label?: string }) {
   const body = (
     <>
       <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground">{lead}</span>
@@ -237,7 +313,7 @@ function Row({ lead, title, detail, late, fact, tone, onOpen, label }: { lead: R
       </div>
     );
   return (
-    <button type="button" data-head-row aria-label={label} onClick={onOpen} className={cn(frame, "focus-ring hover:bg-foreground/5 active:bg-foreground/12")}>
+    <button type="button" data-head-row aria-label={label} onClick={(event) => onOpen(event.currentTarget, event.detail === 0)} className={cn(frame, "focus-ring hover:bg-foreground/5 active:bg-foreground/12")}>
       {body}
     </button>
   );

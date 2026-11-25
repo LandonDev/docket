@@ -25,12 +25,19 @@ vi.mock("../../chrome/DraftHostPicker", () => ({ DraftHostPicker: () => <span da
 vi.mock("../../chrome/CwdPicker", () => ({ CwdPicker: () => null }));
 vi.mock("../../chrome/BranchPicker", () => ({ BranchPicker: () => null }));
 vi.mock("../../chrome/AccessPicker", () => ({ AccessPicker: () => <span data-testid="code-access" /> }));
-const opened = vi.hoisted(() => ({ calls: [] as string[] }));
+const opened = vi.hoisted(() => ({ calls: [] as string[], gate: null as Promise<void> | null, fail: null as Error | null }));
 vi.mock("../shell/actions", () => ({
   openLifeosProject: async (workspace: { id: string; environmentId: string }, lifeosProjectId: string) => {
     opened.calls.push(lifeosProjectId);
+    if (opened.gate) await opened.gate;
+    if (opened.fail) throw opened.fail;
     return { id: `mirror-${lifeosProjectId}`, workspaceId: workspace.id, environmentId: workspace.environmentId };
   },
+}));
+const toasts = vi.hoisted(() => ({ errors: [] as { title: string; description?: string }[] }));
+vi.mock("../../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../../components/ui/toaster")>()),
+  loadToast: async () => Object.assign(() => undefined, { error: (title: string, options?: { description?: string }) => void toasts.errors.push({ title, description: options?.description }) }),
 }));
 
 import { Composer } from "../../chrome/Composer";
@@ -41,6 +48,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setLifeosProjects } from "../../lib/workSwitch";
 import { workComposerChunk } from "../../surfaces/chunks";
 import { addContextChip, contextChipsOf, resetContextChips } from "../canvas/chips";
+import { setColumnProjects } from "../shell/columnProjects";
 
 const purdue = { id: "w-purdue", name: "Purdue Esports", path: "/jobs/purdue", kind: "work", sector: "purdue" };
 const cosmic = { id: "w-cosmic", name: "Cosmic", path: "/jobs/cosmic", kind: "work", sector: "cosmic" };
@@ -101,6 +109,10 @@ beforeEach(async () => {
   projectDrafts.reload();
   resetContextChips();
   opened.calls = [];
+  opened.gate = null;
+  opened.fail = null;
+  toasts.errors = [];
+  setColumnProjects("w-purdue", []);
   workspaceStore.hydrate([{ environmentId: "local", workspaces: [purdue, cosmic, code], projects: [lan] }]);
   setLifeosProjects("w-purdue", [
     { id: "lp-lan", name: "Spring LAN" },
@@ -129,14 +141,61 @@ describe("a Work draft's composer", () => {
     expect(trigger.getAttribute("aria-label")).toBe("Files in Purdue Esports, Spring LAN");
   });
 
-  it("lists the job's projects as the column does, No project and Another job", async () => {
+  it("lists the job's projects in the column's order (by name with no target), No project and Another job", async () => {
     seedDraft("d1");
     mount("d1");
     await act(async () => fireEvent.click(await filing()));
     const menu = await screen.findByRole("menu", { name: "Where it files" });
     const rows = within(menu).getAllByRole("menuitem").map((row) => row.textContent);
-    expect(rows).toEqual(["Spring LAN", "FY27 budget", "No project", "Another job"]);
+    expect(rows).toEqual(["FY27 budget", "Spring LAN", "No project", "Another job"]);
     expect(within(menu).getByRole("menuitem", { name: "Spring LAN" }).dataset.checked).toBe("true");
+  });
+
+  it("lists by target date first, as the column does", async () => {
+    setColumnProjects("w-purdue", [
+      { id: "lp-lan", name: "Spring LAN", status: "active", targetDate: new Date(2027, 1, 14).getTime() },
+      { id: "lp-budget", name: "FY27 budget", status: "active", targetDate: null },
+    ]);
+    seedDraft("d1");
+    mount("d1");
+    await act(async () => fireEvent.click(await filing()));
+    const menu = await screen.findByRole("menu", { name: "Where it files" });
+    expect(within(menu).getAllByRole("menuitem").map((row) => row.textContent).slice(0, 2)).toEqual(["Spring LAN", "FY27 budget"]);
+  });
+
+  it("holds Send (Return too) while a pick waits on its project's mirror, typing on, and lets it go once the move lands", async () => {
+    let open!: () => void;
+    opened.gate = new Promise<void>((resolve) => (open = resolve));
+    seedDraft("d1");
+    const onSubmit = vi.fn();
+    const onDraftFile = vi.fn();
+    const view = mount("d1", { onSubmit, onDraftFile, initialDraft: "Ask Sam for two switches" });
+    const send = () => screen.getByRole("button", { name: /^Send/ });
+    await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false));
+    await act(async () => fireEvent.click(await filing()));
+    await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "FY27 budget" })));
+    expect(send().hasAttribute("disabled")).toBe(true);
+    fireEvent.keyDown(field(view), { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field(view).getAttribute("contenteditable")).toBe("true");
+    await act(async () => open());
+    await waitFor(() => expect(onDraftFile).toHaveBeenCalled());
+    await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false));
+  });
+
+  it("a mirror that fails to open says so in plain words, lets Send go, and keeps the old filing shown", async () => {
+    opened.fail = new Error("[CONVEX M(projects:mirror)] Server Error: no handler for work.project.open");
+    seedDraft("d1");
+    const onDraftFile = vi.fn();
+    mount("d1", { onDraftFile, initialDraft: "Ask Sam" });
+    await act(async () => fireEvent.click(await filing()));
+    await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "FY27 budget" })));
+    await waitFor(() => expect(toasts.errors).toHaveLength(1));
+    expect(toasts.errors[0]!.title).toBe("Couldn't file it under FY27 budget");
+    expect(toasts.errors[0]!.description ?? "").not.toMatch(/CONVEX|projects:mirror|work\.project\.open/);
+    expect(onDraftFile).not.toHaveBeenCalled();
+    await waitFor(async () => expect((await filing()).textContent).toBe("Purdue EsportsSpring LAN"));
+    expect(screen.getByRole("button", { name: /^Send/ }).hasAttribute("disabled")).toBe(false);
   });
 
   it("moves the unsent draft to No project keeping its words, its files and its chips", async () => {

@@ -33,6 +33,7 @@ const { setColumnProjects } = await import("./columnProjects");
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   openWorkView(null);
   store.metas = [];
   store.asked = [];
@@ -79,6 +80,7 @@ describe("the Projects section", () => {
     card("lan", "Spring LAN", [row({ workOutcome: { words: "1 mail to send", tone: "held" } })]),
     card("ask", "Alumni night", [row({ status: "waiting", needsYou: true })]),
     card("fall", "Fall league"),
+    card("kit", "Club kit"),
   ];
   // As the column's head keeps them (WorkColumn.tsx `setColumnProjects`).
   setColumnProjects("w-job", [
@@ -86,6 +88,7 @@ describe("the Projects section", () => {
     { id: "lan", name: "Spring LAN", status: "active", targetDate: day(20) },
     { id: "ask", name: "Alumni night", status: "active", targetDate: null },
     { id: "fall", name: "Fall league", status: "paused", targetDate: null },
+    { id: "kit", name: "Club kit", status: "backlog", targetDate: null },
   ]);
   const Section = (props: { linked?: boolean; groups?: ProjectGroup[]; onOpen?: (r: { id: string }) => void }) => (
     <WorkProjectsSection workspaceId="w-job" linked={props.linked ?? true} groups={props.groups ?? groups} onOpen={props.onOpen ?? (() => {})} />
@@ -105,14 +108,26 @@ describe("the Projects section", () => {
     expect(screen.getByRole("button", { name: /FY27 budget, Working, late, was due/ })).toBeTruthy();
   });
 
-  it("folds paused and backlog into one quiet row that shows them on a press", () => {
+  it("folds paused and backlog into one quiet row, counted each as the tracker says it, that shows them on a press", () => {
     render(<Section />);
-    const fold = screen.getByRole("button", { name: "1 paused" });
+    const fold = screen.getByRole("button", { name: "1 paused, 1 in backlog" });
     expect(fold.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("Fall league")).toBeNull();
     fireEvent.click(fold);
     expect(fold.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Fall league")).toBeTruthy();
+    expect(screen.getByText("Club kit")).toBeTruthy();
+  });
+
+  it("lights the project whose page shows, not the heading; the heading only while the list shows", () => {
+    render(<Section />);
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects", project: "lan" }));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: /^FY27 budget/ }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBeNull();
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("true");
   });
 
   it("opens a project's page from its row, and the job's Projects view from the heading, which then reads as open", () => {
@@ -172,6 +187,31 @@ describe("the Threads section", () => {
     render(<WorkThreadsSection items={items} actions={actions(opened)} requested={30} onMore={() => {}} archived={scope} />);
     fireEvent.click(screen.getByRole("button", { name: "Ask ITaP for two switches, Held, Spring LAN, 1 mail to send" }));
     expect(opened).toEqual(["held"]);
+  });
+
+  it("says a cut title and second line whole on focus, and draws no tip while nothing is cut", async () => {
+    const focusTip = async () => {
+      await act(async () => {
+        document.querySelector<HTMLElement>('[data-work-thread="held"] [data-row-open]')!.focus();
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      return document.querySelector('[data-slot="tooltip-content"]');
+    };
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(100);
+    const { unmount } = render(<WorkThreadsSection items={items.slice(0, 1)} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
+    expect(await focusTip()).toBeNull();
+    unmount();
+    wide.mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Spring LAN, 1 mail to send" ? 300 : 100;
+    });
+    render(<WorkThreadsSection items={items.slice(0, 1)} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
+    expect((await focusTip())?.textContent).toBe("Ask ITaP for two switchesSpring LAN, 1 mail to send");
   });
 
   it("shows one page (32 rows), then N more", () => {
