@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { DeckSlide } from "@shared/contract-work-slides";
 import { Textarea } from "../../../components/ui/textarea";
+import { notesShown, notesTyped } from "../notesText";
 import type { HandSession } from "./session";
 
 /** The most of a slide's notes the deck's outline carries (the deck tool's `TEXT_CAP`): notes this long may be cut. */
@@ -36,13 +37,15 @@ export function NotesField({ slide, session }: { slide: DeckSlide; session: Hand
       <Textarea
         id={id}
         data-slide-notes-field
-        value={text}
+        value={notesShown(text)}
         rows={1}
         placeholder="Add notes"
         className="-mx-2.5 min-h-0 max-w-[70ch] resize-none border-transparent px-2.5 py-1 text-sm leading-[22px] text-pretty"
         onChange={(event) => {
-          setText(event.target.value);
-          session.typeNotes(slide.id, event.target.value, began.current);
+          // A line break inside a paragraph shows as a line and goes back as one (notesText.ts).
+          const typed = notesTyped(event.target.value, text);
+          setText(typed);
+          session.typeNotes(slide.id, typed, began.current);
         }}
         onBlur={() => void session.keepNotes()}
         onKeyDown={(event) => {

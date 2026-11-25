@@ -51,6 +51,7 @@ import { forgetWithItems } from "../canvas/gone";
 import { DeckFind, useDeckMatches } from "./DeckFind";
 import { copyShape, duplicateShape, heldShape, IN_FIELD, pasteShape } from "./edit/clipboard";
 import type { DeckMatch } from "./find";
+import { notesShown } from "./notesText";
 
 export { freePage } from "./Picture";
 
@@ -1178,11 +1179,11 @@ function Main({
               <div className="text-xs font-medium text-muted-foreground">Notes</div>
               {notesEdit ? (
                 <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-                  <Diff before={notesEdit.before} after={notesEdit.after} />
+                  <Diff before={notesShown(notesEdit.before)} after={notesShown(notesEdit.after)} />
                 </p>
               ) : (
                 <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-                  {slide.notes}
+                  {notesShown(slide.notes)}
                 </p>
               )}
               {!notesEdit && notesCut(slide) ? <div className="mt-1 text-xs text-muted-foreground">Too long to edit here</div> : null}

@@ -1842,6 +1842,11 @@ or a close sends every slide's refused notes (Replace one slide's). The line nam
 first, else the last refusal still standing (`refusedLine`). A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
+A line break inside a notes paragraph (Shift+Return in PowerPoint, `a:br`,
+which the deck tool reads as `\v`) draws as a line break in the field, the
+read-only notes and the presenter's view (`notesShown`, slides/notesText.ts),
+never as a box; the field writes it back as one where it was, and a line he
+starts with Return is a paragraph (`notesTyped`).
 
 ### Copy and paste
 

@@ -35,6 +35,21 @@ describe("the notes field drawn again", () => {
     expect(edits.at(-1)).toEqual([{ op: "notes", slide: 3, text: "Say hello, then the plan, then thanks", was: "Say hello, then the plan" }]);
   });
 
+  it("shows a line break inside a paragraph as a line, and sends it back as one", async () => {
+    const view = deckView({ slides: [slide(3, { notes: "Thank the sponsors\vDoors open at six" })], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const store = new DeckStore();
+    store.view(view);
+    const session = new HandSession(host, store);
+    const { container } = render(<NotesField slide={view.slides[0]} session={session} />);
+    const field = () => container.querySelector<HTMLTextAreaElement>("[data-slide-notes-field]")!;
+    expect(field().value).toBe("Thank the sponsors\nDoors open at six");
+    fireEvent.change(field(), { target: { value: "Thank the sponsors\nDoors open at six sharp" } });
+    await session.keepNotes();
+    const edits = host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
+    expect(edits.at(-1)).toEqual([{ op: "notes", slide: 3, text: "Thank the sponsors\vDoors open at six sharp", was: "Thank the sponsors\vDoors open at six" }]);
+  });
+
   it("takes the deck's notes again on Reload over notes changed elsewhere", async () => {
     const view = deckView({ slides: [slide(3, { notes: "Say hello" })], hand: { undo: false, redo: false } });
     const host = fakeDeckHost(view);

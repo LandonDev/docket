@@ -12,6 +12,7 @@ import { aspectOf, fit, SlidePicture, Thumb } from "./pictures";
 import { MediaTransport, SlideMedia, usePicture, useStage } from "./stage";
 import { nextPress, NOTES_SIZES, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
 import { clockOf, elapsedOf, overTarget, TARGETS, type ShowTimer, type Target } from "./timer";
+import { notesShown } from "../notesText";
 
 /**
  * The presenter's view (docs/DESIGN.md "The show"; the approved page is
@@ -229,7 +230,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
             </div>
             {slide && !state.ended && slide.notes.trim() ? (
               <p data-show-notes tabIndex={0} className="focus-ring mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain text-pretty whitespace-pre-wrap select-text" style={{ fontSize: size, lineHeight: `${line}px` }}>
-                {slide.notes}
+                {notesShown(slide.notes)}
               </p>
             ) : (
               <p data-show-notes className="mt-2 text-[13px] leading-5 text-muted-foreground">
