@@ -264,7 +264,8 @@ export const FilesRequestSchemas = [
    * or with `copy` beside it under the keep-both name. `origin` is his window's press on the workspace's host.
    */
   /** → FileUploaded: whether OneDrive here has uploaded a file of a library here as it lies; the workspace's host asks after its write (files/uploads.ts). */
-  request('work.files.uploaded', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema })),
+  /** `refs`: every file one sweep asks of this host at once, answered `{ results: FileUploaded[] }` in their order (`ref` then stands for the first). */
+  request('work.files.uploaded', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, refs: z.array(CanvasSourceSchema).min(1).max(50).optional() })),
   request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), origin: FileOriginSchema })),
   /**
    * → SavedAsWord: Save as Word to…: the document `source` (a .tcdoc, a LifeOS document, a Google Doc) exported as

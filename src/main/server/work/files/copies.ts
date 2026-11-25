@@ -418,6 +418,24 @@ export async function freshBytes(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' |
 }
 
 /**
+ * The file's version as it is on its computer now, with as little of it as a read carries (its first byte): what a save
+ * asks before it decides whether it must pull the whole file. Null from a host a build behind, which names no version
+ * of a piece.
+ */
+export async function freshVersion(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name'>, signal?: AbortSignal): Promise<string | null> {
+  if (!copyAllowed(ctx.db, r.workspace_id)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
+  const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
+  if (r.vm) {
+    const at = locate(ctx, LOCAL, r.workspace_id, ref, 'work.files.copyReload')
+    if (at.in !== 'library' || !at.library.vm) throw new Error(NOT_SAVING)
+    return (await vmReadVersioned(r.path, 0, 1, undefined, signal)).version
+  }
+  const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id }, signal } as never, r.host)
+  const got = (await far.call('office', 'filesRead', { source: ref, as: 'bytes', offset: 0, length: 1 })) as FarPiece
+  return typeof got.version === 'string' && typeof got.size === 'number' ? got.version : null
+}
+
+/**
  * `work.files.copyReload`: the file as it is on its computer now, written into the copy the tab's item already names
  * (after Keep Both that file is another than the one first copied, and its copy stays in the tab's one folder); what
  * was not sent is dropped. The copy is written without following a link, as `copyIn` writes one.

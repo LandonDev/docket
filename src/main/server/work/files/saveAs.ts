@@ -7,7 +7,7 @@ import { linkWords, saveAsName, type DocLink, type SaveAsFormat, type SavedAs } 
 import { attachmentDocPathOf } from '../docs/target'
 import { endGuestEditOn } from '../guests/store'
 import type { Caller, WorkCtx } from '../modules'
-import { admitOwner, deliver, freshBytes, unreachable } from './copies'
+import { admitOwner, deliver, freshBytes, freshVersion, unreachable } from './copies'
 import { vmList } from '../office/vm/files'
 import { admitChange, filesState, HELD_BY_TOOLS, THREADS_BY_TOOLS, vmWhere, writeBytes } from './handle'
 import { admitCaller, locate, workspaceHere } from './policy'
@@ -120,7 +120,8 @@ async function versionNow(ctx: WorkCtx, r: Spot): Promise<string | null> {
       const peer = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id } } as never, r.host)
       const got = (await peer.call('files', 'stat', { workspaceId: r.workspace_id, refs: [{ at: 'file', host: r.host, path: r.path }] })) as { entries: unknown[] }
       if (!got.entries[0]) return null
-      return (await freshBytes(ctx, r)).version
+      // Its exact version, with one byte of it: the whole file is pulled only from a host a build behind.
+      return (await freshVersion(ctx, r)) ?? (await freshBytes(ctx, r)).version
     }
     if (r.vm) {
       // The VM's folder is listed first, by name read case-blind as Windows reads it.

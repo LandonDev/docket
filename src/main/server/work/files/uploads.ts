@@ -25,7 +25,7 @@ import { locate } from './policy'
  * to 1.8 s in the VM and 0.8 to 2.9 s on the Mac on 2026-11-24, F-edits-lost.md "Saved is not uploaded"). `give`: after this
  * the file is looked at no more, and the VM may sleep again.
  */
-export const uploadTiming = { every: 2000, late: 60_000, give: 30 * 60_000 }
+export const uploadTiming = { every: 2000, late: 60_000, give: 30 * 60_000, ask: 10_000 }
 
 interface Upload {
   workspaceId: string
@@ -93,26 +93,54 @@ function soon(ctx: WorkCtx, ms: number): void {
   timer.unref?.()
 }
 
-/** One look at every upload still owed, after any look already under way. */
+/**
+ * One look at every upload still owed, after any look already under way. Each other host of his is asked once a sweep
+ * for all of its files (`work.files.uploaded {refs}`), every host at once, each under its own deadline; the VM's files
+ * are looked at one by one through its door, never waking it.
+ */
 export function lookAll(ctx: WorkCtx, now: () => number = Date.now): Promise<void> {
   const next = queue.then(async () => {
-    for (const u of [...uploads.values()]) {
-      if (!owed(u, now())) continue
+    const due = [...uploads.values()].filter((u) => owed(u, now()))
+    const near = due.filter((u) => u.vm)
+    const far = new Map<string, Upload[]>()
+    for (const u of due) if (!u.vm) (far.get(`${u.host}\u0000${u.workspaceId}`) ?? far.set(`${u.host}\u0000${u.workspaceId}`, []).get(`${u.host}\u0000${u.workspaceId}`)!).push(u)
+    const settle = (u: Upload, got: { cloud: CloudBack | undefined; looking: boolean } | null): void => {
       const was = JSON.stringify(u.cloud)
-      const got = await look(ctx, u, now)
       // another host's file in no folder OneDrive syncs: nothing to tell of it, and it is asked no more
       if (got === null) {
         u.looking = false
-        continue
+        return
       }
       u.cloud = got.cloud
       u.looking = got.looking
       if (JSON.stringify(u.cloud) !== was) filesState(ctx).tabs.touch(u.workspaceId)
     }
+    await Promise.all([
+      (async () => {
+        for (const u of near) settle(u, await look(ctx, u, now))
+      })(),
+      ...[...far.values()].map(async (group) => {
+        let said: (boolean | null | 'outside')[] | null
+        try {
+          // How long one host's answer is waited for (`uploadTiming.ask`): a host that does not answer holds no other.
+          said = await withDeadline(askHostAll(ctx, group), uploadTiming.ask)
+        } catch {
+          said = null
+        }
+        group.forEach((u, i) => settle(u, said ? outcome(ctx, u, said[i] ?? null, now) : { cloud: u.cloud, looking: true }))
+      })
+    ])
   })
   queue = next.catch(() => {})
   return next
 }
+
+const withDeadline = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('not answering')), ms)
+    timer.unref?.()
+    p.then(resolve, reject).finally(() => clearTimeout(timer))
+  })
 
 async function look(ctx: WorkCtx, u: Upload, now: () => number): Promise<{ cloud: CloudBack | undefined; looking: boolean } | null> {
   const late = now() - u.wrote >= uploadTiming.late
@@ -126,6 +154,13 @@ async function look(ctx: WorkCtx, u: Upload, now: () => number): Promise<{ cloud
     // Not answering, or the file went (a move, a delete): what was known stands until the next look.
     return { cloud: u.cloud, looking: true }
   }
+  return outcome(ctx, u, uploaded, now)
+}
+
+/** What one file's answer says of its upload, as its tab tells it. */
+function outcome(ctx: WorkCtx, u: Upload, uploaded: boolean | null | 'outside', now: () => number): { cloud: CloudBack | undefined; looking: boolean } | null {
+  const late = now() - u.wrote >= uploadTiming.late
+  const at = u.saved
   if (uploaded === 'outside') return null
   if (uploaded === null) return { cloud: { is: 'unknown', at }, looking: false }
   if (uploaded) return { cloud: { is: 'uploaded', at: now() }, looking: false }
@@ -133,6 +168,30 @@ async function look(ctx: WorkCtx, u: Upload, now: () => number): Promise<{ cloud
   const onedrive = u.vm ? storedStatus(ctx.db)?.status.onedrive : undefined
   const why = onedrive && !onedrive.running ? 'stopped' : onedrive && !onedrive.account ? 'signed-out' : undefined
   return { cloud: { is: 'late', at, ...(why ? { why } : {}) }, looking: true }
+}
+
+/**
+ * Another host of his, for every file of one workspace there at once (`work.files.uploaded {refs}`), in their order. A
+ * host a build behind answers one file and no `results`: each is asked alone then, one after another.
+ */
+async function askHostAll(ctx: WorkCtx, group: Upload[]): Promise<(boolean | null | 'outside')[]> {
+  const u = group[0]!
+  if (group.length === 1) return [await askHost(ctx, u)]
+  const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(u.workspaceId), workspaceId: u.workspaceId } } as never, u.host)
+  const refs = group.map((g) => ({ at: 'file' as const, host: g.host, path: g.path }))
+  let got: FileUploaded | { results: FileUploaded[] }
+  try {
+    got = (await far.call('files', 'uploaded', { workspaceId: u.workspaceId, ref: refs[0], refs })) as FileUploaded | { results: FileUploaded[] }
+  } catch (err) {
+    if (/unknown method|no such method|not handled/i.test(err instanceof Error ? err.message : String(err))) return group.map(() => null)
+    throw err
+  }
+  if (!('results' in got)) {
+    const out: (boolean | null | 'outside')[] = []
+    for (const g of group) out.push(await askHost(ctx, g).catch(() => null))
+    return out
+  }
+  return got.results.map((r) => (r.outside ? 'outside' : r.uploaded))
 }
 
 /** Another host of his: its own reading of the file it holds (`work.files.uploaded`); an older one that has no such verb cannot say. */
@@ -154,12 +213,25 @@ async function askHost(ctx: WorkCtx, u: Upload): Promise<boolean | null | 'outsi
  * the file of a library here as it lies. On a Mac, the File Provider item's own keys (uploaded, and not uploading); a
  * computer that cannot read them says null.
  */
-export async function uploadedHere(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource }, method: string): Promise<FileUploaded> {
+export async function uploadedHere(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; refs?: CanvasSource[] }, method: string): Promise<FileUploaded | { results: FileUploaded[] }> {
   if (by.kind !== 'remote' || !by.peer) throw new Error("Only the workspace's own host asks this.")
-  if (p.ref.at !== 'file') return { uploaded: null, outside: true }
-  const at = locate(ctx, by, p.workspaceId, p.ref, method)
-  if (at.in !== 'library' || at.library.vm) return { uploaded: null, outside: true }
-  return { uploaded: await uploadReader(p.ref.path) }
+  const one = async (ref: CanvasSource): Promise<FileUploaded> => {
+    if (ref.at !== 'file') return { uploaded: null, outside: true }
+    // Each file passes the door on its own: one the caller may not name is refused alone, never the sweep.
+    let at
+    try {
+      at = locate(ctx, by, p.workspaceId, ref, method)
+    } catch (err) {
+      if (p.refs) return { uploaded: null, outside: true }
+      throw err
+    }
+    if (at.in !== 'library' || at.library.vm) return { uploaded: null, outside: true }
+    return { uploaded: await uploadReader(ref.path) }
+  }
+  if (!p.refs) return one(p.ref)
+  const results: FileUploaded[] = []
+  for (const ref of p.refs) results.push(await one(ref))
+  return { results }
 }
 
 /**

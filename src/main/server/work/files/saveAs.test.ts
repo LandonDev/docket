@@ -38,6 +38,8 @@ let box: Rig
 let mac: Rig
 let far: { verb: string; args: Record<string, unknown> }[]
 let macUp: boolean
+/** run on the Mac before it answers a writeBack: someone there makes a file meanwhile */
+let beforeWrite: (() => void) | null
 
 beforeEach(() => {
   box = makeRig()
@@ -53,12 +55,14 @@ beforeEach(() => {
   doc.rev = 'r1'
   far = []
   macUp = true
+  beforeWrite = null
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
         async call(module: string, verb: string, args: Record<string, unknown>) {
           far.push({ verb, args })
           if (!macUp || host !== MAC) throw new Error(`host offline: ${host} has no live link to this host`)
+          if (verb === 'writeBack') beforeWrite?.()
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
           if (!out.handled) throw new Error(`${req.method} is not answered there`)
@@ -284,6 +288,28 @@ describe('a library on his Mac', () => {
     await autosaveLinks(box.ctx, later)
     expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('docx two')
     expect((await links())[0]!.state).toBe('saved')
+  })
+})
+
+describe('a target on his Mac', () => {
+  const general = () => join(mac.team, 'General')
+  it('is asked whether it is there and its version by one byte, never pulled whole, before Replace writes over it by that version', async () => {
+    writeFileSync(join(general(), 'Budget.docx'), 'x'.repeat(3 * 1024 * 1024))
+    far.length = 0
+    expect(await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })).toMatchObject({ exists: { name: 'Budget.docx' } })
+    const reads = far.filter((c) => c.verb === 'filesRead')
+    expect(reads.map((c) => c.args.length)).toEqual([1])
+    expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toHaveLength(3 * 1024 * 1024)
+  })
+
+  it('leaves a file made there meanwhile as it is: the document is made beside it, never over it', async () => {
+    beforeWrite = () => {
+      beforeWrite = null
+      writeFileSync(join(general(), 'Budget.docx'), 'made there meanwhile')
+    }
+    const got = await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })
+    expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('made there meanwhile')
+    expect(got).not.toMatchObject({ saved: { name: 'Budget.docx' } })
   })
 })
 

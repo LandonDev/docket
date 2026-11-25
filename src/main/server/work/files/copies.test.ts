@@ -21,7 +21,7 @@ import { versionOf } from './write'
 import { startFileAutosaves } from './autosave'
 import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
-import { forgetUploads, lookAll, setUploadReader } from './uploads'
+import { forgetUploads, lookAll, setUploadReader, uploadTiming, uploadWrote } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
 const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void | Promise<void>) | null }))
@@ -820,6 +820,26 @@ describe('a Word file of another computer', () => {
     expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
   })
 
+  it('a second Save as Word asks the file for its version alone, and pulls it whole only when it must', async () => {
+    const { tabId, path } = await imported('Plan.docx', 'word bytes')
+    const reads = () => far.filter((c) => c.verb === 'filesRead').map((c) => (c.args.length === 1 ? 'version' : 'bytes'))
+    far.length = 0
+    // The first save over the file keeps its original beside it: that one is pulled whole.
+    expect((await call<{ at: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(reads()).toEqual(['version', 'bytes'])
+    far.length = 0
+    // The next: its version is the one this host wrote, its original kept: one byte asked, nothing pulled.
+    expect((await call<{ at: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(reads()).toEqual(['version'])
+    // Changed there: its version moved, so it is pulled to tell an edit from SharePoint's touch, and the save stops.
+    far.length = 0
+    writeFileSync(path, 'their edit')
+    shiftMtime(path, 9000)
+    expect(await call<{ conflict?: unknown }>('work.files.wordSave', { tabId })).toMatchObject({ conflict: { changed: expect.any(Number) } })
+    expect(reads()).toEqual(['version', 'bytes'])
+    expect(readFileSync(path, 'utf8')).toBe('their edit')
+  })
+
   it('keeps his edited document when the tab closes, and opens it again for the Word file, reading nothing over it', async () => {
     const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
     writeFileSync(doc, '{"doc":"his edit"}')
@@ -1352,6 +1372,51 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     await lookAll(box.ctx)
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'unknown' })
     expect(asks).toBe(1)
+  })
+
+  it('asks the Mac once a sweep for all its files, and a host that does not answer holds up no other', async () => {
+    const asked: string[] = []
+    setUploadReader(async (path) => (asked.push(path), false))
+    const files: Awaited<ReturnType<typeof openFar>>[] = []
+    for (const name of ['A.xlsx', 'B.xlsx', 'C.xlsx']) {
+      const opened = await openFar(name, `${name} one`)
+      await editorSaves(opened.copy, `${name} two`)
+      files.push(opened)
+    }
+    await settled()
+    // A PC whose link holds every ask and never answers.
+    const real = (box.ctx as unknown as { peer: (this: unknown, host: string) => unknown }).peer
+    Object.assign(box.ctx, { peer: (host: string) => (host === 'env_pc' ? { call: () => new Promise(() => undefined) } : real.call(box.ctx, host)) })
+    uploadWrote(box.ctx, { workspace_id: WS, host: 'env_pc', path: 'C:\\Team\\D.xlsx', vm: false })
+    const was = uploadTiming.ask
+    uploadTiming.ask = 50
+    try {
+      far.length = 0
+      await lookAll(box.ctx)
+      const ups = far.filter((c) => c.verb === 'uploaded')
+      expect(ups).toHaveLength(1)
+      expect((ups[0]!.args.refs as unknown[]).length).toBe(3)
+      expect(asked.sort()).toEqual(files.map((f) => f.path).sort())
+      for (const f of files) expect(await cloudOfTab(f.tabId)).toMatchObject({ is: 'uploading' })
+    } finally {
+      uploadTiming.ask = was
+    }
+  })
+
+  it("never lets an answer about an earlier write mark a newer one uploaded", async () => {
+    let answer!: (v: boolean) => void
+    setUploadReader(() => new Promise((resolve) => (answer = resolve)))
+    const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    const looking = lookAll(box.ctx)
+    await new Promise((r) => setTimeout(r, 20))
+    // A newer save lands while the Mac is asked about the older one.
+    await editorSaves(copy, 'workbook three')
+    await settled()
+    answer(true)
+    await looking
+    expect(await cloudOfTab(tabId)).not.toMatchObject({ is: 'uploaded' })
   })
 
   it("is the workspace's host's question alone", async () => {

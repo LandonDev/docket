@@ -9,7 +9,7 @@ import type { Caller, WorkCtx } from '../modules'
 import type { DocRevision } from '../service/wire'
 import { blankOf } from './make'
 import { workspaceHere } from './policy'
-import { admitOwner, deliver, freshBytes, NOT_SAVING } from './copies'
+import { admitOwner, deliver, freshBytes, freshVersion, NOT_SAVING } from './copies'
 import { filesState } from './handle'
 import { sameBody } from './body'
 
@@ -324,30 +324,47 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
   let version = r.version
   if (!p.keep) {
-    let now: { data: Buffer; version: string }
+    // The file's version first, with one byte of it; the whole file is pulled only when it must be: its version moved
+    // (only its bytes tell SharePoint's touch from an edit), its host names no version, or its original is still owed
+    // a copy in the workspace's folder (the first save over it).
+    const gone = (err: unknown): boolean => /not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))
+    let seen: string | null
     try {
-      now = await freshBytes(ctx, row)
+      seen = await freshVersion(ctx, row)
     } catch (err) {
-      if (/not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))) return { conflict: { gone: true } }
+      if (gone(err)) return { conflict: { gone: true } }
       throw err
     }
+    const owed = !r.original && !!workspaceHere(ctx.db, r.workspace_id)?.path
+    let now: { data: Buffer; version: string } | null = null
+    if (seen === null || seen !== r.version || owed) {
+      try {
+        now = await freshBytes(ctx, row)
+      } catch (err) {
+        if (gone(err)) return { conflict: { gone: true } }
+        throw err
+      }
+    }
     if (observed && !observed.current()) return
+    const nowVersion = now?.version ?? seen!
     // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
-    const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)
+    const same = nowVersion === r.version || (!!now && ((knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)))
     // His Replace covers the change its dialog named (`seen`), never one made there after he read it.
-    if (!same && (!p.replace || (p.seen !== undefined && changedOf(now.version) !== p.seen))) {
+    if (!same && (!p.replace || (p.seen !== undefined && changedOf(nowVersion) !== p.seen))) {
       // An autosave that meets a change made there stops for this file until his press: never a silent overwrite.
       if (p.auto) {
-        ctx.db.prepare(`UPDATE work_files_word SET stopped = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(now.version), r.workspace_id, r.host, r.path)
+        ctx.db.prepare(`UPDATE work_files_word SET stopped = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(nowVersion), r.workspace_id, r.host, r.path)
         filesState(ctx).tabs.touch(p.workspaceId)
       }
-      return { conflict: { changed: changedOf(now.version) } }
+      return { conflict: { changed: changedOf(nowVersion) } }
     }
     // An autosave goes only where he chose it and nothing stopped it.
-    if (p.auto && (r.auto !== 1 || r.stopped)) return { conflict: { changed: r.stopped ?? changedOf(now.version) } }
-    version = now.version
+    if (p.auto && (r.auto !== 1 || r.stopped)) return { conflict: { changed: r.stopped ?? changedOf(nowVersion) } }
+    // Written over by the version just seen: the write itself is checked against it there (deliver), so a change made
+    // between this look and the write is a conflict, never a silent overwrite.
+    version = nowVersion
     // A file still exactly our blank holds nothing of anyone's to keep.
-    if (!bornHere(shaOf(now.data))) keepOriginal(ctx, r, now.data)
+    if (now && !bornHere(shaOf(now.data))) keepOriginal(ctx, r, now.data)
   }
   // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
   // Read after, an edit landing during the export would be marked saved with words the file never got.
