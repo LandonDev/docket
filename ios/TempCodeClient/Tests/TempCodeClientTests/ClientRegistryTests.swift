@@ -3,6 +3,23 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
+/// What a fake host's hello says of the key it was given: Pair Again with another key turns it (`K2`, other caps).
+final class HelloKey: @unchecked Sendable {
+    var id = "K1"
+    var caps = #"["read"]"#
+}
+
+/// Every host `WorkHost.accessLost` heard, for any suite: the hook is one static, installed once and never cleared, so
+/// tests in parallel each count their own host's entries.
+@MainActor
+enum AccessLostLog {
+    private(set) static var heard: [String] = []
+    static func install() {
+        WorkHost.accessLost = { heard.append($0) }
+    }
+    static func count(_ host: String) -> Int { heard.filter { $0 == host }.count }
+}
+
 /// A store with two paired hosts on fake sockets: the host answers hello by
 /// its origin, the clients mint tickets against a fake api.
 @MainActor
@@ -13,13 +30,15 @@ private final class RegistryRig {
     let store: EnvironmentStore
     let sockets: [String: FakeSocketFactory] = ["env_a": FakeSocketFactory(), "env_b": FakeSocketFactory()]
     let registry: ClientRegistry
+    let hello = HelloKey()
 
     init() async throws {
         cache = try SessionCache.inMemory()
+        let hello = self.hello
         let host = RemoteAPI { request in
             let url = request.url!
             let id = "env_\(url.host()!.prefix(1))"
-            let body = #"{"environmentId":"\#(id)","name":"\#(id)","version":"1.0.240","contract":\#(contractVersion),"key":{"id":"K1","name":"iphone","caps":["read"],"audience":"client"}}"#
+            let body = #"{"environmentId":"\#(id)","name":"\#(id)","version":"1.0.240","contract":\#(contractVersion),"key":{"id":"\#(hello.id)","name":"iphone","caps":\#(hello.caps),"audience":"client"}}"#
             return (Data(body.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
         store = EnvironmentStore(directory: directory, keys: keys, api: host)
@@ -126,5 +145,44 @@ private final class RegistryRig {
         }
         await rig.registry.client("env_b")?.openThread("s2")
         #expect(quiet == 11, "a later publisher replaces the earlier one on every client")
+    }
+
+    // MARK: - Pair Again and the end of access (council 13, Sol 2 and 3; council 14, Opus 1.2)
+
+    @Test func `Pair Again with another key rebuilds the live client and ends the old one's access once; a rename does not`() async throws {
+        AccessLostLog.install()
+        let rig = try await RegistryRig()
+        await rig.registry.sync()
+        let old = try #require(rig.registry.client("env_a"))
+        let lostBefore = AccessLostLog.count("env_a")
+        // The same host paired again under a read-only key with another id.
+        rig.hello.id = "K2"
+        rig.hello.caps = #"["read","approve"]"#
+        let rebuilt = try await rig.registry.add(origin: URL(string: "https://a.example")!, key: "tc_K2.secret")
+        #expect(rebuilt !== old, "the live client takes the new key")
+        #expect(rebuilt.environment.keyId == "K2")
+        #expect(rebuilt.environment.caps.contains(.approve))
+        #expect(rebuilt.environment.addedAt > old.environment.addedAt, "a new key is a new cache generation")
+        #expect(AccessLostLog.count("env_a") == lostBefore + 1, "the old key's LifeOS sessions end once")
+        #expect(rig.registry.client("env_b") != nil)
+        // A rename is a relabel: the same client, and no loss of access.
+        rig.store.rename("env_a", to: "Studio")
+        await rig.registry.sync()
+        #expect(rig.registry.client("env_a") === rebuilt)
+        #expect(AccessLostLog.count("env_a") == lostBefore + 1)
+        // The same key pasted again keeps the client and its generation.
+        _ = try await rig.registry.add(origin: URL(string: "https://a.example")!, key: "tc_K2.secret")
+        #expect(rig.registry.client("env_a") === rebuilt)
+        #expect(AccessLostLog.count("env_a") == lostBefore + 1)
+    }
+
+    @Test func `forgetting a host ends its access once`() async throws {
+        AccessLostLog.install()
+        let rig = try await RegistryRig()
+        await rig.registry.sync()
+        let before = AccessLostLog.count("env_b")
+        await rig.registry.remove("env_b")
+        #expect(rig.registry.client("env_b") == nil)
+        #expect(AccessLostLog.count("env_b") >= before + 1)
     }
 }

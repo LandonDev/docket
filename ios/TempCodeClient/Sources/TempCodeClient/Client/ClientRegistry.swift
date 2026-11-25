@@ -96,7 +96,15 @@ public final class ClientRegistry {
             guard changed else { continue }
             await existing.stop()
             clients[environment.id] = nil
-            WorkHost.accessLost?(environment.id)
+            if !existing.environment.sameKey(as: environment) {
+                // A replacement known live: everything the old key read of this host goes now, and the rows its
+                // sessions supplied under every other host's key with them, even when none sit under its own key
+                // (the generation check at the new Work host's start would find nothing to compare).
+                #if canImport(SQLite3)
+                WorkCacheStore.purge(.capabilityLost(host: environment.id), close: false)
+                #endif
+                WorkHost.accessLost?(environment.id)
+            }
         }
         relabel(wanted)
         prepare()
@@ -111,6 +119,9 @@ public final class ClientRegistry {
         let keep = Set(wanted.map(\.id))
         for id in clients.keys where !keep.contains(id) {
             await clients.removeValue(forKey: id)?.remove()
+            // A host its carrier dropped from the relay list, or one forgotten: its LifeOS sessions end with it, an
+            // open job's Mail and the draft reader among them (council 14, Sol 4).
+            WorkHost.accessLost?(id)
         }
     }
 

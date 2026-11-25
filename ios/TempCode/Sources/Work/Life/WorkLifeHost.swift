@@ -118,6 +118,7 @@ final class WorkLifeHost: LifeActions {
     static func accessLost(host: String) {
         for (key, life) in hosts where life.client.environment.id == host {
             life.end(state: nil, words: "This phone can no longer read LifeOS through \(life.client.environment.name).")
+            life.tokens.end()
             hosts[key] = nil
         }
     }
@@ -130,6 +131,7 @@ final class WorkLifeHost: LifeActions {
         guard let host = hosts[key] else { return nil }
         if host.client === client { return host }
         host.end(state: nil, words: "This phone can no longer read LifeOS through \(host.client.environment.name).")
+        host.tokens.end()
         hosts[key] = nil
         return nil
     }
@@ -222,6 +224,9 @@ final class WorkLifeHost: LifeActions {
                     self.store?.setAuthenticated(on)
                 }
             }
+        } catch is CancellationError {
+            // The session ended while its token was out (a sign-out, the host's access gone): it says so already.
+            return
         } catch let refusal as LifeToken.Refusal {
             if case .host(let state) = refusal { refusedState = state }
             phase = .unavailable(Self.words(refusal))

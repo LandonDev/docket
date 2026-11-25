@@ -34,7 +34,7 @@ final class MessagesPresses {
     private let desks = MessagesDesks.shared
     /// The conversations on screen now, counted by desk key (ChatScreen's task): a reply put back or refused in one he
     /// left is also the sticky toast, as Mail's and the Outbox's are.
-    @ObservationIgnored private var showing: [String: Int] = [:]
+    private var showing: [String: Int] = [:]
     /// Each conversation's name as he last sent in it, for a line said off it after a late read-back.
     @ObservationIgnored private var names: [String: String] = [:]
 
@@ -76,6 +76,12 @@ final class MessagesPresses {
     private func tellOff(_ press: Press, _ line: String) {
         guard let named = MessagesRules.offLine(line, name: press.name, shown: showing[press.key, default: 0] > 0) else { return }
         FleetToastCenter.shared.post(message: named)
+    }
+
+    /// The press counting its five seconds while its conversation is off screen (he went Back, or to another tab):
+    /// the tab's foot shows its Undo instead (`ElsewhereUndo`).
+    var offScreenCounting: Wait.Press? {
+        wait.countingOffScreen { showing[$0.payload.key, default: 0] > 0 }
     }
 
     /// The press counting its five seconds in this conversation, for its capsule.

@@ -66,7 +66,29 @@ final class MailPresses {
 
     /// The Mail places whose own capsule is on screen now (`LifeViewScreen`, the only one with LifeKit's `.foot()`),
     /// counted by scene: a scene kept alive for a job he left, or a person's page, draws none.
-    @ObservationIgnored private var footed: [ObjectIdentifier: Int] = [:]
+    private var footed: [ObjectIdentifier: Int] = [:]
+    /// A person's page drawing TempCode's own Undo for its scene's countdown, counted by scene the same way.
+    private var pages: [ObjectIdentifier: Int] = [:]
+
+    /// Counts `scene` as shown on a person's page until the calling view's task ends.
+    func pageShown(_ scene: LifeScene) async {
+        let id = ObjectIdentifier(scene)
+        pages[id, default: 0] += 1
+        TickLedger.begin("mail.page"); defer { TickLedger.end("mail.page") }
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        pages[id, default: 1] -= 1
+        if pages[id] == 0 { pages[id] = nil }
+    }
+
+    /// The press counting its five seconds while no page that offers its Undo is on screen (he left Mail or the
+    /// person's page): the tab's foot shows its Undo instead (`ElsewhereUndo`).
+    var offScreenCounting: Wait.Press? {
+        wait.countingOffScreen { press in
+            guard let scene = targets[press.id]?.scene else { return false }
+            let id = ObjectIdentifier(scene)
+            return footed[id, default: 0] > 0 || pages[id, default: 0] > 0
+        }
+    }
 
     /// Counts `scene` as on screen until the calling view's task ends (it disappears, or its scene is replaced).
     func footShown(_ scene: LifeScene) async {

@@ -37,6 +37,12 @@ public struct OutboxNotices: Sendable, Hashable {
         results.append(Line(id: fresh(), text: text, refs: refs))
     }
 
+    /// A new press of these items started: their unseen lines (a cancel's "Not sent", an earlier sum) no longer hold
+    /// and go, so none comes back after the new countdown. A line about another item stays.
+    public mutating func forget(refs: Set<String>) {
+        results.removeAll { !$0.refs.isDisjoint(with: refs) }
+    }
+
     /// The newest unseen line about this item, for its own surface.
     public func line(for ref: String) -> Line? {
         results.last { $0.refs.contains(ref) }

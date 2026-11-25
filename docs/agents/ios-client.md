@@ -1102,7 +1102,12 @@
   queries and forgets the token, and a session counter drops a sign-in or token still out), and
   `TodayStore.lifeosSignedOut` takes that host's narrowed sectors (`TodayLifeInput.narrowed`), or
   every LifeOS row when it held the whole session. A mail thread open over a signed-out session keeps
-  the last store and scene its screen was given (`LifeHostEnvironment`) until it closes. Pair Again on a host paired directly stores a new generation when the key's id or caps changed
+  the last store and scene its screen was given (`LifeHostEnvironment`) until it closes. A relayed lane's generation is the later of when it was learned and when its carrier's key was
+  paired, so Pair Again on the carrier moves every lane through it too; a live key change, direct
+  or relayed, drops the host's kept rows and the rows its sessions supplied under every other key at
+  once (`.capabilityLost`, the fence left open), and a lane its carrier drops from the relay list
+  ends its LifeOS sessions like any other loss of access. A token asked for by a session that has
+  since ended is dropped, never cached (`LifeTokenSource.forget`, `end`). Pair Again on a host paired directly stores a new generation when the key's id or caps changed
   (`PairedEnvironment.replacing`; the same key pasted again keeps the old one) and rebuilds the live
   client on it (`ClientRegistry.runSync`, `sameKey`), so no control reads the old caps; the new
   client's Work host then purges the old generation's rows, those its session supplied under other
@@ -1798,7 +1803,12 @@ The rules every press below keeps (fix round 2):
   or key lost, a host not paired) is taken into the same queue at once with
   its own id and the items it names, so two links lost together leave two
   lines, said in turn, and a thread's held line reads its item's own
-  (`OutboxPresses.collect`). VoiceOver hears each line once as its clock
+  (`OutboxPresses.collect`) while the capsule is not saying that same line.
+  A new press of an item drops its unseen lines (`OutboxNotices.forget`), so
+  a cancel's "Not sent" never shows after the Send that followed it. A Mail
+  or Messages countdown whose own page is off screen (Back, another tab) has
+  its Undo at the tab's foot too (`ElsewhereUndo`, `SendWait.countingOffScreen`;
+  Mail's page and a person's page count themselves, as a conversation does). VoiceOver hears each line once as its clock
   starts, a sum, a refusal or a cancel, as it hears the countdown
   (`OutboxPresses.speak`). A host whose answer was lost counts as "N
   checking" in the sum. At accessibility sizes the capsule's line wraps and

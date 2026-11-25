@@ -13,12 +13,13 @@ private final class WorkRig {
     let client: EnvironmentClient
     var work: WorkHost { client.work }
 
-    /// `knownOn`: the switch an earlier launch read on this host.
-    init(knownOn: Bool? = nil) throws {
-        try keys.set("tc_K1.secret", for: "env_test")
-        UserDefaults.standard.removeObject(forKey: "work.away.reviewed.env_test")
-        UserDefaults.standard.set(knownOn, forKey: "work.on.env_test")
-        let environment = PairedEnvironment(id: "env_test", name: "box", origin: URL(string: "https://box.example")!, caps: [.read, .approve], keyId: "K1", keyName: "iphone", addedAt: 0)
+    /// `knownOn`: the switch an earlier launch read on this host. `id`: the host's id, its own for a test that counts what
+    /// a static hook heard of it.
+    init(knownOn: Bool? = nil, id: String = "env_test") throws {
+        try keys.set("tc_K1.secret", for: id)
+        UserDefaults.standard.removeObject(forKey: "work.away.reviewed.\(id)")
+        UserDefaults.standard.set(knownOn, forKey: "work.on.\(id)")
+        let environment = PairedEnvironment(id: id, name: "box", origin: URL(string: "https://box.example")!, caps: [.read, .approve], keyId: "K1", keyName: "iphone", addedAt: 0)
         let api = RemoteAPI { request in
             (Data(#"{"ticket":"t","expiresIn":30}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
@@ -101,6 +102,26 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(await rig.until { !rig.work.isOn })
         #expect(rig.work.items.isEmpty)
         #expect(rig.work.waiting == 0)
+    }
+
+    @Test func `Work going off and the key refused each end the host's access once`() async throws {
+        AccessLostLog.install()
+        let host = "env_access_\(UUID().uuidString.prefix(8))"
+        let rig = try WorkRig(id: host)
+        let fake = await rig.open()
+        fake.answer(id: try #require(await rig.request(fake, "work.get")), result: #"{"enabled":true}"#)
+        fake.answer(id: try #require(await rig.request(fake, "away.get")), result: away(false, at: 1_000, since: 0))
+        fake.answer(id: try #require(await rig.request(fake, "work.outbox.list")), result: #"{"items":[],"waiting":0}"#)
+        #expect(await rig.until { rig.work.listed })
+        #expect(AccessLostLog.count(host) == 0)
+        // Work goes off on the host: its LifeOS sessions end.
+        fake.deliver(#"{"push":"work","settings":{"enabled":false}}"#)
+        #expect(await rig.until { !rig.work.isOn })
+        #expect(AccessLostLog.count(host) == 1)
+        // The host refuses the key: once, however often it is heard.
+        rig.work.refused()
+        rig.work.refused()
+        #expect(AccessLostLog.count(host) == 2)
     }
 
     @Test func `a day seen that its host did not take is said again when Work comes back on`() async throws {

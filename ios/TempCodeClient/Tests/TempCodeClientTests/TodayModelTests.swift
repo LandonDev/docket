@@ -312,4 +312,36 @@ struct TodayModelTests {
         task.suppliedBy = nil
         #expect(TodaySources.sessionOf(task) == nil)
     }
+
+    // MARK: - a failed lead never hides another job's rows (council 13, Sol)
+
+    @Test func `per job, the first job's failed list leaves the second job's rows on the page, with the first's line`() {
+        // Purdue's session on the Mac leads, Refereeing's on the box is ready too.
+        let purdue = TodayWorkspace(environmentId: "mac", workspaceId: "mac-purdue", sector: "purdue", name: "Purdue", open: true)
+        let ref = TodayWorkspace(environmentId: "box", workspaceId: "box-ref", sector: "ref", name: "Refereeing", open: true)
+        let jobs = TodayJobs([purdue, ref])
+        let leadLost = { (error: String) in TodaySources.Lost(environmentId: "mac", sector: "purdue", error: error) }
+        // Purdue's tasks query failed; Refereeing's answered a due task.
+        var read = TodaySources.LifeosRead()
+        let have = TodaySources.settle(lead: .failed("Server error: tasks:list"), othersAnswered: true, read: &read, leadLost: leadLost)
+        #expect(have && read.error == nil)
+        let tasks = [TodaySources.Task(id: "t1", title: "File the game report", sector: "ref", dueAt: Self.at(24, 17))]
+        let rows = have ? TodaySources.dueRows(tasks, now: Self.at(24, 9), jobs: jobs, calendar: Self.cal) : nil
+        let answer = TodaySources.lifeosAnswer(read, rows: rows, sessionDown: false, host: "mac", what: "tasks", jobs: jobs)
+        // Refereeing's task shows, and Purdue's failure is its own line, with its job and a Retry of that job alone.
+        #expect(answer.rows?.map(\.key) == ["task:t1"])
+        #expect(answer.failed.map(\.said) == ["LifeOS could not read Purdue's tasks"])
+        #expect(answer.failed.first?.retry == .lost(environmentId: "mac", sector: "purdue", down: false))
+        // No other answer: the lead's failure is the list's, as before.
+        var alone = TodaySources.LifeosRead()
+        #expect(!TodaySources.settle(lead: .failed("Server error"), othersAnswered: false, read: &alone, leadLost: leadLost))
+        #expect(alone.error == "Server error")
+        // The lead still waiting over another job's rows: they show, the section pending.
+        var waiting = TodaySources.LifeosRead()
+        #expect(TodaySources.settle(lead: .pending, othersAnswered: true, read: &waiting, leadLost: leadLost))
+        #expect(waiting.pending)
+        var none = TodaySources.LifeosRead()
+        #expect(!TodaySources.settle(lead: .pending, othersAnswered: false, read: &none, leadLost: leadLost))
+        #expect(TodaySources.settle(lead: .answered, othersAnswered: false, read: &none, leadLost: leadLost))
+    }
 }

@@ -34,4 +34,18 @@ import TempCodeContract
         renamed.platform = "darwin"
         #expect(live.sameKey(as: renamed))
     }
+
+    @Test func `a lane through a carrier takes the carrier's new generation, so Pair Again on the carrier reaches it`() {
+        let mac = RelayedHost(id: "env_mac", via: "env_box", presence: presence(), learnedAt: 5_000)
+        var box = PairedEnvironment(id: "env_box", name: "Box", origin: URL(string: "https://box.example")!, caps: [.read, .approve], keyId: "K1", keyName: "iphone", addedAt: 1_000)
+        // Learned after the carrier was paired: the lane's generation is when it was learned, as before.
+        let before = PairedEnvironment.relayed(mac, through: box)
+        #expect(before.addedAt == 5_000)
+        // Box paired again with a read key: the lane takes the new key, caps and generation, so it is rebuilt and what
+        // the old key read through it goes, its rows under other hosts' keys among them.
+        box = PairedEnvironment(id: "env_box", name: "Box", origin: URL(string: "https://box.example")!, caps: [.read], keyId: "K2", keyName: "iphone", addedAt: 9_000).replacing(box)
+        let after = PairedEnvironment.relayed(mac, through: box)
+        #expect(after.addedAt == 9_000 && after.caps == [.read] && after.keyId == "K2")
+        #expect(!after.sameKey(as: before) && !after.sameLane(as: before))
+    }
 }

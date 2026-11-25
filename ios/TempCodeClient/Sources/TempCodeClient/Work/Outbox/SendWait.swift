@@ -156,6 +156,13 @@ public struct SendWait<Payload: Sendable & Hashable>: Sendable, Hashable {
         return press
     }
 
+    /// The press counting now when no page that offers its Undo is on screen (`shown` says whether one is): the tab's
+    /// foot then offers it, so Undo stays in reach through the whole wait, a queued press's own too.
+    public func countingOffScreen(_ shown: (Press) -> Bool) -> Press? {
+        guard let counting, !shown(counting) else { return nil }
+        return counting
+    }
+
     /// The countdown to put Undo up for: the one counting, unless its capsule is the one already up (`offered`).
     public func toOffer(after offered: String?) -> Press? {
         guard let counting, counting.id != offered else { return nil }

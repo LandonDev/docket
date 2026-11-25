@@ -31,8 +31,12 @@ Parse-checked on the box; not shot.
 Every other band title (`SectionHeader`, Design/SectionHeader.swift): Today's
 sections, Money's, the Work list's Jobs, Files', Connections', Review's and
 the comment sheets', and Home's, search's and the thread boards'. The same
-nesting drew them at about RGB 179,178,184 on the 243,242,248 band in light,
-about 1.9:1 (council 13, Opus 5.1, read from iw12's ax-01 and m5-04). The
+nesting drew Work's at about RGB 179,178,184 on the 243,242,248 band in light,
+about 1.9:1 (council 13, Opus 5.1, read from iw12's ax-01 and m5-04). Home's
+bands, outside a list, drew the meta step's own secondary, which was the owner's
+call under rows 3 and 13; the band title is one component, so it took the label
+ink there too. A `tint` on SectionHeader would give Work's lists alone the label
+ink if he wants Home's back. The
 title now draws in `Color(.label)` like the Outbox's, at its own step (meta
 semibold). A branch name beside it stays tertiary, as a stamp. Parse-checked
 on the box; not shot.

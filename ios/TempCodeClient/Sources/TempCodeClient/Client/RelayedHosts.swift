@@ -206,9 +206,13 @@ public final class RelayedHosts {
 public extension PairedEnvironment {
     /// A host reached through `carrier`: the carrier's origin, key and caps
     /// under the relayed host's own id. Rebuilt from the carrier on every
-    /// launch, never persisted itself.
+    /// launch, never persisted itself. Its generation (`addedAt`, the cache's
+    /// key generation) is the later of when the phone learned it and when the
+    /// carrier's key was paired: Pair Again on the carrier with a new key moves
+    /// every lane through it to a new generation, so what the old key read
+    /// through them goes too (council 14, Sol 3).
     static func relayed(_ host: RelayedHost, through carrier: PairedEnvironment) -> PairedEnvironment {
-        PairedEnvironment(id: host.id, name: host.name, origin: carrier.origin, caps: carrier.caps, keyId: carrier.keyId, keyName: carrier.keyName, addedAt: host.learnedAt, via: carrier.id, platform: host.presence.platform)
+        PairedEnvironment(id: host.id, name: host.name, origin: carrier.origin, caps: carrier.caps, keyId: carrier.keyId, keyName: carrier.keyName, addedAt: max(host.learnedAt, carrier.addedAt), via: carrier.id, platform: host.presence.platform)
     }
 }
 

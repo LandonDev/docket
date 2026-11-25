@@ -579,7 +579,9 @@ struct TodayRowView: View {
                 if let detail = row.detail {
                     Text(detail)
                         .textStep(.meta, tint: row.detailLate ? Tint.destructiveText : nil)
-                        .lineLimit(large ? 3 : 1)
+                        // A fault's reason (a held send that needs him) wraps whole at accessibility sizes, as Today's own
+                        // failure line does: its last words are often what to do (council 14, Sol 6).
+                        .lineLimit(large ? (row.detailLate ? nil : 3) : 1)
                 }
                 if large { times(alignment: .leading) }
             }

@@ -195,7 +195,10 @@ final class ShellNavigator {
             detailRoot = placed.root
             detailStack = NavigationPath()
             if let push = placed.push { detailStack.append(push) }
-            if pose.isOverlay { sidebarShown = false }
+            // The overlay closes on a pick, as Mail's does. A wide route already puts the sidebar away without writing
+            // his toggle (`SidebarVisibility`), so opening one never saves "hidden" as the tab's choice for the list he
+            // comes back to (council 13 and 14, Sol).
+            if ShellPose.pickHidesSidebar(pose: pose, wide: wide) { sidebarShown = false }
         }
     }
 

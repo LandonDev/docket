@@ -488,6 +488,35 @@ public enum TodaySources {
         }
     }
 
+    /// How the leading reader's own answer to one list stands (`settle`).
+    public enum LeadAnswer: Hashable, Sendable {
+        case pending, answered
+        case failed(String)
+    }
+
+    /// One LifeOS list read across its readers (each job's own session, or narrowed sessions beside the whole one):
+    /// whether the list has rows to show, and its read. The leading reader's failure or wait never hides the rows
+    /// another reader answered (council 13, Sol): a failure is said as that reader's own lost read, with its job
+    /// (`leadLost`), beside the rows; a wait keeps the section pending over them. With no other answer the lead's
+    /// failure is the list's, and its wait the section's loading, as before.
+    public static func settle(lead: LeadAnswer, othersAnswered: Bool, read: inout LifeosRead, leadLost: (String) -> Lost) -> Bool {
+        switch lead {
+        case .answered:
+            return true
+        case .failed(let error):
+            guard othersAnswered else {
+                read.error = error
+                return false
+            }
+            read.lost.append(leadLost(error))
+            return true
+        case .pending:
+            guard othersAnswered else { return false }
+            read.pending = true
+            return true
+        }
+    }
+
     /// The session a LifeOS row's verbs go through (the desktop's `sessionOf`): the one that read it, as the row was
     /// stamped when it was built (`suppliedBy`, `suppliedScope`): the supplier's own job session for a narrowed read,
     /// else its whole session. The verb's check, its write and its Undo all name this one session, never another

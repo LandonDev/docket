@@ -68,6 +68,13 @@ public enum ShellPose: Sendable, Hashable {
         pose.isSplit && sincePoseChange >= foldSettle && sinceShown >= foldSettle
     }
 
+    /// Whether opening a route in the detail closes the sidebar by writing his toggle: in the overlay pose, as Mail's
+    /// overlay closes on a pick, but never for a wide route, which puts the sidebar away without writing it
+    /// (`SidebarVisibility`); otherwise the list he comes back to would stay hidden (council 13 and 14, Sol).
+    public static func pickHidesSidebar(pose: ShellPose, wide: Bool) -> Bool {
+        pose.isOverlay && !wide
+    }
+
     /// Whether a change of the sidebar is his toggle, by where it came from. His press on the shell's sidebar
     /// button is his, in a split, at any moment (the tab just shown, a fold a breath ago); a write of the split's
     /// binding is his only by `keepsVisibilityWrite`'s time rule, which filters the split's own writes as it is

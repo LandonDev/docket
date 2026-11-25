@@ -79,6 +79,8 @@ private struct PersonPageView: View {
                 }
             }
             .animation(Motion.base, value: MailPresses.shared.counting(on: host.scene)?.id)
+            // This page offers its scene's Undo while shown; away from it, the tab's foot does (`ElsewhereUndo`).
+            .task(id: host.scene.map { ObjectIdentifier($0) }) { if let scene = host.scene { await MailPresses.shared.pageShown(scene) } }
             .onChange(of: read) { _, now in
                 guard let now else { return }
                 shown = now

@@ -236,7 +236,9 @@ enum TodayLife {
         var events: [TodaySources.Event] = [], tasks: [TodaySources.Task] = [], waits: [TodaySources.Wait] = []
         var seen = (events: Set<String>(), tasks: Set<String>(), waits: Set<String>())
         var eventsRead = TodaySources.LifeosRead(), tasksRead = TodaySources.LifeosRead(), waitsRead = TodaySources.LifeosRead()
-        var haveEvents = false, haveTasks = false, haveWaits = false
+        // Each list's leading answer, and whether another reader answered it: a lead's failure never hides those rows.
+        var leadEvents = TodaySources.LeadAnswer.pending, leadTasks = TodaySources.LeadAnswer.pending, leadWaits = TodaySources.LeadAnswer.pending
+        var otherEvents = false, otherTasks = false, otherWaits = false
         // The projects' names, for Due's second line, merged from every reader whose names came; which sectors came
         // whole follows the desktop's `known` (`TodaySources.namesKnown`).
         var projects: [TodaySources.Project]?, projectsFailed = false
@@ -271,17 +273,17 @@ enum TodayLife {
             // Events: the store's own window, a week back to the end of tomorrow.
             let eventsQuery = store.events
             if let value = eventsQuery.value {
-                haveEvents = haveEvents || first
+                if first { leadEvents = .answered } else { otherEvents = true }
                 for e in recode([TodaySources.Event].self, value) ?? [] where keeps(e.sector) && seen.events.insert(e.id).inserted { events.append(e) }
             } else if let failure = eventsQuery.failure {
-                if first { eventsRead.error = String(describing: failure) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: String(describing: failure))) }
+                if first { leadEvents = .failed(String(describing: failure)) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: String(describing: failure))) }
             } else if !first { eventsRead.pending = true }
             let tasksQuery = store.tasks
             if let value = tasksQuery.value {
-                haveTasks = haveTasks || first
+                if first { leadTasks = .answered } else { otherTasks = true }
                 for t in recode([TodaySources.Task].self, value) ?? [] where keeps(t.sector) && seen.tasks.insert(t.id).inserted { tasks.append(t) }
             } else if let failure = tasksQuery.failure {
-                if first { tasksRead.error = String(describing: failure) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: String(describing: failure))) }
+                if first { leadTasks = .failed(String(describing: failure)) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: String(describing: failure))) }
             } else if !first { tasksRead.pending = true }
             let projectsQuery = store.projects
             if let value = projectsQuery.value {
@@ -295,11 +297,11 @@ enum TodayLife {
             // Mail no one answered: one page of up to a hundred; more past it is `beyond`.
             let (page, failure) = waitsOf(store, needed: &needed)
             if let page {
-                haveWaits = haveWaits || first
+                if first { leadWaits = .answered } else { otherWaits = true }
                 for w in page.rows where keeps(w.sector ?? w.ownSector) && seen.waits.insert(w.id).inserted { waits.append(w) }
                 if page.more { input.beyond = true }
             } else if let failure {
-                if first { waitsRead.error = failure } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: failure)) }
+                if first { leadWaits = .failed(failure) } else { lost.append(TodaySources.Lost(environmentId: reader.environmentId, sector: reader.sectors?.first, error: failure)) }
             } else if !first { waitsRead.pending = true }
             for sector in reader.sectors.map(Array.init) ?? covered ?? Array(Set(store.sectors.map(\.rawValue))) {
                 people[sector, default: []] += peopleOf(store, sector: sector, needed: &needed)
@@ -309,6 +311,12 @@ enum TodayLife {
         eventsRead.lost = lost
         tasksRead.lost = lost
         waitsRead.lost = lost
+        // The leading reader's own lost read names its job, where it has one.
+        let lead = readers.first
+        let leadLost = { (error: String) in TodaySources.Lost(environmentId: lead?.environmentId ?? host, sector: lead?.sectors?.first, error: error) }
+        let haveEvents = TodaySources.settle(lead: leadEvents, othersAnswered: otherEvents, read: &eventsRead, leadLost: leadLost)
+        let haveTasks = TodaySources.settle(lead: leadTasks, othersAnswered: otherTasks, read: &tasksRead, leadLost: leadLost)
+        let haveWaits = TodaySources.settle(lead: leadWaits, othersAnswered: otherWaits, read: &waitsRead, leadLost: leadLost)
         input.events = haveEvents ? events : nil
         input.tasks = haveTasks ? tasks : nil
         input.waits = haveWaits ? waits : nil

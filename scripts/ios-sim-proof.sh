@@ -1703,6 +1703,7 @@ work_m0() {
 # now sits. The simulator has no finger: the action is the button's own, its hit target is not tapped.
 work_sidebar_tap() {
   local name
+  local -a presses=()
   for name in m0-work-sidebar-tap-1-light m0-work-sidebar-tap-2-light; do
     TC_ACTION=sidebar-tap shot "$name" outbox
     python3 - "$OUT/layout/$POSE/$name.json" "$name" <<'PY' || return 1
@@ -1731,7 +1732,14 @@ if problems:
     print(f"ios-sim-proof: sidebar tap FAIL ({name}): {'; '.join(problems)}", file=sys.stderr); sys.exit(1)
 print(f"ios-sim-proof: sidebar tap PASS ({name}): {notes['sidebar.press']}, kept through the settle")
 PY
+    presses+=("$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("notes") or {}).get("sidebar.press","").split(" at ")[0])' "$OUT/layout/$POSE/$name.json" 2>/dev/null || true)")
   done
+  # The two presses go opposite ways (Hide, then Show, or the other way round): two of the same direction never test
+  # the other (council 13 and 14, Sol).
+  case "${presses[0]}|${presses[1]}" in
+    "shown -> hidden|hidden -> shown"|"hidden -> shown|shown -> hidden") echo "ios-sim-proof: sidebar tap PASS: both ways (${presses[0]}; ${presses[1]})" ;;
+    *) echo "ios-sim-proof: sidebar tap FAIL: the two presses did not go both ways (${presses[0]:-none}; ${presses[1]:-none})" >&2; return 1 ;;
+  esac
 }
 
 # Today is the day's first place: each launch is his own first entry of a day (`work-day`: the day unstamped and no

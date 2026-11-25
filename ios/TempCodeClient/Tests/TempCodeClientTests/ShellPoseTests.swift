@@ -201,4 +201,19 @@ import Testing
         #expect(SidebarButtonPlace.edge(of: .sidebar) == .trailing)
         #expect(SidebarButtonPlace.edge(of: .detail) == .leading)
     }
+
+    // MARK: - a pick in the overlay (council 13 and 14, Sol)
+
+    @Test(arguments: duoPoses.map(\.name))
+    func `a pick closes the overlay by his toggle, but a wide route never writes it`(_ name: String) throws {
+        let pose = try #require(Self.duoPoses.first { $0.name == name }).pose
+        // An ordinary route picked in the overlay pose closes the overlay, as Mail's does.
+        #expect(ShellPose.pickHidesSidebar(pose: pose, wide: false) == pose.isOverlay)
+        // Mail, a file or a thread with its file puts the sidebar away itself; his choice for the list stays.
+        #expect(!ShellPose.pickHidesSidebar(pose: pose, wide: true))
+        var visibility = SidebarVisibility(preference: true)
+        if ShellPose.pickHidesSidebar(pose: pose, wide: true) { visibility.preference = false }
+        // Back on the list (an ordinary route), the sidebar shows as he left it.
+        #expect(visibility.shown(route: "list", wide: false))
+    }
 }

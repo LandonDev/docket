@@ -371,7 +371,8 @@ struct RelayedHostsTests {
         #expect(rig.mac?.currentSessions.map(\.title) == ["On the Mac"])
         #expect(rig.mac?.relayState == .locked)
         #expect(rig.mac?.stateSince == 9)
-        #expect(rig.mac?.environment.addedAt == 7)
+        // Its generation is the later of when it was learned and when the carrier's key was paired (Pair Again moves it).
+        #expect(rig.mac?.environment.addedAt == max(7, rig.store.environment(RelayRig.carrierId)?.addedAt ?? 0))
         _ = await rig.sockets.socket(1)
         #expect(rig.sockets.urls.count == 2)
     }

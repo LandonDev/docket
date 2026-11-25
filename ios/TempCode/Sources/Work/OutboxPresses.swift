@@ -55,7 +55,10 @@ final class OutboxPresses {
     /// The last cancel's line when it names this item (the app left the screen, a link or key lost), for the surface
     /// the press was made on: a thread's held line says it as the list's capsule does.
     func notice(for entry: OutboxModel.Entry) -> String? {
-        notices.line(for: entry.id)?.text
+        guard let line = notices.line(for: entry.id) else { return nil }
+        // The capsule says this very line now (a tab's foot always draws it): the held line leaves it there, once.
+        if pending == nil, shownNotice?.id == line.id { return nil }
+        return line.text
     }
 
     /// The wait's cancel, taken into the notices at once with its own id and the items it names, before another cancel
@@ -116,6 +119,8 @@ final class OutboxPresses {
     }
 
     private func start(_ press: Wait.Press) {
+        // His new press of these items: their old lines go, never shown after the countdown it starts.
+        notices.forget(refs: Set([press.id] + press.payload.entries.map(\.id)))
         let counted = wait.counting
         wait.press(press, now: Self.now)
         if wait.counting != counted, let line = wait.counting?.line {
@@ -499,6 +504,8 @@ struct OutboxUndoInset: ViewModifier {
         let presses = OutboxPresses.shared
         let notice = presses.noticeLine
         let enabled = fallback ? presses.surfaces == 0 : enabled
+        // The tab's foot also keeps a Mail or Messages countdown's Undo in reach once its own page is off screen.
+        let elsewhere = fallback ? ElsewhereUndo.current : nil
         content
             // A surface of its own counts while shown; the shell's copy steps back for it.
             .task(id: !fallback && enabled) {
@@ -507,10 +514,12 @@ struct OutboxUndoInset: ViewModifier {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Group {
-                    if !enabled {
-                        EmptyView()
-                    } else if let pending = presses.pending {
+                    if enabled, let pending = presses.pending {
                         UndoCapsule(line: pending.line) { presses.undo() }
+                    } else if let elsewhere {
+                        UndoCapsule(line: elsewhere.line, identifier: "elsewhere-undo") { elsewhere.undo() }
+                    } else if !enabled {
+                        EmptyView()
                     } else if let notice {
                         // What did not go and why, in the capsule's own line, until it has been seen.
                         UndoCapsule(line: notice, undo: nil)
@@ -520,19 +529,45 @@ struct OutboxUndoInset: ViewModifier {
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
             .animation(Motion.base, value: presses.pending)
+            .animation(Motion.base, value: elsewhere?.id)
             .animation(Motion.base, value: notice)
             // Seen once it has shown for a toast's time, in front, with no countdown over it: a countdown hides it and
             // the clock starts again when it is back. Only that line goes (by its id); the next waiting one shows.
             // Keyed by `enabled` too: a copy that starts drawing when the capsule moves to another tab (the list's count
             // drops a turn later) starts its own clock, so a line carried there never stays for good.
-            .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)" }) {
-                guard enabled, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
+            .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)-\(elsewhere == nil)" }) {
+                // A Mail or Messages countdown drawn over it hides it too, without spending it.
+                guard enabled, elsewhere == nil, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
                 // Spoken once as its clock starts: a sum, a refusal or a cancel, as the countdown was.
                 presses.speak(shown)
                 try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
                 guard !Task.isCancelled else { return }
                 presses.clearNotice(shown.id)
             }
+    }
+}
+
+/// A Mail or Messages countdown whose own Undo is off screen (he went Back, or to another tab): its line and Undo for
+/// the tab's foot. Undo sends nothing; the words or the draft stay where they were, and a plain note says where.
+@MainActor
+struct ElsewhereUndo {
+    let id: String
+    let line: String
+    let undo: () -> Void
+
+    static var current: ElsewhereUndo? {
+        if let press = MailPresses.shared.offScreenCounting {
+            return ElsewhereUndo(id: press.id, line: press.payload.sendAt == nil ? "Sending mail" : "Scheduling mail") {
+                if MailPresses.shared.undo(press.id) { FleetToastCenter.shared.post(note: "Not sent. The mail is in Drafts.") }
+            }
+        }
+        if let press = MessagesPresses.shared.offScreenCounting {
+            return ElsewhereUndo(id: press.id, line: press.line) {
+                MessagesPresses.shared.undo()
+                FleetToastCenter.shared.post(note: "Not sent. Your reply to \(press.payload.name) is back in its field.")
+            }
+        }
+        return nil
     }
 }
 

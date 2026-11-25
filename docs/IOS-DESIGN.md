@@ -2493,8 +2493,14 @@ milestone 46 built, where it lives now:
   secondary and tertiary measure 3.4:1 and 1.7:1 on white, less in a list's
   section header. This covers the band's name and count, the held detail's place,
   time, field labels, addresses and state line, the Work list row's count and each
-  row's time. The rest of the phone keeps the steps' own inks
-  (docs/agents/appearance-phone.md).
+  row's time. Every band title (`SectionHeader`) draws in `label` too, on every
+  list of the phone: Today's, Money's, the Work list's Jobs, Files', Connections',
+  Review's, the comment sheets' and Work search's, and Home's, general Search's and
+  the thread boards' (fleet, sources, implementation board, master). Inside a list's
+  section header the hierarchical step nests one level dimmer (about 1.9:1 on the
+  band); outside one, on Home, it was the step's own secondary. A branch name beside
+  a title stays tertiary. The rest of the phone, the rows' meta and stamps outside
+  the Outbox, keeps the steps' own inks (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
   line (dot, workspace, "from <thread>" or "from a routine", time), the
   list row's act as the title (title3 semibold; one name, `OutboxModel.title`),
@@ -4264,6 +4270,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | `today.minute` | Today | Says the minute's words, once a minute at the minute (Today/TodayScreen.swift) |
 | `messages.hold` | Messages, a chat, People, a person | Holds the screen's LifeOS live queries; it wakes once an hour and does nothing (Messages/MessagesReads.swift) |
 | `mail.foot` | Mail for a job | Holds Mail's capsule as on screen while the place shows; it wakes once an hour and does nothing (Life/MailPresses.swift) |
+| `mail.page` | A person's page | Holds the page as showing a mail's countdown, so its Undo is drawn there and not at the tab's foot; it wakes once an hour and does nothing (Life/MailPresses.swift) |
 | `chat.shown` | A conversation | Holds the conversation as on screen, so a stopped reply is said there and not as a toast; it wakes once an hour and does nothing (Messages/MessagesPresses.swift) |
 | `outbox.surface` | The Outbox, a held item | Holds the Undo capsule's own surface as on screen, so another tab shows it only when none is; it wakes once an hour and does nothing (OutboxPresses.swift) |
 | `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |

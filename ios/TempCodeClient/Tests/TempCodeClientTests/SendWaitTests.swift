@@ -243,4 +243,19 @@ import Testing
         #expect(wait.lateUndo("b", ended: .notSent) == "It was not sent")
         #expect(wait.lateUndo("c", ended: nil) == "Too late to undo")
     }
+
+    @Test func `a countdown whose page is off screen is offered at the tab's foot, a queued reply's own too`() {
+        var wait = Wait()
+        wait.press(Self.press("a"), now: 0)
+        wait.press(Self.press("b"), now: 1)
+        // A's conversation is on screen: its own capsule offers Undo.
+        #expect(wait.countingOffScreen { $0.id == "a" } == nil)
+        // He goes Back: the foot offers A's Undo.
+        #expect(wait.countingOffScreen { _ in false }?.id == "a")
+        // A goes; B's countdown starts while he is on another tab: the foot offers B's.
+        #expect(wait.due(now: 5, check: .init(linked: true, maySend: true, rev: 1))?.id == "a")
+        #expect(wait.countingOffScreen { _ in false } == nil)
+        wait.landed("a", now: 6)
+        #expect(wait.countingOffScreen { _ in false }?.id == "b")
+    }
 }
