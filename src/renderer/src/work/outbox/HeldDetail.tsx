@@ -394,10 +394,11 @@ const FIELDS_SHOW_WHO = new Set<string>(["mail.send", "office.mail.send"]);
 /**
  * The one sentence of what the press does, saying only what the thing below does not: a mail's From and To are in
  * its fields, so "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." reads "Goes after your 30-second
- * undo."; a send he timed says when it goes, in the zone he named first and this window's after where they differ ("Goes Wed 7:04 PM Central · 8:04 PM Eastern"); an item out of date says nothing.
+ * undo."; a send he timed says when it goes, in the zone he named first and this window's after where they differ ("Goes Wed 7:04 PM Central · 8:04 PM Eastern. Sends as you."); an item out of date says nothing.
  */
 export function effectWords(item: Pick<HostItem, "effect" | "state" | "kind" | "scheduledFor" | "scheduledZone">): string | null {
-  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, item.scheduledZone ?? ownZone(), ownZone())}`;
+  // The time leads; the host's sentence then says only as whom ("Sends as you.").
+  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, item.scheduledZone ?? ownZone(), ownZone())}.${item.effect ? ` ${item.effect}` : ""}`;
   if (!item.effect || item.state === "stale") return null;
   if (FIELDS_SHOW_WHO.has(item.kind)) {
     const said = /^Goes from \S+ to .+? (after .+)$/.exec(item.effect);
@@ -714,9 +715,9 @@ export function HeldDetail({
       await work();
     } catch (err) {
       sayFailed(pressFailWords(err, fail, hostInLine));
-    } finally {
-      setBusy(null);
     }
+    // After the catch, not in a finally: the React Compiler cannot lower one (scripts/compilerRatchet.test.ts).
+    setBusy(null);
   };
 
   const send = (which: "send" | "again" | "grant") =>

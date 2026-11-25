@@ -155,12 +155,12 @@ const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string
 const INVITE = { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } };
 /** What each kind's press does, as the host says it (outbox/effects.ts). */
 const KIND_EFFECT: Record<number, string> = {
-  22: "Sends the invite to Dana Lee from your Purdue calendar.",
-  23: "Replies as you in Teams.",
-  24: "Moves the file for everyone who can open Esports Staff.",
-  25: "Makes a link Maya Chen opens without signing in. She can comment until Dec 1.",
-  26: "Posts as you in Esports Staff, General, where 14 people see it.",
-  27: "Tells Northside PT you will come and keeps it on your Purdue calendar.",
+  22: "Sends the invite as you; each guest gets it.",
+  23: "Sends as you; everyone in the conversation sees it.",
+  24: "Changes files in a place others can open, the moment you press.",
+  25: "Anyone with the link opens it without signing in.",
+  26: "Posts as you; everyone in the chat sees it.",
+  27: "Tells the organizer you will come.",
 };
 /** A file move as the host holds it (contract-work-files.ts `FileActSchema`): what moves, from where, to where. */
 const MOVE = {
@@ -214,7 +214,7 @@ const mailTo = (n: number, to: string, address: string, subject: string, text: s
   decidedAt: null,
   result: null,
   later: true,
-  effect: `Goes from landon@purdue.edu to ${to} after your 30-second undo.`,
+  effect: "Goes as your mail after your undo time.",
   payload: { id: `d_${n}`, status: "draft", message: { kind: "mail", accountId: "acct", to: [{ name: to, address }], cc: [], bcc: [], subject, html: "", text, from: { address: "landon@purdue.edu" } } },
   ...over,
 });
@@ -232,22 +232,22 @@ const DANA_FIRST = { message: { from: { address: "landon@purdue.edu" }, to: [{ n
 const DAY: OutboxItem[] = [
   ...ROSTER,
   DANA,
-  { ...held(11, "chat.reply", "Reply to Priya in #release: Ship 2.14 tonight after QA signs off", "Reply", { chatId: "c1", source: "slack", chat: "#release", text: "Yes, ship tonight once QA signs off. I'll watch the crash dashboard for the first hour." }, 0), workspaceId: "ws3", sector: "cosmic", sessionId: "release", createdAt: NOW - 9 * 60_000, effect: "Replies as you in Priya's thread in #release, where 31 people see it.", later: true },
+  { ...held(11, "chat.reply", "Reply to Priya in #release: Ship 2.14 tonight after QA signs off", "Reply", { chatId: "c1", source: "slack", chat: "#release", text: "Yes, ship tonight once QA signs off. I'll watch the crash dashboard for the first hour." }, 0), workspaceId: "ws3", sector: "cosmic", sessionId: "release", createdAt: NOW - 9 * 60_000, effect: "Sends as you; everyone in the conversation sees it.", later: true },
   {
     ...mailTo(12, "Priya", "priya@cosmicgames.com", "Bug report, week 47", "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", {
       sessionId: "bugs",
       routineRunId: "run1",
       workspaceId: "ws3",
       sector: "cosmic",
-      effect: "Goes from landon@cosmicgames.com to Priya after your 30-second undo.",
+      effect: "Goes as your mail after your undo time.",
     }),
     payload: { id: "d_12", status: "draft", message: { kind: "mail", accountId: "acct", to: [{ name: "Priya", address: "priya@cosmicgames.com" }], cc: [], bcc: [], subject: "Bug report, week 47", html: "", text: "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", from: { address: "landon@cosmicgames.com" }, attachments: [{ name: "crash-dumps-week-47.zip", size: 31_400_000 }] } },
     state: "failed",
     error: "Gmail refused it: the attachment is over 25 MB.",
   },
-  { ...held(13, "calendar.op", "Accept Kickoff call with Northside PT", "Accept", { id: "op13", kind: "accept", eventId: "ev1", eventStartsAt: NOW + 4 * H, account: "landon@purdue.edu" }, 0), sessionId: "sweep", createdAt: NOW - 2 * H, effect: "Tells Northside PT you will come and keeps it on your Purdue calendar." },
+  { ...held(13, "calendar.op", "Accept Kickoff call with Northside PT", "Accept", { id: "op13", kind: "accept", eventId: "ev1", eventStartsAt: NOW + 4 * H, account: "landon@purdue.edu" }, 0), sessionId: "sweep", createdAt: NOW - 2 * H, effect: "Tells the organizer you will come." },
   { ...EDITS[0]!, sessionId: "budget", state: "stale", error: "Dana changed the Hotels sheet at 9:05 AM, after this was made.", createdAt: NOW - 50 * 60_000 },
-  { ...mailTo(14, "Jess", "jess@hypixel.net", "Trailer cut, v3", "Jess,\n\nThe v3 cut is up.\n\nLandon", { sessionId: "trailer", workspaceId: "ws4", sector: "hypixel" }), state: "scheduled", scheduledFor: NOW + 22 * H, scheduledZone: "America/Chicago" },
+  { ...mailTo(14, "Jess", "jess@hypixel.net", "Trailer cut, v3", "Jess,\n\nThe v3 cut is up.\n\nLandon", { sessionId: "trailer", workspaceId: "ws4", sector: "hypixel" }), state: "scheduled", scheduledFor: NOW + 22 * H, scheduledZone: "America/Chicago", effect: "Sends as you." },
 ];
 /** Done for `done`: what went, what he discarded with his words, and what went out of date that he put away. */
 const DONE: OutboxItem[] = [

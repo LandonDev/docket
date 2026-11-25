@@ -214,10 +214,9 @@ function useRequestPress(request: HostRequest) {
       void loadHost(env);
     } catch (err) {
       toastError(pressFailWords(err, "Nothing was sent"));
-    } finally {
-      setSending(null);
-      setBusy(null);
     }
+    setSending(null);
+    setBusy(null);
   };
   const decline = async () => {
     if (!open || busy) return;
@@ -226,9 +225,8 @@ function useRequestPress(request: HostRequest) {
       await declineRequest(env, request.id);
     } catch (err) {
       toastError(pressFailWords(err, "The request was not put away"));
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
   // After the answer, what did not go is tried again only as it was asked and as he saw it (review finding 10): a Send
   // keeps the request's many-ness and the revision the card drew; a Later takes a new time he picks and is told; a row

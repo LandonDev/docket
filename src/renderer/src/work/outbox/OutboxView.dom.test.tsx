@@ -1167,8 +1167,9 @@ describe("the Outbox, rebuilt around how he decides", () => {
     const { ownZone, scheduleLine } = await import("work-kit/mail/lib/zones");
     const at = Date.now() + 86_400_000;
     const words = effectWords({ kind: "mail.send", state: "scheduled", scheduledFor: at, scheduledZone: "Pacific/Auckland", effect: null } as never);
-    expect(words).toBe(`Goes ${scheduleLine(at, "Pacific/Auckland", ownZone())}`);
-    expect(words).not.toBe(`Goes ${scheduleLine(at, ownZone(), "Pacific/Auckland")}`);
+    expect(words).toBe(`Goes ${scheduleLine(at, "Pacific/Auckland", ownZone())}.`);
+    expect(words).not.toBe(`Goes ${scheduleLine(at, ownZone(), "Pacific/Auckland")}.`);
+    expect(effectWords({ kind: "mail.send", state: "scheduled", scheduledFor: at, scheduledZone: "Pacific/Auckland", effect: "Sends as you." } as never)).toBe(`Goes ${scheduleLine(at, "Pacific/Auckland", ownZone())}. Sends as you.`);
   });
 
   it("a scheduled item goes in Scheduled, says when, and its bar is Cancel send and Send now", async () => {

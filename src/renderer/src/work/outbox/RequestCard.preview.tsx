@@ -31,7 +31,7 @@ const mail = (id: string, to: string): OutboxItem => ({
   account: "landon@purdue.edu",
   state: "held",
   payload: { message: { to: [{ name: to, address: `${to.split(" ")[0]!.toLowerCase()}@purdue.edu` }], subject: "Nationals travel, confirm by Friday", text: "Bus leaves the Armory at 7:00 AM.\n\nLandon", from: { address: "landon@purdue.edu" } } },
-  effect: `Goes from landon@purdue.edu to ${to} after your 30-second undo.`,
+  effect: "Goes as your mail after your undo time.",
   createdAt: NOW - 3_600_000,
   decidedBy: null,
   decidedAt: null,
