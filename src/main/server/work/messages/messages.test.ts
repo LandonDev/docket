@@ -32,12 +32,13 @@ afterEach(async () => {
 })
 
 describe('the mount', () => {
-  it('is loaded by its own import and makes its table twice over without a fault', async () => {
+  it('is loaded by its own import and makes its tables twice over without a fault', async () => {
     expect(await PILLAR_LOADERS.messages()).toBe(messages)
     const db = new DatabaseSync(':memory:')
     messages.ensure(db)
     messages.ensure(db)
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'work_messages_%' ORDER BY name").all().map((r) => (r as { name: string }).name)).toEqual([
+      'work_messages_attempts',
       'work_messages_drafts',
       'work_messages_drafts_chat'
     ])

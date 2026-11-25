@@ -3,6 +3,7 @@ import type { MessagesDraftsAnswer, MessagesSendAnswer } from '@shared/contract-
 import { errorText, type SectorKey } from '@shared/work'
 import { OWN_REPLY_HELD, REPLY_MAY_HAVE_GONE, type ChatDraft, type ChatMessage } from '@shared/work/messages'
 import type { Caller, WorkCtx } from '../modules'
+import { sendOnce } from './attempts'
 import { ChatReplySchema, pinnedReplyTo } from './held'
 import { chatIn, isRefusal, NO_CHAT, refusalWords, unread, workSector } from './lifeos'
 
@@ -17,7 +18,7 @@ import { chatIn, isRefusal, NO_CHAT, refusalWords, unread, workSector } from './
 export const NOT_A_PERSON = 'only a person can send, take back or drop a chat reply'
 export const NOT_HERE = 'That reply is not in this conversation'
 
-function mustBe(by: Caller, cap: 'approve' | 'operate'): void {
+export function mustBe(by: Caller, cap: 'approve' | 'operate'): void {
   if (by.kind === 'model' || !by.caps.includes(cap)) throw new Error(NOT_A_PERSON)
   // A press that sends is the Outbox's kind of press: never another host over the link, nor an MCP client's key.
   if (cap === 'approve' && (by.peer !== undefined || (by.kind === 'remote' && by.audience !== 'client'))) throw new Error(NOT_A_PERSON)
@@ -37,9 +38,20 @@ async function lifeosSays<T>(run: () => Promise<T>): Promise<T> {
  * row. With `OWN_REPLY_HELD` on it waits in the Outbox instead, as a
  * thread's draft does, and the answer names the held item.
  */
-export async function sendReply(ctx: WorkCtx, by: Caller, p: { workspaceId: string; chatId: string; replyTo?: string; text: string }, held: boolean = OWN_REPLY_HELD): Promise<MessagesSendAnswer> {
+export async function sendReply(
+  ctx: WorkCtx,
+  by: Caller,
+  p: { workspaceId: string; chatId: string; replyTo?: string; text: string; attempt?: string },
+  held: boolean = OWN_REPLY_HELD
+): Promise<MessagesSendAnswer> {
   mustBe(by, 'approve')
   const sector = workSector(ctx, p.workspaceId)
+  // The phone's key: a repeat gets the first answer, and LifeOS hears of the reply once (attempts.ts).
+  if (p.attempt) return sendOnce(ctx.db, { workspaceId: p.workspaceId, chatId: p.chatId, attempt: p.attempt }, () => sendIn(ctx, sector, p, held))
+  return sendIn(ctx, sector, p, held)
+}
+
+async function sendIn(ctx: WorkCtx, sector: SectorKey, p: { workspaceId: string; chatId: string; replyTo?: string; text: string }, held: boolean): Promise<MessagesSendAnswer> {
   const got = await chatIn(ctx, p.chatId, sector)
   if (!got) throw new Error(NO_CHAT)
   if (held) {

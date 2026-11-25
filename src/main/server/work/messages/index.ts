@@ -2,12 +2,13 @@ import type { DatabaseSync } from 'node:sqlite'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
 import { registerCanvasFetcher } from '../canvas/fetch'
+import { attemptOf, dropWorkspaceAttempts, ensureAttemptsTable } from './attempts'
 import { chatFileFetcher } from './file'
 import { messagesHealth } from './health'
 import { chatReplyKind } from './held'
 import { searchChats, unanswered, unread, workSector } from './lifeos'
 import { chatMentions } from './mentions'
-import { draftsOf, dropDraft, dropWorkspaceDrafts, pushDrafts, retryReply, sendReply, undoReply } from './replies'
+import { draftsOf, dropDraft, dropWorkspaceDrafts, mustBe, pushDrafts, retryReply, sendReply, undoReply } from './replies'
 import { chatSearch, messageSearch } from './search'
 import { CHAT_TELLS } from './tell'
 import { messagesTools, PREAMBLE, readsChat } from './tools'
@@ -33,6 +34,8 @@ export function ensureMessagesTables(db: DatabaseSync): void {
     at INTEGER NOT NULL
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_messages_drafts_chat ON work_messages_drafts (workspace_id, chat_id)')
+  // His Send answered once by the phone's attempt key (attempts.ts).
+  ensureAttemptsTable(db)
 }
 
 export const messages: WorkModule = {
@@ -41,8 +44,13 @@ export const messages: WorkModule = {
   async handle(req, ctx, by) {
     switch (req.method) {
       case 'work.messages.send': {
-        const { workspaceId, chatId, replyTo, text } = req.params
-        return handled(await sendReply(ctx, by, { workspaceId, chatId, text, ...(replyTo ? { replyTo } : {}) }))
+        const { workspaceId, chatId, replyTo, text, attempt } = req.params
+        return handled(await sendReply(ctx, by, { workspaceId, chatId, text, ...(replyTo ? { replyTo } : {}), ...(attempt ? { attempt } : {}) }))
+      }
+      case 'work.messages.attempt': {
+        mustBe(by, 'approve')
+        workSector(ctx, req.params.workspaceId)
+        return handled(attemptOf(ctx.db, req.params))
       }
       case 'work.messages.undo':
         return handled(await undoReply(ctx, by, req.params))
@@ -89,6 +97,7 @@ export const messages: WorkModule = {
   workspaceRemoved(workspaceId, ctx) {
     watchOf(ctx)?.drop(workspaceId)
     dropWorkspaceDrafts(ctx, workspaceId)
+    dropWorkspaceAttempts(ctx.db, workspaceId)
   },
   health: messagesHealth
 }

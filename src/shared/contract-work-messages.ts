@@ -14,14 +14,22 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
 
 const id = z.string().min(1).max(64)
 const workspaceId = id
+/** The phone's key for one press of his Send: a repeat of it is answered as the first was, never sent again. */
+const attempt = z.string().min(8).max(64)
 
 export const MessagesRequestSchemas = [
   /**
    * → { id }: his own reply, typed and sent by his press: LifeOS queues it for its undo time. `replyTo` names the
    * message it answers (a Slack thread); without it the reply answers the conversation's newest message from
-   * someone else. A thread's call is refused: an agent's reply is `messages_draft_reply`, which is held.
+   * someone else. A thread's call is refused: an agent's reply is `messages_draft_reply`, which is held. `attempt`
+   * (the phone's) makes the host answer a repeat of the key with the first answer for a day, never sending again.
    */
-  request('work.messages.send', z.object({ workspaceId, chatId: id, replyTo: id.optional(), text: z.string().min(1).max(4000) })),
+  request('work.messages.send', z.object({ workspaceId, chatId: id, replyTo: id.optional(), text: z.string().min(1).max(4000), attempt: attempt.optional() })),
+  /**
+   * → MessagesAttemptAnswer: what became of a Send named by its `attempt` key, read without sending anything (the
+   * phone's read-back of a press whose answer was lost). `none`: this host never heard the key for this job.
+   */
+  request('work.messages.attempt', z.object({ workspaceId, attempt })),
   /**
    * → { text }: takes back a reply still inside its undo time, and answers its words. `chatId` is the conversation it
    * is in: the host checks it is the workspace's and that the reply is one of its own before LifeOS hears of it.
@@ -45,6 +53,14 @@ export interface MessagesSendAnswer {
   /** LifeOS's outbox row: what `undo` and `retry` name */
   id: string
 }
+/** What became of a Send by its attempt key: sent (LifeOS's outbox row), refused or may have gone in the host's words. */
+export interface MessagesAttemptAnswer {
+  state: 'none' | 'sending' | 'sent' | 'refused' | 'unknown'
+  /** the reply's outbox row, when sent */
+  id?: string
+  /** the host's words, when refused or unknown */
+  words?: string
+}
 export interface MessagesSearchAnswer {
   hits: ChatHit[]
 }
@@ -67,6 +83,7 @@ export const MESSAGES_CAPS = {
   'work.messages.send': 'approve',
   'work.messages.undo': 'approve',
   'work.messages.retry': 'approve',
+  'work.messages.attempt': 'approve',
   'work.messages.search': 'read',
   'work.messages.unanswered': 'read',
   'work.messages.unread': 'read',
