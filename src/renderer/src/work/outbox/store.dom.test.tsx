@@ -155,6 +155,26 @@ describe("what each reader reads", () => {
     again.unmount();
   });
 
+  /** Sol round 1, S12: a Waiting-only read after a push never stands for Done, the grants and the offers. */
+  it("the page opened after a push that only Today read reads Done, the grants and the offers again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const page = renderHook(() => store.useOutboxPage());
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+    page.unmount();
+    // Today stays open, and a push says the Outbox moved: one Waiting read after the join.
+    const today = waitingReader();
+    act(() => {
+      for (const push of world.pushes) push({ push: "work.outbox", waiting: 3, failed: 0 });
+    });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(500)));
+    world.calls = [];
+    const again = renderHook(() => store.useOutboxPage());
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+    expect(methods()).toContain("list:done");
+    again.unmount();
+    today.hook.unmount();
+  });
+
   it("a reconnect reads once more, though the store is fresh, and the requests once between their store and this one", async () => {
     for (const open of world.opens) open();
     await settle();

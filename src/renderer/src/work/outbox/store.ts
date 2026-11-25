@@ -163,7 +163,8 @@ export function loadHost(environmentId: string, opts: { whole?: boolean } = {}):
         loaded: true,
         error: null,
         readAt: Date.now(),
-        whole: whole || (was.whole && Date.now() - was.readAt < FRESH_MS),
+        // Only a whole read stands for Done, the grants and the offers: a read of what waits after a push says nothing of them.
+        whole,
       });
     })
     .catch((err: unknown) => {
