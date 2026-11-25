@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer as createHttps } from 'node:https'
 import { connect, createServer as createTcp, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -49,7 +49,9 @@ let scratch: string
 let fakeServer: string
 
 beforeAll(() => {
-  scratch = mkdtempSync(join(tmpdir(), 'tc-fence-proof-'))
+  // The real path: the Claude CLI keys .claude.json's `projects` by the cwd's real path, so a plant_local under a
+  // linked temp folder (macOS's /var/folders is /private/var/folders) is never read, by the control or a fenced case.
+  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'tc-fence-proof-')))
   fakeServer = join(scratch, 'fake-mcp.mjs')
   // A planted server says so the moment a harness starts it, then speaks enough MCP to be listed and called.
   writeFileSync(
