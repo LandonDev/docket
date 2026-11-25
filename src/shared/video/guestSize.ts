@@ -30,8 +30,11 @@ export interface GuestSize {
   scale: number
 }
 
-/** 3840×2400 until M0's numbers set the cap. */
-export const GUEST_CAPS: GuestCaps = { maxPixels: 9_216_000, maxWidth: 4096, maxHeight: 2400 }
+/**
+ * The cap is the largest size where a dragged window held 45 frames a second on the box (Nov 25): 3456×2234 held 46,
+ * 3840×2400 held 42 (BASELINE.md "Measured on a scratch machine"). So the MacBook's own pixels, Sharp.
+ */
+export const GUEST_CAPS: GuestCaps = { maxPixels: 3456 * 2234, maxWidth: 4096, maxHeight: 2400 }
 export const GUEST_MIN_POINTS: Room = { width: 1024, height: 640 }
 export const GUEST_SCALES = [200, 175, 150, 125, 100] as const
 const NARROWEST = 5 / 4

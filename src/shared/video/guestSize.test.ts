@@ -8,7 +8,9 @@ const LG = { width: 3840, height: 1620 }
 describe('guestSizeFor', () => {
   it('his three screens, Sharp', () => {
     // 200% would be 6400×3600: past every cap, so the scale steps down to the first that fits
-    expect(guestSizeFor(ASUS, 2, 'sharp')).toEqual({ width: 4000, height: 2250, scale: 125 })
+    // 4000×2250 at 125% would pass the cap of 3456×2234's pixels: the scale steps down to 100%
+    expect(guestSizeFor(ASUS, 2, 'sharp')).toEqual({ width: 3200, height: 1800, scale: 100 })
+    expect(guestSizeFor(ASUS, 2, 'sharp', { ...GUEST_CAPS, maxPixels: 9_216_000 })).toEqual({ width: 4000, height: 2250, scale: 125 })
     expect(guestSizeFor(MACBOOK, 2, 'sharp')).toEqual({ width: 3456, height: 2234, scale: 200 })
     expect(guestSizeFor(LG, 1, 'sharp')).toEqual({ width: 3840, height: 1620, scale: 100 })
     expect(guestSizeFor(LG, 2, 'sharp')).toEqual({ width: 3840, height: 1620, scale: 100 })
@@ -50,7 +52,7 @@ describe('guestSizeFor', () => {
     expect(size.width).toBeLessThanOrEqual(GUEST_CAPS.maxWidth)
     expect(size.height).toBeLessThanOrEqual(GUEST_CAPS.maxHeight)
     expect(size.width * size.height).toBeLessThanOrEqual(GUEST_CAPS.maxPixels)
-    expect(size).toEqual({ width: 4046, height: 2276, scale: 100 })
+    expect(size).toEqual({ width: 3704, height: 2082, scale: 100 })
     // a host's own lower cap
     expect(guestSizeFor(MACBOOK, 2, 'sharp', { ...GUEST_CAPS, maxPixels: 5_000_000 })).toEqual({ width: 2592, height: 1674, scale: 150 })
     expect(guestSizeFor({ width: 5000, height: 2000 }, 1, 'faster')).toEqual({ width: 4096, height: 1638, scale: 100 })
