@@ -26,7 +26,7 @@ import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threa
 import { useColumnProjects } from "./columnProjects";
 import { projectsBack, useProjectsHere } from "../projects/here";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
-import { openWorkView, useWorkView } from "../../lib/workSwitch";
+import { choose, openWorkView, stillChosen, useWorkView } from "../../lib/workSwitch";
 import type { ThreadRow } from "../../lib/workspaceSessions";
 
 /**
@@ -292,15 +292,20 @@ export function useArchivedThreads({ scope, environmentIds }: ArchivedScope): { 
   return { ids, list: read };
 }
 
-/** Put an archived thread back, then open it; a refusal is said in a toast and nothing opens. */
+/**
+ * Put an archived thread back, then open it; a refusal is said in a toast and nothing opens. The pick is his choice
+ * from the press: if he picks another thread while the host restores this one, the restore stands and his newer pick
+ * keeps the window.
+ */
 async function restoreThread(id: string, onOpen: (id: string) => void): Promise<void> {
+  const mine = choose();
   try {
     await setSessionArchived(id, false);
   } catch (error) {
     void loadToast().then((toast) => toast.error(error instanceof Error ? error.message : String(error)));
     return;
   }
-  onOpen(id);
+  if (stillChosen(mine, null, "")) onOpen(id);
 }
 
 /**

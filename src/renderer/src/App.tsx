@@ -307,7 +307,7 @@ import { SessionActionsContext, type SessionActions } from "./surfaces/threadCha
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, setupHostChunk, terminalChunk, threadBannersChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { beginRevealNavigation, cancelRevealReads, prepareRevealReads } from "./lib/revealRead";
-import { choose, openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
+import { choose, openWorkView, stillChosen, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { returnOf } from "./lib/workReturn";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
@@ -1680,12 +1680,13 @@ export default function App() {
       // history holds that seq (lib/transcriptJump.ts), whether the thread is
       // already on screen or opens below.
       perfMark("open-click", sessionId);
-      // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts).
-      choose();
+      // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts);
+      // one that waits on its transcript opens only if nothing was chosen meanwhile.
+      const mine = choose();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
-      if (!session) return;
+      if (!session || !stillChosen(mine, null, "")) return;
       perfMark("open-ready", sessionId);
       // A tab may have landed during the await (a background open racing an
       // explicit ask for the same thread): show that one, never a second.
@@ -1697,7 +1698,7 @@ export default function App() {
         const { tabs } = workspaceTabsStore.getState();
         if (!tabs.some((tab) => leafIds(tab.layout).includes(parentId))) {
           const parent = await ensureOpenSession(parentId);
-          if (!parent) return;
+          if (!parent || !stillChosen(mine, null, "")) return;
           const tab = newTab(parent.id);
           appendTab(tab, parent.cwd);
           setActiveTabId(tab.id);
@@ -2136,6 +2137,8 @@ export default function App() {
 
   /** Rail: the Work Chats, the Work threads outside every workspace (WORK_CHATS): the Chats' twin. */
   const onOpenWorkChats = useCallback(() => {
+    // Work Chats is his latest choice: a door still waiting on a host no longer takes the window.
+    choose();
     shell.closeViews();
     openWorkView(null);
     project.setProjectCwd(WORK_CHATS);
@@ -2990,6 +2993,7 @@ export default function App() {
 
   const onOpenApprovalSession = useCallback(
     (sessionId: string) => {
+      choose();
       if (!focusOpenSession(sessionId)) {
         void onSelectHistorySession(sessionId);
       }

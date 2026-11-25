@@ -286,6 +286,23 @@ describe("the archived row", () => {
     expect(opened).toEqual(["loose"]);
   });
 
+  it("a restore overtaken by a newer pick puts the thread back but leaves the window on the newer pick", async () => {
+    const { choose } = await import("../../lib/workSwitch");
+    store.metas = [meta({ id: "loose", title: "Old loose", workspaceId: "w-job", updatedAt: 2 })];
+    const opened: string[] = [];
+    render(<ArchivedRow scope={{ scope: "w-job", environmentIds: ["local"] }} onOpen={(id) => { opened.push(id); }} />);
+    await act(async () => screen.getByRole("button", { name: "1 archived" }).click());
+    restored.length = 0;
+    // The restore's own press, then a newer pick while the host answers.
+    const press = (document.querySelector('[data-listed="loose"]') as HTMLElement);
+    await act(async () => {
+      press.click();
+      choose();
+    });
+    expect(restored).toEqual(["loose"]);
+    expect(opened).toEqual([]);
+  });
+
   it("lists Work Chats' own for Work Chats, and is nothing with none archived", () => {
     store.metas = [meta({ id: "chat", cwd: "~" })];
     const { container, rerender } = render(<ArchivedRow scope={{ scope: "~work", environmentIds: ["box"] }} onOpen={() => {}} />);
