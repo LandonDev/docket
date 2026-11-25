@@ -36,6 +36,8 @@ import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
+import { useWorkView } from "../lib/workSwitch";
+import { useShell } from "../stores/shell";
 
 /** The pane switch: opacity alone, --dur-fast (DESIGN.md "Pane switch"). */
 export const PANE_FADE = { duration: DUR.fast, ease: EASE_OUT } as const;
@@ -135,17 +137,22 @@ export const SessionPane = memo(function SessionPane({
   const rootRef = useRef<HTMLDivElement>(null);
   // The focused, visible pane is where an "automatic" appshot lands, and
   // the thread its host serves first (session.focus).
+  // A Work view or a page above the jobs (Today, Projects, Review) covers the threads: the pane stays the appshot's
+  // and the panel's, but the host is not told he looks at it, so nothing is marked read unseen.
+  const workView = useWorkView();
+  const workPlace = useShell((s) => s.workPlace);
+  const covered = workView !== null || workPlace !== null;
   useEffect(() => {
     if (!focused || !visible) return;
     noteActiveSession(session.id);
-    serverCommands.focusSignal.pane(session.environmentId, session.id);
+    if (!covered) serverCommands.focusSignal.pane(session.environmentId, session.id);
     // Among visible panes the focused one is the panel's thread.
     rightPanel.focus(session.id);
     return () => {
       noteActiveSession(null);
-      serverCommands.focusSignal.left(session.id);
+      if (!covered) serverCommands.focusSignal.left(session.id);
     };
-  }, [focused, session.environmentId, session.id, visible]);
+  }, [focused, session.environmentId, session.id, visible, covered]);
   // The right panel's toggle, ⌘⇧R, "show Changes" and "Debug this file" act
   // on the thread on screen, whether or not its panel is open (a closed panel
   // is not mounted) and while an editor or the dock holds the focus.

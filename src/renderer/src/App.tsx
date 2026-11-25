@@ -3684,8 +3684,7 @@ export default function App() {
                   <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
                     <PaneTree
                       tabId={tab.id}
-                      // Under a Work view no pane is looked at: the host is not told, and nothing is marked read unseen.
-                      visible={tab.id === shownTabId && !workViewShown}
+                      visible={tab.id === shownTabId}
                       onFocus={onFocusPane}
                       onClose={onClosePane}
                       onSelectFile={onSelectFileSurface}

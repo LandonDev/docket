@@ -410,6 +410,19 @@ describe("installActiveSessionSync", () => {
     expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
   });
 
+  it("a thread under a page above the jobs (Today) is not marked seen until the page leaves", async () => {
+    const { shell } = await import("./shell");
+    shell.openWorkPlace("today");
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 7 }));
+    teardown = installActiveSessionSync();
+    expect(markSessionSeen).not.toHaveBeenCalledWith("s-a", 7);
+    shell.openWorkPlace(null);
+    await flush();
+    expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
+  });
+
   it("a switch before the throttle flushes marks the thread leaving at its latest update", async () => {
     vi.useFakeTimers();
     setTabs([tab("a"), tab("b")], "a");

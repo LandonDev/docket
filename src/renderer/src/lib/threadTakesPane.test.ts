@@ -39,3 +39,13 @@ describe("a thread or a draft he opens takes the pane", () => {
     }
   });
 });
+
+describe("a pane a Work view or page covers", () => {
+  const pane = readFileSync(join(__dirname, "..", "surfaces", "SessionPane.tsx"), "utf8");
+  it("stays the appshot's and the panel's, but never tells the host he looks at it", () => {
+    expect(pane).toMatch(/const covered = workView !== null \|\| workPlace !== null;/);
+    expect(pane).toMatch(/noteActiveSession\(session\.id\);\s*if \(!covered\) serverCommands\.focusSignal\.pane/);
+    // The pane's visibility is the tab's alone: a covered pane keeps its transcript and scroll live.
+    expect(app).toMatch(/visible=\{tab\.id === shownTabId\}/);
+  });
+});
