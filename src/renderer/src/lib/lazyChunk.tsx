@@ -206,10 +206,45 @@ function ChunkAttempt({ children }: { children: ReactNode }) {
   return children;
 }
 
+/** `fn` in an idle slot (requestIdleCallback, else a short timer). */
+function whenIdle(fn: () => void, timeout: number): void {
+  const idle = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof idle === "function") idle(fn, { timeout });
+  else setTimeout(fn, 250);
+}
+
 /** `preload()` in an idle slot (requestIdleCallback, else a short timer), never during the open. */
 export function preloadWhenIdle(chunk: Chunk<object>, timeout = 2000): void {
   if (chunk.started()) return;
-  const idle = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
-  if (typeof idle === "function") idle(() => chunk.preload(), { timeout });
-  else setTimeout(() => chunk.preload(), 250);
+  whenIdle(() => chunk.preload(), timeout);
+}
+
+/**
+ * A row of chunks warmed one after another: each is asked for in an idle slot once the one before it has landed (or
+ * failed), so a job's other views are in hand by the time he presses one, with never two parsing at once. One a load
+ * already started for is passed over. Returns its stop: what was not yet asked for is left alone.
+ */
+export function preloadInTurn(chunks: readonly Chunk<object>[], timeout = 2000): () => void {
+  let live = true;
+  const from = (start: number): void => {
+    let i = start;
+    while (i < chunks.length && chunks[i].started()) i++;
+    if (!live || i >= chunks.length) return;
+    whenIdle(() => {
+      if (!live) return;
+      // Asked for elsewhere while this waited for its slot: on to the next.
+      if (chunks[i].started()) return from(i + 1);
+      chunks[i].load().then(
+        () => from(i + 1),
+        (error: unknown) => {
+          console.warn(`[chunk] ${chunks[i].name} failed to preload`, error);
+          from(i + 1);
+        },
+      );
+    }, timeout);
+  };
+  from(0);
+  return () => {
+    live = false;
+  };
 }

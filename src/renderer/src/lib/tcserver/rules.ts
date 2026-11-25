@@ -9,7 +9,7 @@ import {
   type ModelPolicy,
   type OrchestrationRules,
   type RoutingRule,
-} from "@server/shared/rules";
+} from "@server/shared/rulesValues";
 import { OPEN_SETTINGS_EVENT } from "../monaco/debugTab";
 import type { Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";

@@ -95,3 +95,20 @@ the next queue itself").
 
 `scripts/bench-pc-drive.ts` (docs/agents/pc-setup.md "The drive bench") times the laptop's mapped drive in the
 Windows rig; it and the rig run only while the agents' slice holds under its memory line.
+
+## Code that loads only where it is used
+
+- **A view whose code is in hand draws in its first commit.** The view frame (work/shell/WorkViewPage.tsx) takes
+  the view from its loaded chunk, never a fresh `React.lazy`: a lazy suspends once even when loaded, and React
+  holds content back 300 ms after a skeleton. Every switch to a view he had seen cost that (317 ms on the pair).
+- **A job's other views are warmed behind the one shown**, one at a time in idle slots, in the column's order
+  (`preloadInTurn`, lib/lazyChunk.tsx; `viewChunksAfter`, work/views/registry.ts), so a first press of a view
+  finds its code and draws at once too. Never two chunks parsing together; a chunk already asked for is passed
+  over.
+- **Money's chart is a chunk of its own** (`monthBarsChunk`, work/money/monthBars.ts): the ledger's first open
+  carries no recharts (667 kB), and the year's section keeps the chart's box while it loads, so nothing moves.
+  scripts/viewGraphs.test.ts holds it on the source.
+- **The orchestration rules as plain values** (src/shared/rulesValues.ts): the window's two readers of them no
+  longer reach the zod schemas in src/shared/rules.ts. zod itself is still in the first paint by 17 other
+  modules (listed in `.temp-code/plans/landed/PERF-work.md` "For the owner").
+

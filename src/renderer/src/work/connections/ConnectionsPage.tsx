@@ -15,8 +15,8 @@ import { openUrl } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { AddinRow } from "../office/AddinRow";
-import { SignInDialog } from "../shell/settings";
-import { useLifeosStatus, useLifeosStatusHeard } from "../shell/lifeos";
+import { SignInFor } from "../shell/DownSignIn";
+import { useLifeosStatusHeard } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
 import { FirstCheckBones } from "./FirstCheckBones";
 import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
@@ -254,9 +254,8 @@ export function fixMethod(fix: HealthFix | null): ClientRequest["method"] | null
   return null;
 }
 
-/** The LifeOS sign-in dialog Settings → Work has always used, for this host. */
-function LifeosSignIn({ environmentId, onClose }: { environmentId: string; onClose: () => void }) {
-  const status = useLifeosStatus(environmentId);
-  if (!status) return null;
-  return <SignInDialog environmentId={environmentId} state={status.lifeos} onClose={onClose} />;
-}
+/**
+ * The LifeOS sign-in dialog Settings → Work has always used, for this host, loaded on the press (`SignInFor`): the
+ * page's own chunk no longer carries the whole of Work's settings for a dialog most visits never open.
+ */
+const LifeosSignIn = SignInFor;

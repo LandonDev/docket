@@ -3,7 +3,7 @@ import {
   ReviewSettingsSchema,
   type ReviewSettings,
 } from "@server/shared/review";
-import { modelApproved } from "@server/shared/rules";
+import { modelApproved } from "@server/shared/rulesValues";
 import type { HarnessId } from "./session";
 import { modelsFor, resolveModel } from "./models";
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChunkBoundary, defineChunk, preloadWhenIdle } from "./lazyChunk";
+import { ChunkBoundary, defineChunk, preloadInTurn, preloadWhenIdle } from "./lazyChunk";
 
 type Mod = { Thing: (props: { label: string }) => React.JSX.Element };
 
@@ -217,3 +217,66 @@ describe("preloadWhenIdle", () => {
     }
   });
 });
+
+describe("preloadInTurn", () => {
+  /** Idle slots the test opens by hand: nothing runs until `open()`. */
+  function slots() {
+    const waiting: (() => void)[] = [];
+    (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (cb: () => void) => (waiting.push(cb), waiting.length);
+    return {
+      open: () => waiting.shift()?.(),
+      left: () => waiting.length,
+      done: () => void delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback,
+    };
+  }
+
+  it("asks for one chunk at a time, each in an idle slot after the one before it landed, in the order given", async () => {
+    const idle = slots();
+    try {
+      const a = controlled();
+      const b = controlled();
+      const c = controlled();
+      preloadInTurn([a.chunk, b.chunk, c.chunk]);
+      // Nothing is asked for before its idle slot, and only the first has one.
+      expect([a.calls.n, b.calls.n, c.calls.n]).toEqual([0, 0, 0]);
+      expect(idle.left()).toBe(1);
+      idle.open();
+      expect([a.calls.n, b.calls.n, c.calls.n]).toEqual([1, 0, 0]);
+      // The second waits for the first to land, then for a slot of its own.
+      expect(idle.left()).toBe(0);
+      await act(async () => a.resolve());
+      expect(idle.left()).toBe(1);
+      expect(b.calls.n).toBe(0);
+      idle.open();
+      expect([a.calls.n, b.calls.n, c.calls.n]).toEqual([1, 1, 0]);
+      // A chunk that fails does not end the row.
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      await act(async () => b.reject(new Error("gone")));
+      idle.open();
+      expect(c.calls.n).toBe(1);
+    } finally {
+      idle.done();
+    }
+  });
+
+  it("passes over a chunk a load already started for, and asks for nothing more once stopped", async () => {
+    const idle = slots();
+    try {
+      const a = controlled();
+      const b = controlled();
+      const c = controlled();
+      a.chunk.preload();
+      expect(a.calls.n).toBe(1);
+      const stop = preloadInTurn([a.chunk, b.chunk, c.chunk]);
+      idle.open();
+      expect([a.calls.n, b.calls.n, c.calls.n]).toEqual([1, 1, 0]);
+      stop();
+      await act(async () => b.resolve());
+      idle.open();
+      expect(c.calls.n).toBe(0);
+    } finally {
+      idle.done();
+    }
+  });
+});
+

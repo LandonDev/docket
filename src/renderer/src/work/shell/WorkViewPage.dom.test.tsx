@@ -350,6 +350,27 @@ describe("a view whose chunk is already in hand", () => {
   });
 });
 
+describe("the job's other views", () => {
+  it("are warmed behind the one shown, one at a time in the column's order, and never the one shown", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    const { viewChunksAfter, workViewRows } = await import("../views/registry");
+    const rows = workViewRows().map((view) => view.id);
+    expect(viewChunksAfter("tasks")).toEqual(workViewRows().filter((view) => view.id !== "tasks").map((view) => view.chunk));
+    expect(viewChunksAfter("tasks").length).toBe(rows.length - 1);
+    // The frame asks for them in idle slots: the first slot is taken as it mounts, and it is not Tasks' own chunk.
+    const asked: (() => void)[] = [];
+    (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (cb: () => void) => (asked.push(cb), asked.length);
+    try {
+      render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      await flush();
+      expect(asked.length).toBe(viewChunksAfter("tasks").every((chunk) => chunk.started()) ? 0 : 1);
+    } finally {
+      delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
+    }
+  });
+});
+
 describe("views outside LifeOS's gate, and a view that did not import", () => {
   it("draws Routines, its header and its body, while LifeOS is signed out: its data is the host's", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({

@@ -71,3 +71,11 @@ describe("the entry dialog's form", () => {
     expect(formOfReceipt({ amount: 4210, date: null, who: "Corner Fuel", category: null }, "ws")).toMatchObject({ amount: "42.10", date: "", who: "Corner Fuel", category: "", way: "out" });
   });
 });
+
+describe("the year's chart box", () => {
+  it("is the chart frame's own height while the chart's chunk loads, so nothing under it moves", async () => {
+    const { MONTH_BARS_HEIGHT } = await import("./monthBars");
+    const { CHART_HEIGHT } = await import("@aliax/charts/chart");
+    expect(MONTH_BARS_HEIGHT).toBe(CHART_HEIGHT);
+  });
+});

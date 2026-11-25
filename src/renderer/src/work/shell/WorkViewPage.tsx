@@ -9,7 +9,8 @@ import { nameInLine } from "../../lib/hostWords";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
-import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
+import { viewChunksAfter, WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
+import { preloadInTurn } from "../../lib/lazyChunk";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { isSilence, KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useKeptRegion, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
@@ -102,6 +103,10 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // view-*, 2026-11-24: 317 ms, all of it the hold). Chosen once a mount, so a chunk landing later never remounts the view.
   const [Ready] = useState(() => def.chunk.loaded()?.View ?? null);
   const View = Ready ?? Lazy;
+  // The job's other views are warmed behind this one, one at a time in idle slots, in the column's order: his next
+  // press then finds its code in hand and draws in its first commit, with no skeleton (perf row view-*: a first press
+  // of a view cost a chunk's fetch and React's 300 ms hold after its skeleton).
+  useEffect(() => preloadInTurn(viewChunksAfter(def.id)), [def.id]);
   const Icon = def.icon;
   // A view that reads the host alone (Routines) is never behind LifeOS's sign-in or its line.
   const gated = def.readsLifeos;

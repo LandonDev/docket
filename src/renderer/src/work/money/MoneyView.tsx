@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
 import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, undatedWords, type LedgerRow, type OwedRow } from "@shared/work/money";
-import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
-import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { ChevronLeft, ChevronRight, MoreHorizontal, Paperclip, Plus } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { ChoiceToggle } from "../../components/choice-toggle";
@@ -31,7 +28,8 @@ import { sendInvoice, sentAs } from "./send";
 import { RateDialog } from "./RateDialog";
 import { ReceiptPicture, ToConfirmSection } from "./ToConfirm";
 import { TripDialog } from "./TripDialog";
-import { periodLabel, periodNow, periodOf, rowMoney, shortMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
+import { periodLabel, periodNow, periodOf, rowMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
+import { byMonthBars, MONTH_BARS_HEIGHT, monthBarsChunk } from "./monthBars";
 
 /**
  * A Work workspace's Money (docs/agents/work-money.md, docs/DESIGN.md "The
@@ -542,23 +540,15 @@ function Figure({ label, cents }: { label: string; cents: number }) {
 
 // ── the year's chart ─────────────────────────────────────────────────
 
-const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-type TooltipProps = Parameters<typeof ChartTooltipContent>[0];
+// The bars and their hover are pure and live in monthBars.ts; the chart itself (recharts, 667 kB) is a chunk of its
+// own, asked for when the year's section mounts, so the ledger's figures and lists never wait on it.
+export { byMonthBars, trueRows } from "./monthBars";
 
-/**
- * The year's bars: no bar below the axis, so a month whose in or out is below zero (a refund he typed) draws that bar at nothing.
- * The true sums ride beside the bars' (`sums`): the hover says the month's figure as the ledger has it, sign and all.
- */
-export const byMonthBars = (months: readonly { month: number; in: number; out: number }[]) =>
-  months.map((m) => ({ month: MONTH_SHORT[m.month - 1], in: Math.max(0, m.in), out: Math.max(0, m.out), sums: { in: m.in, out: m.out } }));
-
-/** The hover's rows with each bar's true sum in place of its height ("Out -$20.00" for a month of only a refund). */
-export const trueRows = (payload: TooltipProps["payload"]): TooltipProps["payload"] =>
-  payload?.map((e) => {
-    const sums = (e.payload as { sums?: Record<string, number> } | undefined)?.sums;
-    const key = String(e.dataKey ?? "");
-    return sums && key in sums ? { ...e, value: sums[key] } : e;
-  });
+/** The chart's own box, empty, while its chunk is on its way: the section keeps its height, so nothing under it moves. */
+const MonthBars = monthBarsChunk.surface(
+  "MonthBars",
+  <div data-chart role="img" aria-label="In and out by month" aria-busy="true" style={{ height: MONTH_BARS_HEIGHT }} className="w-full" />,
+);
 
 function ByMonth({ read }: { read: MoneyRead }) {
   const data = byMonthBars(read.byMonth);
@@ -571,22 +561,7 @@ function ByMonth({ read }: { read: MoneyRead }) {
             { label: "Out", color: "var(--chart-2)" },
           ]}
         />
-        <ChartFrame label="In and out by month">
-          <BarChart data={data} barGap={2} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
-            <CartesianGrid {...GRID} />
-            <XAxis {...AXIS} dataKey="month" interval={0} />
-            <YAxis {...AXIS} width={48} tickFormatter={shortMoney} />
-            <ChartTooltip
-              cursor={BAR_CURSOR}
-              isAnimationActive={false}
-              content={(props) => (
-                <ChartTooltipContent active={props.active} payload={trueRows(props.payload as TooltipProps["payload"])} label={props.label as TooltipProps["label"]} valueFormatter={formatMoney} />
-              )}
-            />
-            <Bar {...BAR} dataKey="in" name="In" fill="var(--chart-1)" />
-            <Bar {...BAR} dataKey="out" name="Out" fill="var(--chart-2)" />
-          </BarChart>
-        </ChartFrame>
+        <MonthBars data={data} />
       </div>
     </Section>
   );

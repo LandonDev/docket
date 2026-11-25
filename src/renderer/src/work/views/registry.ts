@@ -98,5 +98,8 @@ export const workViewList = (): WorkViewDef[] => Object.values(WORK_VIEWS).sort(
 /** The views the column draws a row for: every one that does not stand inside another, and Templates only once its row is on (`TEMPLATES_ROW`). */
 export const workViewRows = (): WorkViewDef[] => workViewList().filter((view) => !view.inside && (TEMPLATES_ROW || view.id !== "templates"));
 
+/** The chunks of the column's other views, in the column's order: what a shown view warms behind itself (WorkViewPage.tsx). */
+export const viewChunksAfter = (shown: WorkViewId): Chunk<object>[] => workViewRows().filter((view) => view.id !== shown).map((view) => view.chunk);
+
 /** The row that reads as open for a view: its own, or the row of the view it stands inside. */
 export const rowOfView = (view: string): string => (WORK_VIEWS as Record<string, WorkViewDef | undefined>)[view]?.inside ?? view;
