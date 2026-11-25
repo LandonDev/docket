@@ -60,7 +60,7 @@ export const projectsTools: WorkTool[] = [
       try {
         const workspace = linkedWorkspace(ctx, ctx.scope.workspaceId)
         const { linked, project } = await linkToProject(ctx, { kind: 'model', caps: [], sessionId: ctx.sessionId }, { workspace, lifeosProjectId: a.project, source, title })
-        ctx.results.add({ sessionId: ctx.sessionId, kind: 'projects.link', summary: `Linked ${title} to ${project.name}`, ref: { at: 'lifeos', table: 'projects', id: project._id } })
+        ctx.results.add({ sessionId: ctx.sessionId, kind: 'projects.link', summary: `Linked ${title} to ${project.name}`, ref: { at: 'lifeos', table: 'projects', id: project._id, itemId: linked.id } })
         return workText(linkedWords(linked, title, project.name))
       } catch (err) {
         return fail(errorText(err))

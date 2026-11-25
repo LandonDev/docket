@@ -7,10 +7,12 @@ import {
   heldWords,
   isMadeKind,
   madeWords,
+  requestWords,
   workingWords,
   type RecordMade,
   type RecordOpen,
   type RecordWait,
+  type ProjectMadeFile,
   type RecordWork,
   type ThreadOutcome,
   type ThreadRecord
@@ -41,15 +43,16 @@ const working = (root: OutcomeMeta): boolean => root.status === 'running' || roo
 
 /**
  * The one most pressing line: a question or approval, a failure (the turn's, then a send's), what is held for his
- * press, live work, then the newest thing it made or did. Null: a thread that left nothing yet.
+ * press (its own held acts, else its open requests for his press on acts of the job), live work, then the newest thing
+ * it made or did. Null: a thread that left nothing yet.
  */
-export function outcomeOf(root: OutcomeMeta, held: readonly HeldFacts[], results: readonly ResultFacts[]): ThreadOutcome | null {
+export function outcomeOf(root: OutcomeMeta, held: readonly HeldFacts[], results: readonly ResultFacts[], requests = 0): ThreadOutcome | null {
   if (asks(root)) return { words: 'Asks you', tone: 'asks' }
   if (failed(root)) return { words: failedWords(root.failure?.kind), tone: 'failed' }
   const waiting = held.filter((i) => needsHim(i))
   const sendFailed = waiting.filter((i) => i.state === 'failed')
   if (sendFailed.length) return { words: "Couldn't send", tone: 'failed' }
-  const words = heldWords(waiting)
+  const words = heldWords(waiting) ?? requestWords(requests)
   if (words) return { words, tone: 'held' }
   if (working(root)) return { words: workingWords(root.statusDetail), tone: 'working' }
   const last = newest(results.filter((r) => r.undoneAt === null))
@@ -87,6 +90,26 @@ export function madeOf(result: ResultFacts): RecordMade {
   const rest = result.summary.startsWith(verb) ? result.summary.slice(verb.length).trim() : ''
   const name = files ? `${files.files[0]!.name}${more}` : rest || result.summary
   return { id: result.id, sessionId: result.sessionId, kind: result.kind, verb, name, summary: result.summary, at: result.createdAt, undone: result.undoneAt !== null, open: openOf(result) }
+}
+
+/**
+ * The thing a made Result names, so writes to one thing are one row: a file by its place, a Google file by its id, a
+ * LifeOS item by its id, anything else by its ref, and a Result with no ref alone.
+ */
+export function sourceKeyOf(result: Pick<ResultFacts, 'id' | 'ref'>): string {
+  const files = filesOf(result.ref)
+  if (files) return `files:${JSON.stringify(files.files.map((f) => f.ref))}`
+  const r = result.ref as { at?: string; fileId?: unknown } | null
+  if (r?.at === 'google' && typeof r.fileId === 'string') return `google:${r.fileId}`
+  const itemId = itemIdOf(result.ref)
+  if (itemId) return `item:${itemId}`
+  return result.ref == null ? `result:${result.id}` : `ref:${JSON.stringify(result.ref)}`
+}
+
+/** The LifeOS item a project link made (projects/index.ts `project_link_item`), where its ref names one. */
+export function itemIdOf(ref: unknown): string | null {
+  const r = ref as { at?: string; table?: string; itemId?: unknown } | null
+  return r?.at === 'lifeos' && r.table === 'projects' && typeof r.itemId === 'string' ? r.itemId : null
 }
 
 /** A LifeOS task as `tasks:get` answers it: what the record says of one. */
@@ -157,7 +180,7 @@ export function threadRecord(f: RecordFacts): ThreadRecord {
     waits,
     works,
     made,
-    outcome: outcomeOf(f.root, f.held, f.results),
+    outcome: outcomeOf(f.root, f.held, f.results, f.requests.length),
     ...(f.worksDown ? { worksDown: f.worksDown } : {})
   }
 }
@@ -220,6 +243,8 @@ export class ThreadRecords {
   private held: Map<string, OutboxItem[]> | null = null
   /** Each root's Results, read at its first ask after one of them changed. */
   private results = new Map<string, WorkResult[]>()
+  /** How many open requests each root holds: built from one read at the first ask after a request moved. */
+  private asking: Map<string, number> | null = null
 
   constructor(
     private readonly sources: RecordSources,
@@ -245,6 +270,20 @@ export class ThreadRecords {
     return this.heldMap().get(rootId) ?? []
   }
 
+  private askingMap(): Map<string, number> {
+    if (this.asking) return this.asking
+    const map = new Map<string, number>()
+    try {
+      for (const r of this.sources.requests()) {
+        const root = this.sources.rootOf(r.sessionId)
+        map.set(root, (map.get(root) ?? 0) + 1)
+      }
+    } catch (err) {
+      this.sources.log(`threads: the open requests were not read for the records: ${errorText(err)}`)
+    }
+    return (this.asking = map)
+  }
+
   resultsOf(rootId: string): WorkResult[] {
     let rows = this.results.get(rootId)
     if (!rows) {
@@ -261,7 +300,13 @@ export class ThreadRecords {
 
   /** The outcome line of a root's decorated meta, from what the keeper holds. */
   outcome(meta: SessionMeta): ThreadOutcome | null {
-    return outcomeOf(meta, this.heldOf(meta.id), this.resultsOf(meta.id))
+    return outcomeOf(meta, this.heldOf(meta.id), this.resultsOf(meta.id), this.askingMap().get(meta.id) ?? 0)
+  }
+
+  /** A request was made, answered, declined or ran out: its root is said again. */
+  requestChanged(request: Pick<OutboxRequest, 'sessionId'>): void {
+    this.asking = null
+    this.registry.refreshMeta?.([this.sources.rootOf(request.sessionId)])
   }
 
   /** An Outbox row moved (its item), or LifeOS's held items did (null): the roots it touched are said again. */
@@ -281,7 +326,31 @@ export class ThreadRecords {
   /** Everything read again at the next ask: Work came on or went off. */
   reset(): void {
     this.held = null
+    this.asking = null
     this.results.clear()
+  }
+
+  /**
+   * What a project mirror's root threads made or changed (`work.projects.files`): one row a thing, at its newest
+   * write that stands, from the Results the keeper holds; no LifeOS read.
+   */
+  projectFiles(rootIds: readonly string[]): ProjectMadeFile[] {
+    const rows = rootIds.flatMap((rootId) =>
+      this.resultsOf(rootId)
+        .filter((r) => isMadeKind(r.kind) && r.undoneAt === null)
+        .map((r) => ({ r, rootId }))
+    )
+    rows.sort((a, b) => b.r.createdAt - a.r.createdAt)
+    const seen = new Set<string>()
+    const files: ProjectMadeFile[] = []
+    for (const { r, rootId } of rows) {
+      const key = sourceKeyOf(r)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const itemId = itemIdOf(r.ref)
+      files.push({ ...madeOf(r), rootId, key, ...(itemId ? { itemId } : {}) })
+    }
+    return files
   }
 
   /** The whole record of a Work thread (a subagent's id answers its root's), with its LifeOS links read now. */
@@ -292,6 +361,7 @@ export class ThreadRecords {
     if (root.scope !== 'work') throw new Error(`thread ${sessionId} is not a Work thread`)
     // Read fresh: a record is asked once a screen, and a change since the last fold must not be missed.
     this.held = null
+    this.asking = null
     this.results.delete(rootId)
     const requests = this.sources.requests().filter((r) => this.sources.rootOf(r.sessionId) === rootId)
     let links: LinkFacts[] = []
@@ -329,7 +399,8 @@ export function threadRecordsPart(ctx: WorkCtx, deps: Pick<WorkPartDeps, 'regist
   deps.registry.workOutcomeOf = (meta) => records.outcome(meta)
   deps.whileOn(() => {
     records.reset()
-    const offs = [outboxHostOf(ctx)?.outbox.onChange((item) => records.heldChanged(item)), resultsOf(ctx)?.onChange((r) => records.resultChanged(r))]
+    const host = outboxHostOf(ctx)
+    const offs = [host?.outbox.onChange((item) => records.heldChanged(item)), host?.requests.onChange((r) => records.requestChanged(r)), resultsOf(ctx)?.onChange((r) => records.resultChanged(r))]
     return () => {
       for (const off of offs) off?.()
       records.reset()

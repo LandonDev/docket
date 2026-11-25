@@ -61,6 +61,17 @@ export interface RecordMade {
   open: RecordOpen | null
 }
 
+/**
+ * A thing a project's threads made or changed, as `work.projects.files` answers it for a mirror: the record's made
+ * row, with the root thread it is of, the source it names (`key`: one row however often the thing was written) and the
+ * LifeOS item it is, where the write says.
+ */
+export interface ProjectMadeFile extends RecordMade {
+  rootId: string
+  key: string
+  itemId?: string
+}
+
 export interface ThreadRecord {
   /** the root thread the record is of; a subagent's waits and writes are its root's */
   sessionId: string
@@ -105,6 +116,9 @@ export function heldWords(items: readonly Pick<OutboxItem, 'kind'>[]): string | 
   const [one, many, verb] = nouns.size === 1 ? (HELD_NOUN[items[0]!.kind] ?? HELD_NOUN['addon.call']) : (['item', 'items', 'approve'] as const)
   return `${items.length} ${items.length === 1 ? one : many} to ${verb}`
 }
+
+/** A thread's open requests for his press (`outbox_request`), as the outcome line says them: "1 request to approve"; null for none. */
+export const requestWords = (n: number): string | null => (n > 0 ? `${n} ${n === 1 ? 'request' : 'requests'} to approve` : null)
 
 /** A turn's failure as the outcome line says it: a sign-in first, since that is his to fix. */
 export function failedWords(kind: string | null | undefined): string {

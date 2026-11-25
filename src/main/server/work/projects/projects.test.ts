@@ -193,7 +193,7 @@ describe('project_link_item', () => {
     item('i1', 't-root', { at: 'lifeos', table: 'docs', id: 'd_near' }, 'Run of show')
     expect(await run({ project: 'lp_1', item: 'i1' })).toEqual({ text: 'Run of show is now a document of Spring LAN.', isError: false })
     expect(sent).toEqual([{ fn: 'docs:setProject', args: { id: 'd_near', projectId: 'lp_1' } }])
-    expect(results).toEqual([{ sessionId: 't-root', kind: 'projects.link', summary: 'Linked Run of show to Spring LAN', ref: { at: 'lifeos', table: 'projects', id: 'lp_1' } }])
+    expect(results).toEqual([{ sessionId: 't-root', kind: 'projects.link', summary: 'Linked Run of show to Spring LAN', ref: { at: 'lifeos', table: 'projects', id: 'lp_1', itemId: 'd_near' } }])
   })
 
   it("a subagent links an item of its root's pane; another thread's item is not there to link", async () => {

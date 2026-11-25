@@ -82,6 +82,8 @@ export const WorkCoreRequestSchemas = [
   request('work.threads.record', z.object({ sessionId: z.string().min(1).max(200) })),
   /** → TrackerOverview: this host's jobs for the tracker, each open project with its facts and its most pressing thread (work/projects/overview.ts); `workspaceIds` asks for those jobs alone */
   request('work.projects.overview', z.object({ workspaceIds: z.array(z.string().min(1).max(200)).max(50).optional() }).optional()),
+  /** → { files: ProjectMadeFile[] }: what a project mirror's root threads on this host made or changed, one row a thing at its newest write (work/threads/record.ts `projectFiles`); a project page's Files asks once a host */
+  request('work.projects.files', z.object({ mirrorId: z.string().min(1).max(200) })),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never lists or calls as another.
   /** → AppWorkToolsAnswer: the Work tools of the thread's scope, as the bridge lists them */
@@ -107,6 +109,7 @@ export const WORK_CORE_CAPS = {
   'work.lapses': 'read',
   'work.threads.record': 'approve',
   'work.projects.overview': 'approve',
+  'work.projects.files': 'approve',
   'app.workTools': 'local',
   'app.workCall': 'local',
   'app.workCancel': 'local'

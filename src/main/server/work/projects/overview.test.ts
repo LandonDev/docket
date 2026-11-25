@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { waitsOnHim } from '@shared/work/tracker'
-import { jobRows, projectsOverview, type ListedProject, type OverviewRegistry, type ProjectFacts } from './overview'
+import { jobRows, mirrorRoots, projectsOverview, type ListedProject, type OverviewRegistry, type ProjectFacts } from './overview'
 
 /**
  * The tracker's host part: one `projects:list` and one `projects:facts` a job, joined in memory with this host's
@@ -104,5 +104,13 @@ describe('the tracker overview', () => {
     expect(waitsOnHim({ ...quiet, dueToday: 1 })).toBe(true)
     expect(waitsOnHim({ ...quiet, lead: { sessionId: 's', title: 't', updatedAt: 1, outcome: { words: '1 mail to send', tone: 'held' } } })).toBe(true)
     expect(waitsOnHim({ ...quiet, lead: { sessionId: 's', title: 't', updatedAt: 1, outcome: { words: 'Working', tone: 'working' } } })).toBe(false)
+  })
+})
+
+describe('a mirror’s root threads', () => {
+  it('lists the Work roots filed in the mirror, never a subagent or a code thread', () => {
+    const { registry } = rig()
+    expect(mirrorRoots(registry, 'm-lan')).toEqual(['t-held', 't-live'])
+    expect(mirrorRoots(registry, 'm-none')).toEqual([])
   })
 })

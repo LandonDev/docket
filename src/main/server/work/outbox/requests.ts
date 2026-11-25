@@ -159,6 +159,8 @@ export const requestsOf = (ctx: Pick<WorkCtx, 'db'>): OutboxRequests | null => b
 export class OutboxRequests {
   /** Requests claimed whose items are still going: answered, not yet finished (`running` on the wire). */
   private readonly running = new Set<string>()
+  /** Who hears a request made, answered, declined or ended (the thread records, work/threads/record.ts). */
+  private readonly listeners = new Set<(request: OutboxRequest) => void>()
 
   constructor(private readonly deps: RequestDeps) {
     byDb.set(deps.ctx.db, this)
@@ -567,10 +569,19 @@ export class OutboxRequests {
     if (opts.push !== false) this.pushed(r.id)
   }
 
+  /** Hears each request that moved, as it stands now; returns its off. */
+  onChange(fn: (request: OutboxRequest) => void): () => void {
+    this.listeners.add(fn)
+    return () => void this.listeners.delete(fn)
+  }
+
   private pushed(id: string): void {
     try {
       const row = this.row(id)
-      if (row) this.deps.ctx.push({ push: 'work.outbox.request', request: this.view(row) }, { need: 'approve' })
+      if (!row) return
+      const request = this.view(row)
+      this.deps.ctx.push({ push: 'work.outbox.request', request }, { need: 'approve' })
+      for (const fn of this.listeners) fn(request)
     } catch (err) {
       this.deps.ctx.log(`outbox: request ${id} was not pushed: ${errorText(err)}`)
     }

@@ -191,6 +191,15 @@ describe('his press on the card', () => {
     expect(outboxHostOf(rig.work.ctx)!.store.byRef(r.rows[0]!.ref)).toMatchObject({ decidedBy: 'owner:remote' })
   })
 
+  it('tells its listeners each move: asked, then declined (the thread records say the root again)', async () => {
+    const heard: string[] = []
+    const off = outboxHostOf(rig.work.ctx)!.requests.onChange((r) => void heard.push(`${r.sessionId}:${r.state}`))
+    const { id } = await threeAsked()
+    await rig.rpc('work.outbox.decline', { request: id })
+    off()
+    expect(heard).toEqual(['t-work:open', 't-work:declined'])
+  })
+
   it('a declined, void or expired request sends nothing', async () => {
     const { id } = await threeAsked()
     const r = await card(id)

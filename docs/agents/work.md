@@ -634,14 +634,16 @@ One record answers it for every screen (the thread's head, the column's outcome 
 - **The outcome line** (`outcomeOf`): the most pressing, in his words and a tone: `asks` "Asks you" (the root waits on
   him), `failed` (`failedWords`: "Couldn't sign in", "Out of usage", "Couldn't reach the model", "Stopped on an error";
   then "Couldn't send" for a held send that failed), `held` (`heldWords`: "1 mail to send", "2 file changes to approve",
-  "3 items to approve" across kinds), `working` (the host's status detail, "Editing Budget FY27.xlsx", else "Working"),
+  "3 items to approve" across kinds; with none of its own, the tree's open `outbox_request`s, `requestWords`: "1 request to
+  approve"), `working` (the host's status detail, "Editing Budget FY27.xlsx", else "Working"),
   then the newest Result: `made` ("Made Seat map.xlsx") or `done` ("Mail sent", else its summary). Held outranks
   working: it needs his press, working does not.
 - **Folded into the summary**: `SessionMeta.workOutcome` (`{words, tone}`, optional, null for none) on a Work root
   alone; a code thread and a subagent never carry it. sessions.ts `decorate` asks `registry.workOutcomeOf` with the
   decorated meta; the keeper (`ThreadRecords`) answers from memory: one Outbox read (`outbox.list` waiting, this host's
   and LifeOS's held items) grouped by root, and each root's Results, both kept until they change. While Work is on it
-  hears `outbox.onChange` and `Results.onChange` (outbox/results.ts), drops what moved and says the touched roots'
+  hears `outbox.onChange`, `requests.onChange` (outbox/requests.ts; the open requests are one read, counted by root)
+  and `Results.onChange` (outbox/results.ts), drops what moved and says the touched roots'
   metas again (`registry.refreshMeta`). No LifeOS call is in this path. The Swift contract carries it
   (`SessionMeta.WorkOutcome`).
 - **`work.threads.record {sessionId}`** (core, `approve`, read only; a subagent's id answers its root's; a code thread

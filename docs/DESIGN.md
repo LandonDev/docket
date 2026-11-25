@@ -3125,7 +3125,7 @@ Projects, one page above the Work workspaces between Today and Review (a
 briefcase, "Projects", no count): every job's open projects, a row a
 project (work/tracker/, docs/agents/work-tracker.md). Its frame is
 Today's: the 40px header with the glyph and the name, and at its end one
-quiet 28px `Toggle`, Waiting on you, which keeps only the rows with a held
+quiet 28px outline `Toggle` (its hairline says press at rest), Waiting on you, which keeps only the rows with a held
 act, a question, a failure, a late task or one due today. Nothing sits
 beside the page's name; no counts, no other filters, no cards.
 
@@ -3153,9 +3153,12 @@ beside the page's name; no counts, no other filters, no cards.
   is its name and a quiet New project, nothing else. A job LifeOS could not
   be read for is `DownLine` in the group's place (the shared words and their
   press); where the window's own session reads, the host's words with a
-  ghost Retry. A host that did not answer is one 12px muted line over the
+  ghost Retry. A host that did not answer, or whose link is not open ("The
+  box is connecting."), is one 12px muted line over the
   groups. Under the filter a job with nothing waiting goes; with nothing
-  left the page says "Nothing waits on you". The page opens and closes
+  left, and every host answered, the page says "Nothing waits on you". A
+  clipped Threads cell has the thread's title and its words in its tip. The
+  page keeps its last answer, so a second visit draws it at once. The page opens and closes
   with no motion.
 #### The column
 

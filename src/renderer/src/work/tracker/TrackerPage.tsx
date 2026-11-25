@@ -39,11 +39,11 @@ export function setWaitingOnly(next: boolean): void {
 }
 export const useWaitingOnly = (): boolean => useSyncExternalStore(subscribeFilter, () => waitingOnly, () => waitingOnly);
 
-/** The header's end: the one filter, a quiet toggle (docs/DESIGN.md: nothing beside the page's name). */
+/** The header's end: the one filter, a quiet toggle with its hairline, so at rest it reads as a press (docs/DESIGN.md: nothing beside the page's name). */
 export function Head(_props: WorkPlaceProps) {
   const on = useWaitingOnly();
   return (
-    <Toggle size="sm" className="px-2 font-normal" pressed={on} onPressedChange={setWaitingOnly}>
+    <Toggle variant="outline" size="sm" className="px-2 font-normal" pressed={on} onPressedChange={setWaitingOnly}>
       Waiting on you
     </Toggle>
   );
@@ -79,7 +79,7 @@ export const restWords = (rest: readonly Pick<MergedProject, "state">[]): string
 export type TrackerBodyProps = {
   jobs: readonly MergedJob[];
   loading: boolean;
-  /** hosts that did not answer, a sentence each */
+  /** hosts with Work on that did not answer or are not linked, a sentence each: the page says no all-clear while any is */
   errors: readonly string[];
   waitingOnly: boolean;
   onRetry: () => void;
@@ -109,7 +109,8 @@ export function TrackerBody({ jobs, loading, errors, waitingOnly, onRetry, now: 
             <ProjectFactsBones rows={6} />
           </>
         ) : shown.length === 0 ? (
-          <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : errors.length ? null : "No jobs yet"}</p>
+          // An all-clear only when every host answered: a host missing may hold the job that waits.
+          errors.length ? null : <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : "No jobs yet"}</p>
         ) : (
           <>
             <ProjectFactsHeader threads />
@@ -192,6 +193,9 @@ const TrackerRow = memo(function TrackerRow({ project, workspaceId, now }: { pro
   );
 });
 
+/** The words of the lead thread's tip: its title and what it left him, the fact a narrow cell cuts short. */
+export const threadTip = (lead: Pick<TrackerThread, "title" | "outcome">): string => [lead.title, lead.outcome?.words].filter(Boolean).join(": ");
+
 /** The lead thread: its mark and what it left him, a press opening it (the row's own press stays the project's). */
 function ThreadCell({ lead }: { lead: TrackerThread }) {
   return (
@@ -199,7 +203,7 @@ function ThreadCell({ lead }: { lead: TrackerThread }) {
       <span className="flex size-4 shrink-0 items-center justify-center">
         <OutcomeMark tone={lead.outcome?.tone} />
       </span>
-      <Tip label={lead.title}>
+      <Tip label={threadTip(lead)}>
         <button
           type="button"
           data-thread={lead.sessionId}

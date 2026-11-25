@@ -31,16 +31,28 @@ open project (backlog, active, paused) gets its row: name, state, target, next t
 due-today counts, the longest wait, done of all. The mirrors (TempCode projects with `lifeosProjectId`) and their
 root Work threads are this host's own rows; a thread's outcome is the one its summary already carries
 (`SessionMeta.workOutcome`, work/threads/record.ts), so nothing is read per project or per thread. A job LifeOS did
-not answer for says why in `down` and lists nothing; the other jobs still answer.
+not answer for says why in `down` and lists nothing; the other jobs still answer. `down` is the host's raw text; the
+window says it in plain words (`downWords`: `workErrorWords` with the host's name, else "The box could not read
+Purdue Esports's projects from LifeOS.").
+
+`work.projects.files {mirrorId}` (approve, read only) answers what a project mirror's root Work threads on this host
+made or changed, for a project page's Files: `ThreadRecords.projectFiles` over the mirror's roots (`mirrorRoots`),
+from the Results the keeper holds, with no LifeOS read. One row a thing at its newest write that stands, named by its
+source (`sourceKeyOf`: a file by its place, a Google file by its id, a LifeOS item by its id, else its ref), so two
+files of one name stay two; a `projects.link` Result carries the LifeOS item it made (`itemId` on its ref), which the
+row passes on.
 
 ## The window
 
-`useTracker()` asks every linked host with Work on, once when the page shows, again on focus and each minute while
-it stands, and on a down job's Retry (`reload`). `mergeOverviews` makes one job a sector: LifeOS's rows are the same
+`useTracker()` asks every host with Work on (`askHosts`), once when the page shows, again on focus, each minute while
+it stands, when a Work host's link opens or a linked host's Work comes on, and on a down job's Retry (`reload`). A host
+whose link is not open is not asked: it answers its own line, "The box is connecting." or "The box is not connected."
+(`closedWords`). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
+are asked again; bones show only on the first. `mergeOverviews` makes one job a sector: LifeOS's rows are the same
 from every host of a sector, so a project's facts come from the first host that read them; its threads live on each
 host, so the counts add up and the most pressing lead wins, with the host it lives on. A job one host failed to read
-stands on the host that read it. A host that did not answer is one quiet line over the groups; the page still draws
-the rest.
+stands on the host that read it. A host that did not answer, or is not linked, is one quiet line over the groups; the
+page still draws the rest, and says no all-clear ("No jobs yet", "Nothing waits on you") while any such line stands.
 
 ## The rules
 
@@ -51,7 +63,7 @@ the rest.
   a held act, live work, a file made, an act done, then the newest).
 - **Waiting on you** (`waitsOnHim`): a held act, a question or a failure among the threads, a late task, or one due
   today. Under the filter a job shows only those rows, with no fold; a job with none goes, a job that could not be
-  read stays. With nothing left the page says "Nothing waits on you". Held is drawn muted; the filter is where it
+  read stays. With nothing left, and every host answered, the page says "Nothing waits on you". Held is drawn muted; the filter is where it
   reads as urgent.
 
 ## The page
@@ -60,7 +72,8 @@ Five groups, one a job in the order the first host lists them: its sector's dot 
 (13px muted, on the rows' left edge), then its rows. One header row names the columns for the whole page. A row is
 work-kit's `ProjectFactsRow` in `ProjectFactsTable` with the Threads column on: Project, Next (late in red with how
 late, due today in the foreground), Waiting on (a name and an age), Threads (the lead's `OutcomeMark` and its outcome
-words; empty when the lead has nothing to say), Done ("2 of 7"), Target. Under 760px the kit's table turns each row
+words, its tip the thread's title and those words, `threadTip`, for a cell cut short; empty when the lead has
+nothing to say), Done ("2 of 7"), Target. Under 760px the kit's table turns each row
 into two lines. Loading is `ProjectFactsBones` under the header.
 
 - **Presses.** The row opens the project's page in its job (`openProjectPage`: the window enters the job as a press
@@ -73,7 +86,8 @@ into two lines. Loading is `ProjectFactsBones` under the header.
 - **A job LifeOS could not be read for.** Where the window's own session for the job is down, `DownLine` says it in
   the shared words with its press (Retry, Sign in, Open Settings). Where that session reads and the host's read
   failed alone, the host's words with a Retry that asks the hosts again.
-- **The header** holds one control: Waiting on you, a quiet `Toggle`, kept for the window's life. Nothing sits beside
+- **The header** holds one control: Waiting on you, a quiet outline `Toggle` (its hairline at rest says it is a
+  press), kept for the window's life. Nothing sits beside
   the page's name.
 - **The chunk.** The page is the place's own lazy chunk (`work-place-projects`, `WORK_PLACES`); the first paint holds
   only its rail row (scripts/entryGraph.test.ts).
@@ -90,9 +104,11 @@ that is a hook is the same function for the kit's life.
   each opening its own thread.
 - **`log`**: the project's threads, newest first, each with its mark, its title and its outcome words, opening the
   thread. The kit puts them among his notes and LifeOS's changes.
-- **`files`**: what the project's threads made or changed, from each thread's record (`work.threads.record` →
-  `made`), read once a thread and state and kept for the window's life; newest first, a name once; an undone write
-  is left out. "Made by Seat map for 64" and the time; Open goes to a Files tab of the job (`openInFiles`), a page on
+- **`files`**: what the project's threads made or changed: one `work.projects.files` ask a host the project's threads
+  live on (`useMadeFiles`, `mirrorsOf`), asked again only when one of that mirror's threads changes its outcome, each
+  host's rows landing as it answers and its last answer kept for the window's life; a host that refuses keeps nothing,
+  so the next look asks again. Newest first, one row a thing (`fileRows`: the host's `key`, a LifeOS item once across
+  hosts, with its `itemId` so the kit merges it with the item's own row); an undone write is left out. "Made by Seat map for 64" and the time; Open goes to a Files tab of the job (`openInFiles`), a page on
   the web for a Google file, else the thread.
 - **`threadFacts(sector)`**: each project's lead thread, its mark and outcome words, opening it, for the job's
   Projects list's Threads column. A project whose lead says nothing has no entry. The map keeps its identity while the

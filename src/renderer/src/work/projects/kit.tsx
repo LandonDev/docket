@@ -1,7 +1,7 @@
 import type { ContextChip, SectorKey } from "@shared/work";
 import type { TasksDone } from "@shared/contract-work-tasks";
-import { useEffect, useMemo, useState } from "react";
-import type { RecordMade } from "@shared/work/threadRecord";
+import { useEffect, useMemo, useReducer, useSyncExternalStore } from "react";
+import type { ProjectMadeFile, RecordMade } from "@shared/work/threadRecord";
 import type { TrackerThread } from "@shared/work/tracker";
 import type { MenuRow, Project, ProjectFileEntry, ProjectItem, ProjectLogEntry, ProjectsKit, ProjectTask, ProjectThreadFact } from "work-kit/projects";
 import { MessageSquare, Settings } from "../../chrome/icons";
@@ -16,6 +16,7 @@ import { openUrl } from "../../lib/native";
 import { rowState } from "../../lib/sidebarRows";
 import { sessionStore, useSessionMetaValue } from "../../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
@@ -25,7 +26,6 @@ import { Doc, File, Link, Share, Table } from "../icons";
 import { openInFiles } from "../files/openFrom";
 import { useLinkedThreads } from "../tasks/links";
 import { hasOutcomeMark, OutcomeMark } from "../threads/mark";
-import { readThreadRecord } from "../threads/record";
 import { leadOf, useProjectRoots } from "../threads/roots";
 import type { WorkViewProps } from "../views/registry";
 import { Bar } from "./bar";
@@ -80,14 +80,21 @@ const Face: ProjectsKit["Face"] = ({ name, size, className }) => <PersonFace nam
 
 const SECTOR_NAMES: Record<string, string> = { cosmic: "Cosmic", hypixel: "Hypixel", purdue: "Purdue", ref: "Ref", unify: "Unify", life: "Life" };
 
-/** A sector's mark with its name. The screens hold one sector, so a bare dot is drawn nowhere (docs/DESIGN.md: only where sectors mix). */
-const SectorMark: ProjectsKit["SectorMark"] = ({ sector, label = true, className }) =>
-  label ? (
-    <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
-      <SectorDot sector={sector} />
-      {SECTOR_NAMES[sector] ?? sector}
-    </span>
-  ) : null;
+/** A job's name (docs/DESIGN.md "One name a thing"): its Work workspace's, as the rail and the tracker say it; the sector's own word only while the catalog has no workspace for it. */
+export const jobName = (workspace: Pick<WorkspaceMeta, "name" | "sector"> | undefined, sector: string): string =>
+  (workspace?.sector === sector && workspace.name.trim()) || SECTOR_NAMES[sector] || sector;
+
+/** A sector's mark with its job's name, for the screens of one workspace. The screens hold one sector, so a bare dot is drawn nowhere (docs/DESIGN.md: only where sectors mix). */
+const sectorMarkIn = (workspaceId: string): ProjectsKit["SectorMark"] =>
+  function SectorMark({ sector, label = true, className }) {
+    const workspace = useSyncExternalStore(workspaceStore.subscribe, () => workspaceStore.workspace(workspaceId), () => workspaceStore.workspace(workspaceId));
+    return label ? (
+      <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
+        <SectorDot sector={sector} />
+        {jobName(workspace, sector)}
+      </span>
+    ) : null;
+  };
 
 /** Chords the app's own key layer takes before the screens hear them (lib/appCommands.ts: the sidebar): a tip never names one. */
 const APP_CHORDS: ReadonlySet<string> = new Set(["mod+b"]);
@@ -226,77 +233,111 @@ export function useThreadLog(project: Pick<Project, "id" | "sector">): readonly 
 
 const NO_THREADS: TrackerThread[] = [];
 
+/** What a project mirror's threads made or changed, as its host keeps it (`work.projects.files`): one ask a host. */
+export function readProjectFiles(environmentId: string, mirrorId: string): Promise<{ files: ProjectMadeFile[] }> {
+  return registry.linkOf(environmentId).request<{ files: ProjectMadeFile[] }>("work.projects.files", { mirrorId });
+}
+
+/** A project's mirror on each host its threads live on, with what its threads' summaries say: the answer stands while that does. */
+type Mirror = { env: string; mirrorId: string; stamp: string };
+
+/** The mirrors a project's root threads sit in, one a host. Pure but for the store's lookups, which a test can hand. */
+export function mirrorsOf(threads: readonly TrackerThread[], where: (sessionId: string) => { env: string; mirrorId: string } | null): Mirror[] {
+  const by = new Map<string, Mirror>();
+  for (const t of threads) {
+    const at = where(t.sessionId);
+    if (!at) continue;
+    const id = `${at.env}|${at.mirrorId}`;
+    const was = by.get(id);
+    // A thing made moves its thread's outcome; a turn alone does not ask the host again.
+    const stamp = `${t.sessionId}|${t.outcome?.tone ?? ""}|${t.outcome?.words ?? ""}`;
+    by.set(id, { ...at, stamp: was ? `${was.stamp},${stamp}` : stamp });
+  }
+  return [...by.values()];
+}
+
+const whereOf = (sessionId: string): { env: string; mirrorId: string } | null => {
+  const env = sessionStore.environmentOf(sessionId);
+  const mirrorId = sessionStore.metaOf(sessionId)?.projectId;
+  return env && mirrorId ? { env, mirrorId } : null;
+};
+
+/** Each mirror's last answer, kept for the window's life by host and mirror. A failed read keeps nothing, so the next look asks again. */
+const filesKept = new Map<string, { stamp: string; files: readonly ProjectMadeFile[] }>();
+/** Nothing kept (tests). */
+export const resetProjectFiles = (): void => filesKept.clear();
+
 /**
- * What each thread's record says it made or changed, kept for the window's life by thread and by what its summary
- * says: the record is read again only when the thread's outcome or its last turn moves.
+ * What the project's threads made, by host: one ask a mirror whose threads moved, each host's rows landing as it
+ * answers, its last answer drawn meanwhile. A host that refuses (a release behind, a dropped link) lists nothing of
+ * its own this time and is asked again at the next look; it is never an error on the page.
  */
-const madeKept = new Map<string, { key: string; made: readonly RecordMade[] }>();
-const madeKey = (t: TrackerThread): string => `${t.updatedAt}|${t.outcome?.tone ?? ""}|${t.outcome?.words ?? ""}`;
-
-/** The made things of the threads, if every one is kept for its state; else undefined. */
-const madeOf = (list: readonly TrackerThread[]): ReadonlyMap<string, readonly RecordMade[]> | undefined =>
-  list.every((t) => madeKept.get(t.sessionId)?.key === madeKey(t)) ? new Map(list.map((t) => [t.sessionId, madeKept.get(t.sessionId)!.made])) : undefined;
-
-/** The made things of the threads given, as their host's records say (`work.threads.record`), once a thread and state. */
-export function useMadeBy(threads: readonly TrackerThread[] | undefined, read = readThreadRecord): ReadonlyMap<string, readonly RecordMade[]> | undefined {
-  const list = threads ?? NO_THREADS;
-  // `wanted` names every thread and the state it was read in: the answer stands while it does.
-  const wanted = list.map((t) => `${t.sessionId}@${madeKey(t)}`).join(",");
-  const [got, setGot] = useState(() => ({ wanted, made: madeOf(list) }));
+export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read = readProjectFiles, where = whereOf): readonly { env: string; file: ProjectMadeFile }[] {
+  const mirrors = useMemo(() => mirrorsOf(threads ?? NO_THREADS, where), [threads, where]);
+  const [landed, land] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     let live = true;
-    const land = (): void => {
-      if (live) setGot((was) => (was.wanted === wanted && was.made ? was : { wanted, made: madeOf(list) }));
-    };
-    const missing = list.filter((t) => madeKept.get(t.sessionId)?.key !== madeKey(t));
-    if (!missing.length) {
-      land();
-      return;
+    for (const m of mirrors) {
+      const id = `${m.env}|${m.mirrorId}`;
+      if (filesKept.get(id)?.stamp === m.stamp) continue;
+      read(m.env, m.mirrorId).then(
+        (answer) => {
+          filesKept.set(id, { stamp: m.stamp, files: answer.files });
+          if (live) land();
+        },
+        () => {},
+      );
     }
-    void Promise.all(
-      missing.map((t) => {
-        const env = sessionStore.environmentOf(t.sessionId);
-        if (!env) return madeKept.set(t.sessionId, { key: madeKey(t), made: [] });
-        return read(env, t.sessionId).then(
-          (record) => void madeKept.set(t.sessionId, { key: madeKey(t), made: record.made }),
-          // A host that refuses the record (a release behind) lists nothing of the thread's: never an error on the page.
-          () => void madeKept.set(t.sessionId, { key: madeKey(t), made: [] }),
-        );
-      }),
-    ).then(land);
     return () => {
       live = false;
     };
-  }, [wanted]);
-  return got.wanted === wanted ? got.made : undefined;
+  }, [mirrors, read]);
+  // `landed` is the clock of what the kept map holds: a host's answer draws the rows again.
+  return useMemo(() => {
+    void landed;
+    return mirrors.flatMap((m) => (filesKept.get(`${m.env}|${m.mirrorId}`)?.files ?? []).map((file) => ({ env: m.env, file })));
+  }, [mirrors, landed]);
 }
 
 /** Where a made thing opens from a project's Files: a Files tab of its job, a page on the web, or else its thread. */
-function openMade(made: RecordMade): () => void {
+function openMade(made: RecordMade, env: string): () => void {
   const open = made.open;
-  const env = sessionStore.environmentOf(made.sessionId);
-  if (open?.at === "files" && env) return () => void openInFiles({ id: open.workspaceId, environmentId: env }, { ref: open.ref, name: open.name }).catch(failed);
+  if (open?.at === "files") return () => void openInFiles({ id: open.workspaceId, environmentId: env }, { ref: open.ref, name: open.name }).catch(failed);
   if (open?.at === "url") return () => void openUrl(open.url).catch(failed);
   return () => openThread(made.sessionId);
+}
+
+/**
+ * The project's Files rows from what each host's threads made: one row a thing, at its newest write. A host names a
+ * thing by its source (`key`); a LifeOS item is one thing whichever host linked it. Two files of one name stay two.
+ */
+export function fileRows(made: readonly { env: string; file: ProjectMadeFile }[], titleOf: (rootId: string) => string | undefined): ProjectFileEntry[] {
+  const seen = new Set<string>();
+  const rows: ProjectFileEntry[] = [];
+  for (const { env, file } of [...made].sort((a, b) => b.file.at - a.file.at)) {
+    const key = file.itemId ? `item:${file.itemId}` : `${env}|${file.key}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      id: `${env}|${file.id}`,
+      ...(file.itemId ? { itemId: file.itemId } : {}),
+      name: file.name,
+      kind: file.open?.at === "url" ? "link" : "file",
+      by: `${file.verb} by ${titleOf(file.rootId) ?? "a thread"}`,
+      at: file.at,
+      open: openMade(file, env),
+    });
+  }
+  return rows;
 }
 
 /** The kit's `files` (a hook): the files the project's threads made or changed, with which thread and when; Open goes to Files. */
 export function useThreadFiles(project: Pick<Project, "id" | "sector">): readonly ProjectFileEntry[] | undefined {
   const threads = useProjectRoots(project.sector).get(project.id);
-  const made = useMadeBy(threads);
+  const made = useMadeFiles(threads);
   return useMemo(() => {
-    if (!made) return undefined;
     const titleOf = new Map((threads ?? NO_THREADS).map((t) => [t.sessionId, t.title]));
-    const all = [...made].flatMap(([root, list]) => list.map((m) => ({ root, m }))).sort((a, b) => b.m.at - a.m.at);
-    const seen = new Set<string>();
-    const rows: ProjectFileEntry[] = [];
-    for (const { root, m } of all) {
-      // An undone write left nothing; a thing changed again is listed once, at its newest.
-      if (m.undone || seen.has(m.name)) continue;
-      seen.add(m.name);
-      rows.push({ id: m.id, name: m.name, kind: m.open?.at === "url" ? "link" : "file", by: `${m.verb} by ${titleOf.get(root) ?? "a thread"}`, at: m.at, open: openMade(m) });
-    }
-    return rows;
+    return fileRows(made, (root) => titleOf.get(root));
   }, [made, threads]);
 }
 
@@ -346,7 +387,7 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
   let kit = kits.get(key);
   if (kit) return kit;
   kit = {
-    SectorMark,
+    SectorMark: sectorMarkIn(workspaceId),
     Face,
     Hint,
     toast,

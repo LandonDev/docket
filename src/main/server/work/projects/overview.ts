@@ -71,6 +71,11 @@ export interface OverviewRegistry {
   get(id: string): SessionMeta | null
 }
 
+/** A project mirror's Work root threads on this host, not archived: whose writes its page's Files lists. */
+export function mirrorRoots(registry: Pick<OverviewRegistry, 'listRaw'>, mirrorId: string): string[] {
+  return registry.listRaw({ archived: false, projectId: mirrorId }).flatMap((s) => (!s.parentId && s.projectId === mirrorId && s.scope === 'work' ? [s.id] : []))
+}
+
 /** This host's jobs, or the ones named (a window asks only for the jobs it shows), for the tracker. */
 export async function projectsOverview(ctx: Pick<WorkCtx, 'lifeos' | 'log'>, registry: OverviewRegistry, workspaceIds?: readonly string[]): Promise<TrackerOverview> {
   const wanted = workspaceIds ? new Set(workspaceIds) : null

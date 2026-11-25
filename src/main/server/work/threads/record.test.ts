@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { OutboxItem, WorkResult } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
-import { heldWords } from '@shared/work/threadRecord'
-import { outcomeOf, threadRecord, ThreadRecords, type OutcomeMeta, type RecordFacts, type RecordSources } from './record'
+import { heldWords, requestWords } from '@shared/work/threadRecord'
+import { outcomeOf, sourceKeyOf, threadRecord, ThreadRecords, type OutcomeMeta, type RecordFacts, type RecordSources } from './record'
 
 /** What a Work thread left him (work/threads/record.ts): the record, its outcome line, and the keeper that folds it. */
 
@@ -86,6 +86,14 @@ describe('the outcome line', () => {
     // An undone Result is not what it left him.
     expect(outcomeOf(idle, [], [result({ undoneAt: T0 + 1 })])).toBeNull()
     expect(outcomeOf(idle, [], [])).toBeNull()
+  })
+
+  it('folds an open request for his press into the muted held line, below the thread’s own held acts', () => {
+    expect(outcomeOf(idle, [], [], 1)).toEqual({ words: '1 request to approve', tone: 'held' })
+    expect(requestWords(2)).toBe('2 requests to approve')
+    expect(outcomeOf(idle, [item()], [], 1)).toEqual({ words: '1 mail to send', tone: 'held' })
+    expect(outcomeOf({ ...idle, status: 'waiting' }, [], [], 1)).toEqual({ words: 'Asks you', tone: 'asks' })
+    expect(threadRecord(facts({ requests: [{ id: 'q1', n: 3, head: 'Send 2 items', createdAt: T0 }] })).outcome).toEqual({ words: '1 request to approve', tone: 'held' })
   })
 
   it('leaves out an Outbox item that no longer waits: discarded, sent, scheduled, or out of date and put away', () => {
@@ -208,6 +216,43 @@ describe('the keeper', () => {
     // LifeOS's own held items moved: every root that held before or holds now.
     records.heldChanged(null)
     expect(refreshMeta.mock.lastCall?.[0]).toEqual(expect.arrayContaining(['root', 'other']))
+  })
+
+  it('folds a root’s open requests from one read, and says the root again when one moves', () => {
+    const requests = vi.fn(() => [{ id: 'q', n: 1, head: 'Send 1 item', createdAt: T0, sessionId: 'child' }])
+    const { records, refreshMeta, meta } = keeper({ waiting: () => [], requests })
+    expect(records.outcome(meta)).toEqual({ words: '1 request to approve', tone: 'held' })
+    expect(records.outcome({ ...meta, id: 'other' })).toBeNull()
+    expect(requests).toHaveBeenCalledTimes(1)
+    requests.mockReturnValue([])
+    records.requestChanged({ sessionId: 'child' })
+    expect(refreshMeta).toHaveBeenLastCalledWith(['root'])
+    expect(records.outcome(meta)).toEqual({ words: 'Made Seat map.xlsx', tone: 'made' })
+  })
+
+  it('lists a mirror’s files: one row a thing at its newest standing write, two files of one name apart, a linked item with its id', () => {
+    const at = (path: string) => ({ at: 'files', workspaceId: 'w1', files: [{ ref: { at: 'file', host: 'box', path }, name: 'Budget.xlsx' }] })
+    const rows: Record<string, WorkResult[]> = {
+      a: [
+        result({ id: 'a1', rootId: 'a', sessionId: 'a', summary: 'Made Budget.xlsx', ref: at('/a/Budget.xlsx'), createdAt: T0 + 1 }),
+        result({ id: 'a2', rootId: 'a', sessionId: 'a', kind: 'file.save', summary: 'Saved Budget.xlsx', ref: at('/a/Budget.xlsx'), createdAt: T0 + 5 }),
+        result({ id: 'a3', rootId: 'a', sessionId: 'a', kind: 'projects.link', summary: 'Linked Run of show to Spring LAN', ref: { at: 'lifeos', table: 'projects', id: 'p1', itemId: 'i-run' }, createdAt: T0 + 2 }),
+        result({ id: 'a4', rootId: 'a', sessionId: 'a', kind: 'mail.send', summary: 'Sent', ref: null, createdAt: T0 + 9 })
+      ],
+      b: [
+        result({ id: 'b1', rootId: 'b', sessionId: 'b', summary: 'Made Budget.xlsx', ref: at('/b/Budget.xlsx'), createdAt: T0 + 3 }),
+        result({ id: 'b2', rootId: 'b', sessionId: 'b', kind: 'file.save', summary: 'Saved Budget.xlsx', ref: at('/b/Budget.xlsx'), createdAt: T0 + 4, undoneAt: T0 + 6 })
+      ]
+    }
+    const { records } = keeper({ results: (root) => rows[root] ?? [] })
+    const files = records.projectFiles(['a', 'b'])
+    expect(files.map((f) => [f.id, f.rootId, f.name, f.itemId ?? null])).toEqual([
+      ['a2', 'a', 'Budget.xlsx', null],
+      ['b1', 'b', 'Budget.xlsx', null],
+      ['a3', 'a', 'Run of show to Spring LAN', 'i-run']
+    ])
+    expect(sourceKeyOf({ id: 'g', ref: { at: 'google', fileId: 'f1', url: 'https://x' } })).toBe(sourceKeyOf({ id: 'h', ref: { at: 'google', fileId: 'f1' } }))
+    expect(sourceKeyOf({ id: 'n1', ref: null })).not.toBe(sourceKeyOf({ id: 'n2', ref: null }))
   })
 
   it('answers a subagent’s id with its root’s record, and refuses a code thread', async () => {

@@ -18,7 +18,7 @@ vi.mock("../shell/lifeos", async (original) => ({
 }));
 vi.mock("../shell/DownLine", () => ({ DownLine: ({ session }: { session: { state: string } }) => <p data-downline={session.state} /> }));
 
-const { Head, TrackerBody, resetTrackerFolds, restWords, setWaitingOnly, useWaitingOnly } = await import("./TrackerPage");
+const { Head, TrackerBody, resetTrackerFolds, restWords, setWaitingOnly, threadTip, useWaitingOnly } = await import("./TrackerPage");
 const { placeOf, resetPlaces } = await import("../projects/place");
 
 const body = (over: Partial<Parameters<typeof TrackerBody>[0]> = {}) => <TrackerBody jobs={JOBS} loading={false} errors={[]} waitingOnly={false} now={NOW} onRetry={() => {}} {...over} />;
@@ -69,6 +69,8 @@ describe("the tracker", () => {
     // A question is amber; a project with no thread leaves its cell empty.
     expect(document.querySelector("[data-project='p-trailer'] [data-part=threads]")!.textContent).toBe("Asks you");
     expect(document.querySelector("[data-project='p-season'] [data-part=threads]")).toBeNull();
+    // The tip carries what a narrow cell cuts short: the thread and what it left him.
+    expect(threadTip({ title: "Ask ITaP for two switches", outcome: { words: "1 mail to send", tone: "held" } })).toBe("Ask ITaP for two switches: 1 mail to send");
   });
 
   it("a row opens its project's page in its job's Projects view", () => {
@@ -88,6 +90,15 @@ describe("the tracker", () => {
     expect(screen.getByText("Nothing waits on you")).toBeTruthy();
   });
 
+  it("says no all-clear while a host is missing: its line stands alone, under the filter and with no jobs", () => {
+    render(body({ waitingOnly: true, jobs: JOBS.slice(2, 4), errors: ["The box is connecting."] }));
+    expect(document.querySelector("[data-host-silent]")!.textContent).toBe("The box is connecting.");
+    expect(screen.queryByText("Nothing waits on you")).toBeNull();
+    cleanup();
+    render(body({ jobs: [], errors: ["The box is not connected."] }));
+    expect(screen.queryByText("No jobs yet")).toBeNull();
+  });
+
   it("the header's toggle is the filter, kept for the window", () => {
     const Probe = () => <span data-on={String(useWaitingOnly())} />;
     render(
@@ -98,6 +109,8 @@ describe("the tracker", () => {
     );
     const toggle = screen.getByRole("button", { name: "Waiting on you" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    // At rest it wears the toggle's hairline, so it reads as a press, not a label.
+    expect(toggle.getAttribute("data-variant")).toBe("outline");
     fireEvent.click(toggle);
     expect(document.querySelector("[data-on]")!.getAttribute("data-on")).toBe("true");
     expect(toggle.getAttribute("aria-pressed")).toBe("true");

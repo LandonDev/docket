@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TrackerJob, TrackerProject } from "@shared/work/tracker";
-import { mergeOverviews } from "./data";
+import { registry } from "../../lib/connection";
+import { renderHook, waitFor } from "@testing-library/react";
+import { workSwitch } from "../../lib/workSwitch";
+import { askHosts, closedWords, downWords, mergeOverviews, resetTracker, useTracker } from "./data";
 
 /** The window's merge: one job a sector, LifeOS's rows from the first host that read them, threads added up across hosts. */
 const project = (id: string, over: Partial<TrackerProject> = {}): TrackerProject => ({
@@ -34,5 +38,55 @@ describe("merging the hosts' trackers", () => {
     expect(jobs[0]!.down).toBeUndefined();
     expect(jobs[0]!.projects.map((p) => p.id)).toEqual(["lan"]);
     expect(jobs[1]).toMatchObject({ sector: "ref", projects: [], down: "LifeOS did not answer" });
+  });
+});
+
+describe("asking the hosts", () => {
+  afterEach(() => void vi.restoreAllMocks());
+  const names: Record<string, string> = { box: "The box", mac: "This Mac", pc: "Office PC" };
+  const linkState: Record<string, string> = { box: "open", mac: "connecting", pc: "offline" };
+  const rigged = () => {
+    vi.spyOn(registry, "environment").mockImplementation((id) => ({ id, name: names[id] }) as never);
+    vi.spyOn(registry, "statusOf").mockImplementation((id) => ({ transport: linkState[id] }) as never);
+  };
+
+  it("every host with Work on answers: an open link is asked, one not open says it is connecting or not connected", async () => {
+    rigged();
+    const ask = vi.fn(async () => ({ jobs: [job("b-purdue", "purdue", [project("lan")])] }));
+    const got = await askHosts(ask, ["box", "mac", "pc"]);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(got.map((a) => [a.environmentId, a.error, a.overview?.jobs.length ?? null])).toEqual([
+      ["box", null, 1],
+      ["mac", "This Mac is connecting.", null],
+      ["pc", "Office PC is not connected.", null],
+    ]);
+    expect(closedWords("the box", "unauthorized")).toBe("The box is not connected.");
+  });
+
+  it("keeps the last answer for the window: a second visit draws it at once while the hosts are asked again", async () => {
+    rigged();
+    resetTracker();
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box"]));
+    const request = vi.fn(async () => ({ jobs: [job("b-purdue", "purdue", [project("lan")])] }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    const first = renderHook(() => useTracker());
+    expect(first.result.current.loading).toBe(true);
+    await waitFor(() => expect(first.result.current.jobs.map((j) => j.sector)).toEqual(["purdue"]));
+    first.unmount();
+    const second = renderHook(() => useTracker());
+    expect(second.result.current.loading).toBe(false);
+    expect(second.result.current.jobs.map((j) => j.sector)).toEqual(["purdue"]);
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    second.unmount();
+    resetTracker();
+  });
+
+  it("a job's down words reach the page as a person's, never a store's raw text", async () => {
+    rigged();
+    const raw = "[CONVEX Q(projects:facts)] [Request ID: 1a2b] Server Error";
+    const got = await askHosts(async () => ({ jobs: [job("b-unify", "unify", [], raw)] }), ["box"]);
+    expect(got[0]!.overview!.jobs[0]!.down).toBe("The box could not read Job unify's projects from LifeOS.");
+    // A host's words that are already plain stand.
+    expect(downWords("LifeOS is not signed in", "the box", "Unify")).toBe("Not signed in to LifeOS on the box. Sign in under Settings, Connections.");
   });
 });
