@@ -142,6 +142,8 @@ export interface VmScreenOptions {
   keys?: (display: BoxDisplay) => Promise<string | null>
   /** a test's stand-in for RandR on a kept display */
   resizeKept?: (display: BoxDisplay, size: VmWindow, hz: number) => Promise<void>
+  /** the engines' flags by the screen's size; `vmEngineTune` by default (a bench's other arm passes another) */
+  tune?: (size: VmWindow) => EngineTune
   log?: (line: string) => void
 }
 
@@ -163,7 +165,7 @@ export class VmScreen {
         return t.missing === null ? t.video : null
       },
       display: () => this.env,
-      tune: () => vmEngineTune(this.size ?? VGA_DEFAULT),
+      tune: () => (o.tune ?? vmEngineTune)(this.size ?? VGA_DEFAULT),
       max: VM_ENGINES,
       log: (line) => o.log?.(`winvm ${line}`)
     })

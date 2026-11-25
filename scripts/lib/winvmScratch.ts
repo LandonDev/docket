@@ -24,7 +24,9 @@ import { Qmp } from '../../src/main/server/work/winvm/machine/qmp'
 import { VM_COMPUTER, VmPicture } from '../../src/main/server/work/winvm/picture'
 import { FULL_SHUTDOWN, SshGuest } from '../../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../../src/main/server/work/winvm/standing'
-import { pictureToolsAt, VmScreen } from '../../src/main/server/work/winvm/window'
+import { pictureToolsAt, vmEngineTune, VmScreen } from '../../src/main/server/work/winvm/window'
+import type { EngineTune } from '../../src/main/server/work/browser/box/engine'
+import type { VmWindow } from '../../src/main/server/work/winvm/machine/qemu'
 import { liveAppTrouble, WATCH_MS, watchTick, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
 
 /** The owner's machines' folder: the base image and the keys are read from it, never written. */
@@ -57,15 +59,25 @@ EngineFeed.prototype.start = function (sink) {
   })
 }
 
-/** A viewer that draws at once: every frame recorded and acked. */
+/**
+ * A viewer that draws at once: every frame recorded and acked. `linkMs` stands for a link: a frame is seen that much
+ * after the relay sends it, and its ack reaches the engine that much after it is seen.
+ */
 export class BenchViewer implements ViewerSocket {
   bufferedAmount = 0
   frames: (SeenFrame & { key: boolean; w: number; h: number })[] = []
   private say: ((data: Buffer, isBinary: boolean) => void) | null = null
+  constructor(private readonly linkMs = 0) {}
   send(bytes: Uint8Array): void {
     const f = parseFrame(bytes)
-    this.frames.push({ us: nowUs(), ts: f.timestamp, bytes: bytes.byteLength, key: f.keyframe, w: f.width, h: f.height })
-    this.say?.(Buffer.from(encodeAck(f.generation, f.sequence, 0)), true)
+    const seen = (): void => {
+      this.frames.push({ us: nowUs(), ts: f.timestamp, bytes: bytes.byteLength, key: f.keyframe, w: f.width, h: f.height })
+      const ack = (): void => this.say?.(Buffer.from(encodeAck(f.generation, f.sequence, 0)), true)
+      if (this.linkMs) setTimeout(ack, this.linkMs)
+      else ack()
+    }
+    if (this.linkMs) setTimeout(seen, this.linkMs)
+    else seen()
   }
   close(): void {}
   on(event: 'message' | 'close', fn: never): void {
@@ -90,6 +102,8 @@ export interface Scratch {
   setSize(size: [number, number]): void
   /** QEMU arguments of the run's own for the next start (a trace) */
   setExtra(args: string[]): void
+  /** the engines' flags from the next stream on (null: the VM's own); every engine running is stopped */
+  setTune(tune: ((size: VmWindow) => EngineTune) | null): Promise<void>
   /** Opens one stream of the VM, its engine pinned to `cores`; `end` closes it. */
   view(cores: string): Promise<{ viewer: BenchViewer; engines: number[]; end(): Promise<void> }>
   /** One QMP call on a connection of its own. */
@@ -102,7 +116,7 @@ export interface Scratch {
  * The machine on its scratch root (made here: `base` and `keys` linked in from the shared folder). It refuses a
  * root that already holds a disk: another run's.
  */
-export function scratchMachine(o: { data: string; size: [number, number]; log: (line: string) => void }): Scratch {
+export function scratchMachine(o: { data: string; size: [number, number]; log: (line: string) => void; linkMs?: number }): Scratch {
   requireScratchMachine()
   const root = process.env.WINVM_DIR!
   if (!root.startsWith('/dev/shm/')) throw new Error(`WINVM_DIR ${root}: a scratch machine's disk lives in memory, under /dev/shm, never on the box's one disk`)
@@ -116,7 +130,8 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
   const own = mkdtempSync(join(tmpdir(), 'tc-winvm-scratch-'))
   symlinkSync(join(o.data, 'work-tools'), join(own, 'work-tools'))
   let size = o.size
-  const screen = new VmScreen({ root: join(own, 'winvm', 'picture'), tools: () => pictureToolsAt(own), size: () => ({ width: size[0], height: size[1] }), log: o.log })
+  let tune: ((size: VmWindow) => EngineTune) | undefined
+  const screen = new VmScreen({ root: join(own, 'winvm', 'picture'), tools: () => pictureToolsAt(own), size: () => ({ width: size[0], height: size[1] }), log: o.log, tune: (size) => (tune ?? vmEngineTune)(size) })
   let extra: string[] = []
   const machine = new StandingMachine('standing', process.env, screen, o.log, { throwaway: true, extra: () => extra })
   if (machine.cannot()) throw new Error(machine.cannot()!)
@@ -163,10 +178,15 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
     screen,
     setSize: (s) => (size = s),
     setExtra: (args) => (extra = args),
+    async setTune(next) {
+      tune = next ?? undefined
+      // warm engines keep the flags they started with
+      await screen.engines.stopAll()
+    },
     async view(cores) {
       const answer = await rpc.open({ threadId: 'bench', computer: VM_COMPUTER, maxEdge: 3840 }, { principal: LOCAL_PRINCIPAL, connection: {}, connectionId: '1' })
       if (!answer.ok) throw new Error(`video.open refused: ${answer.reason}`)
-      const viewer = new BenchViewer()
+      const viewer = new BenchViewer(o.linkMs)
       if (!relay.attach(minted.at(-1)!, viewer)) throw new Error('the viewer did not join')
       await sleep(300)
       const engines = pinEngines(cores)

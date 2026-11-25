@@ -18,6 +18,11 @@
  *   WINVM_DIR=/dev/shm/vm-screen-rig-a WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-a WINVM_SSH_PORT=22241 \
  *     taskset -c 24-31 ionice -c 3 nice -n 19 bun scripts/perf/vm-screen-bench.ts --sizes 1280x800,2560x1600 \
  *     [--device vga|virtio] [--driver <dir>] [--boots 2] [--runs 3] [--secs 10] [--out <dir>] [--trace]
+ *     [--hwcursor] [--ab] [--link-ms 20]
+ *
+ * `--hwcursor` turns viogpudo's hardware cursor on (the pointer leaves the picture). `--ab` times the key four times
+ * on one boot, turn about between the engine's old flags (120 fps, no CPU list) and the VM's. `--link-ms` puts a
+ * link of that many ms each way between the relay and the bench's viewer.
  *
  * `--trace` starts QEMU with its own trace of the pointer's path (the event in, the USB report taken, the
  * guest's screen changed), kept in memory beside the disk, and adds one row a boot: where a move's time goes.
@@ -29,6 +34,7 @@ import { PNG } from 'pngjs'
 import { psQuote } from '../../src/main/server/work/winvm/machine/guest'
 import type { DisplayDevice } from '../../src/main/server/work/winvm/machine/qemu'
 import { ADAPTERS_SCRIPT, cpuTicks, GUEST_SIZE_TOOL, moveToVirtio, nowUs, otherRecords, scratchMachine, shutDown, sleep, type BenchViewer, type Scratch } from '../lib/winvmScratch'
+import { BROWSER_TUNE } from '../../src/main/server/work/browser/box/engine'
 import { actRow, coresUsed, parseSizes, quantile, rateRow, traceStages, type ActRow, type RateRow } from './vmScreenRows'
 
 const arg = (name: string, d: string): string => {
@@ -46,6 +52,12 @@ const ENGINE_CORES = arg('engine-cores', '24-31')
 const DATA = arg('data', process.env.TEMP_CODE_USER_DATA ?? '/srv/agents/temp-code-data')
 const OUT = arg('out', '/tmp/vm-screen-bench')
 const TRACE = process.argv.includes('--trace') ? `${process.env.WINVM_DIR}/qemu-trace.log` : null
+/** viogpudo sends the pointer apart from the picture (the driver key's HWCursor = 1), as Turn on sets it */
+const HW_CURSOR = process.argv.includes('--hwcursor')
+/** the key's rows turn about between the engine's old flags (A: 120 fps, no CPU list) and the VM's (B), A, B, A, B */
+const AB = process.argv.includes('--ab')
+/** a link this many ms each way between the relay and the viewer, and for the act on its way in */
+const LINK_MS = Number(arg('link-ms', '0'))
 if (DEVICE !== 'vga' && DEVICE !== 'virtio') throw new Error('--device vga or virtio')
 if (DEVICE === 'virtio' && !DRIVER) throw new Error('--device virtio needs --driver <the unpacked viogpudo folder>')
 
@@ -104,6 +116,16 @@ function scene(kind: 'redraw' | 'drag', w: number, h: number): string {
     '[System.Windows.Forms.Application]::Run($f)'
   ].join('\n')
 }
+
+/** viogpudo's driver key gets HWCursor = 1 and the adapter restarts, as Turn on does it (keeper's liveResize.ts). */
+const HW_CURSOR_SCRIPT = [
+  "$k = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}' -ErrorAction SilentlyContinue | Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DriverDesc -like 'Red Hat VirtIO GPU*' } | Select-Object -First 1",
+  "Set-ItemProperty $k.PSPath -Name HWCursor -Value 1 -Type DWord",
+  "$d = Get-PnpDevice -Class Display -PresentOnly | Where-Object FriendlyName -like 'Red Hat VirtIO GPU*' | Select-Object -First 1",
+  'pnputil /restart-device $d.InstanceId',
+  "Start-Sleep -Seconds 3",
+  "'HWCursor=' + (Get-ItemProperty $k.PSPath).HWCursor"
+].join('\n')
 
 /** A maximized window that turns another colour at each key down: one full-screen change a key. */
 function keyScene(): string {
@@ -232,6 +254,8 @@ async function acts(viewer: BenchViewer, n: number, act: (i: number) => Promise<
       await sleep(20)
     }
     sent.push(nowUs())
+    // the act's own way in over the link
+    if (LINK_MS) await sleep(LINK_MS)
     await act(i)
     await sleep(windowMs)
   }
@@ -240,7 +264,7 @@ async function acts(viewer: BenchViewer, n: number, act: (i: number) => Promise<
 
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true })
-  const s = scratchMachine({ data: DATA, size: SIZES[0]!, log })
+  const s = scratchMachine({ data: DATA, size: SIZES[0]!, log, linkMs: LINK_MS })
   const rows: Row[] = []
   const save = () => writeFileSync(join(OUT, 'bench.json'), JSON.stringify({ device: DEVICE, at: new Date().toISOString(), rows }, null, 1))
   try {
@@ -252,6 +276,7 @@ async function main(): Promise<void> {
       await s.guest.ready(300_000)
       await moveToVirtio(s, DRIVER, log)
     }
+    if (HW_CURSOR && DEVICE !== 'virtio') throw new Error('--hwcursor is viogpudo\'s: give --device virtio')
     for (let boot = 0; boot < BOOTS; boot++) {
       const [w, h] = SIZES[boot % SIZES.length]!
       const size = `${w}x${h}`
@@ -266,6 +291,7 @@ async function main(): Promise<void> {
       log(`boot ${boot + 1}: ${size} on ${DEVICE}, desktop in ${((Date.now() - t0) / 1000).toFixed(1)} s, window ${JSON.stringify(s.screen.size)}`)
       if (!s.screen.env) throw new Error(`no window: ${s.screen.missing}`)
       log(`adapters: ${(await s.guest.admin(ADAPTERS_SCRIPT)).trim().replace(/\r?\n/g, ' ; ')}`)
+      if (HW_CURSOR && boot === 0) log(`hardware cursor: ${(await s.guest.admin(HW_CURSOR_SCRIPT)).trim().replace(/\r?\n/g, ' | ')}`)
       let first = await dump(s, join(OUT, `boot${boot + 1}-${size}.png`))
       if (DEVICE === 'virtio' && (first.width !== w || first.height !== h)) {
         // the EDID's mode was not taken at the boot: the size is set from inside, as the door's verb will
@@ -346,12 +372,24 @@ async function main(): Promise<void> {
         await hand.button(true)
         await hand.button(false)
         await sleep(800)
-        v = await s.view(ENGINE_CORES)
-        await sleep(1500)
-        const key = await acts(v.viewer, 30, async () => {
+        const press = async (): Promise<void> => {
           await hand.key(true)
           setTimeout(() => void hand.key(false).catch(() => {}), 40)
-        })
+        }
+        if (AB)
+          for (const [n, arm] of (['A', 'B', 'A', 'B'] as const).entries()) {
+            await s.setTune(arm === 'A' ? () => BROWSER_TUNE : null)
+            const vv = await s.view(ENGINE_CORES)
+            await sleep(1500)
+            const r = await acts(vv.viewer, 20, press)
+            row(`key, engine ${arm === 'A' ? 'A (120 fps, no CPU list)' : 'B (the VM\'s: 60 fps, CPUs 26-31)'}`, { ...r, run: n + 1, note: LINK_MS ? `link ${LINK_MS} ms each way` : undefined })
+            log(`${size} key, arm ${arm} turn ${n + 1}: first frame p50 ${r.firstP50.toFixed(1)} p95 ${r.firstP95.toFixed(1)} ms, capture to viewer p50 ${r.captureP50.toFixed(1)} p95 ${r.captureP95.toFixed(1)} ms, ${r.seen}/${r.n}`)
+            await vv.end()
+          }
+        await s.setTune(null)
+        v = await s.view(ENGINE_CORES)
+        await sleep(1500)
+        const key = await acts(v.viewer, 30, press)
         row('key to a full-screen change', key)
         log(`${size} key: first frame p50 ${key.firstP50.toFixed(1)} p95 ${key.firstP95.toFixed(1)} ms, burst ends ${key.lastP50.toFixed(1)} ms, capture to viewer p50 ${key.captureP50.toFixed(1)} ms, frame ${key.bytesP50} bytes, ${key.seen}/${key.n}`)
         {

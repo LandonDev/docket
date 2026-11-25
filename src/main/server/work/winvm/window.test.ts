@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rigConfig, rigPaths } from './machine/config'
 import { qemuCommand } from './machine/daemons'
-import { displayArgs, qemuArgs, windowArgs } from './machine/qemu'
+import { displayArgs, qemuArgs, VGA_DEFAULT, windowArgs } from './machine/qemu'
+import { BROWSER_TUNE } from '../browser/box/engine'
 import { testVideoTools } from '../browser/box/testTools'
 import { XClient } from '../browser/box/xclient'
 import { pictureToolsAt, VM_ENGINE_CPUS, vmEngineTune, VmScreen, windowEnv, WINDOW_TOOL, type PictureTools } from './window'
@@ -100,6 +101,12 @@ describe("the VM's screen", () => {
     expect(pictureToolsAt(root)).toEqual({ missing: WINDOW_TOOL })
   })
 
+
+  it("starts its engines with the VM's tune, or with the one a bench's other arm hands it", () => {
+    const tuneOf = (screen: VmScreen) => (screen.engines as unknown as { opts: { tune: () => unknown } }).opts.tune()
+    expect(tuneOf(new VmScreen({ root, tools: () => ({ missing: 'screen-relay' }) }))).toEqual(vmEngineTune(VGA_DEFAULT))
+    expect(tuneOf(new VmScreen({ root, tools: () => ({ missing: 'screen-relay' }), tune: () => BROWSER_TUNE }))).toEqual(BROWSER_TUNE)
+  })
   it('runs the machine with no window where a tool is missing, and says which', async () => {
     const screen = new VmScreen({ root, tools: () => ({ missing: 'screen-relay' }) })
     expect(await screen.up()).toBeNull()
