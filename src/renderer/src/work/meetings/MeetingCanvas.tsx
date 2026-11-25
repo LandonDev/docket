@@ -261,15 +261,14 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   };
 
   if (startError && needsFile) {
-    // The host never answered the start: say so, with Retry, in the transcript's place.
-    const retry = (): Promise<void> => {
-      setStartError(null);
-      return startMeeting(env, item.id).then(
-        () => undefined,
+    // The host never answered the start: say so, with Retry, in the transcript's place; the failure stays, Retry
+    // spinning, until the start answers.
+    const retry = (): Promise<void> =>
+      startMeeting(env, item.id).then(
+        () => setStartError(null),
         (err: unknown) => setStartError(err instanceof Error ? err.message : String(err)),
       );
-    };
-    return <OpenFailed kind="meeting" why={startError} onRetry={() => void retry()} />;
+    return <OpenFailed kind="meeting" why={startError} onRetry={retry} />;
   }
   // A read that failed is the centred failure with Retry: nothing under it pretends to load.
   if (error && !meeting) return <OpenFailed kind="meeting" why={error} onRetry={() => void retry()} />;

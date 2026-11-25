@@ -121,7 +121,7 @@ export function Body(props: Props) {
     shell.ready?.(!!view);
   }, [shell, view]);
 
-  if (error && !view) return <OpenFailed kind="msform" why={error} onRetry={() => void host.get().then((v) => store.set({ view: v, error: null }), () => undefined)} />;
+  if (error && !view) return <OpenFailed kind="msform" why={error} onRetry={() => host.get().then((v) => store.set({ view: v, error: null }), () => undefined)} />;
   if (!view) return <FormBone />;
   if (half === "responses") return <Responses view={view} host={host} item={item} shell={shell} />;
   const waiting = view.suggestions[current];

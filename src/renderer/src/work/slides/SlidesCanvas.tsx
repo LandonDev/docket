@@ -233,10 +233,8 @@ export function SlidesBody({
 
   const run = useCallback((work: Promise<DeckView>, fallback: string): Promise<void> => work.then((next) => store.view(next), (e: unknown) => sayError(e, fallback)), [store]);
   const select = useCallback((key: string) => store.set({ current: key }), [store]);
-  const retry = useCallback((): Promise<void> => {
-    store.set({ error: null });
-    return openDeck(host, store);
-  }, [host, store]);
+  // The failure stays, Retry spinning, until this read answers: the deck clears it (`store.view`), a failure says its cause.
+  const retry = useCallback((): Promise<void> => openDeck(host, store), [host, store]);
   // A picture this window could not read is read again on Retry, the strip and the text diffs staying drawn meanwhile;
   // a deck the host has no picture of (its own word) has nothing here to read again.
   // Retry reads again only the render that failed, so the slides of the other never blank.
@@ -322,7 +320,7 @@ export function SlidesBody({
 
   // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
   // export first has nothing to try again.
-  if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : () => void retry()} />;
+  if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : retry} />;
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => void openInPowerPoint(item.id, source, env)} />;
 

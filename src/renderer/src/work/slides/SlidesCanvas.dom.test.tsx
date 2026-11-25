@@ -918,7 +918,8 @@ describe("the slides kind", () => {
 
   it("draws a deck the host could not open as the centred failure with its reason and Retry, with no bones and no state line", async () => {
     let fail = true;
-    open(deckView(), () => (fail ? Promise.reject(new Error("The deck is not where it was.")) : Promise.resolve(deckHost.view)));
+    let held: (() => void) | null = null;
+    open(deckView(), () => (fail ? Promise.reject(new Error("The deck is not where it was.")) : new Promise<DeckView>((yes) => (held = () => yes(deckHost.view)))));
     const failed = await found("[data-canvas-failed]");
     expect(failed.textContent).toContain("Couldn't open this deck");
     expect(failed.textContent).toContain("The deck is not where it was.");
@@ -927,6 +928,12 @@ describe("the slides kind", () => {
     expect(document.querySelector('[data-canvas-bar] [data-slot="skeleton"]')).toBeNull();
     fail = false;
     fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+    // Council round 12 (the walk): Retry spins in place, the failure kept, until the deck answers; never bones first.
+    await waitFor(() => expect(held).not.toBeNull());
+    expect(within(failed).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
+    expect(failed.isConnected).toBe(true);
+    await act(async () => held!());
     expect(await found("[data-slides-stage]")).toBeTruthy();
     await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).toBeNull());
   });

@@ -630,9 +630,16 @@ describe("the form kind, round two", () => {
     await waitFor(() => expect(screen.getByText("Couldn't read the responses")).toBeTruthy());
     expect(screen.queryByText("No responses yet")).toBeNull();
     expect(document.querySelector("[data-form-responses]")).toBeNull();
+    // Council round 12 (the walk): Retry cleared the line to bones at once. It spins in place, the line kept, until the read answers.
+    let answer!: () => void;
+    formHost.responses.mockImplementationOnce(() => new Promise((resolve) => (answer = () => resolve(RESPONSES))));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull());
+    expect(screen.getByText("Couldn't read the responses")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answer());
     await found("[data-form-responses]");
-    expect(screen.queryByText("Couldn't read the responses")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Couldn't read the responses")).toBeNull());
     // Back on Questions the line is gone: it was Responses' to say.
     formHost.responses.mockRejectedValue(new Error("not connected"));
     fireEvent.click(screen.getByRole("tab", { name: "Questions" }));

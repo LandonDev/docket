@@ -211,7 +211,21 @@ describe("the dashboard kind", () => {
     expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("The sheet is gone");
     expect(document.querySelector("[data-dashboard-loading]")).toBeNull();
     expect(document.querySelector("[data-dash-bar-bone]")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // Council round 12 (the walk): Retry cleared the failure to bones at once. It spins in place, the failure kept, until
+    // its read answers: a cause again, then the page.
+    let answer!: (v: DashboardView | Error) => void;
+    dashHost.open.mockImplementation(() => new Promise((yes, no) => (answer = (v) => (v instanceof Error ? no(v) : yes(v)))));
+    const retry = () => screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    fireEvent.click(retry());
+    expect(retry().disabled).toBe(true);
+    expect(retry().querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.getByText("Couldn't open this dashboard")).toBeTruthy();
+    expect(document.querySelector("[data-dashboard-loading]")).toBeNull();
+    await act(async () => answer(new Error("The sheet is still gone")));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("The sheet is still gone"));
+    expect(retry().disabled).toBe(false);
+    fireEvent.click(retry());
+    await act(async () => answer({ ...page(), itemId: item.id }));
     await found("[data-dashboard]");
     expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
   });

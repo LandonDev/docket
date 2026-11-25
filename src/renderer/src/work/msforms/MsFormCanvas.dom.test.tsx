@@ -92,6 +92,25 @@ async function bar(view: MsFormView, host = hostOf(view), half: MsFormState["hal
   return { host, p };
 }
 
+/** Council round 12 (the walk): the failed open's Retry handed back no promise, so it never spun. */
+describe("a form that did not open", () => {
+  it("keeps the failure with Retry spinning until the form answers", async () => {
+    let answer!: () => void;
+    const get = vi.fn().mockRejectedValueOnce(new Error("Forms did not answer")).mockImplementationOnce(() => new Promise((yes) => (answer = () => yes(BASE))));
+    const host = hostOf(BASE, { get });
+    render(<Body {...props(host)} />);
+    const retry = (await screen.findByRole("button", { name: "Retry" })) as HTMLButtonElement;
+    fireEvent.click(retry);
+    // Still out after every waiting microtask has run.
+    await act(async () => new Promise((settle) => setTimeout(settle, 10)));
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.getByText("Couldn't open this file")).toBeTruthy();
+    await act(async () => answer());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+  });
+});
+
 describe("the bar", () => {
   it("a draft offers Collect responses, his press", async () => {
     const { host } = await bar(BASE);

@@ -55,14 +55,14 @@ interface Slot {
   saveError: string | null;
   /** Why Responses could not be read, while nothing of them is shown; said on the state line. */
   responsesError: string | null;
-  /** Bumped by Retry to read the responses again. */
-  responsesAttempt: number;
+  /** Retry's read of the responses, given by the Responses half while it shows: its promise is out until they answer. */
+  responsesRetry: (() => Promise<void>) | null;
 }
 class FormStore {
   private slot: Slot;
   private readonly listeners = new Set<() => void>();
   constructor(half: Half) {
-    this.slot = { view: null, error: null, half, publishing: false, edits: null, saveError: null, responsesError: null, responsesAttempt: 0 };
+    this.slot = { view: null, error: null, half, publishing: false, edits: null, saveError: null, responsesError: null, responsesRetry: null };
   }
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
@@ -104,8 +104,7 @@ export function Body(props: Props) {
   const slot = useSlot(store);
   const { view, error, half } = slot;
 
-  // A failed open is said once, on the state line with Retry; Retry opens it again.
-  const [attempt, setAttempt] = useState(0);
+  // A failed open is said once, in the body with Retry (`OpenFailed`); Retry opens it again.
   useEffect(() => {
     let live = true;
     host.open().then(
@@ -117,7 +116,7 @@ export function Body(props: Props) {
       live = false;
       off();
     };
-  }, [host, store, attempt]);
+  }, [host, store]);
   useEffect(() => {
     if (state?.half !== half) setState({ half });
   }, [half, state?.half, setState]);
@@ -131,10 +130,12 @@ export function Body(props: Props) {
   useFeeds(shell, host, store, view, half, current, step, slot.edits !== null, slot.edits !== null && slot.saveError !== null, msform.row);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
-  const retryOpen = (): void => {
-    store.set({ error: null });
-    setAttempt((n) => n + 1);
-  };
+  // The failure stays, Retry spinning, until this read answers: the form, or the cause it gives now.
+  const retryOpen = (): Promise<void> =>
+    host.open().then(
+      (v) => store.set({ view: v, error: null }),
+      (e: unknown) => store.set({ error: e instanceof Error ? e.message : "The form did not load." }),
+    );
   useEffect(() => {
     // A first read that failed leaves the body empty: the body says it (`OpenFailed`), not the line.
     if (error) shell.statusLine(null);
@@ -144,7 +145,8 @@ export function Body(props: Props) {
         tone: "failed",
         word: "Couldn't read the responses",
         detail: responsesError,
-        action: { label: "Retry", run: () => store.set({ responsesError: null, responsesAttempt: store.get().responsesAttempt + 1 }) },
+        // The line stays, Retry spinning, until that read answers.
+        action: { label: "Retry", run: () => store.get().responsesRetry?.() ?? Promise.resolve() },
       });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
@@ -862,12 +864,19 @@ function EditRow({
 
 const POLL_MS = 10_000;
 
-function useResponses(host: FormHost, live: boolean, attempt: number): FormResponses | null | "failed" {
+function useResponses(host: FormHost, live: boolean): { got: FormResponses | null | "failed"; retry(): Promise<void> } {
   const [got, setGot] = useState<FormResponses | null | "failed">(null);
+  // His Retry: one read, the failure kept until it answers (the answers, or the failure again).
+  const retry = useCallback(
+    (): Promise<void> =>
+      host.responses().then(
+        (r) => void ("same" in r ? undefined : setGot(r)),
+        () => setGot((was) => (was && was !== "failed" ? was : "failed")),
+      ),
+    [host],
+  );
   useEffect(() => {
     if (!live) return;
-    // A Retry starts from the bones again, not from the failure it answers.
-    setGot((was) => (was === "failed" ? null : was));
     let on = true;
     let rev: number | undefined;
     const load = (): void =>
@@ -889,12 +898,17 @@ function useResponses(host: FormHost, live: boolean, attempt: number): FormRespo
       on = false;
       poll.stop();
     };
-  }, [host, live, attempt]);
-  return got;
+  }, [host, live]);
+  return { got, retry };
 }
 
 function Responses({ view, host, store, item, shell }: { view: FormView; host: FormHost; store: FormStore; item: Props["item"]; shell: CanvasShell }) {
-  const got = useResponses(host, view.state !== "draft", useSlot(store).responsesAttempt);
+  const { got, retry } = useResponses(host, view.state !== "draft");
+  // Retry's read is handed to the store while this half shows; `retry` is the same function for the host's life.
+  useEffect(() => {
+    store.set({ responsesRetry: retry });
+    return () => store.set({ responsesRetry: null });
+  }, [store, retry]);
   // A read that failed with nothing shown is said once, on the state line with Retry (the body's status effect); a later failed poll keeps the last answers.
   const failed = got === "failed";
   useEffect(() => {

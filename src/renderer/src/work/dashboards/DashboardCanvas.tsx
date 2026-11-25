@@ -103,7 +103,6 @@ export function Body(props: Props) {
   const { view, error, missed } = useSlot(store);
 
   // A failed first read leaves the body empty, so the body says it with Retry (`OpenFailed`); Retry reads again.
-  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     const load = (): void =>
@@ -132,13 +131,15 @@ export function Body(props: Props) {
       off();
       poll.stop();
     };
-  }, [host, store, attempt]);
+  }, [host, store]);
 
   const [current, setCurrent] = useState(0);
-  const retryOpen = (): void => {
-    store.set({ error: null });
-    setAttempt((n) => n + 1);
-  };
+  // The failure stays, Retry spinning, until this read answers: the page, or the cause it gives now.
+  const retryOpen = (): Promise<void> =>
+    host.open().then(
+      (v) => store.set({ view: v, error: null, missed: false }),
+      (e: unknown) => store.set({ error: e instanceof Error ? e.message : "The dashboard did not load." }),
+    );
   // The figures read again, the Bar's spinner standing for it; a failure is the line's to say, never a toast beside it.
   const readAgain = (): Promise<void> => {
     store.set({ refreshing: true });

@@ -1,6 +1,6 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import type { CanvasKind } from "@shared/work";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../../components/ui/empty";
 import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
@@ -54,6 +54,8 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
   const env = useContext(FailedHost);
   const saved = env ? savedOfReason(why) : null;
   const lifeos = useLiveDown(saved, saved ? env : null, saved ? onRetry : undefined);
+  // His Retry spins while the read it gave is out; the failure stays until the answer replaces it.
+  const [retrying, setRetrying] = useState(false);
   if (env && saved && (lifeos.down || lifeos.waits)) return <DownEmpty live={lifeos} environmentId={env} onRetry={() => refreshLifeos(env).catch(() => undefined).then(async () => void (await onRetry?.()))} />;
   // Back on connected and read again: the wait in the body's place, never the old cause.
   if (lifeos.again)
@@ -71,8 +73,16 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
         {said ? <EmptyDescription>{said}</EmptyDescription> : null}
       </EmptyHeader>
       {onRetry ? (
-        <Button size="sm" variant="secondary" onClick={() => void onRetry()}>
-          Retry
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+          }}
+        >
+          <BusyLabel busy={retrying} label="Retry" />
         </Button>
       ) : null}
     </Empty>

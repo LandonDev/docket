@@ -545,6 +545,13 @@ describe("the meeting canvas", () => {
     host.refuseStart = true;
     const { container } = await seat(null);
     await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this meeting"));
+    // Council round 12 (the walk): Retry cleared the failure to bones at once. Refused again, the failure stays and
+    // Retry comes back to rest, with no bones between.
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(container.querySelector("[data-canvas-failed]")).not.toBeNull();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(container.querySelector("[data-canvas-failed]")).not.toBeNull();
     host.refuseStart = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-meeting=transcribing]")).toBeTruthy());
