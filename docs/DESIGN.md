@@ -1124,7 +1124,9 @@ Every computer being driven now, on every connected host, in one place
     up has Open Settings in their place; after his own Sleep, Wake.
   - **The views**, 8px on: Pop out and Full screen, quiet icon buttons
     with tips.
-  Under 640px the delay and Pop out give way, whole. No toast says the
+  Under 640px of its own width the delay and Pop out give way, whole;
+  under 480px the status sentence too, so the title reads whole. Afloat
+  in full screen it gives nothing way. No toast says the
   leave chord: Hand back wears it. While he drives, Escape is the
   computer's key and never closes the page. Leaving the page with nothing
   else of his showing that computer hands it back by itself 1.5 seconds
