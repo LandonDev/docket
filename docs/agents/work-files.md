@@ -2395,8 +2395,9 @@ over a file that changed there.
   was dropped." and the copy keeps what it holds. The bytes go into a staging file beside the copy and take its place
   in one rename (`replaceWhole`): a reader sees the old copy or the new one, never part. Before, it truncated the copy
   in place, unlocked. **Keep Both** (`work.files.copyKeep`): his copy saved beside the file on its own computer
-  under the keep-both name ("Roster (mine).xlsx", through `saveCopy` there, or `files.write {dir, name}` in the VM),
-  and the tab re-pointed to that file (`TabStore.repoint`): its name, its key and `copyOf`. The press is kept on the
+  under the keep-both name ("Roster (mine).xlsx", through `saveCopyReceipt` there, or `files.write {dir, name}` in the
+  VM), its version the make's own receipt, never a look at the path after (a colleague's save just after is a change
+  made there), and the tab re-pointed to that file (`TabStore.repoint`): its name, its key and `copyOf`. The press is kept on the
   record before it goes (`keep_press`: an op id, the hash of the bytes and the writes they held): pressed again after
   its answer was lost, the same op goes (`writeBack {copy, op}`, run through that host's `runOp` journal; the guest's
   own journal in the VM), and the file the first made is answered, never a second. A refusal clears the press; the

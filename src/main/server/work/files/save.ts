@@ -4,7 +4,7 @@ import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlin
 import { basename, dirname, join } from 'node:path'
 import { freeName, splitName } from '@shared/work/files'
 import { bytesHere } from './places/disk'
-import { admitPath, FileRefused, HASH_MAX, makeFile, versionOf, withFileLocks, type WriteFence } from './write'
+import { admitPath, FileRefused, HASH_MAX, makeFileReceipt, versionOf, withFileLocks, type WriteFence } from './write'
 
 /**
  * A file's own bytes, read and replaced where it lies (docs/agents/work-files.md "Saving"). The other verbs of
@@ -287,9 +287,14 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
 
 /** His edits kept beside a file that changed under them: a new file "Name (mine).ext" in the same folder, never over anything. Returns its path. */
 export async function saveCopy(fence: WriteFence, path: string, data: Uint8Array): Promise<string> {
+  return (await saveCopyReceipt(fence, path, data)).path
+}
+
+/** `saveCopy`, answering the version of the bytes it wrote too: its receipt, never a look at the path after, which a colleague's save just after would answer as ours. */
+export async function saveCopyReceipt(fence: WriteFence, path: string, data: Uint8Array): ReturnType<typeof makeFileReceipt> {
   const dir = dirname(path)
   const names = new Set((await readdir(await admitPath(fence, dir))).map((n) => n.toLowerCase()))
   const { stem, ext } = splitName(basename(path))
   const name = freeName(`${stem} (mine)${ext}`, (n) => names.has(n.toLowerCase()))
-  return makeFile(fence, dir, name, data)
+  return makeFileReceipt(fence, dir, name, data)
 }

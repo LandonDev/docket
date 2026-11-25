@@ -17,7 +17,7 @@ import { forgetLibraries } from './places/libraries'
 import { NEEDS_PRESS, NOT_REACHED, NotReachable, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
-import { versionOf, withFileLocks } from './write'
+import { versionOf, withFileLocks, writeSeams } from './write'
 import { startFileAutosaves } from './autosave'
 import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
@@ -466,6 +466,27 @@ describe('a file that changed on its computer', () => {
     await editorSaves(copy, 'mine, again')
     await settled()
     expect(readFileSync(mine, 'utf8')).toBe('mine, again')
+  })
+
+  it("Keep Both takes the version of the file it made from the make's own receipt: a colleague's save just after is a change made there, never written over", async () => {
+    const { path, copy, tabId } = await openFar('Agenda.xlsx', 'ours')
+    writeFileSync(path, 'theirs')
+    await editorSaves(copy, 'mine')
+    await settled()
+    writeSeams.afterMake = (to) => {
+      delete writeSeams.afterMake
+      writeFileSync(to, 'a colleague saved')
+    }
+    try {
+      await call('work.files.copyKeep', { tabId })
+    } finally {
+      delete writeSeams.afterMake
+    }
+    const mine = join(mac.team, 'General', 'Agenda (mine).xlsx')
+    await editorSaves(copy, 'mine, again')
+    await settled()
+    expect(readFileSync(mine, 'utf8')).toBe('a colleague saved')
+    expect((await backOf(tabId))?.is).toBe('changed')
   })
 
   it("Keep Both of a recovered text draft keeps its words beside the file there, and the tab stays on the file", async () => {

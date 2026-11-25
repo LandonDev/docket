@@ -15,13 +15,13 @@ import { hostReadOf } from '../peer'
 import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
 import { admitCaller, admitWrite, isNotReachable, locate, type DoorPlace } from './policy'
-import { saveCopy, saveFile, versionWord, workDone } from './save'
+import { saveCopyReceipt, saveFile, versionWord, workDone } from './save'
 import { uploadPending, uploadWrote } from './uploads'
 import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
 import { farMoved, movedAway } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
-import { FileRefused, OpLost, runOp, versionOf, withFileLocks } from './write'
+import { FileRefused, OpLost, runOp, withFileLocks } from './write'
 import { bytesSink, copyFolderOf, farBytes, type FarPiece } from '../office/files/handle'
 import { copyFolderTaken } from './copyKept'
 
@@ -712,8 +712,8 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     const at = locate(ctx, by, p.workspaceId, folder, method)
     if (at.in !== 'library' || at.library.vm) throw new Error("Another host reaches only this host's libraries.")
     const keep = async (): Promise<WrittenBack> => {
-      const made = await saveCopy({ roots: [at.library.path] }, join(at.path, basename(path)), data)
-      const v = await versionOf(made)
+      // The make's own receipt: a look after would answer a colleague's save just after as ours.
+      const { path: made, version: v } = await saveCopyReceipt({ roots: [at.library.path] }, join(at.path, basename(path)), data)
       return { copy: { path: made, name: basename(made), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
     }
     // Keep Both's press asked again after its answer was lost: the file it made is answered, and nothing is made twice.
