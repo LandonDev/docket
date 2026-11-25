@@ -267,7 +267,8 @@ export interface OutboxRequestRow {
   /** what his press names for this row, as drawn now; absent: he cannot press it from the card as it stands */
   receipt?: string
   /** what became of it on his press */
-  result?: { ok: boolean; error?: string; state?: string }
+  /** `unknown`: the host tried and could not confirm it went (`outcomeUnknown`): May have gone, never "not sent" */
+  result?: { ok: boolean; error?: string; state?: string; unknown?: true }
 }
 
 export const OutboxRequestRowSchema = z.object({
@@ -278,7 +279,7 @@ export const OutboxRequestRowSchema = z.object({
   changed: z.boolean(),
   open: z.boolean(),
   receipt: z.string().optional(),
-  result: z.object({ ok: z.boolean(), error: z.string().optional(), state: z.string().optional() }).optional()
+  result: z.object({ ok: z.boolean(), error: z.string().optional(), state: z.string().optional(), unknown: z.literal(true).optional() }).optional()
 })
 export const DecisionResultSchema = z.object({ ref: HeldRefSchema, ok: z.boolean(), item: OutboxItemSchema.optional(), error: z.string().optional() })
 export const OutboxRequestSchema = z.object({

@@ -251,6 +251,12 @@ describe('the review\'s cases', () => {
     expect(note).toBe('The owner approved request 4: 2 not sent (not sent; changed since he saw it). Do not send any of them another way.')
   })
 
+  it('an item the host could not confirm is "may have gone" in the note and in the kept result, never "not sent"', async () => {
+    const unsure = { ref: { at: 'host' as const, id: 'u' }, ok: false, error: 'timed out', item: { ...post('Staff'), state: 'failed' as const, outcomeUnknown: true } }
+    const note = answerNote(5, [unsure, { ref: { at: 'host', id: 'b' }, ok: false, error: 'This item changed since you opened it.' }], 0)
+    expect(note).toBe('The owner approved request 5: 1 may have gone (its send did not say how it ended; it is not to be sent again until he has checked), 1 not sent (changed since he saw it). Do not send any of them another way.')
+  })
+
   it('outbox_list shows only what waits on him: not a send under way or a scheduled one', async () => {
     const a = post('Staff')
     post('Coaches')

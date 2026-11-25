@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { MessagesAttemptAnswer, MessagesSendAnswer } from '@shared/contract-work-messages'
 import { errorText } from '@shared/work'
 import { REPLY_MAY_HAVE_GONE } from '@shared/work/messages'
+import { attemptExpired } from '../attemptAge'
 
 /**
  * His Send answered once by its attempt key (docs/agents/work-messages.md
@@ -17,6 +18,8 @@ import { REPLY_MAY_HAVE_GONE } from '@shared/work/messages'
 export const ATTEMPT_KEPT_MS = 24 * 60 * 60 * 1000
 /** A key reused for a reply in another conversation or job: nothing is sent, nothing is said of the first. */
 export const ATTEMPT_OTHER = 'That attempt was for another reply'
+/** A key older than the host keeps answers (`attemptExpired`): what it did is not known here any more. */
+export const ATTEMPT_EXPIRED = `${REPLY_MAY_HAVE_GONE}: this reply is older than this host keeps its answers. Look in the conversation before sending it again`
 /** A key whose send was cut off by a restart of the host before LifeOS answered. */
 export const ATTEMPT_CUT = `${REPLY_MAY_HAVE_GONE}: the host restarted before LifeOS answered`
 
@@ -79,6 +82,8 @@ export async function sendOnce(
     if (seen.workspace_id !== p.workspaceId || seen.chat_id !== p.chatId) throw new Error(ATTEMPT_OTHER)
     return live.get(p.attempt) ?? replay(seen)
   }
+  // A repeat of a key past what this host keeps: its first answer may be pruned, so it is never run as new.
+  if (attemptExpired(p.attempt, now, ATTEMPT_KEPT_MS)) throw new Error(ATTEMPT_EXPIRED)
   db.prepare('INSERT INTO work_messages_attempts (attempt, workspace_id, chat_id, state, answer, at) VALUES (?, ?, ?, ?, NULL, ?)').run(p.attempt, p.workspaceId, p.chatId, 'sending', now)
   const run = (async () => {
     try {
@@ -101,6 +106,7 @@ export async function sendOnce(
 export function attemptOf(db: DatabaseSync, p: { workspaceId: string; attempt: string }, now: number = Date.now()): MessagesAttemptAnswer {
   prune(db, now)
   const row = rowOf(db, p.attempt)
+  if (!row && attemptExpired(p.attempt, now, ATTEMPT_KEPT_MS)) return { state: 'unknown', words: ATTEMPT_EXPIRED }
   if (!row || row.workspace_id !== p.workspaceId) return { state: 'none' }
   switch (row.state) {
     case 'sending':

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import type { GuestCreated, GuestLinkRow } from '@shared/contract-work-guests'
 import { GuestsRequestSchemas } from '@shared/contract-work-guests'
-import { ATTEMPT_CUT, ATTEMPT_GONE, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce, rekeyOnce } from './attempts'
+import { ATTEMPT_CUT, ATTEMPT_EXPIRED, ATTEMPT_GONE, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce, rekeyOnce } from './attempts'
 
 const row = (id: string): GuestLinkRow => ({
   id,
@@ -147,5 +147,18 @@ describe('Replace Address answered once by its attempt key', () => {
     expect(guestAttemptOf(t.db, 'press-0101')).toEqual({ state: 'made', linkId: 'link9' })
     // The same key for another link is another press: refused.
     await expect(rekeyOnce(t.db, { attempt: 'press-0101', linkId: 'link8' }, rekey, t.linkOf)).rejects.toThrow(ATTEMPT_OTHER)
+  })
+})
+
+describe('a key past what the host keeps', () => {
+  it('reads as unknown and is refused when repeated: never a second link', async () => {
+    const t = setup()
+    const made = 5_000_000_000_000
+    const key = `phone-${made}-0b3c9a50-0000-4000-8000-000000000002`
+    await makeOnce(t.db, { attempt: key, ask }, t.make, t.linkOf, made)
+    const later = made + ATTEMPT_KEPT_MS + 1
+    expect(guestAttemptOf(t.db, key, later)).toEqual({ state: 'unknown', words: ATTEMPT_EXPIRED })
+    await expect(makeOnce(t.db, { attempt: key, ask }, t.make, t.linkOf, later)).rejects.toThrow(ATTEMPT_EXPIRED)
+    expect(t.count()).toBe(1)
   })
 })

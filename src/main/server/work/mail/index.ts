@@ -140,7 +140,21 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     if (!answer.handled) throw new Error('the Outbox did not take the send')
     // The hold settles a failed send, or a press another press beat, as a row and not a throw: say what became of it.
     const item = answer.result as OutboxItem
-    if (item.state !== 'sent' && item.state !== 'sending') throw new Error(item.error ?? `This mail was not sent: the Outbox holds it as ${item.state}.`)
+    if (item.state !== 'sent' && item.state !== 'sending') {
+      // A failed send may have reached LifeOS before its answer was lost: LifeOS's own row says. On its way is sent; a
+      // row it cannot read now, or a send the hold could not confirm, is unknown; still a draft is the hold's no.
+      if (item.state === 'failed') {
+        let now: { row: MailRow } | null
+        try {
+          now = await owner.query<{ row: MailRow } | null>('compose:get', { id })
+        } catch (err) {
+          throw unknownSend(err)
+        }
+        if (now?.row && ['queued', 'sending', 'sent'].includes(String(now.row.status))) return { id, via: 'hold' }
+        if (item.outcomeUnknown) throw unknownSend(new Error(item.error ?? 'the send did not say how it ended'))
+      }
+      throw new Error(item.error ?? `This mail was not sent: the Outbox holds it as ${item.state}.`)
+    }
     // The hold answers an item it had already settled as it stands, and runs nothing. So "sent" is believed only when
     // LifeOS has the mail on its way: a draft that an earlier send of the hold's left behind (it failed in LifeOS's own
     // lane, and was opened and saved again) is never called sent while it sits there unsent.

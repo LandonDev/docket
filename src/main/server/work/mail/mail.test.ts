@@ -426,6 +426,25 @@ describe('Send from TempCode', () => {
     expect(await rig.rpc('work.mail.send', { id, seen: { ...seen, from: { name: 'Landon', address: 'LANDON@purdue.edu' } } })).toEqual({ id, via: 'hold' })
   })
 
+  it("a thread's draft whose hold send could not be confirmed is an unknown outcome, never a no", async () => {
+    const id = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    // The hold's send fails and LifeOS cannot be read after it: whether it went is not known.
+    rig.lifeos.failNext.set('compose:send', 'socket hang up')
+    const query = rig.lifeos.query.bind(rig.lifeos)
+    let failedOnce = false
+    rig.lifeos.query = (async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'compose:get' && !rig.lifeos.failNext.has('compose:send') && !failedOnce && rig.lifeos.calls.some((c) => c.fn === 'compose:send')) {
+        failedOnce = true
+        throw new Error('LifeOS is unreachable')
+      }
+      return query(fn as never, args as never)
+    }) as typeof rig.lifeos.query
+    const said = await rig.rpc('work.mail.send', { id, seen: seenOf(id) }).then(() => '', (err: Error) => err.message)
+    expect(said.startsWith(`${OUTCOME_UNKNOWN}: `)).toBe(true)
+  })
+
   it("says so when the hold's send fails, never Sent", async () => {
     const id = rig.lifeos.draft()
     rig.lifeos.fire()

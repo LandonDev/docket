@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { GuestAttemptAnswer, GuestCreated, GuestCreatedAgain, GuestLinkRow } from '@shared/contract-work-guests'
 import { errorText } from '@shared/work'
+import { attemptExpired } from '../attemptAge'
 
 /**
  * His Create link answered once by its attempt key (docs/agents/work-guests.md
@@ -19,6 +20,8 @@ export const ATTEMPT_KEPT_MS = 24 * 60 * 60 * 1000
 export const ATTEMPT_OTHER = 'That attempt was for another link'
 /** A key whose making was cut off by a restart of the host: the link may stand, so the item's links say. */
 export const ATTEMPT_CUT = 'The host restarted while making the link. Look in its live links before making another.'
+/** A key older than the host keeps answers (`attemptExpired`): whether it made a link is not known here any more. */
+export const ATTEMPT_EXPIRED = 'That press is older than this host keeps its answers. Look in its live links before making another.'
 /** A key that made a link since revoked or ended and no longer listed. */
 export const ATTEMPT_GONE = 'That link was made and no longer opens anything.'
 
@@ -83,6 +86,8 @@ export async function makeOnce(
     if (!link) throw new Error(ATTEMPT_GONE)
     return { link, again: true }
   }
+  // A repeat of a key past what this host keeps: its first answer may be pruned, so it is never run as new.
+  if (attemptExpired(p.attempt, now, ATTEMPT_KEPT_MS)) throw new Error(ATTEMPT_EXPIRED)
   db.prepare('INSERT INTO work_guests_attempts (attempt, ask, state, answer, at) VALUES (?, ?, ?, NULL, ?)').run(p.attempt, p.ask, 'making', now)
   const run = (async () => {
     try {
@@ -104,6 +109,7 @@ export async function makeOnce(
 export function guestAttemptOf(db: DatabaseSync, attempt: string, now: number = Date.now()): GuestAttemptAnswer {
   prune(db, now)
   const row = rowOf(db, attempt)
+  if (!row && attemptExpired(attempt, now, ATTEMPT_KEPT_MS)) return { state: 'unknown', words: ATTEMPT_EXPIRED }
   if (!row) return { state: 'none' }
   switch (row.state) {
     case 'making':

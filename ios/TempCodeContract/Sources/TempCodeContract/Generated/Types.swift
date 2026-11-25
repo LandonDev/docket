@@ -5879,11 +5879,13 @@ public struct OutboxRequestRow: Codable, Hashable, Sendable {
         public let ok: Bool
         public let error: String?
         public let state: String?
+        public let unknown: Bool?
 
-        public init(ok: Bool, error: String? = nil, state: String? = nil) {
+        public init(ok: Bool, error: String? = nil, state: String? = nil, unknown: Bool? = nil) {
             self.ok = ok
             self.error = error
             self.state = state
+            self.unknown = unknown
         }
     }
 

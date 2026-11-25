@@ -347,9 +347,10 @@ export class OutboxRequests {
     const root = row.root_id
     // What became of each item is kept as it settles: a press cut off keeps what it reached, and what it never reached
     // reads as not started, never as done.
-    const kept: { ref: HeldRef; ok: boolean; error?: string; state?: string }[] = []
+    const kept: { ref: HeldRef; ok: boolean; error?: string; state?: string; unknown?: true }[] = []
     const keep = (r: DecisionResult): void => {
-      kept.push({ ref: r.ref, ok: r.ok, ...(r.error ? { error: r.error } : {}), ...(r.item ? { state: r.item.state } : {}) })
+      // An item the host could not confirm keeps that: May have gone, never "not sent", on every surface.
+      kept.push({ ref: r.ref, ok: r.ok, ...(r.error ? { error: r.error } : {}), ...(r.item ? { state: r.item.state } : {}), ...(!r.ok && r.item?.outcomeUnknown ? { unknown: true as const } : {}) })
       this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET results = ? WHERE id = ?`).run(JSON.stringify(kept), id)
     }
     const results = await this.deps.outbox.decide(
@@ -480,7 +481,7 @@ export class OutboxRequests {
     const asked = json<Asked[]>(row.items, [])
     const issued = json<Record<string, Receipt>>(row.receipts, {})
     const answeredRefs = new Set(json<string[]>(row.answer, []).flatMap((rid) => (issued[rid] ? [refKey(issued[rid]!.ref)] : [])))
-    const results = json<{ ref: HeldRef; ok: boolean; error?: string; state?: string }[]>(row.results, [])
+    const results = json<{ ref: HeldRef; ok: boolean; error?: string; state?: string; unknown?: true }[]>(row.results, [])
     const rows: OutboxRequestRow[] = asked.map((a) => {
       const item = this.itemOf(a.ref)
       // A press cut off before its results were kept still says what became of each item it reached.
@@ -618,7 +619,8 @@ export function answerNote(n: number, results: readonly DecisionResult[], left: 
   const discarded = ok.filter((r) => r.item?.state === 'discarded' || (r.item?.state === 'stale' && r.item.dismissedAt)).length
   const queued = ok.filter((r) => r.item?.state !== 'scheduled' && r.item?.state !== 'discarded' && r.item?.state !== 'stale' && (r.item?.kind === 'mail.send' || r.item?.kind === 'calendar.op')).length
   const sent = ok.length - queued - scheduled - discarded
-  const failed = results.filter((r) => !r.ok)
+  const unknown = results.filter((r) => !r.ok && r.item?.outcomeUnknown)
+  const failed = results.filter((r) => !r.ok && !r.item?.outcomeUnknown)
   // Fixed words only: a provider's own error can quote a file or a person, and the thread's transcript is read by more than his press.
   const why = (f: DecisionResult): string => (/changed since/i.test(f.error ?? '') ? 'changed since he saw it' : /out of date/i.test(f.error ?? '') ? 'out of date' : /own page/i.test(f.error ?? '') ? 'goes from its own page' : 'not sent')
   const reasons = [...new Set(failed.map(why))]
@@ -627,6 +629,7 @@ export function answerNote(n: number, results: readonly DecisionResult[], left: 
     ...(queued ? [`queued ${queued} in LifeOS (they go after his undo time)`] : []),
     ...(scheduled ? [`scheduled ${scheduled}`] : []),
     ...(discarded ? [`discarded ${discarded}`] : []),
+    ...(unknown.length ? [`${unknown.length} may have gone (its send did not say how it ended; it is not to be sent again until he has checked)`] : []),
     ...(failed.length ? [`${failed.length} not sent (${reasons.join('; ')})`] : []),
     ...(left ? [`${left} left out`] : [])
   ]

@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { loadWorkModules } from '../modules'
 import { readKey } from '../outbox/rig'
-import { ATTEMPT_CUT, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, attemptOf, sendOnce } from './attempts'
+import { ATTEMPT_CUT, ATTEMPT_EXPIRED, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, attemptOf, sendOnce } from './attempts'
 import { FakeChats } from './fakeChats'
 import { messages } from './index'
 import { NOT_A_PERSON } from './replies'
@@ -102,6 +102,18 @@ describe('his Send by its attempt key', () => {
     expect(await once()).toEqual({ id: 'out_1' })
     expect(attemptOf(db, { workspaceId: 'ws-cosmic', attempt: 'phone-attempt-1' }, 1_000 + ATTEMPT_KEPT_MS - 1)).toEqual({ state: 'sent', id: 'out_1' })
     expect(attemptOf(db, { workspaceId: 'ws-cosmic', attempt: 'phone-attempt-1' }, 1_000 + ATTEMPT_KEPT_MS + 1)).toEqual({ state: 'none' })
+  })
+
+  it("a phone key past the day is unknown when read and refused when repeated, never 'never heard' or sent anew", async () => {
+    const db = t.rig.work.ctx.db
+    const made = 5_000_000_000_000
+    const key = `phone-${made}-0b3c9a50-0000-4000-8000-000000000001`
+    let sends = 0
+    expect(await sendOnce(db, { workspaceId: 'ws-cosmic', chatId: 'c-dana', attempt: key }, async () => ({ id: `out_${++sends}` }), made)).toEqual({ id: 'out_1' })
+    const later = made + ATTEMPT_KEPT_MS + 1
+    expect(attemptOf(db, { workspaceId: 'ws-cosmic', attempt: key }, later)).toEqual({ state: 'unknown', words: ATTEMPT_EXPIRED })
+    await expect(sendOnce(db, { workspaceId: 'ws-cosmic', chatId: 'c-dana', attempt: key }, async () => ({ id: `out_${++sends}` }), later)).rejects.toThrow(ATTEMPT_EXPIRED)
+    expect(sends).toBe(1)
   })
 
   it('a Send with no key works as before, and a workspace removed takes its keys', async () => {
