@@ -2114,6 +2114,16 @@ Around the canvas:
   file no editor here reads (a picked PDF or workbook) has Open in Drive
   alone. Opening a file makes no thread, and the thread is never the
   first thing he sees.
+  A **document opened as a copy** whose edits go nowhere (a .doc, .rtf or
+  .odt from another computer, or a workbook or deck whose computer named no
+  version) says so in its muted line, "Edits stay in this tab, not on
+  MacBook", with Save As… for a document and Open on MacBook, its two
+  presses. Nothing is sent and no Saved is said. Closed with edits in it, it
+  asks once in the house confirm, "Edits to Notes.rtf are only in this
+  tab.", Cancel, Discard and Keep; Keep closes the tab and the file opens
+  again as he left it. A close that comes by any other way keeps it too.
+  With no edits it closes at once. A text file's copy with no version stays
+  read only.
   A **shared Office file** (.docx, .xlsx, .xlsm, .pptx in a library) has one
   more control before ⋯: a ghost menu button named by the mode the tab is in,
   "Edit here" or "Live in Word" (Excel, PowerPoint), with a chevron. Its menu

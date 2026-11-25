@@ -5,14 +5,22 @@ import type { confirmChoice } from "../../chrome/ConfirmDialog";
  * Closing a copy's tab whose changes have not reached its file (docs/DESIGN.md "The Files place"): asked once, so
  * nothing is lost without his word. Waiting for its computer, Keep trying closes the tab and the host sends the
  * changes when it answers; over a file that changed there, Keep Both saves his beside it first; refused, only
- * Discard is offered. Discard drops them with the tab. Answers whether the tab closed.
+ * Discard is offered. Discard drops them with the tab. A copy whose edits go nowhere and holds some asks Keep (closed,
+ * opened again as he left it) or Discard. Answers whether the tab closed.
  */
 export async function closeCopyTab(
-  tab: Pick<FileTab, "name" | "back">,
+  tab: Pick<FileTab, "name" | "back" | "stays">,
   host: string,
   deps: { choose: typeof confirmChoice; confirm(request: { title: string; action: string; danger?: boolean }): Promise<boolean>; close(discard: boolean): Promise<void>; keepBoth(): Promise<void> },
 ): Promise<boolean> {
   const back = tab.back;
+  // A copy whose edits go nowhere (`stays`): kept on a plain close for the file's next open; Discard drops them.
+  if (!back && tab.stays?.edited) {
+    const choice = await deps.choose({ title: `Edits to ${tab.name} are only in this tab.`, action: "Keep", other: "Discard" });
+    if (choice === null) return false;
+    await deps.close(choice === "other");
+    return true;
+  }
   if (!back || back.is === "ok") {
     await deps.close(false);
     return true;

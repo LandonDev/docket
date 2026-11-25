@@ -95,8 +95,8 @@ export const seatOf = (name: string, mime?: string): CanvasKind => kindOfEntry(n
  * Whether a Files tab's copy of another computer's file, open in this kind, saves back to the file
  * (docs/agents/work-files.md "A copy saves back"): the kind edits the copy's own bytes and says when it saved. The
  * sheet edits an .xlsx or .xlsm in place and the deck a .pptx; the `file` kind writes a text file's bytes. A
- * document edits a `.tcdoc` made of the file, not the file, and a .csv opens as a sheet of our own: those keep
- * "A copy from MacBook. Changes stay here".
+ * document edits a `.tcdoc` made of the file, not the file, and a .csv opens as a sheet of our own: those save nowhere
+ * (a document's edits are kept in its tab, files/copyStays.ts).
  */
 export function copySavesBack(kind: CanvasKind, name: string): boolean {
   const ext = extOf(name)

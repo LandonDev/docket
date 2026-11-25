@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, realpathSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { dirname, extname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 
 /**
@@ -42,7 +42,8 @@ export function isSavingCopy(db: DatabaseSync, path: string): boolean {
 export function copyKeptIn(db: DatabaseSync, dir: string): boolean {
   const at = real(dir)
   // A Word file's document kept in a copy's folder (files/word.ts `adoptWordCopies`) holds his edits: never dropped.
-  return ask(db, `SELECT 1 FROM work_files_copies WHERE dir = ? LIMIT 1`, at) || ask(db, `SELECT 1 FROM work_files_word WHERE doc LIKE ? || '/%' LIMIT 1`, at)
+  // A copy that saves nowhere (copyStays.ts) is judged by its record as its item goes: kept while it holds his edits.
+  return ask(db, `SELECT 1 FROM work_files_copies WHERE dir = ? LIMIT 1`, at) || ask(db, `SELECT 1 FROM work_files_word WHERE doc LIKE ? || '/%' LIMIT 1`, at) || ask(db, `SELECT 1 FROM work_files_stays WHERE dir = ? LIMIT 1`, at)
 }
 
 /**
@@ -85,6 +86,11 @@ export function dropCopyRecords(db: DatabaseSync, workspaceId: string): Set<stri
       if (copyWaits(r)) kept.add(r.dir)
       else db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
     }
+    // A copy that saves nowhere stays while it holds his edits (copyStays.ts); one with none goes.
+    for (const r of db.prepare(`SELECT * FROM work_files_stays WHERE workspace_id = ?`).all(workspaceId) as unknown as StayRow[]) {
+      if (stayEdited(r)) kept.add(r.dir)
+      else db.prepare(`DELETE FROM work_files_stays WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
+    }
     // A Word file's kept document whose folder is a copy's stays too: it holds his edits.
     for (const w of db.prepare(`SELECT doc FROM work_files_word WHERE workspace_id = ? AND doc IS NOT NULL`).all(workspaceId) as { doc: string }[]) kept.add(dirname(real(w.doc)))
   } catch {
@@ -92,3 +98,52 @@ export function dropCopyRecords(db: DatabaseSync, workspaceId: string): Set<stri
   }
   return kept
 }
+
+/** A copy that saves nowhere (copyStays.ts): its record. */
+export interface StayRow {
+  workspace_id: string
+  host: string
+  path: string
+  /** the copy's real path here, and its folder */
+  copy: string
+  dir: string
+  /** the copy's size and change time as it was made */
+  size: number
+  mtime: number
+  /** the kind its tab shows it in */
+  kind: 'document' | 'sheet' | 'slides'
+  /** the document an import made of it, and its change time as made */
+  doc: string | null
+  doc_at: number | null
+  closed: number
+  at: number
+}
+
+/** A file's size and change time (ms, rounded), or null when it is not there. */
+export function timeOf(path: string): { size: number; mtime: number } | null {
+  try {
+    const s = statSync(path)
+    return { size: s.size, mtime: Math.round(s.mtimeMs) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether a copy that saves nowhere holds his edits: the document made of it, or the copy itself, is not as it was made.
+ * A document an import made that the record never heard of counts as edited: unknown is kept.
+ */
+export function stayEdited(r: StayRow): boolean {
+  if (r.doc) {
+    const now = timeOf(r.doc)
+    return now !== null && now.mtime !== r.doc_at
+  }
+  const now = timeOf(r.copy)
+  if (now && (now.size !== r.size || now.mtime !== r.mtime)) return true
+  try {
+    return readdirSync(r.dir).some((name) => extname(name) === '.tcdoc')
+  } catch {
+    return false
+  }
+}
+

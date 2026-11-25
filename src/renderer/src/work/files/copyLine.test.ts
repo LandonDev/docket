@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { closeCopyTab } from "./copyClose";
-import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack } from "./fileText";
+import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, staysLine } from "./fileText";
 import { wordLine } from "./wordSave";
 
 /** A copy that saves back to its file on another computer: the header's words per state, when its tab sends, and its close. */
@@ -116,6 +116,36 @@ describe("closing a copy's tab", () => {
     await closeCopyTab({ name: "Roster.xlsx", back: { is: "refused", detail: "no" } }, "MacBook", refused);
     expect(refused.confirm).toHaveBeenCalledWith({ title: "Changes to Roster.xlsx have not reached MacBook.", action: "Discard", danger: true });
     expect(refused.close).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("closing a copy whose edits go nowhere", () => {
+  const deps = (choice: "action" | "other" | null) => ({ choose: vi.fn(async () => choice), confirm: vi.fn(async () => true), close: vi.fn(async () => undefined), keepBoth: vi.fn(async () => undefined) });
+
+  it("closes at once with no edits, and asks Keep or Discard with some", async () => {
+    const clean = deps("action");
+    expect(await closeCopyTab({ name: "Notes.rtf", stays: { edited: false } }, "MacBook", clean)).toBe(true);
+    expect(clean.choose).not.toHaveBeenCalled();
+    expect(clean.close).toHaveBeenCalledWith(false);
+    const keep = deps("action");
+    expect(await closeCopyTab({ name: "Notes.rtf", stays: { edited: true } }, "MacBook", keep)).toBe(true);
+    expect(keep.choose).toHaveBeenCalledWith({ title: "Edits to Notes.rtf are only in this tab.", action: "Keep", other: "Discard" });
+    expect(keep.close).toHaveBeenCalledWith(false);
+    const drop = deps("other");
+    await closeCopyTab({ name: "Notes.rtf", stays: { edited: true } }, "MacBook", drop);
+    expect(drop.close).toHaveBeenCalledWith(true);
+    const stay = deps(null);
+    expect(await closeCopyTab({ name: "Notes.rtf", stays: { edited: true } }, "MacBook", stay)).toBe(false);
+    expect(stay.close).not.toHaveBeenCalled();
+  });
+});
+
+describe("the line of a copy whose edits go nowhere", () => {
+  it("says its edits stay in this tab, with Save As… for a document and Open on its computer", () => {
+    const line = staysLine("MacBook", () => undefined, () => undefined);
+    expect(line).toMatchObject({ state: "copy", words: "Edits stay in this tab, not on MacBook" });
+    expect(line.actions?.map((a) => a.label)).toEqual(["Save As…", "Open on MacBook"]);
+    expect(staysLine("MacBook").actions).toBeUndefined();
   });
 });
 

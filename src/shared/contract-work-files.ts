@@ -414,6 +414,11 @@ export interface FileTab {
   back?: CopyBack
   /** a Word file of another computer opened as the document made of it, kept in the workspace's folder: how that file stands */
   word?: WordBack
+  /**
+   * a copy whose edits go nowhere (a .doc, .rtf or .odt, or a workbook or deck whose computer named no version): they
+   * stay in this tab, kept on close for the file's next open until he discards them. `edited`: it holds some.
+   */
+  stays?: { edited: boolean }
   /** a file in a folder OneDrive syncs (a Teams or OneDrive library), once a save of ours wrote it: whether OneDrive has uploaded it */
   cloud?: CloudBack
   /** a file tab with a second file at its side (Open to the Side): that file's item, key and name. It is in no tab of its own. */

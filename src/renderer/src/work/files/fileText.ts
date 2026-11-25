@@ -113,6 +113,15 @@ export function newestBack(tab: CopyBack, answer: CopyBack | undefined): CopyBac
   return answer.writes > tab.writes || (answer.writes === tab.writes && answer.held > tab.held) ? answer : tab;
 }
 
+/**
+ * The line of a copy whose edits go nowhere (docs/DESIGN.md "A document opened as a copy"): they stay in this tab, not
+ * on the computer that holds the file; Save As… where its kind has one, and Open on that computer where it can.
+ */
+export function staysLine(host: string, saveAs?: () => void, openThere?: () => void): HeaderLine {
+  const actions = [...(saveAs ? [{ id: "save-as", label: "Save As…", run: saveAs }] : []), ...(openThere ? [{ id: "there", label: `Open on ${host}`, run: openThere }] : [])];
+  return { state: "copy", detail: host, words: `Edits stay in this tab, not on ${host}`, ...(actions.length ? { actions } : {}) };
+}
+
 /** Whether a send's answer is how sending stands (an older frame's send answers nothing). */
 export const isCopyBack = (x: unknown): x is CopyBack => !!x && typeof x === "object" && typeof (x as { is?: unknown }).is === "string";
 

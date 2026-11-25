@@ -4,6 +4,7 @@ import type { ActKindDef, WorkModule } from '../modules'
 import { copiesLeft, copySaved, ownCopyFolders, retryWaiting, settleCopies } from './copies'
 import { startFileAutosaves } from './autosave'
 import { adoptWordCopies, wordFollowed, wordImportPlace, wordsLeft } from './word'
+import { stayFollowed, staysLeft } from './copyStays'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
 import { registerFileMoved, registerImportPlace } from './hooks'
@@ -113,7 +114,11 @@ export const files: WorkModule = {
     const offSaved = onFileSaved((path) => copySaved(ctx, path))
     // A Word file of another computer becomes a document in the workspace's own folder, kept for its next open (word.ts).
     const offPlace = registerImportPlace((original, itemId) => wordImportPlace(ctx, original, itemId))
-    const offFollowed = ctx.canvas.onReplaced((old, next) => wordFollowed(ctx, old, next))
+    const offFollowed = ctx.canvas.onReplaced((old, next) => {
+      wordFollowed(ctx, old, next)
+      // A copy that saves nowhere became the document made of it: its record names it (copyStays.ts).
+      stayFollowed(ctx, old, next)
+    })
     const stopAutosaves = startFileAutosaves(ctx)
     const waiting = setInterval(() => {
       try {
@@ -149,6 +154,8 @@ export const files: WorkModule = {
     copiesLeft(ctx, mine)
     // A Word file's document he never changed goes; one he changed is kept for the file's next open (word.ts).
     void wordsLeft(ctx, mine).catch((err) => ctx.log(`files: a Word file's document was not judged: ${err instanceof Error ? err.message : String(err)}`))
+    // A copy that saves nowhere goes only with no edits in it; one with his edits is kept for the file's next open.
+    void staysLeft(ctx, mine).catch((err) => ctx.log(`files: a copy that saves nowhere was not judged: ${err instanceof Error ? err.message : String(err)}`))
   },
   workspaceRemoved(workspaceId, ctx) {
     removeWorkspace(ctx, workspaceId)

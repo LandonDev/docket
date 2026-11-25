@@ -16,6 +16,7 @@ import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, rootsOf, whoOf } from '../office/files/library'
 import { driveOf as linkedDrive, probeDrives } from '../office/files/reach'
 import { copyWaits } from './copyKept'
+import { isStay, recordStay, reopenStay, stayDiscarded, staysOf } from './copyStays'
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
@@ -485,6 +486,9 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
     reopened(ctx, waiting)
     return { kind, source: { at: 'file', host: ctx.host, path: waiting.copy }, copyOf }
   }
+  // A copy that saves nowhere, kept with his edits when its tab closed, is opened again as he left it (copyStays.ts).
+  const stays = copyAllowed(ctx.db, workspaceId) ? reopenStay(ctx, workspaceId, file) : null
+  if (stays) return { ...stays, copyOf }
   // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
   // In a folder no other live copy holds: after Keep Both the first folder of this file may be the kept tab's.
   const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal, progress, copyFolderFor(ctx, workspaceId, file))
@@ -495,6 +499,9 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   if ((back || word) && copy.version) keepBodyHash(ctx, { workspace_id: workspaceId, host: file.host, path: file.path }, await bodyOfAsync(copy.bytes))
   if (back && copy.version) recordCopy(ctx, { workspaceId, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: copy.sha256 })
   else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
+  // Edits with no way back to the file (a .doc, .rtf or .odt, or a file its computer named no version of): they stay in
+  // the tab, and the copy is kept while it holds any. No version is made up for it.
+  if (!(back && copy.version) && !(word && copy.version)) recordStay(ctx, { workspaceId, host: file.host, path: file.path, copy: path, kind, name })
   // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
   if (word && copy.version) recordWord(ctx, { workspaceId, host: file.host, path: file.path, vm, name, version: copy.version, sha: copy.sha256 })
   return { kind, source: copy.source, copyOf }
@@ -653,13 +660,15 @@ function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
   const backs = backsOf(ctx, workspaceId)
   // A Word file opened as its document says how the Word file stands (word.ts).
   const words = wordBacksOf(ctx, workspaceId)
+  // A copy that saves nowhere says whether it holds his edits (copyStays.ts).
+  const stays = staysOf(ctx, workspaceId)
   const all =
-    backs.size || words.size
+    backs.size || words.size || stays.size
       ? {
           rev: listed.rev,
           tabs: listed.tabs.map((t) => {
             const at = t.copyOf ? `${t.copyOf.host}\0${t.copyOf.path}` : ''
-            const tab = backs.has(at) ? { ...t, back: backs.get(at)! } : words.has(at) ? { ...t, word: words.get(at)! } : t
+            const tab = backs.has(at) ? { ...t, back: backs.get(at)! } : words.has(at) ? { ...t, word: words.get(at)! } : stays.has(at) ? { ...t, stays: stays.get(at)! } : t
             return withCloud(ctx, workspaceId, tab)
           })
         }
@@ -1210,9 +1219,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       const workspace = ownRows(ctx, by, p.workspaceId)
       const tab = p.side === true ? undefined : filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
       // Discard drops his changes to a file others can open before they reach it: his press alone, as his Reload's.
-      if (p.discard === true && tab?.copyOf && copyRecord(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) && !pressesFor(by)) throw new Error(NEEDS_PRESS)
-      // A copy whose changes have not reached its file is kept, and sent, until they have; Discard drops them.
+      if (p.discard === true && tab?.copyOf && (copyRecord(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) || isStay(ctx, p.workspaceId, tab)) && !pressesFor(by)) throw new Error(NEEDS_PRESS)
+      // A copy whose changes have not reached its file is kept, and sent, until they have; Discard drops them. A copy
+      // that saves nowhere is kept while it holds his edits (copyStays.ts); Discard drops it.
       if (p.side !== true) copyClosing(ctx, p.workspaceId, tab, p.discard === true)
+      if (p.side !== true && p.discard === true) stayDiscarded(ctx, p.workspaceId, tab)
       // The last tab closed becomes the workspace's folder: the place is never left with none.
       filesState(ctx).tabs.tabClose(p.workspaceId, p.tabId as string, { at: { at: 'place', id: PLACE.folder }, name: folderName(workspace, workspace.path, workspace.path) }, p.side === true)
       return handled(tabsFor(ctx, by, p.workspaceId))
@@ -1460,5 +1471,5 @@ export function removeWorkspace(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canv
   const state = filesState(ctx)
   state.tabs.removeWorkspace(workspaceId)
   state.marks.removeWorkspace(workspaceId)
-  for (const table of ['work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
+  for (const table of ['work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
 }

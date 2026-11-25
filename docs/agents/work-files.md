@@ -200,7 +200,7 @@ the first paint.
 | The file | Opens |
 |---|---|
 | on the workspace's host, a kind a canvas shows | in a tab (`work.files.open`); the kind's chunk starts loading at the click, beside the open (`preloadKind`, files/open.ts); a cloud-only file is fetched first, its row saying "Downloading…". A library's Office file whose form an editor of ours edits in place (`registerFileMaker`'s `forms`: an .xlsx in the sheet editor, a .pptx in the deck editor) opens as the file it is and saves where it lies by version (`saveFile`); no Office app is started. Any other Office file there is seated on its app (`microsoft`), which the window then starts (`openFileTab`'s `seated`), before the tab is drawn |
-| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saving to MacBook…", "Saved to MacBook 1:52 PM"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet: those are kept and sent, and only his Discard drops them |
+| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saving to MacBook…", "Saved to MacBook 1:52 PM"). A copy whose edits go nowhere (a .doc, .rtf or .odt; a workbook or deck read with no version) says "Edits stay in this tab, not on MacBook", with Save As… for a document, and is kept while it holds edits ("A copy that saves nowhere"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet: those are kept and sent, and only his Discard drops them |
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
 
@@ -2202,6 +2202,22 @@ over a file that changed there.
   an older build left on one copy are each given their own at start (`ownCopyFolders`): the newest keeps it, each other
   gets a copy of those bytes in a folder of its own and its tab a new item; one whose bytes are not its file's is
   marked `changed`, so nothing is sent from it and Reload brings its file back.
+- **A copy that saves nowhere** (copyStays.ts, `work_files_stays`). A Files tab's copy whose kind edits it but whose
+  edits have no way back: a .doc, .rtf or .odt (and a .docx read with no version) opens as the document an import makes
+  beside it; a workbook or deck whose computer named no version (a build behind) is edited in the copy. Before, its tab
+  said its changes stay here, yet its close took the copy's folder, his edits with it. Now the record holds the copy's
+  size and change time as made, and the document made of it with its time (`stayFollowed`, on the canvas's replace);
+  `stayEdited` reads them (a document nobody recorded counts as edited). An item that goes, by any way, is judged once
+  the document's last words are stored (`staysLeft`, `/internal/docs/stored`; a service that does not answer keeps it):
+  with edits the copy is kept (`closed`), with none it goes. The office pillar's drop leaves a recorded folder
+  (`copyKeptIn`), and Copy Teams files off keeps an edited one (`dropCopyRecords`). Opened again, a kept copy shows as
+  he left it, the document itself, never read over (`reopenStay`); one with no edits is copied afresh. His Discard
+  (`tabClose {discard}`, his press alone, `pressesFor`) drops it at once (`stayDiscarded`). The tab carries
+  `stays: {edited}`; its line reads "Edits stay in this tab, not on MacBook" with Save As… for a document
+  (`staysLine`, fileText.ts), and its close asks Keep or Discard when edited (`closeCopyTab`), reading the host's tabs
+  afresh after the close's send, so a document's last words count. No version is made up: it never becomes a copy
+  that saves back. A text file's copy with no version stays read only (`readCopy`, `COPY_LOCKED`) and has no record;
+  a .csv's sheet is not of these.
 - **The shared-place rule holds on a copy.** A recorded copy, and what lies beside it in its folder, is as shared as
   its file (`sharedOf`, over `isSavingCopy` in copyKept.ts): the sheet's agent only suggests on it, the deck's
   too (it already read every copy as shared), a key without approve cannot edit it, a preview of it is kept in

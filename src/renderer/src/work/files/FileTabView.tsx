@@ -39,7 +39,7 @@ import { dockShape, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
-import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { openSaveAs } from "./saveAsPort";
@@ -114,9 +114,12 @@ function savingCopyLine(kind: SavedLine | null, tab: FileTab, back: CopyBack, co
 
 /**
  * The frame's own save line, for an item whose kind says nothing of saving: a copy of a file on another computer
- * (its changes stay here, and the file itself opens there) and a mail's file (read only until he keeps it).
+ * (its changes stay here, and the file itself opens there) and a mail's file (read only until he keeps it). A copy
+ * whose edits go nowhere (`stays`: a .doc, .rtf or .odt, or a file its computer named no version of) says so, with
+ * Save As… where its kind has one (docs/DESIGN.md "A document opened as a copy").
  */
-function frameLine(copy: CopyWords | null, item: CanvasItem | null, env: string): SavedLine | null {
+function frameLine(copy: CopyWords | null, item: CanvasItem | null, env: string, stays?: { saveAs?: () => void }): HeaderLine | null {
+  if (copy && stays) return staysLine(copy.host, stays.saveAs, copy.openThere);
   if (copy) return { state: "copy", detail: copy.host, ...(copy.openThere ? { actions: [{ id: "there", label: `Open on ${copy.host}`, run: copy.openThere }] } : {}) };
   if (item?.source.at === "mail") return { state: "readonly", detail: "a mail's file", ...(item.workspaceId ? { actions: [{ id: "keep", label: "Save to workspace", run: () => keepItem(env, item.id).then(() => undefined) }] } : {}) };
   return null;
@@ -369,6 +372,8 @@ export function FileTabView({
     if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true, w.stoppedVersion) }];
     return w.auto || !w.since ? [] : [{ id: "word", label: `Save to ${service} as Word`, run: saveWord }];
   };
+  // The workspace as this window knows it: Save As… needs it (SaveAs.tsx).
+  const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   const said: HeaderLine | null =
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
       ? { ...wordLine(word, serviceOf(tab), copy.host), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
@@ -377,7 +382,7 @@ export function FileTabView({
       : copy
         ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"
           ? kindLine
-          : frameLine(copy, item, workspace.environmentId)
+          : frameLine(copy, item, workspace.environmentId, tab.stays ? { ...(item?.kind === "document" && meta ? { saveAs: () => openSaveAs(item.id) } : {}) } : undefined)
         : (kindLine ?? frameLine(null, item, workspace.environmentId));
   // A save into a Teams or OneDrive library says what OneDrive has done with it, never Saved to Teams before it uploads.
   const line = said && copy ? cloudLine(said, tab.cloud, serviceOf(tab), copy.host) : said;
@@ -411,7 +416,6 @@ export function FileTabView({
   const verbs = (manage?.rows ?? []).filter((row) => row.act !== "open" && row.act !== "open-tab");
   // Save As…: any document of a Work workspace, in a format and a folder of his places (SaveAs.tsx). Its button and the
   // linked files stand in the document's own bar (DocLinks.tsx), under this header; the document's body draws the sheet.
-  const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   const wordable = !!meta && item?.kind === "document";
   // Save as Template…: a file the shelf can keep (Word, Excel, PowerPoint, our own document or sheet as a file) that lies on
   // the workspace's own host, where the shelf copies it; judged by the file itself, since a Word file opened as a document

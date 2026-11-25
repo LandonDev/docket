@@ -71,6 +71,12 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // A Keep Both press whose answer has not come back (copies.ts `copyKeep`): its op id, the hash of the bytes it sent
   // and the writes they held, as JSON; the same op again is answered by the file's host with what the first did.
   if (!copyCols.has('keep_press')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN keep_press TEXT`)
+  // A Files tab's copy whose edits go nowhere (copyStays.ts): the copy as made, and the document made of it.
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_stays (
+    workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, copy TEXT NOT NULL, dir TEXT NOT NULL,
+    size INTEGER NOT NULL, mtime INTEGER NOT NULL, kind TEXT NOT NULL, doc TEXT, doc_at INTEGER, closed INTEGER NOT NULL DEFAULT 0,
+    at INTEGER NOT NULL, PRIMARY KEY (workspace_id, host, path))`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_stays_by_copy ON work_files_stays (copy)`)
   // The body of a file of another computer as we last read or wrote it (files/body.ts): what SharePoint's own rewrite
   // of an Office file in a Teams library leaves as it was.
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_bodies (
@@ -106,4 +112,4 @@ export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_source ON work_files_links (doc, state)`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_bodies', 'work_files_word', 'work_files_links'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays', 'work_files_bodies', 'work_files_word', 'work_files_links'] as const

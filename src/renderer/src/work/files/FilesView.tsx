@@ -44,7 +44,7 @@ import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, loadTabs, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
@@ -426,8 +426,10 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
       await closeTab(link, workspace.id, tabId, first, discard);
       if (history) void closeItem(link, pane, history.id).catch(() => undefined);
     };
-    if (!gone?.copyOf || !gone.back) return done(false);
-    await closeCopyTab(gone, copyHostOf(gone, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
+    if (!gone?.copyOf || (!gone.back && !gone.stays)) return done(false);
+    // A copy whose edits go nowhere: whether it holds any is the host's look after the send above (its file's time).
+    const now = gone.back ? gone : ((await loadTabs(link, workspace.id, first).then(() => tabsNow(link, workspace.id).find((t) => t.id === tabId))) ?? gone);
+    await closeCopyTab(now, copyHostOf(now, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
   };
   // After a close the focus lands on what is left (chords.ts `landFocus`) once the window draws it.
   const landing = useRef(false);

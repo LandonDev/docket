@@ -3,7 +3,7 @@ import { location, sourceFile, sourcePaths, visitSource } from "./guardSource.te
 
 // A state word must start a phrase or stand as a capitalised label. Ignore type literals,
 // property keys and later pieces of a template, which don't start the displayed line.
-const STATE = /^(?:Saved|Sent|Sending|Scheduled|Added|Synced|Signed in|Connected|Done|Deleted|Moved|Copied|Uploaded|Restored|All clear|Up to date|Ready|Queued|Syncing|Invites sent|Nothing held)\b/;
+const STATE = /^(?:Saved|Sent|Sending|Scheduled|Added|Synced|Signed in|Connected|Done|Deleted|Moved|Copied|Uploaded|Restored|All clear|Up to date|Ready|Queued|Syncing|Invites sent|Nothing held|Edits stay)\b/;
 const WHOLE_LABEL = /^[A-Z][a-z]+$/;
 const WORDS = /\s/;
 const roots = ["src/renderer/src/work", "src/main/server/work"];

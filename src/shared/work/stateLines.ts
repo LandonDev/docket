@@ -41,6 +41,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Saved in ${place}`", "answer"],
     ["Saved", "answer"],
     ["`Saved to ${host} ${whenWords(back.at, now)}`", "held === writes"],
+    // A copy whose edits go nowhere: the host's record of it (files/copyStays.ts), nothing sent.
+    ["`Edits stay in this tab, not on ${host}`", "local"],
     ["`Saved, uploading to ${service}…`", "answer"],
     ["`Saved to ${computer}. OneDrive uploads it`", "answer"],
   ],
@@ -166,6 +168,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Saved ${name}`", "answer"],
   ],
   [`${R}/sheets/imported.ts`]: [
+    ["Edits stay in this tab's Excel copy until you save back", "local"],
     ["`Saved ${done.path ? nameOf(done.path) : imported.name}`", "answer"],
   ],
   [`${R}/shell/ProjectSettings.tsx`]: [

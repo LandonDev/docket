@@ -21,6 +21,7 @@ import { versionOf, withFileLocks } from './write'
 import { startFileAutosaves } from './autosave'
 import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
+import { stayFollowed, staysLeft } from './copyStays'
 import { forgetUploads, lookAll, setUploadReader, uploadTiming, uploadWrote } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
@@ -52,6 +53,8 @@ let hold: Promise<void> | null
 let readGate: (() => Promise<void>) | null
 /** the next writeBack lands on the Mac and its answer is lost on the way back */
 let loseReply: boolean
+/** the Mac answers its file's reads with no version, as a build before versions did */
+let noVersion: boolean
 let offSaved: () => void
 
 beforeEach(() => {
@@ -70,6 +73,7 @@ beforeEach(() => {
   hold = null
   readGate = null
   loseReply = false
+  noVersion = false
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -85,6 +89,10 @@ beforeEach(() => {
           if (loseReply && verb === 'writeBack') {
             loseReply = false
             throw new Error('No answer: timed out')
+          }
+          if (noVersion && verb === 'filesRead') {
+            const { version: _, ...older } = out.result as { version?: string }
+            return older
           }
           return out.result
         }
@@ -1674,5 +1682,103 @@ describe('each copy its own file', () => {
     // Run again, it finds nothing to do.
     ownCopyFolders(box.ctx)
     expect(copyRecord(box.ctx, WS, MAC, plan.path)!.copy).toBe(p.copy)
+  })
+})
+
+describe('a copy that saves nowhere', () => {
+  const removedHooks = async (): Promise<void> => {
+    for (const items of box.removed.splice(0)) {
+      dropItemCopies(box.ctx, items)
+      await staysLeft(box.ctx, items)
+    }
+  }
+  const tabOf = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)
+  const touch = (path: string, bytes: string): void => {
+    writeFileSync(path, bytes)
+    shiftMtime(path, 5_000)
+  }
+  let off: () => void
+  beforeEach(() => {
+    Object.assign(box.ctx, { service: { internal: async () => ({}) } })
+    off = box.ctx.canvas.onReplaced((old, next) => stayFollowed(box.ctx, old, next))
+  })
+  afterEach(() => off())
+
+  it('a workbook whose computer named no version: edits stay in the tab, are kept on close and shown again, and nothing is sent', async () => {
+    noVersion = true
+    const { path, copy, tabId } = await openFar('Old.xlsx', 'one')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+    expect(await tabOf(tabId)).toMatchObject({ stays: { edited: false } })
+    touch(copy, 'mine')
+    expect((await tabOf(tabId))?.stays).toEqual({ edited: true })
+    await call('work.files.tabClose', { tabId })
+    await removedHooks()
+    expect(readFileSync(copy, 'utf8')).toBe('mine')
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name: 'Old.xlsx' })
+    expect(canvasSourcePath(again.item!.source)).toBe(copy)
+    expect(again.item!.kind).toBe('sheet')
+    expect(readFileSync(copy, 'utf8')).toBe('mine')
+    expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
+    // No way back was made up for it.
+    expect(writes()).toBe(0)
+    expect(readFileSync(path, 'utf8')).toBe('one')
+    expect((await tabOf(again.tabId!))?.back).toBeUndefined()
+  })
+
+  it('one he did not edit goes with its tab, and Discard drops one he did', async () => {
+    noVersion = true
+    const deck = await openFar('Old.pptx', 'deck')
+    await call('work.files.tabClose', { tabId: deck.tabId })
+    await removedHooks()
+    expect(existsSync(dirname(deck.copy))).toBe(false)
+    const book = await openFar('Old.xlsx', 'one')
+    touch(book.copy, 'mine')
+    // Discard is his press alone.
+    await expect(call('work.files.tabClose', { tabId: book.tabId, discard: true }, phone)).rejects.toThrow()
+    await call('work.files.tabClose', { tabId: book.tabId, discard: true })
+    await removedHooks()
+    expect(existsSync(dirname(book.copy))).toBe(false)
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: book.path }, name: 'Old.xlsx' })
+    expect(readFileSync(canvasSourcePath(again.item!.source)!, 'utf8')).toBe('one')
+  })
+
+  it('an .rtf opened as a document: his edits in the document made of it are kept on close and opened again', async () => {
+    const { path, copy, tabId, item } = await openFar('Notes.rtf', '{\\rtf1 notes}')
+    expect(item.kind).toBe('document')
+    // The importer makes the document beside the copy, and the tab follows it.
+    const doc = join(dirname(copy), 'Notes.tcdoc')
+    writeFileSync(doc, 'made')
+    const full = box.canvas.get(item.id)!
+    box.ctx.canvas.replace(full.sessionId, full.id, 'document', { at: 'file', host: HOST, path: doc }, 'Notes.tcdoc')
+    expect((await tabOf(tabId))?.stays).toEqual({ edited: false })
+    touch(doc, 'his words')
+    expect((await tabOf(tabId))?.stays).toEqual({ edited: true })
+    await call('work.files.tabClose', { tabId })
+    await removedHooks()
+    expect(readFileSync(doc, 'utf8')).toBe('his words')
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name: 'Notes.rtf' })
+    expect(again.item).toMatchObject({ kind: 'document' })
+    expect(canvasSourcePath(again.item!.source)).toBe(realpathSync(doc))
+    expect(writes()).toBe(0)
+  })
+
+  it('keeps a document whose words the service could not store', async () => {
+    const { tabId, copy, item } = await openFar('Notes.odt', 'odt')
+    const doc = join(dirname(copy), 'Notes.tcdoc')
+    writeFileSync(doc, 'made')
+    const full = box.canvas.get(item.id)!
+    box.ctx.canvas.replace(full.sessionId, full.id, 'document', { at: 'file', host: HOST, path: doc }, 'Notes.tcdoc')
+    Object.assign(box.ctx, { service: { internal: async () => Promise.reject(new Error('service down')) } })
+    await call('work.files.tabClose', { tabId })
+    await removedHooks()
+    expect(existsSync(doc)).toBe(true)
+  })
+
+  it('the old text copy stays read only, with no record', async () => {
+    noVersion = true
+    const { item, tabId } = await openFar('Agenda.md', 'agenda')
+    expect((await tabOf(tabId))?.stays).toBeUndefined()
+    const read = await call<{ locked?: string }>('work.files.read', { ref: item.source, itemId: item.id, offset: 0, length: 1000 })
+    expect(read.locked).toBeTruthy()
   })
 })
