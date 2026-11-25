@@ -411,7 +411,7 @@ interface Live {
 const order = (a: FileEntry, b: FileEntry): number => (b.changed ?? 0) - (a.changed ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
 
 /** His name as Work knows it, for `who: 'me'`. */
-function ownerName(ctx: Pick<WorkCtx, 'db'>): string | null {
+export function ownerName(ctx: Pick<WorkCtx, 'db'>): string | null {
   try {
     return ((ctx.db.prepare('SELECT value FROM settings WHERE key = ?').get(WORK_OWNER_NAME_SETTING) as { value?: string } | undefined)?.value ?? '').trim() || null
   } catch {

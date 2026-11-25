@@ -1,6 +1,7 @@
 import { shiftMtime } from '../../mtime.testkit'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { METHOD_CAPABILITY } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -26,7 +27,7 @@ import { libraryId, setCloudDir, setCopyAllowed, setRoots } from '../files/libra
 import { setVmCall } from '../vm/link'
 import { setVmState } from '../vm/office'
 import { modeOf, setLibraryDefault, setMode } from './memory'
-import { liveTiming } from './switch'
+import { liveTiming, sameName } from './switch'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
 vi.mock('../../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Plan.docx', data: Buffer.from('word export').toString('base64'), warnings: [] }) }))
@@ -488,6 +489,74 @@ describe('Live → Edit here', () => {
     await switching
     expect(String(failed)).toContain('has not come down from OneDrive yet')
     expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
+  /** A dummy Word file whose own properties name who saved it. */
+  const savedBy = (who: string, words: string): Uint8Array =>
+    zipSync(
+      {
+        'docProps/core.xml': strToU8(`<?xml version="1.0"?><cp:coreProperties xmlns:cp="x" xmlns:dc="y"><cp:lastModifiedBy>${who}</cp:lastModifiedBy></cp:coreProperties>`),
+        'word/document.xml': strToU8(`<w:document>${words}</w:document>`)
+      },
+      { level: 0 }
+    )
+  /** His name in Work, as Settings keeps it (the app's own table, which the rig's database lacks). */
+  const hisName = (name: string): void => {
+    box.db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    box.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('work.ownerName', name)
+  }
+
+  it("after typing, never takes a coauthor's save from between his last key and the press: it may not hold his words", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 80, look: 5 })
+    // Dana saved after his last key, before Word had sent his typing up: only her edit is in it.
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx after your last key, and nothing shows your typing in that save, so it stays live.')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
+  it('after typing, takes at once his own save from after his last key, under the name Office saved it by', async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    writeFileSync(path, savedBy('Landon Johnson', 'his typing'))
+    shiftMtime(path, -500)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toEqual({ is: 'done' })
+  })
+
+  it("after typing, takes a coauthor's save made after the press: Teams had his words by then", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    let done = false
+    const switching = set(tabId, { mode: 'here', typed: 12, quiet: 1000 }).then(() => (done = true))
+    await new Promise((settle) => setTimeout(settle, 40))
+    expect(done).toBe(false)
+    writeFileSync(path, savedBy('Dana Lee', 'her edit and his typing'))
+    shiftMtime(path, 1000)
+    await switching
+    expect((await itemOf(tabId)).source).toMatchObject({ ref: { kind: 'path', path } })
+  })
+
+  it("after typing, never takes a coauthor's save on his Mac from before the press, read there", async () => {
+    const { path, tabId } = await openFar('Plan.docx', 'word')
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 80, look: 5 })
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx after your last key')
+  })
+
+  it('reads one person by two names, by whole words', () => {
+    expect(sameName('Landon', 'Landon Johnson')).toBe(true)
+    expect(sameName('landon johnson', 'Johnson, Landon')).toBe(true)
+    expect(sameName('Landon', 'Landonia Smith')).toBe(false)
+    expect(sameName('Dana Lee', 'Landon')).toBe(false)
   })
 
   it('opens a far file as its copy again', async () => {

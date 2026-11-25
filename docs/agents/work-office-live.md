@@ -141,7 +141,13 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   whose time is after his last key; a sync of a save from before it, early or late, is not that change (by its bytes,
   so a restamp or a sync touching its time is no change either). The VM's guest gives no clock yet (its helper's
   `files.stat` would answer one, waiting for a VM YES): there the next change seen after the press counts, and a
-  change already down before the press is waited for, up to the 60 s. A window that does not
+  change already down before the press is waited for, up to the 60 s. A change the file names as someone else's save
+  (`cp:lastModifiedBy`, read where its bytes are on the holder's disk, here or in his desktop's `work.files.stat`
+  `by`, against his name in Work, `work.ownerName`, by whole words: `sameName`) is a coauthor's, which may have
+  reached Teams before his typing did: it counts only when saved after the press, once Word had let the view go with
+  his words saved. Before that it is not taken, and the refusal names whose save it was ("Dana Lee saved Plan.docx
+  after your last key, and nothing shows your typing in that save, so it stays live."). A file that names no one
+  (the VM, a cloud-only file), or no name of his set in Work, keeps the clock's rule alone. A window that does not
   say `quiet` waits for the file to differ from that kept version. Then it `reseat`s the file fresh. Nothing moved by then, nothing proves the file holds
   his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
   live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from
