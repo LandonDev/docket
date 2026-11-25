@@ -61,9 +61,11 @@ public enum ShellPose: Sendable, Hashable {
 
     /// Whether a write of the split's visibility is the person's, to keep as
     /// the remembered toggle: only in a split, and only once the pose has held
-    /// for `foldSettle`.
-    public static func keepsVisibilityWrite(pose: ShellPose, sincePoseChange: TimeInterval) -> Bool {
-        pose.isSplit && sincePoseChange >= foldSettle
+    /// for `foldSettle`, and the split has been on screen as long (`sinceShown`):
+    /// a split built or shown again in the overlay pose writes `.detailOnly` as
+    /// it appears (a tab first opened there), which is never his toggle.
+    public static func keepsVisibilityWrite(pose: ShellPose, sincePoseChange: TimeInterval, sinceShown: TimeInterval = .infinity) -> Bool {
+        pose.isSplit && sincePoseChange >= foldSettle && sinceShown >= foldSettle
     }
 }
 
@@ -119,11 +121,44 @@ extension ShellPose {
         return splitShows != shows
     }
 
+    /// How long the split's binding answers what the split itself shows before it answers the shell's again
+    /// (`SplitAnswer`): long enough for one update of the split to read it.
+    public static let echoTurn: TimeInterval = 0.1
+
+    /// How many times a stray split's check waits for the split to come on screen and settle before it gives up.
+    public static let settleTries = 10
+
     /// Inline titles only on the short stack.
     public var titleDisplay: TitleDisplay {
         if case .stack(short: true) = self { return .inline }
         return .large
     }
+}
+
+/// What the split's visibility binding answers. NavigationSplitView acts on a change of the value it reads, never on
+/// a value it already read: a tab built in the overlay pose (unfolded-portrait, tabletop) writes `.detailOnly` as it
+/// is built, that write is dropped as a fold's, and a binding that keeps answering `.all` is a value the split has
+/// already seen, so its list never comes back (iw12, Work's tab). Once a pose has settled and the split strays
+/// (`ShellPose.splitStrays`), the binding answers what the split shows for one turn (`ShellPose.echoTurn`), then the
+/// shell's again: a real change, which the split takes.
+public struct SplitAnswer: Sendable, Hashable {
+    /// The split's own value, answered for the one turn; nil: the shell's.
+    public private(set) var echo: Bool?
+
+    public init() {}
+
+    /// What the binding answers now, the shell showing `shows`.
+    public func answer(shows: Bool) -> Bool { echo ?? shows }
+
+    /// The pose has settled: when the split shows other than the shell, answer the split's own value now (true).
+    public mutating func strayed(pose: ShellPose, splitShows: Bool?, shows: Bool) -> Bool {
+        guard ShellPose.splitStrays(pose: pose, splitShows: splitShows, shows: shows), let splitShows else { return false }
+        echo = splitShows
+        return true
+    }
+
+    /// The turn is over: the shell's value again, which the split now reads as a change.
+    public mutating func settle() { echo = nil }
 }
 
 /// The split's sidebar column, the desktop's 260 px workspace column: 260

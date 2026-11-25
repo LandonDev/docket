@@ -109,4 +109,45 @@ import Testing
         #expect(columns.chat >= ThreadPose.minChat)
         #expect(ReadingMeasure.columnFrame(width: detail) == detail)
     }
+
+    // MARK: - a tab built in each Duo pose (iw12: Work's list missing in unfolded-portrait and tabletop)
+
+    /// The Duo's poses as the window reads them (IOS-DESIGN "Work in every pose"), and what each shows of a list.
+    static let duoPoses: [(name: String, horizontal: SizeClass, vertical: SizeClass, size: CGSize, pose: ShellPose)] = [
+        ("folded", .compact, .regular, CGSize(width: 466, height: 678), .stack(short: false)),
+        ("folded-landscape", .compact, .compact, CGSize(width: 678, height: 466), .stack(short: true)),
+        ("unfolded", .regular, .regular, CGSize(width: 951, height: 669), .split(sidebar: .tiled)),
+        ("half-open", .regular, .regular, CGSize(width: 951, height: 669), .split(sidebar: .tiled)),
+        ("unfolded-portrait", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .overlay)),
+        ("tabletop", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .overlay)),
+    ]
+
+    @Test(arguments: duoPoses.map(\.name))
+    func `a tab built in a pose hides no list of its own: its write is the split's, and a stray split is answered back`(_ name: String) throws {
+        let p = try #require(Self.duoPoses.first { $0.name == name })
+        let pose = ShellPose.of(horizontal: p.horizontal, vertical: p.vertical, size: p.size)
+        #expect(pose == p.pose)
+        // The tab is built (or picked) long after the pose settled, and its split writes `.detailOnly` as it appears,
+        // before it is on screen or within the settle: never his toggle, in any pose.
+        #expect(!ShellPose.keepsVisibilityWrite(pose: pose, sincePoseChange: 30, sinceShown: 0))
+        #expect(!ShellPose.keepsVisibilityWrite(pose: pose, sincePoseChange: 30, sinceShown: 0.2))
+        // The shell still shows the list (his toggle, `shown`), so the binding answers the split's own value for one
+        // turn, then the shell's: the change the split needs to draw the list again. A stack has no such column.
+        var answer = SplitAnswer()
+        let strays = answer.strayed(pose: pose, splitShows: false, shows: true)
+        #expect(strays == pose.isSplit)
+        #expect(answer.answer(shows: true) == !pose.isSplit)
+        answer.settle()
+        #expect(answer.answer(shows: true))
+        // Once the split has been on screen past the settle, his press in a split is kept, as before.
+        #expect(ShellPose.keepsVisibilityWrite(pose: pose, sincePoseChange: 30, sinceShown: ShellPose.foldSettle) == pose.isSplit)
+    }
+
+    @Test func `a split that shows what the shell shows is never answered back`() {
+        var answer = SplitAnswer()
+        let same = answer.strayed(pose: .split(sidebar: .overlay), splitShows: true, shows: true)
+        let unknown = answer.strayed(pose: .split(sidebar: .overlay), splitShows: nil, shows: true)
+        #expect(!same && !unknown)
+        #expect(answer.answer(shows: false) == false)
+    }
 }

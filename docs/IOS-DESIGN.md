@@ -4680,6 +4680,11 @@ it. What Work adds (the plan "All of Work on the iPhone", M0d):
   `ContentUnavailableView` when empty, one line with Try Again over what showed when
   a read fails, pull to refresh, the pick and the kept top row. Today is its first
   full user.
+- **A tab built in the overlay pose.** Unfolded-portrait and tabletop draw the list over the detail, his toggle as
+  he left it. A tab first built or picked there makes its split write `.detailOnly` as it appears; that write is the
+  split's own, never his toggle (`ShellPose.keepsVisibilityWrite`'s `sinceShown`), and since the split acts only on
+  a change of the value it reads, its binding answers that `.detailOnly` for one turn, then the shell's `.all`
+  (`SplitAnswer`, `ShellPose.echoTurn`), so the list comes back (iw12: Work's tab drew only "Nothing Selected").
 - **On a table.** Half open and turned tall (669 × 951), the fold's band lies across
   the middle: the thing stands on the upper half, its controls lie on the lower, and
   nothing sits in the band (`TabletopHalves`, client package). The simulator holds the

@@ -51,6 +51,19 @@ final class ShellNavigator {
     /// When the pose last changed: a write of the split's visibility inside
     /// `ShellPose.foldSettle` of it is the fold's, not the person's.
     @ObservationIgnored private(set) var poseChangedAt = Date.distantPast
+    /// When this tab's split last came on screen, and whether it is on screen: a write before it appears (as it is
+    /// built) or inside `ShellPose.foldSettle` of it is the split's own.
+    @ObservationIgnored private(set) var shownAt = Date.distantPast
+    @ObservationIgnored private(set) var splitOnScreen = false
+
+    /// The tab's split came on screen (built, or its tab picked again), or left it.
+    func splitAppeared(_ on: Bool) {
+        splitOnScreen = on
+        if on { shownAt = Date() }
+    }
+
+    /// How long the split has been on screen; 0 while it is not yet.
+    var sinceShown: TimeInterval { splitOnScreen ? Date().timeIntervalSince(shownAt) : 0 }
     /// The window's width, for the fold's place (`ShellSplit`).
     var windowWidth: CGFloat = 0
     /// Every host's lists, for placing a thread in its shell; the root sets it.
@@ -100,19 +113,38 @@ final class ShellNavigator {
 
     /// What the split last wrote of its own visibility, kept or not.
     @ObservationIgnored private var splitShows: Bool?
+    /// What the split's binding answers: the shell's `sidebarVisible`, or for one turn after it strayed the split's own
+    /// value, so the shell's reads as a change (`SplitAnswer`).
+    private(set) var splitAnswer = SplitAnswer()
+
+    /// The value the split's binding gives it.
+    var splitShown: Bool { splitAnswer.answer(shows: sidebarVisible) }
     /// Moves when the split shows other than `sidebarVisible` after a pose settles
     /// (`ShellPose.splitStrays`): the split reads it, so its binding is read again.
     private(set) var visibilityAsk = 0
+
+    /// When both the pose and the split's appearance have held `ShellPose.foldSettle`, and a beat more.
+    private var settledAt: Date {
+        max(poseChangedAt, splitOnScreen ? shownAt : Date()).addingTimeInterval(ShellPose.foldSettle + ShellPose.echoTurn)
+    }
 
     /// The split wrote its visibility; a dropped write that leaves it showing other than
     /// `sidebarVisible` is checked again once the pose has settled.
     func splitWrote(_ shown: Bool, kept: Bool) {
         splitShows = shown
         guard !kept, ShellPose.splitStrays(pose: pose, splitShows: shown, shows: sidebarVisible) else { return }
-        let due = poseChangedAt.addingTimeInterval(ShellPose.foldSettle + 0.1)
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(max(0, due.timeIntervalSinceNow)))
-            guard let self, ShellPose.splitStrays(pose: self.pose, splitShows: self.splitShows, shows: self.sidebarVisible) else { return }
+            // Once the pose and the split's own appearance have both settled; it may appear after this write (as it is built).
+            // A split that never comes on screen (its tab not picked) stops waiting after a few turns.
+            for _ in 0..<ShellPose.settleTries {
+                guard let wait = self?.settledAt.timeIntervalSinceNow, wait > 0 else { break }
+                try? await Task.sleep(for: .seconds(wait))
+            }
+            guard let self, self.splitAnswer.strayed(pose: self.pose, splitShows: self.splitShows, shows: self.sidebarVisible) else { return }
+            // One turn on the split's own value, then the shell's: a change the split takes.
+            self.visibilityAsk &+= 1
+            try? await Task.sleep(for: .seconds(ShellPose.echoTurn))
+            self.splitAnswer.settle()
             self.splitShows = self.sidebarVisible
             self.visibilityAsk &+= 1
         }

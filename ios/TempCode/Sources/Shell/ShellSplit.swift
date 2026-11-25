@@ -31,8 +31,10 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     private var sidebarColumn: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
 
     var body: some View {
-        // Read so a stray split (`ShellNavigator.visibilityAsk`) reads its binding again.
+        // Read so a stray split (`ShellNavigator.visibilityAsk`) reads its binding again: the split's own value for one
+        // turn, then the shell's (`SplitAnswer`).
         let _ = navigator.visibilityAsk
+        let _ = navigator.splitAnswer
         NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: compactColumn) {
             NavigationStack(path: $navigator.sidebarPath) {
                 sidebar()
@@ -65,6 +67,9 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         // The fold is the window's centre line; the split may start short of the window's leading edge.
         .onGeometryChange(for: CGFloat.self) { navigator.windowWidth / 2 - $0.frame(in: .global).minX } action: { foldX = $0 }
         .background { HingeWatch(halfOpen: $halfOpen) }
+        // Its own writes as it appears are never his toggle (`ShellPose.keepsVisibilityWrite`'s `sinceShown`).
+        .onAppear { navigator.splitAppeared(true) }
+        .onDisappear { navigator.splitAppeared(false) }
         #if DEBUG
         // The Duo proof's notes (the split of the tab on screen, Home's or Work's): the split's own
         // width, the column the sidebar and the detail share, and the sidebar's state.
@@ -96,10 +101,10 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     /// fold is held until the pose has held after it (`ShellNavigator.holdSidebarWrite`).
     private var visibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { navigator.sidebarVisible ? .all : .detailOnly },
+            get: { navigator.splitShown ? .all : .detailOnly },
             set: { value in
                 // A fold writes the split's visibility as it collapses and expands; only the person's toggle is kept.
-                let kept = ShellPose.keepsVisibilityWrite(pose: navigator.pose, sincePoseChange: Date().timeIntervalSince(navigator.poseChangedAt))
+                let kept = ShellPose.keepsVisibilityWrite(pose: navigator.pose, sincePoseChange: Date().timeIntervalSince(navigator.poseChangedAt), sinceShown: navigator.sinceShown)
                 #if DEBUG
                 if probed { LayoutProbe.note("sidebar.write", "\(value == .detailOnly ? "detailOnly" : "shown") \(kept ? "kept" : "dropped")") }
                 #endif
