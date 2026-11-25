@@ -173,6 +173,36 @@ describe("the conversation", () => {
     expect(screen.getByRole("log", { name: "Messages" })).toBeTruthy();
   });
 
+  /** Council round 12 (the walk): Retry keeps its line, spinning in place, until the reads answer. */
+  it("keeps This conversation did not load with Retry spinning while the reads are out, then the messages", () => {
+    const options: FixtureOptions = { fail: { chat: 1 } };
+    const data = mount(options, "c_dana");
+    options.loading = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("This conversation did not load")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
+    act(() => {
+      options.loading = false;
+      data.deliver("c_dana", "Dana Lee", "Any update?");
+    });
+    expect(screen.queryByText("This conversation did not load")).toBeNull();
+    expect(screen.getByRole("log", { name: "Messages" })).toBeTruthy();
+  });
+
+  it("keeps Messages did not load with Retry spinning while the list is read again", () => {
+    const options: FixtureOptions = { fail: { chats: 1 } };
+    const data = mount(options);
+    options.loading = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("Messages did not load")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
+    act(() => {
+      options.loading = false;
+      data.deliver("c_dana", "Dana Lee", "Any update?");
+    });
+    expect(screen.queryByText("Messages did not load")).toBeNull();
+  });
+
   it("says nothing of an older page, and says an arrival once, which rises in at the foot", async () => {
     const data = mount({}, "c_dana");
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");

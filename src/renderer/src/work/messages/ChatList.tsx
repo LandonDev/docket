@@ -4,7 +4,7 @@ import { useWindowed } from "work-kit/mail/lib/window";
 import { ChevronDown, Circle, Check, CircleDot, Search, X } from "../../chrome/icons";
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { reveal, yields } from "../../components/ui/reveal";
@@ -46,11 +46,14 @@ const LIST_EMPTY = "pointer-events-none absolute inset-0 max-w-none";
  * coming back takes the keys where they stood as it shows again rather than as it mounts.
  */
 export function ChatList({ workspaceId, job, narrow, shown = true, onOpen }: { workspaceId: string; job: string; narrow: boolean; shown?: boolean; onOpen: (chatId: string, messageId?: string) => void }) {
-  // Retry asks LifeOS afresh: the list's reads are mounted again. The press takes its own button away; the pane's keeper
-  // (keptKeys.tsx) holds the keys while the read runs and hands them to what lands: the rows or results, an empty list's
-  // action, or the search field when an empty list has none.
-  const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  // Retry asks LifeOS afresh: the list's reads are mounted again, the failed line kept with Retry spinning in place until
+  // they answer (`ListAgain`). The pane's keeper (keptKeys.tsx) holds the keys while the read runs and hands them to what
+  // lands: the rows or results, an empty list's action, or the search field when an empty list has none.
+  const [again, setAgain] = useState<{ attempt: number; title: string | null }>({ attempt: 0, title: null });
+  const retryWith = useCallback((title: string) => setAgain((a) => ({ attempt: a.attempt + 1, title })), []);
+  const settle = useCallback(() => setAgain((a) => (a.title === null ? a : { ...a, title: null })), []);
+  const retry = useMemo<ListAgain>(() => ({ retry: retryWith, retrying: again.title, settle }), [retryWith, again.title, settle]);
+  const attempt = again.attempt;
   const pane = useKeptKeys<HTMLDivElement>(landedIn);
   return (
     <div ref={pane} tabIndex={-1} data-list-pane className="focus-ring flex h-full min-h-0 flex-col">
@@ -68,7 +71,7 @@ function landedIn(pane: HTMLElement): HTMLElement | null {
 /** Whether the job has a chat source: yes, no, not known yet, or the sources did not load. */
 type Linked = boolean | null | "failed";
 
-function ListBody({ workspaceId, job, narrow, shown, onOpen, retry }: { workspaceId: string; job: string; narrow: boolean; shown: boolean; onOpen: (chatId: string, messageId?: string) => void; retry: () => void }) {
+function ListBody({ workspaceId, job, narrow, shown, onOpen, retry }: { workspaceId: string; job: string; narrow: boolean; shown: boolean; onOpen: (chatId: string, messageId?: string) => void; retry: ListAgain }) {
   const data = useMessagesData();
   const page = usePage(workspaceId);
   const sources = data.useSources();
@@ -102,8 +105,17 @@ function ListBody({ workspaceId, job, narrow, shown, onOpen, retry }: { workspac
   );
 }
 
-/** A failure's one action. */
-const retryOf = (retry: () => void) => ({ label: "Retry", onClick: retry });
+/** Retry on a failed read: asks afresh with the line's words kept (`retrying`) until the new read settles (`settle`). */
+type ListAgain = { retry: (title: string) => void; retrying: string | null; settle: () => void };
+
+/** A failure's one action: Retry, spinning while the read it asked is out. */
+const retryOf = (again: ListAgain, title: string, busy = false) => ({ label: "Retry", busy, onClick: () => again.retry(title) });
+
+/** Settles his Retry once the read it asked is no longer loading. */
+function useSettled(again: ListAgain, loading: boolean): void {
+  const { settle } = again;
+  useEffect(() => void (loading || settle()), [loading, settle]);
+}
 
 // ── The head ──
 
@@ -211,7 +223,7 @@ function ChatRows({
   narrow: boolean;
   shown: boolean;
   onOpen: (chatId: string) => void;
-  retry: () => void;
+  retry: ListAgain;
 }) {
   const data = useMessagesData();
   const chats = data.useChats(filter);
@@ -220,8 +232,11 @@ function ChatRows({
   const hadKeys = useRef(false);
   const heldKeys = useCallback(() => hadKeys.current, []);
   const onKeys = useCallback((on: boolean) => void (hadKeys.current = on), []);
+  useSettled(retry, chats.status === "loading");
+  // His Retry is out: the line he pressed it on stays, spinning, until the read answers.
+  if (retry.retrying && chats.status === "loading") return <ListEmpty title={retry.retrying} action={retryOf(retry, retry.retrying, true)} />;
   // A failure on his way back gives Retry the keys and keeps the way back for the list Retry brings.
-  if (chats.status === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry)} returns={{ workspaceId, shown, keep: true }} />;
+  if (chats.status === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry, "Messages did not load")} returns={{ workspaceId, shown, keep: true }} />;
   if (chats.status === "loading") return <RowBones />;
   const { rows } = chats.value;
   if (rows.length === 0) {
@@ -231,7 +246,7 @@ function ChatRows({
     // Held until the sources answer too, so an empty job says its true cause the first time; sources that did not load
     // leave the cause unknown, which is a list that did not load.
     if (linked === null) return <RowBones />;
-    if (linked === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry)} />;
+    if (linked === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry, "Messages did not load")} />;
     if (!linked) return <ListEmpty title={`No chat is linked to ${job}`} action={{ label: "Open Connections", onClick: openConnections }} />;
     return <ListEmpty title={`No messages in ${job} yet`} />;
   }
@@ -540,7 +555,7 @@ function ListEmpty({
   takesKeys,
 }: {
   title: string;
-  action?: { label: string; onClick: () => void };
+  action?: { label: string; onClick: () => void; busy?: boolean };
   returns?: { workspaceId: string; shown: boolean; keep?: boolean };
   /** Whether the list that was here held the keys when it went: the action takes them, so they never fall to the page. */
   takesKeys?: () => boolean;
@@ -563,8 +578,8 @@ function ListEmpty({
         <EmptyTitle>{title}</EmptyTitle>
         {action ? (
           <div className="absolute inset-x-0 top-full mt-4 flex justify-center">
-            <Button ref={button} size="sm" variant="secondary" className="pointer-events-auto" onClick={action.onClick}>
-              {action.label}
+            <Button ref={button} size="sm" variant="secondary" className="pointer-events-auto" disabled={action.busy} onClick={action.onClick}>
+              <BusyLabel busy={!!action.busy} label={action.label} />
             </Button>
           </div>
         ) : null}
@@ -610,11 +625,12 @@ function SearchHits({
   shown: boolean;
   onOpen: (chatId: string, messageId?: string) => void;
   onClear: () => void;
-  retry: () => void;
+  retry: ListAgain;
 }) {
   const data = useMessagesData();
   const now = data.useNow();
   const hits = data.useSearch(query);
+  useSettled(retry, hits.status === "loading");
   // A hit's conversation, where the list already holds it, lends the hit its face and its ink.
   const chats = data.useChats("all");
   const known = useMemo(() => new Map((chats.status === "ready" ? chats.value.rows : []).map((row) => [row._id, row])), [chats]);
@@ -651,7 +667,8 @@ function SearchHits({
     // The results drew afresh at their top: the hit he left (or the one now in its place) is brought into view.
     document.getElementById(hitId(target))?.scrollIntoView?.({ block: "nearest" });
   }, [shown, list, hits.status, workspaceId]);
-  if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry)} returns={{ workspaceId, shown, keep: true }} />;
+  if (retry.retrying && hits.status === "loading") return <ListEmpty title={retry.retrying} action={retryOf(retry, retry.retrying, true)} />;
+  if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry, "The search did not run")} returns={{ workspaceId, shown, keep: true }} />;
   if (!list) return <RowBones label="Loading search results" />;
   // Come back to no hits at all: the keys go to Clear search, which hands them to the search field.
   if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: onClear }} returns={{ workspaceId, shown }} />;

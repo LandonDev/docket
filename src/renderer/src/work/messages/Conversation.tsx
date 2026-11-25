@@ -33,20 +33,23 @@ function landedIn(pane: HTMLElement): HTMLElement | null {
 }
 
 export function Conversation(props: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
-  // Retry asks LifeOS afresh: the conversation's reads are mounted again. The press takes its own button away; the pane's
-  // keeper (keptKeys.tsx) holds the keys while the read runs and hands them to what lands: the next failure's Retry, the
-  // gone conversation's Back to Messages, the column, or the composer's field when there are no messages yet.
-  const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  // Retry asks LifeOS afresh: the conversation's reads are mounted again, the failed line kept with Retry spinning in place
+  // until they answer. The pane's keeper (keptKeys.tsx) holds the keys while the read runs and hands them to what lands:
+  // the next failure's Retry, the gone conversation's Back to Messages, the column, or the composer's field when there are
+  // no messages yet.
+  const [again, setAgain] = useState<{ attempt: number; title: string | null }>({ attempt: 0, title: null });
+  const retry = useCallback((title: string) => setAgain((a) => ({ attempt: a.attempt + 1, title })), []);
+  const settle = useCallback(() => setAgain((a) => (a.title === null ? a : { ...a, title: null })), []);
+  const attempt = again.attempt;
   const pane = useKeptKeys<HTMLDivElement>(landedIn);
   return (
     <div ref={pane} tabIndex={-1} data-conversation-pane className="focus-ring h-full min-h-0">
-      <ConversationBody key={attempt} {...props} retry={retry} />
+      <ConversationBody key={attempt} {...props} retry={retry} retrying={again.title} settle={settle} />
     </div>
   );
 }
 
-function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void; retry: () => void }) {
+function ConversationBody({ workspaceId, chatId, narrow, onBack, retry, retrying, settle }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void; retry: (title: string) => void; retrying: string | null; settle: () => void }) {
   const data = useMessagesData();
   const detail = data.useChat(chatId);
   const messages = data.useMessages(chatId);
@@ -122,6 +125,11 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const away = loaded ? fileWants.filter((want) => !loaded.some((m) => m._id === want.messageId)) : [];
 
   const failed = detail.status === "failed" || messages.status === "failed";
+  const reading = detail.status === "loading" || messages.status === "loading";
+  useEffect(() => void (reading || settle()), [reading, settle]);
+  // His Retry is out: the line he pressed it on stays, spinning, until the reads answer.
+  const pressed = retrying !== null && reading;
+  const failedTitle = pressed ? retrying : detail.status === "failed" ? "This conversation did not load" : "The messages did not load";
   const gone = detail.status === "ready" && !detail.value;
   // A conversation kept from a window before this one that is gone now: the list, quietly, never the gone state.
   const keptGone = gone && keptChatOf(workspaceId) === chatId;
@@ -132,8 +140,8 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
     <div data-conversation className="flex h-full min-h-0 flex-col">
       {/* The toolbar stays whatever came back, so under 640px the way back is always there. */}
       <Toolbar workspaceId={workspaceId} chatId={chatId} detail={detail.status === "ready" ? detail.value : undefined} loading={detail.status === "loading"} name={rowName} narrow={narrow} onBack={onBack} />
-      {failed ? (
-        <EmptyState title={detail.status === "failed" ? "This conversation did not load" : "The messages did not load"} action={{ label: "Retry", onClick: retry }} />
+      {failed || pressed ? (
+        <EmptyState title={failedTitle} action={{ label: "Retry", busy: pressed, onClick: () => retry(failedTitle) }} />
       ) : gone ? (
         <EmptyState title="This conversation is no longer here" action={{ label: "Back to Messages", onClick: onBack }} />
       ) : messages.status === "loading" || !chat ? (
