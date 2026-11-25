@@ -214,6 +214,14 @@ head, a 2 by 6 tick per note, segments per chapter), the 32px transport
 the notes by time on a 36/20/1fr grid. A click on a note goes back to its
 frame and shows its region.
 
+- **Stalls and scrubbing**: a `waiting` that lasts `STALL_SHOWN_MS` (300 ms,
+  lib/ease.ts) puts a 16px `Spinner` on a 32px round of `matte` at half at
+  the frame's centre, a status named "Loading the video", until the video
+  plays, a seek lands or it pauses; the transport keeps Pause. While he drags
+  the scrubber the head, the fill and the clock stand at the pointer's frame
+  at once, and after his release they stay there until the last seek lands,
+  so the head never trails the pointer or steps back.
+
 - **Selections for Ask**: Shift and drag along the track takes a stretch
   ("1:28 to 1:36, Skyblock trailer v3"); a drag on the picture takes a
   region ("Region at 0:41, …", or "Region of …" on an image). The chip's

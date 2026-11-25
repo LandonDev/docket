@@ -5,6 +5,8 @@ import { RowsMenu } from "../../chrome/menuRows";
 import { Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
+import { STALL_SHOWN_MS } from "../../lib/ease";
 import { Tip } from "../../components/tip";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { chordKey } from "../../lib/keys";
@@ -111,7 +113,7 @@ export function frameRatio(probe: MediaVersion["probe"] | undefined): number {
 /** The frame's box at a shape: as wide as the player, and never taller than 58% of the window. The bones take the same box. */
 const frameStyle = (ratio: number): CSSProperties => ({ aspectRatio: String(ratio), maxWidth: `calc(58vh * ${ratio})` });
 
-function Screen({ version, label, videoRef, region, selecting, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; onRegion?(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
+function Screen({ version, label, videoRef, region, selecting, stalled = false, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; stalled?: boolean; onRegion?(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
   return (
     <div className="min-w-0">
       {label ? <div className="mb-1 text-xs text-muted-foreground">{label}</div> : null}
@@ -122,6 +124,14 @@ function Screen({ version, label, videoRef, region, selecting, onRegion, onClick
       >
         <video ref={videoRef} playsInline preload="auto" className="absolute inset-0 size-full object-contain" />
         <RegionLayer shown={region} selecting={selecting} onRegion={onRegion} onClick={onClick} />
+        {/* A stall past STALL_SHOWN_MS: the spinner at the frame's centre on a round of the matte, whatever the picture under it. */}
+        {stalled ? (
+          <span data-media-stalled role="status" aria-label="Loading the video" className="pointer-events-none absolute inset-0 grid place-items-center">
+            <span className="grid size-8 place-items-center rounded-full bg-matte/50 text-(--paper)">
+              <Spinner className="size-4" />
+            </span>
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -171,6 +181,13 @@ export function Player({
   const [paused, setPaused] = useState(true);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
+  // The first screen waiting for its bytes past STALL_SHOWN_MS (`waiting`), until it plays, a seek lands or it pauses.
+  const [stalled, setStalled] = useState(false);
+  const stall = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(stall.current), []);
+  // While he drags the head: the frame under the pointer, drawn before the seek lands; the last seek asked.
+  const [scrub, setScrub] = useState<number | null>(null);
+  const seeking = useRef<Promise<void> | null>(null);
   const track = useRef<HTMLDivElement>(null);
   const frameBox = useRef<HTMLDivElement>(null);
   const table = tableOf(versions[0]);
@@ -197,8 +214,19 @@ export function Player({
     el.muted = live.current.muted;
     el.playbackRate = live.current.rate;
     if (i === 0) {
+      const going = (): void => {
+        clearTimeout(stall.current);
+        setStalled(false);
+      };
       el.onplay = () => setPaused(false);
-      el.onpause = () => setPaused(true);
+      el.onpause = () => (setPaused(true), going());
+      el.onwaiting = () => {
+        clearTimeout(stall.current);
+        stall.current = setTimeout(() => setStalled(true), STALL_SHOWN_MS);
+      };
+      el.onplaying = going;
+      el.onseeked = going;
+      el.onemptied = going;
     }
     // The element's own failure (a dropped connection, a frame it cannot decode) stalls the picture with no refusal, after
     // Play as before it: said on the same state line, and Retry loads it again where it stood.
@@ -322,7 +350,23 @@ export function Player({
 
   const ticks = notes.filter((n) => n.kind === "comment" && n.anchor.frame !== undefined && !n.parentId);
   const chapterStarts = chapters.map((c) => c.anchor.frame ?? 0).sort((a, b) => a - b);
-  const p = xOf(frame) * 100;
+  // The head, the fill and the clock follow the pointer while he drags; the frame on screen otherwise.
+  const shown = scrub ?? frame;
+  const p = xOf(shown) * 100;
+  /** A seek while he drags: the head is at `n` at once, and the last seek asked is the one his release waits on. */
+  const scrubTo = (n: number): void => {
+    setScrub(n);
+    seeking.current = seek(n);
+  };
+  /** His release: the head stays at the pointer until the last seek lands, so it never steps back to an older frame. */
+  const scrubDone = (): void => {
+    const last = seeking.current;
+    seeking.current = null;
+    if (!last) return setScrub(null);
+    void last.then(() => {
+      if (!drag.current) setScrub(null);
+    });
+  };
 
   return (
     <div
@@ -354,6 +398,7 @@ export function Player({
             videoRef={i === 0 ? refFirst : refSecond}
             region={i === 0 ? region : null}
             selecting={selecting}
+            stalled={i === 0 && stalled}
             // A compare takes no region: which cut it was drawn on would be lost on the chip.
             onRegion={
               versions.length > 1
@@ -375,8 +420,8 @@ export function Player({
         aria-label="Frame"
         aria-valuemin={0}
         aria-valuemax={Math.max(0, total - 1)}
-        aria-valuenow={frame}
-        aria-valuetext={clock(table ? frameStart(table, frame) - start : 0)}
+        aria-valuenow={shown}
+        aria-valuetext={clock(table ? frameStart(table, shown) - start : 0)}
         className="relative mt-1.5 flex h-6 cursor-default touch-none items-center"
         onPointerDown={(e) => {
           if (e.button !== 0 || !total) return;
@@ -386,7 +431,7 @@ export function Player({
           if (e.shiftKey) onStretch({ from: n, to: n }, null);
           else {
             onStretch(null, null);
-            void seek(n);
+            scrubTo(n);
           }
         }}
         onPointerMove={(e) => {
@@ -394,25 +439,29 @@ export function Player({
           if (!d) return;
           const n = frameFromX(e.clientX);
           if (d.shift) onStretch({ from: Math.min(d.anchor, n), to: Math.max(d.anchor, n) }, null);
-          else void seek(n);
+          else scrubTo(n);
         }}
         onPointerUp={(e) => {
           const d = drag.current;
           drag.current = null;
-          if (!d?.shift) return;
+          if (!d?.shift) return scrubDone();
           const n = frameFromX(e.clientX);
           const s = { from: Math.min(d.anchor, n), to: Math.max(d.anchor, n) };
           onStretch(s.to > s.from ? s : null, s.to > s.from ? stretchRect(s) : null);
         }}
-        onPointerCancel={() => (drag.current = null)}
-        onLostPointerCapture={() => (drag.current = null)}
+        onPointerCancel={() => ((drag.current = null), scrubDone())}
+        onLostPointerCapture={() => {
+          if (!drag.current) return;
+          drag.current = null;
+          scrubDone();
+        }}
       >
         <div className="relative h-1 flex-1">
           {chapterStarts.length ? (
             <div className="absolute inset-0 flex gap-0.5">
               {chapterStarts.map((from, i) => {
                 const to = chapterStarts[i + 1] ?? total;
-                const fill = frame >= to ? 100 : frame > from ? ((frame - from) / Math.max(1, to - from)) * 100 : 0;
+                const fill = shown >= to ? 100 : shown > from ? ((shown - from) / Math.max(1, to - from)) * 100 : 0;
                 return (
                   <span key={from} className="relative h-full min-w-0 overflow-hidden rounded-[2px] bg-(--track)" style={{ flex: `0 1 ${((to - from) / Math.max(1, total)) * 100}%` }}>
                     <span className="absolute inset-y-0 start-0 bg-foreground" style={{ width: `${fill}%` }} />
@@ -441,7 +490,7 @@ export function Player({
               style={{ left: `${xOf(stretch.from) * 100}%`, width: `${(xOf(stretch.to) - xOf(stretch.from)) * 100}%` }}
             />
           ) : null}
-          <span aria-hidden className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--background)]" style={{ left: `${p}%` }} />
+          <span aria-hidden data-media-head className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--background)]" style={{ left: `${p}%` }} />
         </div>
       </div>
 
@@ -454,7 +503,7 @@ export function Player({
             </Button>
           </Tip>
           <span className="mx-1 text-[13px] leading-5 whitespace-nowrap tabular-nums">
-            {clock(table ? frameStart(table, frame) - start : 0)} <span className="text-muted-foreground">/ {clock(table ? tableDuration(table) : 0)}</span>
+            {clock(table ? frameStart(table, shown) - start : 0)} <span className="text-muted-foreground">/ {clock(table ? tableDuration(table) : 0)}</span>
           </span>
           <Tip label="Comment at this frame">
             <Button variant="ghost" size="icon-xs" aria-label="Comment at this frame" disabled={!table} onClick={() => onComment(frame, track.current ? new DOMRect(track.current.getBoundingClientRect().left + xOf(frame) * track.current.getBoundingClientRect().width, track.current.getBoundingClientRect().top, 0, 24) : null)}>

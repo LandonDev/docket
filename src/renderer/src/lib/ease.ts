@@ -35,6 +35,10 @@ export const SCROLL_IDLE_MS = 900;
  *  scroll in motion keeps it and a click on a list that has stopped lands. */
 export const SCROLL_QUIET_MS = 80;
 
+/** How long a video may wait for its bytes before the frame says so with a spinner, in ms (work/media/Player.tsx): a
+ *  wait shorter than this is a hitch nobody needs told of. */
+export const STALL_SHOWN_MS = 300;
+
 /** The beat a working group holds open after its work moved on, in ms, so
  *  its last step's settle shows before it folds (transcript/ActionGroup.tsx). */
 export const FOLD_HOLD_MS = 600;

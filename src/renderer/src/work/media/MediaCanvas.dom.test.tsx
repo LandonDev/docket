@@ -41,9 +41,10 @@ vi.mock("../../lib/connection", async (original) => {
   };
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (l: (x: typeof link, e: string) => void) => (l(link, "added"), () => undefined) } };
 });
-const seeks = vi.hoisted(() => ({ to: [] as number[], step: 0 }));
+const seeks = vi.hoisted(() => ({ to: [] as number[], step: 0, hold: false }));
 vi.mock("./seek", () => ({
-  seekToFrame: async (_v: unknown, _t: unknown, n: number) => (seeks.to.push(n), n),
+  // `hold`: a seek still out, as one over the link is while he drags.
+  seekToFrame: (_v: unknown, _t: unknown, n: number) => (seeks.to.push(n), seeks.hold ? new Promise<number>(() => undefined) : Promise.resolve(n)),
   stepFrame: async () => seeks.step,
   watchFrames: () => () => undefined,
 }));
@@ -98,6 +99,7 @@ beforeEach(async () => {
   host.viewFails = null;
   host.hold = false;
   seeks.to = [];
+  seeks.hold = false;
   HTMLElement.prototype.setPointerCapture ??= () => undefined;
   HTMLMediaElement.prototype.pause = () => undefined;
   HTMLMediaElement.prototype.load = () => undefined;
@@ -107,6 +109,41 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe("the media canvas", () => {
+  it("shows the spinner over the frame once a stall lasts 300ms, until it plays again; a short wait shows nothing", async () => {
+    await mount();
+    const video = document.querySelector("video")!;
+    const frame = document.querySelector("[data-media-frame]")!;
+    fireEvent(video, new Event("waiting"));
+    await new Promise((done) => setTimeout(done, 150));
+    expect(frame.querySelector("[data-media-stalled]")).toBeNull();
+    fireEvent(video, new Event("playing"));
+    await new Promise((done) => setTimeout(done, 300));
+    expect(frame.querySelector("[data-media-stalled]")).toBeNull();
+    // A real stall: the spinner after 300ms, at the frame's centre, and gone once a seek lands or it plays.
+    fireEvent(video, new Event("waiting"));
+    await waitFor(() => expect(frame.querySelector("[data-media-stalled] [data-slot=spinner]")).not.toBeNull());
+    expect(frame.querySelector("[data-media-stalled]")!.getAttribute("role")).toBe("status");
+    fireEvent(video, new Event("seeked"));
+    await waitFor(() => expect(frame.querySelector("[data-media-stalled]")).toBeNull());
+  });
+
+  it("draws the scrubber's head and the clock at the pointer's frame while he drags, before the seek lands", async () => {
+    await mount();
+    const slider = screen.getByRole("slider", { name: "Frame" });
+    slider.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 24);
+    seeks.hold = true;
+    fireEvent.pointerDown(slider, { button: 0, clientX: 250, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 500, pointerId: 1 });
+    // Frame 1608 of 3216 (half way, 1:07), though no seek has landed.
+    expect(slider.getAttribute("aria-valuenow")).toBe("1608");
+    const head = slider.querySelector<HTMLElement>("[data-media-head]")!;
+    expect(parseFloat(head.style.left)).toBeCloseTo(50, 0);
+    expect(document.querySelector("[data-media-player]")!.textContent).toContain("1:07");
+    // Let go with the seek still out: the head stays at the pointer, never back to the frame before.
+    fireEvent.pointerUp(slider, { clientX: 500, pointerId: 1 });
+    expect(slider.getAttribute("aria-valuenow")).toBe("1608");
+  });
+
   it("draws a vertical short's loading frame at its own shape, the box the player's frame takes, and the transport at its height", async () => {
     const tall: MediaVersion = { ...V3, probe: { ...V3.probe!, width: 1080, height: 1920 } };
     // Still making the copy this viewer plays: the bones, at the probe's shape.
