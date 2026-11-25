@@ -156,6 +156,17 @@ describe('opening and reading', () => {
     expect(formParses.count).toBe(parses + 1)
   })
 
+  it('a copy gone before the form is read after the answer throws nowhere: no whole view comes, and the run sees no uncaught error', async () => {
+    const id = openItem(put('fw9.pdf', W9))
+    const from = pushes.length
+    const first = await call<PdfView>('work.pdf.open', { itemId: id })
+    expect(first.formPending).toBe(true)
+    // The item's copy goes (its tab closed, its folder removed) before the form read runs on the next turn.
+    for (const f of readdirSync(canvasItemDir(dir, 't1', id))) if (f.startsWith('kept-')) unlinkSync(join(canvasItemDir(dir, 't1', id), f))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(pushes.slice(from).some((p) => (p as { push?: string; view?: PdfView }).push === 'work.pdf' && !(p as { view: PdfView }).view.formPending)).toBe(false)
+  })
+
   it('opens a PDF item: its name, size, rev and the form\'s fields with labels from the file or its field names', async () => {
     const id = openItem(put('fw9.pdf', W9))
     const view = await openWhole(id)

@@ -145,8 +145,10 @@ const formRead = (stamp: FileStamp): boolean => formsRead.has(`${stamp.path}:${s
 export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean; first?: boolean } = {}): Promise<PdfView> {
   const snap = await snapshot(ctx, item, o)
   if (o.first && !formRead(snap.stamp)) {
+    // formOf reads the file before its promise exists: a copy gone by now (the item closed) must not throw past this.
     setImmediate(() => {
-      void formOf(snap.stamp)
+      void Promise.resolve()
+        .then(() => formOf(snap.stamp))
         .then(() => announce(ctx, item))
         .catch(() => undefined)
     })

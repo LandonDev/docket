@@ -5,7 +5,7 @@ const toasts = vi.hoisted(() => ({ said: [] as { kind: string; title: string; de
 vi.mock("../../components/ui/toaster", () => ({
   loadToast: async () => ({
     success: (title: string, o?: { description?: string }) => void toasts.said.push({ kind: "success", title, ...(o?.description ? { description: o.description } : {}) }),
-    error: (title: string) => void toasts.said.push({ kind: "error", title }),
+    error: (title: string, o?: { description?: string }) => void toasts.said.push({ kind: "error", title, ...(o?.description ? { description: o.description } : {}) }),
   }),
 }));
 const { importDone, importNotice, importRows, runImport } = await import("./imported");
@@ -68,14 +68,14 @@ describe("what a press answers", () => {
     expect(importDone(xls, "again", {})).toEqual({ title: "Read Ledger.xls again" });
   });
 
-  it("one toast a press: the save, or the host's own words for why not; it never rejects", async () => {
+  it("one toast a press: the save, or the act's line with the host's own words for why not under it; it never rejects", async () => {
     await runImport(async () => ({ path: "/w/Ledger.xls" }), xls, "back");
     await runImport(async () => Promise.reject(new Error("Ledger.xls changed since this copy was made. Save as Excel to keep your edits.")), xls, "back");
     await runImport(async () => Promise.reject(new Error("")), xls, "xlsx");
     await new Promise((r) => setTimeout(r, 0));
     expect(toasts.said).toEqual([
       { kind: "success", title: "Saved Ledger.xls" },
-      { kind: "error", title: "Ledger.xls changed since this copy was made. Save as Excel to keep your edits." },
+      { kind: "error", title: "Couldn't save back", description: "Ledger.xls changed since this copy was made. Save as Excel to keep your edits." },
       { kind: "error", title: "Couldn't save as Excel" },
     ]);
   });
