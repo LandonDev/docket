@@ -95,7 +95,7 @@ describe("notes he types", () => {
     expect(await session.keepNotes()).toBe(false);
     host.refuse = undefined;
     const line = session.saved(() => undefined);
-    expect(line).toMatchObject({ state: "conflict", detail: "The deck changed while you typed", actions: [{ id: "replace", label: "Replace" }, { id: "reload", label: "Reload" }] });
+    expect(line).toMatchObject({ state: "conflict", detail: "Notes on slide 3 changed while you typed", actions: [{ id: "replace", label: "Replace" }, { id: "reload", label: "Reload" }] });
     // A close is refused, with his words kept; another key keeps them his and sends nothing.
     await expect(session.flush()).rejects.toThrow("Your notes changed elsewhere");
     session.typeNotes(3, "Mine, more", "Say hello");
@@ -124,6 +124,27 @@ describe("notes he types", () => {
     expect(session.saved(() => undefined).state).toBe("saved");
     await session.flush();
     expect(edits()).toHaveLength(1);
+  });
+
+  it("in conflict on two slides: the line names one, and its Reload or Replace touches that slide's draft alone", async () => {
+    const { host, session, edits, store } = setUp();
+    host.refuse = "The deck changed while this was being made. Nothing was written; look at it again.";
+    store.view({ ...store.get().view!, slides: store.get().view!.slides.map((s) => ({ ...s, notes: `Changed in PowerPoint ${s.id}` })) });
+    session.typeNotes(3, "Mine on three", "Say hello");
+    session.typeNotes(5, "Mine on five", "");
+    expect(await session.keepNotes()).toBe(false);
+    host.refuse = undefined;
+    expect(session.saved(() => undefined).detail).toBe("Notes on slide 3 changed while you typed");
+    session.saved(() => undefined).actions!.find((a) => a.id === "reload")!.run();
+    await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
+    // Slide 5's words stay in its field, and the line now names it.
+    expect(session.pendingNotes(5)).toBe("Mine on five");
+    expect(session.saved(() => undefined)).toMatchObject({ state: "conflict", detail: "Notes on slide 5 changed while you typed" });
+    const now = store.get().view!.slides.find((s) => s.id === 5)!.notes;
+    session.saved(() => undefined).actions!.find((a) => a.id === "replace")!.run();
+    await vi.waitFor(() => expect(session.notesPending(5)).toBe(false));
+    expect(edits().slice(2)).toEqual([[{ op: "notes", slide: 5, text: "Mine on five", was: now }]]);
+    expect(session.saved(() => undefined).state).toBe("saved");
   });
 
   it("refused on one slide stay that slide's when he types in another's: the field, the line and Retry keep them", async () => {

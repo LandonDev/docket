@@ -1805,8 +1805,10 @@ last took from the field while that send is on its way, refused or still the
 deck's notes, else what the field began from, so his words typed again over
 another save that came into the field since go over that save, `notesBase`); the host
 refuses one whose slide's notes changed since (`handEdit`, the box's
-`CHANGED_WHILE`): the save line says "The deck changed while you typed"
-with Replace and Reload (`notesConflict`), and nothing of his notes is sent
+`CHANGED_WHILE`): the save line names the slide, "Notes on slide 3 changed
+while you typed", with Replace and Reload for that slide's notes alone
+(`notesConflict`; another slide's in conflict stay in its field and draft and
+are named next), and nothing of his notes is sent
 until he presses one: another key keeps them his and sends nothing, and a
 close is refused (`CloseRefused`), as M1 did for files. Replace writes them
 over the notes as they are now (`retryNotes`), the other save kept in the
@@ -1831,7 +1833,7 @@ one still waiting or on its way. Each slide's notes are their own: the send
 on its way, the refusal and the draft on this computer are kept by slide
 (`notesSending`, `notesRefused`, `notesJournals`, one journal twin a slide),
 so his key in one slide's notes clears only that slide's refusal, and Retry
-or a close sends every slide's refused notes. The line names a conflict
+or a close sends every slide's refused notes (Replace one slide's). The line names a conflict
 first, else the last refusal still standing (`refusedLine`). A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.

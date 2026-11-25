@@ -124,8 +124,11 @@ export interface HandState {
   notesFailure?: string | null;
   /** when his last key in the notes field was, while those notes wait for the pause; nothing is on its way for them yet */
   notesEditedAt?: number | null;
-  /** his notes were refused because they changed elsewhere: Replace or Reload, and nothing of them is sent until he presses one */
-  notesConflict?: boolean;
+  /**
+   * the slide whose notes were refused because they changed elsewhere, named in the line: Replace or Reload for that
+   * slide alone, and nothing of them is sent until he presses one
+   */
+  notesConflict?: number | null;
   /** counts his notes' Reloads: the field takes the deck's notes again at each */
   notesReload?: number;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
@@ -841,11 +844,14 @@ export class HandSession {
     return ok;
   }
 
-  /** The line's word for the notes refused now: a conflict first, as it alone needs Replace or Reload; else the last. */
+  /** The line's word for the notes refused now: a conflict first, as it alone needs Replace or Reload, naming its slide; else the last. */
   private refusedLine(): Pick<HandState, "notesFailure" | "notesConflict"> {
-    const all = [...this.notesRefused.values()];
-    const shown = all.find((r) => r.conflict) ?? all.at(-1);
-    return { notesFailure: shown ? (shown.conflict ? CONFLICT_WORD : shown.said) : null, notesConflict: !!shown?.conflict };
+    const all = [...this.notesRefused];
+    const [slide, shown] = all.find(([, r]) => r.conflict) ?? all.at(-1) ?? [];
+    if (!shown || slide === undefined) return { notesFailure: null, notesConflict: null };
+    if (!shown.conflict) return { notesFailure: shown.said, notesConflict: null };
+    const number = this.store.get().view?.slides.find((s) => s.id === slide && s.tint !== "del")?.number;
+    return { notesFailure: number ? `Notes on slide ${number} changed while you typed` : CONFLICT_WORD, notesConflict: slide };
   }
 
   /** Where one slide's notes are kept on this computer: its own draft, beside the box's and every other slide's. */
@@ -862,24 +868,27 @@ export class HandSession {
   }
 
   /**
-   * Every slide's refused notes sent once more (Retry, or Replace over notes changed elsewhere), over the notes as the
-   * deck has them now, with the notes waiting for the pause; resolves as `keepNotes` does.
+   * Every slide's refused notes sent once more (Retry, or a close), or one slide's alone (Replace over notes changed
+   * elsewhere), over the notes as the deck has them now, with the notes waiting for the pause; resolves as `keepNotes` does.
    */
-  retryNotes(): Promise<boolean> {
-    const again = [...this.notesRefused].map(([slide, refused]) => {
+  retryNotes(only?: number): Promise<boolean> {
+    const again = [...this.notesRefused].filter(([slide]) => only === undefined || slide === only).map(([slide, refused]) => {
       if (refused.conflict) this.notesHeld.set(slide, this.deckNotes(slide) ?? this.notesHeld.get(slide) ?? "");
+      this.notesRefused.delete(slide);
       return { slide, text: refused.text };
     });
-    this.notesRefused.clear();
     if (again.length) this.set(this.refusedLine());
     const sends = again.map(({ slide, text }) => this.sendNotes(slide, text, this.notesHeld.get(slide) ?? ""));
     return Promise.all([this.keepNotes(), ...sends]).then((all) => all.every(Boolean));
   }
 
-  /** Reload over notes changed elsewhere: his words in those slides go, and their fields take the deck's notes as they are now. */
-  reloadNotes(): Promise<void> {
+  /**
+   * Reload over one slide's notes changed elsewhere: his words there go, and its field takes the deck's notes as they
+   * are now. Another slide's refused notes stay in its field and draft, for their own press.
+   */
+  reloadNotes(only: number): Promise<void> {
     for (const [slide, refused] of this.notesRefused) {
-      if (!refused.conflict) continue;
+      if (!refused.conflict || slide !== only) continue;
       this.notesRefused.delete(slide);
       this.notesHeld.delete(slide);
       this.notesJournals.get(slide)?.clear();
@@ -960,8 +969,8 @@ export class HandSession {
     // A save that did not go in is said at once, never as saving: his words wait in the box, and Retry sends them again.
     if (failure) return { state: "conflict", detail: notSavedWords(failure.message), actions: [{ id: "retry", label: "Retry", run: () => void this.commit() }] };
     const { notesFailure, notesConflict } = this.state;
-    if (notesFailure && notesConflict)
-      return { state: "conflict", detail: notesFailure, actions: [{ id: "replace", label: "Replace", run: () => void this.retryNotes() }, { id: "reload", label: "Reload", run: () => void this.reloadNotes() }] };
+    if (notesFailure && notesConflict != null)
+      return { state: "conflict", detail: notesFailure, actions: [{ id: "replace", label: "Replace", run: () => void this.retryNotes(notesConflict) }, { id: "reload", label: "Reload", run: () => void this.reloadNotes(notesConflict) }] };
     if (notesFailure) return { state: "conflict", detail: notSavedWords(notesFailure), actions: [{ id: "retry", label: "Retry", run: () => void this.retryNotes() }] };
     if (saving) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
