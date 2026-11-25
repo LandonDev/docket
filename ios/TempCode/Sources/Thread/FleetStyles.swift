@@ -38,11 +38,14 @@ extension View {
     /// route names a host; a host gone since the tap shows one line.
     func fleetDestinations(registry: ClientRegistry) -> some View {
         navigationDestination(for: AgentDetailRoute.self) { route in
-            if let client = registry.client(route.environmentId) {
-                AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd)
-            } else {
-                FleetEmpty(text: "This host is no longer paired")
+            Group {
+                if let client = registry.client(route.environmentId) {
+                    AgentDetailScreen(client: client, agentId: route.agentId, parentCwd: route.parentCwd)
+                } else {
+                    FleetEmpty(text: "This host is no longer paired")
+                }
             }
+            .sidebarButtonPage()
         }
     }
 }

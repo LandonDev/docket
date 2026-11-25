@@ -67,7 +67,7 @@ struct ItemPage: View {
             HostClicker(client: client, itemId: deck.id) { clicking = nil }
         }
         .navigationDestination(item: $previewing) { item in
-            if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source) }
+            if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source).sidebarButtonPage() }
         }
         .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}

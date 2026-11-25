@@ -45,14 +45,17 @@ struct FleetView: View {
         .scrollBounceBehavior(.basedOnSize)
         .fleetDestinations(registry: app.registry)
         .navigationDestination(item: $launchPush) { push in
-            switch push {
-            case .list:
-                SubagentListScreen(client: client, rootSessionId: sessionId)
-            case .detail(let route):
-                if let host = app.registry.client(route.environmentId) {
-                    AgentDetailScreen(client: host, agentId: route.agentId, parentCwd: route.parentCwd)
+            Group {
+                switch push {
+                case .list:
+                    SubagentListScreen(client: client, rootSessionId: sessionId)
+                case .detail(let route):
+                    if let host = app.registry.client(route.environmentId) {
+                        AgentDetailScreen(client: host, agentId: route.agentId, parentCwd: route.parentCwd)
+                    }
                 }
             }
+            .sidebarButtonPage()
         }
         .onChange(of: TestHooks.open == nil ? 0 : fleet.agents.count, initial: true) {
             guard launchPush == nil, let open = TestHooks.open else { return }

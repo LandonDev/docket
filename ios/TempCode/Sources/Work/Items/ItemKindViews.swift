@@ -516,6 +516,7 @@ struct HistoryItemView: View {
             .listStyle(.plain)
             .navigationDestination(item: $testCompare) { versionId in
                 CompareView(client: client, source: source, versionId: versionId, versions: ids, names: history.names, restored: reload)
+                    .sidebarButtonPage()
             }
             .task {
                 #if DEBUG

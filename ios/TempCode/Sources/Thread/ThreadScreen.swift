@@ -161,7 +161,7 @@ struct ThreadScreen: View {
             Text(failure ?? "")
         }
         .navigationDestination(isPresented: $showAgents) {
-            SubagentListScreen(client: client, rootSessionId: sessionId)
+            SubagentListScreen(client: client, rootSessionId: sessionId).sidebarButtonPage()
         }
         .sheet(isPresented: $starting) {
             if let session {
@@ -170,7 +170,7 @@ struct ThreadScreen: View {
                 }
             }
         }
-        .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false) }
+        .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false).sidebarButtonPage() }
         // Return flow (thread 14): the Start sheet survives a kill.
         .onChange(of: starting) { NavigationMemory.rememberSheet(starting ? .startBuild(environmentId: client.environment.id, sessionId: sessionId) : nil) }
         .onChange(of: router.restoredSheet, initial: true) {
@@ -200,21 +200,26 @@ struct ThreadScreen: View {
         .toolbar(pose.isSplit ? .automatic : .hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .tcNavigationBar()
-        .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route) }
-        .navigationDestination(for: HtmlRenderRoute.self) { route in HtmlRenderScreen(render: route.render, client: client) }
+        .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route).sidebarButtonPage() }
+        .navigationDestination(for: HtmlRenderRoute.self) { route in HtmlRenderScreen(render: route.render, client: client).sidebarButtonPage() }
         .navigationDestination(for: ReportRoute.self) { route in
             ReportScreen(route: route)
                 .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: route.sessionId))
+                .sidebarButtonPage()
         }
         .navigationDestination(for: ThreadScreenRoute.self) { route in
             ThreadScreen(client: route.environmentId.flatMap { app.registry.client($0) } ?? client, sessionId: route.sessionId, targetSeq: route.targetSeq)
+                .sidebarButtonPage()
         }
         .navigationDestination(item: $launchPush) { push in
-            switch push {
-            case .diff(let route): DiffScreen(client: client, route: route)
-            case .page(let route): HtmlRenderScreen(render: route.render, client: client)
-            case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
+            Group {
+                switch push {
+                case .diff(let route): DiffScreen(client: client, route: route)
+                case .page(let route): HtmlRenderScreen(render: route.render, client: client)
+                case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
+                }
             }
+            .sidebarButtonPage()
         }
         .onChange(of: TestHooks.open == nil ? "" : "\(watched.fold.lastSeq)|\(watched.rows.count)|\(watched.isLoading)", initial: true) {
             guard launchPush == nil, let open = TestHooks.open, targetSeq == nil else { return }

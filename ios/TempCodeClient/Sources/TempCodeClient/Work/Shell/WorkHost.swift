@@ -394,7 +394,14 @@ public final class WorkHost: CaptureHost {
         #endif
         // The hosts relayed through this one ride its key: they go too (the registry answers which).
         Self.carrierRefused?(environment.id)
+        // The LifeOS sessions this key opened end: an open job's view stops reading, and a late token or answer lands
+        // nowhere.
+        Self.accessLost?(environment.id)
     }
+
+    /// The app's answer to a host's access going (its key refused, Work off, the host removed, its key replaced): every
+    /// LifeOS session made through that host ends and is forgotten, so nothing reads on under the old access.
+    public static var accessLost: (@MainActor (String) -> Void)?
 
     /// The app's answer to a host's LifeOS signing out: its sessions end, and Today forgets what they gave.
     public static var heardLifeosSignOut: (@MainActor (String) -> Void)?
@@ -406,6 +413,7 @@ public final class WorkHost: CaptureHost {
     /// out lands nowhere), and its kept rows on disk, with any write still queued for it (the fence moves, open:
     /// the key stands).
     private func wentOff() {
+        Self.accessLost?(environment.id)
         clear()
         files.revoked()
         files.kept?.drop(.workOff(host: environment.id))

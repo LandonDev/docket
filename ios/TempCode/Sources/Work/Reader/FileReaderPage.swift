@@ -147,7 +147,7 @@ struct FileReaderPage: View {
                 HostClicker(client: client, itemId: item.id) { clicking = false }
             }
             .navigationDestination(isPresented: $previewing) {
-                if let live, let source = client.work.canvas.preview(for: live) { PagePreview(client: client, item: live, source: source) }
+                if let live, let source = client.work.canvas.preview(for: live) { PagePreview(client: client, item: live, source: source).sidebarButtonPage() }
             }
             .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}

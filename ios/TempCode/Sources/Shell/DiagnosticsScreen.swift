@@ -130,10 +130,10 @@ struct DiagnosticsScreen: View {
         .animation(Motion.rowAppear, value: failure)
         .navigationDestination(item: $running) { key in
             if let client = model.registry.client(key.environmentId) {
-                ThreadScreen(client: client, sessionId: key.sessionId, performsLaunchAction: false)
+                ThreadScreen(client: client, sessionId: key.sessionId, performsLaunchAction: false).sidebarButtonPage()
             }
         }
-        .navigationDestination(isPresented: $listing) { WorkListFixture(check: listCheck) }
+        .navigationDestination(isPresented: $listing) { WorkListFixture(check: listCheck).sidebarButtonPage() }
         .onChange(of: listCheck.report) { _, report in
             guard report != nil else { return }
             listing = false

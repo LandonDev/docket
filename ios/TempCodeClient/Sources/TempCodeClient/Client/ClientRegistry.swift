@@ -86,11 +86,17 @@ public final class ClientRegistry {
 
     private func runSync() async {
         let wanted = wantedEnvironments()
-        for environment in wanted where environment.isRelayed {
-            // Pair Again on the carrier: the lane needs the new key. A new name alone is a relabel.
-            guard let existing = clients[environment.id], !existing.environment.sameLane(as: environment) else { continue }
+        for environment in wanted {
+            // Pair Again: the live client takes the new key. A relayed lane follows its carrier's key; a host paired
+            // directly is rebuilt when its key, its caps or its generation changed (a new name alone is a relabel), so
+            // no control reads the old caps and no open socket carries the old key. What the old key's sessions read
+            // ends with it (`WorkHost.accessLost`); the new client's Work host purges the old generation's rows.
+            guard let existing = clients[environment.id] else { continue }
+            let changed = environment.isRelayed ? !existing.environment.sameLane(as: environment) : !existing.environment.sameKey(as: environment)
+            guard changed else { continue }
             await existing.stop()
             clients[environment.id] = nil
+            WorkHost.accessLost?(environment.id)
         }
         relabel(wanted)
         prepare()
@@ -217,6 +223,8 @@ public final class ClientRegistry {
         #if canImport(SQLite3)
         for host in [id] + carried { WorkCacheStore.purge(.hostRemoved(host: host), close: true) }
         #endif
+        // Their LifeOS sessions end now: an open job's Mail never reads on through a host he forgot.
+        for host in [id] + carried { WorkHost.accessLost?(host) }
         await sync()
     }
 

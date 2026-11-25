@@ -83,6 +83,12 @@ final class WorkLifeHost: LifeActions {
     /// screen shows it. Its stores stop and forget every query and value (a late answer has nowhere to land), the
     /// token goes, and it reads as signed out until a fresh session is made (the host saying LifeOS connected again).
     func signedOut() {
+        end(state: "signed-out", words: Self.words(.host("signed-out")))
+    }
+
+    /// The session ends: its stores stop and forget every query and value, a token or sign-in still out is dropped
+    /// (`session`), the token goes, and the phase says why.
+    private func end(state: String?, words: String) {
         session &+= 1
         signIn?.cancel()
         signIn = nil
@@ -97,8 +103,8 @@ final class WorkLifeHost: LifeActions {
         sheet = nil
         authenticated = false
         tokens.forget()
-        refusedState = "signed-out"
-        phase = .unavailable(Self.words(.host("signed-out")))
+        refusedState = state
+        phase = .unavailable(words)
     }
 
     /// Every session made of one host: the every-job one and each job's.
@@ -106,7 +112,27 @@ final class WorkLifeHost: LifeActions {
         for life in hosts.values where life.client.environment.id == host { life.signedOut() }
     }
 
+    /// The host's access went (`WorkHost.accessLost`: its key refused, Work off, the host removed, its key replaced):
+    /// every session made through it ends at once, an open job's view among them, and is forgotten, so the next
+    /// lookup makes a fresh one on the client that holds the key now, and nothing hands the old store or token on.
+    static func accessLost(host: String) {
+        for (key, life) in hosts where life.client.environment.id == host {
+            life.end(state: nil, words: "This phone can no longer read LifeOS through \(life.client.environment.name).")
+            hosts[key] = nil
+        }
+    }
+
     private static var hosts: [String: WorkLifeHost] = [:]
+
+    /// The kept session for `key`, only while it was made on this very client: a client rebuilt for a new key (Pair
+    /// Again, a re-add) never gets the old one's store or token; that one ends here.
+    private static func live(_ key: String, _ client: EnvironmentClient) -> WorkLifeHost? {
+        guard let host = hosts[key] else { return nil }
+        if host.client === client { return host }
+        host.end(state: nil, words: "This phone can no longer read LifeOS through \(host.client.environment.name).")
+        hosts[key] = nil
+        return nil
+    }
 
     /// His own draft read back on the first session this run made for its host (`WorkHost.mailDraftTruth`): any job's
     /// LifeOS session reads its compose rows. With none made yet it throws, and the press stays Checking until one is.
@@ -118,7 +144,7 @@ final class WorkLifeHost: LifeActions {
     /// The workspace's host, made on first use.
     static func of(_ client: EnvironmentClient, workspace: WorkspaceMeta) -> WorkLifeHost {
         let key = "\(client.environment.id):\(workspace.id)"
-        if let host = hosts[key] { return host }
+        if let host = live(key, client) { return host }
         let host = WorkLifeHost(client: client, workspace: workspace)
         hosts[key] = host
         return host
@@ -127,7 +153,7 @@ final class WorkLifeHost: LifeActions {
     /// The every-job host on the host that signs the whole session, made on first use.
     static func every(_ client: EnvironmentClient) -> WorkLifeHost {
         let key = "every:\(client.environment.id)"
-        if let host = hosts[key] { return host }
+        if let host = live(key, client) { return host }
         let host = WorkLifeHost(every: client)
         hosts[key] = host
         return host

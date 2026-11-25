@@ -220,6 +220,8 @@ struct RootView: View {
             // a request) can send on a fresh launch; the owner's check reads each host's live key after its answer.
             MessagesPresses.shared.attach { registry.client($0) }
             MailPresses.shared.attach()
+            // A host's access going ends every LifeOS session made through it, whether or not Today ever started.
+            WorkHost.accessLost = { WorkLifeHost.accessLost(host: $0) }
             RequestPresses.attach { registry.client($0) }
             PressGates.shared.attach { registry.client($0) }
             // The record's last word before any request leaves: the app in front, the link, the key he pressed under.

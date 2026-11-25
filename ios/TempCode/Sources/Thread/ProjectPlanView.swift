@@ -78,7 +78,7 @@ struct ProjectPlanView: View {
             Task { await model.revise(client, sessionId: sessionId, ask: ask) }
         }
         .navigationDestination(item: $pushed) { route in
-            ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false)
+            ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false).sidebarButtonPage()
         }
     }
 

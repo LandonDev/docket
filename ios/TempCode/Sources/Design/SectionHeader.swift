@@ -19,8 +19,11 @@ struct SectionHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            // The label ink, as the Outbox's band titles: inside a list's section header the hierarchical meta step
+            // nests under the header's own dimming and drew at about 1.9:1 on the band (council 13, Opus 5.1);
+            // `Color(.label)` reads 18.8:1 in light and 17:1 in dark on `Surface.chrome` (appearance-phone.md).
             Text(title)
-                .textStep(.meta, weight: .semibold)
+                .textStep(.meta, weight: .semibold, tint: Color(.label))
                 .lineLimit(1)
             if worktree {
                 MetaGlyph("arrow.triangle.pull", weight: .semibold, label: "Worktree")

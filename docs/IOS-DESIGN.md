@@ -4541,8 +4541,12 @@ sidebar arrives with the expansion and never flickers in. The sidebar button
 is the shell's own (`sidebar.leading`, Show Sidebar and Hide Sidebar, where
 the system's toggle sat: at the trailing edge of the sidebar's bar while it
 shows, else at the leading edge of the detail's), on every page of each
-column, the root and each page pushed over it (`SidebarButtonItem`, which
-also removes the system's toggle there), not the system's: its action is his toggle at once
+column, the root, each page the shell pushes over it and each page a screen
+pushes itself (Page Preview, a thread's diff, report, HTML render, agents
+list and subagent, a version compare, an agent's detail, Diagnostics:
+`.sidebarButtonPage()`, which finds its column in the environment the split
+sets on each column's stack) (`SidebarButtonItem`, which also removes the
+system's toggle there), not the system's: its action is his toggle at once
 (`ShellNavigator.pressSidebar`, `ShellPose.isHisToggle(.button, …)`), even in
 the half second after a tab appears, while the split's own writes to the
 binding are still sorted by their timing. The m0 part's

@@ -55,8 +55,25 @@ final class OutboxPresses {
     /// The last cancel's line when it names this item (the app left the screen, a link or key lost), for the surface
     /// the press was made on: a thread's held line says it as the list's capsule does.
     func notice(for entry: OutboxModel.Entry) -> String? {
-        guard let notice = wait.notice, notice.presses.contains(where: { $0.id == entry.id || $0.payload.entries.contains { $0.id == entry.id } }) else { return nil }
-        return notice.line
+        notices.line(for: entry.id)?.text
+    }
+
+    /// The wait's cancel, taken into the notices at once with its own id and the items it names, before another cancel
+    /// can write over it: two links lost together leave two lines, each said in turn.
+    private func collect() {
+        guard let notice = wait.notice else { return }
+        let refs = Set(notice.presses.flatMap { [$0.id] + $0.payload.entries.map(\.id) })
+        notices.result(notice.line, refs: refs)
+        wait.clearNotice()
+    }
+
+    /// Each line VoiceOver has heard, by id: two copies of the capsule on screen speak it once.
+    @ObservationIgnored private var spoken: Set<String> = []
+
+    /// A line's clock started where it shows: VoiceOver hears it once, as it hears the countdown before it.
+    func speak(_ line: OutboxNotices.Line) {
+        guard spoken.insert(line.id).inserted else { return }
+        AccessibilityNotification.Announcement(line.text).post()
     }
 
     /// Why this item did not go in his last press on many, while it still waits.
@@ -282,17 +299,18 @@ final class OutboxPresses {
     /// TempCode left the screen: nothing waiting goes; each item comes back, and the capsule says so.
     func leftScreen() {
         wait.leftScreen()
+        collect()
         schedule()
     }
 
     /// The line with this id was shown its whole time: it goes, and the next waiting one shows.
     func clearNotice(_ id: String) {
-        if !notices.seen(id), id == shownNotice?.id { wait.clearNotice() }
+        notices.seen(id)
     }
 
-    /// What the capsule says when nothing counts: a refusal, an unseen result, or the wait's last cancel.
+    /// What the capsule says when nothing counts: a refusal, then each unseen result or cancel, oldest first.
     var shownNotice: OutboxNotices.Line? {
-        notices.shown(wait: wait.notice.map { .init(id: "wait:" + $0.presses.map(\.id).joined(separator: ","), text: $0.line) })
+        notices.shown(wait: nil)
     }
 
     var noticeLine: String? { shownNotice?.text }
@@ -315,6 +333,8 @@ final class OutboxPresses {
 
     /// One sleep, to the counting press's deadline.
     private func schedule() {
+        // Any cancel the wait made since is its own line before anything else can write over it.
+        collect()
         timer?.cancel()
         guard let deadline = wait.deadline else { return }
         timer = Task { [weak self] in
@@ -328,6 +348,7 @@ final class OutboxPresses {
         guard let counting = wait.counting else { return }
         guard let client = clients(counting.host) else {
             wait.drop(counting.id, why: .notPaired, now: Self.now)
+            collect()
             return schedule()
         }
         let held: HeldPress
@@ -344,7 +365,7 @@ final class OutboxPresses {
             rev: client.work.items.first { OutboxModel.key($0.ref) == key }.map { Double($0.updatedAt) },
             key: PressGates.shared.liveKey(counting.host)
         )
-        guard let press = wait.due(now: Self.now, check: check) else { return schedule() }
+        guard let press = wait.due(now: Self.now, check: check) else { collect(); return schedule() }
         Task {
             let item = held.entry.item
             do {
@@ -389,6 +410,7 @@ final class OutboxPresses {
         let hosts = group.hosts.compactMap(clients)
         guard hosts.count == group.hosts.count else {
             wait.drop(counting.id, why: .notPaired, now: Self.now)
+            collect()
             return schedule()
         }
         let listed = Set(hosts.flatMap { client in client.work.items.map { "\(client.environment.id):\(OutboxModel.key($0.ref))" } })
@@ -398,7 +420,7 @@ final class OutboxPresses {
             rev: group.entries.contains { listed.contains($0.id) } ? counting.rev : nil,
             key: Self.keys(group.hosts)
         )
-        guard let press = wait.due(now: Self.now, check: check) else { return schedule() }
+        guard let press = wait.due(now: Self.now, check: check) else { collect(); return schedule() }
         // The key each host was pressed under, in the press's order (`keys`).
         let frozen = Dictionary(zip(group.hosts, (press.key ?? "").split(separator: ";", omittingEmptySubsequences: false).map(String.init)), uniquingKeysWith: { first, _ in first })
         Task {
@@ -447,6 +469,7 @@ final class OutboxPresses {
         for host in hosts {
             guard let client = clients(host) else {
                 wait.linkLost(host: host, now: Self.now)
+                collect()
                 continue
             }
             if !Self.linked(client) {
@@ -454,6 +477,7 @@ final class OutboxPresses {
             } else if !client.work.may(.outboxSend) || !client.work.may(.outboxDecide) && groupWaits(on: host) {
                 wait.keyLost(host: host, now: Self.now)
             }
+            collect()
         }
         schedule()
         watchLinks()
@@ -503,6 +527,8 @@ struct OutboxUndoInset: ViewModifier {
             // drops a turn later) starts its own clock, so a line carried there never stays for good.
             .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)" }) {
                 guard enabled, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
+                // Spoken once as its clock starts: a sum, a refusal or a cancel, as the countdown was.
+                presses.speak(shown)
                 try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
                 guard !Task.isCancelled else { return }
                 presses.clearNotice(shown.id)

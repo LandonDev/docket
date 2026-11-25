@@ -1102,7 +1102,14 @@
   queries and forgets the token, and a session counter drops a sign-in or token still out), and
   `TodayStore.lifeosSignedOut` takes that host's narrowed sectors (`TodayLifeInput.narrowed`), or
   every LifeOS row when it held the whole session. A mail thread open over a signed-out session keeps
-  the last store and scene its screen was given (`LifeHostEnvironment`) until it closes. A session the host refused keeps the state it refused with (`WorkLifeHost.refusedState`):
+  the last store and scene its screen was given (`LifeHostEnvironment`) until it closes. Pair Again on a host paired directly stores a new generation when the key's id or caps changed
+  (`PairedEnvironment.replacing`; the same key pasted again keeps the old one) and rebuilds the live
+  client on it (`ClientRegistry.runSync`, `sameKey`), so no control reads the old caps; the new
+  client's Work host then purges the old generation's rows, those its session supplied under other
+  hosts' keys among them. Any loss of a host's access (its key refused, Work off, the host removed,
+  its key replaced) ends every LifeOS session made through it at once, an open job's view among
+  them (`WorkHost.accessLost`, `WorkLifeHost.accessLost`), and a session is only ever handed to the
+  client object that made it. A session the host refused keeps the state it refused with (`WorkLifeHost.refusedState`):
   Today says it as the desktop's `downOf` does, a LifeOS still connecting as a wait, and makes the
   session again once the host says its LifeOS connected. A purge made while the file would not open (a locked launch)
   is kept in the defaults (`WorkCachePurges`) and run when the file next opens, before any write. A refused host is said
@@ -1787,9 +1794,15 @@ The rules every press below keeps (fix round 2):
   group's refusal is said there too. A press on many's result is kept until a
   capsule in front, with no countdown over it, has shown it for a toast's
   time; a countdown hides it without spending it, and a later result waits
-  behind it (`OutboxNotices`). A host whose answer was lost counts as
-  "checking N" in the sum. At accessibility sizes the capsule's line wraps
-  and Undo sits under it.
+  behind it (`OutboxNotices`). Each cancel of the wait (the app left, a link
+  or key lost, a host not paired) is taken into the same queue at once with
+  its own id and the items it names, so two links lost together leave two
+  lines, said in turn, and a thread's held line reads its item's own
+  (`OutboxPresses.collect`). VoiceOver hears each line once as its clock
+  starts, a sum, a refusal or a cancel, as it hears the countdown
+  (`OutboxPresses.speak`). A host whose answer was lost counts as "N
+  checking" in the sum. At accessibility sizes the capsule's line wraps and
+  Undo sits under it.
 - **A locked launch keeps the file.** `work-presses.json` holds ids, refs
   and times, under protection until the first unlock. A file that is there
   and will not read is never taken for none: no press leaves and nothing is

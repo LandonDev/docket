@@ -54,6 +54,23 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
         return a == b
     }
 
+    /// The same key, as far as what it may do and what was read under it goes: the origin, the key's id and caps, the
+    /// generation and the carrier. A name, a relabel or a platform learned from a hello is not a new key.
+    public func sameKey(as other: PairedEnvironment) -> Bool {
+        origin == other.origin && keyId == other.keyId && caps == other.caps && addedAt == other.addedAt && via == other.via
+    }
+
+    /// This pairing stored over `old`, the same host paired again: a key of another id or other caps starts a new
+    /// generation (`addedAt`, the cache's key generation), so what the old key read goes; the same key pasted again keeps
+    /// the old generation and its rows. The person's name for the host and its platform carry over either way.
+    public func replacing(_ old: PairedEnvironment) -> PairedEnvironment {
+        var kept = self
+        if keyId == old.keyId && caps == old.caps { kept.addedAt = old.addedAt }
+        kept.platform = kept.platform ?? old.platform
+        kept.customName = kept.customName ?? old.customName
+        return kept
+    }
+
     /// The environment id the `KeyStore` holds the key under: the carrier's for a relayed host.
     public var keyOwner: String { via ?? id }
 

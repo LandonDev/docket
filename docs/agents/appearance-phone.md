@@ -28,6 +28,15 @@ written once in docs/IOS-DESIGN.md "Work on the phone" ("Inks"). Rows 3 and 13
 (the stamp and meta steps everywhere else) stay the owner's call.
 Parse-checked on the box; not shot.
 
+Every other band title (`SectionHeader`, Design/SectionHeader.swift): Today's
+sections, Money's, the Work list's Jobs, Files', Connections', Review's and
+the comment sheets', and Home's, search's and the thread boards'. The same
+nesting drew them at about RGB 179,178,184 on the 243,242,248 band in light,
+about 1.9:1 (council 13, Opus 5.1, read from iw12's ax-01 and m5-04). The
+title now draws in `Color(.label)` like the Outbox's, at its own step (meta
+semibold). A branch name beside it stays tertiary, as a stamp. Parse-checked
+on the box; not shot.
+
 ## Left for the owner
 
 The rest comes from three things, and each is a design choice about the

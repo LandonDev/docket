@@ -153,11 +153,8 @@ public final class EnvironmentStore {
 
     private func upsert(_ environment: PairedEnvironment) {
         if let index = environments.firstIndex(where: { $0.id == environment.id }) {
-            var kept = environment
-            kept.addedAt = environments[index].addedAt
-            kept.platform = kept.platform ?? environments[index].platform
-            kept.customName = kept.customName ?? environments[index].customName
-            environments[index] = kept
+            // Pair Again: a new key is a new generation (`PairedEnvironment.replacing`).
+            environments[index] = environment.replacing(environments[index])
         } else {
             environments.append(environment)
         }

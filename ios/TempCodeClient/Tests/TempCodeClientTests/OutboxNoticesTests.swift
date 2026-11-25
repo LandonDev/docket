@@ -27,4 +27,17 @@ import Testing
         #expect(notices.results.count == 1)
     }
 
+    @Test func `two cancels that land together are both kept, each its own and about its own items`() {
+        var notices = OutboxNotices()
+        // Box and Mac both lost while their Sends wait: two cancels before any capsule draws.
+        notices.result("Not sent: the link to Box was lost", refs: ["box:a"])
+        notices.result("Not sent: the link to Mac was lost", refs: ["mac:b"])
+        let first = notices.shown(wait: nil)
+        #expect(first?.text == "Not sent: the link to Box was lost")
+        #expect(notices.line(for: "mac:b")?.text == "Not sent: the link to Mac was lost")
+        #expect(notices.line(for: "box:a")?.text == "Not sent: the link to Box was lost")
+        notices.seen(first!.id)
+        #expect(notices.shown(wait: nil)?.text == "Not sent: the link to Mac was lost")
+        #expect(notices.line(for: "box:a") == nil)
+    }
 }

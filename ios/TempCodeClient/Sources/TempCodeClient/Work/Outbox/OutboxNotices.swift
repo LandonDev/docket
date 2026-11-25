@@ -7,10 +7,13 @@ public struct OutboxNotices: Sendable, Hashable {
     public struct Line: Sendable, Hashable, Identifiable {
         public let id: String
         public let text: String
+        /// The items it is about (entry ids), for the surface the press was made on: a thread's held line.
+        public let refs: Set<String>
 
-        public init(id: String, text: String) {
+        public init(id: String, text: String, refs: Set<String> = []) {
             self.id = id
             self.text = text
+            self.refs = refs
         }
     }
 
@@ -27,10 +30,16 @@ public struct OutboxNotices: Sendable, Hashable {
         refusal = text.map { Line(id: fresh(), text: $0) }
     }
 
-    /// A press on many answered: its sum waits its turn to be shown.
-    public mutating func result(_ text: String) {
+    /// A press on many answered, or a wait was cancelled (the app left, a link or key lost): its line waits its turn
+    /// to be shown, each its own, so two cancels that land together are both said.
+    public mutating func result(_ text: String, refs: Set<String> = []) {
         guard !text.isEmpty else { return }
-        results.append(Line(id: fresh(), text: text))
+        results.append(Line(id: fresh(), text: text, refs: refs))
+    }
+
+    /// The newest unseen line about this item, for its own surface.
+    public func line(for ref: String) -> Line? {
+        results.last { $0.refs.contains(ref) }
     }
 
     /// The line the capsule shows now: a refusal first, then the oldest unseen result, then the wait's own notice.

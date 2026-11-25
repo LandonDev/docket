@@ -290,7 +290,7 @@ public struct GroupOutcome: Sendable, Hashable {
         let queued = discard ? 0 : done.count(where: { $0 == "Queued in LifeOS" })
         let went = done.count - queued
         let (yes, no) = discard ? ("Discarded", "not discarded") : ("Sent", "not sent")
-        let line = [went > 0 ? "\(yes) \(went)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, unknown > 0 ? "\(unknown) may have gone" : nil, failed > 0 ? "\(failed) \(no)" : nil, checking > 0 ? "checking \(checking)" : nil]
+        let line = [went > 0 ? "\(yes) \(went)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, unknown > 0 ? "\(unknown) may have gone" : nil, failed > 0 ? "\(failed) \(no)" : nil, checking > 0 ? "\(checking) checking" : nil]
             .compactMap { $0 }.joined(separator: ", ")
         return line.prefix(1).uppercased() + line.dropFirst()
     }

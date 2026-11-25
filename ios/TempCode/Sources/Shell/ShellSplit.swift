@@ -44,6 +44,8 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                     .modifier(SidebarButtonItem(navigator: navigator, column: .sidebar))
                     .navigationDestination(for: Route.self) { destination($0).modifier(SidebarButtonItem(navigator: navigator, column: .sidebar)) }
             }
+            // Every page of the column, a screen's own pushes among them, finds its column here (`sidebarButtonPage`).
+            .environment(\.sidebarButtonColumn, SidebarButtonColumn(navigator: navigator, column: .sidebar))
             .navigationSplitViewColumnWidth(min: sidebarColumn.min, ideal: sidebarColumn.ideal, max: sidebarColumn.max)
             #if DEBUG
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if probed { LayoutProbe.note("sidebar.width", String(Int($0.rounded()))) } }
@@ -68,6 +70,7 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                     HostDetailView(environmentId: $0.environmentId).modifier(SidebarButtonItem(navigator: navigator, column: .detail))
                 }
             }
+            .environment(\.sidebarButtonColumn, SidebarButtonColumn(navigator: navigator, column: .detail))
         }
         // A LifeOS screen's mail thread is pushed onto the split's stack, hoisted out of LifeKitUI's own.
         .lifeHostEnvironment()
@@ -190,6 +193,37 @@ struct SidebarButtonItem: ViewModifier {
                 }
             }
     }
+}
+
+/// A column of the split, as each page in it reads it: the pages a screen pushes itself (Page Preview, a thread's diff,
+/// report, HTML render, agents list, a version compare, an agent's detail) wear the shell's sidebar button too, where
+/// the system's toggle stood on every page of the column (council 13, Opus 2.1).
+struct SidebarButtonColumn {
+    let navigator: ShellNavigator
+    let column: SidebarButtonItem.Column
+}
+
+extension EnvironmentValues {
+    @Entry var sidebarButtonColumn: SidebarButtonColumn? = nil
+}
+
+/// The shell's sidebar button on a page a screen pushes itself, in the column it is pushed in; nothing outside a split's
+/// column (a sheet, a stack of its own).
+private struct SidebarButtonPage: ViewModifier {
+    @Environment(\.sidebarButtonColumn) private var column
+
+    func body(content: Content) -> some View {
+        if let column {
+            content.modifier(SidebarButtonItem(navigator: column.navigator, column: column.column))
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    /// The shell's sidebar button on a page this screen pushes itself (`SidebarButtonPage`).
+    func sidebarButtonPage() -> some View { modifier(SidebarButtonPage()) }
 }
 
 #if DEBUG
