@@ -450,7 +450,7 @@ describe("the window", () => {
     const ends = (name: string): string | null => places.getByRole("button", { name }).querySelector("[data-middle-cut]")?.lastElementChild?.textContent ?? null;
     await waitFor(() => expect(ends("Purdue Esports Staff")).toBe("Staff"));
     expect(ends("Purdue Esports Club")).toBe("Club");
-    // A name that shares no start is cut at its end, as before.
+    // A short name that shares no start is cut at its end, as before (a long one keeps its last word: TabName.dom.test.tsx).
     expect(ends("Dummy Esports")).toBeNull();
   });
 

@@ -61,3 +61,22 @@ describe("a tab's name among tabs that share a start", () => {
     expect(screen.getByText("Events").className.split(" ")).toContain("block");
   });
 });
+
+describe("a name cut where it differs", () => {
+  it("keeps a lone long name's last word, and leaves a short or one-word name to its end's cut", async () => {
+    const { lastWord } = await import("./TabName");
+    expect(lastWord("TempCode proof Walk")).toBe("TempCode proof ".length);
+    expect(lastWord("Dummy Esports")).toBeNull();
+    expect(lastWord("Supercalifragilisticexpialidocious")).toBeNull();
+  });
+
+  it("cuts a tail too long for its room at its start, its words kept in order, and keeps the start its least room", async () => {
+    const { MiddleCut } = await import("./TabName");
+    const { container } = render(<MiddleCut text="General › TempCode proof archive 2027" keep={8} startRoom="4em" tail />);
+    const [, start, end] = [...container.querySelector("[data-middle-cut]")!.children] as HTMLElement[];
+    expect(start!.style.minWidth).toBe("4em");
+    expect(end!.style.maxWidth).toBe("calc(100% - 4em)");
+    expect(end!.getAttribute("dir")).toBe("rtl");
+    expect(end!.querySelector("bdi")!.textContent).toBe("› TempCode proof archive 2027");
+  });
+});

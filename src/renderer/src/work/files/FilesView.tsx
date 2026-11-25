@@ -36,7 +36,7 @@ import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, placeIcon, type MoveTarget } from "./MoveDialog";
-import { cutsMiddle, MiddleCut } from "../canvas/TabName";
+import { cutsMiddle, lastWord, MiddleCut } from "../canvas/TabName";
 import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
@@ -269,7 +269,7 @@ export function SidebarView({
   const named = [...(model.folder ? [workspace.name] : []), ...model.places.map((p) => (p.is === "team" ? p.name : p.row.name)), ...model.drives.map((d) => placePage(d).name), ...model.projects.map((p) => placePage(p).name)];
   const ends = new Map(tabEnds(named).map((keep, i) => [named[i]!, keep]));
   const row = (page: FilePage, icon: ReactNode, on: boolean, down = false, count?: number): ReactNode => (
-    <SideRow key={page.name + JSON.stringify(page.at)} icon={icon} name={page.name} keep={ends.get(page.name)} on={on} down={down} {...(count ? { count } : {})} onClick={() => onGo(page)} onAuxClick={() => onNewTab(page)} />
+    <SideRow key={page.name + JSON.stringify(page.at)} icon={icon} name={page.name} keep={ends.get(page.name) ?? lastWord(page.name)} on={on} down={down} {...(count ? { count } : {})} onClick={() => onGo(page)} onAuxClick={() => onNewTab(page)} />
   );
   const lensIcon = (kind: PlaceCopy["place"]["kind"]): ReactNode => (kind === "mail" ? <Mail className="size-4" /> : kind === "made" ? <Ask className="size-4" /> : <Trash2 className="size-4" />);
   /** A place that is itself and not a folder of a disk: standing on it, or on a folder of it. */
@@ -285,7 +285,7 @@ export function SidebarView({
         <SideRow
           icon={icon}
           name={name}
-          keep={ends.get(name)}
+          keep={ends.get(name) ?? lastWord(name)}
           on={on}
           down={down}
           {...(listed ? { fold: { open, toggle: () => tree!.toggle(key, !open) }, target: { key, to: { copy, at: page.at, name } }, drop } : {})}

@@ -1331,6 +1331,10 @@ describe("Search", () => {
     // Where keeps the folder it lies in; the place and the folders above give way first.
     const where = row("Practice handout.txt").querySelector<HTMLElement>("[data-middle-cut]")!;
     expect(where.lastElementChild!.textContent).toBe("› Handouts");
+    // The place keeps 4em, so it is named; a folder too long for its room is cut at its start, keeping the end that differs.
+    expect((where.children[1] as HTMLElement).style.minWidth).toBe("4em");
+    expect(where.lastElementChild!.getAttribute("dir")).toBe("rtl");
+    expect(where.lastElementChild!.querySelector("bdi")!.getAttribute("dir")).toBe("ltr");
     // The Mac answered by its libraries' names alone, and the line says so beside the computer it could not reach.
     expect(document.querySelector("[data-files-note]")?.textContent).toBe("Folders on Purdue laptop were not searchedSearched by name only: Esports.");
     fireEvent.doubleClick(row("Practice handout.txt"));

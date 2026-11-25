@@ -276,7 +276,8 @@ export function WhereWords({ where }: { where: NonNullable<FileEntry["where"]> }
   const keep = whereKeep(where);
   return (
     <TruncateTip text={words}>
-      {keep === null ? <span className="block min-w-0 truncate">{words}</span> : <MiddleCut text={words} keep={keep} />}
+      {/* The place keeps 4em, so it is named; the folder the file lies in keeps its own end, the part that differs. */}
+      {keep === null ? <span className="block min-w-0 truncate">{words}</span> : <MiddleCut text={words} keep={keep} startRoom="4em" tail />}
     </TruncateTip>
   );
 }

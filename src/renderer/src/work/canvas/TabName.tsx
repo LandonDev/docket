@@ -9,19 +9,30 @@ import type { Ref } from "react";
  * and the start, down to that 1.5em, its ellipsis and perhaps a letter, takes the rest. Its tip (`useTruncated`)
  * sees either part cut.
  */
-export function MiddleCut({ text, keep, ref, className = "", startClass = "", endClass = "" }: { text: string; keep: number; ref?: Ref<HTMLSpanElement>; className?: string; startClass?: string; endClass?: string }) {
+export function MiddleCut({ text, keep, ref, className = "", startClass = "", endClass = "", startRoom, tail = false }: { text: string; keep: number; ref?: Ref<HTMLSpanElement>; className?: string; startClass?: string; endClass?: string; /** the start's least room, where it must stay readable (a search's place: 4em) */ startRoom?: string; /** an end too long for its room is cut at its start, so its own end, the part that differs, stays */ tail?: boolean }) {
+  const end = text.slice(keep);
   return (
     <span ref={ref} data-middle-cut className={`flex min-w-0 ${className}`}>
       <span className="sr-only">{text}</span>
-      <span aria-hidden className={`min-w-[1.5em] truncate ${startClass}`}>
+      <span aria-hidden className={`min-w-[1.5em] truncate ${startClass}`} style={startRoom ? { minWidth: startRoom } : undefined}>
         {text.slice(0, keep).replace(/ $/, "\u00a0")}
       </span>
-      <span aria-hidden className={`max-w-[calc(100%-1.5em)] shrink-0 truncate ${endClass}`}>
-        {text.slice(keep)}
+      {/* Cut at its start: laid right to left, the words kept left to right inside, so the ellipsis leads. */}
+      <span aria-hidden data-middle-tail={tail || undefined} dir={tail ? "rtl" : undefined} className={`max-w-[calc(100%-1.5em)] shrink-0 truncate ${tail ? "text-left" : ""} ${endClass}`} style={startRoom ? { maxWidth: `calc(100% - ${startRoom})` } : undefined}>
+        {tail ? <bdi dir="ltr">{end}</bdi> : end}
       </span>
     </span>
   );
 }
+
+/**
+ * Where a lone long name keeps its end when cut: its last word ("TempCode p…Walk"), as Finder cuts in its middle. Null
+ * for one word, and for a name of 16 letters or fewer, which a 200px sidebar row holds whole beside its glyph and chevron.
+ */
+export const lastWord = (name: string): number | null => {
+  const at = name.trimEnd().lastIndexOf(" ");
+  return name.length > 16 && at > 0 ? at + 1 : null;
+};
 
 /** Whether `keep` cuts `text` in its middle: something before it and something after. */
 export const cutsMiddle = (text: string, keep: number | null | undefined): keep is number => keep != null && keep > 0 && keep < text.length;

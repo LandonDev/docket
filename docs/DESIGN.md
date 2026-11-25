@@ -1946,7 +1946,8 @@ Around the canvas:
   are cut in the middle from the word where they part, so the end that
   differs stays ("P…budget.xlsx"); under 4rem of name the end alone is
   drawn ("budg…"). Places and projects of the sidebar that share a start
-  are cut the same way.
+  are cut the same way, and one of more than 16 letters that shares none
+  keeps its last word ("TempCode p…Walk", `lastWord`).
   While a place loads, the bar's bones stand where it will: Back and
   Forward greyed and a bone for the trail, over the list's bones, so
   nothing moves when the page lands.
@@ -1977,8 +1978,10 @@ Around the canvas:
   or ⌘F) is a field in the trail's place that filters the folder shown as
   he types (a filter that leaves nothing says "Nothing here by that name"
   with Clear filters, which puts the folder and the trail back); Return searches every place as a page of results whose second
-  column says where each file lives (cut from its start: the folder it
-  lies in stays, the place and the folders above give way), under a 36px bar of filters (Kind,
+  column says where each file lives (cut in its middle: the place keeps
+  at least 4em so it is named, the folders above give way, and the folder
+  it lies in stays, itself cut at its start where it is too long, so the
+  end that differs is read: "General › …archive 2027"), under a 36px bar of filters (Kind,
   When it changed, Others can open, then More, a menu of Place, Project and
   Changed by as submenus and Needs review, its count in `muted-foreground`
   beside its name while any is set), each a 24px ghost press whose words
