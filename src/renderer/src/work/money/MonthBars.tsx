@@ -3,7 +3,7 @@ import { formatMoney } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { shortMoney } from "./model";
-import { MONTH_BARS_HEIGHT, trueRows, type MonthBar, type TooltipProps } from "./monthBars";
+import { MONTH_BARS_HEIGHT, trueRows, type MonthBar, type TooltipProps } from "./monthBarData";
 
 /** The year's chart, in and out by month: the one part of Money that draws with the chart library, so the one part in this chunk. */
 export function MonthBars({ data }: { data: MonthBar[] }) {

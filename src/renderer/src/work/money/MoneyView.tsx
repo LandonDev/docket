@@ -29,7 +29,7 @@ import { RateDialog } from "./RateDialog";
 import { ReceiptPicture, ToConfirmSection } from "./ToConfirm";
 import { TripDialog } from "./TripDialog";
 import { periodLabel, periodNow, periodOf, rowMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
-import { byMonthBars, MONTH_BARS_HEIGHT, monthBarsChunk } from "./monthBars";
+import { byMonthBars, MONTH_BARS_HEIGHT, monthBarsChunk } from "./monthBarData";
 
 /**
  * A Work workspace's Money (docs/agents/work-money.md, docs/DESIGN.md "The
@@ -542,7 +542,7 @@ function Figure({ label, cents }: { label: string; cents: number }) {
 
 // The bars and their hover are pure and live in monthBars.ts; the chart itself (recharts, 667 kB) is a chunk of its
 // own, asked for when the year's section mounts, so the ledger's figures and lists never wait on it.
-export { byMonthBars, trueRows } from "./monthBars";
+export { byMonthBars, trueRows } from "./monthBarData";
 
 /** The chart's own box, empty, while its chunk is on its way: the section keeps its height, so nothing under it moves. */
 const MonthBars = monthBarsChunk.surface(

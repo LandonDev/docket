@@ -105,7 +105,7 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   (`preloadInTurn`, lib/lazyChunk.tsx; `viewChunksAfter`, work/views/registry.ts), so a first press of a view
   finds its code and draws at once too. Never two chunks parsing together; a chunk already asked for is passed
   over.
-- **Money's chart is a chunk of its own** (`monthBarsChunk`, work/money/monthBars.ts): the ledger's first open
+- **Money's chart is a chunk of its own** (`monthBarsChunk`, work/money/monthBarData.ts): the ledger's first open
   carries no recharts (667 kB), and the year's section keeps the chart's box while it loads, so nothing moves.
   scripts/viewGraphs.test.ts holds it on the source.
 - **The orchestration rules as plain values** (src/shared/rulesValues.ts): the window's two readers of them no

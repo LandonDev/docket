@@ -74,7 +74,7 @@ describe("the entry dialog's form", () => {
 
 describe("the year's chart box", () => {
   it("is the chart frame's own height while the chart's chunk loads, so nothing under it moves", async () => {
-    const { MONTH_BARS_HEIGHT } = await import("./monthBars");
+    const { MONTH_BARS_HEIGHT } = await import("./monthBarData");
     const { CHART_HEIGHT } = await import("@aliax/charts/chart");
     expect(MONTH_BARS_HEIGHT).toBe(CHART_HEIGHT);
   });
