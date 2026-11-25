@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LazyPopover } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
 import { Kbd } from "../../components/ui/kbd";
@@ -39,6 +39,9 @@ export function SelectionBar({ selection, onAsk, onDismiss }: { selection: Canva
   if (selection) shown.current = selection;
   const last = shown.current;
   const anchor = useMemo(() => (last ? { getBoundingClientRect: () => last.rect } : null), [last]);
+  // The edge the bar lines up with, kept while it fades out (as state, read in render with no ref).
+  const [align, setAlign] = useState<"start" | "end">("start");
+  if (selection && (selection.align ?? "start") !== align) setAlign(selection.align ?? "start");
 
   return (
     <LazyPopover
@@ -48,7 +51,7 @@ export function SelectionBar({ selection, onAsk, onDismiss }: { selection: Canva
         if (!open) live.current.onDismiss();
       }}
       side="top"
-      align="start"
+      align={align}
       label="Selection"
       initialFocus={false}
       finalFocus={false}

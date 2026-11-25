@@ -432,14 +432,14 @@ describe("typing on a slide", () => {
 });
 
 describe("the floating bar", () => {
-  it("is anchored under the slide's bottom-left corner, so it lies over no shape, and steps aside while he types", async () => {
+  it("is anchored under the slide's bottom-right corner, its end there, so it lies over no shape nor the Notes heading, and steps aside while he types", async () => {
     const { press } = await stage();
     const slideBox = { left: 200, top: 100, width: 600, height: 337.5, right: 800, bottom: 437.5, x: 200, y: 100, toJSON: () => ({}) };
     document.querySelector<HTMLElement>("[data-slides-stage]")!.getBoundingClientRect = () => slideBox as DOMRect;
     press(0.5, 0.2);
     const fed = selections.filter((s): s is CanvasSelection => s !== null).at(-1)!;
     expect(fed.chip.label).toBe("“Who comes”, slide 1");
-    expect([fed.rect.left, fed.rect.top]).toEqual([200, 437.5 + 42]);
+    expect([fed.rect.left, fed.rect.top, fed.align]).toEqual([800, 437.5 + 42, "end"]);
     // The frame lays its 32px bar 6px above its anchor: the bar's top is under the picture.
     expect(fed.rect.top - 6 - 32).toBeGreaterThan(slideBox.bottom);
     press(0.5, 0.2);

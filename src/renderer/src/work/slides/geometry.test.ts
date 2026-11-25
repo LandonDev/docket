@@ -113,8 +113,8 @@ describe("the ground under the words", () => {
 });
 
 describe("the floating bar's anchor", () => {
-  it("is under the slide's bottom-left corner, far enough that the 32px bar laid 6px above it clears the picture", () => {
-    expect(askAnchor({ left: 200, bottom: 437.5 })).toEqual({ left: 200, top: 437.5 + ASK_UNDER });
+  it("is under the slide's bottom-right corner, its end there, clear of the Notes heading at the left and of the picture", () => {
+    expect(askAnchor({ left: 200, right: 808, bottom: 437.5 })).toEqual({ left: 808, top: 437.5 + ASK_UNDER, align: "end" });
     expect(ASK_UNDER - 6 - 32).toBeGreaterThanOrEqual(4);
   });
 });

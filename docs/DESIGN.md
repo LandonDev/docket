@@ -4319,10 +4319,11 @@ other picked shape is the outline alone.
   until the new picture lands.
 
 - **The floating bar** (Ask) for a picked shape is anchored under the
-  slide's bottom-left corner (`askAnchor`, geometry.ts), not beside the
-  shape: the frame lays it above its anchor, so it falls just under the
-  picture, never over a shape, a handle or the typing box, where his next
-  press goes. While he types it steps aside.
+  slide's bottom-right corner, its end there (`askAnchor`, geometry.ts;
+  `CanvasSelection.align`), not beside the shape: the frame lays it above
+  its anchor, so it falls just under the picture, never over a shape, a
+  handle or the typing box, where his next press goes, nor over the Notes
+  heading at the left under the slide. While he types it steps aside.
 - **The typing box** (`edit/TypingBox.tsx`). A second press on a picked
   text shape, or a double-click on any, opens it with the caret where he
   pressed; Return on a picked shape opens it with its words selected, F2

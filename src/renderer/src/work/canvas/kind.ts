@@ -160,6 +160,8 @@ export interface CanvasSelection {
   chip: ContextChip;
   /** Where the selection is on screen: the bar floats over it. */
   rect: DOMRect;
+  /** Which edge of `rect` the bar lines up with: its start (the default), or its end (a slide's picked shape, clear of the Notes heading). */
+  align?: "start" | "end";
   /** The kind's own controls, after Ask. */
   tools?: ReactNode;
 }

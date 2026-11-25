@@ -862,6 +862,7 @@ function Main({
     // The bar floats under the slide, not beside the shape: over the picture it would take the press meant for the next shape.
     const at = askAnchor((layer.current?.parentElement ?? el).getBoundingClientRect());
     shell.selection({
+      align: at.align,
       chip: { kind: "selection", label: `${what}, slide ${slide.number ?? slide.id}`, ref: source, quote: `${words ? `${words}\n` : ""}(${itemTitle}, slide id ${slide.id}, shape ${shape.id} "${shape.name}")` },
       rect: new DOMRect(at.left, at.top, 0, 0),
     });

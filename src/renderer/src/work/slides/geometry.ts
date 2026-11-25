@@ -64,8 +64,11 @@ export const ROTATE_STEM = 12;
  */
 export const ASK_UNDER = 42;
 
-/** Where the floating bar is anchored for a picked shape: under the slide's bottom-left corner, in page pixels. */
-export const askAnchor = (slide: { left: number; bottom: number }): { left: number; top: number } => ({ left: slide.left, top: slide.bottom + ASK_UNDER });
+/**
+ * Where the floating bar is anchored for a picked shape: under the slide's bottom-right corner, its end there, in page
+ * pixels. At the left under the slide is the Notes heading, which the bar would cover.
+ */
+export const askAnchor = (slide: { right: number; bottom: number }): { left: number; top: number; align: "end" } => ({ left: slide.right, top: slide.bottom + ASK_UNDER, align: "end" });
 
 /**
  * A selection as it is drawn on a stage of `width` by `height` CSS pixels: the outline's corners, the eight
