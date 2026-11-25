@@ -3003,6 +3003,8 @@ Around the canvas:
     over the work; one rule of the pane decides both. Its Open and Close float over its corner so its title
     stands level with the page's; it is never wider than its pane. A peek
     over the work takes the focus and the work under it is inert;
+    a press on the work it covers shuts it, Enter on it opens the task,
+    and the page's keys wait until it shuts;
     shut, the focus goes back to its row. Its
     sub-tasks are flat rows, their key
     in hand, "1 of 3" in muted numbers on a task with sub-tasks and the
