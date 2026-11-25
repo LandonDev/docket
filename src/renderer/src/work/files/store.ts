@@ -18,7 +18,8 @@ import {
   desksJoin,
   DOCK,
   entryFromOld,
-  mergeFound,
+  mergeBelow,
+  newestFirst,
   NO_HISTORY,
   pageKey,
   placesFromOld,
@@ -763,6 +764,8 @@ export function resetFilesStore(): void {
   keepHears.clear();
   changing.clear();
   firstPages.clear();
+  deskAsks.clear();
+  tabSearches.clear();
   homes.clear();
   look = null;
   windowId = null;
@@ -794,6 +797,8 @@ export interface Listing {
   unsearched?: string[];
   /** a search's rows are in, and his desktops are still searching their folders */
   searching?: boolean;
+  /** a search's places still being searched, by name (the host's, then his desktops'): their rows join below as each answers */
+  pending?: string[];
   /** the folder's machine sleeps (the Windows VM): `waking` while a wake goes on, its rows pushed once they land */
   sleeping?: "asleep" | "waking";
   /** a wake this window saw under way ended with the machine still asleep */
@@ -808,6 +813,8 @@ interface DeskFound {
 }
 
 interface ListingEntry extends Listing {
+  /** his desktops still searching their folders, by name */
+  deskPending?: string[];
   next?: string;
   round: number;
   desk?: DeskFound;
@@ -847,6 +854,7 @@ function putListing(key: string, next: ListingEntry): void {
 
 function dropListing(key: string): void {
   listings.delete(key);
+  deskAsks.delete(key);
   listingMeta.delete(key);
   listingRound.delete(key);
 }
@@ -921,7 +929,7 @@ export interface ListFrom {
   /** a team's own page: its channels, which no host is asked for */
   team?: readonly FileEntry[];
   /** a page of search results: every place of the host is searched for these words, under this filter, and the folders on his desktops by `desks` */
-  search?: { query: string; filter?: FileSearchFilter; desks?: DeskSearch };
+  search?: { query: string; filter?: FileSearchFilter; desks?: DeskSearch; /** the words this tab searched before: their walks stop */ replaces?: string };
   /** the folders alone (Move to… and Copy to…, which pick a folder): the host leaves the files out of every page */
   foldersOnly?: boolean;
 }
@@ -955,20 +963,31 @@ function takePress(at: FolderRef, now = Date.now()): boolean {
 }
 
 /** A seam for a preview page and tests, which have no host: set, it answers a folder's page in the host's place. */
-export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake?: boolean) => Promise<FilesListing>; desk?: (link: string, query: string) => Promise<{ entries: TeamsEntry[]; more?: boolean }> } = {};
+export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake?: boolean, seen?: number) => Promise<FilesListing>; desk?: (link: string, query: string) => Promise<{ entries: TeamsEntry[]; more?: boolean }> } = {};
+
+/** Each tab's search words, and the ones before them: a search names the one it replaces, whose walks then stop. */
+const tabSearches = new Map<string, { query: string; before?: string }>();
+export function searchReplaces(tabId: string, query: string): string | undefined {
+  const was = tabSearches.get(tabId);
+  if (!was) return void tabSearches.set(tabId, { query });
+  if (was.query !== query) tabSearches.set(tabId, { query, before: was.query });
+  return tabSearches.get(tabId)!.before;
+}
 
 /**
  * The folders on his desktops for a search of every place (docs/agents/work-files.md "Search and Go to"): the
  * workspace's host cannot walk another computer's folders, so the window asks each desktop it holds a link to
  * with the search Files already has there (names alone), and names the rest. Never rejects.
  */
-async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchFilter): Promise<DeskFound> {
+async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchFilter, o: { replaces?: string; asking?(names: string[]): void } = {}): Promise<DeskFound> {
   const { linked, far } = await desks.find().catch((): Desktops => ({ linked: [], far: [] }));
   const found: DeskFound = { rows: [], unsearched: [...far], more: false };
+  o.asking?.(linked.map((desk) => desk.name));
   await Promise.all(
     linked.map(async (desk) => {
       try {
-        const got = await (listingSeams.desk?.(desk.link, query) ?? ask<{ entries: TeamsEntry[]; more?: boolean }>(desk.link, "work.office.filesSearch", { query }, { timeoutMs: DESK_MS }));
+        // The words this tab searched before name the desktop's walk that stops now.
+        const got = await (listingSeams.desk?.(desk.link, query) ?? ask<{ entries: TeamsEntry[]; more?: boolean }>(desk.link, "work.office.filesSearch", { query, ...(o.replaces ? { replaces: o.replaces } : {}) }, { timeoutMs: DESK_MS }));
         found.rows.push(...deskRows(got.entries, (path) => desks.placeOf(desk.link, path), filter));
         if (got.more) found.more = true;
       } catch {
@@ -984,9 +1003,13 @@ async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchF
 /** A desktop's part of a search, as the listing says it. */
 const deskSays = (desk: DeskFound | undefined): Partial<Listing> => (desk ? { ...(desk.more ? { incomplete: true } : {}), ...(desk.unsearched.length ? { unsearched: desk.unsearched } : {}) } : {});
 
-async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake = false): Promise<FilesListing> {
-  if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor, wake);
-  if (from.search) return ask<FilesListing>(from.copy.link, "work.files.search", { workspaceId: from.workspaceId, query: from.search.query, ...(from.search.filter ? { filter: from.search.filter } : {}), ...(cursor ? { cursor } : {}) }, { timeoutMs: 30_000 });
+/** `seen`: a search's first page in parts (0 the first time, then the parts the last answer said). */
+async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake = false, seen?: number): Promise<FilesListing> {
+  if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor, wake, from.search && !cursor ? (seen ?? 0) : seen);
+  if (from.search) {
+    const parts = cursor ? {} : { seen: seen ?? 0, ...(!seen && from.search.replaces ? { replaces: from.search.replaces } : {}) };
+    return ask<FilesListing>(from.copy.link, "work.files.search", { workspaceId: from.workspaceId, query: from.search.query, ...(from.search.filter ? { filter: from.search.filter } : {}), ...(cursor ? { cursor } : {}), ...parts }, { timeoutMs: 30_000 });
+  }
   // A folder in the VM says whether he pressed for it: only then may its host wake the machine.
   if (from.copy.wire === "files") return ask<FilesListing>(from.copy.link, "work.files.list", { workspaceId: from.workspaceId, at, sort, ...(cursor ? { cursor } : {}), ...(from.foldersOnly ? { foldersOnly: true } : {}), ...(from.copy.place.vm ? { wake } : {}) }, readMs(from.copy));
   // A host a release behind lists a folder whole, unsorted by the asker: the window orders it.
@@ -1040,8 +1063,16 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   const quiet = !more && !retry && !!was?.loaded && !was.error;
   if (!quiet) putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
   const search = from.search;
-  // A search's desktops are asked once a search, beside its host, and only for its first page.
-  const desks = !more && search?.desks && desksJoin(search.filter ?? {}) ? (again && was?.desk ? Promise.resolve(was.desk) : searchDesks(search.desks, search.query, search.filter ?? {})) : null;
+  // A search's desktops are asked once a search, beside its host, and only for its first page: a push's read or a
+  // part of the host's answer reuses that ask, and only his Retry asks them again.
+  if (retry) deskAsks.delete(key);
+  let deskSaid: string[] | undefined;
+  const deskNames = (names: string[]): void => {
+    deskSaid = names;
+    const cur = listings.get(key);
+    if (cur && listingRound.get(key) === round && cur.searching) putListing(key, { ...cur, deskPending: names });
+  };
+  const desks = !more && search?.desks && desksJoin(search.filter ?? {}) ? (again && was?.desk ? Promise.resolve(was.desk) : (deskAsks.get(key) ?? deskAsks.set(key, searchDesks(search.desks, search.query, search.filter ?? {}, { replaces: search.replaces, asking: deskNames })).get(key)!)) : null;
   try {
     if (from.team) return putListing(key, { ...EMPTY_LISTING, entries: sortEntries(from.team, sort), trail: [], loaded: true, loading: false, round });
     let first = !more;
@@ -1059,7 +1090,8 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       if (m) m.loadedAt = Date.now();
     }
     putListing(key, {
-      entries: first ? steady(now.entries, page.entries) : desk ? mergeFound(now.entries, page.entries) : [...now.entries, ...page.entries],
+      // A later page of a search joins below what is shown (a row a part of it drew already stays where it is).
+      entries: first ? steady(now.entries, page.entries) : search ? mergeBelow(now.entries, page.entries) : [...now.entries, ...page.entries],
       trail: first ? (page.trail ?? []) : now.trail,
       loaded: true,
       more: !!page.next,
@@ -1075,24 +1107,60 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
       ...deskSays(desk),
-      ...(desks || (more && now.searching) ? { searching: true } : {}),
+      ...(desks || (more && now.searching) ? { searching: true, ...((deskSaid ?? now.deskPending) ? { deskPending: deskSaid ?? now.deskPending } : {}) } : {}),
       ...(desk ? { desk } : {}),
+      ...(first ? (page.pending?.length ? { pending: page.pending } : {}) : now.pending ? { pending: now.pending } : {}),
       round,
     });
     void fillWho(key, from, round);
+    // The places the host is still searching: asked again until each has answered, each part joined below.
+    if (search && first && page.pending?.length && page.parts !== undefined) void restOf(key, from, at, sort, round, page.parts);
     if (!desks) return;
-    // The host's rows are drawn first; the desktops' join them in the list's order when they come.
+    // The host's rows are drawn first; the desktops' join below them when they come, so nothing shown moves.
     const found = await desks;
     const then = listings.get(key);
     if (!then || listingRound.get(key) !== round) return;
     const said = deskSays(found);
-    putListing(key, { ...then, entries: mergeFound(then.entries, found.rows), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}) });
+    const { deskPending: _, ...rest } = then;
+    putListing(key, { ...rest, entries: mergeBelow(then.entries, [...found.rows].sort(newestFirst)), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}) });
   } catch (err) {
     const now = listings.get(key);
     if (!now || listingRound.get(key) !== round) return;
     putListing(key, { ...now, loaded: true, loading: false, searching: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
+
+/** The rest of a search the host answers in parts: asked again with the parts seen until no place is pending, each part joined below the rows shown. */
+async function restOf(key: string, from: ListFrom, at: FolderRef, sort: FileSort, round: number, parts: number): Promise<void> {
+  let seen = parts;
+  for (;;) {
+    let page: FilesListing;
+    try {
+      page = await fetchPage(from, at, sort, undefined, false, seen);
+    } catch {
+      // The host did not answer the rest: what came stays, and the line stops saying it is searching.
+      const cur = listings.get(key);
+      if (cur && listingRound.get(key) === round) putListing(key, { ...cur, pending: undefined, incomplete: true });
+      return;
+    }
+    const cur = listings.get(key);
+    if (!cur || listingRound.get(key) !== round) return;
+    putListing(key, {
+      ...cur,
+      entries: mergeBelow(cur.entries, page.entries),
+      // Past what is shown the next page goes on from the newest answer.
+      ...(page.next ? { next: page.next, more: true } : {}),
+      pending: page.pending?.length ? page.pending : undefined,
+      ...(page.more ? { incomplete: true } : {}),
+      ...(page.asleep?.length ? { asleep: page.asleep } : {}),
+    });
+    if (!page.pending?.length || page.parts === undefined || page.parts <= seen) return;
+    seen = page.parts;
+  }
+}
+
+/** Each search's ask of his desktops, by listing: one a search. */
+const deskAsks = new Map<string, Promise<DeskFound>>();
 
 const listingKey = (from: ListFrom, at: FolderRef, sort: FileSort): string =>
   `${from.copy.link}\u0000${from.workspaceId}\u0000${refKey(at)}\u0000${sort.by}:${sort.dir}${from.search ? `\u0000${from.search.query}\u0000${JSON.stringify(from.search.filter ?? {})}` : ""}${from.foldersOnly ? "\u0000folders" : ""}`;
@@ -1157,8 +1225,12 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     // The key names the host, the folder and the order; a team's rows are its own input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, team]);
+  // The places still searched, the host's and his desktops', as one list for the page's line.
+  const deskPending = value.searching ? ((value as ListingEntry).deskPending ?? []) : [];
+  const pending = value.pending?.length || deskPending.length ? [...(value.pending ?? []), ...deskPending] : undefined;
   return {
     ...value,
+    ...(pending ? { pending } : { pending: undefined }),
     loadMore: () => void (from && load(key, from, at, sort, true)),
     // Retry, and Wake it over a sleeping folder, are his press.
     retry: () => void (from && load(key, from, at, sort, false, false, true, true)),

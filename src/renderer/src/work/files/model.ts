@@ -759,12 +759,32 @@ export function deskRows(found: readonly TeamsEntry[], placeOf: (path: string) =
   });
 }
 
-const newestFirst = (a: FileEntry, b: FileEntry): number => (b.changed ?? 0) - (a.changed ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+export const newestFirst = (a: FileEntry, b: FileEntry): number => (b.changed ?? 0) - (a.changed ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 /** A search's rows with more joined: one row a file whichever side found it (the first said wins), in the search's own order, newest change first. */
 export function mergeFound(rows: readonly FileEntry[], more: readonly FileEntry[]): FileEntry[] {
   const keys = new Set(rows.map((e) => e.key));
   return [...rows, ...more.filter((e) => !keys.has(e.key))].sort(newestFirst);
+}
+
+/**
+ * Rows that came in a later part of a search, joined so that nothing already shown moves: each row shown keeps its
+ * place (as the newer answer says it, the same object while it says the same), and the new ones follow it, in their
+ * own order.
+ */
+export function mergeBelow(shown: readonly FileEntry[], fresh: readonly FileEntry[]): FileEntry[] {
+  const now = new Map(fresh.map((e) => [e.key, e]));
+  const kept = shown.map((e) => {
+    const next = now.get(e.key);
+    return next && JSON.stringify(next) !== JSON.stringify(e) ? next : e;
+  });
+  const have = new Set(shown.map((e) => e.key));
+  return [...kept, ...fresh.filter((e) => !have.has(e.key))];
+}
+
+/** What a search still waits on, said over its rows: the places by name, with the stage's spinner and nothing to press. */
+export function searchingNote(places: readonly string[]): FilesNote | null {
+  return places.length ? { title: `Searching ${andList([...new Set(places)])}`, busy: true } : null;
 }
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */

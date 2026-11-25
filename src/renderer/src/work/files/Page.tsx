@@ -44,6 +44,7 @@ import {
   folderGone,
   placeNote,
   vmSleepNote,
+  searchingNote,
   searchGap,
   SHAPE_WORDS,
   TILE_SIZES,
@@ -1003,8 +1004,8 @@ export function PageView({
     busy,
     // A page that failed waits for Retry on its line, rather than being asked again on every scroll.
     more: !!listing?.more && !listing.error,
-    // A later page on its way, or his desktops still searching their folders under the rows already in.
-    loadingMore: !!listing && entries.length > 0 && ((listing.loading && listing.more) || !!listing.searching),
+    // A later page on its way (the places still searched are said on the page's line, not at its foot).
+    loadingMore: !!listing && entries.length > 0 && listing.loading && listing.more,
     renaming,
     onPick,
     onOpen: open,
@@ -1042,7 +1043,7 @@ export function PageView({
         onRetry={() => refreshLifeos(copy!.link).catch(() => undefined).then(() => listing?.retry())}
       />
     );
-  else if (!listing || !listing.loaded || (!entries.length && listing.searching)) body = <ListBones compact={compact} />;
+  else if (!listing || !listing.loaded || (!entries.length && (listing.searching || !!listing.pending?.length))) body = <ListBones compact={compact} />;
   else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
   else if (!entries.length && filter) body = (
       // Clear filters puts the whole folder and its trail back; Return in the field still searches every place.
@@ -1127,6 +1128,9 @@ export function PageView({
   ) : listing?.error && entries.length ? (
     // The rows it has stay; a later page that failed is asked again from where it stopped.
     <ViewStateLine word={listing.lostPage ? "The rest did not load" : "This folder did not load"} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+  ) : results && listing?.pending?.length ? (
+    // A place still being searched: its rows join below as it answers, and the line says which.
+    <NoteLine note={searchingNote(listing.pending)!} fixes={noteFixes} />
   ) : gap && entries.length ? (
     <NoteLine note={gap} fixes={{ busy: listing!.loading, run: () => listing!.retry() }} />
   ) : down && !note && entries.length ? (

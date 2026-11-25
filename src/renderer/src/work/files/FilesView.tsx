@@ -43,7 +43,7 @@ import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
@@ -978,7 +978,9 @@ function SearchTab({
     find: () => desktopsFor([workspace], { nameOf: (id) => registry.environment(id)?.name ?? farName(id) }),
     placeOf: (desk, path) => deskPlace(sidebar.current, desk, path),
   };
-  const from: ListFrom | null = host ? { workspaceId: workspace.id, copy: host, search: { query, filter, desks } } : null;
+  // New words name the ones this tab searched before: the host and his desktops stop those walks.
+  const replaces = searchReplaces(tab.id, query);
+  const from: ListFrom | null = host ? { workspaceId: workspace.id, copy: host, search: { query, filter, desks, ...(replaces !== undefined ? { replaces } : {}) } } : null;
   const listing = useListing(from, page.at, DEFAULT_SORT);
   return (
     <>

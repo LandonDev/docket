@@ -351,7 +351,7 @@ describe("a folder's pages", () => {
     }
   });
 
-  it("joins his desktops' rows to a search once the host's are drawn: one row a file, in the list's order, and names the desktops not searched", async () => {
+  it("joins his desktops' rows to a search below the host's once they are drawn: one row a file, none moved, and names the desktops not searched", async () => {
     const { useListing, listingSeams } = await import("./store");
     const { renderHook } = await import("@testing-library/react");
     const LIB = { ...PLACE, id: "m1", kind: "teams", name: "General", key: "general", env: "env_mac", root: { at: "file", host: "env_mac", path: "/T/General" } } as unknown as FilePlace;
@@ -379,9 +379,13 @@ describe("a folder's pages", () => {
       // The host's rows first, while the desktops still walk.
       await waitFor(() => expect(result.current).toMatchObject({ loaded: true, searching: true }));
       expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Plan.docx"]);
+      // The page's line names the desktops still searching.
+      await waitFor(() => expect(result.current.pending).toEqual(["MacBook", "Desk PC"]));
       await act(async () => land());
       await waitFor(() => expect(result.current.searching).toBe(false));
-      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Roster.docx", "Plan.docx"]);
+      // The rows shown keep their places; the desktop's new row joins below them.
+      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Plan.docx", "Roster.docx"]);
+      expect(result.current.pending).toBeUndefined();
       expect(result.current.entries.find((e) => e.name === "Roster.docx")?.where).toEqual({ place: "m1", name: "General", trail: [] });
       expect(result.current).toMatchObject({ unsearched: ["Purdue laptop", "Desk PC"], incomplete: true });
       expect(asked.sort()).toEqual(["local o", "pc o"]);
@@ -389,5 +393,45 @@ describe("a folder's pages", () => {
       delete listingSeams.fetch;
       delete listingSeams.desk;
     }
+  });
+
+  it("takes the host's search in parts: the rest asked until no place is pending, each part below the rows shown, his desktops asked once", async () => {
+    const { useListing, listingSeams } = await import("./store");
+    const { renderHook } = await import("@testing-library/react");
+    const seen: (number | undefined)[] = [];
+    const asked: string[] = [];
+    let rest: () => void = () => undefined;
+    listingSeams.fetch = async (_from, _at, _sort, _cursor, _wake, s) => {
+      seen.push(s);
+      if (!s) return { entries: [file("Budget.xlsx")], pending: ["LifeOS", "the Windows VM"], parts: 3 };
+      // The newer row comes first in the host's order: it joins below, so the row shown does not move.
+      return new Promise((done) => (rest = () => done({ entries: [file("Roster.xlsx"), file("Budget.xlsx")], parts: 5 })));
+    };
+    listingSeams.desk = async (link) => (asked.push(link), { entries: [] });
+    const desks = { find: async () => ({ linked: [{ link: "local", host: "env_mac", name: "MacBook", workspaceId: "w1" }], far: [] }), placeOf: () => null };
+    try {
+      const { result } = renderHook(() => useListing({ workspaceId: "w1", copy: COPY, search: { query: "o", desks } }, { at: "place", id: "search" }));
+      await waitFor(() => expect(result.current.pending).toEqual(["LifeOS", "the Windows VM"]));
+      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx"]);
+      await act(async () => rest());
+      await waitFor(() => expect(result.current.pending).toBeUndefined());
+      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Roster.xlsx"]);
+      expect(seen).toEqual([0, 3]);
+      expect(asked).toEqual(["local"]);
+    } finally {
+      delete listingSeams.fetch;
+      delete listingSeams.desk;
+    }
+  });
+
+  it("says on its line which places a search still waits on, busy and with nothing to press, over the rows it has", () => {
+    draw({ results: true, listing: listing({ pending: ["LifeOS", "the Windows VM"] }) });
+    const line = document.querySelector("[data-files-note]")!;
+    expect(line.textContent).toBe("Searching LifeOS and the Windows VM");
+    expect(line.getAttribute("aria-busy")).toBe("true");
+    expect(line.querySelector("button")).toBeNull();
+    expect(row("Budget.xlsx")).not.toBeNull();
+    // No second word for it at the list's foot.
+    expect(document.body.textContent).not.toContain("Loading more");
   });
 });
