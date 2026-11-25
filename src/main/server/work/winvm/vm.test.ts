@@ -2,8 +2,9 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WAKING_WORDS, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
+import type { ComputerNotification } from '@shared/computer/protocol'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { WorkScope, WorkToolResult } from '@shared/work'
 import { computerHarness } from '../../computer/runHarness'
@@ -102,6 +103,21 @@ beforeEach(() => {
   })
   stopVm = startVm(() => keeper as unknown as Keeper, (id, notice) => woken.push({ id, notice }))
 })
+it("passes the guest's desktop click to the VM picture", () => {
+  let notify!: (n: ComputerNotification) => void
+  const off = vi.fn()
+  const register = vi.spyOn(host.service, 'onNotification').mockImplementation((fn) => (notify = fn, off))
+  const click = vi.fn()
+  const stop = host.onClick(click)
+  notify({ method: 'capture/click', params: { stream: '3', at: [1, 2], width: 200, height: 100 } })
+  expect(click).not.toHaveBeenCalled()
+  notify({ method: 'capture/desktopClick', params: { at: [110, 70] } })
+  expect(click).toHaveBeenCalledExactlyOnceWith([110, 70])
+  stop()
+  expect(off).toHaveBeenCalledOnce()
+  register.mockRestore()
+})
+
 afterEach(async () => {
   stopVm()
   await host.service.close()

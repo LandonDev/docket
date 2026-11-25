@@ -324,6 +324,22 @@ public struct CaptureClickNotification: Codable, Hashable, Sendable {
     }
 }
 
+public struct CaptureDesktopClickNotification: Codable, Hashable, Sendable {
+    public struct Params: Codable, Hashable, Sendable {
+        public let at: Point
+
+        public init(at: Point) {
+            self.at = at
+        }
+    }
+
+    public let params: Params
+
+    public init(params: Params) {
+        self.params = params
+    }
+}
+
 public struct EscapePressedNotification: Codable, Hashable, Sendable {
     public struct Params: Codable, Hashable, Sendable {
         public let at: Double
@@ -420,6 +436,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
     case captureStreamEnded(CaptureStreamEndedNotification)
     case captureVideoEnded(CaptureVideoEndedNotification)
     case captureClick(CaptureClickNotification)
+    case captureDesktopClick(CaptureDesktopClickNotification)
     case escapePressed(EscapePressedNotification)
     case appsFrontRestored(AppsFrontRestoredNotification)
     case log(LogNotification)
@@ -441,6 +458,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case "capture/streamEnded": self = .captureStreamEnded(try CaptureStreamEndedNotification(from: decoder))
         case "capture/videoEnded": self = .captureVideoEnded(try CaptureVideoEndedNotification(from: decoder))
         case "capture/click": self = .captureClick(try CaptureClickNotification(from: decoder))
+        case "capture/desktopClick": self = .captureDesktopClick(try CaptureDesktopClickNotification(from: decoder))
         case "escape/pressed": self = .escapePressed(try EscapePressedNotification(from: decoder))
         case "apps/frontRestored": self = .appsFrontRestored(try AppsFrontRestoredNotification(from: decoder))
         case "log": self = .log(try LogNotification(from: decoder))
@@ -458,6 +476,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case .captureStreamEnded(let value): try Self.encode(tag: "capture/streamEnded", value, to: encoder)
         case .captureVideoEnded(let value): try Self.encode(tag: "capture/videoEnded", value, to: encoder)
         case .captureClick(let value): try Self.encode(tag: "capture/click", value, to: encoder)
+        case .captureDesktopClick(let value): try Self.encode(tag: "capture/desktopClick", value, to: encoder)
         case .escapePressed(let value): try Self.encode(tag: "escape/pressed", value, to: encoder)
         case .appsFrontRestored(let value): try Self.encode(tag: "apps/frontRestored", value, to: encoder)
         case .log(let value): try Self.encode(tag: "log", value, to: encoder)

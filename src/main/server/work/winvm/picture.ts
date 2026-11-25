@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
-import type { ComputerFramePush, ComputerPreviewStart, ComputerSessionRow } from '@shared/contract-computer'
+import type { ComputerClickPush, ComputerFramePush, ComputerPreviewStart, ComputerSessionRow } from '@shared/contract-computer'
 import { PREVIEW_MAX_EDGE, PREVIEW_MIN_EDGE } from '@shared/contract-computer'
 import { VIDEO_FPS, type VideoCopyAnswer, type VideoRefusal, type VideoSizeAnswer, type VideoSizeParams } from '@shared/contract-video'
 import type { GuestCaps } from '@shared/video/guestSize'
@@ -75,7 +75,7 @@ export class VmPicture implements VideoSource {
   private handBack: (() => void) | null = null
   readonly previews: VmPreviews
   /** each drive or watch stream's feed by its stream id, for a paste */
-  private readonly streams = new Map<string, EngineFeed>()
+  private readonly streams = new Map<string, { feed: EngineFeed; push?: VideoAsk['push'] }>()
 
   constructor(private readonly d: VmPictureDeps) {
     this.awake = d.state()?.state === 'awake'
@@ -201,7 +201,17 @@ export class VmPicture implements VideoSource {
       scope,
       group: VM_COMPUTER,
       tag: VM_COMPUTER,
-      opened: (stream) => this.streams.set(stream, feed)
+      opened: (stream) => this.streams.set(stream, { feed, push: ask.push })
+    }
+  }
+
+  /** A thread clicked the guest's desktop. Each watcher gets the mark for its own stream. */
+  click(at: ComputerClickPush['at']): void {
+    const size = this.d.screen.size
+    if (this.owner || !size || at[0] < 0 || at[1] < 0 || at[0] >= size.width || at[1] >= size.height) return
+    for (const stream of this.d.relay.list()) {
+      if (!stream.joined || !isVm(stream) || stream.scope !== 'watch') continue
+      this.streams.get(stream.id)?.push?.({ push: 'computer-click', preview: stream.id, at, ...size })
     }
   }
 
@@ -221,7 +231,7 @@ export class VmPicture implements VideoSource {
    * service (vm.ts `vmPaste`, set by the pillar's start through `configureVmPaste`). While Work is off, a paste is refused in words.
    */
   async paste(stream: StreamInfo, text: string): Promise<void> {
-    const feed = this.streams.get(stream.id)
+    const feed = this.streams.get(stream.id)?.feed
     if (!feed || !this.owner) throw new Error('forbidden: video.paste needs a stream you are driving')
     if (!vmPaste) throw new Error(NO_VM_PASTE)
     await vmPaste(text, (event) => feed.type(event))

@@ -1074,7 +1074,18 @@ impl<D: Desktop> Service<D> {
         let index = a.element.ok_or_else(|| fail(ComputerErrorKind::ActionUnsupported, "this step needs an element"))?;
         let handle = self.element(&target.session, pid, index)?;
         check_browser_deadline(browser_deadline)?;
+        let click = if self.no_person && a.action == ComputerActionName::LeftClick {
+            self.desktop.frame_of(&handle).filter(|f| f.w > 0.0 && f.h > 0.0)
+        } else {
+            None
+        };
+        if click.is_some() {
+            check_browser_deadline(browser_deadline)?;
+        }
         let acted = self.desktop.act(pid, &handle, a)?;
+        if let Some(f) = click {
+            self.desktop_click(f.x + f.w / 2.0, f.y + f.h / 2.0);
+        }
         if a.action == ComputerActionName::SetValue {
             if let (Some(want), Some(got)) = (&a.value, &acted.value) {
                 if !same_text(want, got) {

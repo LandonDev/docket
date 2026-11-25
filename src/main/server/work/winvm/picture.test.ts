@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush, ComputerFramePush, ComputerPreviewPush } from '@shared/contract-computer'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { guestSizeFor } from '@shared/video/guestSize'
 import type { StreamInfo } from '../../video/relay'
+import { EngineFeed } from '../browser/box/engineFeed'
 import type { EngineLease } from '../browser/box/engine'
 import { VideoRelay, type ViewerSocket } from '../../video/relay'
 import { VideoRpc } from '../../video/rpc'
@@ -144,6 +145,38 @@ describe("the Windows VM's video", () => {
     const t = setup({ leases: 3 })
     for (let i = 0; i < 3; i++) expect((await t.picture.open(ask()))?.ok).toBe(true)
     expect(await t.picture.open(ask())).toEqual({ ok: false, reason: 'busy' })
+  })
+
+  it("sends the thread's click in desktop pixels to each joined watcher under its own video id", async () => {
+    const t = setup()
+    const start = vi.spyOn(EngineFeed.prototype, 'start').mockImplementation(() => {})
+    const rpc = new VideoRpc(t.relay, { mintStreamTicket: () => ({ ticket: 'k', expiresIn: 30 }) }, () => true)
+    rpc.addSource(t.picture)
+    const pushes: ComputerClickPush[] = []
+    const join = async (connectionId: string, attach: boolean) => {
+      const answer = await rpc.open({ threadId: 'vm:windows', computer: VM_COMPUTER, maxEdge: 640 }, {
+        connectionId, connection: {}, principal: LOCAL_PRINCIPAL, push: (p) => pushes.push(p)
+      })
+      if (!answer.ok) throw new Error(answer.reason)
+      if (attach) expect(t.relay.attach({ stream: answer.stream, scope: 'watch', holder: { local: connectionId } }, { bufferedAmount: 0, send: () => {}, close: () => {}, on: () => {} })).toBe(true)
+      return answer.stream
+    }
+    const [first, second] = await (async () => {
+      try {
+        return [await join('first', true), await join('second', true), await join('unjoined', false)]
+      } finally {
+        start.mockRestore()
+      }
+    })()
+    t.picture.click([-1, 2])
+    t.picture.click([1280, 800])
+    expect(pushes).toEqual([])
+    t.picture.click([110, 70])
+    expect(pushes).toEqual([first, second].map((preview) => ({ push: 'computer-click', preview, at: [110, 70], width: 1280, height: 800 })))
+    t.picture.setDriving(true)
+    t.picture.click([110, 70])
+    expect(pushes).toHaveLength(2)
+    t.relay.shutdown()
   })
 
   it('gives its engine back when the stream ends', async () => {

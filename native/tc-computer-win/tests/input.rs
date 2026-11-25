@@ -80,6 +80,7 @@ impl Desktop for Fake {
     }
     fn act(&self, _pid: i64, element: &&'static str, a: &ComputerAction) -> Result<Acted, ComputerError> {
         match (*element, a.action) {
+            ("field", ComputerActionName::LeftClick) => Ok(Acted { via: None, value: None }),
             ("field", ComputerActionName::Type) if self.value.lock().unwrap().is_empty() => {
                 *self.value.lock().unwrap() = a.text.clone().unwrap_or_default();
                 Ok(Acted { via: Some(InputVia::AxValue), value: a.text.clone() })
@@ -220,6 +221,19 @@ fn a_click_at_a_coordinate_posts_at_the_pixels_centre_and_moves_the_agent_cursor
     let out = w.ok("action.run", act(&epoch, json!(["process"]), json!({ "action": "left_click", "coordinate": [800, 0] })));
     assert_eq!(out["step"]["error"]["kind"], json!("out_of_bounds"));
     assert_eq!(out["step"]["error"]["space"], json!({ "width": 800, "height": 600, "scale": 1.0 }));
+}
+
+#[test]
+fn a_guest_click_reports_its_desktop_point_without_a_window_stream() {
+    let mut w = Wire::start_without_person(Fake::default());
+    let epoch = init(&mut w)["epoch"].as_str().unwrap().to_string();
+    w.ok("session.open", json!({ "session": "s" }));
+    w.ok("action.run", act(&epoch, json!(["process"]), json!({ "action": "left_click", "coordinate": [10, 20] })));
+    assert_eq!(w.note("capture/desktopClick")["params"]["at"], json!([110, 70]));
+    w.ok("state.get", json!({ "session": "s", "app": { "app": "Notepad" }, "screenshot": "never" }));
+    let ax = w.ok("action.run", act(&epoch, json!(["ax"]), json!({ "action": "left_click", "element": 2 })));
+    assert_eq!(ax["step"]["tier"], json!("ax"));
+    assert_eq!(w.note("capture/desktopClick")["params"]["at"], json!([400, 300]));
 }
 
 #[test]

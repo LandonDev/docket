@@ -265,6 +265,12 @@ another QEMU build is refused); a tool missing, a refusal, a display that will n
 window all start the machine with no window, and `pictureOnly` on its row takes Take over away. The rest, the engines
 and the numbers, is live-video.md "The Windows VM".
 
+The guest helper reports a thread's successful click in desktop pixels,
+using the point it acted on or the element's center for an accessibility
+click. The VM's sessions pass it to the picture, which sends one
+`computer-click` per joined watch stream. The viewer draws the ring even
+when the click leaves the frame unchanged.
+
 **Key codes.** The engine presses his keys on the display by their evdev codes, and QEMU's window turns the
 display's key codes into the guest's keys by the set the display names when QEMU starts. The bundled Xorg names
 the old "xfree86" set, where letters sit alike and the navigation keys do not (Page Up reached the guest as "/",

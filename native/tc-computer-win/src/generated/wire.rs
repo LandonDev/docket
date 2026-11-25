@@ -2038,6 +2038,16 @@ pub struct CaptureClickNotification {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureDesktopClickNotificationParams {
+    pub at: Point,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureDesktopClickNotification {
+    pub params: CaptureDesktopClickNotificationParams,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct EscapePressedNotificationParams {
     pub at: f64,
 }
@@ -2122,6 +2132,8 @@ pub enum ComputerNotification {
     CaptureVideoEnded(CaptureVideoEndedNotification),
     #[serde(rename = "capture/click")]
     CaptureClick(CaptureClickNotification),
+    #[serde(rename = "capture/desktopClick")]
+    CaptureDesktopClick(CaptureDesktopClickNotification),
     #[serde(rename = "escape/pressed")]
     EscapePressed(EscapePressedNotification),
     #[serde(rename = "apps/frontRestored")]

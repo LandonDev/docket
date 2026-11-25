@@ -587,6 +587,7 @@ type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
 | `session/interrupted` | `{ session, by: 'person', at }` | §5.2 |
 | `capture/frame` | `{ stream, seq, ts, width, height, format: 'jpeg', data (base64), cursor?: Point (in this frame's pixels) }` | §6 |
 | `capture/click` | `{ stream, at: Point, width, height }` | the agent clicked on a streamed window; `at` in the pixels of a `width` × `height` frame, sent whether or not a pixel changed (P2, §6) |
+| `capture/desktopClick` | `{ at: Point }` | the Windows guest clicked at this point in desktop pixels, even without a window stream (§29.4.3) |
 | `escape/pressed` | `{ at }` (epoch ms) | the person pressed Escape while `escape.watch` was on (P1) |
 | `apps/frontRestored` | `{ session?, pid, name, front: FrontReport, afterMs }` | the front guard undid a steal after the call that armed its watch answered (§23.3); the host says it in that thread's next result |
 | `capture/streamEnded` | `{ stream, reason: 'stopped' \| 'window-closed' \| 'permission' \| 'error' }` | §6 |
@@ -2598,6 +2599,12 @@ On an element, with no coordinate, modifier or duration; the result says
   frame over the cap at every quality is dropped once, its place freed, until
   the pixels change. Not built: the
   click carried to a stream that starts within 2 s of it (`clickCarryMs`).
+
+- **The VM's live picture**: the guest helper sends `capture/desktopClick`
+  after a successful pointer click or button press, with the point in
+  desktop pixels. A successful accessibility click uses the center of the
+  element's frame when it has one. The host sends a click ring to each
+  joined VM watch stream.
 
 ### 29.5 The words
 

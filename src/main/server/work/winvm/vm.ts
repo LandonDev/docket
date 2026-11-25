@@ -1,6 +1,6 @@
 import type { TempCodeOrigins } from '../../remote/tempcodeOrigins'
 import { join } from 'node:path'
-import type { ComputerSessionRow } from '@shared/contract-computer'
+import type { ComputerClickPush, ComputerSessionRow } from '@shared/contract-computer'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { BrowserInputProof, ComputerRegistry } from '../../computer/run'
 import { ComputerService } from '../../computer/service'
@@ -55,6 +55,7 @@ export interface VmHost {
   rows: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
   /** ends the door's connections: the machine sleeps */
   closeDoor(): void
+  onClick(fn: (at: ComputerClickPush['at']) => void): () => void
   /** his paste in, his copy out, and the clipboard kept across his Take over (clipboard.ts) */
   clipboard: VmClipboard
 }
@@ -128,6 +129,9 @@ export function wireVm(o: VmWiring): VmHost {
       stop: (threadId) => sessions.stop(threadId)
     },
     closeDoor: () => door.closeAll(),
+    onClick: (fn) => service.onNotification((n) => {
+      if (n.method === 'capture/desktopClick') fn(n.params.at)
+    }),
     clipboard: new VmClipboard({ service: () => service, wake: () => keeper().wake() })
   }
   return host

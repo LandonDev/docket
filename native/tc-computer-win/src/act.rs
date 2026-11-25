@@ -301,6 +301,11 @@ impl<D: Desktop> Service<D> {
         }
         if let Some(p) = done.click {
             self.click_mark(session, &win, &space, p);
+            if self.no_person {
+                if let Some(((x, y), _)) = at {
+                    self.desktop_click(x, y);
+                }
+            }
         }
         Ok((tier, done))
     }
@@ -454,6 +459,11 @@ impl<D: Desktop> Service<D> {
             Some(Err(_)) => return Err(busy(None, "the paste ran but the clipboard could not be put back")),
         };
         Ok((tier, EventDone { via: Some(InputVia::Paste), clipboard: Some(outcome), session: session_change, ..Default::default() }))
+    }
+
+    /// Reports a click in the guest's screen pixels, without a window capture stream.
+    pub(crate) fn desktop_click(&self, x: f64, y: f64) {
+        self.notify("capture/desktopClick", json!({ "at": [x.floor() as i64, y.floor() as i64] }));
     }
 
     /// Sends a click's place to each of the session's streams on the window, in the newest frame's pixels.

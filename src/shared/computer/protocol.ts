@@ -1385,6 +1385,8 @@ export const ComputerNotificationSchema = z.discriminatedUnion('method', [
   notify('capture/videoEnded', z.object({ stream: int().positive(), reason: StreamEndReasonSchema })),
   /** P2: the agent clicked in a streamed window; `at` in the pixels of a `width` × `height` frame, sent whether or not a pixel changed */
   notify('capture/click', z.object({ stream: z.string(), at: PointSchema, width: int().positive(), height: int().positive() })),
+  /** A click on the guest's desktop, in screen pixels, for the VM's live picture. */
+  notify('capture/desktopClick', z.object({ at: PointSchema })),
   /** P1: the person pressed Escape while the watch was on; epoch ms */
   notify('escape/pressed', z.object({ at: z.number() })),
   /** §23.3: a steal undone after the call that armed the watch answered */

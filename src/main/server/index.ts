@@ -2049,6 +2049,7 @@ export async function startServer(
         const picture = h.wireVmPicture({ dataDir, video: { relay: videoRelay, rpc: videoRpc }, holder: () => vm.lease.holderPane(), log: (line) => console.log(`[winvm] ${line}`) })
         vmPreviews = picture.previews
         computerRpc.setBox(h.joinRows(vm.rows, picture))
+        vm.onClick((at) => picture.click(at))
         h.wireVmDrive({ picture, lease: vm.lease, sessions: vm.rows, log: (line) => console.log(`[winvm] ${line}`) })
       },
       (err) => console.log(`[winvm] did not load: ${String(err)}`)
