@@ -13,6 +13,7 @@ import { attachPiece } from './attach'
 import { BLANK_DECK } from './blankDeck'
 import { handEdit, handStep, restoreVersion, versionsOf } from './hand'
 import { forgetHands } from './handLine'
+import { versionRead } from './version'
 import { deckPreviewer } from './preview'
 import { createResident, type Resident } from './resident'
 import { SLIDES_CONVERTERS } from './deck'
@@ -48,6 +49,7 @@ const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.edit',
   'work.slides.step',
   'work.slides.versions',
+  'work.slides.version',
   'work.slides.restore',
   'work.slides.attach',
   'work.slides.build',
@@ -222,6 +224,11 @@ export const slides: WorkModule = {
       case 'work.slides.versions':
         // A read-only deck keeps no versions: nobody writes it.
         return handled(readOnlyWhy(item) ? [] : await versionsOf(ctx, item))
+      case 'work.slides.version': {
+        // His look before a Restore: an agent reads a deck through slides_read, never his kept copies.
+        if (by.kind === 'model') throw new Error('Only the owner looks at a kept version of a deck.')
+        return handled(await versionRead(ctx, item, req.params.version, req.params.offset, req.params.length, signal))
+      }
       case 'work.slides.attach': {
         if (by.kind === 'model') throw new Error('Only the owner adds a file by hand; an agent names a path in slides_edit.')
         return handled(

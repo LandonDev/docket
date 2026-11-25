@@ -369,7 +369,7 @@ function HistoryOpen() {
   };
   return (
     <div className="absolute end-2 top-[74px] flex w-[280px] flex-col rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
-      <VersionList kept={kept} restoring={null} onRetry={() => undefined} onRestore={() => undefined} />
+      <VersionList kept={kept} onRetry={() => undefined} onLook={() => undefined} />
     </div>
   );
 }

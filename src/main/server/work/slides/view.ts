@@ -186,7 +186,7 @@ export const slideRenderer = (): SlideRenderer | null => renderer
 let engine: () => string = () => ''
 export const setSlideEngine = (next: (() => string) | null): void => void (engine = next ?? (() => ''))
 /** Part of every kept page's name: a new deck script, filter or toolchain draws every slide again. */
-const pictureSalt = (): string => `${RENDER_V()}:${engine()}`
+export const pictureSalt = (): string => `${RENDER_V()}:${engine()}`
 
 /** Told whenever a deck is opened or told again (show.ts makes the show's pictures then, off the deck's queue). */
 let opened: ((ctx: Ctx, item: CanvasItem, deck: Deck) => void) | null = null

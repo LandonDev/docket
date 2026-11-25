@@ -1269,7 +1269,7 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {look === "slide" ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}
-        {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} /> : null}
+        {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} engine={engine ?? pdfjsEngine} /> : null}
         {presentHere ? (
           <InPowerPointRow.Provider value={inPowerPoint}>
             <PreviewOpener.Provider value={() => askPreview(item.id)}>

@@ -4459,11 +4459,18 @@ other picked shape is the outline alone.
   and word; under 560px of bar the glyph, with its tip), only where he can
   edit the deck by hand. It opens a 280px popover: the kept copies newest
   first, each a 36px row with its time in the app's words (`dayTime`), the
-  first one kept with a 12px muted line, "Before TempCode changed it", and
-  Restore at the row's end by the hover reveal. Three bones while the list
-  comes; "No versions yet" with none; the host's reason with Retry when it
-  cannot be read. A restore closes it; the copy from just before is the
-  newest next time.
+  first one kept with a 12px muted line, "Before TempCode changed it"; the
+  whole row is the press, with the row's press fill. Three bones while the
+  list comes; "No versions yet" with none; the host's reason with Retry
+  when it cannot be read. A press on a row closes it and opens that copy to
+  look at, never restoring blind: the md dialog titled by its time (the
+  first's line under it), its slides one under another at the body's
+  width, each at radius 6 on `image-outline`, in a body of at most 560px
+  (60% of the window) that scrolls, two 16:9 bones while the host draws the
+  copy, the host's reason with Retry when it cannot; the footer Cancel and
+  Restore ("Restoring" while it runs), Restore off until the slides are
+  there. A restore closes it; the copy from just before is the newest next
+  time.
 - **Keys**, while the keyboard is in the deck (its body is marked
   `data-editor-keys="slides"`, `read` where he cannot edit it):
 

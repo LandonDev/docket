@@ -1958,6 +1958,40 @@ describe('his own edits to a deck', () => {
     }
   })
 
+  it('draws a kept copy to look at before Restore: once, read by range, by its name alone; a read key under its roots sees it, a key outside them and a thread do not', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-23T10:00:00Z') })
+    try {
+      const item = openDeck(fileSource(path))
+      await retitle(item, 256, 'A')
+      const [first] = await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })
+      const pdfs = (): number => calls.filter((c) => c.startsWith('pdf')).length
+      const before = pdfs()
+      const read = (offset: number, length: number, by?: Parameters<typeof call>[2]) => call<{ data: string; size: number; rev: string }>('work.slides.version', { itemId: item.id, version: first.id, offset, length }, by)
+      const head = await read(0, 9)
+      // The copy before his edit, drawn: the fake writes the PDF of what it was given.
+      expect(Buffer.from(head.data, 'base64').toString()).toBe('%PDF-1.7 ')
+      expect(head.rev).toMatch(/^[0-9a-f]{16}$/)
+      const rest = await read(9, head.size)
+      expect(Buffer.from(rest.data, 'base64').toString()).toBe(createHash('sha256').update(fakeBytes(FAKE_DECK)).digest('hex'))
+      expect(rest.rev).toBe(head.rev)
+      expect(pdfs()).toBe(before + 1)
+      // Named by the list's own names alone: never a path.
+      await expect(call('work.slides.version', { itemId: item.id, version: '../../Show.pptx', offset: 0, length: 1 })).rejects.toThrow('That version is no longer kept')
+      await expect(call('work.slides.version', { itemId: item.id, version: '000000000000000-abcd.pptx', offset: 0, length: 1 })).rejects.toThrow('That version is no longer kept')
+      // A read key: nothing of a deck outside the roots it could name itself; under them, the look.
+      const reader = { kind: 'remote', keyId: 'k2', name: 'Phone', audience: 'client', caps: ['read'] } as never
+      await expect(read(0, 9, reader)).rejects.toThrow('forbidden: work.slides.version is outside app-managed roots')
+      db.prepare(`INSERT INTO workspaces (id, name, path, created_at) VALUES ('w9', 'Job', ?, 1)`).run(dir)
+      expect((await read(0, 9, reader)).rev).toBe(head.rev)
+      // A thread does not look at his kept copies: it reads the deck through slides_read.
+      const thread = { kind: 'model', caps: ['read', 'operate'], sessionId: 't1' } as never
+      await expect(slides.handle!(ClientRequestSchema.parse(req('work.slides.version', { itemId: item.id, version: first.id, offset: 0, length: 9 })), work.ctx, thread)).rejects.toThrow('Only the owner looks at a kept version')
+      expect(pdfs()).toBe(before + 1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps the newest thirty copies, the first for good, and the one an agent’s Undo points at', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-23T10:00:00Z') })
     try {

@@ -518,7 +518,7 @@ describe("the format row", () => {
 });
 
 describe("History", () => {
-  it("lists the kept versions newest first, marks the first, and Restore puts one back", async () => {
+  it("lists the kept versions newest first, marks the first; a press opens one to look at, and Restore there puts it back", async () => {
     open(handView());
     deckHost.kept = [
       { id: "v2", at: Date.UTC(2026, 10, 23, 17) - 60_000, size: 10, first: false },
@@ -534,9 +534,54 @@ describe("History", () => {
     expect(rows.map((r) => r.dataset.version)).toEqual(["v2", "v1"]);
     expect(rows[1].textContent).toContain(FIRST_WORDS);
     expect(rows[0].textContent).not.toContain(FIRST_WORDS);
-    fireEvent.click(within(rows[1]).getByRole("button", { name: /^Restore/ }));
+    // No Restore blind: the row opens the copy to look at.
+    expect(within(rows[1]).queryByRole("button", { name: /^Restore/ })).toBeNull();
+    fireEvent.click(within(rows[1]).getByRole("button", { name: /^Look at the/ }));
+    const look = await screen.findByRole("dialog");
+    expect(look.dataset.slidesVersion).toBe("v1");
+    expect(look.textContent).toContain(FIRST_WORDS);
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["version", "v1"]));
+    // Its slides as the host draws the copy, one under another.
+    await waitFor(() => expect(look.querySelectorAll("[data-version-slide]")).toHaveLength(2));
+    expect(document.querySelector("[data-version]")).toBeNull();
+    expect(deckHost.calls.some(([name]) => name === "restore")).toBe(false);
+    fireEvent.click(within(look).getByRole("button", { name: "Restore" }));
     await waitFor(() => expect(deckHost.calls).toContainEqual(["restore", "v1"]));
-    await waitFor(() => expect(document.querySelector("[data-version]")).toBeNull());
+    await waitFor(() => expect(document.querySelector("[data-slides-version]")).toBeNull());
+  });
+
+  it("says why a copy could not be drawn, with Retry, and offers no Restore until it is", async () => {
+    open(handView());
+    deckHost.kept = [{ id: "v2", at: Date.UTC(2026, 10, 23, 17) - 60_000, size: 10, first: false }];
+    const drawn = deckHost.version.bind(deckHost);
+    let fail = true;
+    deckHost.version = async (...args: Parameters<typeof drawn>) => {
+      if (fail) throw new Error("That version is no longer kept.");
+      return drawn(...args);
+    };
+    const bar = await found("[data-canvas-bar]");
+    fireEvent.click(within(bar).getByRole("button", { name: "History" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Look at the/ }));
+    const look = await screen.findByRole("dialog");
+    expect(await within(look).findByText("That version is no longer kept.")).toBeTruthy();
+    expect((within(look).getByRole("button", { name: "Restore" }) as HTMLButtonElement).disabled).toBe(true);
+    fail = false;
+    fireEvent.click(within(look).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(look.querySelectorAll("[data-version-slide]").length).toBeGreaterThan(0));
+    expect((within(look).getByRole("button", { name: "Restore" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("leaves the deck as it is when he closes the look without Restore", async () => {
+    open(handView());
+    deckHost.kept = [{ id: "v2", at: Date.UTC(2026, 10, 23, 17) - 60_000, size: 10, first: false }];
+    const bar = await found("[data-canvas-bar]");
+    fireEvent.click(within(bar).getByRole("button", { name: "History" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Look at the/ }));
+    const look = await screen.findByRole("dialog");
+    await waitFor(() => expect(look.querySelectorAll("[data-version-slide]").length).toBeGreaterThan(0));
+    fireEvent.click(within(look).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.querySelector("[data-slides-version]")).toBeNull());
+    expect(deckHost.calls.some(([name]) => name === "restore")).toBe(false);
   });
 
   it("shows its loading rows while the versions come, and says when there are none", async () => {

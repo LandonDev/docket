@@ -35,6 +35,8 @@ export interface DeckHost {
   versions(): Promise<DeckVersion[]>;
   /** Puts a kept copy in the file's place; the deck as it is now is kept first. */
   restore(version: string): Promise<DeckView>;
+  /** Bytes of a kept copy's picture (`work.slides.version`), drawn the first time: with `rev`, bytes of another are refused. */
+  version(version: string, offset: number, length: number, rev?: string): Promise<{ data: Uint8Array; size: number; rev: string }>;
   /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. `sent`: told the bytes the host holds after each piece. */
   attach(name: string, data: Uint8Array, sent?: (bytes: number) => void): Promise<string>;
   onView(listener: (view: DeckView) => void): () => void;
@@ -82,6 +84,11 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
     step: (dir) => call("work.slides.step", { dir }),
     versions: () => call("work.slides.versions"),
     restore: (version) => call("work.slides.restore", { version }),
+    version: async (version, offset, length, rev) => {
+      const got = await call<{ data: string; size: number; rev: string }>("work.slides.version", { version, offset, length });
+      if (rev !== undefined && got.rev !== rev) throw new Error(RENDER_CHANGED);
+      return { data: fromBase64(got.data), size: got.size, rev: got.rev };
+    },
     attach: async (name, data, sent) => {
       let token: string | undefined;
       for (let at = 0; at < data.length || at === 0; at += ATTACH_PIECE) {

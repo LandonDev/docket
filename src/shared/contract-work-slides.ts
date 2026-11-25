@@ -698,6 +698,12 @@ export const SlidesRequestSchemas = [
   request('work.slides.step', z.object({ itemId, dir: z.enum(['undo', 'redo']) })),
   /** → DeckVersion[]: the kept copies, newest first */
   request('work.slides.versions', z.object({ itemId })),
+  /**
+   * → { data: base64, size, rev }: bytes of a kept copy's picture (a PDF, one page a slide), to look at before Restore.
+   * Drawn the first time it is asked for; named by the version's own name from `work.slides.versions`, never a path.
+   * Refused for a thread: the look is his.
+   */
+  request('work.slides.version', z.object({ itemId, version: z.string().min(1).max(100), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: puts a kept copy in the file's place; the deck as it is now is kept first */
   request('work.slides.restore', z.object({ itemId, version: z.string().min(1).max(100) })),
   /**
@@ -745,6 +751,7 @@ export const SLIDES_CAPS = {
   'work.slides.edit': 'operate',
   'work.slides.step': 'operate',
   'work.slides.versions': 'read',
+  'work.slides.version': 'read',
   'work.slides.restore': 'operate',
   'work.slides.attach': 'operate',
   'work.slides.preview': 'operate',

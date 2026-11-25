@@ -286,6 +286,13 @@ export function fakeDeckHost(initial: DeckView): DeckHost & {
       }
       return `token:${name}`;
     },
+    /** A kept copy's picture: its bytes are its name, as the fake host draws it. */
+    async version(version: string, offset: number, length: number) {
+      host.calls.push(["version", version]);
+      if (host.hold) await host.hold;
+      const bytes = new TextEncoder().encode(`%PDF ${version}`);
+      return { data: bytes.subarray(offset, offset + length), size: bytes.length, rev: "aaaaaaaaaaaaaaaa" };
+    },
     async restore(version: string) {
       host.calls.push(["restore", version]);
       host.view = { ...moved(host.view), hand: { undo: false, redo: false } };

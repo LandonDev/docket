@@ -659,6 +659,15 @@ read-backs in `landed/SLD45-proof/`): 29 decks, 340 checks, none failed.
   back from the list; the copy he picked is spared while room is made
   (`keepHistory`'s `spare`), so the oldest of thirty can still be put back.
   A version is named by its file's name and nothing else, never a path.
+- `work.slides.version` (version.ts, `versionRead`) draws one kept copy to
+  look at before Restore: a scratch copy of it drawn whole into a PDF by the
+  LibreOffice kept running (else a pptx→pdf job), once a copy and what draws
+  it (`rev`: the version's name, its size and `pictureSalt`), kept under the
+  deck's `versions/` folder (the newest six), and read by range. Named by
+  `VERSION_NAME` alone, as a restore is; fenced as every slides method
+  (`fenceItem`: a remote key only under roots it could name itself); `read`,
+  so a read key sees it; refused for a thread, whose way into a deck is
+  `slides_read`.
 - His own file's versions live by the file and outlive a closed tab; a
   shared file's live in the item's folder and go with it.
 
@@ -713,6 +722,7 @@ thread (`rowSession`):
 | `work.slides.edit` | operate | his own edits (`{itemId, ops}`), written into the file at once, whole or not at all → `DeckView`; refused for a thread |
 | `work.slides.step` | operate | `{itemId, dir: 'undo' \| 'redo'}`: takes his last edit back or puts back the one he took back → `DeckView`; refused for a thread |
 | `work.slides.versions` | read | → `DeckVersion[]`, the kept copies newest first |
+| `work.slides.version` | read | `{itemId, version, offset, length}`: bytes of a kept copy's picture, drawn the first time → `{data, size, rev}`; refused for a thread |
 | `work.slides.restore` | operate | `{itemId, version}`: puts a kept copy in the file's place → `DeckView`; refused for a thread |
 | `work.slides.attach` | operate | one piece of a picture or a video he is adding by hand → `{token}`; refused for a thread |
 | `work.slides.preview` | operate | `{itemId, format, layout?, hidden?, page?, picture?, video?, office?}` → `DeckOut`: the deck as a format holds it ("Preview and export"), made from the file as it is now, or the one already made when the file did not change |
@@ -1726,7 +1736,10 @@ once (`work.slides.edit`), whole or not at all.
   (`read` without `hand`), so ⌘B and ⌘K are the editor's there; the row's
   keys come from work-kit's table (`formatKeyOf`, kind `slides`).
 - **History** (`edit/History.tsx`) lists `work.slides.versions` on each
-  opening and puts one back with `work.slides.restore`.
+  opening; a row opens the copy to look at (`VersionLook`): the window opens
+  its picture by range through `work.slides.version` (`DeckHost.version`,
+  every read after the first held to the first's `rev`) and draws its pages
+  with the PDF engine; Restore there puts it back with `work.slides.restore`.
 - **What saved means** (`shell.saved`, FILES-SEAM.md "Save state"):
   `saving` while one of his edits is on its way, `saved` with the time of
   the last one after, `conflict` with Reload as above; nothing without
