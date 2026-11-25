@@ -1371,7 +1371,10 @@ thread; nothing answers inside the canvas.
   nothing asked ("Read only" and why, on a sheet, a deck, a moved PDF, a
   document he may not change), is the quiet line: 12px muted, the word
   medium, its one press a link, a hairline under (`QuietLine`, tone
-  `quiet`).
+  `quiet`). A document gone offline asks nothing of him either: its quiet
+  line ("Offline." and "Edits stay here until the box is back.", naming
+  the computer) is laid over the text's 32px top padding, never above it,
+  so the text does not move when the link blinks; it shows after 1.5 s.
 - **The selection bar** floats over any selection in any kind, on the
   transcript's selection menu recipe (surfaces/TranscriptSelectionMenu.tsx):
   the popover fill at its 12px radius, a 4px inset and 24px ghost buttons

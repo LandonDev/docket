@@ -139,6 +139,18 @@ and the frame names the folder. While no socket is open the store waits for the
 provider's next one; the line keeps its last Saved time (the document's own
 offline line says why).
 
+Offline (and waiting to open, which is offline too) is not the pane's state
+line: `statusLineOf` gives the pane only what needs him or says how the
+document is (Read only, Did not open), and `offlineWords` makes one quiet
+sentence naming the computer ("Offline." "Edits stay here until the box is
+back."; "It opens for editing once the box is back."), drawn by `OfflineLine`
+in a slot laid over the scroller's 32px top padding, out of the text's flow.
+work-kit's 1.5 s grace still holds it back for a blink. The preview page
+`DocumentCanvas.preview.tsx` draws the editor as a Files tab has it: the
+header's save line, the format row, find with Replace and this line; not Pages,
+whose sheets are broken by measuring lines, which a static render cannot
+(DocumentPages.dom.test.tsx holds that frame).
+
 While a LifeOS document has a socket open here, main watches its threads
 in LifeOS and pushes `work.docs {threads: true}` when they change, so a
 comment made in LifeOS desktop shows at once.

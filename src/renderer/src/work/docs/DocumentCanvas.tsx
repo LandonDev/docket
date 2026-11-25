@@ -31,6 +31,8 @@ import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import { BarHold } from "../canvas/barHold";
+import { QuietLine } from "../canvas/QuietLine";
+import { hostName } from "../../lib/threadResources";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, SavedLine, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
@@ -120,16 +122,39 @@ export function presenceOf(people: readonly DocumentPresence[], palette: readonl
   });
 }
 
-/** The editor's sentence for what is wrong, as the pane's one state line. */
-function statusLineOf(status: DocumentStatus | null): Parameters<CanvasShell["statusLine"]>[0] {
-  if (!status) return null;
-  const word = { offline: "Offline", waiting: "Waiting", refused: "Read only", unreadable: "Did not open", seed: "Not set up" }[status.kind];
+/**
+ * The editor's sentence for what is wrong, as the pane's one state line. Offline (and waiting to open, which is offline
+ * too) asks nothing of him: it is not the pane's line but one quiet sentence laid over the text's top padding
+ * (`offlineWords`, `OfflineLine`), so the text never moves when the link blinks.
+ */
+export function statusLineOf(status: DocumentStatus | null): Parameters<CanvasShell["statusLine"]>[0] {
+  if (!status || status.kind === "offline" || status.kind === "waiting") return null;
+  const word = { refused: "Read only", unreadable: "Did not open", seed: "Not set up" }[status.kind];
   return {
-    tone: status.kind === "unreadable" || status.kind === "seed" ? "failed" : status.kind === "refused" ? "quiet" : "needs",
+    tone: status.kind === "refused" ? "quiet" : "failed",
     word,
     detail: status.message,
     ...(status.retry ? { action: { label: "Retry", run: status.retry } } : {}),
   };
+}
+
+/** The offline line's words, naming the computer the document is on ("the box", "this Mac"); null while it is not offline. */
+export function offlineWords(status: DocumentStatus | null, host: string): { word: string; detail: string } | null {
+  if (status?.kind === "offline") return { word: "Offline.", detail: `Edits stay here until ${host} is back.` };
+  if (status?.kind === "waiting") return { word: "Offline.", detail: `It opens for editing once ${host} is back.` };
+  return null;
+}
+
+/**
+ * The offline line, in the 32px over the text the scroller keeps as its top padding (`pt-8`): on the page's own ground
+ * so text scrolled under it is covered, never pushed. The quiet line's look (docs/DESIGN.md "The state line").
+ */
+export function OfflineLine({ words }: { words: { word: string; detail: string } }) {
+  return (
+    <div data-doc-offline className="pointer-events-auto bg-background">
+      <QuietLine word={words.word} detail={words.detail} />
+    </div>
+  );
 }
 
 type Opened = { host: DocHost; open: DocOpen } | { error: string } | null;
@@ -433,6 +458,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   // The format row is the body's first, unscrolled row (docs/DESIGN.md "Work editors"): the editor draws it into this place.
   const [rowSlot, setRowSlot] = useState<HTMLDivElement | null>(null);
+  const [lineSlot, setLineSlot] = useState<HTMLDivElement | null>(null);
   const [previewing, setPreviewing] = useState<PreviewOn>(false);
   // Each ask is counted: Print… pressed while Preview shows another format, however he got there, opens it on Print anew.
   const [asked, setAsked] = useState(0);
@@ -448,7 +474,9 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
         <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
         {/* Its keys are the editor's own while focus is in it (⌘B in the size field is bold, not the sidebar). */}
         <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={previewing ? "invisible flex-none" : "flex-none"} inert={previewing ? true : undefined} />
-        <div className={previewing ? "invisible min-h-0 flex-1" : "min-h-0 flex-1"} inert={previewing ? true : undefined}>
+        <div className={previewing ? "invisible relative min-h-0 flex-1" : "relative min-h-0 flex-1"} inert={previewing ? true : undefined}>
+          {/* Where the offline line is laid: over the scroller's top padding, out of the text's flow. */}
+          <div ref={setLineSlot} className="pointer-events-none absolute inset-x-0 top-0 z-10" />
           <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...latestState.current, scrollTop })}>
             {(width) =>
               opened === null ? (
@@ -466,6 +494,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   root={root}
                   preview={{ slot, on: previewing, asked, set: showPreview }}
                   rowSlot={rowSlot}
+                  lineSlot={lineSlot}
                   pages={pages}
                   {...(workspace ? { onSaveAs: saveAs } : {})}
                   shareable={!!shareTargetOf(source, "document")}
@@ -595,6 +624,7 @@ function Opened({
   root,
   preview,
   rowSlot,
+  lineSlot = null,
   pages,
   onSaveAs,
   shareable = false,
@@ -610,6 +640,8 @@ function Opened({
   root: React.RefObject<HTMLDivElement | null>;
   preview: PreviewSlot;
   rowSlot: HTMLElement | null;
+  /** where the offline line is laid, over the text's top padding */
+  lineSlot?: HTMLElement | null;
   pages?: PagesWiring;
   /** Save as Word to…: opens the folder picker; absent outside a Work workspace */
   onSaveAs?(): void;
@@ -617,6 +649,7 @@ function Opened({
   shareable?: boolean;
 }) {
   const doc = useDocument(host, open);
+  const [offline, setOffline] = useState<{ word: string; detail: string } | null>(null);
   const offering = useDocDrafts(host, journal ?? null, shell);
   useDocSaved(host, shell, open.role === "edit" && !offering);
   const margin = width >= MARGIN_FROM;
@@ -769,7 +802,10 @@ function Opened({
         doc={doc}
         open={open}
         margin={margin}
-        onStatus={(status) => shell.statusLine(statusLineOf(status))}
+        onStatus={(status) => {
+          shell.statusLine(statusLineOf(status));
+          setOffline(offlineWords(status, hostName(host.env)));
+        }}
         onPresence={(people) => shell.presence(presenceOf(people))}
         onAsk={onAsk}
         review={previewing ? null : review.state}
@@ -780,6 +816,7 @@ function Opened({
         onFind={onFind}
         {...(pages ? { pages: { view: pages.view, ...(pages.zoom !== undefined ? { zoom: pages.zoom } : {}), onView: pages.onView, onZoom: pages.onZoom, onPages, onDocumentHandle, sheets } } : {})}
       />
+      {offline && lineSlot ? createPortal(<OfflineLine words={offline} />, lineSlot) : null}
       {preview.on && preview.slot
         ? createPortal(
             // Print… asked for while it is up on another format moves it to Print: a new frame on that format.

@@ -27,6 +27,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/connections/model.ts`]: [
     ["Ready", "answer"],
   ],
+  // A document offline: his edits are in this window until the host is back (docs/host.ts keeps them, drafts journal them).
+  [`${R}/docs/DocumentCanvas.tsx`]: [
+    ["`Edits stay here until ${host} is back.`", "local"],
+  ],
   [`${R}/files/Home.tsx`]: [
     ["Not saved", "answer"],
   ],

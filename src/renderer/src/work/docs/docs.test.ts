@@ -18,7 +18,7 @@ vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ messag
 const { changeId, decided, reviewOf } = await import("./review");
 const { NOT_SENT, NOT_TAKEN, docHost, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
-const { docSavedLine, presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
+const { docSavedLine, offlineWords, statusLineOf, presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
 // The store a pause in his edits asks for is the save line's own test's: elsewhere it never comes.
 relayTiming.storePauseMs = 600_000;
 
@@ -535,6 +535,22 @@ describe("the relayed socket", () => {
   it("a document another host serves names that host", () => {
     expect(servedBy(new Error("served elsewhere: env_box"))).toBe("env_box");
     expect(servedBy(new Error("not found"))).toBeNull();
+  });
+});
+
+describe("the document's offline line", () => {
+  const status = (kind: "offline" | "waiting" | "refused" | "unreadable" | "seed") => ({ kind, message: "work-kit's sentence", retry: null });
+  it("is no pane line but one quiet sentence naming the computer, so the text never moves; trouble that needs him stays the pane's", () => {
+    expect(statusLineOf(status("offline"))).toBeNull();
+    expect(statusLineOf(status("waiting"))).toBeNull();
+    expect(offlineWords(status("offline"), "the box")).toEqual({ word: "Offline.", detail: "Edits stay here until the box is back." });
+    expect(offlineWords(status("waiting"), "this Mac")).toEqual({ word: "Offline.", detail: "It opens for editing once this Mac is back." });
+    expect(offlineWords(status("refused"), "the box")).toBeNull();
+    expect(offlineWords(null, "the box")).toBeNull();
+    // Never amber: read only is quiet, a document that did not open is a failure.
+    expect(statusLineOf(status("refused"))).toMatchObject({ tone: "quiet", word: "Read only" });
+    expect(statusLineOf(status("unreadable"))).toMatchObject({ tone: "failed", word: "Did not open" });
+    expect(statusLineOf(null)).toBeNull();
   });
 });
 
