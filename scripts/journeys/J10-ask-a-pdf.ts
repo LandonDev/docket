@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { fixtures, openRow } from './lib/files'
+import { holderFolder, showPlace } from './lib/place'
 import { journey, step } from './lib/record'
 
 const QUESTION = 'What does page 3 say?'
@@ -13,19 +14,14 @@ export default journey({
   tier: 1,
   shapes: ['A', 'B1'],
   steps: [
-    step('Open the PDF and wait for the first page', async ({ pair, shape, workspace }) => {
+    step('Open the PDF and wait for the first page', async (context) => {
+      const { pair, workspace } = context
       const page = pair.page
-      const place = shape === 'A' ? workspace.path : join(pair.l1, workspace.name)
-      fixtures(pair.repo, place, workspace.name + ' Practice plan')
+      fixtures(pair.repo, holderFolder(context), workspace.name + ' Practice plan')
       // A chat left docked by the walk before folds Files' sidebar (under 900px of view), and the library's row with it.
       await page.eval(`document.querySelector('[data-files-dock] button[aria-label="Close chat"]')?.click()`)
-      await page.clickOn('button, a, [role="link"], [role="treeitem"], div', workspace.name)
-      await page.clickOn('button, a, [role="link"], div', 'Files')
-      if (shape === 'B1') {
-        await page.clickOn('button, a, [role="link"], div', 'Journey Teams L1')
-        await openRow(page, 'General')
-        await openRow(page, workspace.name)
-      }
+      // Files opens on Home: go to the folder that holds the PDF.
+      await showPlace(context)
       await openRow(page, pdfName(workspace.name))
       await page.until('the first PDF page to draw', 60_000, () => page.eval(`!!document.querySelector('[data-pdf-page="1"] canvas')?.width`))
     }),

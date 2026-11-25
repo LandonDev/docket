@@ -47,7 +47,7 @@ export default journey({
     step('Open the held Word edit in Outbox and press Send', async (context) => {
       const { page } = context.pair
       await page.clickOn('nav [data-rail-row] button > span.truncate', 'Outbox')
-      const row = '[data-outbox-list] button:has([data-row-title])'
+      const row = '[data-outbox-list] [data-outbox-row]'
       let point: Awaited<ReturnType<typeof page.centre>> = null
       await page.until('the held Word row naming the file', 15_000, async () => {
         const at = await page.eval<number>(`[...document.querySelectorAll(${JSON.stringify(row)})].findIndex(e => e.innerText.includes(${JSON.stringify(NAME)}))`)

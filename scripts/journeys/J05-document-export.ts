@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { holds, openRow, unzip } from './lib/files'
+import { showPlace } from './lib/place'
 import { journey, step } from './lib/record'
 import type { Window } from './lib/window'
 
@@ -54,10 +55,11 @@ export default journey({
   tier: 1,
   shapes: ['A'],
   steps: [
-    step('New document in the workspace folder', async ({ pair, workspace }) => {
+    step('New document in the workspace folder', async (context) => {
+      const { pair, workspace } = context
       const page = pair.page
-      await page.clickOn('button, a, [role="link"], [role="treeitem"], div', workspace.name)
-      await page.clickOn('button, a, [role="link"], div', 'Files')
+      // Files opens on Home: the new document goes in the workspace's own folder.
+      await showPlace(context)
       await page.press('button', 'New')
       await page.press('menuitem', 'Document')
       await page.until('the new document name field', 20_000, () => page.eval('document.activeElement?.matches("[data-files-row] input")'))
