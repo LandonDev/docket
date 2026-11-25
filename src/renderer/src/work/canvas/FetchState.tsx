@@ -54,7 +54,7 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
   const env = useContext(FailedHost);
   const saved = env ? savedOfReason(why) : null;
   const lifeos = useLiveDown(saved, saved ? env : null, saved ? onRetry : undefined);
-  if (env && saved && (lifeos.down || lifeos.waits)) return <DownEmpty live={lifeos} environmentId={env} onRetry={() => refreshLifeos(env).catch(() => undefined).then(() => onRetry?.())} />;
+  if (env && saved && (lifeos.down || lifeos.waits)) return <DownEmpty live={lifeos} environmentId={env} onRetry={() => refreshLifeos(env).catch(() => undefined).then(async () => void (await onRetry?.()))} />;
   // Back on connected and read again: the wait in the body's place, never the old cause.
   if (lifeos.again)
     return (
