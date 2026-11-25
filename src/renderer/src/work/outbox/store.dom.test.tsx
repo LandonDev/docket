@@ -6,7 +6,7 @@
  * `updatedAt` stands; a detail is one ask. Every assertion counts requests or notifies.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 
 type Call = { env: string; method: string; params: Record<string, unknown> };
@@ -35,6 +35,8 @@ vi.mock("../../lib/connection", async (original) => {
           return { grants: [] };
         case "work.outbox.offers":
           return { offers: [] };
+        case "work.outbox.requests":
+          return { requests: [] };
         case "work.outbox.results":
           return { results: [{ id: "r-alone" }] };
         case "work.outbox.get": {
@@ -72,6 +74,7 @@ beforeEach(async () => {
   world.calls = [];
 });
 afterEach(() => {
+  cleanup();
   // The hold: nothing the store reads on its own ever presses.
   expect(world.calls.filter((c) => /\.(send|discard|edit|grant|takeOffer|decide)$/.test(c.method))).toEqual([]);
   vi.useRealTimers();
@@ -99,7 +102,8 @@ describe("a push", () => {
     });
     expect(world.calls).toEqual([]);
     await act(async () => void (await vi.advanceTimersByTimeAsync(500)));
-    expect(methods()).toEqual(["list:waiting"]);
+    // What waits and a thread's open requests (master's Asked in threads, which Today shows too): one read each.
+    expect(methods()).toEqual(["list:waiting", "work.outbox.requests"]);
     expect(reader.notifies() - before).toBe(1);
     reader.hook.unmount();
   });
@@ -134,14 +138,14 @@ describe("what each reader reads", () => {
     // A push while none read marks it stale: the next mount reads what waits, and nothing of the page's.
     for (const push of world.pushes) push({ push: "work.outbox", waiting: 3, failed: 0 });
     await act(() => store.loadOutbox({ ifStale: true }));
-    expect(methods()).toEqual(["list:waiting"]);
+    expect(methods()).toEqual(["list:waiting", "work.outbox.requests"]);
   });
 
   it("the Outbox page reads Done, the grants and the offers too; opened again 1 s later it asks nothing", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const page = renderHook(() => store.useOutboxPage());
     await settle();
-    expect(methods().sort()).toEqual(["list:done", "list:waiting", "work.outbox.grants", "work.outbox.offers"]);
+    expect(methods().sort()).toEqual(["list:done", "list:waiting", "work.outbox.grants", "work.outbox.offers", "work.outbox.requests"]);
     page.unmount();
     world.calls = [];
     vi.setSystemTime(Date.now() + 1_000);
@@ -151,10 +155,10 @@ describe("what each reader reads", () => {
     again.unmount();
   });
 
-  it("a reconnect reads once more, though the store is fresh", async () => {
+  it("a reconnect reads once more, though the store is fresh, and the requests once between their store and this one", async () => {
     for (const open of world.opens) open();
     await settle();
-    expect(methods()).toEqual(["list:waiting"]);
+    expect(methods().sort()).toEqual(["list:waiting", "work.outbox.requests"]);
   });
 });
 

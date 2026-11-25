@@ -57,8 +57,42 @@ function put(environmentId: string, request: OutboxRequest): HostRequest {
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/**
+ * A host's requests read out now, with the turn it was asked in: the stores that read on one event (a reconnect, the
+ * boot: this file's own and the Outbox store's) ask once between them. An ask in a later turn, for a push that came
+ * after the read went out, waits for it and asks again.
+ */
+const reading = new Map<string, { turn: number; done: Promise<void> }>();
+const again = new Set<string>();
+let turn = 0;
+let turning = false;
+function turnOf(): number {
+  if (!turning) {
+    turning = true;
+    queueMicrotask(() => {
+      turn++;
+      turning = false;
+    });
+  }
+  return turn;
+}
+
 /** One host's open requests, read again. A host from before requests answers nothing, and has none. */
-export async function loadRequests(environmentId: string): Promise<void> {
+export function loadRequests(environmentId: string): Promise<void> {
+  const out = reading.get(environmentId);
+  if (out) {
+    if (out.turn !== turnOf()) again.add(environmentId);
+    return out.done;
+  }
+  const done = readRequests(environmentId).finally(() => {
+    if (reading.get(environmentId)?.done === done) reading.delete(environmentId);
+    if (again.delete(environmentId)) void loadRequests(environmentId);
+  });
+  reading.set(environmentId, { turn: turnOf(), done });
+  return done;
+}
+
+async function readRequests(environmentId: string): Promise<void> {
   try {
     const { requests } = await registry.linkOf(environmentId).request<{ requests: OutboxRequest[] }>("work.outbox.requests", {});
     const map = new Map<string, HostRequest>();
@@ -152,6 +186,8 @@ function subscribe(listener: () => void): () => void {
 export function resetRequests(): void {
   hosts.clear();
   failures.clear();
+  reading.clear();
+  again.clear();
   changed();
 }
 

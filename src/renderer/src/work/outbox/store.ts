@@ -374,8 +374,9 @@ const wantsResults = (item: Pick<HostItem, "sessionId" | "decidedAt">): boolean 
 
 /**
  * One item's detail in one ask: `work.outbox.get`, which carries a decided act's Results too (`results: true`), shared
- * by every part of the detail that needs the whole act (a mail's quote, a computer act's picture, the way back) for as
- * long as the item's `updatedAt` stands. A host from before that answer gives no `results`: they are asked on their own.
+ * by every part of the detail that needs the whole act (a mail's quote, a computer act's picture, the way back) while
+ * it is out. Only while it is out: a detail mounted again reads the item afresh, as each mount always has. A host from
+ * before that answer gives no `results`: they are asked on their own.
  */
 export function fetchDetail(item: HostItem): Promise<Detail> {
   const key = `${item.environmentId}|${item.ref.at}|${item.ref.id}|${item.updatedAt}`;
@@ -389,8 +390,9 @@ export function fetchDetail(item: HostItem): Promise<Detail> {
       if (withResults && item.sessionId && Array.isArray(whole.results)) seedResults(item.environmentId, item.sessionId, whole.results);
       return whole;
     });
-  // A failed read is asked again by its Retry, never answered from here.
-  read.catch(() => details.get(key) === read && details.delete(key));
+  // Settled, it is forgotten: a later mount or a Retry asks again.
+  const settled = (): void => void (details.get(key) === read && details.delete(key));
+  read.then(settled, settled);
   details.set(key, read);
   while (details.size > DETAILS_AT_MOST) details.delete(details.keys().next().value!);
   return read;

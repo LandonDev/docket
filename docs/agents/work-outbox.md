@@ -1038,8 +1038,14 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
   `dismissedAt` stand, and the list's rows are memoised (Lists.tsx `HeldRow`
   and `DoneRow`, with the page's `onPick` and `onTick` the same functions
   for its life): a read that changed one item draws that row alone.
-- A detail is one ask (`fetchDetail`, keyed by the item and its
-  `updatedAt`): the held detail's whole read, a computer act's picture
+- A thread's open requests (`work.outbox.requests`, Asked in threads) ride
+  every read of a host, joined and counted with it; the asks the requests
+  store and this one make on one event (the boot, a reconnect, Away's
+  reread) are one (requests.ts `loadRequests` joins an ask out from the same
+  turn; a later one, for a push, asks again after it).
+- A detail is one ask while it is out (`fetchDetail`, keyed by the item and
+  its `updatedAt`, forgotten once it answers, so a detail mounted again
+  reads afresh): the held detail's whole read, a computer act's picture
   (parts.tsx `usePicture`), the ticked mails' quote check (Ticked.tsx) and a
   Done act's way back share it; `work.outbox.get {ref, results: true}`
   answers a decided act's Results with it, and a host whose answer carries
