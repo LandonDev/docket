@@ -8522,15 +8522,51 @@ public struct FilePlace: Codable, Hashable, Sendable {
                 }
             }
         }
+        public enum Lifeos: RawRepresentable, Codable, Hashable, Sendable {
+            case off
+            case signedOut
+            case pairing
+            case connecting
+            case unreachable
+            case refused
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "off": self = .off
+                case "signed-out": self = .signedOut
+                case "pairing": self = .pairing
+                case "connecting": self = .connecting
+                case "unreachable": self = .unreachable
+                case "refused": self = .refused
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .off: "off"
+                case .signedOut: "signed-out"
+                case .pairing: "pairing"
+                case .connecting: "connecting"
+                case .unreachable: "unreachable"
+                case .refused: "refused"
+                case .unknown(let value): value
+                }
+            }
+        }
 
         public let state: State
         public let detail: String?
         public let at: Double?
+        public let lifeos: Lifeos?
 
-        public init(state: State, detail: String? = nil, at: Double? = nil) {
+        public init(state: State, detail: String? = nil, at: Double? = nil, lifeos: Lifeos? = nil) {
             self.state = state
             self.detail = detail
             self.at = at
+            self.lifeos = lifeos
         }
     }
     public enum Make: RawRepresentable, Codable, Hashable, Sendable {

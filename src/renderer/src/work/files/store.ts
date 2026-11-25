@@ -108,6 +108,10 @@ function keepReach(key: string, kept: KeptReach): void {
 /** A workspace switched off, or gone: what was painted of it goes. */
 export const forgetReach = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): void => void reachKept.delete(reachKey(workspace));
 
+/** Whether a host's LifeOS places, as its last answer gave them, say other than a session that is (or is not) connected. */
+export const lifeosMoved = (answer: FilesPlaces | undefined, connected: boolean): boolean =>
+  !!answer?.places.some((p) => (p.kind === "lifeos" || p.kind === "mail") && (p.state.state === "ok") !== connected);
+
 /**
  * The hosts this workspace's files are on (its own, then each desktop it may use), and what each said. A workspace
  * seen before paints what it last said at once. The workspace's own host is asked at once, beside its settings; the
@@ -220,6 +224,8 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         filesLink(link).onPush((push) => {
           if (push.push === "work.office.files") ask(link);
           if (push.push === "work.files" && push.workspaceId === workspace.id && push.places) ask(link);
+          // The host's LifeOS session came back or went: its LifeOS places say otherwise now, so they are asked again.
+          if (push.push === "work.lifeos" && lifeosMoved(reads.get(link)?.answer, push.status.lifeos.state === "connected")) ask(link);
         }),
       );
     // The workspace's own host is asked now, beside its settings: a cold open waits on the two together, not one after the other.

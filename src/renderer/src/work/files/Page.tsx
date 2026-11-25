@@ -20,6 +20,9 @@ import { claimFileDrop } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { BesideShape, ColumnsShape, Doc, FolderAdd, GalleryShape, GridShape, ListShape, Slides, Table, Upload } from "../icons";
 import { ViewStateLine } from "../views/ViewStateLine";
+import { DownEmpty } from "../shell/DownEmpty";
+import { refreshLifeos } from "../shell/lifeos";
+import { readsLifeos, useLifeosPlace } from "./lifeosPlace";
 import type { UploadProgress } from "./acts";
 import { GoToField, SearchField, type GoToRow } from "./GoTo";
 import { KindGlyph } from "./KindGlyph";
@@ -981,6 +984,10 @@ export function PageView({
   };
 
   const drag = useRowDrag(acts && !inTrash ? acts : null, entries, picked, page);
+  // A place read through the host's LifeOS session while that session is down says its state in the body's place, by
+  // the host's live status, and lists again by itself once it is back; nothing that needs the session is offered.
+  const lifeos = useLifeosPlace(copy, listing);
+  const lifeosDown = readsLifeos(copy) && (!!lifeos.down || lifeos.waits);
   const shapeProps: ShapeProps = {
     entries,
     picked,
@@ -1016,6 +1023,16 @@ export function PageView({
   const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => listing?.retry() };
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
+  else if (lifeosDown)
+    body = (
+      <DownEmpty
+        live={lifeos}
+        environmentId={copy!.link}
+        busy={!!listing?.loading}
+        // Retry is for silence: it asks the host's LifeOS status again, then the folder.
+        onRetry={() => refreshLifeos(copy!.link).catch(() => undefined).then(() => listing?.retry())}
+      />
+    );
   else if (!listing || !listing.loaded || (!entries.length && listing.searching)) body = <ListBones compact={compact} />;
   else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
   else if (!entries.length && filter) body = (
@@ -1087,7 +1104,7 @@ export function PageView({
     );
   }
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
-  const line = acts?.uploading ? (
+  const line = lifeosDown ? null : acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
   ) : acts?.forms?.making ? (
     <MakingLine stage={acts.forms.stage ?? "Making the form…"} />
@@ -1165,7 +1182,7 @@ export function PageView({
             Empty Trash
           </Button>
         ) : null}
-        {acts && !inTrash ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
+        {acts && !inTrash && !lifeosDown ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
       </PageBar>
       {under}
       {line}

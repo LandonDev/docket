@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
-// #FilesNewLibrary, #FilesTrash, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
+// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -26,6 +26,8 @@ import { BarBones, ListBones, NoteEmpty, PageBar, PageView, type NoteFixes, type
 import { previewSeams } from "./previews";
 import { listingSeams, type Listing } from "./store";
 import { TabRow } from "./TabRow";
+import { registry } from "../../lib/connection";
+import { setLifeosStatus, setLifeosUnanswered } from "../shell/lifeos";
 
 const workspace = { id: "w", environmentId: "box", path: "/w", name: "Dummy Esports", kind: "work" } as unknown as WorkspaceMeta;
 const noop = (): void => undefined;
@@ -407,6 +409,40 @@ export function FilesStates() {
       <div style={{ maxWidth: 720 }} className="h-56 w-full rounded-lg border border-border">
         <NoteEmpty note={{ title: "No Teams files on MacBook Pro", line: "Sync a channel from Teams with OneDrive there." }} fixes={fixes} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Files' LifeOS place while the box's LifeOS is down (council round 10): the place greyed in the sidebar, and its page
+ * saying the session's state by the host's live status in the body's place, the computer named, with the one press:
+ * signed out with Sign in, a sign-in waiting with Show the code, on its way with no press, the host silent with Retry.
+ */
+export function FilesLifeosDown() {
+  Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  const states = [
+    { link: "box", lifeos: "signed-out" },
+    { link: "box-pairing", lifeos: "pairing" },
+    { link: "box-connecting", lifeos: "connecting" },
+    { link: "box-silent", lifeos: "unreachable" },
+  ] as const;
+  for (const { link, lifeos } of states) {
+    if (link === "box-silent") setLifeosUnanswered(link);
+    else setLifeosStatus(link, { lifeos: { state: lifeos, ...(lifeos === "pairing" ? { expiresAt: NOW + 10 * 60_000 } : {}) }, keys: [] } as never);
+  }
+  const down = (lifeos: (typeof states)[number]["lifeos"]): FilePlace["state"] => ({ state: "signed-out", detail: "LifeOS is not signed in on this host.", lifeos });
+  const lifeosAt = { at: "place" as const, id: "lifeos" };
+  const model = sidebarOf([{ ...reads[0]!, answer: { ...reads[0]!.answer!, places: [...reads[0]!.answer!.places, place({ id: "lifeos", kind: "lifeos", name: "LifeOS", state: down("signed-out"), can: ["make", "rename", "move", "edit"], makes: [] }), place({ id: "mail", kind: "mail", name: "From mail", state: down("signed-out") })] } }], "box");
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      {states.map(({ link, lifeos }) => {
+        const copy = { place: place({ id: "lifeos", kind: "lifeos", name: "LifeOS", state: down(lifeos), can: ["make", "rename", "move", "edit"], makes: [] }), link, host: "The box", wire: "files" as const };
+        return (
+          <Window key={link} width={720} height={300} model={model}>
+            <PageView {...common} copy={copy} acts={{ ...acts, place: copy.place, from: copy }} page={{ at: lifeosAt, name: "LifeOS" }} trail={[{ name: "LifeOS", at: lifeosAt }]} canBack={false} listing={listing({ entries: [], trail: [], error: "Not signed in to LifeOS on the box. Sign in under Settings, Connections." })} />
+          </Window>
+        );
+      })}
     </div>
   );
 }

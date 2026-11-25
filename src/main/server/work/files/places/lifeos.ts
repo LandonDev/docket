@@ -27,7 +27,8 @@ import { makeFile, runOp } from '../write'
  * - From mail (`PLACE.mail`) lists the files of the sector's mail of the last 30 days he has not kept
  *   (`mail:attachments`); each opens as the Mail view's `{ at: 'mail' }` item, and Keep copies one into the
  *   workspace's folder.
- * - Down (no LifeOS session here): the places are listed, greyed with one sentence, and Files stays up.
+ * - Down (no LifeOS session here): the places are listed, greyed, with the session's state by name, New offers
+ *   nothing there, and Files stays up.
  */
 
 export const LIFEOS_DOWN = 'LifeOS is not signed in on this host.'
@@ -203,13 +204,22 @@ function pushPlaces(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>, sector: string): 
 
 // ── the places ────────────────────────────────────────────────────────
 
-const downState = (ctx: Pick<WorkCtx, 'lifeos'>): FilePlace['state'] => (ctx.lifeos.connected() ? { state: 'ok' } : { state: 'signed-out', detail: LIFEOS_DOWN })
+/**
+ * A place's state while the host's LifeOS session is down: `signed-out` for a window a release behind, with the
+ * session's own state by name (`lifeos`), which the window words by the rule. A session that says connected while it
+ * is not is LifeOS not answering it (as Review says it).
+ */
+const downState = (ctx: Pick<WorkCtx, 'lifeos'>): FilePlace['state'] => {
+  if (ctx.lifeos.connected()) return { state: 'ok' }
+  const state = ctx.lifeos.state?.()
+  return { state: 'signed-out', detail: LIFEOS_DOWN, ...(state ? { lifeos: state === 'connected' ? 'unreachable' : state } : {}) }
+}
 
 /** The verbs the LifeOS place carries out: a delete and Put back only once LifeOS's trash is live. */
 export const lifeosCan = (trash: boolean): FileVerb[] => ['make', 'rename', 'move', 'edit', ...(trash ? (['trash', 'restore'] as FileVerb[]) : [])]
 
 export function lifeosPlace(ctx: Pick<WorkCtx, 'host' | 'lifeos'>, trash: boolean): FilePlace {
-  return { id: PLACE.lifeos, kind: 'lifeos', name: 'LifeOS', host: '', env: ctx.host, shared: false, can: lifeosCan(trash), state: downState(ctx), root: { at: 'place', id: PLACE.lifeos }, makes: ['document', 'sheet'] }
+  return { id: PLACE.lifeos, kind: 'lifeos', name: 'LifeOS', host: '', env: ctx.host, shared: false, can: lifeosCan(trash), state: downState(ctx), root: { at: 'place', id: PLACE.lifeos }, makes: ctx.lifeos.connected() ? ['document', 'sheet'] : [] }
 }
 
 const projectPlace = (ctx: Pick<WorkCtx, 'host' | 'lifeos'>, p: Pick<LifeosProject, '_id' | 'name'>): FilePlace => ({

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { LifeosStateName } from './contract-work-lifeos'
 import type { Principal } from './work/ids'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
@@ -74,6 +75,8 @@ export interface DashboardView {
   stale: boolean
   /** why a read failed, in words, when one did */
   failed: string | null
+  /** the read failed because the host's LifeOS session is down: that session's state by name, which the window words by its live status */
+  lifeos?: Exclude<LifeosStateName, 'connected'>
 }
 
 export const DASH_BLOCKS_MAX = 40

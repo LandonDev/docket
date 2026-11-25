@@ -31,6 +31,14 @@ export function savedOf(err: unknown): SavedDown {
   return state === "connecting" ? "connecting" : state && state !== "connected" ? state : null;
 }
 
+/**
+ * The cause a reader kept as words alone (a failed open's message, a host's saved `failed`): the LifeOS state the host's
+ * own sentence names ("This host is not signed in to LifeOS", "LifeOS is unreachable", "Work is off on this host"), else
+ * null. Only a sentence that names LifeOS or Work counts: a wait of the window's that ran out, or a fetch of the kind's
+ * own that failed, is the reader's failure to say, never "LifeOS did not answer".
+ */
+export const savedOfReason = (reason: string | null | undefined): SavedDown => (reason && /lifeos|work is off on this host/i.test(reason) ? savedOf(reason) : null);
+
 /** A status by its state, as the reader's line reads it: a down state, "connecting", or null for connected. */
 export const savedOfState = (state: LifeosStateName | null | undefined): SavedDown => (!state || state === "connected" ? null : state);
 

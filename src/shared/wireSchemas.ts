@@ -1543,7 +1543,12 @@ export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.str
 
 // ── Files (the files pillar's F9: the phone's Files place, docs/agents/work-files.md "The phone") ──
 
-export const FilePlaceStateSchema = z.object({ state: z.enum(PLACE_STATES), detail: z.string().optional(), at: z.number().optional() })
+export const FilePlaceStateSchema = z.object({
+  state: z.enum(PLACE_STATES),
+  detail: z.string().optional(),
+  at: z.number().optional(),
+  lifeos: z.enum(LifeosStateSchema.options.map((o) => o.shape.state.value).filter((s) => s !== 'connected') as [Exclude<LifeosStateName, 'connected'>, ...Exclude<LifeosStateName, 'connected'>[]]).optional()
+})
 export const FilePlaceSchema = z.object({
   id: z.string(),
   kind: z.enum(PLACE_KINDS),

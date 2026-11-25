@@ -232,10 +232,24 @@ describe('the LifeOS place', () => {
     lifeos.up = false
     const got = await places()
     expect(got.find((p) => p.id === 'lifeos')!.state).toEqual({ state: 'signed-out', detail: LIFEOS_DOWN })
+    expect(got.find((p) => p.id === 'lifeos')!.makes).toEqual([])
     expect(got.find((p) => p.id === 'mail')!.state.state).toBe('signed-out')
     expect(got.find((p) => p.id === 'folder')).toBeTruthy()
     await expect(list(top)).rejects.toThrow(LIFEOS_DOWN)
     expect(names(await list({ at: 'place', id: 'folder' }))).toContain('notes.txt')
+  })
+
+  it("sends the host's session state by name while LifeOS is down, and New offers nothing there", async () => {
+    lifeos.up = false
+    for (const [said, sent] of [['signed-out', 'signed-out'], ['pairing', 'pairing'], ['refused', 'refused'], ['unreachable', 'unreachable'], ['connecting', 'connecting'], ['off', 'off'], ['connected', 'unreachable']] as const) {
+      ;(rig.ctx.lifeos as { state?: () => string }).state = () => said
+      const got = await places()
+      expect(got.find((p) => p.id === 'lifeos')).toMatchObject({ state: { state: 'signed-out', lifeos: sent }, makes: [] })
+      expect(got.find((p) => p.id === 'mail')!.state.lifeos).toBe(sent)
+    }
+    lifeos.up = true
+    expect((await places()).find((p) => p.id === 'lifeos')).toMatchObject({ state: { state: 'ok' }, makes: ['document', 'sheet'] })
+    expect((await places()).find((p) => p.id === 'project:p1')!.state).toEqual({ state: 'ok' })
   })
 
   it('offers a delete only once LifeOS answers its trash', async () => {

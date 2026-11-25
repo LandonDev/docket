@@ -1555,8 +1555,19 @@ the one door first.
 a read behind it that changes the answer is pushed as `work.files {places:
 true}`. With no LifeOS session on the host the LifeOS place and From mail are
 listed with `{ state: 'signed-out', detail: 'LifeOS is not signed in on this
-host.' }` (the window greys them and says it when one is opened) and no
-project lens; Files itself stays up. A thread and another host of his are
+host.', lifeos }` (`lifeos` is the session's state by name, for the window to
+word; a host a release behind sends `signed-out` alone), New offers nothing
+there (`makes: []`), and no project lens; Files itself stays up. The window
+greys them, and a page of the LifeOS place, From mail or a project says the
+state in the body's place by the host's live status (`useLifeosPlace`,
+work/files/lifeosPlace.ts, drawn by `DownEmpty`), the computer named, with
+the rule's one press (docs/DESIGN.md "Loading and empty states"): Retry for
+silence alone, Sign in or Show the code where this window may pair the host,
+else who can; a session on its way is a wait with no press. No New and no
+other line is drawn over it. When that host's status says connected the
+folder is listed again, and the window asks the host for its places again on
+the `work.lifeos` push that moves its LifeOS places' state (`lifeosMoved`,
+store.ts). A thread and another host of his are
 given none of them; a remote key without `approve` gets no From mail.
 
 **A row.** A LifeOS document or sheet is `ref: { at: 'lifeos', table, id }`,

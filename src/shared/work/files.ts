@@ -1,4 +1,5 @@
 import type { CanvasKind, CanvasSource, ContextChip } from './canvas'
+import type { LifeosStateName } from '../contract-work-lifeos'
 
 /**
  * The Files place's grammar (docs/agents/work-files.md): what a place, a folder and a file are, which canvas
@@ -158,6 +159,8 @@ export interface PlaceState {
   detail?: string
   /** when what is shown was read, for a list kept from before */
   at?: number
+  /** a LifeOS place, lens or project while the host's session is down: that session's state by name, which the window words */
+  lifeos?: Exclude<LifeosStateName, 'connected'>
 }
 
 export interface FilePlace {

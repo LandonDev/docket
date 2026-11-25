@@ -6,6 +6,9 @@ import { Progress } from "../../components/ui/progress";
 import { registry } from "../../lib/connection/registry";
 import { hostName } from "../../lib/threadResources";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { DownEmpty, savedOfReason } from "../shell/DownEmpty";
+import { refreshLifeos } from "../shell/lifeos";
+import { useLiveDown } from "../shell/lifeosLive";
 import type { Fetch } from "./fetched";
 import { ItemBones } from "./ItemBones";
 
@@ -44,6 +47,13 @@ export function useFailedWords(why: string | null | undefined): string {
  */
 export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first) */ onRetry?: (() => void) | undefined }) {
   const said = useFailedWords(why);
+  // An open the pane's host could not make because its LifeOS session is down (a LifeOS document or sheet, a mail's
+  // attachment, a dashboard read from a LifeOS sheet) says that session's state by the host's live status, with the
+  // rule's press; Retry is for silence alone, and the item is asked again once the host says connected.
+  const env = useContext(FailedHost);
+  const saved = env ? savedOfReason(why) : null;
+  const lifeos = useLiveDown(saved, saved ? env : null, saved ? onRetry : undefined);
+  if (env && saved && (lifeos.down || lifeos.waits)) return <DownEmpty live={lifeos} environmentId={env} onRetry={() => refreshLifeos(env).catch(() => undefined).then(() => onRetry?.())} />;
   return (
     <Empty data-canvas-failed>
       <EmptyHeader>
