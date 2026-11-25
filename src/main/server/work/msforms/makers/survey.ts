@@ -33,11 +33,27 @@ export function surveyMessage(event: Pick<LifeEvent, 'title' | 'startsAt' | 'all
     .join('\n')
 }
 
+/**
+ * The meeting from LifeOS, its failures said in our own sentences: an id LifeOS does not take or holds no row for is no
+ * such event, and anything else is LifeOS not answering. Its own error text (a Convex trace) never reaches the window.
+ */
+async function meetingOf(ctx: WorkCtx, sector: Parameters<typeof eventOf>[1], eventId: string): Promise<LifeEvent> {
+  try {
+    return await eventOf(ctx, sector, eventId)
+  } catch (err) {
+    const text = err instanceof Error ? err.message : String(err)
+    if (err instanceof MsformsError) throw err
+    if (/^(LifeOS has no such event\.|That event is not in )/.test(text)) throw new MsformsError(text)
+    if (/ArgumentValidationError|not found/i.test(text)) throw new MsformsError('LifeOS has no such event.')
+    throw new MsformsError('LifeOS did not answer about that meeting. Try again in a moment.')
+  }
+}
+
 /** His press: the thread starts in the meeting's job, about the event; the event must be in the job's sector. */
 export async function startSurvey(ctx: WorkCtx, by: Caller, workspaceId: string, eventId: string): Promise<{ sessionId: string }> {
   const workspace = jobOf(ctx, by, workspaceId)
   if (!workspace.sector) throw new MsformsError('This job is not linked to a LifeOS sector, so it has no meetings.')
-  const event = await eventOf(ctx, workspace.sector as never, eventId)
+  const event = await meetingOf(ctx, workspace.sector as never, eventId)
   const about: ContextChip = { kind: 'event', label: event.title, ref: { at: 'lifeos', table: 'events', id: event._id } }
   const sessionId = await ctx.threads.start({ workspaceId: workspace.id, title: surveyTitle(event.title), about, text: surveyMessage(event, hisZone(ctx)), by })
   return { sessionId }

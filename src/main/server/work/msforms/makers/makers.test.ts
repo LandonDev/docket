@@ -11,6 +11,7 @@ import { paragraphsOfMarkdown, questionsOfDocument } from './document'
 import { MakerFromSchema, NO_QUESTIONS, NOT_YOUR_JOB, questionsFrom } from './index'
 import { CHOICE_MOST, CHOICE_ROWS, questionsOfSheet, rowsOfCells } from './sheet'
 import { startSurvey, surveyMessage, surveyTitle } from './survey'
+import { MsformsError } from '../reach'
 
 /** The makers (docs/agents/work-msforms.md "The makers"): the document grammar, the header row, our form's types, and the survey thread. */
 
@@ -231,5 +232,21 @@ describe('the follow-up survey', () => {
     await expect(startSurvey(ctx, by, 'ws-cosmic', 'ev1')).rejects.toThrow('not in')
     await expect(startSurvey(ctx, by, 'ws-purdue', 'nope')).rejects.toThrow('no such event')
     expect(started).toHaveLength(1)
+  })
+
+  it("says LifeOS's own failures in a sentence of ours, never its error text (P5)", async () => {
+    const db = new DatabaseSync(':memory:')
+    db.exec(`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL, kind TEXT, sector TEXT)`)
+    db.prepare(`INSERT INTO workspaces VALUES ('ws-purdue', 'Purdue', '/w/p', 'work', 'purdue')`).run()
+    let fails: Error = new Error('[CONVEX Q(events:get)] [Request ID: 8660386e6221f37a] Server Error\nArgumentValidationError: Value does not match validator.\nPath: .id\nValue: "p5-no-such-event"\nValidator: v.id("events")')
+    const ctx = { db, host: 'env_test', reaches: () => true, scopeOf: () => null, clock: { lifeos: () => 'America/Chicago' }, lifeos: { connected: () => true, owner: () => ({ query: async () => Promise.reject(fails) }) }, threads: { start: async () => 'thread-1' } } as never
+    const by = { kind: 'local' } as Caller
+    const malformed = await startSurvey(ctx, by, 'ws-purdue', 'p5-no-such-event').catch((e: Error) => e)
+    expect(malformed).toBeInstanceOf(MsformsError)
+    expect((malformed as Error).message).toBe('LifeOS has no such event.')
+    fails = new Error('[CONVEX Q(events:get)] [Request ID: 1] Server Error Uncaught Error: boom')
+    const down = (await startSurvey(ctx, by, 'ws-purdue', 'ev1').catch((e: Error) => e)) as Error
+    expect(down.message).toBe('LifeOS did not answer about that meeting. Try again in a moment.')
+    expect(down.message).not.toMatch(/CONVEX|Request ID/)
   })
 })
