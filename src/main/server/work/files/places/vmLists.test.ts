@@ -130,6 +130,34 @@ describe('a folder in the Windows VM', () => {
     expect(calls).toEqual([])
   })
 
+  it('a folder dropped while its read is under way keeps nothing from that read, and no list after the drop joins it', async () => {
+    if (process.platform === 'win32') return
+    const library = vmLibraries(rig.db, HOST).find((l) => GENERAL.toLowerCase().startsWith(l.path.toLowerCase()))!
+    // A read under way when a change through Files drops the folder: it answers its own list, and keeps nothing.
+    const before = list()
+    await new Promise((r) => setTimeout(r, 0))
+    forgetVmList(library.id, GENERAL)
+    // A list after the drop is its own guest call, not the one from before.
+    const after = list()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(lists()).toHaveLength(2)
+    held.shift()!()
+    await before
+    expect(keptCount()).toBe(0)
+    await release()
+    await after
+    expect(keptCount()).toBe(1)
+    // Work off, or a library gone, with a read under way: nothing comes back from it either.
+    forgetVmList(library.id, GENERAL)
+    const third = list()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(lists()).toHaveLength(3)
+    forgetVmLists()
+    await release()
+    await third
+    expect(keptCount()).toBe(0)
+  })
+
   it('never wakes it for a next page that does not say: a scroll is no press (the phone sends no `wake`)', async () => {
     if (process.platform === 'win32') return
     state = 'asleep'

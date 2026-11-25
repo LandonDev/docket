@@ -24,7 +24,19 @@ export interface KeptList {
 
 const kept = new Map<string, KeptList & { library: string; dir: string }>()
 /** A folder's read under way: every list of it joins the one guest call. `wakes`: it may wake the machine. */
-const reading = new Map<string, { read: Promise<KeptList>; wakes: boolean }>()
+const reading = new Map<string, { read: Promise<KeptList>; wakes: boolean; dir: string }>()
+/**
+ * Moves each time a folder's rows are dropped (and `epoch` when all are): a read begun before the drop answers its own
+ * callers, but keeps nothing, and no list after the drop joins it.
+ */
+const drops = new Map<string, number>()
+let epoch = 0
+const stampOf = (key: string): string => `${epoch}:${drops.get(key) ?? 0}`
+function drop(key: string): void {
+  drops.set(key, (drops.get(key) ?? 0) + 1)
+  kept.delete(key)
+  reading.delete(key)
+}
 
 export const keptKey = (libraryId: string, dir: string): string => `${libraryId}\u0000${dir.replace(/\\+$/, '').toLowerCase()}`
 
@@ -58,15 +70,17 @@ const bare = (r: DiskRow): DiskRow => ({ name: r.name, dir: r.dir, kind: r.kind,
 export function readList(key: string, at: { library: string; dir: string }, wake: boolean, read: () => Promise<DiskRow[]>, now: () => number = Date.now): Promise<KeptList> {
   const under = reading.get(key)
   if (under && (under.wakes || !wake)) return under.read
+  const stamp = stampOf(key)
   const go = (async () => {
     if (under) await under.read.catch(() => undefined)
     const rows = await read()
     // The guest gives no change time for the folder itself: its names and their times stand in for a version.
     const list: KeptList = { at: now(), version: `${rows.length}:${rows.reduce((n, r) => (n + (r.changed ?? 0)) % 2_147_483_647, 0)}`, rows }
-    keep(key, at.library, at.dir, list)
+    // Only a read begun since the folder was last dropped fills it: one from before brings back no rows a change took.
+    if (stampOf(key) === stamp) keep(key, at.library, at.dir, list)
     return list
   })()
-  const entry = { read: go, wakes: wake }
+  const entry = { read: go, wakes: wake, dir: at.dir }
   reading.set(key, entry)
   void go.then(
     () => reading.get(key) === entry && reading.delete(key),
@@ -78,16 +92,19 @@ export function readList(key: string, at: { library: string; dir: string }, wake
 /** Whether a read of the folder that may wake the machine is under way. */
 export const wakingFor = (key: string): boolean => reading.get(key)?.wakes === true
 
-/** A folder that changed through Files: the next list asks the guest again. */
-export const forgetKept = (key: string): void => void kept.delete(key)
+/** A folder that changed through Files: the next list asks the guest again, never joining a read from before. */
+export const forgetKept = (key: string): void => drop(key)
 
-/** The guest was read again: what was kept of a folder in a library OneDrive no longer syncs there goes. */
+/** The guest was read again: what was kept of a folder in a library OneDrive no longer syncs there goes, read or reading. */
 export function keepOnlyWhere(still: (dir: string) => boolean): void {
-  for (const [key, list] of kept) if (!still(list.dir)) kept.delete(key)
+  for (const [key, list] of [...kept]) if (!still(list.dir)) drop(key)
+  for (const [key, read] of [...reading]) if (!still(read.dir)) drop(key)
 }
 
-/** Work off, or a test's start: nothing kept, no read joined. */
+/** Work off, or a test's start: nothing kept, no read joined, and no read under way keeps anything. */
 export function forgetAllKept(): void {
+  epoch++
+  drops.clear()
   kept.clear()
   reading.clear()
 }
