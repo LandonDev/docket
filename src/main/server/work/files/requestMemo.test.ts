@@ -86,3 +86,25 @@ describe('a request on Windows', () => {
     expect(off).toBe(0)
   })
 })
+
+describe('a request served from a callback another request started', () => {
+  it('keeps a memo of its own: a file made after the first request looked for it is found', async () => {
+    // The J23 fault: his link to the box was opened inside a request, so every call the box sent over it ran in that
+    // request's memo. Save As looked for its new file's name before making it, and the read of the file it then made
+    // found "no such path" kept from that look, refused as not in a Teams folder.
+    const made = join(rig.team, 'General', 'TempCode proof made later.docx')
+    const entries = (got: unknown) => (got as { result: { entries: unknown[] } }).result.entries
+    const statOf = () => filesHandle({ id: '1', method: 'work.files.stat', params: { workspaceId: WS, refs: [at(made)] } } as never, rig.ctx, window)
+    const later = await withRequestMemo(async () => {
+      expect(entries(await statOf())).toEqual([null])
+      // A socket or a timer made in this request carries its context: the request it serves later is another.
+      return new Promise<unknown>((done) =>
+        setTimeout(() => {
+          writeFileSync(made, 'x')
+          done(withRequestMemo(() => statOf()))
+        }, 0)
+      )
+    })
+    expect(entries(later)[0]).not.toBeNull()
+  })
+})

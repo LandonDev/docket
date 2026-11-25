@@ -3052,7 +3052,10 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   (`rootReal`, office/files/library.ts). The JavaScript realpath looked at every folder of the path, three
   times a call. Within one request (a window's, or another host's call served here) each path is resolved once
   (`inRequest`, requestMemo.ts): a look at a page of rows no longer resolves the workspace's folder and the
-  libraries' folder again for every row. Nothing is kept past the request. On Windows a list or a look at rows
+  libraries' folder again for every row. Nothing is kept past the request: each request starts a memo of its
+  own, even one served from a callback another request started (his link to the box, opened inside a request,
+  ran every call the box sent over it in that request's memo, and a Save As's new file, looked for before it was
+  made, was then refused as not in a Teams folder: J23). On Windows a list or a look at rows
   first resolves the paths it names off the event loop (`primeReals`, policy.ts: `hostRealAsync`, remote/fence.ts,
   Windows' own realpath on libuv's threads, the same spelling by the same rules), so the door's own checks of them
   read the request's answer and call nothing on the loop; a path the request does not name (a library's root, kept

@@ -8,8 +8,12 @@ import { AsyncLocalStorage } from 'node:async_hooks'
  */
 const memo = new AsyncLocalStorage<Map<string, unknown>>()
 
-/** Runs one request with a memo of its own; inside one already, the same. */
-export const withRequestMemo = <T>(fn: () => T): T => (memo.getStore() ? fn() : memo.run(new Map(), fn))
+/**
+ * Runs one request with a memo of its own, always a new one: a request may be served from a callback another request
+ * started (a socket opened inside it carries its context to every message after), and that request's memo is not this
+ * one's. A path it found missing would stay missing here after the file was made.
+ */
+export const withRequestMemo = <T>(fn: () => T): T => memo.run(new Map(), fn)
 
 /** A value worked out ahead for this request (a path resolved off the loop): the request's own `inRequest` reads it. */
 export function primeInRequest(key: string, value: unknown): void {
