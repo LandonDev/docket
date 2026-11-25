@@ -2089,8 +2089,15 @@ over a file that changed there.
   here and its folder, how sending stands, and `closed`. Another host answers `office.filesRead {as: 'bytes'}`
   with the version beside the bytes (`readWhole` in save.ts: a stat, the read, a stat, the hash of exactly those
   bytes); a host a release behind answers none, so its copies keep their old line. A copy out of the VM is read in
-  4 MB pieces with the helper's version on each (`vmVersioned`, office/files/handle.ts); a piece of another version
-  is read once more, then refused. A file's copy is made, or read again for a reseat, one at a time
+  4 MB pieces with the helper's version asked with the first piece and the last (`vmVersioned`, office/files/handle.ts;
+  the helper hashes the whole file for a version), each piece said as the drive's are ("Opening… 3.0 of 20 MB"); a
+  last version that differs is read once more, then refused.
+- **One pass** (M8 of the performance pass). Each piece, from another host or the VM, is written into a staging file of
+  the copy's folder as it lands (`Staging`: made new, never through a link, hashed on the way in) and the copy takes
+  its place in one rename once every piece is in and its version held; a link where the copy would land is refused. A
+  copy that fails, is refused, meets a file that changed or is cancelled leaves nothing, and a copy already there stays
+  until the new one is whole. The record's `sent` is the hash made on the way in, and the body hash (`bodyOfAsync`,
+  body.ts) is made from the bytes in hand with the package inflated in a worker: the copy is never read back. A file's copy is made, or read again for a reseat, one at a time
   (`oneCopyAtATime`, handle.ts: `copyIn` writes one path a file), and an open that waited looks for the tab first:
   two windows opening the file at once get one tab, and the second never reads the file over an edit the first took.
   The tab is found by where the file lies as well as by its key, so a library row and a file chip, which name one file
@@ -2321,7 +2328,10 @@ over a colleague's Word file but his own press.
   writes what is on screen. The header's `since` is the same rule (`editsSince`: the live revision against the one
   last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on
   screen. The save is the same as his press, by version, never over a change made
-  there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
+  there. A save asks the file for its version first, with one byte of it (`freshVersion`, copies.ts), and pulls it
+  whole only when it must: its version moved (its bytes tell SharePoint's touch from an edit), its host is a build
+  behind, or its original is still owed its copy beside it (the first save over it). Save As asks a far target the
+  same way, never pulling it. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
   Both. The Work service posts the file's live revision to main. Main queues one save per document and keeps
   a newer edit pending through any export already under way. One sweep every 30 s checks for missed notices
   and retries linked files whose place was away. It also drops Word records for documents gone from both disk
@@ -2356,7 +2366,10 @@ workbooks, text and Word alike (files/uploads.ts):
 
 - **Where it is followed.** Every write through `deliver` (copies.ts: a copy's send, a Word file's save, Keep Both's
   file beside) records the file on the workspace's host (`uploadWrote`), looked at every 2 s until OneDrive has it
-  (`lookAll`), for at most 30 minutes. A tab whose save went before the host started is looked at again when its
+  (`lookAll`), for at most 30 minutes. Each other host is asked once a sweep for all its owed files
+  (`work.files.uploaded {refs}`, each file through that host's door alone), every host at once, each under its own
+  deadline (`uploadTiming.ask`, 10 s), so one that does not answer holds up no other; a host a build behind is asked
+  file by file. An answer about an earlier write never marks a newer one uploaded (the newer write is a new record). A tab whose save went before the host started is looked at again when its
   tabs are read (`seedUpload`). The tab carries what is known as `cloud` (`CloudBack`): `uploading`, `uploaded`,
   `late` with `why`, or `unknown`.
 - **The Windows VM.** The helper's `files.stat` answers `synced`: the cloud filter's own reading of the file's
@@ -2596,7 +2609,10 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   (remote/fence.ts): on Windows one call of Windows' own realpath, however deep the path, and the share a
   drive letter maps kept 30 s (`SHARE_FRESH_MS`); a library's own folder is resolved once in 30 s
   (`rootReal`, office/files/library.ts). The JavaScript realpath looked at every folder of the path, three
-  times a call.
+  times a call. Within one request (a window's, or another host's call served here) each path is resolved once
+  (`inRequest`, requestMemo.ts): a look at a page of rows no longer resolves the workspace's folder and the
+  libraries' folder again for every row. Nothing is kept past the request. The resolve itself is still a sync
+  call on the loop.
 - **A folder read once.** On Windows a folder on such a drive is read by a small C# helper
   (places/winDir.ts, compiled once with the csc.exe Windows carries, as procTree's job helper is) that
   answers every row's size, time and attributes from the one directory read; Node's own read keeps the

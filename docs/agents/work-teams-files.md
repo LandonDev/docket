@@ -251,7 +251,11 @@ none.
 - `files.write {path, data, expect, op}` replaces a file's bytes only while
   it is still the version `expect` names (`size:mtime:sha256` as the box's
   `versionWord`, the hash for 64 MB or less; `files.read {version: true}`
-  answers the same word). Else it answers the conflict (`{conflict:
+  answers the same word: for a read, the version hashed for the file's
+  first piece while its size and change time hold, a minute at most, so a
+  copy is hashed once, not once a piece (`ReadVersionOf`; every change verb
+  drops it, and a write's own check hashes afresh; not yet proven in the
+  rig)). Else it answers the conflict (`{conflict:
   {version, changed}}`, or `{conflict: {gone: true}}`), as the box's save
   does. The new bytes are staged beside it, the version looked at once more,
   then `ReplaceFile` puts them over it, which keeps the file's identity, so
