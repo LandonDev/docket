@@ -178,3 +178,13 @@ describe("the tracker", () => {
     }
   });
 });
+
+describe("the all-clear", () => {
+  it("waits while a host has not answered", () => {
+    render(<TrackerBody jobs={[]} loading={false} errors={[]} pending waitingOnly onRetry={() => {}} now={NOW} />);
+    expect(screen.queryByText("Nothing waits on you")).toBeNull();
+    cleanup();
+    render(<TrackerBody jobs={[]} loading={false} errors={[]} waitingOnly onRetry={() => {}} now={NOW} />);
+    expect(screen.getByText("Nothing waits on you")).toBeTruthy();
+  });
+});

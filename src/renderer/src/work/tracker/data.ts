@@ -92,7 +92,15 @@ const plain = (overview: TrackerOverview, environmentId: string): TrackerOvervie
 /** How often the page reads again while it is on screen: a thread's state moves, and a target he set elsewhere. */
 export const TRACKER_AGAIN_MS = 60_000;
 
-export type TrackerView = { jobs: MergedJob[]; loading: boolean; errors: string[]; /** ask every host again (a down job's Retry) */ reload: () => void };
+export type TrackerView = {
+  jobs: MergedJob[];
+  loading: boolean;
+  errors: string[];
+  /** a Work host has not answered yet: no all-clear stands until it has */
+  pending: boolean;
+  /** ask every host again (a down job's Retry) */
+  reload: () => void;
+};
 
 /** The last answers, kept for the window's life: a visit draws them at once and reads again behind them. */
 let kept: HostAnswer[] | null = null;
@@ -115,6 +123,21 @@ export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview
 
 const askOverview = (environmentId: string): Promise<TrackerOverview> => registry.linkOf(environmentId).request<TrackerOverview>("work.projects.overview", {});
 
+/**
+ * The kept answers as a visit opens on them, held to the Work hosts there are now: a host whose link is not open says
+ * its line at once, a host that is new (or was not asked) is pending, and a host no longer a Work host goes. A visit
+ * after a host dropped never opens on an all-clear that host can no longer vouch for. Pure.
+ */
+export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterable<string>, transportOf: (environmentId: string) => string): HostAnswer[] | null {
+  if (!kept) return null;
+  const by = new Map(kept.map((a) => [a.environmentId, a]));
+  return [...hosts].map((environmentId): HostAnswer => {
+    const transport = transportOf(environmentId);
+    if (transport !== "open") return { environmentId, overview: null, error: closedWords(hostIn(environmentId), transport) };
+    return by.get(environmentId) ?? { environmentId, overview: null, error: null };
+  });
+}
+
 /** The answers with each host whose link is no longer open saying its line at once; the other hosts' groups stand. Pure. */
 export function withClosed(answers: readonly HostAnswer[], closed: ReadonlyMap<string, string>): HostAnswer[] {
   return answers.map((a) => (closed.has(a.environmentId) ? { environmentId: a.environmentId, overview: null, error: closed.get(a.environmentId)! } : a));
@@ -122,7 +145,7 @@ export function withClosed(answers: readonly HostAnswer[], closed: ReadonlyMap<s
 
 /** Every host with Work on, asked once on show, again on focus, each minute while shown, and when a host's link opens or drops. */
 export function useTracker(): TrackerView {
-  const [answers, setAnswers] = useState<HostAnswer[] | null>(kept);
+  const [answers, setAnswers] = useState<HostAnswer[] | null>(() => reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport));
   const [asked, setAsked] = useState(0);
   const reload = useCallback(() => setAsked((n) => n + 1), []);
   useEffect(() => {
@@ -168,5 +191,6 @@ export function useTracker(): TrackerView {
   }, [asked]);
   const jobs = useMemo(() => (answers ? mergeOverviews(answers) : []), [answers]);
   const errors = useMemo(() => (answers ?? []).flatMap((a) => (a.error ? [a.error] : [])), [answers]);
-  return { jobs, loading: answers === null, errors, reload };
+  const pending = (answers ?? []).some((a) => !a.overview && !a.error);
+  return { jobs, loading: answers === null, errors, pending, reload };
 }

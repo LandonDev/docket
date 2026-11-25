@@ -4,7 +4,7 @@ import type { TrackerJob, TrackerProject } from "@shared/work/tracker";
 import { registry } from "../../lib/connection";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { workSwitch } from "../../lib/workSwitch";
-import { askHosts, closedWords, downWords, mergeOverviews, resetTracker, useTracker } from "./data";
+import { askHosts, closedWords, downWords, mergeOverviews, reconcileKept, resetTracker, useTracker } from "./data";
 
 /** The window's merge: one job a sector, LifeOS's rows from the first host that read them, threads added up across hosts. */
 const project = (id: string, over: Partial<TrackerProject> = {}): TrackerProject => ({
@@ -133,5 +133,19 @@ describe("asking the hosts", () => {
     expect(got[0]!.overview!.jobs[0]!.down).toBe("The box could not read Job unify's projects from LifeOS.");
     // A host's words that are already plain stand.
     expect(downWords("LifeOS is not signed in", "the box", "Unify")).toBe("Not signed in to LifeOS on the box. Sign in under Settings, Connections.");
+  });
+});
+
+describe("a visit that opens on kept answers", () => {
+  const kept = [{ environmentId: "box", overview: { jobs: [] }, error: null }, { environmentId: "mac", overview: { jobs: [] }, error: null }];
+  it("says a host that dropped while the page was shut at once, holds a new host as pending, and drops one no longer Work's", () => {
+    const got = reconcileKept(kept, ["box", "mac", "pc"], (id) => (id === "mac" ? "closed" : "open"))!;
+    expect(got.map((a) => a.environmentId)).toEqual(["box", "mac", "pc"]);
+    expect(got[0]).toBe(kept[0]);
+    expect(got[1]!.overview).toBeNull();
+    expect(got[1]!.error).toBeTruthy();
+    expect(got[2]).toEqual({ environmentId: "pc", overview: null, error: null });
+    expect(reconcileKept(kept, ["box"], () => "open")!.map((a) => a.environmentId)).toEqual(["box"]);
+    expect(reconcileKept(null, ["box"], () => "open")).toBeNull();
   });
 });

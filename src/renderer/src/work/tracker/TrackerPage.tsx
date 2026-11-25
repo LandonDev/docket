@@ -50,8 +50,8 @@ export function Head(_props: WorkPlaceProps) {
 }
 
 export function View(_props: WorkPlaceProps) {
-  const { jobs, loading, errors, reload } = useTracker();
-  return <TrackerBody jobs={jobs} loading={loading} errors={errors} waitingOnly={useWaitingOnly()} onRetry={reload} />;
+  const { jobs, loading, errors, pending, reload } = useTracker();
+  return <TrackerBody jobs={jobs} loading={loading} errors={errors} pending={pending} waitingOnly={useWaitingOnly()} onRetry={reload} />;
 }
 
 /** The minute, so a due date turns late and an age grows while the page stands. */
@@ -81,6 +81,8 @@ export type TrackerBodyProps = {
   loading: boolean;
   /** hosts with Work on that did not answer or are not linked, a sentence each: the page says no all-clear while any is */
   errors: readonly string[];
+  /** a host has not answered yet (a visit opened on kept answers): no all-clear until it has */
+  pending?: boolean;
   waitingOnly: boolean;
   onRetry: () => void;
   /** the minute the due words and ages are reckoned at; left out, now and each minute after */
@@ -90,7 +92,7 @@ export type TrackerBodyProps = {
 };
 
 /** The page from what the hosts answered: a preview and a test hand it jobs. */
-export function TrackerBody({ jobs, loading, errors, waitingOnly, onRetry, now: fixed, Down = DownJob }: TrackerBodyProps) {
+export function TrackerBody({ jobs, loading, errors, pending = false, waitingOnly, onRetry, now: fixed, Down = DownJob }: TrackerBodyProps) {
   const minute = useMinute();
   const now = fixed ?? minute;
   // Under the filter a job shows only what waits on him; one with none goes, a job LifeOS could not read stays (it may).
@@ -110,7 +112,7 @@ export function TrackerBody({ jobs, loading, errors, waitingOnly, onRetry, now: 
           </>
         ) : shown.length === 0 ? (
           // An all-clear only when every host answered: a host missing may hold the job that waits.
-          errors.length ? null : <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : "No jobs yet"}</p>
+          errors.length || pending ? null : <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : "No jobs yet"}</p>
         ) : (
           <>
             <ProjectFactsHeader threads />
