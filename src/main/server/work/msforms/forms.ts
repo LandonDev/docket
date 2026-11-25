@@ -101,9 +101,9 @@ export function storeRead(ctx: MsCtx, row: MsFormRow, read: FormRead, o: { by?: 
 export const GONE_FROM_FORMS = 'That form is gone from Forms, so it left the list.'
 
 /** The row and its history go, its tell is done and every window drops it: his Remove from List, and a form gone from Forms. */
-export function dropRow(ctx: MsCtx, row: Pick<MsFormRow, 'workspaceId' | 'formId'>): void {
+export function dropRow(ctx: MsCtx & { tell?: Pick<WorkCtx['tell'], 'done'> }, row: Pick<MsFormRow, 'workspaceId' | 'formId'>): void {
   new MsformsStore(ctx.db).remove(row.workspaceId, row.formId)
-  ctx.tell.done(tellKey(row.formId))
+  ctx.tell?.done(tellKey(row.formId))
   ctx.push({ push: 'work.msforms', workspaceId: row.workspaceId, formId: row.formId, view: null })
 }
 
@@ -111,7 +111,7 @@ export function dropRow(ctx: MsCtx, row: Pick<MsFormRow, 'workspaceId' | 'formId
  * A carrier error that says the form was deleted in Forms drops its row and is said in one plain line; any other error
  * (a sign-in, a timeout, a page that did not load) is answered as it was, and the row stays.
  */
-export function goneOrThrow(ctx: MsCtx, row: Pick<MsFormRow, 'workspaceId' | 'formId'>, err: unknown): void {
+export function goneOrThrow(ctx: MsCtx & { tell?: Pick<WorkCtx['tell'], 'done'> }, row: Pick<MsFormRow, 'workspaceId' | 'formId'>, err: unknown): void {
   if (!(err instanceof CarrierGone) || err.formId !== row.formId) return
   dropRow(ctx, row)
   ctx.log('msforms: a form was gone from Forms; its row left the list')
