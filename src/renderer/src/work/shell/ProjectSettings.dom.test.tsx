@@ -104,7 +104,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const sheet = () => screen.findByRole("dialog", { name: "Project settings" });
+// The first sheet pays the settings chunk's cold import, which outlasts the default second under load.
+const sheet = () => screen.findByRole("dialog", { name: "Project settings" }, { timeout: 10_000 });
 const saveButton = () => screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
 const headings = (root: HTMLElement) => [...root.querySelectorAll("h3")].map((h) => h.textContent);
 /** Thread setup starts folded: open it to reach the rules and the accounts. */
