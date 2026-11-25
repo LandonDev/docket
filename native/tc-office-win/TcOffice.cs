@@ -1838,6 +1838,29 @@ public static class Guest {
     return size + ":" + changed + ":" + hash;
   }
 
+  // A version asked again while one file is read in pieces (a copy) is the one hashed for its first piece, while the file
+  // keeps its size and change time: one hash a transfer, never one a piece (a 20 MB file was hashed five times). Kept a
+  // minute, sixteen files at most, and dropped by any change made here. A write's own check never reads it.
+  class KeptVersion { public long Size, Changed; public string Version; public DateTime At; }
+  static readonly Dictionary<string, KeptVersion> Versions = new Dictionary<string, KeptVersion>(StringComparer.OrdinalIgnoreCase);
+  public static string ReadVersionOf(string path, out long changed) {
+    var e = Stat(path);
+    if ((bool)e["dir"]) throw new Refusal("refused", "That is a folder, not a file.");
+    var size = (long)e["size"];
+    changed = (long)e["modified"];
+    lock (Versions) {
+      KeptVersion k;
+      if (Versions.TryGetValue(path, out k) && k.Size == size && k.Changed == changed && (DateTime.UtcNow - k.At).TotalSeconds < 60) return k.Version;
+    }
+    var v = VersionOf(path, out changed);
+    lock (Versions) {
+      if (Versions.Count >= 16) Versions.Clear();
+      Versions[path] = new KeptVersion { Size = size, Changed = changed, Version = v, At = DateTime.UtcNow };
+    }
+    return v;
+  }
+  public static void ForgetVersions() { lock (Versions) Versions.Clear(); }
+
   // Bytes into a new hidden file beside where they go, written through to the disk. Answers its path.
   static string Staged(string dir, string name, byte[] data) {
     var temp = dir + "\\." + name + "." + Guid.NewGuid().ToString("N").Substring(0, 12) + ".tmp";
@@ -2220,17 +2243,17 @@ public static class Guest {
         var path = Admit(a["path"]);
         // `version`: the file's version as `files.write` checks it, taken before the bytes are read.
         long changed = 0;
-        var version = a.ContainsKey("version") && Convert.ToBoolean(a["version"]) ? VersionOf(path, out changed) : null;
+        var version = a.ContainsKey("version") && Convert.ToBoolean(a["version"]) ? ReadVersionOf(path, out changed) : null;
         var got = (Dictionary<string, object>)Read(path, a.ContainsKey("offset") ? Convert.ToInt64(a["offset"]) : 0, a.ContainsKey("length") ? Convert.ToInt32(a["length"]) : ReadMax);
         if (version != null) { got["version"] = version; got["changed"] = changed; }
         return got;
       }
-      case "files.mkdir": return Journalled(verb, a, () => Mkdir(a));
-      case "files.rename": return Journalled(verb, a, () => Rename(a));
-      case "files.move": return Journalled(verb, a, () => Move(a));
-      case "files.write": return Journalled(verb, a, () => Write(a));
-      case "files.recycle": return Journalled(verb, a, () => Recycle(a));
-      case "files.restore": return Journalled(verb, a, () => Restore(a));
+      case "files.mkdir": ForgetVersions(); return Journalled(verb, a, () => Mkdir(a));
+      case "files.rename": ForgetVersions(); return Journalled(verb, a, () => Rename(a));
+      case "files.move": ForgetVersions(); return Journalled(verb, a, () => Move(a));
+      case "files.write": ForgetVersions(); return Journalled(verb, a, () => Write(a));
+      case "files.recycle": ForgetVersions(); return Journalled(verb, a, () => Recycle(a));
+      case "files.restore": ForgetVersions(); return Journalled(verb, a, () => Restore(a));
       case "files.outcome": return Outcome(a);
       case "files.fetch": return Fetch(Admit(a["path"]));
       case "files.free": return Free(Admit(a["path"]));

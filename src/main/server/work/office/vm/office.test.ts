@@ -82,6 +82,14 @@ describe('Office in the Windows VM', () => {
   })
 
   describe("the guest's helper (TcOffice.cs, built only in Windows)", () => {
+    it('hashes a file once a transfer: a versioned read reuses the version of its first piece while size and change time hold, and every change made there drops it', () => {
+      expect(TC_OFFICE_CS).toContain('var version = a.ContainsKey("version") && Convert.ToBoolean(a["version"]) ? ReadVersionOf(path, out changed) : null;')
+      expect(TC_OFFICE_CS).toContain('if (Versions.TryGetValue(path, out k) && k.Size == size && k.Changed == changed && (DateTime.UtcNow - k.At).TotalSeconds < 60) return k.Version;')
+      for (const verb of ['mkdir', 'rename', 'move', 'write', 'recycle', 'restore']) expect(TC_OFFICE_CS).toMatch(new RegExp(`case "files\\.${verb}": ForgetVersions\\(\\); return Journalled`))
+      // A write's own check still hashes the file as it is.
+      expect(TC_OFFICE_CS.match(/ReadVersionOf\(path, out changed\)/g)).toHaveLength(1)
+    })
+
     it('reads and writes a formula through Formula where Formula2 answers 0x800A03EC (an Excel without dynamic arrays)', () => {
       expect(TC_OFFICE_CS).toContain('public static bool NoFormula2(COMException e) { var h = (uint)e.ErrorCode; return h == 0x80020006 || h == 0x800A03EC; }')
       expect(TC_OFFICE_CS).toContain('catch (COMException e) { if (!NoFormula2(e)) throw; f = com.Get(r, "Formula"); }')
