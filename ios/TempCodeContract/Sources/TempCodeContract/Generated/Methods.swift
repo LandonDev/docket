@@ -3864,7 +3864,7 @@ public enum Methods {
         public static let name = "work.guests.create"
 
         public struct Params: Codable, Hashable, Sendable {
-            public struct Source: Codable, Hashable, Sendable {
+            public struct SourceCase0: Codable, Hashable, Sendable {
                 public enum Table: RawRepresentable, Codable, Hashable, Sendable {
                     case docs
                     case sheets
@@ -3899,6 +3899,39 @@ public enum Methods {
                     self.at = at
                     self.table = table
                     self.id = id
+                }
+            }
+            public struct SourceCase1: Codable, Hashable, Sendable {
+                public let at: String
+                public let host: String
+                public let path: String
+
+                public init(at: String, host: String, path: String) {
+                    self.at = at
+                    self.host = host
+                    self.path = path
+                }
+            }
+            public enum Source: Codable, Hashable, Sendable {
+                case object(SourceCase0)
+                case object1(SourceCase1)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["docs", "sheets", "projects"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(SourceCase0.self) { self = .object(value); return }
+                    if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "file", let value = try? container.decode(SourceCase1.self) { self = .object1(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .object(let value): try container.encode(value)
+                    case .object1(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
                 }
             }
             public enum Role: RawRepresentable, Codable, Hashable, Sendable {

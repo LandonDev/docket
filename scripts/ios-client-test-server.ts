@@ -59,6 +59,7 @@
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
  *                                 upgrade refused until it ends (a draft opened while its host is away)
  *   POST /quit                  → closes everything
+ *   POST /work-service/restart  → the in-process Work service ends and its supervisor starts it again
  *
  * TC_TEST_WORK_SERVICE=1 runs the Work service in this process (the work set: history and a form's answers
  * call it), as the app's utility process would; its hosted pages are not served.
@@ -269,6 +270,8 @@ const spawnExecBroker = brokerEntry
 // uses), where the app forks it as an Electron utility process, so the pillars that call it (history, a form's
 // answers) answer under node. Its hosted pages are not built here: nothing hosted is served, unless
 // TC_TEST_HOSTED_DIR names a built out/hosted (scripts/e2e-phone-hosted.ts opens the owner's hosted editor).
+/** Ends the in-process Work service as a crash would (POST /work-service/restart): the supervisor starts it again. */
+let restartWorkService: (() => Promise<void>) | null = null
 if (process.env.TC_TEST_WORK_SERVICE === '1') {
   serviceSeamsFor.current = {
     hostedDir: process.env.TC_TEST_HOSTED_DIR || join(dirname(dbPath), 'hosted'),
@@ -279,6 +282,12 @@ if (process.env.TC_TEST_WORK_SERVICE === '1') {
       let running: RunningService | null = null
       let n = 0
       const emit = (m: FromService): void => queueMicrotask(() => onMessage.forEach((f) => f(m)))
+      restartWorkService = async () => {
+        const gone = running
+        running = null
+        await gone?.stop()
+        onExit.forEach((f) => f(1))
+      }
       return {
         post(m: ToService) {
           if (m.t === 'config')
@@ -2109,6 +2118,12 @@ const control = createServer((req, res) => {
       case '/pairing': {
         const fresh = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
         return answer(200, { link: `http://127.0.0.1:${server.remote?.port}/pair#${fresh.code}` })
+      }
+      // The Work service ended and started again by its supervisor (scripts/e2e-phone-hosted.ts: a pass's page then ends).
+      case '/work-service/restart': {
+        if (!restartWorkService) return answer(404, { error: 'no Work service in this process (TC_TEST_WORK_SERVICE=1)' })
+        await restartWorkService()
+        return answer(200, { restarted: true })
       }
       case '/drop': {
         let count = 0

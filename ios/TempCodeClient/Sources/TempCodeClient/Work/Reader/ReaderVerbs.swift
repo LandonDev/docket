@@ -76,7 +76,7 @@ public enum ReaderVerbs {
         // the same pages; a document's pages are drawn for it, so it has Page Preview, with Print inside.
         if body == .pdf || body == .slides { verbs.append(.print) } else if facts.previews { verbs.append(.preview) }
         if facts.shares { verbs.append(.share) }
-        if body.guestSource != nil, facts.canApprove { verbs.append(.guestLink) }
+        if ItemBody.guestSource(item) != nil, facts.canApprove { verbs.append(.guestLink) }
         if facts.inThread, facts.canOperate { verbs.append(.close) }
         return verbs
     }

@@ -12,6 +12,11 @@ import WebKit
 /// The web view is one the app made ready beforehand (`HostedWebPool`), on
 /// screen at once, and the ticket was asked when he opened the item
 /// (`HostedTickets`): the page starts to load the moment the host answers.
+///
+/// A pass ends when the host restarts (it keeps them in memory). The page then
+/// says so (`HostedNote.passEnded`) and the view asks a new ticket and opens
+/// the same file again in place, once in a row (`HostedRejoin`); a second end
+/// before the page opened leaves the page's own words.
 struct HostedItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
@@ -25,6 +30,12 @@ struct HostedItemView: View {
     /// A file's host said why it does not open here: its words, and nothing to try again.
     @State private var refusal: String?
     @State private var round = 0
+    @State private var rejoin = HostedRejoin()
+    @State private var shown = false
+    @Environment(\.scenePhase) private var phase
+
+    /// On screen with the app in front: a ticket asked now is one he sees used.
+    private var forward: Bool { shown && phase == .active }
 
     var body: some View {
         Group {
@@ -42,12 +53,13 @@ struct HostedItemView: View {
                 } description: {
                     Text("\(client.environment.name) did not answer.")
                 } actions: {
-                    Button("Try Again") { failed = false; url = nil; round += 1 }
+                    Button("Try Again") { failed = false; again() }
                 }
             } else {
                 HostedWebView(
                     url: url,
                     onFail: { failed = true },
+                    onNote: { note in if rejoin.heard(note, forward: forward) == .rejoin { again() } },
                     onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } },
                     // Comment is a document's: a sheet keeps no comments.
                     onComment: item.kind == .document ? commands?.comment : nil
@@ -74,7 +86,20 @@ struct HostedItemView: View {
                 }
             }
         }
+        .onAppear {
+            shown = true
+            if rejoin.cameForward() { again() }
+        }
+        .onDisappear { shown = false }
+        .onChange(of: phase) { if forward, rejoin.cameForward() { again() } }
         .accessibilityIdentifier("hosted-item")
+    }
+
+    /// A new web view on a new ticket, as Try Again: the old page's session storage holds a renewal key that
+    /// opens nothing, and a new ticket on the same path would only change the fragment of the page it is on.
+    private func again() {
+        url = nil
+        round += 1
     }
 }
 
@@ -137,16 +162,25 @@ final class HostedWebPool {
 private struct HostedWebView: UIViewRepresentable {
     let url: URL?
     let onFail: () -> Void
+    let onNote: (HostedNote) -> Void
     let onAsk: ((String) -> Void)?
     let onComment: ((String) -> Void)?
 
-    func makeCoordinator() -> Coordinator { Coordinator(onFail: onFail) }
+    func makeCoordinator() -> Coordinator { Coordinator(onFail: onFail, onNote: onNote) }
 
     func makeUIView(context: Context) -> AskingWebView {
         let view = HostedWebPool.shared.take()
         view.navigationDelegate = context.coordinator
+        let scripts = view.configuration.userContentController
+        scripts.removeScriptMessageHandler(forName: HostedNote.handler)
+        scripts.add(context.coordinator, name: HostedNote.handler)
         update(view, context.coordinator)
         return view
+    }
+
+    /// The controller holds its handler: let it go with the view.
+    static func dismantleUIView(_ view: AskingWebView, coordinator: Coordinator) {
+        view.configuration.userContentController.removeScriptMessageHandler(forName: HostedNote.handler)
     }
 
     func updateUIView(_ view: AskingWebView, context: Context) {
@@ -156,17 +190,28 @@ private struct HostedWebView: UIViewRepresentable {
     private func update(_ view: AskingWebView, _ coordinator: Coordinator) {
         view.onAsk = onAsk
         view.onComment = onComment
+        // The closure of this update: it reads whether the screen is forward now.
+        coordinator.onNote = onNote
         guard let url, coordinator.home != url else { return }
         coordinator.home = url
         view.load(URLRequest(url: url))
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         /// The ticket's address: its origin is the one this view may show. Nil until the ticket lands.
         var home: URL?
         let onFail: () -> Void
-        init(onFail: @escaping () -> Void) {
+        var onNote: (HostedNote) -> Void
+        init(onFail: @escaping () -> Void, onNote: @escaping (HostedNote) -> Void) {
             self.onFail = onFail
+            self.onNote = onNote
+        }
+
+        /// The page's own word (src/hosted/guest/phone.ts), heard only from the ticket's origin in the main frame.
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.isMainFrame, let home, let at = message.webView?.url, HostedOrigin.same(at, home),
+                  let note = HostedNote.of(message.body) else { return }
+            onNote(note)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

@@ -57,7 +57,7 @@ struct ItemPage: View {
             AskSheet(client: client, target: .thread(sessionId), chip: chip) { _ in onAsk() }
         }
         .sheet(item: $sharing) { item in
-            if let source = ItemBody.of(item).guestSource {
+            if let source = ItemBody.guestSource(item) {
                 GuestLinkSheet(client: client, source: source, title: item.title)
             }
         }

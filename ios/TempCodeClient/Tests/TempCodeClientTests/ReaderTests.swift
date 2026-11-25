@@ -282,6 +282,40 @@ struct HostedTicketsTests {
     }
 }
 
+struct HostedRejoinTests {
+    @Test func `a pass that ended opens again in place once in a row`() {
+        var rejoin = HostedRejoin()
+        #expect(rejoin.heard(.opened, forward: true) == .stay)
+        #expect(rejoin.heard(.passEnded, forward: true) == .rejoin)
+        // The new page ended too before it opened: its own words stay.
+        #expect(rejoin.heard(.passEnded, forward: true) == .stay)
+        #expect(!rejoin.cameForward())
+        // Once a page opened, a later restart opens it again.
+        #expect(rejoin.heard(.opened, forward: true) == .stay)
+        #expect(rejoin.heard(.passEnded, forward: true) == .rejoin)
+    }
+
+    @Test func `an end while the screen is away waits for it to come forward`() {
+        var rejoin = HostedRejoin()
+        #expect(rejoin.heard(.passEnded, forward: false) == .wait)
+        #expect(rejoin.cameForward())
+        // Once only.
+        #expect(!rejoin.cameForward())
+        #expect(rejoin.heard(.passEnded, forward: true) == .stay)
+        // Nothing ended: coming forward asks nothing.
+        var quiet = HostedRejoin()
+        #expect(!quiet.cameForward())
+    }
+
+    @Test func `the page's words are read from WebKit's body and nothing else`() {
+        #expect(HostedNote.of(["kind": "passEnded"]) == .passEnded)
+        #expect(HostedNote.of(["kind": "opened"] as NSDictionary) == .opened)
+        #expect(HostedNote.of(["kind": "reload"]) == nil)
+        #expect(HostedNote.of("passEnded") == nil)
+        #expect(HostedNote.handler == "tempcodeHosted")
+    }
+}
+
 @MainActor
 struct PagePreviewSourceTests {
     private func frame(_ rev: String, _ text: String) -> FileBytes {

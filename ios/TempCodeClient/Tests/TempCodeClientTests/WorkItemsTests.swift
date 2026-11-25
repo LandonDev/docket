@@ -14,18 +14,18 @@ struct WorkItemsTests {
 
     @Test func aLifeosDocumentOrSheetOpensInTheHostedEditor() throws {
         #expect(ItemBody.of(try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .hosted(.object(.init(at: "lifeos", table: .docs, id: "d1"))))
-        let sheet = ItemBody.of(try item("sheet", source: #"{"at":"lifeos","table":"sheets","id":"k9"}"#))
+        let row = try item("sheet", source: #"{"at":"lifeos","table":"sheets","id":"k9"}"#)
+        let sheet = ItemBody.of(row)
         #expect(sheet == .hosted(.object(.init(at: "lifeos", table: .sheets, id: "k9"))))
         #expect(!sheet.isFileKept)
-        #expect(sheet.guestSource == .init(at: "lifeos", table: .sheets, id: "k9"))
+        #expect(ItemBody.guestSource(row) == .object(.init(at: "lifeos", table: .sheets, id: "k9")))
+        #expect(ItemBody.guestSource(row)?.isSheet == true)
     }
 
     @Test func aDocumentOrSheetKeptAsAFileIsAskedOfItsHostByItsItem() throws {
         let memo = ItemBody.of(try item("document", source: #"{"at":"file","host":"box","path":"/w/Travel memo.tcdoc"}"#))
         #expect(memo == .hosted(.object1(.init(at: "item", itemId: "i1"))))
         #expect(memo.isFileKept)
-        // A file takes no guest link: only its owner's ticket opens it.
-        #expect(memo.guestSource == nil)
         #expect(ItemBody.of(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.xlsx"}"#)) == .hosted(.object1(.init(at: "item", itemId: "i1"))))
         // A document of another kind of source still says where it opens.
         guard case .unavailable(let words) = ItemBody.of(try item("document", source: #"{"at":"google","account":"a","fileId":"f","mime":"application/vnd.google-apps.document"}"#)) else {
@@ -33,6 +33,30 @@ struct WorkItemsTests {
             return
         }
         #expect(words.contains("computer"))
+    }
+
+    @Test func aTcdocOrTcsheetKeptAsAFileTakesAGuestLinkByItsHostAndPathAndAWordFileNone() throws {
+        let memo = try item("document", source: #"{"at":"file","host":"box","path":"/w/Travel memo.tcdoc"}"#)
+        #expect(ItemBody.guestSource(memo) == .object1(.init(at: "file", host: "box", path: "/w/Travel memo.tcdoc")))
+        #expect(ItemBody.guestSource(memo)?.isSheet == false)
+        let budget = try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.TCSHEET"}"#)
+        #expect(ItemBody.guestSource(budget) == .object1(.init(at: "file", host: "box", path: "/w/Budget.TCSHEET")))
+        #expect(ItemBody.guestSource(budget)?.isSheet == true)
+        // A Word file or a workbook is the desktop's: no row.
+        #expect(ItemBody.guestSource(try item("document", source: #"{"at":"file","host":"box","path":"/w/Letter.docx"}"#)) == nil)
+        #expect(ItemBody.guestSource(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.xlsx"}"#)) == nil)
+        // A PDF is no editor's.
+        #expect(ItemBody.guestSource(try item("pdf", source: #"{"at":"file","host":"box","path":"/w/a.tcdoc"}"#)) == nil)
+        // The wire's shape, as the host's GuestSourceSchema reads it.
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(ItemBody.guestSource(memo))) as? [String: String]
+        #expect(sent == ["at": "file", "host": "box", "path": "/w/Travel memo.tcdoc"])
+    }
+
+    @Test func aSheetsLinkViewsOrEditsAndStartsAtView() {
+        #expect(GuestLinkDraft.roles(sheet: true) == [.view, .edit])
+        #expect(GuestLinkDraft.roles(sheet: false) == [.view, .comment, .edit])
+        #expect(GuestLinkDraft(sheet: true).role == .view)
+        #expect(GuestLinkDraft().role == .comment)
     }
 
     @Test func aFilesHostRefusesInItsOwnWordsAndAnythingElseIsAPageThatDidNotAnswer() throws {

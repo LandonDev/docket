@@ -28,7 +28,6 @@ import { z } from 'zod'
 import { CONTRACT_VERSION, METHOD_CAPABILITY } from '../src/shared/capabilities'
 import { ClientRequestSchema } from '../src/shared/contract'
 import { RevealAnswerSchema, RevealTargetSchema } from '../src/shared/contract-work-reveal'
-import { GUEST_ROLES, GuestNameSchema, GuestTitleSchema, LifeosGuestSourceSchema } from '../src/shared/contract-work-guests'
 import {
   BatchAdoptResultSchema,
   BatchRulesSchema,
@@ -685,18 +684,9 @@ export interface MethodSource {
   params(method: string): z.ZodType | null
 }
 
-/**
- * A method whose params the phone reads narrower than the wire takes. `work.guests.create` takes a file's source too
- * (the desktop's Share sheet); the phone makes a link for a LifeOS document or sheet only, so its Swift stays as it was.
- */
-const PHONE_PARAMS: Record<string, z.ZodType> = {
-  'work.guests.create': z.object({ source: LifeosGuestSourceSchema, title: GuestTitleSchema, name: GuestNameSchema, role: z.enum(GUEST_ROLES), expiresAt: z.number().int() })
-}
-
 /** The phone's methods: params read from ClientRequestSchema, never a local-only one. */
 export const CLIENT_METHODS: MethodSource = {
   params(method) {
-    if (PHONE_PARAMS[method]) return PHONE_PARAMS[method]
     const request = ClientRequestSchema.options.find((o) => o.shape.method.value === method)
     if (!request) throw new Error(`${method} is not in ClientRequestSchema`)
     // A method only the renderer's loopback socket may call never reaches a

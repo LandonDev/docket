@@ -518,12 +518,18 @@ service's name for them, and their faces in the line.
 ## The owner's hosted editor
 
 For the phone (milestones 46, 47): `work.guests.ticket` answers
-`https://tempcode.landonhale.com/w/open#t=<ticket>`. The ticket opens once,
+`<guest origin>/w/open#t=<ticket>` (`guestOrigin(ctx)`, "The guest origin"
+above). The ticket opens once,
 within two minutes (`POST /w/open/redeem`); the service then makes a renewal
-key it keeps in memory, the page keeps it in the tab's session storage, and
-`POST /w/open/renew` hands a fresh owner token for that item while main keeps
-the pass (eight hours, in memory: a restart of main or the service ends
-it). The item opens on its own route (`/w/doc/<id>`, `/w/sheet/<id>`) with
+key it keeps in memory for that run of the service (by its route context,
+so a service restarted inside one process forgets them too), the page keeps
+it in the tab's session storage, and `POST /w/open/renew` hands a fresh
+owner token for that item while main keeps the pass (eight hours, in memory:
+a restart of main or the service ends it). A page whose renew is refused as
+gone shows its end and, inside the phone's web view, posts `{kind:
+'passEnded'}` to the handler `tempcodeHosted` (src/hosted/guest/phone.ts), and
+the phone opens the file again on a new ticket, once in a row
+(docs/agents/work-phone-files.md "The hosted editor"). The item opens on its own route (`/w/doc/<id>`, `/w/sheet/<id>`) with
 the owner's token; the ticket leaves the address once used.
 
 A pass's token edits, except on a LifeOS row others can read (LifeOS's
@@ -539,7 +545,9 @@ The phone (milestone 47) asks a ticket each time it shows a LifeOS document
 or sheet in a thread's Item segment and loads the address in a WKWebView
 with a store of its own that keeps nothing (`.nonPersistent()`), so each
 open is a new pass. Make a Guest Link in the item's More calls
-`work.guests.create` (approve) and shows the address once.
+`work.guests.create` (approve) and shows the address once: a LifeOS row, or a
+`.tcdoc` or `.tcsheet` kept as a file by `{at: 'file', host, path}` ("A
+file's link" above; the phone's Swift reads the wire's own source union).
 
 ### A file in the hosted editor
 
@@ -637,7 +645,10 @@ His comments are made in TempCode: on the phone, Comment in the edit menu.
   and `sheet_read`, a Word and an Excel file are refused in words, a used
   ticket answers 403, and report.md says what the owner's page draws of
   comments and suggestions (none: DocPage passes no `review`, SheetPage no
-  `marks`, and an owner's session reads no threads). `TC_WEBKIT` and
+  `marks`, and an owner's session reads no threads). Then the service is
+  restarted with the memo open (`POST /work-service/restart` on the test
+  server): the page posts `passEnded` to a stand-in for the phone's handler,
+  and a new ticket opens the memo again with its edit kept. `TC_WEBKIT` and
   `TC_WEBKIT_MESA` launch a copy with its libraries where the host lacks them.
 - `renderer/work/guests/guests.dom.test.tsx`: Share and its dialog, the
   held view, the list, and a guest's `javascript:` link and hostile paste in

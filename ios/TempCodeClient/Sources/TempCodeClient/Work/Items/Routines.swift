@@ -58,8 +58,14 @@ public struct GuestLinkDraft: Equatable, Sendable {
     public var role: Role = .comment
     public var ends: Date
 
-    public init(now: Date = Date()) {
+    public init(now: Date = Date(), sheet: Bool = false) {
         ends = now.addingTimeInterval(Double(Self.defaultDays) * 24 * 60 * 60)
+        if sheet { role = .view }
+    }
+
+    /// What a link may let its guest do: a sheet views or edits (sheets keep no comments), a document any of the three.
+    public static func roles(sheet: Bool) -> [Role] {
+        sheet ? [.view, .edit] : Role.allCases
     }
 
     public var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }

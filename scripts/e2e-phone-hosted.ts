@@ -15,6 +15,12 @@
  * Word and Excel tickets must be refused in words, and a used ticket must redeem to 403. With the memo and the
  * budget open as the owner, the page's comments, comment control, suggestions and marked cells are looked for.
  *
+ * Then a restart with the memo's page open (the phone's rejoin): the page is opened with a stand-in for the phone's
+ * message handler (`window.webkit.messageHandlers.tempcodeHosted`, src/hosted/guest/phone.ts) that records what the
+ * page posts; the test server's Work service is ended and started again (POST /work-service/restart), which ends
+ * the page's pass; the page must post `passEnded`, and a new ticket, opened as the phone opens it (a new web view),
+ * must show the same memo with the typed words kept.
+ *
  * Writes PASS and FAIL lines, the pictures and report.md to TC_PROOF_OUT (default: the main checkout's
  * .temp-code/plans/landed/R3-phone-files/hosted). Run it through the box's heavy queue: it builds, starts a server
  * and a browser, and ends both.
@@ -57,6 +63,19 @@ const say = (line: string): void => {
 type Row = { kind: string; opened: string; edited: string; readBack: string }
 const rows: Row[] = []
 const draws: { doc: string[]; sheet: string[] } = { doc: [], sheet: [] }
+/** What the restart step saw, for the report. */
+const rejoined: string[] = []
+/** The phone's message handler as a stand-in: what the page posts is kept on `window.__phoneNotes` (phone.ts). */
+const PHONE_STUB = `(() => {
+  const notes = []
+  window.__phoneNotes = notes
+  const handler = { postMessage: (n) => notes.push(JSON.parse(JSON.stringify(n))) }
+  try {
+    Object.defineProperty(window, 'webkit', { value: { messageHandlers: { tempcodeHosted: handler } }, configurable: true })
+  } catch {
+    window.webkit.messageHandlers.tempcodeHosted = handler
+  }
+})()`
 const shots: string[] = []
 
 async function freePort(): Promise<number> {
@@ -256,6 +275,7 @@ try {
     } else {
       usedTicket = new URLSearchParams(t.url.split('#')[1]).get('t')
       const context = await phoneContext()
+      await context.addInitScript(PHONE_STUB)
       const page = await context.newPage()
       const consoleLines: string[] = []
       page.on('console', (m: { type(): string; text(): string }) => consoleLines.push(`${m.type()}: ${m.text()}`))
@@ -374,6 +394,48 @@ try {
         say(`${read.held ? 'PASS' : 'FAIL'} .tcdoc: doc_read holds "${REVIEW_MEMO[0]}${TYPED_DOC}"${read.held ? '' : `; it read ${JSON.stringify(read.value.slice(0, 300))}`}`)
         say(`${saved.held ? 'PASS' : 'FAIL'} .tcdoc: the file on disk changed (mtime ${new Date(before).toISOString()} → ${new Date(saved.value.m).toISOString()}) and still opens holding the words${saved.held ? '' : `; its text: ${JSON.stringify(saved.value.text.slice(0, 200))}`}`)
         rows.push({ kind: '.tcdoc', opened: 'yes', edited: shown ? `yes ("${TYPED_DOC.trim()}")` : 'no', readBack: `${read.held ? 'doc_read yes' : 'doc_read no'}, ${saved.held ? 'file yes' : 'file no'}` })
+
+        // ── a restart with the page open: the page tells the phone, a new ticket opens the memo again ──
+        const notes = async (p: typeof page): Promise<{ kind: string }[]> => (await p.evaluate(() => (window as unknown as { __phoneNotes?: { kind: string }[] }).__phoneNotes ?? [])) as { kind: string }[]
+        const toldOpen = (await notes(page)).some((n) => n.kind === 'opened')
+        say(`${toldOpen ? 'PASS' : 'FAIL'} restart: the page told the phone it opened (${JSON.stringify(await notes(page))})`)
+        const restartAt = Date.now()
+        // A stop that never ends is a finding, not a hung run.
+        const restarted = await fetch(`${ready.controlUrl}/work-service/restart`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(30_000) }).then(
+          (res) => `answered ${res.status} in ${((Date.now() - restartAt) / 1000).toFixed(1)} s`,
+          (err: unknown) => `did not answer: ${String(err)}`
+        )
+        say(`${restarted.startsWith('answered 200') ? 'PASS' : 'FAIL'} restart: the Work service stopped and its supervisor was told (POST /work-service/restart ${restarted})`)
+        rejoined.push(`the test server's Work service ended and was started again by its supervisor (POST /work-service/restart ${restarted})`)
+        const ended = await page
+          .waitForFunction(() => ((window as unknown as { __phoneNotes?: { kind: string }[] }).__phoneNotes ?? []).some((n) => n.kind === 'passEnded'), undefined, { timeout: 90_000, polling: 250 })
+          .then(() => true, () => false)
+        const endedIn = ((Date.now() - restartAt) / 1000).toFixed(1)
+        await sleep(500)
+        await shoot(page, 'memo-pass-ended.png')
+        const endWords = ((await page.evaluate(() => document.querySelector('main h1')?.textContent ?? '')) as string).trim()
+        say(`${ended ? 'PASS' : 'FAIL'} restart: the page posted ${JSON.stringify(await notes(page))} to the phone's handler${ended ? `, ${endedIn} s after the restart` : ' (no passEnded in 90 s)'}; its own words under it: "${endWords}"`)
+        rejoined.push(`the page posted passEnded ${ended ? `${endedIn} s after the restart` : 'never (90 s)'}; what it posted in all: ${JSON.stringify(await notes(page))}; its own words, which the phone covers with a new web view: "${endWords}"`)
+        if (ended) {
+          // What the phone does on passEnded: a new ticket for the same item, loaded in a new web view (its own store).
+          const again = await ticket(REVIEW_MEMO_TITLE)
+          if ('refused' in again) say(`FAIL restart: the new ticket was refused: ${again.refused}`)
+          else {
+            const second = await phoneContext()
+            await second.addInitScript(PHONE_STUB)
+            const fresh = await second.newPage()
+            await fresh.goto(again.url)
+            const kept = await fresh
+              .waitForFunction((w: string) => document.querySelector('.ProseMirror p')?.textContent?.includes(w), `${REVIEW_MEMO[0]}${TYPED_DOC}`, { timeout: 60_000 })
+              .then(() => true, () => false)
+            await sleep(1000)
+            await shoot(fresh, 'memo-rejoined.png')
+            const freshNotes = await notes(fresh)
+            say(`${kept ? 'PASS' : 'FAIL'} restart: a new ticket opened the same memo again with "${TYPED_DOC.trim()}" kept (${((Date.now() - restartAt) / 1000).toFixed(1)} s after the restart); the new page told the phone ${JSON.stringify(freshNotes)}`)
+            rejoined.push(`a new ticket (work.guests.ticket, as the phone asks on passEnded) opened the same memo in a new page ${kept ? `with the first paragraph still ending "${TYPED_DOC.trim()}"` : 'WITHOUT the typed words'}; that page posted ${JSON.stringify(freshNotes)}`)
+            await second.close()
+          }
+        }
       } else rows.push({ kind: '.tcdoc', opened: 'no (the editor never showed the text)', edited: 'no', readBack: 'no' })
       await context.close()
     }
@@ -455,6 +517,7 @@ try {
   say(`FAIL the proof stopped: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
   say(`INFO the server's last words: ${serverLog.slice(-2000).replace(/\n/g, ' | ')}`)
 } finally {
+  writeFileSync(join(scratch, 'server.log'), serverLog)
   await browser?.close().catch(() => {})
   server.kill('SIGTERM')
   await new Promise<void>((done) => {
@@ -513,6 +576,12 @@ const report = [
   `**The sheet** (${shots.filter((n) => n.startsWith('budget-')).join(', ')}). ${WHY_SHEET}`,
   '',
   ...draws.sheet.map((d) => `- ${d}`),
+  '',
+  '## A restart with the page open',
+  '',
+  "The phone's rejoin (docs/agents/work-phone-files.md \"The hosted editor\"). WebKit here has no phone around it, so the page was opened with a stand-in for the phone's message handler that keeps what the page posts. The phone's own part (HostedRejoin: a new ticket, once in a row, while the screen is forward) is Swift and is not run here.",
+  '',
+  ...(rejoined.length ? rejoined.map((d) => `- ${d}`) : ['- not reached: the memo did not open']),
   '',
   '## What failed, and why',
   '',

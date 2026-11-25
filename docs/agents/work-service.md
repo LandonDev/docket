@@ -243,7 +243,12 @@ sees a restart as a new mark. The service says the same mark to main with
 
 A stopping service closes every socket with 1012 ("the service is
 restarting") and gives them a quarter second to hear it before it ends
-them: a page takes that close for a short wait, never for an end. What a
+them: a page takes that close for a short wait, never for an end. It stops
+taking connections first, and ends every one still open last (`held` in
+serve.ts): `close()` waits for them all, so one left open (a half-sent
+request, a socket a reconnect brought in) held a stop inside one process,
+as the iOS test server runs it, for ever. The renewal keys of the owner's
+hosted editor are kept by run, so a restart ends them in that process too. What a
 start means for guest links ("starting", 503, until main has named its
 links) is in [work-guests.md](work-guests.md) "A start is not an end".
 

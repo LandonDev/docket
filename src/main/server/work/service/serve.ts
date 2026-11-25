@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import type { AddressInfo, Socket } from 'node:net'
 import { join } from 'node:path'
 import {
   ConvexDocStore,
@@ -357,6 +357,14 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
       })
     })
 
+  // Every connection either server takes, sockets upgraded too, so a stop can end what it holds (`stop`).
+  const held = new Set<Socket>()
+  for (const server of [publicServer, internalServer])
+    server.on('connection', (s: Socket) => {
+      held.add(s)
+      s.once('close', () => held.delete(s))
+    })
+
   if (existsSync(config.socketPath)) unlinkSync(config.socketPath)
   await listen(internalServer, { path: config.socketPath })
   chmodSync(config.socketPath, 0o660)
@@ -426,14 +434,18 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
       for (const t of presenceWaiting.values()) clearTimeout(t)
       presenceWaiting.clear()
       history.stop()
+      // No new connection from here: a page (or main's own client) that reconnects while this stops is refused and tries
+      // again, never taken in after the sockets below were told and left holding close() for ever.
+      const closed = Promise.all([new Promise((r) => publicServer.close(r)), new Promise((r) => internalServer.close(r))])
       // Every page hears why before its socket goes: a restart, so it waits and tries again (the guest's page, the phone's).
       for (const client of wss.clients) client.close(CLOSE_RESTARTING, 'the service is restarting')
       if (wss.clients.size) await new Promise((r) => setTimeout(r, CLOSE_GRACE_MS))
       for (const client of wss.clients) client.terminate()
       await collab.stop()
       await recovering
-      await Promise.all([new Promise((r) => publicServer.close(r)), new Promise((r) => internalServer.close(r))])
-      publicServer.closeAllConnections()
+      // close() waits for every connection to end, an upgraded one too: what is left is cut.
+      for (const s of held) s.destroy()
+      await closed
       if (existsSync(config.socketPath)) unlinkSync(config.socketPath)
     }
   }

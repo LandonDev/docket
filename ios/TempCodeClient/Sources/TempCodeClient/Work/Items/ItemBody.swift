@@ -71,10 +71,38 @@ public enum ItemBody: Equatable, Sendable {
         }
     }
 
-    /// The hosted kinds take a guest link from their More menu.
-    public var guestSource: Methods.WorkGuestsCreate.Params.Source? {
-        guard case .hosted(.object(let source)) = self else { return nil }
-        return .init(at: source.at, table: source.table == .sheets ? .sheets : .docs, id: source.id)
+    /// What Make a Guest Link sends for an item: a LifeOS document or sheet by its row, a `.tcdoc` or `.tcsheet` kept
+    /// as a file by its host and path. Its host still refuses a file it cannot share (another computer's, one others
+    /// can open, a host no guest can reach), in words the sheet shows. Nil: the item takes no link.
+    public static func guestSource(_ item: CanvasItem) -> Methods.WorkGuestsCreate.Params.Source? {
+        switch of(item) {
+        case .hosted(.object(let source)):
+            return .object(.init(at: source.at, table: source.table == .sheets ? .sheets : .docs, id: source.id))
+        case .hosted(.object1):
+            guard case .file(let file) = item.source, GuestFiles.takesLink(file.path) else { return nil }
+            return .object1(.init(at: "file", host: file.host, path: file.path))
+        default:
+            return nil
+        }
+    }
+}
+
+/// The files a guest link may name: TempCode's own document and sheet. A Word file or a workbook is the desktop's.
+enum GuestFiles {
+    static func takesLink(_ path: String) -> Bool {
+        let name = path.lowercased()
+        return name.hasSuffix(".tcdoc") || name.hasSuffix(".tcsheet")
+    }
+}
+
+extension Methods.WorkGuestsCreate.Params.Source {
+    /// A sheet's link views or edits: sheets keep no comments.
+    public var isSheet: Bool {
+        switch self {
+        case .object(let row): row.table == .sheets
+        case .object1(let file): file.path.lowercased().hasSuffix(".tcsheet")
+        case .unknown: false
+        }
     }
 }
 

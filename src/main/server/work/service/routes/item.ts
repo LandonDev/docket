@@ -22,7 +22,17 @@ type Pass = GuestServiceLink & { pass: NonNullable<GuestServiceLink['pass']> }
 const used = new Set<string>()
 /** When this process started: a ticket main made before then may have been used by the process before, so it opens nothing. */
 const STARTED = Date.now()
-const renewals = new Map<string, string>()
+/**
+ * The renewal keys this run of the service made, by its one route context: a restart ends every pass's page, as
+ * its process going does. (Kept by run, not by module, so a service restarted inside one process, as the iOS test
+ * server's is, forgets them too.)
+ */
+const runs = new WeakMap<RouteCtx, Map<string, string>>()
+const renewalsOf = (ctx: RouteCtx): Map<string, string> => {
+  let got = runs.get(ctx)
+  if (!got) runs.set(ctx, (got = new Map()))
+  return got
+}
 
 const hashOf = (s: string): Buffer => createHash('sha256').update(s, 'utf8').digest()
 
@@ -63,7 +73,7 @@ async function redeem(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx):
   for (const u of used) if (!ctx.links().has(u)) used.delete(u)
   used.add(p.linkId)
   const renew = randomBytes(32).toString('base64url')
-  renewals.set(hashOf(renew).toString('hex'), p.linkId)
+  renewalsOf(ctx).set(hashOf(renew).toString('hex'), p.linkId)
   answer(res, p, { renew })
 }
 
@@ -72,6 +82,7 @@ async function renew(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx): 
   if (LIMITS.failures.over(caller)) return json(res, 429, { error: 'Too many tries from here. Try again in a few minutes.' })
   const body = await readJson(req)
   const key = typeof body?.renew === 'string' && body.renew.length <= 100 ? body.renew : ''
+  const renewals = renewalsOf(ctx)
   const id = key ? renewals.get(hashOf(key).toString('hex')) : undefined
   const p = id ? passes(ctx).find((x) => x.linkId === id) : undefined
   if (!p) {

@@ -184,6 +184,20 @@ opens the system's print sheet (`ReaderPrint`).
   the ticket needs `operate`, and a Try Again would be refused for ever. A
   page already loaded asks no new ticket when it shows again (back from Page
   Preview, a swipe back to the Item segment).
+- **A pass that ends opens again in place.** A host keeps passes in memory, so
+  a restart ends the page's pass and its renew is refused. The page then posts
+  `{kind: 'passEnded'}` to the web view's handler `tempcodeHosted`
+  (src/hosted/guest/phone.ts; `{kind: 'opened'}` when it opens), heard only
+  from the ticket's origin in the main frame (`HostedNote`). The view asks a
+  new ticket and loads it in a new web view, as Try Again does (the old page's
+  store holds a dead renewal key, and a new ticket on the same path would only
+  change the fragment). Once in a row (`HostedRejoin`): a page that ends again
+  before it opened shows its own words; a page that opened may rejoin at the
+  next end. An end while the screen is not forward (another page over it, the
+  app in the background) waits for it to come forward.
+- The address is the guest origin's, as the host builds it
+  (`guestOrigin(ctx)` in guests/links.ts `ticket`); the phone holds no host
+  name for `/w/open` and stays on the ticket's origin (`HostedOrigin`).
 
 ## The clicker
 
@@ -385,14 +399,20 @@ this build's (PF5).
   page's (the pager it replaces would cancel it): a spinner while it reads,
   and a page 1 that does not come says why with Try Again. No two pages of different versions show together.
 - **Share…** has no row. The one way to share a file from the phone today is
-  the guest link, which is its own row (Make a Guest Link, a LifeOS document
-  or sheet, a key that may approve). No wire lets a remote key draft a mail
+  the guest link, which is its own row (Make a Guest Link: a LifeOS document
+  or sheet, or a `.tcdoc` or `.tcsheet` kept as a file, for a key that may
+  approve; `ItemBody.guestSource`). A file goes as `{at: 'file', host, path}`
+  from its item, the path the host last pushed; the host refuses one it cannot
+  share (another computer's, one others can open, a host no guest reaches) and
+  the sheet shows its words under the form. A sheet's link views or edits
+  (`GuestLinkDraft.roles`), starting at View. No wire lets a remote key draft a mail
   with a file, so there is no second way to list; `ReaderFacts.shares` is
   the switch for when one exists.
 
 ## Proofs
 
-- Pure logic runs in `swift test` (ios/TempCodeClient: `ReaderTests`,
+- Pure logic runs in `swift test` (ios/TempCodeClient: `ReaderTests` with
+  `HostedRejoinTests`,
   `ReaderReviewTests`, `FileAskTests`, `WorkItemsTests`, `ShellPathsTests`). On the box the
   files that need no socket also run in a scratch package with the Swift
   6.4.2 toolchain; anything on `FakeWebSocket` needs the Mac.
@@ -414,4 +434,11 @@ this build's (PF5).
   reads back that a new thread holds it as its item.
 - The host: src/main/server/work/guests/fileTicket.test.ts (every refusal, a
   `.tcdoc`'s room, an edit written to the file, the sheet socket held to the
-  pass).
+  pass); guests.test.ts (a restart of the service ends a page's renewals).
+- The page: src/hosted/guest/phone.dom.test.tsx (a renew refused as gone posts
+  `passEnded`; a browser with no handler says nothing).
+- The rejoin end to end in WebKit: `bun run script:e2e-phone-hosted` restarts
+  the test server's Work service with the memo open (`POST
+  /work-service/restart`), records `passEnded` through a stand-in handler, and
+  opens the memo again on a new ticket with its edit kept. The phone's own part
+  (`HostedRejoin` in a real web view) has no simulator proof.

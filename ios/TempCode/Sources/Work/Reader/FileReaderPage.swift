@@ -119,8 +119,9 @@ struct FileReaderPage: View {
                 }
             }
             .sheet(isPresented: $sharing) {
-                if let source = ItemBody.of(item).guestSource {
-                    GuestLinkSheet(client: client, source: source, title: item.title)
+                // The file as the host last named it: a link to a file moved since names its new path.
+                if let live, let source = ItemBody.guestSource(live) {
+                    GuestLinkSheet(client: client, source: source, title: live.title)
                 }
             }
             .navigationDestination(isPresented: $previewing) {

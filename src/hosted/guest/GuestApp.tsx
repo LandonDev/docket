@@ -7,6 +7,7 @@ import { Doc, Project, Table } from "@renderer/work/icons";
 import { Face } from "@renderer/work/mail/face";
 import { projectionLists, type GuestProjection } from "@shared/work/guestProjection";
 import { wipeOffline } from "./offline";
+import { tellPhone } from "./phone";
 import { endWords, modeOf, OpenFailed, openWhenUp, Session, untilDay, type ChildItem, type Failure, type Opened, type Remembered } from "./session";
 // The type alone: the sheet stays in its own lazy chunk.
 
@@ -89,6 +90,8 @@ export function GuestApp() {
   // A link that is over leaves nothing on this device: the copy an Edit link kept is wiped.
   const gone = useCallback(() => {
     if (session?.mode.kind === "guest") void wipeOffline(session.mode.id, (session.remembered() ?? kept)?.doc);
+    // His pass ended (a restart of the host forgets them all): the phone around the page opens the file again.
+    if (session?.mode.kind === "owner") tellPhone({ kind: "passEnded" });
     setState({ at: "failed", why: "gone" });
   }, [session, kept]);
   const load = useCallback(() => {
@@ -98,7 +101,10 @@ export function GuestApp() {
     openWhenUp(() => session.refresh()).then(
       (opened) => {
         // The owner's ticket opens once: it leaves the address as soon as it has.
-        if (session.mode.kind === "owner") history.replaceState(null, "", location.pathname);
+        if (session.mode.kind === "owner") {
+          history.replaceState(null, "", location.pathname);
+          tellPhone({ kind: "opened" });
+        }
         document.title = opened.title;
         setState({ at: "open", opened });
       },

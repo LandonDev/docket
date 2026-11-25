@@ -2,19 +2,28 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Make a Guest Link from a document's or sheet's More (milestone 47): For,
-/// Can (View, Comment, Edit) and Ends, then the address once, with Copy and
-/// Share. The host keeps only its hash.
+/// Make a Guest Link from a document's or sheet's More (milestone 47), a
+/// LifeOS row or a `.tcdoc` or `.tcsheet` kept as a file: For, Can (View,
+/// Comment, Edit; a sheet View or Edit) and Ends, then the address once, with
+/// Copy and Share. The host keeps only its hash; a file it cannot share is
+/// refused in its words, under the form.
 struct GuestLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
     let client: EnvironmentClient
     let source: Methods.WorkGuestsCreate.Params.Source
     let title: String
-    @State private var draft = GuestLinkDraft()
+    @State private var draft: GuestLinkDraft
     @State private var made: String?
     @State private var saving = false
     @State private var error: String?
     @FocusState private var focused: Bool
+
+    init(client: EnvironmentClient, source: Methods.WorkGuestsCreate.Params.Source, title: String) {
+        self.client = client
+        self.source = source
+        self.title = title
+        _draft = State(initialValue: GuestLinkDraft(sheet: source.isSheet))
+    }
 
     var body: some View {
         NavigationStack {
@@ -28,7 +37,7 @@ struct GuestLinkSheet: View {
                             .focused($focused)
                             .accessibilityIdentifier("guest-name")
                         Picker("Can", selection: $draft.role) {
-                            ForEach(GuestLinkDraft.Role.allCases, id: \.self) { Text($0.title).tag($0) }
+                            ForEach(GuestLinkDraft.roles(sheet: source.isSheet), id: \.self) { Text($0.title).tag($0) }
                         }
                         .pickerStyle(.segmented)
                         DatePicker("Ends", selection: $draft.ends, in: GuestLinkDraft.range(), displayedComponents: .date)

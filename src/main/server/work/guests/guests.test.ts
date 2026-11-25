@@ -914,4 +914,16 @@ describe("the owner's hosted editor", () => {
     // A pass is no guest link: its token is the owner's, and /g/ knows nothing of it.
     expect((await post(r, '/g/open.x/open', { secret: ticket })).status).toBe(404)
   })
+
+  it("a restart of the service ends the page's renewals, though main still keeps the pass; a new ticket opens it again", async () => {
+    const r = await rig()
+    const first = await r.rt.ticket(doc(), 'Run of show', LOCAL)
+    const got = (await (await post(r, '/w/open/redeem', { ticket: new URL(first.url).hash.replace('#t=', '') })).json()) as { renew: string }
+    expect((await post(r, '/w/open/renew', { renew: got.renew })).status).toBe(200)
+    // The service alone restarts in this process (as the iOS test server's does), handed main's last list.
+    await restarted(r, true, [...(r.sent.at(-1) ?? [])])
+    expect((await post(r, '/w/open/renew', { renew: got.renew })).status).toBe(403)
+    const again = await r.rt.ticket(doc(), 'Run of show', LOCAL)
+    expect((await post(r, '/w/open/redeem', { ticket: new URL(again.url).hash.replace('#t=', '') })).status).toBe(200)
+  })
 })

@@ -276,6 +276,22 @@ describe('the two listeners', () => {
     expect(await closed).toEqual({ code: 1012, reason: 'the service is restarting' })
   })
 
+  it('a connection left open does not hold a stop: a restart inside one process ends at once', async () => {
+    const r = await rig()
+    const { connect } = await import('node:net')
+    // A request half sent: no timeout of the server's ends it inside the wait below.
+    const half = connect(r.service.port, '127.0.0.1')
+    half.on('error', () => {})
+    await new Promise((resolve) => half.once('connect', resolve))
+    half.write('GET /w/healthz HTTP/1.1\r\nHost: 127.0.0.1\r\n')
+    await sleep(100)
+    const stopped = await Promise.race([r.service.stop().then(() => true), sleep(3000).then(() => false)])
+    half.destroy()
+    expect(stopped).toBe(true)
+    // The port is free for the next run.
+    await expect(fetch(`http://127.0.0.1:${r.service.port}/w/healthz`)).rejects.toThrow()
+  })
+
   it('an internal route answers on the socket with the secret, refuses it without, and is unreachable on the public port either way', async () => {
     const r = await rig()
     addDoc(r, 'kd1', { markdown: 'stored', plain: 'stored' })
