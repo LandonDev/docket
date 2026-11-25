@@ -14,7 +14,8 @@ import { tellAdded } from "./added";
 import { eventPayload, type EventForm, pad } from "./newEvent";
 import type { LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
-import { DownLine } from "../shell/DownLine";
+import { DownLine, HostLine } from "../shell/DownLine";
+import { useHostLive } from "../shell/lifeosLive";
 
 /**
  * New event (prototype workspace.html, the Agenda header's verb): a calendar
@@ -73,12 +74,16 @@ export function NewEventDialog({
   startsAt: number | null;
   /** what the form starts with (a mail chat's proposed event); he still saves it */
   initial?: Partial<EventForm>;
-  /** after his Add went through: LifeOS queued the change `op` (calendarOps), which Google has not taken yet */
+  /**
+   * after his Add went through: LifeOS queued the change `op` (calendarOps), which Google has not taken yet. The caller
+   * then says where it stands (a mail chat card: Queued, Added, or why not), so the form says no toast of its own.
+   */
   onAdded?: (op: string) => void;
   onClose: () => void;
   /**
    * The session it writes through, where the form outlives the view's body (`WorkViewModule.Kept`): while it is down,
-   * the form keeps what he typed, says its line (`DownLine`) and holds Add. Without it, the form reads and writes
+   * the form keeps what he typed, says its line (`DownLine`) and holds Add; while its host says LifeOS is connecting,
+   * the named wait (`HostLine`) with Add held. Without it, the form reads and writes
    * through the Convex client around it.
    */
   session?: LifeosSession;
@@ -123,6 +128,8 @@ function Body({
   const [sources, setSources] = useState<Source[] | undefined>(undefined);
   const [writes, setWrites] = useState<Writes | null>(null);
   const down = session && downOf(session) ? session : null;
+  const host = useHostLive(session?.environmentId ?? "");
+  const waits = !!session && !session.client && !down && host.waits;
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
@@ -147,9 +154,10 @@ function Body({
       .then(
         (id) => {
           setPending(false);
-          onAdded?.(id);
-          // LifeOS has it queued: the toast says Adding, and Added (or why not) only once LifeOS's own row says so.
-          void loadToast().then((toast) => tellAdded(convex, toast, { id, title: made.title, invites: asks }));
+          // A card that opened the form says where the event stands, where he pressed: no toast beside it. Else LifeOS has
+          // it queued: the toast says Adding, and Added (or why not) only once LifeOS's own row says so.
+          if (onAdded) onAdded(id);
+          else void loadToast().then((toast) => tellAdded(convex, toast, { id, title: made.title, invites: asks }));
           close ? close(onClose) : onClose();
         },
         (err: unknown) => {
@@ -178,7 +186,7 @@ function Body({
       )}
       <ModalBody>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
-        {down ? <DownLine session={down} /> : null}
+        {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>

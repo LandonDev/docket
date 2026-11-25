@@ -16,6 +16,8 @@ import { isSilence, KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, se
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
 import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
+import { useHostLive } from "./lifeosLive";
+import { DownEmpty } from "./DownEmpty";
 // The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
 import { SignInFor } from "./DownSignIn";
 import { clockTime } from "../../lib/duration";
@@ -27,8 +29,9 @@ import { workErrorWords } from "../../lib/workErrorWords";
  * its name, the controls the view's chunk puts there; none for a view that
  * draws its own head, as Mail does), then the view, which
  * reads LifeOS through the workspace's own sector. Signed out it is one
- * sign-in; unreachable, one state line over what was last shown. While the
- * view's chunk loads it is a column of rows; a view that throws (a LifeOS
+ * sign-in; unreachable, one state line over what was last shown; while the
+ * host says LifeOS is connecting, one named wait in the body's place, no
+ * press. While the view's chunk loads it is a column of rows; a view that throws (a LifeOS
  * read refused) is its own error with Retry, never the window's.
  */
 export function WorkViewSurface() {
@@ -133,7 +136,12 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header, as does the
   // line of a session that did not answer: the view draws nothing under it then, its head included.
   const blocked = signedOut || pairing || off || away || withheld;
-  const headless = !!def.ownHead && !blocked && !unreachable;
+  // The host said its LifeOS is on its way: one named wait in the body's place, no press, and none of the view's
+  // controls, which the host would refuse. A status not heard yet keeps the view's own bones.
+  const hostWaits = useHostLive(environmentId).waits;
+  const waits = gated && !blocked && !session.client && hostWaits;
+  const held = blocked || waits;
+  const headless = !!def.ownHead && !held && !unreachable;
   // The view covers the thread's pane, which goes inert under it (App.tsx): focus that was in the pane, or fell to the
   // page with it, lands on the view's heading, never on a composer or canvas control no one can see.
   const region = useRef<HTMLDivElement | null>(null);
@@ -176,10 +184,10 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <Icon className="size-3.5 shrink-0 text-muted-foreground @max-[26rem]/viewhead:hidden" />
           {/* The name gives way to the view's own controls only once they have given all they can: it is cut, never drawn under them. */}
           <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
-            {Title && !blocked ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
+            {Title && !held ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
           </span>
           <span className="flex-1" />
-          {Head && !blocked ? <Head {...props} /> : null}
+          {Head && !held ? <Head {...props} /> : null}
         </div>
       )}
       {unreachable && !blocked ? (
@@ -215,6 +223,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
             // The frame opens the sign-in dialog in place, the one Connections opens, for its sign-in and its code alike.
             {...(signPress.press ? { action: { label: DOWN_PRESS_LABEL[signPress.press], onClick: () => setSigningIn(true) } } : signPress.elsewhere ? { line: signPress.elsewhere } : {})}
           />
+        ) : waits ? (
+          <DownEmpty live={WAITS} environmentId={environmentId} onRetry={noRetry} />
         ) : (
           <KeptRegion value={kept.scope}>
             <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
@@ -231,6 +241,9 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     </div>
   );
 }
+
+const WAITS = { down: null, waits: true } as const;
+const noRetry = (): void => {};
 
 /** A view's chunk on its way: the one-column rows Tasks, Agenda, Docs and the lists start as, under the view's own header. */
 function ViewSkeleton({ label }: { label: string }) {

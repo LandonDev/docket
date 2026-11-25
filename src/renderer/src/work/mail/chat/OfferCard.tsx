@@ -10,7 +10,8 @@ import { useSessionMeta } from "../../../lib/tcserver/store";
 import { useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { useTranscriptHost, useTranscriptSession } from "../../../surfaces/transcriptSession";
 import { sessionWaits, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
-import { DownLine } from "../../shell/DownLine";
+import { DownLine, HostLine } from "../../shell/DownLine";
+import { useHostLive } from "../../shell/lifeosLive";
 import { mailClientFor } from "../client";
 import { tempcodeMailKit } from "../kit";
 import { AddKeeper, AddRow } from "./AddRow";
@@ -54,7 +55,8 @@ export function OfferCard({ offer, at }: { offer: MailOffer; at: OfferAt }) {
 /**
  * The window's LifeOS session for the thread's sector, with Mail's client over it. A proposed task's or event's form is
  * kept above the gate (`AddKeeper`): a drop swaps the card for its line, never the form he has open. Of a thread's cards
- * whose session is down, one says the line with its press (`useSaysLine`); the rest draw nothing until it is back.
+ * whose session is down, or whose host said its LifeOS is connecting, one says the line (`useSaysLine`): the state with
+ * its press, or the named wait with none; the rest draw nothing until it is back. A status not heard yet keeps the bones.
  */
 function OfferSession({ sessionId, env, offer, cardKey, children }: { sessionId: string; env: string; offer: MailOffer; cardKey: string; children(at: OfferAt): ReactNode }) {
   const meta = useSessionMeta(sessionId);
@@ -62,15 +64,19 @@ function OfferSession({ sessionId, env, offer, cardKey, children }: { sessionId:
   const sector = (workspace?.sector ?? null) as SectorKey | null;
   const lifeos = useLifeosSession(env, sector);
   const down = !!sector && !lifeos.client && !sessionWaits(lifeos);
-  const says = useSaysLine(down ? `${sessionId}|${env}|${sector}` : null, cardKey);
+  const host = useHostLive(env);
+  const waits = !!sector && !lifeos.client && !down && host.waits;
+  const says = useSaysLine(down || waits ? `${sessionId}|${env}|${sector}` : null, cardKey);
   if (!workspace || !sector) return null;
   const at = { sessionId, workspaceId: workspace.id, sector };
   const card = !lifeos.client ? (
-    !down ? (
+    !down && !waits ? (
       <CardBones />
-    ) : says ? (
+    ) : !says ? null : down ? (
       <SessionLine session={lifeos} env={env} sector={sector} />
-    ) : null
+    ) : (
+      <HostLine data-offer-session live={host} className="text-xs" />
+    )
   ) : (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector)}>

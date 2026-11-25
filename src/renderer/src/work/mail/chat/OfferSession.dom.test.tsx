@@ -148,6 +148,48 @@ describe("a Mail chat card's Add form, through the Mail view", () => {
   });
 });
 
+const connecting = { lifeos: { state: "connecting" as const }, keys: [] };
+/** Every press inside the view's region but outside a dialog it holds. */
+const framePresses = (): string[] => [...screen.getByRole("region").querySelectorAll("button")].filter((b) => !b.closest("[role=dialog]")).map((b) => b.textContent ?? "");
+
+describe("a host that says its LifeOS is connecting", () => {
+  // Council round 11 (Sol Mail 1, P2): the known wait is one named line with no press, never bones alone.
+  it("Mail's frame names the wait in the body's place, with no press and no bones, the view's name over it", async () => {
+    setLifeosStatus("env_box", connecting);
+    render(<ViewFrame view="mail" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    const wait = await screen.findByText("LifeOS is still connecting on the box");
+    expect(wait.closest("[data-lifeos-waits]")).toBeTruthy();
+    expect(document.body.textContent!.split("LifeOS is still connecting on the box").length - 1).toBe(1);
+    expect(document.querySelector("[aria-label='Loading Mail']")).toBeNull();
+    expect(document.querySelector("[data-view-heading]")!.textContent).toBe("Mail");
+    expect(framePresses()).toEqual([]);
+    // Back: Mail draws, with its own head again.
+    act(() => setLifeosStatus("env_box", connected));
+    await waitFor(() => expect(document.querySelector("[data-dock-stand-in]")).toBeTruthy(), { timeout: 10_000 });
+    expect(document.querySelector("[data-lifeos-waits]")).toBeNull();
+  });
+
+  it("the same frame names it for every view that reads LifeOS (Tasks), with none of its header's presses", async () => {
+    setLifeosStatus("env_box", connecting);
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await screen.findByText("LifeOS is still connecting on the box");
+    await waitFor(() => expect(document.querySelector("[data-view-heading]")).toBeTruthy());
+    expect(framePresses()).toEqual([]);
+  });
+
+  it("keeps the dock's open form with his words and Add held, while the frame names the wait; back, it files", async () => {
+    await openForm();
+    act(() => setLifeosStatus("env_box", connecting));
+    await waitFor(() => expect(document.querySelector("[data-dock-stand-in]")).toBeNull());
+    expect(screen.getByRole("region").querySelector("[data-lifeos-waits]")).toBeTruthy();
+    expect(screen.getByDisplayValue("Book the big room")).toBeTruthy();
+    expect(addOf().disabled).toBe(true);
+    act(() => setLifeosStatus("env_box", connected));
+    await waitFor(() => expect(addOf().disabled).toBe(false), { timeout: 10_000 });
+    expect(document.querySelector("[data-lifeos-waits]")).toBeNull();
+  });
+});
+
 describe("a thread's cards on one down session", () => {
   const card = (id: string, offer: object) => <MailOfferRow key={id} block={{ id, role: "tool", tool: { status: "completed", detail: JSON.stringify({ mailOffer: offer }) } } as never} />;
   const Thread = ({ ids }: { ids: string[] }) => (
@@ -170,5 +212,30 @@ describe("a thread's cards on one down session", () => {
     view.rerender(<Thread ids={["c-task", "c-event"]} />);
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Add…" })).toHaveLength(2), { timeout: 10_000 });
     expect(document.querySelector("[data-offer-session]")).toBeNull();
+  });
+
+  it("say a host's connecting once, the first card holding the wait with no press and no bones; back, each card draws", async () => {
+    // Council round 11 (Sol Mail 1, P2).
+    setLifeosStatus("env_box", connecting);
+    const view = render(<Thread ids={["c-task", "c-event"]} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-offer-session]")).toHaveLength(1), { timeout: 10_000 });
+    expect(document.querySelector("[data-offer-session]")!.hasAttribute("data-lifeos-waits")).toBe(true);
+    expect(document.body.textContent!.split("LifeOS is still connecting on the box").length - 1).toBe(1);
+    expect(document.querySelectorAll("div[aria-label=Loading]")).toHaveLength(0);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    // The wait turns down: the same first card says the new state with its press.
+    act(() => setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] } as never));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Sign in" })).toHaveLength(1));
+    expect(document.querySelector("[data-lifeos-waits]")).toBeNull();
+    act(() => setLifeosStatus("env_box", connected));
+    view.rerender(<Thread ids={["c-task", "c-event"]} />);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Add…" })).toHaveLength(2), { timeout: 10_000 });
+  });
+
+  it("keep their bones while the host's status is not heard yet: no wait is named before it is known", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => new Promise(() => {}) } as never);
+    render(<Thread ids={["c-task", "c-event"]} />);
+    await waitFor(() => expect(document.querySelectorAll("div[aria-label=Loading]")).toHaveLength(2));
+    expect(document.querySelector("[data-lifeos-waits]")).toBeNull();
   });
 });

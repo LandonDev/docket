@@ -16,6 +16,8 @@ import { sentState } from "./sentState";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
 import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
+import { useHostLive } from "../shell/lifeosLive";
+import { DownEmpty } from "../shell/DownEmpty";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor, RevealMailbox } from "./client";
 import { placedKit } from "./files";
@@ -47,6 +49,8 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const words = sessionWords(lifeos);
   const { press, elsewhere } = useDownPress(down, env);
   const { action, dialog } = useDownAction(press, env);
+  // The host said its LifeOS is on its way: the named wait, no press. A status not heard yet keeps the bones.
+  const waits = useHostLive(env).waits;
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
@@ -70,6 +74,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     );
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
+    if (waits) return <DownEmpty live={WAITS} environmentId={env} onRetry={noRetry} />;
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
     const kept = lastRead.get(source.id);
     return kept ? <Letter draft={kept} /> : null;
@@ -87,6 +92,9 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     </ConvexProvider>
   );
 }
+
+const WAITS = { down: null, waits: true } as const;
+const noRetry = (): void => {};
 
 /** Under a sent mail he changed: the house rule his repeated edit proposes, if any (work/rules). */
 function SentLine({ env, id }: { env: string; id: string }) {

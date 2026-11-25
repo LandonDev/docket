@@ -133,6 +133,26 @@ describe("the mail canvas with LifeOS unreachable", () => {
     expect(lines.at(-1)).toBeNull();
     expect(container.innerHTML).not.toBe("");
   });
+
+  it("names the wait once, in the body's place with no press, while its host says LifeOS is connecting", async () => {
+    // Council round 11 (Sol Mail 1, P2): a known wait is a named line, never bones alone.
+    const { registry } = await import("../../lib/connection");
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "box", name: "The box" } as never);
+    try {
+      lifeos.state = "connecting";
+      setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never);
+      const { container, lines } = body();
+      expect(lines.at(-1)).toBeNull();
+      expect(container.querySelector("[data-lifeos-waits]")!.textContent).toBe("LifeOS is still connecting on the box");
+      expect(container.textContent!.split("LifeOS is still connecting").length - 1).toBe(1);
+      expect(screen.queryByLabelText("Loading the mail")).toBeNull();
+      expect(container.querySelectorAll("button")).toHaveLength(0);
+    } finally {
+      resetLifeos();
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe("a waiting rewrite", () => {

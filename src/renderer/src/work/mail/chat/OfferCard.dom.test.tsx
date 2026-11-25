@@ -48,6 +48,10 @@ const toasts = vi.hoisted(() => [] as { message: string; action?: { label: strin
 vi.mock("../../../components/ui/toaster", () => {
   const toast = Object.assign((message: string, opts?: { action?: { label: string; onClick(): void } }) => void toasts.push({ message, action: opts?.action }), {
     error: (message: string, opts?: { description?: string }) => void toasts.push({ message, error: true, ...(opts?.description ? { description: opts.description } : {}) }),
+    // The New event toast's own calls (agenda/added.ts `tellAdded`).
+    loading: (message: string) => void toasts.push({ message }),
+    success: (message: string) => void toasts.push({ message }),
+    message: (message: string) => void toasts.push({ message }),
   });
   return { loadToast: async () => toast, toast };
 });
@@ -69,6 +73,7 @@ const { TranscriptSessionContext } = await import("../../../surfaces/transcriptS
 const { sessionStore } = await import("../../../lib/tcserver/store");
 const { ASK_AGAIN } = await import("./RewriteCard");
 const { write } = await import("../client");
+const { NewEventDialog } = await import("../../agenda/NewEventDialog");
 
 const at = { sessionId: "s1", workspaceId: "w1", sector: "life" as const };
 const thread = (id: string, subject: string): ThreadSummary => ({ id, subject, senders: ["Dana Lee"], lastMessageAt: Date.parse("2026-11-20T10:00:00"), messageCount: 2 }) as ThreadSummary;
@@ -431,6 +436,16 @@ describe("an event's Added", () => {
     expect(screen.getByText("Added")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(views).toContainEqual({ workspaceId: "w1", view: "agenda" });
+    // Council round 11 (Opus Mail 1, P3): the card says where the event stands, where he pressed; no toast says it again.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(toasts).toEqual([]);
+  });
+
+  it("is told by its toast when Agenda's own New event made it, with no card to say it", async () => {
+    convex.sources = [{ _id: "cal1", kind: "gcal", account: "me@example.com", sector: "life", enabled: true }];
+    render(<NewEventDialog sector="life" startsAt={null} initial={{ title: "Staff sync", day: "2026-12-04", from: "09:00", to: "09:30" }} onClose={() => undefined} />);
+    fireEvent.submit((await screen.findByDisplayValue("Staff sync")).closest("form")!);
+    await waitFor(() => expect(toasts).toEqual([{ message: "Adding Staff sync" }]));
   });
 
   it("gives Add… back with Google's reason when the change failed", async () => {
@@ -503,6 +518,50 @@ describe("a task's form when LifeOS drops", () => {
     await waitFor(() => expect(made).toHaveLength(1));
     expect(made[0]).toMatchObject({ threadId: "t1", draft: { title: "Book the big room", sector: "life" } });
     await waitFor(() => expect(screen.getByText("Added")).toBeTruthy());
+  });
+});
+
+describe("an event's form while its host's LifeOS is connecting", () => {
+  // Council round 11 (Sol Mail 1, P2): the form stays above the gate with his words; the wait is named once in it, with
+  // no press, and Add is held until the session reads.
+  it("says the wait with the computer named, holds Add, and lets it go once the session reads", async () => {
+    const { registry } = await import("../../../lib/connection");
+    const { resetLifeos, setLifeosStatus } = await import("../../shell/lifeos");
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    convex.sources = [{ _id: "cal1", kind: "gcal", account: "me@example.com", sector: "life", enabled: true }];
+    const event = { title: "Lunch with Dana", start: "2026-12-04T12:30:00", end: "2026-12-04T13:30:00" };
+    const reads = { environmentId: "env_box", sector: "life" as const, client: {} as never, state: "connected" as const };
+    const waits = { environmentId: "env_box", sector: "life" as const, client: null, state: "connecting" as const };
+    const keeper = (session: typeof reads | typeof waits) => (
+      <AddKeeper event={event} at={at} session={session}>
+        {session.client ? (
+          <MailClientProvider client={client}>
+            <AddRow event={event} at={at} />
+          </MailClientProvider>
+        ) : null}
+      </AddKeeper>
+    );
+    try {
+      setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] } as never);
+      const { rerender } = render(keeper(reads));
+      fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+      fireEvent.change(await screen.findByDisplayValue("Lunch with Dana"), { target: { value: "Lunch with Dana and Sam" } });
+      act(() => setLifeosStatus("env_box", { lifeos: { state: "connecting" }, keys: [] } as never));
+      rerender(keeper(waits));
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.querySelector("[data-lifeos-waits]")!.textContent).toBe("LifeOS is still connecting on the box");
+      expect(dialog.querySelector("[data-session-down]")).toBeNull();
+      const add = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Add")!;
+      expect(add.disabled).toBe(true);
+      expect(screen.getByDisplayValue("Lunch with Dana and Sam")).toBeTruthy();
+      act(() => setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 2 }, keys: [] } as never));
+      rerender(keeper(reads));
+      await waitFor(() => expect(add.disabled).toBe(false));
+      expect(dialog.querySelector("[data-lifeos-waits]")).toBeNull();
+    } finally {
+      resetLifeos();
+      vi.restoreAllMocks();
+    }
   });
 });
 

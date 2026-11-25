@@ -661,12 +661,19 @@ docs/DESIGN.md "The Mail view"):
   task through `answerOf`; a refusal stays in the form); an event says
   Queued until LifeOS's calendar change is done, read from its row as the
   toast reads it (`useOpOutcome`, agenda/added.ts), then Added with Open,
-  or, refused, the reason in its line's place and Add… again. Nothing
+  or, refused, the reason in its line's place and Add… again; a form a card
+  opened says no toast of its own (`NewEventDialog.onAdded`), as the card
+  says where the event stands. Nothing
   sends, schedules or archives but his press. A card whose LifeOS session
   failed is one line with the press that mends it, as the mail canvas has
   (`SessionLine`): Sign in, Open Settings or Retry; of a thread's cards on
   one down session the first says it and the rest draw nothing until it
-  is back (`useSaysLine`).
+  is back (`useSaysLine`). A host that says its LifeOS is connecting is a
+  wait the same way: the first card says "LifeOS is still connecting on the
+  box" with no press (`HostLine`), the rest nothing; Mail's frame says it in
+  the body's place (`ViewFrame`, `DownEmpty`), and so does the mail canvas;
+  an open Add form keeps his words, names the wait and holds Add. A status
+  not heard yet keeps the bones.
 - **Chips in prose**: `[subject](#lifeos:mailThreads:<id>)` and
   `[name](#lifeos:people:<id>)` draw as chips (`lifeosLinkOf`,
   surfaces/lifeosLink.ts; LifeosChip.tsx) that open through SentChips'

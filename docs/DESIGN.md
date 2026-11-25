@@ -4188,8 +4188,16 @@ each host that left LifeOS out the same way, once, and says what the page does
 without it once, after the last line. Every line is the host's live status's,
 never a reason an older read saved (`useLiveDown`, work/shell/lifeosLive.ts):
 a status that changes changes the line and its press at once, and connected
-reads again. A session on its way is a wait with no press, one wording
-everywhere: "LifeOS is still connecting on the box" (`connectingWords`). A read that failed is never said
+reads again: while that read is out the reader draws its own loading state
+(bones, a spinner) in the line's place, never the saved cause. A session on its way is a wait with no press, one wording
+everywhere: "LifeOS is still connecting on the box" (`connectingWords`). Once
+the host has said so (`useHostLive`'s `waits`), the wait is said once where a
+down state's line would stand (the view frame's body, a canvas body, the
+first chat card, Today's LifeOS line, a held mail's note), muted, with none of the
+controls the host would refuse (a clash's ways out, a recording's Accept, an
+open form's submit, which keeps his text); a status not heard yet keeps
+its bones. A Retry spins on the button pressed alone, never on another
+press that asks the same host, nor for a check the page ran by itself. A read that failed is never said
 as a sign-out (Capture names this computer with Retry). A part that stands in
 for what it could not read (a held act's details, a chat card, Running
 late's place in a clash, the Start places dialog) draws
