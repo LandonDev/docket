@@ -29,7 +29,7 @@ import {
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import { workSwitch, workViewNow } from "../lib/workSwitch";
-import { shellStore } from "./shell";
+import { anyViewOpen, shellStore } from "./shell";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
 import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { PARK_MS } from "../lib/warmTabs";
@@ -275,8 +275,10 @@ export function installActiveSessionSync(): Teardown {
     }, MARK_SEEN_MS);
   };
   const syncFocus = () => {
-    // A thread under a Work view or a page above the jobs is not seen: it is marked when the cover leaves.
-    const id = workViewNow() || shellStore.getState().workPlace ? undefined : currentActiveSession()?.id;
+    // A thread under a Work view or any full view (the board's own inert rule) is not seen: it is marked when the
+    // cover leaves.
+    const shown = shellStore.getState();
+    const id = workViewNow() || anyViewOpen(shown) || shown.settingsOpen ? undefined : currentActiveSession()?.id;
     if (id === focusedId) return;
     const leaving = focusedId;
     focusedId = id;

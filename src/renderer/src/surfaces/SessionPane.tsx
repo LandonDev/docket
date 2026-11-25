@@ -37,7 +37,7 @@ import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
 import { useWorkView } from "../lib/workSwitch";
-import { useShell } from "../stores/shell";
+import { anyViewOpen, useShell } from "../stores/shell";
 
 /** The pane switch: opacity alone, --dur-fast (DESIGN.md "Pane switch"). */
 export const PANE_FADE = { duration: DUR.fast, ease: EASE_OUT } as const;
@@ -137,11 +137,12 @@ export const SessionPane = memo(function SessionPane({
   const rootRef = useRef<HTMLDivElement>(null);
   // The focused, visible pane is where an "automatic" appshot lands, and
   // the thread its host serves first (session.focus).
-  // A Work view or a page above the jobs (Today, Projects, Review) covers the threads: the pane stays the appshot's
-  // and the panel's, but the host is not told he looks at it, so nothing is marked read unseen.
+  // A Work view or any full view (Today and the pages above the jobs, the Outbox, the Inbox, Search, Settings…)
+  // covers the threads, as the board's own inert rule reads it: the pane stays the appshot's and the panel's, but the
+  // host is not told he looks at it, so nothing is marked read unseen.
   const workView = useWorkView();
-  const workPlace = useShell((s) => s.workPlace);
-  const covered = workView !== null || workPlace !== null;
+  const viewOver = useShell((s) => anyViewOpen(s) || s.settingsOpen);
+  const covered = workView !== null || viewOver;
   useEffect(() => {
     if (!focused || !visible) return;
     noteActiveSession(session.id);

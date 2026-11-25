@@ -423,6 +423,19 @@ describe("installActiveSessionSync", () => {
     expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
   });
 
+  it("a thread under the Outbox is not marked seen until the Outbox leaves", async () => {
+    const { shell } = await import("./shell");
+    shell.openOutbox();
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 7 }));
+    teardown = installActiveSessionSync();
+    expect(markSessionSeen).not.toHaveBeenCalledWith("s-a", 7);
+    shell.closeViews();
+    await flush();
+    expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
+  });
+
   it("a switch before the throttle flushes marks the thread leaving at its latest update", async () => {
     vi.useFakeTimers();
     setTabs([tab("a"), tab("b")], "a");
