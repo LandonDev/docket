@@ -1914,12 +1914,13 @@ index.ts by devices/binding.ts `mayRoute`: a given computer stopped or removed
 answers "That computer's link to this host is stopped or removed."). Places come back with `trash`, `rename` and `move`
 alone of the changes, named as the box names that desktop (`name`).
 
-- **Kept 5 s, joined.** `places`, `list` and `stat` through the box are kept per workspace, host, method and params
-  for `ACROSS_FRESH_MS` (5 s, 64 asks at most, in memory: names, sizes and times) and an ask while the same one is in
-  flight joins it, so two lists of one folder within 5 s make one peer call (live 2026-11-24: 4.4, 3.6, 3.0, 6.0 and
-  48 s one after another before). Work on, the binding being live and the workspace's "May use this computer" run on
-  every ask before a kept answer; a workspace no longer allowed is asked through and refused as before. A change sent
-  to that desktop drops what was kept of it; Work off drops all of it.
+- **Joined, never kept.** `places`, `list` and `stat` through the box asked while the same one (per workspace, host,
+  method and params) is in flight join it: one peer call for both. Nothing is kept once it answers (2026-11-25, sol
+  review S1: a kept answer skipped that desktop's own bridge policy and Files fence for 5 s), so every later ask
+  meets that desktop's gates again; the window's own listings (store.ts, 10 minutes) spare it the repeats. Work on,
+  the binding being live and the workspace's "May use this computer" run on every ask before it joins one; a
+  workspace no longer allowed is asked through and refused as before. A change sent to that desktop, and Work off,
+  drop the asks in flight, so no ask after them joins an answer from before them.
 
 - **Delete, Rename and Move there** (2026-11-24, the owner: "Trying to delete a file says its on another host ask that
   host, shouldn't happen"). On his press alone (his window, or a key that may approve; a thread never, `pressesFor`), the

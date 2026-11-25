@@ -43,18 +43,15 @@ const CHANGES = new Set<string>(['work.files.trash', 'work.files.restore', 'work
 const CHANGES_OFFERED = new Set<string>(['trash', 'rename', 'move'])
 
 /**
- * How long a listing of another desktop is kept on this host (places, a folder's page, the rows on screen), per
- * workspace, host, method and params: asks inside it share the one answer, and asks while one is in flight join it.
- * The gates run on every ask before a kept answer (Work on, the binding live, "May use this computer"). A change sent
- * there drops what was kept of that host. Names, sizes and times only, in memory, `ACROSS_KEEP_MOST` asks at most.
+ * A listing of another desktop asked while the same one is in flight (per workspace, host, method and params) joins
+ * it: one call there for both. Nothing is kept once it answers, so every later ask goes to that desktop and meets its
+ * own gates again (its bridge policy for this host, its Files fence): a desktop that stopped sharing shows nothing
+ * from here a moment later. The window keeps its own listings (store.ts). A change sent there, Work off and a test
+ * drop the asks in flight, so no ask after them joins an answer from before them.
  */
-export const ACROSS_FRESH_MS = 5_000
-const ACROSS_KEEP_MOST = 64
-const acrossKept = new Map<string, { at: number; answer: unknown }>()
 const acrossAsking = new Map<string, Promise<unknown>>()
-/** A test, or Work off: nothing kept. */
+/** A test, or Work off: no ask joined. */
 export function forgetAcross(): void {
-  acrossKept.clear()
   acrossAsking.clear()
 }
 /** One answer's key: the same ask spelled with its fields in any order is the same ask. */
@@ -93,10 +90,10 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   let answer: unknown
   try {
     if (change) {
-      // A change there: what was kept of that host's lists may be wrong now.
-      for (const key of [...acrossKept.keys()]) if (key.split('\u0000')[1] === p.host) acrossKept.delete(key)
+      // A change there: a list of that host in flight may be from before it, and no ask after it joins one.
+      for (const key of [...acrossAsking.keys()]) if (key.split('\u0000')[1] === p.host) acrossAsking.delete(key)
       answer = await ask(signal)
-    } else answer = await keptOrAsked(ctx, workspace.id, p, ask, signal)
+    } else answer = await joinedOrAsked(ctx, workspace.id, p, ask, signal)
   } catch (err) {
     // Asleep, off its VPN or TempCode closed: it is not linked now. Said so, in words a window reads as away.
     if (AWAY.test(err instanceof Error ? err.message : String(err))) throw new Error(`${name ?? 'That computer'} is not reachable now.`)
@@ -109,25 +106,17 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
 }
 
 /**
- * A listing of another desktop, kept `ACROSS_FRESH_MS` or joined with the same ask in flight. The box's own gates run
- * here first, as `ctx.peer` runs them before any call: a kept answer is never served where the call would be refused.
+ * A listing of another desktop, joined with the same ask in flight. The box's own gates run here first, as `ctx.peer`
+ * runs them before any call: a joined answer is never served where the call would be refused.
  */
-async function keptOrAsked(ctx: WorkCtx, workspaceId: string, p: { host: string; method: string; params: Record<string, unknown> }, ask: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal): Promise<unknown> {
+async function joinedOrAsked(ctx: WorkCtx, workspaceId: string, p: { host: string; method: string; params: Record<string, unknown> }, ask: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal): Promise<unknown> {
   if (!ctx.enabled()) throw new Error(WORK_OFF)
   if (!ctx.settings.workspace(workspaceId).mayUseDesktop.includes(p.host)) return ask(signal)
   const key = askKey(workspaceId, p.host, p.method, p.params)
-  const now = Date.now()
-  const kept = acrossKept.get(key)
-  if (kept && now - kept.at <= ACROSS_FRESH_MS) return kept.answer
   let asking = acrossAsking.get(key)
   if (!asking) {
     // No caller's signal on the shared call: one window gone does not cancel another's answer.
-    asking = ask().then((answer) => {
-      acrossKept.delete(key)
-      acrossKept.set(key, { at: Date.now(), answer })
-      for (const [k, v] of acrossKept) if (acrossKept.size > ACROSS_KEEP_MOST || Date.now() - v.at > ACROSS_FRESH_MS) acrossKept.delete(k)
-      return answer
-    })
+    asking = ask()
     const mine = asking
     acrossAsking.set(key, mine)
     void mine.then(

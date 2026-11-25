@@ -6,7 +6,7 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import { filesPaneOf } from '@shared/work'
 import type { Caller } from '../modules'
 import { setCloudDir } from '../office/files/library'
-import { ACROSS_FRESH_MS, forgetAcross, NOT_BOUND, setLiveBinding } from './across'
+import { forgetAcross, NOT_BOUND, setLiveBinding } from './across'
 import { setHostRead } from '../peer'
 import { closeFilesState, filesHandle } from './handle'
 import { setSystemBin } from './trash'
@@ -219,30 +219,59 @@ describe('a rename or a move of a file another host holds', () => {
   })
 })
 
-describe('a listing of another desktop, kept on the box', () => {
+describe('a listing of another desktop, joined while in flight', () => {
   const general = () => join(pc.team, 'General')
   const list = (by: Caller = window) => across(by, 'work.files.list', { at: { at: 'file', host: PC, path: general() } }) as Promise<FilesListing>
   const lists = () => far.filter((f) => f.verb === 'list')
   beforeEach(() => box.settings.set(WS, { mayUseDesktop: [PC] }))
 
-  it(`asks the desktop once for two lists of one folder within ${ACROSS_FRESH_MS / 1000} s, and once for two at the same time`, async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+  it('asks the desktop once for two lists of one folder at the same time, and again for each list after it answered', async () => {
     const [a, b] = await Promise.all([list(), list(macKey)])
     expect(lists()).toHaveLength(1)
     expect(b.entries.map((e) => e.name)).toEqual(a.entries.map((e) => e.name))
-    vi.spyOn(Date, 'now').mockReturnValue(1_000_000 + ACROSS_FRESH_MS - 1)
+    // Nothing kept once it answered: the next list goes to the desktop and meets its own gates there.
     await list()
-    expect(lists()).toHaveLength(1)
+    expect(lists()).toHaveLength(2)
     // Another ask (another folder, another order) is its own.
     await across(window, 'work.files.list', { at: { at: 'file', host: PC, path: general() }, sort: { by: 'name', dir: 'desc' } })
-    expect(lists()).toHaveLength(2)
-    // Past its life it is asked again.
-    vi.spyOn(Date, 'now').mockReturnValue(1_000_000 + ACROSS_FRESH_MS + 1)
-    await list()
     expect(lists()).toHaveLength(3)
   })
 
-  it('runs the gates on every ask before a kept answer: a binding stopped or the desktop no longer allowed is refused, and Work off says so', async () => {
+  it('a desktop that stops sharing shows nothing from here on the next list, however soon', async () => {
+    await list()
+    // Its bridge policy for this host is turned off there: the next list is that desktop's refusal, not rows from before.
+    const was = (box.ctx as { peer: unknown }).peer
+    Object.assign(box.ctx, { peer: { call: () => ({ call: async () => { throw new Error('forbidden: this host may not use that desktop') } }) } })
+    await expect(list()).rejects.toThrow('forbidden')
+    Object.assign(box.ctx, { peer: was })
+  })
+
+  it('a list after a change sent there never joins a list from before the change', async () => {
+    // The desktop holds its answers to lists until let go.
+    const held: (() => void)[] = []
+    const was = (box.ctx as { peer: { call(o: unknown, host: string): { call(m: string, v: string, a: Record<string, unknown>): Promise<unknown> } } }).peer
+    Object.assign(box.ctx, {
+      peer: {
+        call: (o: unknown, host: string) => ({
+          call: async (m: string, v: string, a: Record<string, unknown>) => {
+            if (v === 'list') await new Promise<void>((go) => held.push(go))
+            return was.call(o, host).call(m, v, a)
+          }
+        })
+      }
+    })
+    const before = list()
+    await vi.waitFor(() => expect(held).toHaveLength(1))
+    await across(window, 'work.files.rename', { ref: { at: 'file', host: PC, path: join(general(), 'Plan.docx') }, name: 'Plan v2.docx', op: 'op-rename-0002' })
+    const after = list()
+    // Two asks of the desktop, not one joined: the second is its own.
+    await vi.waitFor(() => expect(held).toHaveLength(2))
+    held.forEach((go) => go())
+    await before
+    expect((await after).entries.map((e) => e.name)).toContain('Plan v2.docx')
+  })
+
+  it('runs the gates on every ask: a binding stopped or the desktop no longer allowed is refused, and Work off says so', async () => {
     await list()
     setLiveBinding((id) => id !== PC)
     await expect(list()).rejects.toThrow(NOT_BOUND)
@@ -256,11 +285,4 @@ describe('a listing of another desktop, kept on the box', () => {
     await expect(list()).rejects.toThrow('Work is off on this host')
   })
 
-  it('drops what it kept of a desktop once a change is sent there', async () => {
-    await list()
-    await across(window, 'work.files.rename', { ref: { at: 'file', host: PC, path: join(general(), 'Plan.docx') }, name: 'Plan v2.docx', op: 'op-rename-0001' })
-    const got = await list()
-    expect(lists()).toHaveLength(2)
-    expect(got.entries.map((e) => e.name)).toContain('Plan v2.docx')
-  })
 })
