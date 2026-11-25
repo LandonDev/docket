@@ -91,7 +91,7 @@ try {
   run.check('the Outbox opens', await run.until('the Outbox opens', 20_000, openOutbox))
   run.check('Asked in threads leads Waiting', await run.until('Asked in threads', 20_000, () => run.has('Asked in threads')))
   await run.shot('01-outbox-asked')
-  const picked = await run.page<boolean>(`(() => { const head = [...document.querySelectorAll('h2, h3, [role=heading], [data-outbox-section]')].find((e) => e.textContent.trim().startsWith('Asked in threads')); const box = head?.closest('section, [role=group], div')?.parentElement ?? head?.parentElement; const row = box ? [...box.querySelectorAll('button, [role=option], [role=row], li')].find((e) => e !== head && /Send|Post|item/.test(e.textContent)) : null; row?.click(); return !!row })()`)
+  const picked = await run.page<boolean>(`(() => { const head = [...document.querySelectorAll('h2, h3, [role=heading], [data-outbox-section]')].find((e) => e.textContent.trim().startsWith('Asked in threads')); const box = head?.closest('section, [role=group], div')?.parentElement ?? head?.parentElement; const row = box ? [...box.querySelectorAll('button, [role=option], [role=row], li')].find((e) => e !== head && /Echo|Send|Post|item|times/.test(e.textContent)) : null; row?.click(); return !!row })()`)
   run.check('the request row is picked', picked)
   const press = await run.until('the detail offers Send 9', 15_000, () => run.page<boolean>(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim().startsWith('Send 9'))`))
   run.check('the changed row starts unticked, so the press offers Send 9', press)
