@@ -398,3 +398,113 @@ describe('the digest on the phone', () => {
     for (const open of opens) expect(W.TellOpenPhoneSchema.parse(open)).toEqual(open)
   })
 })
+
+describe('M1 Work on the phone', () => {
+  it('reads the Microsoft Forms list fields from a push and accepts a removed form', () => {
+    const view = { formId: 'f1', tenant: 't1', title: 'RSVP', state: 'collecting', count: 2, link: null }
+    const change = { push: 'work.msforms', workspaceId: 'w1', formId: view.formId }
+    expect(W.RemotePushSchema.parse({ ...change, view: { ...view, questions: [], unseen: 1 } })).toEqual({ ...change, view: { ...view, unseen: 1 } })
+    expect(W.RemotePushSchema.parse({ ...change, view: null })).toEqual({ ...change, view: null })
+  })
+
+  it("reads clash rows with each side's ways out and guests (the clash sheet's, M2c), leaves the map's roughness, and keeps all leave times", () => {
+    const a = { eventId: 'a', sector: 'purdue', title: 'Budget review', startsAt: 1_000, endsAt: 3_000 }
+    const b = { eventId: 'b', sector: 'cosmic', title: 'Standup', startsAt: 2_000, endsAt: 4_000 }
+    const clash = { id: 'a-b', kind: 'overlap', a: { ...a, can: ['move'], guests: true }, b: { ...b, can: [] } }
+    const leaves = [{ eventId: 'a', leaveAt: 500, from: 'start', measured: true }]
+    const full = { ...clash, a: { ...clash.a, rough: 'town' }, b: { ...clash.b, rough: 'start' } }
+    expect(W.ClashesListPhoneSchema.parse({ clashes: [full], leaves })).toEqual({ clashes: [clash], leaves })
+  })
+
+  it("reads a meeting's page as the phone draws it, leaving out what it does not", () => {
+    const page = {
+      workspaceId: 'w', sector: 'purdue', event: { id: 'e', title: 'Budget sync', startsAt: 1, endsAt: 2, allDay: false },
+      people: [{ name: 'Maya Chen', address: 'maya@x.example', mail: { id: 'm', subject: 'Budget', at: 1, unread: true } }], morePeople: 0,
+      invited: ['maya@x.example'], tasks: [], files: [{ title: 'Plan', chip: { kind: 'item', label: 'Plan' } }], last: null,
+      doc: { people: [{ name: 'Ana' }], brief: { matters: [{ text: 'Over budget', ref: { table: 'docs', id: 'd' } }], agreed: [], files: [], at: 1, by: 's' }, notes: null,
+        after: { summary: [], decisions: [], questions: [], tasks: [{ id: 't', title: 'Send notes', state: 'proposed', tried: true }], at: 2, by: ['s'] } },
+      rev: 3, state: 'after', briefSessionId: 's', followSessionId: null, briefUntil: null, followUntil: null, briefStartedAt: 1, followStartedAt: null,
+      drafts: [], notesFile: null, aheadOn: false, aheadOffered: true, problems: ['last']
+    }
+    const read = W.PrepPageAnswerSchema.parse({ page }).page
+    expect(read.files).toEqual([{ title: 'Plan' }])
+    expect('invited' in read || 'aheadOn' in read || 'people' in read.doc).toBe(false)
+    expect(read.doc.after?.tasks).toEqual([{ id: 't', title: 'Send notes', state: 'proposed' }])
+    expect(read.doc.brief).toEqual({ matters: [{ text: 'Over budget', ref: { table: 'docs', id: 'd' } }], agreed: [], files: [], at: 1 })
+    expect(W.PrepNotesAnswerSchema.parse({ page, conflict: true }).conflict).toBe(true)
+    expect(W.ClashAnsweredSchema.parse({ queued: false })).toEqual({ queued: false })
+    expect(W.MsFormsByPersonSchema.parse({ email: 'a@x.example', forms: [{ formId: 'f', title: 'Survey', tenant: 't', at: null }] }).forms).toHaveLength(1)
+  })
+})
+
+describe('M5a: the week and the money on the phone', () => {
+  it("reads a desktop Money answer whole as the phone's view, and a write's two answers", () => {
+    const read = {
+      made: true,
+      any: true,
+      root: { at: 'file', host: 'mac', path: '/w/Money' },
+      period: { from: '2026-11-01', to: '2026-12-01' },
+      rows: [{ row: 3, ref: 'r1', date: '2026-11-20', who: 'Shell', what: 'Gas', category: 'Travel', in: 0, out: 4817, status: 'Paid', paidOn: null, receipt: '' }],
+      sums: { in: 0, out: 4817, net: -4817, owedToHim: 7500, heOwes: 0 },
+      byCategory: [{ category: 'Travel', amount: -4817, share: 1 }],
+      byMonth: [],
+      owed: [{ row: 5, ref: null, sig: 'abc', who: 'West HS', what: 'Game', amount: 7500, since: '2026-11-02', way: 'toHim', reimburse: false, both: false }],
+      miles: { miles: 0, value: 0, rate: null },
+      categories: ['Travel'],
+      sellers: ['Shell'],
+      toConfirm: [{ id: 'a', state: 'ready', source: 'phone', name: 'IMG.jpg', picture: true, fields: { amount: 1043, date: '2026-11-21', who: null, category: null }, at: 1 }],
+      calendar: [],
+      rate: { year: 2026, rate: 0.7, own: false },
+      problems: [{ kind: 'columns', missing: ['Out'], renamed: [], waits: true }, { kind: 'undated', rows: [9], book: 'mileage' }]
+    }
+    const phone = W.MoneyReadPhoneSchema.parse(read)
+    expect(phone.owed[0].sig).toBe('abc')
+    expect(phone.problems.map((p) => p.kind)).toEqual(['columns', 'undated'])
+    expect(W.MoneyActedPhoneSchema.parse({ ok: true, ref: null, row: 4, suggested: true }).suggested).toBe(true)
+    expect(W.MoneyActedPhoneSchema.parse({ changed: true }).changed).toBe(true)
+    expect(W.ReviewSettledSchema.parse({ undo: null, sessionId: 's1' })).toEqual({ undo: null, sessionId: 's1' })
+    expect(W.ReviewKeptListSchema.parse({ weeks: [{ from: 1, to: 2, tz: 'America/Chicago', madeAt: 3, by: 'routine' }], tz: 'America/Chicago' }).weeks).toHaveLength(1)
+  })
+})
+
+describe("M5b: a job's small places on the phone", () => {
+  it('reads a play, a run, a template and what a make answers, leaving the rest', () => {
+    const play = { id: 'p1', workspaceId: 'w1', name: 'Recap', instructions: 'Write it', takes: ['text', 'date'], proposed: false, madeIn: null, starter: null, createdBy: 'owner', createdAt: 1, updatedAt: 2, host: 'box' }
+    expect(W.PlaysListPhoneSchema.parse({ plays: [play] }).plays[0]).toEqual({ id: 'p1', workspaceId: 'w1', name: 'Recap', instructions: 'Write it', takes: ['text', 'date'], proposed: false, host: 'box' })
+    const run = { id: 'r1', routineId: 'x', sessionId: null, firedAt: 3, cause: 'Run now', folded: 0, state: 'quiet', summary: 'Nothing to do', open: { place: 'review' } }
+    expect(W.RoutineRunsPhoneSchema.parse({ runs: [run] })).toEqual({ runs: [run] })
+    expect(W.RoutineRunPhoneSchema.nullable().parse(null)).toBeNull()
+    const template = { id: 'job:Invoice.docx', name: 'Invoice', kind: 'document', form: 'docx', where: 'job', fields: ['Client'], source: { at: 'file', host: 'box', path: '/w/Templates/Invoice.docx' } }
+    expect(W.TemplatesListPhoneSchema.parse({ templates: [template], hidden: 1 }).templates[0]).not.toHaveProperty('source')
+    expect(W.TemplateMadePhoneSchema.parse({ source: template.source, kind: 'document', title: 'Invoice', unfilled: ['PO'] })).toEqual({ kind: 'document', title: 'Invoice', unfilled: ['PO'] })
+  })
+
+  it("reads our forms' rows and a close, a Microsoft form's answers, and its unseen count", () => {
+    const ours = { kind: 'ours', id: 'i1', title: 'RSVP', state: 'open', count: null, lastAnswerAt: null, updatedAt: 5, sessionId: 's1' }
+    expect(W.FormListPhoneRowSchema.parse(ours)).toEqual({ id: 'i1', title: 'RSVP', state: 'open', updatedAt: 5 })
+    expect(W.FormStatePhoneSchema.parse({ itemId: 'i1', state: 'closed', rev: 2, body: {} })).toEqual({ itemId: 'i1', state: 'closed' })
+    const answers = { rev: 1, columns: [{ id: 'q', label: 'Name' }], rows: [['Ava']], count: 1, cut: false, at: 9, stale: false, none: false }
+    expect(W.MsFormResponsesPhoneSchema.parse(answers)).toEqual(answers)
+    expect(W.MsFormPhoneRowSchema.parse({ formId: 'f', tenant: 't', title: 'x', state: 'closed', count: 2, link: null, unseen: 2, stopped: null, questions: [] })).toEqual({ formId: 'f', tenant: 't', title: 'x', state: 'closed', count: 2, link: null, unseen: 2, stopped: null })
+  })
+
+  it("reads a dashboard block's sheet, and none for a figure an agent set from a service", () => {
+    const figures = { id: 'b', kind: 'figures', figures: [
+      { id: 'f1', label: 'Owed', format: 'money', value: '$40', from: { sheet: { at: 'lifeos', table: 'sheets', id: 'sh1' }, sheetTitle: 'Ledger', range: 'E2:E9', counts: 'Amount', agg: 'sum' } },
+      { id: 'f2', label: 'Seats', format: 'number', value: '12', from: { service: 'Start.gg', counts: 'entrants' } }
+    ] }
+    const read = W.DashBlockPhoneSchema.parse(figures)
+    expect(read.kind === 'figures' && read.figures.map((f) => f.from)).toEqual([{ counts: 'Amount', sheet: { at: 'lifeos', table: 'sheets', id: 'sh1' }, sheetTitle: 'Ledger' }, { counts: 'entrants' }])
+  })
+
+  it("reads each host's Connections and lapses, and the VM's state and its push (every key hears it: the state is read)", () => {
+    const report = { host: 'box', at: 1, rows: [{ id: 'lifeos.session', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS', state: 'needs-you', line: 'Signed out', fix: { kind: 'page', label: 'Sign In', page: 'lifeos-sign-in' }, lifeos: 'signedOut' }] }
+    expect(W.HealthReportPhoneSchema.parse(report).rows[0]).toEqual({ id: 'lifeos.session', group: 'LifeOS', title: 'LifeOS', state: 'needs-you', line: 'Signed out', fix: { kind: 'page', label: 'Sign In', page: 'lifeos-sign-in' } })
+    expect(W.LapsePhoneSchema.parse({ id: 'eval', pillar: 'winvm', title: 'Windows evaluation', until: 9 })).toEqual({ id: 'eval', title: 'Windows evaluation', until: 9 })
+    const state = { state: 'asleep', step: null, error: null, cannot: null, sleepAfter: '30m', since: 4, wakeMs: 12000, heldAsleep: true, display: { device: 'vga', width: 1280, height: 800, scale: 100, fit: false, detail: 'faster', canResize: false } }
+    const { sleepAfter: _s, display: _d, ...phone } = state
+    expect(W.WinvmStatePhoneSchema.parse(state)).toEqual(phone)
+    expect(W.RemotePushSchema.parse({ push: 'work.winvm', state })).toEqual({ push: 'work.winvm', state: phone })
+    expect(W.RemotePushSchema.parse({ push: 'work.routines.plays', workspaceId: 'w1' })).toEqual({ push: 'work.routines.plays', workspaceId: 'w1' })
+  })
+})

@@ -9,6 +9,7 @@ import type { WorkPush } from '@shared/contract-work'
 import type { SessionMeta } from '@shared/events'
 import { handled, NOT_HANDLED, type WorkScope } from '@shared/work'
 import { openDb, Store } from '../db'
+import { RelaySocket } from '../remote/relayServe'
 import type { SessionRegistry } from '../sessions'
 import type { WorkPartDeps } from './ctx'
 import type { Caller, ToolCtx, WorkCtx, WorkModule, WorkSend } from './modules'
@@ -141,7 +142,7 @@ const session = (id: string, scope?: 'work' | 'code'): SessionMeta => {
   return meta
 }
 const req = (method: string, params?: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
-const remote = (caps: Capability[]): Principal => ({ kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps })
+const remote = (caps: Capability[]): Extract<Principal, { kind: 'remote' }> => ({ kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps })
 /** The registry as the mount uses it: a thread by id, and the two delete hooks. */
 const deleted = { sessions: [] as ((ids: string[]) => void)[], workspaces: [] as ((id: string) => void)[] }
 const registry = {
@@ -288,6 +289,64 @@ describe('with Work on', () => {
     expect([got.window.at(-1), got.reader.at(-1), got.approver.at(-1), got.admin.at(-1)]).toEqual([full, viewer, full, full])
     expect([got.window, got.reader, got.approver, got.admin].map((g) => g.length)).toEqual([3, 2, 3, 3])
     for (const off of offs) off()
+  })
+
+  it('delivers M1 Work pushes on direct and relayed lanes with the same scope', async () => {
+    const rows = [
+      { push: 'work.messages', workspaceId: 'w1', unread: 2, drafts: 1 },
+      { push: 'work.money', workspaceId: 'w2', toConfirm: 3 },
+      { push: 'work.prep', workspaceId: 'w1', eventId: 'e1', rev: 4 },
+      { push: 'work.clashes' },
+      { push: 'work.review', from: 1_000, madeAt: 2_000, seen: false },
+      { push: 'work.msforms', workspaceId: 'w2', formId: 'f1', view: null }
+    ] satisfies WorkPush[]
+    const request = {
+      push: 'work.outbox.request',
+      request: {
+        id: 'r1', n: 1, sessionId: 's1', workspaceId: 'w1', sector: 'purdue',
+        quote: 'send the draft', head: 'Send 1 item', state: 'open',
+        createdAt: 1_000, expiresAt: 2_000, answeredBy: null, answeredAt: null, rows: []
+      }
+    } satisfies WorkPush
+    const window: WorkPush[] = []
+    const offWindow = work.pushes.onPush((p) => window.push(p), LOCAL_PRINCIPAL)
+    const keys = [
+      { caps: ['read'], seesRequest: false },
+      { caps: ['read', 'operate'], seesRequest: false },
+      { caps: ['read', 'approve'], seesRequest: true },
+      { caps: ['read', 'admin'], seesRequest: true }
+    ] satisfies { caps: Capability[]; seesRequest: boolean }[]
+    const listeners = keys.map(({ caps, seesRequest }, i) => {
+      const direct: WorkPush[] = []
+      const relayed: WorkPush[] = []
+      const key = remote(caps)
+      const relay = new RelaySocket(`lane-${i}`, async (frames) => {
+        relayed.push(...frames.map((frame) => JSON.parse(frame) as WorkPush))
+      }, () => { throw new Error('Unexpected relay overflow') })
+      const offDirect = work.pushes.onPush((p) => direct.push(p), key)
+      const offRelay = work.pushes.onPush((p) => relay.send(JSON.stringify(p)), { ...key, via: 'box' })
+      return { direct, relayed, seesRequest, offDirect, offRelay, relay }
+    })
+    try {
+      for (const row of rows) {
+        // Clashes asks read explicitly; the others default to every client socket.
+        work.ctx.push(row, row.push === 'work.clashes' ? { need: 'read' } : undefined)
+      }
+      work.ctx.push(request, { need: 'approve' })
+      expect(window).toEqual([...rows, request])
+      for (const { direct, relayed, seesRequest } of listeners) {
+        const expected = seesRequest ? [...rows, request] : rows
+        expect(direct).toEqual(expected)
+        await vi.waitFor(() => expect(relayed).toEqual(expected))
+      }
+    } finally {
+      offWindow()
+      for (const { offDirect, offRelay, relay } of listeners) {
+        offDirect()
+        offRelay()
+        relay.close('done')
+      }
+    }
   })
 
   it("sends a push that names a file only to the sockets whose caller could name that file: this host's window, and a key whose roots hold it", () => {

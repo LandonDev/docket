@@ -98,6 +98,36 @@ describe('the subset', () => {
     expect(generate()).toEqual(files)
     expect(Object.keys(files).sort()).toEqual(['AgentEvent.swift', 'CanvasSource.swift', 'Contract.swift', 'Enums.swift', 'Methods.swift', 'ServerPush.swift', 'Types.swift'])
   })
+  it("carries M1's methods and pushes", () => {
+    for (const name of [
+      'work.tasks.done', 'work.mail.nudge', 'work.messages.unanswered', 'work.money.owed',
+      'work.prep.upcoming', 'work.review.ready', 'work.clashes.list', 'work.clashes.leave',
+      'work.outbox.decide', 'work.outbox.requests', 'work.outbox.request.get',
+      'work.outbox.request.view', 'work.outbox.decline'
+    ]) expect(files['Methods.swift']).toContain(`"${name}"`)
+    expect(pushNames).toEqual(expect.arrayContaining([
+      'work.messages', 'work.money', 'work.prep', 'work.clashes', 'work.review', 'work.msforms', 'work.outbox.request'
+    ]))
+  })
+  it("carries M5b's small places, the VM's push and the plays' push", () => {
+    for (const name of [
+      'work.routines.plays', 'work.routines.playStart', 'work.routines.runs', 'work.routines.runNow',
+      'work.templates.list', 'work.templates.make', 'work.dashboards.refresh', 'work.forms.list', 'work.forms.close',
+      'work.msforms.get', 'work.msforms.responses', 'work.msforms.close', 'work.msforms.seen',
+      'work.health', 'work.lapses', 'work.winvm.state', 'work.winvm.wake', 'work.winvm.sleep', 'video.copy'
+    ]) expect(files['Methods.swift']).toContain(`"${name}"`)
+    expect(pushNames).toEqual(expect.arrayContaining(['work.winvm', 'work.routines.plays']))
+    // A dashboard block names its sheet once, as one type the phone opens by.
+    expect(files['Types.swift']).toContain('public let sheet: DashSheetPhone?')
+  })
+  it("carries M3c's Share, its attempt key, the clicker's show and its push", () => {
+    for (const name of ['work.guests.forItem', 'work.guests.setRole', 'work.guests.attempt', 'work.slides.show.state', 'work.slides.show.press'])
+      expect(files['Methods.swift']).toContain(`"${name}"`)
+    expect(pushNames).toEqual(expect.arrayContaining(['work.slides.show']))
+    // A file's source and the attempt key on Create link; a repeat's answer has no address.
+    expect(files['Methods.swift']).toContain('public init(source: Source, title: String, name: String, role: Role, expiresAt: Int, attempt: String? = nil)')
+    expect(files['Methods.swift']).toContain('public let url: String?')
+  })
   it("carries Work's names: the scope and kind enums, the switch, and a create's chip and source", () => {
     const enums = files['Enums.swift']
     expect(enums).toContain('public enum WorkspaceKind')
@@ -137,9 +167,9 @@ describe('the subset', () => {
     expect(decode.indexOf('self = .object3(value)')).toBeLessThan(decode.indexOf('self = .canvasSource(value)'))
     // the rule touches no other union: a branch with no literal field, and a named one, decode as they did
     const guarded = Object.values(files).join('\n').match(/if let probe = try\? container\.decode\(JSONValue\.self\)/g) ?? []
-    // three in a chip's ref, two in a ticket's source (a LifeOS row or a canvas item, `work.guests.ticket`) and two in
-    // a guest link's (a LifeOS row or a file, `work.guests.create`)
-    expect(guarded).toHaveLength(7)
+    // three in a chip's ref, two in a ticket's source (a LifeOS row or a canvas item, `work.guests.ticket`), and two
+    // each in a link's source (a LifeOS row or a file, `work.guests.create` and `forItem`, M3c's Share)
+    expect(guarded).toHaveLength(9)
     expect(files['Methods.swift']).toContain('probe["at"]?.stringValue == "file", let value = try? container.decode(SourceCase1.self) { self = .object1(value); return }')
     expect(files['Methods.swift']).toContain('probe["at"]?.stringValue == "item", let value = try? container.decode(SourceCase1.self) { self = .object1(value); return }')
     const plain = [type('Either', z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]))]

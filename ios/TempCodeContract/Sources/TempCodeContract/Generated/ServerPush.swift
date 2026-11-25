@@ -289,6 +289,32 @@ public struct WorkCanvasPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkCanvasFetchPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let itemId: String
+    public let received: Double
+    public let total: Double?
+
+    public init(sessionId: String, itemId: String, received: Double, total: Double?) {
+        self.sessionId = sessionId
+        self.itemId = itemId
+        self.received = received
+        self.total = total
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId, itemId, received, total
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(itemId, forKey: .itemId)
+        try container.encode(received, forKey: .received)
+        try container.encode(total, forKey: .total)
+    }
+}
+
 public struct WorkRoutinesPush: Codable, Hashable, Sendable {
     public let workspaceId: String
     public let id: String
@@ -367,6 +393,118 @@ public struct WorkSheetsPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkMessagesPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let unread: Int
+    public let drafts: Int?
+
+    public init(workspaceId: String, unread: Int, drafts: Int? = nil) {
+        self.workspaceId = workspaceId
+        self.unread = unread
+        self.drafts = drafts
+    }
+}
+
+public struct WorkMoneyPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let toConfirm: Int
+
+    public init(workspaceId: String, toConfirm: Int) {
+        self.workspaceId = workspaceId
+        self.toConfirm = toConfirm
+    }
+}
+
+public struct WorkPrepPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let eventId: String
+    public let rev: Int
+
+    public init(workspaceId: String, eventId: String, rev: Int) {
+        self.workspaceId = workspaceId
+        self.eventId = eventId
+        self.rev = rev
+    }
+}
+
+public struct WorkClashesPush: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+public struct WorkReviewPush: Codable, Hashable, Sendable {
+    public let from: Double
+    public let madeAt: Double
+    public let seen: Bool
+
+    public init(from: Double, madeAt: Double, seen: Bool) {
+        self.from = from
+        self.madeAt = madeAt
+        self.seen = seen
+    }
+}
+
+public struct WorkMsformsPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let formId: String
+    public let view: MsFormPhoneRow?
+
+    public init(workspaceId: String, formId: String, view: MsFormPhoneRow?) {
+        self.workspaceId = workspaceId
+        self.formId = formId
+        self.view = view
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workspaceId, formId, view
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(formId, forKey: .formId)
+        try container.encode(view, forKey: .view)
+    }
+}
+
+public struct WorkSlidesShowPush: Codable, Hashable, Sendable {
+    public let itemId: String
+    public let showId: String
+    public let live: ShowLive?
+
+    public init(itemId: String, showId: String, live: ShowLive?) {
+        self.itemId = itemId
+        self.showId = showId
+        self.live = live
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case itemId, showId, live
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(itemId, forKey: .itemId)
+        try container.encode(showId, forKey: .showId)
+        try container.encode(live, forKey: .live)
+    }
+}
+
+public struct WorkWinvmPush: Codable, Hashable, Sendable {
+    public let state: WinvmStatePhone
+
+    public init(state: WinvmStatePhone) {
+        self.state = state
+    }
+}
+
+public struct WorkRoutinesPlaysPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+
+    public init(workspaceId: String) {
+        self.workspaceId = workspaceId
+    }
+}
+
 public struct ComputerPush: Codable, Hashable, Sendable {
     public let service: ComputerServiceState
     public let sessions: [ComputerSessionRow]
@@ -407,11 +545,21 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case workRules(WorkRulesPush)
     case workGuests(WorkGuestsPush)
     case workCanvas(WorkCanvasPush)
+    case workCanvasFetch(WorkCanvasFetchPush)
     case workRoutines(WorkRoutinesPush)
     case workFiles(WorkFilesPush)
     case workDigest(WorkDigestPush)
     case workDocs(WorkDocsPush)
     case workSheets(WorkSheetsPush)
+    case workMessages(WorkMessagesPush)
+    case workMoney(WorkMoneyPush)
+    case workPrep(WorkPrepPush)
+    case workClashes(WorkClashesPush)
+    case workReview(WorkReviewPush)
+    case workMsforms(WorkMsformsPush)
+    case workSlidesShow(WorkSlidesShowPush)
+    case workWinvm(WorkWinvmPush)
+    case workRoutinesPlays(WorkRoutinesPlaysPush)
     case computer(ComputerPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
@@ -452,11 +600,21 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work.rules": self = .workRules(try WorkRulesPush(from: decoder))
         case "work.guests": self = .workGuests(try WorkGuestsPush(from: decoder))
         case "work.canvas": self = .workCanvas(try WorkCanvasPush(from: decoder))
+        case "work.canvas.fetch": self = .workCanvasFetch(try WorkCanvasFetchPush(from: decoder))
         case "work.routines": self = .workRoutines(try WorkRoutinesPush(from: decoder))
         case "work.files": self = .workFiles(try WorkFilesPush(from: decoder))
         case "work.digest": self = .workDigest(try WorkDigestPush(from: decoder))
         case "work.docs": self = .workDocs(try WorkDocsPush(from: decoder))
         case "work.sheets": self = .workSheets(try WorkSheetsPush(from: decoder))
+        case "work.messages": self = .workMessages(try WorkMessagesPush(from: decoder))
+        case "work.money": self = .workMoney(try WorkMoneyPush(from: decoder))
+        case "work.prep": self = .workPrep(try WorkPrepPush(from: decoder))
+        case "work.clashes": self = .workClashes(try WorkClashesPush(from: decoder))
+        case "work.review": self = .workReview(try WorkReviewPush(from: decoder))
+        case "work.msforms": self = .workMsforms(try WorkMsformsPush(from: decoder))
+        case "work.slides.show": self = .workSlidesShow(try WorkSlidesShowPush(from: decoder))
+        case "work.winvm": self = .workWinvm(try WorkWinvmPush(from: decoder))
+        case "work.routines.plays": self = .workRoutinesPlays(try WorkRoutinesPlaysPush(from: decoder))
         case "computer": self = .computer(try ComputerPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
@@ -493,11 +651,21 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .workRules(let value): try Self.encode(tag: "work.rules", value, to: encoder)
         case .workGuests(let value): try Self.encode(tag: "work.guests", value, to: encoder)
         case .workCanvas(let value): try Self.encode(tag: "work.canvas", value, to: encoder)
+        case .workCanvasFetch(let value): try Self.encode(tag: "work.canvas.fetch", value, to: encoder)
         case .workRoutines(let value): try Self.encode(tag: "work.routines", value, to: encoder)
         case .workFiles(let value): try Self.encode(tag: "work.files", value, to: encoder)
         case .workDigest(let value): try Self.encode(tag: "work.digest", value, to: encoder)
         case .workDocs(let value): try Self.encode(tag: "work.docs", value, to: encoder)
         case .workSheets(let value): try Self.encode(tag: "work.sheets", value, to: encoder)
+        case .workMessages(let value): try Self.encode(tag: "work.messages", value, to: encoder)
+        case .workMoney(let value): try Self.encode(tag: "work.money", value, to: encoder)
+        case .workPrep(let value): try Self.encode(tag: "work.prep", value, to: encoder)
+        case .workClashes(let value): try Self.encode(tag: "work.clashes", value, to: encoder)
+        case .workReview(let value): try Self.encode(tag: "work.review", value, to: encoder)
+        case .workMsforms(let value): try Self.encode(tag: "work.msforms", value, to: encoder)
+        case .workSlidesShow(let value): try Self.encode(tag: "work.slides.show", value, to: encoder)
+        case .workWinvm(let value): try Self.encode(tag: "work.winvm", value, to: encoder)
+        case .workRoutinesPlays(let value): try Self.encode(tag: "work.routines.plays", value, to: encoder)
         case .computer(let value): try Self.encode(tag: "computer", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }

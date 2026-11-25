@@ -11,29 +11,45 @@ import { DecisionResultSchema, OutboxItemSchema, OutboxRequestSchema, ToolHintsS
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStateName, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
-import type { MoneyReceived, MoneyState } from './contract-work-money'
+import { SearchHitSchema } from './contract-work-search'
+import type { SearchAnswer, SearchGroup } from './work/search'
+import type { MoneyActed, MoneyOwed, MoneyPicture, MoneyRead, MoneyReceived, MoneyState, MoneySums } from './contract-work-money'
+import type { TasksDone } from './contract-work-tasks'
+import type { MessagesAttemptAnswer, MessagesDraftsAnswer, MessagesSearchAnswer, MessagesSendAnswer, MessagesUnansweredAnswer, MessagesUnread } from './contract-work-messages'
+import type { PrepPage, PrepUpcoming } from './contract-work-prep'
+import type { ReviewKept, ReviewReady, ReviewSettled } from './contract-work-review'
+import type { ClashLeave, ClashMiles } from './contract-work-clashes'
+import type { ClashAnswered, ClashList } from './work/clashes'
+import { CHAT_SOURCES } from './work/messages'
 import type { ReceiptFields } from './work/money'
 import { CanvasItemSchema, CanvasSourceSchema, type CanvasItem } from './work/canvas'
+import { CHIP_KINDS, ContextChipSchema } from './work/canvas'
+import type { MentionAnswer } from './work/mentions'
 import { ENTRY_KINDS, FILE_VERBS, MAKE_KINDS, PLACE_KINDS, PLACE_STATES, type FileEntry, type FilePlace } from './work/files'
 import type { OfficeLiveAddress } from './contract-work-office'
-import { FolderRefSchema, type FileBytes as FilesReadBytes, type FileDone, type FilePreview, type FilesHome, type FilesListing, type FilesOpened, type FilesPlaces } from './contract-work-files'
+import { FileSearchFilterSchema, FolderRefSchema, type FileBytes as FilesReadBytes, type FileDone, type FilePreview, type FilesHome, type FilesListing, type FilesOpened, type FilesPlaces, type SavedFileSearch } from './contract-work-files'
 import type { WorkspaceWorkSettings } from './work/scope'
 import type { LifeosJwtAnswer } from './contract-work-lifeos'
-import type { MailSendAnswer } from './contract-work-mail'
-import type { GuestCreated } from './contract-work-guests'
+import type { MailChatFound, MailSendAnswer, MailWaiting } from './contract-work-mail'
+import type { GuestAttemptAnswer, GuestCreated, GuestCreatedAgain } from './contract-work-guests'
 import type { PdfView } from './contract-work-pdf'
-import type { DeckView } from './contract-work-slides'
+import type { DeckView, ShowLive, ShowPressAnswer } from './contract-work-slides'
 import type { MediaRange } from './contract-fsgit'
 import { FrameTableSchema, type MediaView } from './contract-work-media'
-import type { Meeting } from './contract-work-meetings'
-import type { FormResponses } from './contract-work-forms'
+import type { Meeting, MeetingRecordingRange } from './contract-work-meetings'
+import type { FormResponses, FormState, FormView } from './contract-work-forms'
 import type { DashboardView } from './contract-work-dashboards'
-import type { HistoryBranch, HistoryCompare, HistoryVersions } from './contract-work-history'
+import type { FormListRow, MsFormResponses, MsFormView } from './contract-work-msforms'
+import type { TemplatesList } from './contract-work-templates'
+import { TEMPLATE_FORMS, TEMPLATE_KINDS, type TemplateMade } from './work/templates'
+import type { HealthReport, Lapse } from './work/health'
+import { WINVM_STATES, type WinvmPush, type WinvmState } from './contract-work-winvm'
+import type { HistoryBranch, HistoryCompare, HistoryVersions, HistoryWrite } from './contract-work-history'
 import type { DocOpen, DocsPush, DocThreadRow } from './contract-work-docs'
 import type { SheetsPush, SheetView } from './contract-work-sheets'
 import type { PreviewAnswer } from './contract-work-formats'
 import { BROWSER_DRIVERS, PortalSourceSchema, type BrowserState } from './contract-work-browser'
-import { ROUTINE_KINDS, RoutineEndsSchema, type RoutineRow } from './contract-work-routines'
+import { PLAY_TAKES, ROUTINE_KINDS, ROUTINE_RUN_STATES, RoutineEndsSchema, RoutineJobOpenSchema, type PlayRow, type PlaysPush, type RoutineRow, type RoutineRun } from './contract-work-routines'
 import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
 import { GUEST_ROLES, type GuestLinkRow } from './contract-work-guests'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
@@ -1230,6 +1246,15 @@ export const CaptureFiledSchema = z.object({
   threadId: z.string().optional(),
   threadError: z.string().optional()
 })
+/** Work search (docs/agents/work-search.md "The wire"): one host's answer to `work.search.query`, at either speed. The hit is the
+ * contract's own, so the phone sends back to `work.search.opened` the very hit it was given. */
+export const SearchAnswerSchema = z.object({
+  groups: z.array(z.object({ source: z.string(), kind: z.string(), label: z.string(), hits: z.array(SearchHitSchema), more: z.boolean() })),
+  pending: z.array(z.object({ source: z.string(), kind: z.string() })),
+  quiet: z.array(z.object({ cause: z.string(), line: z.string() })),
+  searched: z.number().int().optional(),
+  deeper: z.array(z.string()).optional()
+})
 /** The money pillar (contract-work-money.ts): the phone's receipt reads which jobs a host keeps, asks the one parser for its own reader's lines, then sends the scan. */
 export const MoneyStateSchema = z.object({
   host: z.string(),
@@ -1304,6 +1329,14 @@ export const LifeosJwtAnswerSchema = z.object({
   state: z.string().optional()
 })
 export const MailSendAnswerSchema = z.object({ id: z.string(), via: z.enum(['hold', 'owner']) })
+/** `work.mail.waiting`: a workspace's Waiting on settings; `days` null when LifeOS did not answer (`error`). */
+export const MailWaitingSchema = z.object({ days: z.number().nullable(), routine: z.boolean(), routineId: z.string().optional(), error: z.string().optional() })
+/** `work.mail.sendNow`: when the mail goes now, after LifeOS's undo time. */
+export const MailSendNowSchema = z.object({ sendAt: z.number() })
+/** `work.mail.cancel`: false when the mail was already on its way. */
+export const MailCancelSchema = z.object({ back: z.boolean() })
+/** `work.mail.chat.find`: the job's chats about one mail, newest first. */
+export const MailChatFoundSchema = z.object({ sessionIds: z.array(z.string()) })
 /** `video.open`'s answer, flat for the phone (its own union is tagged by a boolean): a stream and its ticket, or why not. */
 export const VideoOpenWireSchema = z.object({
   ok: z.boolean(),
@@ -1319,10 +1352,22 @@ export const ComputerSessionsAnswerSchema = z.object({ service: ComputerServiceS
 export const RulesForDraftSchema = z.object({ workspaceId: z.string().nullable(), proposals: z.array(RuleProposalSchema) })
 export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean(), windowsVm: z.boolean().optional() })
 export const GuestTicketSchema = z.object({ url: z.string(), expiresAt: z.number().int() })
-export const GuestCreatedSchema = z.object({ link: GuestLinkRowSchema, url: z.string() })
+/** A link made: the address once; a repeat of the phone's attempt key answers `again` and no address (guests/attempts.ts). */
+export const GuestCreatedSchema = z.object({ link: GuestLinkRowSchema, url: z.string().optional(), again: z.literal(true).optional() })
 export const CanvasItemsSchema = z.object({ items: z.array(CanvasItemSchema) })
+/** `work.canvas.mentions` (src/shared/work/mentions.ts): what the composer's `@` offers, each hit the chip a pick puts in the box, and the kinds that could not be searched. */
+export const MentionHitSchema = z.object({ chip: ContextChipSchema, detail: z.string().optional(), at: z.number().optional() })
+export const MentionAnswerSchema = z.object({ hits: z.array(MentionHitSchema), failed: z.array(z.enum(CHIP_KINDS)) })
 /** A thread's open items changed: the whole list, in tab order; `opened` the one an open just showed. */
 export const WorkCanvasPushSchema = push('work.canvas', { sessionId: z.string(), items: z.array(CanvasItemSchema), opened: z.string().optional() })
+/** A mail's file on its way to the host (`work.canvas.fetch`): `total` null while LifeOS's store has not said. */
+export const WorkCanvasFetchPushSchema = push('work.canvas.fetch', { sessionId: z.string(), itemId: z.string(), received: z.number(), total: z.number().nullable() })
+/** `work.canvas.fetch`: the fetched file's size on the host. */
+export const CanvasFetchedSchema = z.object({ size: z.number() })
+/** `work.canvas.read`: a range of a fetched file, base64. */
+export const CanvasBytesSchema = z.object({ data: z.string(), size: z.number() })
+/** `work.canvas.keep`: Save to workspace's copy, its path and the name it took ("Budget (1).xlsx"). */
+export const CanvasKeptSchema = z.object({ path: z.string(), name: z.string() })
 /** Bytes of a file the phone draws itself (a PDF, a deck's render), a frame at a time. */
 export const FileBytesSchema = z.object({ data: z.string(), size: z.number(), rev: z.string() })
 /** `work.pdf.first`: the first page as one picture of the version the view named. */
@@ -1330,7 +1375,37 @@ export const PdfFirstPageSchema = z.object({ png: z.string(), rev: z.string(), w
 export const Base64DataSchema = z.object({ data: z.string() })
 /** A slice of a media file by its token (`media.read`, admin): the phone's path to a proxy, an original or a picture. */
 export const MediaRangeSchema = z.object({ dataBase64: z.string(), mime: z.string(), size: z.number(), mtimeMs: z.number() })
-export const PdfPhoneViewSchema = z.object({ itemId: z.string(), name: z.string(), size: z.number(), rev: z.string(), missing: z.object({ asOf: z.number() }).optional() })
+/** A box on a page as shares of its width and height, origin top left (`Bbox`): x0, y0, x1, y1. */
+const PdfBoxPhoneSchema = z.array(z.number())
+const PdfValuePhoneSchema = z.union([z.string(), z.boolean(), z.null()])
+/** One field of a form as the phone's reader draws and fills it (`PdfField`); where a value came from, the newest first. */
+export const PdfFieldPhoneSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  /** text, checkbox, choice, signature or date (`PDF_FIELD_TYPES`): a string, since Swift cannot name a member enum `Type` */
+  type: z.string(),
+  page: z.number().int(),
+  bbox: PdfBoxPhoneSchema,
+  value: PdfValuePhoneSchema,
+  proposed: PdfValuePhoneSchema.optional(),
+  state: z.enum(['empty', 'proposed', 'accepted', 'needs-owner']),
+  provenance: z.array(z.object({ label: z.string(), quote: z.string().optional() })),
+  options: z.array(z.string()).optional()
+})
+/** A highlight (`PdfMark`): one box per line of the words under it, and his note. */
+export const PdfMarkPhoneSchema = z.object({ id: z.string(), page: z.number().int(), quads: z.array(PdfBoxPhoneSchema), text: z.string(), note: z.string().optional(), by: z.string(), at: z.number() })
+export const PdfPhoneViewSchema = z.object({
+  itemId: z.string(),
+  name: z.string(),
+  size: z.number(),
+  rev: z.string(),
+  missing: z.object({ asOf: z.number() }).optional(),
+  /** absent from a host before the reader's highlights and fields (M3b): the phone draws none */
+  fields: z.array(PdfFieldPhoneSchema).optional(),
+  marks: z.array(PdfMarkPhoneSchema).optional(),
+  xfaOnly: z.boolean().optional(),
+  formError: z.string().optional()
+})
 export const DeckPhoneViewSchema = z.object({
   itemId: z.string(),
   name: z.string(),
@@ -1398,16 +1473,39 @@ export const MeetingPhoneSchema = z.object({
   error: z.string().optional(),
   durationSec: z.number(),
   speakers: z.array(z.object({ id: z.string(), label: z.string(), name: z.string().nullable() })),
-  segments: z.array(z.object({ id: z.string(), speaker: z.string().nullable(), start: z.number(), end: z.number().nullable(), text: z.string() }))
+  segments: z.array(z.object({ id: z.string(), speaker: z.string().nullable(), start: z.number(), end: z.number().nullable(), text: z.string() })),
+  /** the recording, when there is one to play: the phone reads it by range (`work.meetings.recording`) */
+  media: z.object({ kind: z.enum(['audio', 'video']) }).optional(),
+  /** the tasks it yielded, each waiting on his word until he files or drops it (`work.meetings.decide`) */
+  notes: z
+    .object({
+      actions: z.array(
+        z.object({ id: z.string(), text: z.string(), due: z.string().optional(), state: z.enum(['proposed', 'filed', 'rejected']), at: z.number().nullable() })
+      )
+    })
+    .nullable()
+    .optional()
 })
 export const MeetingAnswerSchema = z.object({ meeting: MeetingPhoneSchema.nullable() })
+/** `work.meetings.decide`: the meeting after his word, and each task LifeOS would not file with why. */
+export const MeetingDecideAnswerSchema = z.object({ meeting: MeetingPhoneSchema, failed: z.array(z.object({ id: z.string(), error: z.string() })) })
+/** `work.meetings.recording`: a range of the original recording, its name and whole size. */
+export const MeetingRecordingRangeSchema = z.object({ name: z.string(), size: z.number(), dataBase64: z.string() })
 export const FormResponsesSchema = z.object({ rev: z.number().int(), columns: z.array(z.object({ id: z.string(), label: z.string() })), rows: z.array(z.array(z.string())), count: z.number().int(), cut: z.boolean() })
+/** The sheet a dashboard's numbers come from (contract-work-dashboards.ts `DashSheet`): the phone opens it where it has its place (M5b). */
+export const DashSheetPhoneSchema = z.discriminatedUnion('at', [
+  z.object({ at: z.literal('lifeos'), table: z.literal('sheets'), id: z.string() }),
+  z.object({ at: z.literal('file'), host: z.string(), path: z.string() }),
+  z.object({ at: z.literal('msform'), host: z.string(), workspaceId: z.string(), formId: z.string(), tenant: z.string() })
+])
+/** Where a block's numbers come from: what it counts in words, and its sheet; a figure an agent set from a service has none. */
+export const DashFromPhoneSchema = z.object({ counts: z.string(), sheet: DashSheetPhoneSchema.optional(), sheetTitle: z.string().optional() })
 export const DashBlockPhoneSchema = z.discriminatedUnion('kind', [
   z.object({ id: z.string(), kind: z.literal('heading'), text: z.string() }),
   z.object({ id: z.string(), kind: z.literal('text'), text: z.string() }),
-  z.object({ id: z.string(), kind: z.literal('figures'), figures: z.array(z.object({ id: z.string(), label: z.string(), sub: z.string().optional(), value: z.string().nullable() })) }),
-  z.object({ id: z.string(), kind: z.literal('chart'), title: z.string(), bars: z.array(z.object({ label: z.string(), value: z.number() })) }),
-  z.object({ id: z.string(), kind: z.literal('table'), title: z.string(), head: z.array(z.string()), rows: z.array(z.array(z.string())), numeric: z.array(z.boolean()) })
+  z.object({ id: z.string(), kind: z.literal('figures'), figures: z.array(z.object({ id: z.string(), label: z.string(), sub: z.string().optional(), value: z.string().nullable(), from: DashFromPhoneSchema.optional() })) }),
+  z.object({ id: z.string(), kind: z.literal('chart'), title: z.string(), bars: z.array(z.object({ label: z.string(), value: z.number() })), from: DashFromPhoneSchema.optional() }),
+  z.object({ id: z.string(), kind: z.literal('table'), title: z.string(), head: z.array(z.string()), rows: z.array(z.array(z.string())), numeric: z.array(z.boolean()), from: DashFromPhoneSchema.optional() })
 ])
 export const DashboardPhoneViewSchema = z.object({ itemId: z.string(), rev: z.number().int(), title: z.string(), blocks: z.array(DashBlockPhoneSchema), asOf: z.number().nullable(), stale: z.boolean(), failed: z.string().nullable() })
 export const HistoryVersionsPhoneSchema = z.object({
@@ -1415,6 +1513,11 @@ export const HistoryVersionsPhoneSchema = z.object({
   shared: z.boolean(),
   names: z.record(z.string(), z.string())
 })
+/** `work.history.restore`: written at once (with the version cut just before, which Undo goes back to), or, on a document others can open, a branch of suggestions. */
+export const HistoryWritePhoneSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('direct'), versionId: z.string().optional(), beforeVersionId: z.string().optional() }),
+  z.object({ mode: z.literal('branch'), branchId: z.string(), versionId: z.string() })
+])
 const InlineOpWireSchema = z.object({ op: z.enum(['=', '-', '+']), text: z.string() })
 /** A document's render for the phone's Page Preview (`work.formats.preview`): which, how large, how many pages. */
 export const PreviewAnswerPhoneSchema = z.object({ rev: z.string(), size: z.number(), pages: z.number().int() })
@@ -1476,6 +1579,8 @@ export const SheetPhoneViewSchema = z.object({
   shared: z.boolean(),
   mode: z.enum(['suggests', 'writes']),
   readOnly: z.string().optional(),
+  /** each tab's name by its sheet id, so a cell's address names its tab; absent from an older host */
+  tabs: z.record(z.string(), z.string()).optional(),
   suggestions: z.array(
     z.object({
       id: z.string(),
@@ -1539,7 +1644,11 @@ export const MsFormPhoneRowSchema = z.object({
   title: z.string(),
   state: z.enum(['draft', 'collecting', 'closed']),
   count: z.number().int(),
-  link: z.string().nullable()
+  link: z.string().nullable(),
+  /** answers he has not looked at since (M5b: the answers page marks them seen) */
+  unseen: z.number().int().optional(),
+  /** what Forms last could not finish, in words */
+  stopped: z.string().nullable().optional()
 })
 export const MsFormsListPhoneSchema = z.object({ forms: z.array(MsFormPhoneRowSchema) })
 /** A document's threads, branches, mode or last write changed: a screen holding it reads again. */
@@ -1548,6 +1657,439 @@ export const WorkDocsPushSchema = push('work.docs', { doc: z.string(), threads: 
 export const WorkSheetsPushSchema = push('work.sheets', { sessionId: z.string(), itemId: z.string(), rev: z.number().int() })
 /** A routine or watch changed on this host. */
 export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.string(), id: z.string() })
+
+// ── All of Work on the iPhone, M1 ──
+export const TasksDoneSchema = z.object({ threadId: z.string().nullable(), nextId: z.string().nullable() })
+export const MailNudgeAnswerSchema = z.object({ sessionId: z.string() })
+export const ChatWaitingSchema = z.object({
+  chatId: z.string(),
+  chat: z.string(),
+  who: z.string(),
+  text: z.string(),
+  at: z.number(),
+  source: z.enum(CHAT_SOURCES)
+})
+export const MessagesUnansweredSchema = z.object({ rows: z.array(ChatWaitingSchema) })
+// ── M2b: Messages on the phone (his reply through the host; the conversations are LifeKit's own reads) ──
+export const MessagesSendSchema = z.object({ id: z.string() })
+export const MessagesAttemptSchema = z.object({
+  state: z.enum(['none', 'sending', 'sent', 'refused', 'unknown']),
+  id: z.string().optional(),
+  words: z.string().optional()
+})
+export const MessagesUndoSchema = z.object({ text: z.string() })
+export const ChatHitSchema = z.object({
+  chatId: z.string(),
+  messageId: z.string(),
+  chat: z.string(),
+  who: z.string(),
+  text: z.string(),
+  at: z.number(),
+  source: z.enum(CHAT_SOURCES)
+})
+export const MessagesSearchSchema = z.object({ hits: z.array(ChatHitSchema) })
+export const MessagesUnreadSchema = z.object({ unread: z.number().int(), newest: z.number().optional() })
+export const ChatDraftSchema = z.object({
+  id: z.string(),
+  chatId: z.string(),
+  sessionId: z.string().nullable(),
+  thread: z.string().optional(),
+  text: z.string(),
+  at: z.number()
+})
+export const MessagesDraftsSchema = z.object({ drafts: z.array(ChatDraftSchema) })
+export const MoneyOwedRowSchema = z.object({
+  workspaceId: z.string(),
+  sector: SectorKeySchema.nullable(),
+  row: z.number().int(),
+  who: z.string(),
+  what: z.string(),
+  amount: z.number().int(),
+  since: z.string().nullable(),
+  way: z.enum(['toHim', 'byHim']),
+  reimburse: z.boolean(),
+  both: z.boolean().optional()
+})
+export const MoneyOwedSchema = z.object({
+  rows: z.array(MoneyOwedRowSchema),
+  toConfirm: z.number().int(),
+  problems: z.array(z.string()).optional()
+})
+export const PrepUpcomingSchema = z.object({
+  workspaceId: z.string(),
+  sector: SectorKeySchema,
+  eventId: z.string(),
+  title: z.string(),
+  startsAt: z.number(),
+  endsAt: z.number(),
+  with: z.array(z.string()),
+  state: z.enum(['none', 'working', 'briefed', 'after'])
+})
+export const PrepUpcomingAnswerSchema = z.object({ meetings: z.array(PrepUpcomingSchema) })
+export const ReviewReadySchema = z.object({ from: z.number(), madeAt: z.number() }).nullable()
+// ── M5a: the week and the money on the phone (docs/agents/work-review.md, work-money.md "The phone") ──
+/** `work.review.list`: the weeks a host kept, newest first, and the zone its routine makes weeks in. */
+export const ReviewKeptListSchema = z.object({
+  weeks: z.array(z.object({ from: z.number(), to: z.number(), tz: z.string(), madeAt: z.number(), by: z.enum(['routine', 'owner']) })),
+  tz: z.string()
+})
+/** `work.review.settle`: the press's undo token (null where the write cannot be taken back), and a nudge's thread. */
+export const ReviewSettledSchema = z.object({ undo: z.string().nullable(), sessionId: z.string().optional() })
+/** A ledger row as the phone shows it (`LedgerRow` in work/money.ts): the recent rows of a span. */
+const MoneyLedgerRowPhoneSchema = z.object({
+  row: z.number().int(),
+  ref: z.string().nullable(),
+  date: z.string().nullable(),
+  who: z.string(),
+  what: z.string(),
+  category: z.string(),
+  in: z.number(),
+  out: z.number(),
+  status: z.enum(['Paid', 'Unpaid', 'To reimburse', 'Reimbursed', 'Requested']),
+  paidOn: z.string().nullable(),
+  receipt: z.string()
+})
+/** An open row (`OwedRow`): what Paid names (`ref`, `row`, `sig` are the host's `RowAt`). */
+const MoneyOpenRowPhoneSchema = z.object({
+  row: z.number().int(),
+  ref: z.string().nullable(),
+  sig: z.string(),
+  who: z.string(),
+  what: z.string(),
+  amount: z.number(),
+  since: z.string().nullable(),
+  way: z.enum(['toHim', 'byHim']),
+  reimburse: z.boolean(),
+  both: z.boolean()
+})
+/** One thing that waits for his accept (`ToConfirm`). */
+const MoneyWaitingPhoneSchema = z.object({
+  id: z.string(),
+  state: z.enum(['reading', 'ready']),
+  source: z.enum(['drop', 'phone', 'mail', 'agent']),
+  name: z.string().nullable(),
+  picture: z.boolean(),
+  fields: z.object({
+    amount: z.number().nullable(),
+    date: z.string().nullable(),
+    who: z.string().nullable(),
+    category: z.string().nullable(),
+    way: z.enum(['in', 'out']).optional(),
+    what: z.string().optional()
+  }),
+  threadId: z.string().optional(),
+  at: z.number()
+})
+/** Why the books cannot be read as money (`MoneyProblem`): the phone says one line of it and points to the sheet. */
+const MoneyProblemPhoneSchema = z.object({
+  kind: z.enum(['columns', 'undated', 'mileage']),
+  missing: z.array(z.string()).optional(),
+  renamed: z.array(z.string()).optional(),
+  rows: z.array(z.number()).optional(),
+  book: z.enum(['mileage']).optional(),
+  reason: z.enum(['outside', 'columns', 'unreadable', 'twice']).optional(),
+  waits: z.boolean().optional(),
+  twice: z.array(z.string()).optional()
+})
+/**
+ * `work.money.read` as the phone shows a job's Money: To confirm, what is owed, the span's sums and its rows. It leaves out
+ * the chart's months, the categories' bars, the calendar's offers, the rate, the sellers and the folder (the desktop's).
+ */
+export const MoneyReadPhoneSchema = z.object({
+  made: z.boolean(),
+  any: z.boolean(),
+  period: z.object({ from: z.string(), to: z.string() }),
+  rows: z.array(MoneyLedgerRowPhoneSchema),
+  sums: z.object({ in: z.number(), out: z.number(), net: z.number(), owedToHim: z.number(), heOwes: z.number() }),
+  owed: z.array(MoneyOpenRowPhoneSchema),
+  miles: z.object({ miles: z.number(), value: z.number(), rate: z.number().nullable() }),
+  categories: z.array(z.string()),
+  toConfirm: z.array(MoneyWaitingPhoneSchema),
+  problems: z.array(MoneyProblemPhoneSchema)
+})
+export const MoneySumsSchema = z.object({
+  rows: z.array(
+    z.object({
+      workspaceId: z.string(),
+      sector: SectorKeySchema.nullable(),
+      in: z.number(),
+      out: z.number(),
+      owedToHim: z.number(),
+      heOwes: z.number(),
+      miles: z.number(),
+      currency: z.literal('USD'),
+      problem: z.literal(true).optional()
+    })
+  )
+})
+/** A write's answer (`MoneyActed`): what it wrote, or `changed` (the row no longer reads as the phone saw it; nothing was written). */
+export const MoneyActedPhoneSchema = z.object({
+  ok: z.literal(true).optional(),
+  ref: z.string().nullable().optional(),
+  row: z.number().int().optional(),
+  suggested: z.literal(true).optional(),
+  changed: z.literal(true).optional()
+})
+export const MoneyDroppedSchema = z.object({ dropped: z.boolean() })
+export const MoneyPictureSchema = z.object({ mime: z.string(), name: z.string(), size: z.number(), parts: z.number().int(), dataBase64: z.string() })
+// ── M5b: a job's small places (docs/agents/ios-client.md "A job's small places") ──
+/** A play as the phone lists it (`work.routines.plays`): Run with what it takes. */
+export const PlayPhoneRowSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  name: z.string(),
+  instructions: z.string(),
+  takes: z.array(z.enum(PLAY_TAKES)),
+  proposed: z.boolean(),
+  host: z.string()
+})
+export const PlaysListPhoneSchema = z.object({ plays: z.array(PlayPhoneRowSchema) })
+/** `work.routines.playStart`: the Work thread it started. */
+export const PlayStartedSchema = z.object({ sessionId: z.string() })
+/** One run of a routine (`work.routines.runs`, `runNow`). */
+export const RoutineRunPhoneSchema = z.object({
+  id: z.string(),
+  routineId: z.string(),
+  sessionId: z.string().nullable(),
+  firedAt: z.number(),
+  cause: z.string(),
+  folded: z.number().int(),
+  state: z.enum(ROUTINE_RUN_STATES),
+  summary: z.string(),
+  open: RoutineJobOpenSchema.optional()
+})
+export const RoutineRunsPhoneSchema = z.object({ runs: z.array(RoutineRunPhoneSchema) })
+/** A template on the job's shelf, as Files' New lists it: its fields are the ones it asks for. */
+export const TemplatePhoneSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.enum(TEMPLATE_KINDS),
+  form: z.enum(TEMPLATE_FORMS),
+  where: z.enum(['job', 'all', 'starter']),
+  fields: z.array(z.string())
+})
+export const TemplatesListPhoneSchema = z.object({ templates: z.array(TemplatePhoneSchema), hidden: z.number().int() })
+/** `work.templates.make`: the file's title, and the fields still in it as written. */
+export const TemplateMadePhoneSchema = z.object({ kind: z.enum(TEMPLATE_KINDS), title: z.string(), unfilled: z.array(z.string()) })
+/** One of our forms in the job's Forms list (`work.forms.list`, `kind: 'ours'`). */
+export const FormListPhoneRowSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  state: z.enum(['draft', 'open', 'closed']),
+  updatedAt: z.number()
+})
+/** `work.forms.close`: the form as it stands after his Close or Reopen. */
+export const FormStatePhoneSchema = z.object({ itemId: z.string(), state: z.enum(['draft', 'open', 'closed']) })
+/** A Microsoft form's answers (`work.msforms.responses`): newest first, in the order of `columns`. */
+export const MsFormResponsesPhoneSchema = z.object({
+  rev: z.number().int(),
+  columns: z.array(z.object({ id: z.string(), label: z.string() })),
+  rows: z.array(z.array(z.string())),
+  count: z.number().int(),
+  cut: z.boolean(),
+  at: z.number().nullable(),
+  stale: z.boolean(),
+  none: z.boolean()
+})
+/** A row's fix on Connections (shared/work/health.ts `HealthFix`). */
+export const HealthFixPhoneSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('run'), label: z.string(), method: z.string(), params: z.record(z.string(), z.unknown()).optional() }),
+  z.object({ kind: z.literal('open'), label: z.string(), url: z.string() }),
+  z.object({ kind: z.literal('page'), label: z.string(), page: z.string() })
+])
+export const HealthRowPhoneSchema = z.object({
+  id: z.string(),
+  group: z.string(),
+  title: z.string(),
+  state: z.enum(['working', 'broken', 'needs-you']),
+  line: z.string().optional(),
+  at: z.number().optional(),
+  fix: HealthFixPhoneSchema.optional(),
+  until: z.number().optional(),
+  shared: z.literal(true).optional()
+})
+/** One host's `work.health`. */
+export const HealthReportPhoneSchema = z.object({ host: z.string(), at: z.number(), rows: z.array(HealthRowPhoneSchema) })
+/** A thing with a known end (`work.lapses`). */
+export const LapsePhoneSchema = z.object({ id: z.string(), title: z.string(), until: z.number() })
+/** The Windows VM's state as the Computers page draws it (`work.winvm.state`, `wake`, `sleep` and the `work.winvm` push). */
+export const WinvmStatePhoneSchema = z.object({
+  state: z.enum(WINVM_STATES),
+  step: z.string().nullable(),
+  error: z.string().nullable(),
+  cannot: z.string().nullable(),
+  since: z.number(),
+  wakeMs: z.number().nullable().optional(),
+  heldAsleep: z.boolean().optional()
+})
+export const WorkWinvmPushSchema = push('work.winvm', { state: WinvmStatePhoneSchema })
+/** The job's plays changed on this host: Plays reads again. */
+export const WorkPlaysPushSchema = push('work.routines.plays', { workspaceId: z.string() })
+export const ClashLeaveSchema = z.object({
+  leaveAt: z.number(),
+  minutes: z.number().optional(),
+  miles: z.number().optional(),
+  from: z.enum(['start', 'event']),
+  fromTitle: z.string().optional(),
+  measured: z.boolean()
+})
+// Today's clash rows need the events, their times and places, and the drive summary.
+export const ClashSidePhoneSchema = z.object({
+  eventId: z.string(),
+  sector: SectorKeySchema,
+  workspaceId: z.string().optional(),
+  title: z.string(),
+  startsAt: z.number(),
+  endsAt: z.number(),
+  place: z.string().optional(),
+  location: z.string().optional(),
+  // M2c: the clash sheet offers the ways out each event allows, and says a change on its calendar tells its guests.
+  guests: z.boolean().optional(),
+  can: z.array(z.enum(['decline', 'propose', 'move', 'late'])).optional()
+})
+export const ClashPhoneRowSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['overlap', 'drive']),
+  a: ClashSidePhoneSchema,
+  b: ClashSidePhoneSchema,
+  minutes: z.number().optional(),
+  miles: z.number().optional(),
+  measured: z.boolean().optional(),
+  shortBy: z.number().optional()
+})
+export const ClashLeaveRowSchema = ClashLeaveSchema.extend({ eventId: z.string() })
+export const ClashesListPhoneSchema = z.object({
+  clashes: z.array(ClashPhoneRowSchema),
+  leaves: z.array(ClashLeaveRowSchema)
+})
+// ── M2c: a meeting's page, a clash's answer, People's forms (docs/agents/ios-client.md "Work on the phone") ──
+// A meeting's page as the phone draws it: the facts, the brief, his notes, the outcome and what waits. The phone
+// leaves out the people added by hand, a file's chip (a press opens a url alone) and the notes file's own source.
+export const PrepLinePhoneSchema = z.object({
+  text: z.string(),
+  ref: z.object({ table: z.enum(['mailThreads', 'tasks', 'events', 'docs', 'people']), id: z.string() }).optional()
+})
+export const PrepFilePhoneSchema = z.object({ title: z.string(), url: z.string().optional() })
+export const PrepTaskPhoneSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  dueAt: z.number().optional(),
+  why: z.enum(['asked', 'waiting']).optional(),
+  who: z.string().optional()
+})
+export const PrepSuggestionPhoneSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  who: z.string().optional(),
+  due: z.number().optional(),
+  quote: z.string().optional(),
+  state: z.enum(['proposed', 'filed', 'rejected']),
+  lifeosTaskId: z.string().optional()
+})
+export const PrepPagePhoneSchema = z.object({
+  workspaceId: z.string(),
+  sector: SectorKeySchema,
+  event: z.object({
+    id: z.string(),
+    title: z.string(),
+    startsAt: z.number(),
+    endsAt: z.number().optional(),
+    allDay: z.boolean(),
+    location: z.string().optional(),
+    leaveAt: z.number().optional()
+  }),
+  people: z.array(z.object({
+    name: z.string(),
+    address: z.string().optional(),
+    personId: z.string().optional(),
+    added: z.boolean().optional(),
+    declined: z.boolean().optional(),
+    mail: z.object({ id: z.string(), subject: z.string(), at: z.number(), unread: z.boolean() }).optional()
+  })),
+  morePeople: z.number().int(),
+  tasks: z.array(PrepTaskPhoneSchema),
+  files: z.array(PrepFilePhoneSchema),
+  last: z.object({
+    eventId: z.string(),
+    title: z.string(),
+    startsAt: z.number(),
+    decided: z.array(PrepLinePhoneSchema),
+    open: z.array(PrepLinePhoneSchema),
+    tasks: z.array(PrepTaskPhoneSchema)
+  }).nullable(),
+  doc: z.object({
+    brief: z.object({ matters: z.array(PrepLinePhoneSchema), agreed: z.array(PrepLinePhoneSchema), files: z.array(PrepFilePhoneSchema), at: z.number() }).nullable(),
+    notes: z.object({ text: z.string(), at: z.number(), file: CanvasSourceSchema.optional() }).nullable(),
+    after: z.object({
+      summary: z.array(PrepLinePhoneSchema),
+      decisions: z.array(PrepLinePhoneSchema),
+      questions: z.array(PrepLinePhoneSchema),
+      tasks: z.array(PrepSuggestionPhoneSchema),
+      at: z.number()
+    }).nullable()
+  }),
+  rev: z.number().int(),
+  state: z.enum(['none', 'working', 'briefed', 'after']),
+  briefSessionId: z.string().nullable(),
+  followSessionId: z.string().nullable(),
+  briefUntil: z.number().nullable(),
+  followUntil: z.number().nullable(),
+  briefStartedAt: z.number().nullable(),
+  followStartedAt: z.number().nullable(),
+  drafts: z.array(z.object({ outboxId: z.string(), subject: z.string(), to: z.array(z.string()) })),
+  notesFile: z.object({ kind: z.enum(['meeting', 'document']), title: z.string(), error: z.string().optional() }).nullable(),
+  problems: z.array(z.enum(['people', 'tasks', 'last', 'drafts']))
+})
+export const PrepPageAnswerSchema = z.object({ page: PrepPagePhoneSchema })
+/** `conflict`: another window kept other notes meanwhile, and nothing was written. */
+export const PrepNotesAnswerSchema = z.object({ page: PrepPagePhoneSchema, conflict: z.boolean().optional() })
+export const PrepDecideAnswerSchema = z.object({ page: PrepPagePhoneSchema, failed: z.array(z.object({ id: z.string(), error: z.string() })) })
+export const PrepThreadAnswerSchema = z.object({ sessionId: z.string(), itemId: z.string().optional() })
+export const ClashMilesSchema = z.object({ miles: z.number(), minutes: z.number(), measured: z.boolean() })
+export const ClashAnsweredSchema = z.object({ queued: z.boolean() })
+/** `work.msforms.byPerson`: each address asked, with the job's forms it answered, newest answer first. */
+export const MsFormAnsweredSchema = z.object({ formId: z.string(), title: z.string(), tenant: z.string(), at: z.number().nullable() })
+export const MsFormsByPersonSchema = z.object({ email: z.string(), forms: z.array(MsFormAnsweredSchema) })
+export const WorkMessagesPushSchema = push('work.messages', { workspaceId: z.string(), unread: z.number().int(), drafts: z.number().int().optional() })
+export const WorkMoneyPushSchema = push('work.money', { workspaceId: z.string(), toConfirm: z.number().int() })
+export const WorkPrepPushSchema = push('work.prep', { workspaceId: z.string(), eventId: z.string(), rev: z.number().int() })
+export const WorkClashesPushSchema = push('work.clashes', {})
+export const WorkReviewPushSchema = push('work.review', { from: z.number(), madeAt: z.number(), seen: z.boolean() })
+export const WorkMsformsPushSchema = push('work.msforms', { workspaceId: z.string(), formId: z.string(), view: MsFormPhoneRowSchema.nullable() })
+
+// ── M3c: Share on the phone and the clicker (docs/agents/work-guests.md and work-slides.md "The phone") ──
+
+/** What became of a Create link by its attempt key, read without making anything (guests/attempts.ts). */
+export const GuestAttemptSchema = z.object({ state: z.enum(['none', 'making', 'made', 'refused', 'unknown']), linkId: z.string().optional(), words: z.string().optional() })
+/** What a show's next press shows: a build of this slide, the next slide, the end, or the show closing. */
+export const ShowNextPhoneSchema = z.object({
+  kind: z.enum(['build', 'slide', 'end', 'close']),
+  step: z.number().int().optional(),
+  of: z.number().int().optional(),
+  number: z.number().int().optional(),
+  title: z.string().optional()
+})
+/** A running show as the clicker reads it (`ShowLive`). */
+export const ShowLivePhoneSchema = z.object({
+  showId: z.string(),
+  itemId: z.string(),
+  title: z.string(),
+  rev: z.number().int(),
+  slide: z.number().int(),
+  count: z.number().int(),
+  step: z.number().int(),
+  steps: z.number().int(),
+  next: ShowNextPhoneSchema,
+  notes: z.string(),
+  timer: z.object({ elapsed: z.number(), paused: z.boolean(), target: z.number().nullable() }),
+  blank: z.boolean(),
+  ended: z.boolean()
+})
+export const ShowStatePhoneSchema = z.object({ shows: z.array(ShowLivePhoneSchema) })
+/** A press's answer: `applied`, or `dropped` (ended, or moved on from the state it was made on), with the show now. */
+export const ShowPressAnswerPhoneSchema = z.object({ applied: z.literal(true).optional(), dropped: z.enum(['ended', 'moved']).optional(), live: ShowLivePhoneSchema.nullable() })
+/** A running show changed, began or ended (`live` null). */
+export const WorkSlidesShowPushSchema = push('work.slides.show', { itemId: z.string(), showId: z.string(), live: ShowLivePhoneSchema.nullable() })
 
 // ── Files (the files pillar's F9: the phone's Files place, docs/agents/work-files.md "The phone") ──
 
@@ -1633,6 +2175,11 @@ export const FileDoneSchema = z.object({ entries: z.array(FileEntrySchema), refu
 /** `landed`: the op's file was already made at a commit whose answer was lost (files/upload.ts): nothing more to send. */
 export const FilesUploadBegunSchema = z.object({ uploadId: z.string(), landed: z.literal(true).optional() })
 export const FilesStarredSchema = z.object({ starred: z.boolean() })
+/** `work.files.names`: Go to's rows as he types, recents first. */
+export const FilesNamesSchema = z.object({ entries: z.array(FileEntrySchema) })
+/** `work.files.searches`, as the phone reads a saved search: read here, made on the desktop. `docs` (the Docs view's own spec) stays the desktop's. */
+export const SavedFileSearchPhoneSchema = z.object({ id: z.string(), name: z.string(), query: z.string(), filter: FileSearchFilterSchema.optional() })
+export const FilesSearchesSchema = z.object({ searches: z.array(SavedFileSearchPhoneSchema) })
 /** `work.office.live.address`: a shared Office file's web address and its app, for the phone's Open in Word. */
 export const OfficeLiveAddressSchema = z.object({ address: z.string().nullable(), app: z.enum(['word', 'excel', 'powerpoint']).nullable() })
 /** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
@@ -1760,11 +2307,21 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkRulesPushSchema,
   WorkGuestsPushSchema,
   WorkCanvasPushSchema,
+  WorkCanvasFetchPushSchema,
   WorkRoutinesPushSchema,
   WorkFilesPushSchema,
   WorkDigestPushSchema,
   WorkDocsPushSchema,
   WorkSheetsPushSchema,
+  WorkMessagesPushSchema,
+  WorkMoneyPushSchema,
+  WorkPrepPushSchema,
+  WorkClashesPushSchema,
+  WorkReviewPushSchema,
+  WorkMsformsPushSchema,
+  WorkSlidesShowPushSchema,
+  WorkWinvmPushSchema,
+  WorkPlaysPushSchema,
   ComputerPushSchema
 ])
 
@@ -1882,8 +2439,67 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
   Expect<Mirror<typeof WorkRulesPushSchema, PushOf<'work.rules'>>>,
   Expect<Mirror<typeof WorkGuestsPushSchema, PushOf<'work.guests'>>>,
+  Expect<Reads<typeof WorkSlidesShowPushSchema, PushOf<'work.slides.show'>>>,
+  Expect<Reads<typeof ShowLivePhoneSchema, ShowLive>>,
+  Expect<Reads<typeof ShowPressAnswerPhoneSchema, ShowPressAnswer>>,
+  Expect<Mirror<typeof GuestAttemptSchema, GuestAttemptAnswer>>,
   Expect<Mirror<typeof WorkCanvasPushSchema, PushOf<'work.canvas'>>>,
+  Expect<Mirror<typeof WorkCanvasFetchPushSchema, PushOf<'work.canvas.fetch'>>>,
+  Expect<Mirror<typeof CanvasFetchedSchema, { size: number }>>,
+  Expect<Mirror<typeof CanvasBytesSchema, { data: string; size: number }>>,
+  Expect<Mirror<typeof CanvasKeptSchema, { path: string; name: string }>>,
+  Expect<Mirror<typeof MailWaitingSchema, MailWaiting>>,
+  Expect<Mirror<typeof MailChatFoundSchema, MailChatFound>>,
   Expect<Mirror<typeof WorkRoutinesPushSchema, PushOf<'work.routines'>>>,
+  Expect<Mirror<typeof TasksDoneSchema, TasksDone>>,
+  Expect<Mirror<typeof MailNudgeAnswerSchema, { sessionId: string }>>,
+  Expect<Mirror<typeof MessagesUnansweredSchema, MessagesUnansweredAnswer>>,
+  Expect<Mirror<typeof MessagesSendSchema, MessagesSendAnswer>>,
+  Expect<Mirror<typeof MessagesAttemptSchema, MessagesAttemptAnswer>>,
+  Expect<Mirror<typeof MessagesUndoSchema, { text: string }>>,
+  Expect<Mirror<typeof MessagesSearchSchema, MessagesSearchAnswer>>,
+  Expect<Mirror<typeof MessagesUnreadSchema, MessagesUnread>>,
+  Expect<Mirror<typeof MessagesDraftsSchema, MessagesDraftsAnswer>>,
+  Expect<Mirror<typeof MoneyOwedSchema, MoneyOwed>>,
+  Expect<Mirror<typeof PrepUpcomingAnswerSchema, { meetings: PrepUpcoming[] }>>,
+  Expect<Mirror<typeof ReviewReadySchema, ReviewReady>>,
+  Expect<Mirror<typeof ReviewKeptListSchema, { weeks: ReviewKept[]; tz: string }>>,
+  Expect<Mirror<typeof ReviewSettledSchema, ReviewSettled>>,
+  Expect<Reads<typeof MoneyReadPhoneSchema, MoneyRead>>,
+  Expect<Mirror<typeof MoneySumsSchema, MoneySums>>,
+  Expect<Reads<typeof MoneyActedPhoneSchema, MoneyActed>>,
+  Expect<Mirror<typeof MoneyDroppedSchema, { dropped: boolean }>>,
+  Expect<Mirror<typeof MoneyPictureSchema, MoneyPicture>>,
+  // M5b: a job's small places
+  Expect<Reads<typeof PlaysListPhoneSchema, { plays: PlayRow[] }>>,
+  Expect<Mirror<typeof PlayStartedSchema, { sessionId: string }>>,
+  Expect<Mirror<typeof RoutineRunPhoneSchema, RoutineRun>>,
+  Expect<Mirror<typeof RoutineRunsPhoneSchema, { runs: RoutineRun[] }>>,
+  Expect<Reads<typeof TemplatesListPhoneSchema, TemplatesList>>,
+  Expect<Reads<typeof TemplateMadePhoneSchema, TemplateMade>>,
+  Expect<Reads<typeof FormListPhoneRowSchema, FormListRow & { state: FormState }>>,
+  Expect<Reads<typeof FormStatePhoneSchema, FormView>>,
+  Expect<Mirror<typeof MsFormResponsesPhoneSchema, MsFormResponses>>,
+  Expect<Reads<typeof MsFormPhoneRowSchema, MsFormView>>,
+  Expect<Reads<typeof HealthReportPhoneSchema, HealthReport>>,
+  Expect<Reads<typeof LapsePhoneSchema, Lapse>>,
+  Expect<Reads<typeof WinvmStatePhoneSchema, WinvmState>>,
+  Expect<Reads<typeof WorkWinvmPushSchema, Extract<WinvmPush, { push: 'work.winvm' }>>>,
+  Expect<Mirror<typeof WorkPlaysPushSchema, PlaysPush>>,
+  Expect<Reads<typeof ClashesListPhoneSchema, ClashList>>,
+  Expect<Mirror<typeof ClashLeaveSchema, ClashLeave>>,
+  Expect<Reads<typeof PrepPageAnswerSchema, { page: PrepPage }>>,
+  Expect<Reads<typeof PrepNotesAnswerSchema, { page: PrepPage; conflict?: true }>>,
+  Expect<Reads<typeof PrepDecideAnswerSchema, { page: PrepPage; failed: { id: string; error: string }[] }>>,
+  Expect<Mirror<typeof PrepThreadAnswerSchema, { sessionId: string; itemId?: string }>>,
+  Expect<Mirror<typeof ClashMilesSchema, ClashMiles>>,
+  Expect<Mirror<typeof ClashAnsweredSchema, ClashAnswered>>,
+  Expect<Mirror<typeof WorkMessagesPushSchema, PushOf<'work.messages'>>>,
+  Expect<Mirror<typeof WorkMoneyPushSchema, PushOf<'work.money'>>>,
+  Expect<Mirror<typeof WorkPrepPushSchema, PushOf<'work.prep'>>>,
+  Expect<Mirror<typeof WorkClashesPushSchema, PushOf<'work.clashes'>>>,
+  Expect<Mirror<typeof WorkReviewPushSchema, PushOf<'work.review'>>>,
+  Expect<Reads<typeof WorkMsformsPushSchema, PushOf<'work.msforms'>>>,
   Expect<Mirror<typeof WorkFilesPushSchema, PushOf<'work.files'>>>,
   Expect<Mirror<typeof FilePlaceSchema, FilePlace>>,
   Expect<Mirror<typeof FileEntrySchema, FileEntry>>,
@@ -1894,6 +2510,8 @@ export type WireSchemaPins = [
   Expect<Reads<typeof FilePreviewPhoneSchema, FilePreview>>,
   Expect<Reads<typeof FilesOpenedPhoneSchema, FilesOpened>>,
   Expect<Mirror<typeof FileDoneSchema, FileDone>>,
+  Expect<Mirror<typeof FilesNamesSchema, { entries: FileEntry[] }>>,
+  Expect<Reads<typeof SavedFileSearchPhoneSchema, SavedFileSearch>>,
   Expect<Mirror<typeof OfficeLiveAddressSchema, OfficeLiveAddress>>,
   Expect<Reads<typeof WorkDigestPushSchema, PushOf<'work.digest'>>>,
   Expect<Reads<typeof TellOpenPhoneSchema, TellOpen>>,
@@ -1905,7 +2523,7 @@ export type WireSchemaPins = [
   Expect<Reads<typeof DigestSettingsWireSchema, DigestSettings>>,
   Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
   Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
-  Expect<Reads<typeof GuestCreatedSchema, GuestCreated>>,
+  Expect<Reads<typeof GuestCreatedSchema, GuestCreated | GuestCreatedAgain>>,
   Expect<Mirror<typeof FormResponsesSchema, FormResponses>>,
   Expect<Mirror<typeof BrowserStateSchema, BrowserState>>,
   Expect<Mirror<typeof MediaRangeSchema, MediaRange>>,
@@ -1917,6 +2535,9 @@ export type WireSchemaPins = [
   Expect<Reads<typeof DeckPhoneViewSchema, DeckView>>,
   Expect<Reads<typeof MediaPhoneViewSchema, MediaView>>,
   Expect<Reads<typeof MeetingPhoneSchema, Meeting>>,
+  Expect<Reads<typeof MeetingDecideAnswerSchema, { meeting: Meeting; failed: { id: string; error: string }[] }>>,
+  Expect<Mirror<typeof MeetingRecordingRangeSchema, MeetingRecordingRange>>,
+  Expect<Reads<typeof HistoryWritePhoneSchema, HistoryWrite>>,
   Expect<Reads<typeof DashboardPhoneViewSchema, DashboardView>>,
   Expect<Reads<typeof HistoryVersionsPhoneSchema, HistoryVersions>>,
   Expect<Reads<typeof HistoryComparePhoneSchema, HistoryCompare>>,
@@ -1949,6 +2570,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
   Expect<Mirror<typeof CaptureStateSchema, CaptureState>>,
   Expect<Mirror<typeof CaptureFiledSchema, CaptureFiled>>,
+  // A hit is the contract's own SearchHitSchema (what `work.search.opened` takes back); the rest of the answer is read whole.
+  Expect<Mirror<typeof MentionAnswerSchema, MentionAnswer>>,
+  Expect<Reads<typeof SearchAnswerSchema, Omit<SearchAnswer, 'groups'> & { groups: (Omit<SearchGroup, 'hits'> & { hits: z.infer<typeof SearchHitSchema>[] })[] }>>,
   Expect<Mirror<typeof MoneyStateSchema, MoneyState>>,
   Expect<Mirror<typeof MoneyReceiptFieldsSchema, ReceiptFields>>,
   Expect<Mirror<typeof MoneyReceivedSchema, MoneyReceived>>,

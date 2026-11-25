@@ -28,6 +28,9 @@ import { z } from 'zod'
 import { CONTRACT_VERSION, METHOD_CAPABILITY } from '../src/shared/capabilities'
 import { ClientRequestSchema } from '../src/shared/contract'
 import { RevealAnswerSchema, RevealTargetSchema } from '../src/shared/contract-work-reveal'
+import { SearchHitSchema, SearchOpenSchema } from '../src/shared/contract-work-search'
+import { ReviewBodySchema } from '../src/shared/contract-work-review'
+import { VideoCopyAnswerSchema } from '../src/shared/contract-video'
 import {
   BatchAdoptResultSchema,
   BatchRulesSchema,
@@ -503,6 +506,11 @@ export const SUBSET: SubsetEntry[] = [
   method('work.canvas.list', W.CanvasItemsSchema),
   method('work.canvas.open', CanvasItemSchema),
   method('work.canvas.close', z.null()),
+  // M4a: the composer's `@` in a Work thread (a hit is the chip a pick adds), and the Item segment's order
+  type('MentionHit', W.MentionHitSchema),
+  type('MentionAnswer', W.MentionAnswerSchema),
+  method('work.canvas.mentions', W.MentionAnswerSchema),
+  method('work.canvas.reorder', W.CanvasItemsSchema),
   method('work.guests.ticket', W.GuestTicketSchema),
   method('work.guests.create', W.GuestCreatedSchema),
   type('PdfPhoneView', W.PdfPhoneViewSchema),
@@ -511,6 +519,13 @@ export const SUBSET: SubsetEntry[] = [
   method('work.pdf.read', W.FileBytesSchema),
   type('PdfFirstPage', W.PdfFirstPageSchema),
   method('work.pdf.first', W.PdfFirstPageSchema),
+  // the reader's highlights, notes and form fields (M3b): each answers the view as the host now draws it
+  type('PdfFieldPhone', W.PdfFieldPhoneSchema),
+  type('PdfMarkPhone', W.PdfMarkPhoneSchema),
+  method('work.pdf.mark', W.PdfPhoneViewSchema),
+  method('work.pdf.unmark', W.PdfPhoneViewSchema),
+  method('work.pdf.setField', W.PdfPhoneViewSchema),
+  method('work.pdf.review', W.PdfPhoneViewSchema),
   type('DeckPhoneView', W.DeckPhoneViewSchema),
   method('work.slides.open', W.DeckPhoneViewSchema),
   method('work.slides.read', W.FileBytesSchema),
@@ -528,8 +543,13 @@ export const SUBSET: SubsetEntry[] = [
   method('media.read', W.MediaRangeSchema.nullable()),
   type('MeetingPhone', W.MeetingPhoneSchema),
   method('work.meetings.get', W.MeetingAnswerSchema),
+  // a recording's player reads it by range; his word on the tasks it yielded files them in LifeOS (M3b)
+  method('work.meetings.recording', W.MeetingRecordingRangeSchema),
+  method('work.meetings.decide', W.MeetingDecideAnswerSchema),
   type('FormResponses', W.FormResponsesSchema),
   method('work.forms.responses', W.FormResponsesSchema),
+  type('DashSheetPhone', W.DashSheetPhoneSchema),
+  type('DashFromPhone', W.DashFromPhoneSchema),
   type('DashBlockPhone', W.DashBlockPhoneSchema),
   type('DashboardPhoneView', W.DashboardPhoneViewSchema),
   method('work.dashboards.open', W.DashboardPhoneViewSchema),
@@ -538,6 +558,9 @@ export const SUBSET: SubsetEntry[] = [
   type('HistoryComparePhone', W.HistoryComparePhoneSchema),
   method('work.history.versions', W.HistoryVersionsPhoneSchema),
   method('work.history.compare', W.HistoryComparePhoneSchema),
+  // Restore (M3b): written at once on his own document, a branch of suggestions on one others can open
+  type('HistoryWritePhone', W.HistoryWritePhoneSchema),
+  method('work.history.restore', W.HistoryWritePhoneSchema),
   // the phone's comments and review (PF2): a document's threads and pending branches, a sheet's suggestions
   type('DocOpenPhone', W.DocOpenPhoneSchema),
   type('DocThreadsPhone', W.DocThreadsPhoneSchema),
@@ -569,6 +592,12 @@ export const SUBSET: SubsetEntry[] = [
   type('CaptureFiled', W.CaptureFiledSchema),
   method('work.capture.state', W.CaptureStateSchema),
   method('work.capture.file', W.CaptureFiledSchema),
+  // M4b: Search's Work scope (docs/agents/work-search.md "The wire"): both speeds in one method, and his mark for Recent
+  type('WorkSearchOpen', SearchOpenSchema),
+  type('WorkSearchHit', SearchHitSchema),
+  type('WorkSearchAnswer', W.SearchAnswerSchema),
+  method('work.search.query', W.SearchAnswerSchema),
+  method('work.search.opened', z.object({})),
   // money: the phone's receipt (docs/agents/work-money.md "The phone")
   type('MoneyState', W.MoneyStateSchema),
   type('MoneyReceiptFields', W.MoneyReceiptFieldsSchema),
@@ -576,6 +605,109 @@ export const SUBSET: SubsetEntry[] = [
   method('work.money.state', W.MoneyStateSchema),
   method('work.money.parse', W.MoneyReceiptFieldsSchema),
   method('work.money.receive', W.MoneyReceivedSchema),
+  // M1: Today’s reads and presses (the Outbox's requests are Outbox 2's, above).
+  type('TasksDone', W.TasksDoneSchema),
+  type('ChatWaiting', W.ChatWaitingSchema),
+  type('MoneyOwedRow', W.MoneyOwedRowSchema),
+  type('MoneyOwed', W.MoneyOwedSchema),
+  type('PrepUpcoming', W.PrepUpcomingSchema),
+  type('ClashSide', W.ClashSidePhoneSchema),
+  type('ClashPhoneRow', W.ClashPhoneRowSchema),
+  type('ClashLeaveRow', W.ClashLeaveRowSchema),
+  type('ClashLeave', W.ClashLeaveSchema),
+  method('work.tasks.done', W.TasksDoneSchema),
+  method('work.mail.nudge', W.MailNudgeAnswerSchema),
+  method('work.messages.unanswered', W.MessagesUnansweredSchema),
+  method('work.money.owed', W.MoneyOwedSchema),
+  method('work.prep.upcoming', W.PrepUpcomingAnswerSchema),
+  method('work.review.ready', W.ReviewReadySchema),
+  // M5a: the week (each host's part, merged on the phone by the port of review.ts) and a job's Money
+  type('ReviewBody', ReviewBodySchema),
+  type('ReviewKeptList', W.ReviewKeptListSchema),
+  type('ReviewSettled', W.ReviewSettledSchema),
+  type('MoneyReadPhone', W.MoneyReadPhoneSchema),
+  type('MoneySums', W.MoneySumsSchema),
+  type('MoneyActed', W.MoneyActedPhoneSchema),
+  type('MoneyPicture', W.MoneyPictureSchema),
+  method('work.review.week', ReviewBodySchema),
+  method('work.review.list', W.ReviewKeptListSchema),
+  method('work.review.settle', W.ReviewSettledSchema),
+  method('work.review.undo', W.OkSchema),
+  method('work.review.seen', W.OkSchema),
+  method('work.money.read', W.MoneyReadPhoneSchema),
+  method('work.money.sums', W.MoneySumsSchema),
+  method('work.money.accept', W.MoneyActedPhoneSchema),
+  method('work.money.drop', W.MoneyDroppedSchema),
+  method('work.money.picture', W.MoneyPictureSchema),
+  method('work.money.paid', W.MoneyActedPhoneSchema),
+  // M5b: a job's small places. Plays run with a short input, routines run now with their last runs, a template made
+  // in Files' New, a dashboard read again, our forms and Microsoft's (Reopen asks approve on the host), Connections
+  // per host, the Windows VM's state with Wake and Sleep, the far clipboard's text after his copy.
+  type('PlayPhoneRow', W.PlayPhoneRowSchema),
+  type('RoutineRunPhone', W.RoutineRunPhoneSchema),
+  type('TemplatePhone', W.TemplatePhoneSchema),
+  type('FormListPhoneRow', W.FormListPhoneRowSchema),
+  type('MsFormResponsesPhone', W.MsFormResponsesPhoneSchema),
+  type('HealthRowPhone', W.HealthRowPhoneSchema),
+  type('HealthReportPhone', W.HealthReportPhoneSchema),
+  type('LapsePhone', W.LapsePhoneSchema),
+  type('WinvmStatePhone', W.WinvmStatePhoneSchema),
+  method('work.routines.plays', W.PlaysListPhoneSchema),
+  method('work.routines.playStart', W.PlayStartedSchema),
+  method('work.routines.runs', W.RoutineRunsPhoneSchema),
+  method('work.routines.runNow', W.RoutineRunPhoneSchema.nullable()),
+  method('work.templates.list', W.TemplatesListPhoneSchema),
+  method('work.templates.make', W.TemplateMadePhoneSchema),
+  method('work.dashboards.refresh', W.DashboardPhoneViewSchema),
+  method('work.forms.list', z.array(W.FormListPhoneRowSchema)),
+  method('work.forms.close', W.FormStatePhoneSchema),
+  method('work.msforms.get', W.MsFormPhoneRowSchema),
+  method('work.msforms.responses', W.MsFormResponsesPhoneSchema),
+  method('work.msforms.close', W.MsFormPhoneRowSchema),
+  method('work.msforms.seen', W.MsFormPhoneRowSchema),
+  method('work.health', W.HealthReportPhoneSchema),
+  method('work.lapses', z.array(W.LapsePhoneSchema)),
+  method('work.winvm.state', W.WinvmStatePhoneSchema),
+  method('work.winvm.wake', W.WinvmStatePhoneSchema),
+  method('work.winvm.sleep', W.WinvmStatePhoneSchema),
+  method('video.copy', VideoCopyAnswerSchema),
+  method('work.clashes.list', W.ClashesListPhoneSchema),
+  method('work.clashes.leave', W.ClashLeaveSchema.nullable()),
+  // M2b: Messages on the phone. His reply goes through the host with an attempt key it answers once; the
+  // conversations themselves are LifeKit's live reads on the LifeOS session, not this wire.
+  type('ChatHit', W.ChatHitSchema),
+  type('ChatDraft', W.ChatDraftSchema),
+  type('MessagesAttempt', W.MessagesAttemptSchema),
+  type('MessagesUnread', W.MessagesUnreadSchema),
+  method('work.messages.send', W.MessagesSendSchema),
+  method('work.messages.attempt', W.MessagesAttemptSchema),
+  method('work.messages.undo', W.MessagesUndoSchema),
+  method('work.messages.retry', z.object({})),
+  method('work.messages.search', W.MessagesSearchSchema),
+  method('work.messages.unread', W.MessagesUnreadSchema),
+  method('work.messages.drafts', W.MessagesDraftsSchema),
+  method('work.messages.dropDraft', z.object({})),
+  // M2c: a meeting's page (Work/Prep), a clash's sheet, People's forms answered. The person's page itself is
+  // LifeOS's `people:page` through LifeKit, joined with `work.guests.list` and this; there is no `work.people.*`.
+  type('PrepLine', W.PrepLinePhoneSchema),
+  type('PrepFile', W.PrepFilePhoneSchema),
+  type('PrepTask', W.PrepTaskPhoneSchema),
+  type('PrepSuggestion', W.PrepSuggestionPhoneSchema),
+  type('PrepPagePhone', W.PrepPagePhoneSchema),
+  type('PrepThreadStarted', W.PrepThreadAnswerSchema),
+  type('ClashMiles', W.ClashMilesSchema),
+  type('MsFormAnswered', W.MsFormAnsweredSchema),
+  type('MsFormsByPerson', W.MsFormsByPersonSchema),
+  method('work.prep.page', W.PrepPageAnswerSchema),
+  method('work.prep.brief', W.PrepThreadAnswerSchema),
+  method('work.prep.notes', W.PrepNotesAnswerSchema),
+  method('work.prep.followUp', W.PrepThreadAnswerSchema),
+  method('work.prep.decide', W.PrepDecideAnswerSchema),
+  method('work.prep.people', W.PrepPageAnswerSchema),
+  method('work.clashes.miles', W.ClashMilesSchema.nullable()),
+  method('work.clashes.waive', z.null()),
+  method('work.clashes.answer', W.ClashAnsweredSchema),
+  method('work.msforms.byPerson', z.array(W.MsFormsByPersonSchema)),
   // the Files place on the phone (the files pillar's F9, docs/agents/work-files.md "The phone"): places, folders and
   // lenses, a file's bytes and previews, the marks, New, rename, Trash and Put back, and an upload into a folder
   type('FolderRef', FolderRefSchema),
@@ -586,6 +718,7 @@ export const SUBSET: SubsetEntry[] = [
   type('FilePreview', W.FilePreviewPhoneSchema),
   type('FileDone', W.FileDoneSchema),
   type('FilesPlaces', W.FilesPlacesPhoneSchema),
+  type('SavedFileSearch', W.SavedFileSearchPhoneSchema),
   type('FilesHome', W.FilesHomeSchema),
   type('FilesOpened', W.FilesOpenedPhoneSchema),
   method('work.files.places', W.FilesPlacesPhoneSchema),
@@ -603,6 +736,11 @@ export const SUBSET: SubsetEntry[] = [
   method('work.files.make', W.FileDoneSchema),
   method('work.files.rename', W.FileDoneSchema),
   method('work.files.move', W.FileDoneSchema),
+  method('work.files.copy', W.FileDoneSchema),
+  method('work.files.names', W.FilesNamesSchema),
+  method('work.files.searches', W.FilesSearchesSchema),
+  // what the far desktop answers to the method asked: decoded by the caller as that method's answer
+  method('work.files.across', z.unknown()),
   method('work.files.trash', W.FileDoneSchema),
   method('work.files.restore', W.FileDoneSchema),
   method('work.files.upload', W.FilesUploadBegunSchema),
@@ -632,7 +770,29 @@ export const SUBSET: SubsetEntry[] = [
   type('ComputerSessionsAnswer', W.ComputerSessionsAnswerSchema),
   method('computer.sessions', W.ComputerSessionsAnswerSchema),
   method('computer.stop', z.object({ stopped: z.boolean() })),
-  method('computer.drive', z.object({ driver: z.enum(['owner', 'agent']) }))
+  method('computer.drive', z.object({ driver: z.enum(['owner', 'agent']) })),
+  // M3c: Share on the phone, the one sheet the desktop has (fb35a39d8): an item's links, its role, and Create link's
+  // attempt key read back; the clicker's show and its press (its push rides RemotePushSchema).
+  type('GuestAttempt', W.GuestAttemptSchema),
+  method('work.guests.forItem', z.array(W.GuestLinkRowSchema)),
+  method('work.guests.setRole', z.object({ ok: z.literal(true) })),
+  method('work.guests.attempt', W.GuestAttemptSchema),
+  type('ShowLive', W.ShowLivePhoneSchema),
+  method('work.slides.show.state', W.ShowStatePhoneSchema),
+  method('work.slides.show.press', W.ShowPressAnswerPhoneSchema),
+  // M2a: Mail as a place. A mail he timed moved, sent now or taken back; Waiting on's settings read; the chat beside
+  // a mail found or adopted; a mail's file fetched onto its host, read by range and kept in the workspace (its
+  // progress rides the `work.canvas.fetch` push). The mail itself is LifeKit's live reads on the LifeOS session.
+  type('MailWaiting', W.MailWaitingSchema),
+  method('work.mail.waiting', W.MailWaitingSchema),
+  method('work.mail.reschedule', z.null()),
+  method('work.mail.sendNow', W.MailSendNowSchema),
+  method('work.mail.cancel', W.MailCancelSchema),
+  method('work.mail.chat.adopt', z.object({ ok: z.literal(true) })),
+  method('work.mail.chat.find', W.MailChatFoundSchema),
+  method('work.canvas.fetch', W.CanvasFetchedSchema),
+  method('work.canvas.read', W.CanvasBytesSchema),
+  method('work.canvas.keep', W.CanvasKeptSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */

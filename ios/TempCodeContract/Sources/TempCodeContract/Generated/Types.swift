@@ -6408,6 +6408,87 @@ public struct CanvasItem: Codable, Hashable, Sendable {
     }
 }
 
+public struct MentionHit: Codable, Hashable, Sendable {
+    public let chip: ContextChip
+    public let detail: String?
+    public let at: Double?
+
+    public init(chip: ContextChip, detail: String? = nil, at: Double? = nil) {
+        self.chip = chip
+        self.detail = detail
+        self.at = at
+    }
+}
+
+public struct MentionAnswer: Codable, Hashable, Sendable {
+    public enum Failed: RawRepresentable, Codable, Hashable, Sendable {
+        case task
+        case mail
+        case event
+        case selection
+        case project
+        case person
+        case doc
+        case item
+        case held
+        case routine
+        case card
+        case chat
+        case file
+        case msform
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "task": self = .task
+            case "mail": self = .mail
+            case "event": self = .event
+            case "selection": self = .selection
+            case "project": self = .project
+            case "person": self = .person
+            case "doc": self = .doc
+            case "item": self = .item
+            case "held": self = .held
+            case "routine": self = .routine
+            case "card": self = .card
+            case "chat": self = .chat
+            case "file": self = .file
+            case "msform": self = .msform
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .task: "task"
+            case .mail: "mail"
+            case .event: "event"
+            case .selection: "selection"
+            case .project: "project"
+            case .person: "person"
+            case .doc: "doc"
+            case .item: "item"
+            case .held: "held"
+            case .routine: "routine"
+            case .card: "card"
+            case .chat: "chat"
+            case .file: "file"
+            case .msform: "msform"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let hits: [MentionHit]
+    public let failed: [Failed]
+
+    public init(hits: [MentionHit], failed: [Failed]) {
+        self.hits = hits
+        self.failed = failed
+    }
+}
+
 public struct PdfPhoneView: Codable, Hashable, Sendable {
     public struct Missing: Codable, Hashable, Sendable {
         public let asOf: Double
@@ -6422,13 +6503,21 @@ public struct PdfPhoneView: Codable, Hashable, Sendable {
     public let size: Double
     public let rev: String
     public let missing: Missing?
+    public let fields: [PdfFieldPhone]?
+    public let marks: [PdfMarkPhone]?
+    public let xfaOnly: Bool?
+    public let formError: String?
 
-    public init(itemId: String, name: String, size: Double, rev: String, missing: Missing? = nil) {
+    public init(itemId: String, name: String, size: Double, rev: String, missing: Missing? = nil, fields: [PdfFieldPhone]? = nil, marks: [PdfMarkPhone]? = nil, xfaOnly: Bool? = nil, formError: String? = nil) {
         self.itemId = itemId
         self.name = name
         self.size = size
         self.rev = rev
         self.missing = missing
+        self.fields = fields
+        self.marks = marks
+        self.xfaOnly = xfaOnly
+        self.formError = formError
     }
 }
 
@@ -6455,6 +6544,152 @@ public struct PdfFirstPage: Codable, Hashable, Sendable {
         self.rev = rev
         self.width = width
         self.pages = pages
+    }
+}
+
+public struct PdfFieldPhone: Codable, Hashable, Sendable {
+    public enum Value: Codable, Hashable, Sendable {
+        case string(String)
+        case bool(Bool)
+        /// A shape this build does not know, untouched.
+        case unknown(JSONValue)
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(String.self) { self = .string(value); return }
+            if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+            self = .unknown(try container.decode(JSONValue.self))
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let value): try container.encode(value)
+            case .bool(let value): try container.encode(value)
+            case .unknown(let value): try container.encode(value)
+            }
+        }
+    }
+    public enum Proposed: Codable, Hashable, Sendable {
+        case string(String)
+        case bool(Bool)
+        /// A shape this build does not know, untouched.
+        case unknown(JSONValue)
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(String.self) { self = .string(value); return }
+            if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+            self = .unknown(try container.decode(JSONValue.self))
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let value): try container.encode(value)
+            case .bool(let value): try container.encode(value)
+            case .unknown(let value): try container.encode(value)
+            }
+        }
+    }
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case empty
+        case proposed
+        case accepted
+        case needsOwner
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "empty": self = .empty
+            case "proposed": self = .proposed
+            case "accepted": self = .accepted
+            case "needs-owner": self = .needsOwner
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .empty: "empty"
+            case .proposed: "proposed"
+            case .accepted: "accepted"
+            case .needsOwner: "needs-owner"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Provenance: Codable, Hashable, Sendable {
+        public let label: String
+        public let quote: String?
+
+        public init(label: String, quote: String? = nil) {
+            self.label = label
+            self.quote = quote
+        }
+    }
+
+    public let key: String
+    public let label: String
+    public let type: String
+    public let page: Int
+    public let bbox: [Double]
+    public let value: Value?
+    public let proposed: Proposed?
+    public let state: State
+    public let provenance: [Provenance]
+    public let options: [String]?
+
+    public init(key: String, label: String, type: String, page: Int, bbox: [Double], value: Value?, proposed: Proposed? = nil, state: State, provenance: [Provenance], options: [String]? = nil) {
+        self.key = key
+        self.label = label
+        self.type = type
+        self.page = page
+        self.bbox = bbox
+        self.value = value
+        self.proposed = proposed
+        self.state = state
+        self.provenance = provenance
+        self.options = options
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, label, type, page, bbox, value, proposed, state, provenance, options
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(label, forKey: .label)
+        try container.encode(type, forKey: .type)
+        try container.encode(page, forKey: .page)
+        try container.encode(bbox, forKey: .bbox)
+        try container.encode(value, forKey: .value)
+        try container.encodeIfPresent(proposed, forKey: .proposed)
+        try container.encode(state, forKey: .state)
+        try container.encode(provenance, forKey: .provenance)
+        try container.encodeIfPresent(options, forKey: .options)
+    }
+}
+
+public struct PdfMarkPhone: Codable, Hashable, Sendable {
+    public let id: String
+    public let page: Int
+    public let quads: [[Double]]
+    public let text: String
+    public let note: String?
+    public let by: String
+    public let at: Double
+
+    public init(id: String, page: Int, quads: [[Double]], text: String, note: String? = nil, by: String, at: Double) {
+        self.id = id
+        self.page = page
+        self.quads = quads
+        self.text = text
+        self.note = note
+        self.by = by
+        self.at = at
     }
 }
 
@@ -7085,6 +7320,98 @@ public struct MeetingPhone: Codable, Hashable, Sendable {
             try container.encode(text, forKey: .text)
         }
     }
+    public struct Media: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case audio
+            case video
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "audio": self = .audio
+                case "video": self = .video
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .audio: "audio"
+                case .video: "video"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let kind: Kind
+
+        public init(kind: Kind) {
+            self.kind = kind
+        }
+    }
+    public struct Notes: Codable, Hashable, Sendable {
+        public struct Action: Codable, Hashable, Sendable {
+            public enum State: RawRepresentable, Codable, Hashable, Sendable {
+                case proposed
+                case filed
+                case rejected
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "proposed": self = .proposed
+                    case "filed": self = .filed
+                    case "rejected": self = .rejected
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .proposed: "proposed"
+                    case .filed: "filed"
+                    case .rejected: "rejected"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let id: String
+            public let text: String
+            public let due: String?
+            public let state: State
+            public let at: Double?
+
+            public init(id: String, text: String, due: String? = nil, state: State, at: Double?) {
+                self.id = id
+                self.text = text
+                self.due = due
+                self.state = state
+                self.at = at
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case id, text, due, state, at
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(id, forKey: .id)
+                try container.encode(text, forKey: .text)
+                try container.encodeIfPresent(due, forKey: .due)
+                try container.encode(state, forKey: .state)
+                try container.encode(at, forKey: .at)
+            }
+        }
+
+        public let actions: [Action]
+
+        public init(actions: [Action]) {
+            self.actions = actions
+        }
+    }
 
     public let itemId: String
     public let title: String
@@ -7093,8 +7420,10 @@ public struct MeetingPhone: Codable, Hashable, Sendable {
     public let durationSec: Double
     public let speakers: [Speaker]
     public let segments: [Segment]
+    public let media: Media?
+    public let notes: Notes?
 
-    public init(itemId: String, title: String, status: String, error: String? = nil, durationSec: Double, speakers: [Speaker], segments: [Segment]) {
+    public init(itemId: String, title: String, status: String, error: String? = nil, durationSec: Double, speakers: [Speaker], segments: [Segment], media: Media? = nil, notes: Notes? = nil) {
         self.itemId = itemId
         self.title = title
         self.status = status
@@ -7102,6 +7431,8 @@ public struct MeetingPhone: Codable, Hashable, Sendable {
         self.durationSec = durationSec
         self.speakers = speakers
         self.segments = segments
+        self.media = media
+        self.notes = notes
     }
 }
 
@@ -7131,6 +7462,87 @@ public struct FormResponses: Codable, Hashable, Sendable {
     }
 }
 
+public enum DashSheetPhone: Codable, Hashable, Sendable {
+    public struct Case0: Codable, Hashable, Sendable {
+        public let table: String
+        public let id: String
+
+        public init(table: String, id: String) {
+            self.table = table
+            self.id = id
+        }
+    }
+    public struct Case1: Codable, Hashable, Sendable {
+        public let host: String
+        public let path: String
+
+        public init(host: String, path: String) {
+            self.host = host
+            self.path = path
+        }
+    }
+    public struct Case2: Codable, Hashable, Sendable {
+        public let host: String
+        public let workspaceId: String
+        public let formId: String
+        public let tenant: String
+
+        public init(host: String, workspaceId: String, formId: String, tenant: String) {
+            self.host = host
+            self.workspaceId = workspaceId
+            self.formId = formId
+            self.tenant = tenant
+        }
+    }
+
+    case lifeos(Case0)
+    case file(Case1)
+    case msform(Case2)
+    /// A `at` this build does not know: the whole object, untouched.
+    case unknown(JSONValue)
+
+    private enum Tag: String, CodingKey {
+        case at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .at)
+        switch tag {
+        case "lifeos": self = .lifeos(try Case0(from: decoder))
+        case "file": self = .file(try Case1(from: decoder))
+        case "msform": self = .msform(try Case2(from: decoder))
+        default: self = .unknown(try JSONValue(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .lifeos(let value): try Self.encode(tag: "lifeos", value, to: encoder)
+        case .file(let value): try Self.encode(tag: "file", value, to: encoder)
+        case .msform(let value): try Self.encode(tag: "msform", value, to: encoder)
+        case .unknown(let value): try value.encode(to: encoder)
+        }
+    }
+
+    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: Tag.self)
+        try container.encode(tag, forKey: .at)
+        try value.encode(to: encoder)
+    }
+}
+
+public struct DashFromPhone: Codable, Hashable, Sendable {
+    public let counts: String
+    public let sheet: DashSheetPhone?
+    public let sheetTitle: String?
+
+    public init(counts: String, sheet: DashSheetPhone? = nil, sheetTitle: String? = nil) {
+        self.counts = counts
+        self.sheet = sheet
+        self.sheetTitle = sheetTitle
+    }
+}
+
 public enum DashBlockPhone: Codable, Hashable, Sendable {
     public struct Case0: Codable, Hashable, Sendable {
         public let id: String
@@ -7156,16 +7568,18 @@ public enum DashBlockPhone: Codable, Hashable, Sendable {
             public let label: String
             public let sub: String?
             public let value: String?
+            public let from: DashFromPhone?
 
-            public init(id: String, label: String, sub: String? = nil, value: String?) {
+            public init(id: String, label: String, sub: String? = nil, value: String?, from: DashFromPhone? = nil) {
                 self.id = id
                 self.label = label
                 self.sub = sub
                 self.value = value
+                self.from = from
             }
 
             private enum CodingKeys: String, CodingKey {
-                case id, label, sub, value
+                case id, label, sub, value, from
             }
 
             public func encode(to encoder: any Encoder) throws {
@@ -7174,6 +7588,7 @@ public enum DashBlockPhone: Codable, Hashable, Sendable {
                 try container.encode(label, forKey: .label)
                 try container.encodeIfPresent(sub, forKey: .sub)
                 try container.encode(value, forKey: .value)
+                try container.encodeIfPresent(from, forKey: .from)
             }
         }
 
@@ -7199,11 +7614,13 @@ public enum DashBlockPhone: Codable, Hashable, Sendable {
         public let id: String
         public let title: String
         public let bars: [Bar]
+        public let from: DashFromPhone?
 
-        public init(id: String, title: String, bars: [Bar]) {
+        public init(id: String, title: String, bars: [Bar], from: DashFromPhone? = nil) {
             self.id = id
             self.title = title
             self.bars = bars
+            self.from = from
         }
     }
     public struct Case4: Codable, Hashable, Sendable {
@@ -7212,13 +7629,15 @@ public enum DashBlockPhone: Codable, Hashable, Sendable {
         public let head: [String]
         public let rows: [[String]]
         public let numeric: [Bool]
+        public let from: DashFromPhone?
 
-        public init(id: String, title: String, head: [String], rows: [[String]], numeric: [Bool]) {
+        public init(id: String, title: String, head: [String], rows: [[String]], numeric: [Bool], from: DashFromPhone? = nil) {
             self.id = id
             self.title = title
             self.head = head
             self.rows = rows
             self.numeric = numeric
+            self.from = from
         }
     }
 
@@ -7453,6 +7872,59 @@ public struct HistoryComparePhone: Codable, Hashable, Sendable {
     public init(diff: Diff, names: [String: String]) {
         self.diff = diff
         self.names = names
+    }
+}
+
+public enum HistoryWritePhone: Codable, Hashable, Sendable {
+    public struct Case0: Codable, Hashable, Sendable {
+        public let versionId: String?
+        public let beforeVersionId: String?
+
+        public init(versionId: String? = nil, beforeVersionId: String? = nil) {
+            self.versionId = versionId
+            self.beforeVersionId = beforeVersionId
+        }
+    }
+    public struct Case1: Codable, Hashable, Sendable {
+        public let branchId: String
+        public let versionId: String
+
+        public init(branchId: String, versionId: String) {
+            self.branchId = branchId
+            self.versionId = versionId
+        }
+    }
+
+    case direct(Case0)
+    case branch(Case1)
+    /// A `mode` this build does not know: the whole object, untouched.
+    case unknown(JSONValue)
+
+    private enum Tag: String, CodingKey {
+        case mode
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .mode)
+        switch tag {
+        case "direct": self = .direct(try Case0(from: decoder))
+        case "branch": self = .branch(try Case1(from: decoder))
+        default: self = .unknown(try JSONValue(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .direct(let value): try Self.encode(tag: "direct", value, to: encoder)
+        case .branch(let value): try Self.encode(tag: "branch", value, to: encoder)
+        case .unknown(let value): try value.encode(to: encoder)
+        }
+    }
+
+    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: Tag.self)
+        try container.encode(tag, forKey: .mode)
+        try value.encode(to: encoder)
     }
 }
 
@@ -7922,16 +8394,18 @@ public struct SheetPhoneView: Codable, Hashable, Sendable {
     public let shared: Bool
     public let mode: Mode
     public let readOnly: String?
+    public let tabs: [String: String]?
     public let suggestions: [Suggestion]
     public let changes: [Change]?
 
-    public init(itemId: String, name: String, rev: Int, shared: Bool, mode: Mode, readOnly: String? = nil, suggestions: [Suggestion], changes: [Change]? = nil) {
+    public init(itemId: String, name: String, rev: Int, shared: Bool, mode: Mode, readOnly: String? = nil, tabs: [String: String]? = nil, suggestions: [Suggestion], changes: [Change]? = nil) {
         self.itemId = itemId
         self.name = name
         self.rev = rev
         self.shared = shared
         self.mode = mode
         self.readOnly = readOnly
+        self.tabs = tabs
         self.suggestions = suggestions
         self.changes = changes
     }
@@ -8169,18 +8643,22 @@ public struct MsFormPhoneRow: Codable, Hashable, Sendable {
     public let state: State
     public let count: Int
     public let link: String?
+    public let unseen: Int?
+    public let stopped: String?
 
-    public init(formId: String, tenant: String, title: String, state: State, count: Int, link: String?) {
+    public init(formId: String, tenant: String, title: String, state: State, count: Int, link: String?, unseen: Int? = nil, stopped: String? = nil) {
         self.formId = formId
         self.tenant = tenant
         self.title = title
         self.state = state
         self.count = count
         self.link = link
+        self.unseen = unseen
+        self.stopped = stopped
     }
 
     private enum CodingKeys: String, CodingKey {
-        case formId, tenant, title, state, count, link
+        case formId, tenant, title, state, count, link, unseen, stopped
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8191,6 +8669,8 @@ public struct MsFormPhoneRow: Codable, Hashable, Sendable {
         try container.encode(state, forKey: .state)
         try container.encode(count, forKey: .count)
         try container.encode(link, forKey: .link)
+        try container.encodeIfPresent(unseen, forKey: .unseen)
+        try container.encodeIfPresent(stopped, forKey: .stopped)
     }
 }
 
@@ -8272,6 +8752,253 @@ public struct CaptureFiled: Codable, Hashable, Sendable {
         self.kept = kept
         self.threadId = threadId
         self.threadError = threadError
+    }
+}
+
+public enum WorkSearchOpen: Codable, Hashable, Sendable {
+    public struct Case0: Codable, Hashable, Sendable {
+        public enum WithCase0: Codable, Hashable, Sendable {
+            case string(String)
+            case number(Double)
+            case bool(Bool)
+            /// A shape this build does not know, untouched.
+            case unknown(JSONValue)
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let value = try? container.decode(String.self) { self = .string(value); return }
+                if let value = try? container.decode(Double.self) { self = .number(value); return }
+                if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+                self = .unknown(try container.decode(JSONValue.self))
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self {
+                case .string(let value): try container.encode(value)
+                case .number(let value): try container.encode(value)
+                case .bool(let value): try container.encode(value)
+                case .unknown(let value): try container.encode(value)
+                }
+            }
+        }
+        public enum WithCase1: Codable, Hashable, Sendable {
+            case string(String)
+            case number(Double)
+            case bool(Bool)
+            /// A shape this build does not know, untouched.
+            case unknown(JSONValue)
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let value = try? container.decode(String.self) { self = .string(value); return }
+                if let value = try? container.decode(Double.self) { self = .number(value); return }
+                if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+                self = .unknown(try container.decode(JSONValue.self))
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self {
+                case .string(let value): try container.encode(value)
+                case .number(let value): try container.encode(value)
+                case .bool(let value): try container.encode(value)
+                case .unknown(let value): try container.encode(value)
+                }
+            }
+        }
+        public enum With: Codable, Hashable, Sendable {
+            case value(WithCase0)
+            case object([String: WithCase1?])
+            /// A shape this build does not know, untouched.
+            case unknown(JSONValue)
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let value = try? container.decode(WithCase0.self) { self = .value(value); return }
+                if let value = try? container.decode([String: WithCase1?].self) { self = .object(value); return }
+                self = .unknown(try container.decode(JSONValue.self))
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self {
+                case .value(let value): try container.encode(value)
+                case .object(let value): try container.encode(value)
+                case .unknown(let value): try container.encode(value)
+                }
+            }
+        }
+
+        public let view: String
+        public let with: [String: With]?
+
+        public init(view: String, with: [String: With]? = nil) {
+            self.view = view
+            self.with = with
+        }
+    }
+    public struct Case1: Codable, Hashable, Sendable {
+        public let sessionId: String
+        public let seq: Int?
+        public let archived: Bool?
+
+        public init(sessionId: String, seq: Int? = nil, archived: Bool? = nil) {
+            self.sessionId = sessionId
+            self.seq = seq
+            self.archived = archived
+        }
+    }
+    public struct Case2: Codable, Hashable, Sendable {
+        public let ref: JSONValue?
+        public let name: String
+
+        public init(ref: JSONValue? = nil, name: String) {
+            self.ref = ref
+            self.name = name
+        }
+    }
+    public struct Case3: Codable, Hashable, Sendable {
+        public let chip: ContextChip
+
+        public init(chip: ContextChip) {
+            self.chip = chip
+        }
+    }
+
+    case view(Case0)
+    case thread(Case1)
+    case file(Case2)
+    case chip(Case3)
+    /// A `to` this build does not know: the whole object, untouched.
+    case unknown(JSONValue)
+
+    private enum Tag: String, CodingKey {
+        case to
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .to)
+        switch tag {
+        case "view": self = .view(try Case0(from: decoder))
+        case "thread": self = .thread(try Case1(from: decoder))
+        case "file": self = .file(try Case2(from: decoder))
+        case "chip": self = .chip(try Case3(from: decoder))
+        default: self = .unknown(try JSONValue(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .view(let value): try Self.encode(tag: "view", value, to: encoder)
+        case .thread(let value): try Self.encode(tag: "thread", value, to: encoder)
+        case .file(let value): try Self.encode(tag: "file", value, to: encoder)
+        case .chip(let value): try Self.encode(tag: "chip", value, to: encoder)
+        case .unknown(let value): try value.encode(to: encoder)
+        }
+    }
+
+    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: Tag.self)
+        try container.encode(tag, forKey: .to)
+        try value.encode(to: encoder)
+    }
+}
+
+public struct WorkSearchHit: Codable, Hashable, Sendable {
+    public let key: String
+    public let kind: String
+    public let title: String
+    public let detail: String?
+    public let snippet: String?
+    public let at: Double?
+    public let workspaceId: String?
+    public let open: WorkSearchOpen
+    public let chip: ContextChip?
+    public let cloud: Bool?
+    public let openedAt: Double?
+
+    public init(key: String, kind: String, title: String, detail: String? = nil, snippet: String? = nil, at: Double? = nil, workspaceId: String?, open: WorkSearchOpen, chip: ContextChip? = nil, cloud: Bool? = nil, openedAt: Double? = nil) {
+        self.key = key
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.snippet = snippet
+        self.at = at
+        self.workspaceId = workspaceId
+        self.open = open
+        self.chip = chip
+        self.cloud = cloud
+        self.openedAt = openedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, kind, title, detail, snippet, at, workspaceId, open, chip, cloud, openedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encodeIfPresent(snippet, forKey: .snippet)
+        try container.encodeIfPresent(at, forKey: .at)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(open, forKey: .open)
+        try container.encodeIfPresent(chip, forKey: .chip)
+        try container.encodeIfPresent(cloud, forKey: .cloud)
+        try container.encodeIfPresent(openedAt, forKey: .openedAt)
+    }
+}
+
+public struct WorkSearchAnswer: Codable, Hashable, Sendable {
+    public struct Group: Codable, Hashable, Sendable {
+        public let source: String
+        public let kind: String
+        public let label: String
+        public let hits: [WorkSearchHit]
+        public let more: Bool
+
+        public init(source: String, kind: String, label: String, hits: [WorkSearchHit], more: Bool) {
+            self.source = source
+            self.kind = kind
+            self.label = label
+            self.hits = hits
+            self.more = more
+        }
+    }
+    public struct Pending: Codable, Hashable, Sendable {
+        public let source: String
+        public let kind: String
+
+        public init(source: String, kind: String) {
+            self.source = source
+            self.kind = kind
+        }
+    }
+    public struct Quiet: Codable, Hashable, Sendable {
+        public let cause: String
+        public let line: String
+
+        public init(cause: String, line: String) {
+            self.cause = cause
+            self.line = line
+        }
+    }
+
+    public let groups: [Group]
+    public let pending: [Pending]
+    public let quiet: [Quiet]
+    public let searched: Int?
+    public let deeper: [String]?
+
+    public init(groups: [Group], pending: [Pending], quiet: [Quiet], searched: Int? = nil, deeper: [String]? = nil) {
+        self.groups = groups
+        self.pending = pending
+        self.quiet = quiet
+        self.searched = searched
+        self.deeper = deeper
     }
 }
 
@@ -8381,6 +9108,2775 @@ public struct MoneyReceived: Codable, Hashable, Sendable {
         self.id = id
         self.state = state
         self.suggested = suggested
+    }
+}
+
+public struct TasksDone: Codable, Hashable, Sendable {
+    public let threadId: String?
+    public let nextId: String?
+
+    public init(threadId: String?, nextId: String?) {
+        self.threadId = threadId
+        self.nextId = nextId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case threadId, nextId
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(threadId, forKey: .threadId)
+        try container.encode(nextId, forKey: .nextId)
+    }
+}
+
+public struct ChatWaiting: Codable, Hashable, Sendable {
+    public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+        case slack
+        case discord
+        case imessage
+        case teams
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "slack": self = .slack
+            case "discord": self = .discord
+            case "imessage": self = .imessage
+            case "teams": self = .teams
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .slack: "slack"
+            case .discord: "discord"
+            case .imessage: "imessage"
+            case .teams: "teams"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let chatId: String
+    public let chat: String
+    public let who: String
+    public let text: String
+    public let at: Double
+    public let source: Source
+
+    public init(chatId: String, chat: String, who: String, text: String, at: Double, source: Source) {
+        self.chatId = chatId
+        self.chat = chat
+        self.who = who
+        self.text = text
+        self.at = at
+        self.source = source
+    }
+}
+
+public struct MoneyOwedRow: Codable, Hashable, Sendable {
+    public enum Way: RawRepresentable, Codable, Hashable, Sendable {
+        case toHim
+        case byHim
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "toHim": self = .toHim
+            case "byHim": self = .byHim
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .toHim: "toHim"
+            case .byHim: "byHim"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let workspaceId: String
+    public let sector: String?
+    public let row: Int
+    public let who: String
+    public let what: String
+    public let amount: Int
+    public let since: String?
+    public let way: Way
+    public let reimburse: Bool
+    public let both: Bool?
+
+    public init(workspaceId: String, sector: String?, row: Int, who: String, what: String, amount: Int, since: String?, way: Way, reimburse: Bool, both: Bool? = nil) {
+        self.workspaceId = workspaceId
+        self.sector = sector
+        self.row = row
+        self.who = who
+        self.what = what
+        self.amount = amount
+        self.since = since
+        self.way = way
+        self.reimburse = reimburse
+        self.both = both
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workspaceId, sector, row, who, what, amount, since, way, reimburse, both
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(sector, forKey: .sector)
+        try container.encode(row, forKey: .row)
+        try container.encode(who, forKey: .who)
+        try container.encode(what, forKey: .what)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(since, forKey: .since)
+        try container.encode(way, forKey: .way)
+        try container.encode(reimburse, forKey: .reimburse)
+        try container.encodeIfPresent(both, forKey: .both)
+    }
+}
+
+public struct MoneyOwed: Codable, Hashable, Sendable {
+    public let rows: [MoneyOwedRow]
+    public let toConfirm: Int
+    public let problems: [String]?
+
+    public init(rows: [MoneyOwedRow], toConfirm: Int, problems: [String]? = nil) {
+        self.rows = rows
+        self.toConfirm = toConfirm
+        self.problems = problems
+    }
+}
+
+public struct PrepUpcoming: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case working
+        case briefed
+        case after
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "none": self = .none
+            case "working": self = .working
+            case "briefed": self = .briefed
+            case "after": self = .after
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: "none"
+            case .working: "working"
+            case .briefed: "briefed"
+            case .after: "after"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let workspaceId: String
+    public let sector: String
+    public let eventId: String
+    public let title: String
+    public let startsAt: Double
+    public let endsAt: Double
+    public let with: [String]
+    public let state: State
+
+    public init(workspaceId: String, sector: String, eventId: String, title: String, startsAt: Double, endsAt: Double, with: [String], state: State) {
+        self.workspaceId = workspaceId
+        self.sector = sector
+        self.eventId = eventId
+        self.title = title
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.with = with
+        self.state = state
+    }
+}
+
+public struct ClashSide: Codable, Hashable, Sendable {
+    public enum Can: RawRepresentable, Codable, Hashable, Sendable {
+        case decline
+        case propose
+        case move
+        case late
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "decline": self = .decline
+            case "propose": self = .propose
+            case "move": self = .move
+            case "late": self = .late
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .decline: "decline"
+            case .propose: "propose"
+            case .move: "move"
+            case .late: "late"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let eventId: String
+    public let sector: String
+    public let workspaceId: String?
+    public let title: String
+    public let startsAt: Double
+    public let endsAt: Double
+    public let place: String?
+    public let location: String?
+    public let guests: Bool?
+    public let can: [Can]?
+
+    public init(eventId: String, sector: String, workspaceId: String? = nil, title: String, startsAt: Double, endsAt: Double, place: String? = nil, location: String? = nil, guests: Bool? = nil, can: [Can]? = nil) {
+        self.eventId = eventId
+        self.sector = sector
+        self.workspaceId = workspaceId
+        self.title = title
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.place = place
+        self.location = location
+        self.guests = guests
+        self.can = can
+    }
+}
+
+public struct ClashPhoneRow: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case overlap
+        case drive
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "overlap": self = .overlap
+            case "drive": self = .drive
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .overlap: "overlap"
+            case .drive: "drive"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let kind: Kind
+    public let a: ClashSide
+    public let b: ClashSide
+    public let minutes: Double?
+    public let miles: Double?
+    public let measured: Bool?
+    public let shortBy: Double?
+
+    public init(id: String, kind: Kind, a: ClashSide, b: ClashSide, minutes: Double? = nil, miles: Double? = nil, measured: Bool? = nil, shortBy: Double? = nil) {
+        self.id = id
+        self.kind = kind
+        self.a = a
+        self.b = b
+        self.minutes = minutes
+        self.miles = miles
+        self.measured = measured
+        self.shortBy = shortBy
+    }
+}
+
+public struct ClashLeaveRow: Codable, Hashable, Sendable {
+    public enum From: RawRepresentable, Codable, Hashable, Sendable {
+        case start
+        case event
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "start": self = .start
+            case "event": self = .event
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .start: "start"
+            case .event: "event"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let leaveAt: Double
+    public let minutes: Double?
+    public let miles: Double?
+    public let from: From
+    public let fromTitle: String?
+    public let measured: Bool
+    public let eventId: String
+
+    public init(leaveAt: Double, minutes: Double? = nil, miles: Double? = nil, from: From, fromTitle: String? = nil, measured: Bool, eventId: String) {
+        self.leaveAt = leaveAt
+        self.minutes = minutes
+        self.miles = miles
+        self.from = from
+        self.fromTitle = fromTitle
+        self.measured = measured
+        self.eventId = eventId
+    }
+}
+
+public struct ClashLeave: Codable, Hashable, Sendable {
+    public enum From: RawRepresentable, Codable, Hashable, Sendable {
+        case start
+        case event
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "start": self = .start
+            case "event": self = .event
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .start: "start"
+            case .event: "event"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let leaveAt: Double
+    public let minutes: Double?
+    public let miles: Double?
+    public let from: From
+    public let fromTitle: String?
+    public let measured: Bool
+
+    public init(leaveAt: Double, minutes: Double? = nil, miles: Double? = nil, from: From, fromTitle: String? = nil, measured: Bool) {
+        self.leaveAt = leaveAt
+        self.minutes = minutes
+        self.miles = miles
+        self.from = from
+        self.fromTitle = fromTitle
+        self.measured = measured
+    }
+}
+
+public struct ReviewBody: Codable, Hashable, Sendable {
+    public enum By: RawRepresentable, Codable, Hashable, Sendable {
+        case routine
+        case owner
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "routine": self = .routine
+            case "owner": self = .owner
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .routine: "routine"
+            case .owner: "owner"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Job: Codable, Hashable, Sendable {
+        public let workspaceId: String
+        public let sector: String?
+        public let name: String
+
+        public init(workspaceId: String, sector: String?, name: String) {
+            self.workspaceId = workspaceId
+            self.sector = sector
+            self.name = name
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case workspaceId, sector, name
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(workspaceId, forKey: .workspaceId)
+            try container.encode(sector, forKey: .sector)
+            try container.encode(name, forKey: .name)
+        }
+    }
+    public struct Lifeos: Codable, Hashable, Sendable {
+        public struct Event: Codable, Hashable, Sendable {
+            public let id: String
+            public let sector: String
+            public let title: String
+            public let startsAt: Int
+            public let endsAt: Int?
+            public let allDay: Bool
+            public let declined: Bool
+            public let hidden: Bool
+            public let people: [String]
+            public let others: Int
+            public let addresses: [String]
+
+            public init(id: String, sector: String, title: String, startsAt: Int, endsAt: Int?, allDay: Bool, declined: Bool, hidden: Bool, people: [String], others: Int, addresses: [String]) {
+                self.id = id
+                self.sector = sector
+                self.title = title
+                self.startsAt = startsAt
+                self.endsAt = endsAt
+                self.allDay = allDay
+                self.declined = declined
+                self.hidden = hidden
+                self.people = people
+                self.others = others
+                self.addresses = addresses
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case id, sector, title, startsAt, endsAt, allDay, declined, hidden, people, others, addresses
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(id, forKey: .id)
+                try container.encode(sector, forKey: .sector)
+                try container.encode(title, forKey: .title)
+                try container.encode(startsAt, forKey: .startsAt)
+                try container.encode(endsAt, forKey: .endsAt)
+                try container.encode(allDay, forKey: .allDay)
+                try container.encode(declined, forKey: .declined)
+                try container.encode(hidden, forKey: .hidden)
+                try container.encode(people, forKey: .people)
+                try container.encode(others, forKey: .others)
+                try container.encode(addresses, forKey: .addresses)
+            }
+        }
+        public struct Sent: Codable, Hashable, Sendable {
+            public let id: String
+            public let threadId: String
+            public let subject: String
+            public let to: [String]
+            public let addresses: [String]
+            public let at: Int
+            public let sector: String
+
+            public init(id: String, threadId: String, subject: String, to: [String], addresses: [String], at: Int, sector: String) {
+                self.id = id
+                self.threadId = threadId
+                self.subject = subject
+                self.to = to
+                self.addresses = addresses
+                self.at = at
+                self.sector = sector
+            }
+        }
+        public struct Done: Codable, Hashable, Sendable {
+            public let id: String
+            public let title: String
+            public let at: Int
+            public let sector: String
+
+            public init(id: String, title: String, at: Int, sector: String) {
+                self.id = id
+                self.title = title
+                self.at = at
+                self.sector = sector
+            }
+        }
+        public struct Answered: Codable, Hashable, Sendable {
+            public let threadId: String
+            public let subject: String
+            public let by: String
+            public let at: Int
+            public let sector: String
+
+            public init(threadId: String, subject: String, by: String, at: Int, sector: String) {
+                self.threadId = threadId
+                self.subject = subject
+                self.by = by
+                self.at = at
+                self.sector = sector
+            }
+        }
+
+        public let events: [Event]
+        public let sent: [Sent]
+        public let done: [Done]
+        public let answered: [Answered]
+        public let answeredSince: Int?
+
+        public init(events: [Event], sent: [Sent], done: [Done], answered: [Answered], answeredSince: Int?) {
+            self.events = events
+            self.sent = sent
+            self.done = done
+            self.answered = answered
+            self.answeredSince = answeredSince
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case events, sent, done, answered, answeredSince
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(events, forKey: .events)
+            try container.encode(sent, forKey: .sent)
+            try container.encode(done, forKey: .done)
+            try container.encode(answered, forKey: .answered)
+            try container.encode(answeredSince, forKey: .answeredSince)
+        }
+    }
+    public struct Slipped: Codable, Hashable, Sendable {
+        public struct Row: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let dueAt: Int
+
+                    public init(id: String, dueAt: Int) {
+                        self.id = id
+                        self.dueAt = dueAt
+                    }
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public let threadId: String
+                    public let since: Int
+
+                    public init(threadId: String, since: Int) {
+                        self.threadId = threadId
+                        self.since = since
+                    }
+                }
+                public struct Case2: Codable, Hashable, Sendable {
+                    public let ref: HeldRef
+
+                    public init(ref: HeldRef) {
+                        self.ref = ref
+                    }
+                }
+                public struct Case3: Codable, Hashable, Sendable {
+                    public let eventId: String
+
+                    public init(eventId: String) {
+                        self.eventId = eventId
+                    }
+                }
+
+                case task(Case0)
+                case mail(Case1)
+                case held(Case2)
+                case meeting(Case3)
+                /// A `kind` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case kind
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
+                    switch tag {
+                    case "task": self = .task(try Case0(from: decoder))
+                    case "mail": self = .mail(try Case1(from: decoder))
+                    case "held": self = .held(try Case2(from: decoder))
+                    case "meeting": self = .meeting(try Case3(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .task(let value): try Self.encode(tag: "task", value, to: encoder)
+                    case .mail(let value): try Self.encode(tag: "mail", value, to: encoder)
+                    case .held(let value): try Self.encode(tag: "held", value, to: encoder)
+                    case .meeting(let value): try Self.encode(tag: "meeting", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .kind)
+                    try value.encode(to: encoder)
+                }
+            }
+
+            public let key: String
+            public let ref: Ref
+            public let sector: String?
+            public let workspaceId: String?
+            public let title: String
+            public let at: Int
+            public let people: [String]
+            public let others: Int
+            public let open: Bool
+
+            public init(key: String, ref: Ref, sector: String?, workspaceId: String?, title: String, at: Int, people: [String], others: Int, open: Bool) {
+                self.key = key
+                self.ref = ref
+                self.sector = sector
+                self.workspaceId = workspaceId
+                self.title = title
+                self.at = at
+                self.people = people
+                self.others = others
+                self.open = open
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case key, ref, sector, workspaceId, title, at, people, others, open
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(key, forKey: .key)
+                try container.encode(ref, forKey: .ref)
+                try container.encode(sector, forKey: .sector)
+                try container.encode(workspaceId, forKey: .workspaceId)
+                try container.encode(title, forKey: .title)
+                try container.encode(at, forKey: .at)
+                try container.encode(people, forKey: .people)
+                try container.encode(others, forKey: .others)
+                try container.encode(open, forKey: .open)
+            }
+        }
+
+        public let at: Int
+        public let rows: [Row]
+
+        public init(at: Int, rows: [Row]) {
+            self.at = at
+            self.rows = rows
+        }
+    }
+    public struct Shipped: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case sent
+            case finished
+            case answered
+            case approved
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "sent": self = .sent
+                case "finished": self = .finished
+                case "answered": self = .answered
+                case "approved": self = .approved
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .sent: "sent"
+                case .finished: "finished"
+                case .answered: "answered"
+                case .approved: "approved"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Open: Codable, Hashable, Sendable {
+            public struct Case0: Codable, Hashable, Sendable {
+                public let id: String
+
+                public init(id: String) {
+                    self.id = id
+                }
+            }
+            public struct Case1: Codable, Hashable, Sendable {
+                public let threadId: String
+
+                public init(threadId: String) {
+                    self.threadId = threadId
+                }
+            }
+            public struct Case2: Codable, Hashable, Sendable {
+                public let ref: HeldRef
+
+                public init(ref: HeldRef) {
+                    self.ref = ref
+                }
+            }
+
+            case task(Case0)
+            case mail(Case1)
+            case held(Case2)
+            /// A `at` this build does not know: the whole object, untouched.
+            case unknown(JSONValue)
+
+            private enum Tag: String, CodingKey {
+                case at
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .at)
+                switch tag {
+                case "task": self = .task(try Case0(from: decoder))
+                case "mail": self = .mail(try Case1(from: decoder))
+                case "held": self = .held(try Case2(from: decoder))
+                default: self = .unknown(try JSONValue(from: decoder))
+                }
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                switch self {
+                case .task(let value): try Self.encode(tag: "task", value, to: encoder)
+                case .mail(let value): try Self.encode(tag: "mail", value, to: encoder)
+                case .held(let value): try Self.encode(tag: "held", value, to: encoder)
+                case .unknown(let value): try value.encode(to: encoder)
+                }
+            }
+
+            private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: Tag.self)
+                try container.encode(tag, forKey: .at)
+                try value.encode(to: encoder)
+            }
+        }
+
+        public let key: String
+        public let kind: Kind
+        public let sector: String?
+        public let workspaceId: String?
+        public let title: String
+        public let who: String?
+        public let at: Int
+        public let open: Open?
+
+        public init(key: String, kind: Kind, sector: String?, workspaceId: String?, title: String, who: String?, at: Int, open: Open?) {
+            self.key = key
+            self.kind = kind
+            self.sector = sector
+            self.workspaceId = workspaceId
+            self.title = title
+            self.who = who
+            self.at = at
+            self.open = open
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case key, kind, sector, workspaceId, title, who, at, open
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(key, forKey: .key)
+            try container.encode(kind, forKey: .kind)
+            try container.encode(sector, forKey: .sector)
+            try container.encode(workspaceId, forKey: .workspaceId)
+            try container.encode(title, forKey: .title)
+            try container.encode(who, forKey: .who)
+            try container.encode(at, forKey: .at)
+            try container.encode(open, forKey: .open)
+        }
+    }
+    public struct Before: Codable, Hashable, Sendable {
+        public struct Lifeos: Codable, Hashable, Sendable {
+            public struct Event: Codable, Hashable, Sendable {
+                public let sector: String
+                public let from: Int
+                public let to: Int
+
+                public init(sector: String, from: Int, to: Int) {
+                    self.sector = sector
+                    self.from = from
+                    self.to = to
+                }
+            }
+            public struct Sent: Codable, Hashable, Sendable {
+                public let at: Int
+                public let sector: String
+
+                public init(at: Int, sector: String) {
+                    self.at = at
+                    self.sector = sector
+                }
+            }
+
+            public let events: [Event]
+            public let sent: [Sent]
+
+            public init(events: [Event], sent: [Sent]) {
+                self.events = events
+                self.sent = sent
+            }
+        }
+
+        public let from: Int
+        public let to: Int
+        public let lifeos: Lifeos?
+        public let points: [[JSONValue]]
+
+        public init(from: Int, to: Int, lifeos: Lifeos?, points: [[JSONValue]]) {
+            self.from = from
+            self.to = to
+            self.lifeos = lifeos
+            self.points = points
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case from, to, lifeos, points
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(from, forKey: .from)
+            try container.encode(to, forKey: .to)
+            try container.encode(lifeos, forKey: .lifeos)
+            try container.encode(points, forKey: .points)
+        }
+    }
+    public enum LifeosState: RawRepresentable, Codable, Hashable, Sendable {
+        case off
+        case signedOut
+        case pairing
+        case connecting
+        case connected
+        case unreachable
+        case refused
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "off": self = .off
+            case "signed-out": self = .signedOut
+            case "pairing": self = .pairing
+            case "connecting": self = .connecting
+            case "connected": self = .connected
+            case "unreachable": self = .unreachable
+            case "refused": self = .refused
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .off: "off"
+            case .signedOut: "signed-out"
+            case .pairing: "pairing"
+            case .connecting: "connecting"
+            case .connected: "connected"
+            case .unreachable: "unreachable"
+            case .refused: "refused"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Read: Codable, Hashable, Sendable {
+        public let events: Int?
+        public let sent: Int?
+        public let answered: Int?
+        public let done: Int?
+        public let due: Int?
+        public let waits: Int?
+        public let meetings: Int?
+
+        public init(events: Int? = nil, sent: Int? = nil, answered: Int? = nil, done: Int? = nil, due: Int? = nil, waits: Int? = nil, meetings: Int? = nil) {
+            self.events = events
+            self.sent = sent
+            self.answered = answered
+            self.done = done
+            self.due = due
+            self.waits = waits
+            self.meetings = meetings
+        }
+    }
+
+    public let host: String
+    public let from: Int
+    public let to: Int
+    public let tz: String
+    public let madeAt: Int
+    public let by: By
+    public let over: Bool
+    public let jobs: [Job]
+    public let lifeos: Lifeos?
+    public let points: [[JSONValue]]
+    public let ran: [[JSONValue]]
+    public let slipped: Slipped
+    public let shipped: [Shipped]
+    public let before: Before?
+    public let left: [String]
+    public let lifeosState: LifeosState?
+    public let prepped: [String]?
+    public let read: Read?
+
+    public init(host: String, from: Int, to: Int, tz: String, madeAt: Int, by: By, over: Bool, jobs: [Job], lifeos: Lifeos?, points: [[JSONValue]], ran: [[JSONValue]], slipped: Slipped, shipped: [Shipped], before: Before?, left: [String], lifeosState: LifeosState? = nil, prepped: [String]? = nil, read: Read? = nil) {
+        self.host = host
+        self.from = from
+        self.to = to
+        self.tz = tz
+        self.madeAt = madeAt
+        self.by = by
+        self.over = over
+        self.jobs = jobs
+        self.lifeos = lifeos
+        self.points = points
+        self.ran = ran
+        self.slipped = slipped
+        self.shipped = shipped
+        self.before = before
+        self.left = left
+        self.lifeosState = lifeosState
+        self.prepped = prepped
+        self.read = read
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case host, from, to, tz, madeAt, by, over, jobs, lifeos, points, ran, slipped, shipped, before, left, lifeosState, prepped, read
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(host, forKey: .host)
+        try container.encode(from, forKey: .from)
+        try container.encode(to, forKey: .to)
+        try container.encode(tz, forKey: .tz)
+        try container.encode(madeAt, forKey: .madeAt)
+        try container.encode(by, forKey: .by)
+        try container.encode(over, forKey: .over)
+        try container.encode(jobs, forKey: .jobs)
+        try container.encode(lifeos, forKey: .lifeos)
+        try container.encode(points, forKey: .points)
+        try container.encode(ran, forKey: .ran)
+        try container.encode(slipped, forKey: .slipped)
+        try container.encode(shipped, forKey: .shipped)
+        try container.encode(before, forKey: .before)
+        try container.encode(left, forKey: .left)
+        try container.encodeIfPresent(lifeosState, forKey: .lifeosState)
+        try container.encodeIfPresent(prepped, forKey: .prepped)
+        try container.encodeIfPresent(read, forKey: .read)
+    }
+}
+
+public struct ReviewKeptList: Codable, Hashable, Sendable {
+    public struct Week: Codable, Hashable, Sendable {
+        public enum By: RawRepresentable, Codable, Hashable, Sendable {
+            case routine
+            case owner
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "routine": self = .routine
+                case "owner": self = .owner
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .routine: "routine"
+                case .owner: "owner"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let from: Double
+        public let to: Double
+        public let tz: String
+        public let madeAt: Double
+        public let by: By
+
+        public init(from: Double, to: Double, tz: String, madeAt: Double, by: By) {
+            self.from = from
+            self.to = to
+            self.tz = tz
+            self.madeAt = madeAt
+            self.by = by
+        }
+    }
+
+    public let weeks: [Week]
+    public let tz: String
+
+    public init(weeks: [Week], tz: String) {
+        self.weeks = weeks
+        self.tz = tz
+    }
+}
+
+public struct ReviewSettled: Codable, Hashable, Sendable {
+    public let undo: String?
+    public let sessionId: String?
+
+    public init(undo: String?, sessionId: String? = nil) {
+        self.undo = undo
+        self.sessionId = sessionId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case undo, sessionId
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(undo, forKey: .undo)
+        try container.encodeIfPresent(sessionId, forKey: .sessionId)
+    }
+}
+
+public struct MoneyReadPhone: Codable, Hashable, Sendable {
+    public struct Period: Codable, Hashable, Sendable {
+        public let from: String
+        public let to: String
+
+        public init(from: String, to: String) {
+            self.from = from
+            self.to = to
+        }
+    }
+    public struct Row: Codable, Hashable, Sendable {
+        public enum Status: RawRepresentable, Codable, Hashable, Sendable {
+            case paid
+            case unpaid
+            case toReimburse
+            case reimbursed
+            case requested
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "Paid": self = .paid
+                case "Unpaid": self = .unpaid
+                case "To reimburse": self = .toReimburse
+                case "Reimbursed": self = .reimbursed
+                case "Requested": self = .requested
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .paid: "Paid"
+                case .unpaid: "Unpaid"
+                case .toReimburse: "To reimburse"
+                case .reimbursed: "Reimbursed"
+                case .requested: "Requested"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let row: Int
+        public let ref: String?
+        public let date: String?
+        public let who: String
+        public let what: String
+        public let category: String
+        public let `in`: Double
+        public let out: Double
+        public let status: Status
+        public let paidOn: String?
+        public let receipt: String
+
+        public init(row: Int, ref: String?, date: String?, who: String, what: String, category: String, `in`: Double, out: Double, status: Status, paidOn: String?, receipt: String) {
+            self.row = row
+            self.ref = ref
+            self.date = date
+            self.who = who
+            self.what = what
+            self.category = category
+            self.`in` = `in`
+            self.out = out
+            self.status = status
+            self.paidOn = paidOn
+            self.receipt = receipt
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case row, ref, date, who, what, category, `in`, out, status, paidOn, receipt
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(row, forKey: .row)
+            try container.encode(ref, forKey: .ref)
+            try container.encode(date, forKey: .date)
+            try container.encode(who, forKey: .who)
+            try container.encode(what, forKey: .what)
+            try container.encode(category, forKey: .category)
+            try container.encode(`in`, forKey: .`in`)
+            try container.encode(out, forKey: .out)
+            try container.encode(status, forKey: .status)
+            try container.encode(paidOn, forKey: .paidOn)
+            try container.encode(receipt, forKey: .receipt)
+        }
+    }
+    public struct Sums: Codable, Hashable, Sendable {
+        public let `in`: Double
+        public let out: Double
+        public let net: Double
+        public let owedToHim: Double
+        public let heOwes: Double
+
+        public init(`in`: Double, out: Double, net: Double, owedToHim: Double, heOwes: Double) {
+            self.`in` = `in`
+            self.out = out
+            self.net = net
+            self.owedToHim = owedToHim
+            self.heOwes = heOwes
+        }
+    }
+    public struct Owed: Codable, Hashable, Sendable {
+        public enum Way: RawRepresentable, Codable, Hashable, Sendable {
+            case toHim
+            case byHim
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "toHim": self = .toHim
+                case "byHim": self = .byHim
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .toHim: "toHim"
+                case .byHim: "byHim"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let row: Int
+        public let ref: String?
+        public let sig: String
+        public let who: String
+        public let what: String
+        public let amount: Double
+        public let since: String?
+        public let way: Way
+        public let reimburse: Bool
+        public let both: Bool
+
+        public init(row: Int, ref: String?, sig: String, who: String, what: String, amount: Double, since: String?, way: Way, reimburse: Bool, both: Bool) {
+            self.row = row
+            self.ref = ref
+            self.sig = sig
+            self.who = who
+            self.what = what
+            self.amount = amount
+            self.since = since
+            self.way = way
+            self.reimburse = reimburse
+            self.both = both
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case row, ref, sig, who, what, amount, since, way, reimburse, both
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(row, forKey: .row)
+            try container.encode(ref, forKey: .ref)
+            try container.encode(sig, forKey: .sig)
+            try container.encode(who, forKey: .who)
+            try container.encode(what, forKey: .what)
+            try container.encode(amount, forKey: .amount)
+            try container.encode(since, forKey: .since)
+            try container.encode(way, forKey: .way)
+            try container.encode(reimburse, forKey: .reimburse)
+            try container.encode(both, forKey: .both)
+        }
+    }
+    public struct Miles: Codable, Hashable, Sendable {
+        public let miles: Double
+        public let value: Double
+        public let rate: Double?
+
+        public init(miles: Double, value: Double, rate: Double?) {
+            self.miles = miles
+            self.value = value
+            self.rate = rate
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case miles, value, rate
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(miles, forKey: .miles)
+            try container.encode(value, forKey: .value)
+            try container.encode(rate, forKey: .rate)
+        }
+    }
+    public struct ToConfirm: Codable, Hashable, Sendable {
+        public enum State: RawRepresentable, Codable, Hashable, Sendable {
+            case reading
+            case ready
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "reading": self = .reading
+                case "ready": self = .ready
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .reading: "reading"
+                case .ready: "ready"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+            case drop
+            case phone
+            case mail
+            case agent
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "drop": self = .drop
+                case "phone": self = .phone
+                case "mail": self = .mail
+                case "agent": self = .agent
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .drop: "drop"
+                case .phone: "phone"
+                case .mail: "mail"
+                case .agent: "agent"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public struct Fields: Codable, Hashable, Sendable {
+            public enum Way: RawRepresentable, Codable, Hashable, Sendable {
+                case `in`
+                case out
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "in": self = .`in`
+                    case "out": self = .out
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .`in`: "in"
+                    case .out: "out"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let amount: Double?
+            public let date: String?
+            public let who: String?
+            public let category: String?
+            public let way: Way?
+            public let what: String?
+
+            public init(amount: Double?, date: String?, who: String?, category: String?, way: Way? = nil, what: String? = nil) {
+                self.amount = amount
+                self.date = date
+                self.who = who
+                self.category = category
+                self.way = way
+                self.what = what
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case amount, date, who, category, way, what
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(amount, forKey: .amount)
+                try container.encode(date, forKey: .date)
+                try container.encode(who, forKey: .who)
+                try container.encode(category, forKey: .category)
+                try container.encodeIfPresent(way, forKey: .way)
+                try container.encodeIfPresent(what, forKey: .what)
+            }
+        }
+
+        public let id: String
+        public let state: State
+        public let source: Source
+        public let name: String?
+        public let picture: Bool
+        public let fields: Fields
+        public let threadId: String?
+        public let at: Double
+
+        public init(id: String, state: State, source: Source, name: String?, picture: Bool, fields: Fields, threadId: String? = nil, at: Double) {
+            self.id = id
+            self.state = state
+            self.source = source
+            self.name = name
+            self.picture = picture
+            self.fields = fields
+            self.threadId = threadId
+            self.at = at
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, state, source, name, picture, fields, threadId, at
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(state, forKey: .state)
+            try container.encode(source, forKey: .source)
+            try container.encode(name, forKey: .name)
+            try container.encode(picture, forKey: .picture)
+            try container.encode(fields, forKey: .fields)
+            try container.encodeIfPresent(threadId, forKey: .threadId)
+            try container.encode(at, forKey: .at)
+        }
+    }
+    public struct Problem: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case columns
+            case undated
+            case mileage
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "columns": self = .columns
+                case "undated": self = .undated
+                case "mileage": self = .mileage
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .columns: "columns"
+                case .undated: "undated"
+                case .mileage: "mileage"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Book: RawRepresentable, Codable, Hashable, Sendable {
+            case mileage
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "mileage": self = .mileage
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .mileage: "mileage"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
+            case outside
+            case columns
+            case unreadable
+            case twice
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "outside": self = .outside
+                case "columns": self = .columns
+                case "unreadable": self = .unreadable
+                case "twice": self = .twice
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .outside: "outside"
+                case .columns: "columns"
+                case .unreadable: "unreadable"
+                case .twice: "twice"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let kind: Kind
+        public let missing: [String]?
+        public let renamed: [String]?
+        public let rows: [Double]?
+        public let book: Book?
+        public let reason: Reason?
+        public let waits: Bool?
+        public let twice: [String]?
+
+        public init(kind: Kind, missing: [String]? = nil, renamed: [String]? = nil, rows: [Double]? = nil, book: Book? = nil, reason: Reason? = nil, waits: Bool? = nil, twice: [String]? = nil) {
+            self.kind = kind
+            self.missing = missing
+            self.renamed = renamed
+            self.rows = rows
+            self.book = book
+            self.reason = reason
+            self.waits = waits
+            self.twice = twice
+        }
+    }
+
+    public let made: Bool
+    public let `any`: Bool
+    public let period: Period
+    public let rows: [Row]
+    public let sums: Sums
+    public let owed: [Owed]
+    public let miles: Miles
+    public let categories: [String]
+    public let toConfirm: [ToConfirm]
+    public let problems: [Problem]
+
+    public init(made: Bool, `any`: Bool, period: Period, rows: [Row], sums: Sums, owed: [Owed], miles: Miles, categories: [String], toConfirm: [ToConfirm], problems: [Problem]) {
+        self.made = made
+        self.`any` = `any`
+        self.period = period
+        self.rows = rows
+        self.sums = sums
+        self.owed = owed
+        self.miles = miles
+        self.categories = categories
+        self.toConfirm = toConfirm
+        self.problems = problems
+    }
+}
+
+public struct MoneySums: Codable, Hashable, Sendable {
+    public struct Row: Codable, Hashable, Sendable {
+        public let workspaceId: String
+        public let sector: String?
+        public let `in`: Double
+        public let out: Double
+        public let owedToHim: Double
+        public let heOwes: Double
+        public let miles: Double
+        public let currency: String
+        public let problem: Bool?
+
+        public init(workspaceId: String, sector: String?, `in`: Double, out: Double, owedToHim: Double, heOwes: Double, miles: Double, currency: String, problem: Bool? = nil) {
+            self.workspaceId = workspaceId
+            self.sector = sector
+            self.`in` = `in`
+            self.out = out
+            self.owedToHim = owedToHim
+            self.heOwes = heOwes
+            self.miles = miles
+            self.currency = currency
+            self.problem = problem
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case workspaceId, sector, `in`, out, owedToHim, heOwes, miles, currency, problem
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(workspaceId, forKey: .workspaceId)
+            try container.encode(sector, forKey: .sector)
+            try container.encode(`in`, forKey: .`in`)
+            try container.encode(out, forKey: .out)
+            try container.encode(owedToHim, forKey: .owedToHim)
+            try container.encode(heOwes, forKey: .heOwes)
+            try container.encode(miles, forKey: .miles)
+            try container.encode(currency, forKey: .currency)
+            try container.encodeIfPresent(problem, forKey: .problem)
+        }
+    }
+
+    public let rows: [Row]
+
+    public init(rows: [Row]) {
+        self.rows = rows
+    }
+}
+
+public struct MoneyActed: Codable, Hashable, Sendable {
+    public let ok: Bool?
+    public let ref: String?
+    public let row: Int?
+    public let suggested: Bool?
+    public let changed: Bool?
+
+    public init(ok: Bool? = nil, ref: String? = nil, row: Int? = nil, suggested: Bool? = nil, changed: Bool? = nil) {
+        self.ok = ok
+        self.ref = ref
+        self.row = row
+        self.suggested = suggested
+        self.changed = changed
+    }
+}
+
+public struct MoneyPicture: Codable, Hashable, Sendable {
+    public let mime: String
+    public let name: String
+    public let size: Double
+    public let parts: Int
+    public let dataBase64: String
+
+    public init(mime: String, name: String, size: Double, parts: Int, dataBase64: String) {
+        self.mime = mime
+        self.name = name
+        self.size = size
+        self.parts = parts
+        self.dataBase64 = dataBase64
+    }
+}
+
+public struct PlayPhoneRow: Codable, Hashable, Sendable {
+    public enum Take: RawRepresentable, Codable, Hashable, Sendable {
+        case mail
+        case task
+        case event
+        case file
+        case date
+        case text
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "mail": self = .mail
+            case "task": self = .task
+            case "event": self = .event
+            case "file": self = .file
+            case "date": self = .date
+            case "text": self = .text
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .mail: "mail"
+            case .task: "task"
+            case .event: "event"
+            case .file: "file"
+            case .date: "date"
+            case .text: "text"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let workspaceId: String
+    public let name: String
+    public let instructions: String
+    public let takes: [Take]
+    public let proposed: Bool
+    public let host: String
+
+    public init(id: String, workspaceId: String, name: String, instructions: String, takes: [Take], proposed: Bool, host: String) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.name = name
+        self.instructions = instructions
+        self.takes = takes
+        self.proposed = proposed
+        self.host = host
+    }
+}
+
+public struct RoutineRunPhone: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case starting
+        case running
+        case quiet
+        case held
+        case asked
+        case failed
+        case fired
+        case skipped
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "starting": self = .starting
+            case "running": self = .running
+            case "quiet": self = .quiet
+            case "held": self = .held
+            case "asked": self = .asked
+            case "failed": self = .failed
+            case "fired": self = .fired
+            case "skipped": self = .skipped
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .starting: "starting"
+            case .running: "running"
+            case .quiet: "quiet"
+            case .held: "held"
+            case .asked: "asked"
+            case .failed: "failed"
+            case .fired: "fired"
+            case .skipped: "skipped"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Open: Codable, Hashable, Sendable {
+        public let place: String
+        public let at: Double?
+        public let item: String?
+
+        public init(place: String, at: Double? = nil, item: String? = nil) {
+            self.place = place
+            self.at = at
+            self.item = item
+        }
+    }
+
+    public let id: String
+    public let routineId: String
+    public let sessionId: String?
+    public let firedAt: Double
+    public let cause: String
+    public let folded: Int
+    public let state: State
+    public let summary: String
+    public let open: Open?
+
+    public init(id: String, routineId: String, sessionId: String?, firedAt: Double, cause: String, folded: Int, state: State, summary: String, open: Open? = nil) {
+        self.id = id
+        self.routineId = routineId
+        self.sessionId = sessionId
+        self.firedAt = firedAt
+        self.cause = cause
+        self.folded = folded
+        self.state = state
+        self.summary = summary
+        self.open = open
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, routineId, sessionId, firedAt, cause, folded, state, summary, open
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(routineId, forKey: .routineId)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(firedAt, forKey: .firedAt)
+        try container.encode(cause, forKey: .cause)
+        try container.encode(folded, forKey: .folded)
+        try container.encode(state, forKey: .state)
+        try container.encode(summary, forKey: .summary)
+        try container.encodeIfPresent(open, forKey: .open)
+    }
+}
+
+public struct TemplatePhone: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case document
+        case sheet
+        case deck
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "document": self = .document
+            case "sheet": self = .sheet
+            case "deck": self = .deck
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .document: "document"
+            case .sheet: "sheet"
+            case .deck: "deck"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Form: RawRepresentable, Codable, Hashable, Sendable {
+        case docx
+        case xlsx
+        case pptx
+        case tcdoc
+        case tcsheet
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "docx": self = .docx
+            case "xlsx": self = .xlsx
+            case "pptx": self = .pptx
+            case "tcdoc": self = .tcdoc
+            case "tcsheet": self = .tcsheet
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .docx: "docx"
+            case .xlsx: "xlsx"
+            case .pptx: "pptx"
+            case .tcdoc: "tcdoc"
+            case .tcsheet: "tcsheet"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Where: RawRepresentable, Codable, Hashable, Sendable {
+        case job
+        case all
+        case starter
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "job": self = .job
+            case "all": self = .all
+            case "starter": self = .starter
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .job: "job"
+            case .all: "all"
+            case .starter: "starter"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let name: String
+    public let kind: Kind
+    public let form: Form
+    public let `where`: Where
+    public let fields: [String]
+
+    public init(id: String, name: String, kind: Kind, form: Form, `where`: Where, fields: [String]) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.form = form
+        self.`where` = `where`
+        self.fields = fields
+    }
+}
+
+public struct FormListPhoneRow: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case draft
+        case open
+        case closed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "draft": self = .draft
+            case "open": self = .open
+            case "closed": self = .closed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .draft: "draft"
+            case .open: "open"
+            case .closed: "closed"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let title: String
+    public let state: State
+    public let updatedAt: Double
+
+    public init(id: String, title: String, state: State, updatedAt: Double) {
+        self.id = id
+        self.title = title
+        self.state = state
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct MsFormResponsesPhone: Codable, Hashable, Sendable {
+    public struct Column: Codable, Hashable, Sendable {
+        public let id: String
+        public let label: String
+
+        public init(id: String, label: String) {
+            self.id = id
+            self.label = label
+        }
+    }
+
+    public let rev: Int
+    public let columns: [Column]
+    public let rows: [[String]]
+    public let count: Int
+    public let cut: Bool
+    public let at: Double?
+    public let stale: Bool
+    public let none: Bool
+
+    public init(rev: Int, columns: [Column], rows: [[String]], count: Int, cut: Bool, at: Double?, stale: Bool, none: Bool) {
+        self.rev = rev
+        self.columns = columns
+        self.rows = rows
+        self.count = count
+        self.cut = cut
+        self.at = at
+        self.stale = stale
+        self.none = none
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rev, columns, rows, count, cut, at, stale, none
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rev, forKey: .rev)
+        try container.encode(columns, forKey: .columns)
+        try container.encode(rows, forKey: .rows)
+        try container.encode(count, forKey: .count)
+        try container.encode(cut, forKey: .cut)
+        try container.encode(at, forKey: .at)
+        try container.encode(stale, forKey: .stale)
+        try container.encode(none, forKey: .none)
+    }
+}
+
+public struct HealthRowPhone: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case working
+        case broken
+        case needsYou
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "working": self = .working
+            case "broken": self = .broken
+            case "needs-you": self = .needsYou
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .working: "working"
+            case .broken: "broken"
+            case .needsYou: "needs-you"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Fix: Codable, Hashable, Sendable {
+        public struct Case0: Codable, Hashable, Sendable {
+            public let label: String
+            public let method: String
+            public let params: [String: JSONValue]?
+
+            public init(label: String, method: String, params: [String: JSONValue]? = nil) {
+                self.label = label
+                self.method = method
+                self.params = params
+            }
+        }
+        public struct Case1: Codable, Hashable, Sendable {
+            public let label: String
+            public let url: String
+
+            public init(label: String, url: String) {
+                self.label = label
+                self.url = url
+            }
+        }
+        public struct Case2: Codable, Hashable, Sendable {
+            public let label: String
+            public let page: String
+
+            public init(label: String, page: String) {
+                self.label = label
+                self.page = page
+            }
+        }
+
+        case run(Case0)
+        case open(Case1)
+        case page(Case2)
+        /// A `kind` this build does not know: the whole object, untouched.
+        case unknown(JSONValue)
+
+        private enum Tag: String, CodingKey {
+            case kind
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
+            switch tag {
+            case "run": self = .run(try Case0(from: decoder))
+            case "open": self = .open(try Case1(from: decoder))
+            case "page": self = .page(try Case2(from: decoder))
+            default: self = .unknown(try JSONValue(from: decoder))
+            }
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            switch self {
+            case .run(let value): try Self.encode(tag: "run", value, to: encoder)
+            case .open(let value): try Self.encode(tag: "open", value, to: encoder)
+            case .page(let value): try Self.encode(tag: "page", value, to: encoder)
+            case .unknown(let value): try value.encode(to: encoder)
+            }
+        }
+
+        private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: Tag.self)
+            try container.encode(tag, forKey: .kind)
+            try value.encode(to: encoder)
+        }
+    }
+
+    public let id: String
+    public let group: String
+    public let title: String
+    public let state: State
+    public let line: String?
+    public let at: Double?
+    public let fix: Fix?
+    public let until: Double?
+    public let shared: Bool?
+
+    public init(id: String, group: String, title: String, state: State, line: String? = nil, at: Double? = nil, fix: Fix? = nil, until: Double? = nil, shared: Bool? = nil) {
+        self.id = id
+        self.group = group
+        self.title = title
+        self.state = state
+        self.line = line
+        self.at = at
+        self.fix = fix
+        self.until = until
+        self.shared = shared
+    }
+}
+
+public struct HealthReportPhone: Codable, Hashable, Sendable {
+    public let host: String
+    public let at: Double
+    public let rows: [HealthRowPhone]
+
+    public init(host: String, at: Double, rows: [HealthRowPhone]) {
+        self.host = host
+        self.at = at
+        self.rows = rows
+    }
+}
+
+public struct LapsePhone: Codable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+    public let until: Double
+
+    public init(id: String, title: String, until: Double) {
+        self.id = id
+        self.title = title
+        self.until = until
+    }
+}
+
+public struct WinvmStatePhone: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case settingUp
+        case asleep
+        case waking
+        case awake
+        case goingToSleep
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "none": self = .none
+            case "setting-up": self = .settingUp
+            case "asleep": self = .asleep
+            case "waking": self = .waking
+            case "awake": self = .awake
+            case "going-to-sleep": self = .goingToSleep
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: "none"
+            case .settingUp: "setting-up"
+            case .asleep: "asleep"
+            case .waking: "waking"
+            case .awake: "awake"
+            case .goingToSleep: "going-to-sleep"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let state: State
+    public let step: String?
+    public let error: String?
+    public let cannot: String?
+    public let since: Double
+    public let wakeMs: Double?
+    public let heldAsleep: Bool?
+
+    public init(state: State, step: String?, error: String?, cannot: String?, since: Double, wakeMs: Double? = nil, heldAsleep: Bool? = nil) {
+        self.state = state
+        self.step = step
+        self.error = error
+        self.cannot = cannot
+        self.since = since
+        self.wakeMs = wakeMs
+        self.heldAsleep = heldAsleep
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, step, error, cannot, since, wakeMs, heldAsleep
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(step, forKey: .step)
+        try container.encode(error, forKey: .error)
+        try container.encode(cannot, forKey: .cannot)
+        try container.encode(since, forKey: .since)
+        try container.encodeIfPresent(wakeMs, forKey: .wakeMs)
+        try container.encodeIfPresent(heldAsleep, forKey: .heldAsleep)
+    }
+}
+
+public struct ChatHit: Codable, Hashable, Sendable {
+    public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+        case slack
+        case discord
+        case imessage
+        case teams
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "slack": self = .slack
+            case "discord": self = .discord
+            case "imessage": self = .imessage
+            case "teams": self = .teams
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .slack: "slack"
+            case .discord: "discord"
+            case .imessage: "imessage"
+            case .teams: "teams"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let chatId: String
+    public let messageId: String
+    public let chat: String
+    public let who: String
+    public let text: String
+    public let at: Double
+    public let source: Source
+
+    public init(chatId: String, messageId: String, chat: String, who: String, text: String, at: Double, source: Source) {
+        self.chatId = chatId
+        self.messageId = messageId
+        self.chat = chat
+        self.who = who
+        self.text = text
+        self.at = at
+        self.source = source
+    }
+}
+
+public struct ChatDraft: Codable, Hashable, Sendable {
+    public let id: String
+    public let chatId: String
+    public let sessionId: String?
+    public let thread: String?
+    public let text: String
+    public let at: Double
+
+    public init(id: String, chatId: String, sessionId: String?, thread: String? = nil, text: String, at: Double) {
+        self.id = id
+        self.chatId = chatId
+        self.sessionId = sessionId
+        self.thread = thread
+        self.text = text
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, chatId, sessionId, thread, text, at
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(chatId, forKey: .chatId)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encodeIfPresent(thread, forKey: .thread)
+        try container.encode(text, forKey: .text)
+        try container.encode(at, forKey: .at)
+    }
+}
+
+public struct MessagesAttempt: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case sending
+        case sent
+        case refused
+        case unknown
+        /// A value this build does not know; `rawValue` keeps it.
+        case unrecognized(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "none": self = .none
+            case "sending": self = .sending
+            case "sent": self = .sent
+            case "refused": self = .refused
+            case "unknown": self = .unknown
+            default: self = .unrecognized(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: "none"
+            case .sending: "sending"
+            case .sent: "sent"
+            case .refused: "refused"
+            case .unknown: "unknown"
+            case .unrecognized(let value): value
+            }
+        }
+    }
+
+    public let state: State
+    public let id: String?
+    public let words: String?
+
+    public init(state: State, id: String? = nil, words: String? = nil) {
+        self.state = state
+        self.id = id
+        self.words = words
+    }
+}
+
+public struct MessagesUnread: Codable, Hashable, Sendable {
+    public let unread: Int
+    public let newest: Double?
+
+    public init(unread: Int, newest: Double? = nil) {
+        self.unread = unread
+        self.newest = newest
+    }
+}
+
+public struct PrepLine: Codable, Hashable, Sendable {
+    public struct Ref: Codable, Hashable, Sendable {
+        public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+            case mailThreads
+            case tasks
+            case events
+            case docs
+            case people
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "mailThreads": self = .mailThreads
+                case "tasks": self = .tasks
+                case "events": self = .events
+                case "docs": self = .docs
+                case "people": self = .people
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .mailThreads: "mailThreads"
+                case .tasks: "tasks"
+                case .events: "events"
+                case .docs: "docs"
+                case .people: "people"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let table: Table
+        public let id: String
+
+        public init(table: Table, id: String) {
+            self.table = table
+            self.id = id
+        }
+    }
+
+    public let text: String
+    public let ref: Ref?
+
+    public init(text: String, ref: Ref? = nil) {
+        self.text = text
+        self.ref = ref
+    }
+}
+
+public struct PrepFile: Codable, Hashable, Sendable {
+    public let title: String
+    public let url: String?
+
+    public init(title: String, url: String? = nil) {
+        self.title = title
+        self.url = url
+    }
+}
+
+public struct PrepTask: Codable, Hashable, Sendable {
+    public enum Why: RawRepresentable, Codable, Hashable, Sendable {
+        case asked
+        case waiting
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "asked": self = .asked
+            case "waiting": self = .waiting
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .asked: "asked"
+            case .waiting: "waiting"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let title: String
+    public let dueAt: Double?
+    public let why: Why?
+    public let who: String?
+
+    public init(id: String, title: String, dueAt: Double? = nil, why: Why? = nil, who: String? = nil) {
+        self.id = id
+        self.title = title
+        self.dueAt = dueAt
+        self.why = why
+        self.who = who
+    }
+}
+
+public struct PrepSuggestion: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case proposed
+        case filed
+        case rejected
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "proposed": self = .proposed
+            case "filed": self = .filed
+            case "rejected": self = .rejected
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .proposed: "proposed"
+            case .filed: "filed"
+            case .rejected: "rejected"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let title: String
+    public let who: String?
+    public let due: Double?
+    public let quote: String?
+    public let state: State
+    public let lifeosTaskId: String?
+
+    public init(id: String, title: String, who: String? = nil, due: Double? = nil, quote: String? = nil, state: State, lifeosTaskId: String? = nil) {
+        self.id = id
+        self.title = title
+        self.who = who
+        self.due = due
+        self.quote = quote
+        self.state = state
+        self.lifeosTaskId = lifeosTaskId
+    }
+}
+
+public struct PrepPagePhone: Codable, Hashable, Sendable {
+    public struct Event: Codable, Hashable, Sendable {
+        public let id: String
+        public let title: String
+        public let startsAt: Double
+        public let endsAt: Double?
+        public let allDay: Bool
+        public let location: String?
+        public let leaveAt: Double?
+
+        public init(id: String, title: String, startsAt: Double, endsAt: Double? = nil, allDay: Bool, location: String? = nil, leaveAt: Double? = nil) {
+            self.id = id
+            self.title = title
+            self.startsAt = startsAt
+            self.endsAt = endsAt
+            self.allDay = allDay
+            self.location = location
+            self.leaveAt = leaveAt
+        }
+    }
+    public struct People: Codable, Hashable, Sendable {
+        public struct Mail: Codable, Hashable, Sendable {
+            public let id: String
+            public let subject: String
+            public let at: Double
+            public let unread: Bool
+
+            public init(id: String, subject: String, at: Double, unread: Bool) {
+                self.id = id
+                self.subject = subject
+                self.at = at
+                self.unread = unread
+            }
+        }
+
+        public let name: String
+        public let address: String?
+        public let personId: String?
+        public let added: Bool?
+        public let declined: Bool?
+        public let mail: Mail?
+
+        public init(name: String, address: String? = nil, personId: String? = nil, added: Bool? = nil, declined: Bool? = nil, mail: Mail? = nil) {
+            self.name = name
+            self.address = address
+            self.personId = personId
+            self.added = added
+            self.declined = declined
+            self.mail = mail
+        }
+    }
+    public struct Last: Codable, Hashable, Sendable {
+        public let eventId: String
+        public let title: String
+        public let startsAt: Double
+        public let decided: [PrepLine]
+        public let open: [PrepLine]
+        public let tasks: [PrepTask]
+
+        public init(eventId: String, title: String, startsAt: Double, decided: [PrepLine], open: [PrepLine], tasks: [PrepTask]) {
+            self.eventId = eventId
+            self.title = title
+            self.startsAt = startsAt
+            self.decided = decided
+            self.open = open
+            self.tasks = tasks
+        }
+    }
+    public struct Doc: Codable, Hashable, Sendable {
+        public struct Brief: Codable, Hashable, Sendable {
+            public let matters: [PrepLine]
+            public let agreed: [PrepLine]
+            public let files: [PrepFile]
+            public let at: Double
+
+            public init(matters: [PrepLine], agreed: [PrepLine], files: [PrepFile], at: Double) {
+                self.matters = matters
+                self.agreed = agreed
+                self.files = files
+                self.at = at
+            }
+        }
+        public struct Notes: Codable, Hashable, Sendable {
+            public let text: String
+            public let at: Double
+            public let file: CanvasSource?
+
+            public init(text: String, at: Double, file: CanvasSource? = nil) {
+                self.text = text
+                self.at = at
+                self.file = file
+            }
+        }
+        public struct After: Codable, Hashable, Sendable {
+            public let summary: [PrepLine]
+            public let decisions: [PrepLine]
+            public let questions: [PrepLine]
+            public let tasks: [PrepSuggestion]
+            public let at: Double
+
+            public init(summary: [PrepLine], decisions: [PrepLine], questions: [PrepLine], tasks: [PrepSuggestion], at: Double) {
+                self.summary = summary
+                self.decisions = decisions
+                self.questions = questions
+                self.tasks = tasks
+                self.at = at
+            }
+        }
+
+        public let brief: Brief?
+        public let notes: Notes?
+        public let after: After?
+
+        public init(brief: Brief?, notes: Notes?, after: After?) {
+            self.brief = brief
+            self.notes = notes
+            self.after = after
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case brief, notes, after
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(brief, forKey: .brief)
+            try container.encode(notes, forKey: .notes)
+            try container.encode(after, forKey: .after)
+        }
+    }
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case working
+        case briefed
+        case after
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "none": self = .none
+            case "working": self = .working
+            case "briefed": self = .briefed
+            case "after": self = .after
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: "none"
+            case .working: "working"
+            case .briefed: "briefed"
+            case .after: "after"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Draft: Codable, Hashable, Sendable {
+        public let outboxId: String
+        public let subject: String
+        public let to: [String]
+
+        public init(outboxId: String, subject: String, to: [String]) {
+            self.outboxId = outboxId
+            self.subject = subject
+            self.to = to
+        }
+    }
+    public struct NotesFile: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case meeting
+            case document
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "meeting": self = .meeting
+                case "document": self = .document
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .meeting: "meeting"
+                case .document: "document"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let kind: Kind
+        public let title: String
+        public let error: String?
+
+        public init(kind: Kind, title: String, error: String? = nil) {
+            self.kind = kind
+            self.title = title
+            self.error = error
+        }
+    }
+    public enum Problem: RawRepresentable, Codable, Hashable, Sendable {
+        case people
+        case tasks
+        case last
+        case drafts
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "people": self = .people
+            case "tasks": self = .tasks
+            case "last": self = .last
+            case "drafts": self = .drafts
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .people: "people"
+            case .tasks: "tasks"
+            case .last: "last"
+            case .drafts: "drafts"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let workspaceId: String
+    public let sector: String
+    public let event: Event
+    public let people: [People]
+    public let morePeople: Int
+    public let tasks: [PrepTask]
+    public let files: [PrepFile]
+    public let last: Last?
+    public let doc: Doc
+    public let rev: Int
+    public let state: State
+    public let briefSessionId: String?
+    public let followSessionId: String?
+    public let briefUntil: Double?
+    public let followUntil: Double?
+    public let briefStartedAt: Double?
+    public let followStartedAt: Double?
+    public let drafts: [Draft]
+    public let notesFile: NotesFile?
+    public let problems: [Problem]
+
+    public init(workspaceId: String, sector: String, event: Event, people: [People], morePeople: Int, tasks: [PrepTask], files: [PrepFile], last: Last?, doc: Doc, rev: Int, state: State, briefSessionId: String?, followSessionId: String?, briefUntil: Double?, followUntil: Double?, briefStartedAt: Double?, followStartedAt: Double?, drafts: [Draft], notesFile: NotesFile?, problems: [Problem]) {
+        self.workspaceId = workspaceId
+        self.sector = sector
+        self.event = event
+        self.people = people
+        self.morePeople = morePeople
+        self.tasks = tasks
+        self.files = files
+        self.last = last
+        self.doc = doc
+        self.rev = rev
+        self.state = state
+        self.briefSessionId = briefSessionId
+        self.followSessionId = followSessionId
+        self.briefUntil = briefUntil
+        self.followUntil = followUntil
+        self.briefStartedAt = briefStartedAt
+        self.followStartedAt = followStartedAt
+        self.drafts = drafts
+        self.notesFile = notesFile
+        self.problems = problems
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workspaceId, sector, event, people, morePeople, tasks, files, last, doc, rev, state, briefSessionId, followSessionId, briefUntil, followUntil, briefStartedAt, followStartedAt, drafts, notesFile, problems
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(sector, forKey: .sector)
+        try container.encode(event, forKey: .event)
+        try container.encode(people, forKey: .people)
+        try container.encode(morePeople, forKey: .morePeople)
+        try container.encode(tasks, forKey: .tasks)
+        try container.encode(files, forKey: .files)
+        try container.encode(last, forKey: .last)
+        try container.encode(doc, forKey: .doc)
+        try container.encode(rev, forKey: .rev)
+        try container.encode(state, forKey: .state)
+        try container.encode(briefSessionId, forKey: .briefSessionId)
+        try container.encode(followSessionId, forKey: .followSessionId)
+        try container.encode(briefUntil, forKey: .briefUntil)
+        try container.encode(followUntil, forKey: .followUntil)
+        try container.encode(briefStartedAt, forKey: .briefStartedAt)
+        try container.encode(followStartedAt, forKey: .followStartedAt)
+        try container.encode(drafts, forKey: .drafts)
+        try container.encode(notesFile, forKey: .notesFile)
+        try container.encode(problems, forKey: .problems)
+    }
+}
+
+public struct PrepThreadStarted: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let itemId: String?
+
+    public init(sessionId: String, itemId: String? = nil) {
+        self.sessionId = sessionId
+        self.itemId = itemId
+    }
+}
+
+public struct ClashMiles: Codable, Hashable, Sendable {
+    public let miles: Double
+    public let minutes: Double
+    public let measured: Bool
+
+    public init(miles: Double, minutes: Double, measured: Bool) {
+        self.miles = miles
+        self.minutes = minutes
+        self.measured = measured
+    }
+}
+
+public struct MsFormAnswered: Codable, Hashable, Sendable {
+    public let formId: String
+    public let title: String
+    public let tenant: String
+    public let at: Double?
+
+    public init(formId: String, title: String, tenant: String, at: Double?) {
+        self.formId = formId
+        self.title = title
+        self.tenant = tenant
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case formId, title, tenant, at
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formId, forKey: .formId)
+        try container.encode(title, forKey: .title)
+        try container.encode(tenant, forKey: .tenant)
+        try container.encode(at, forKey: .at)
+    }
+}
+
+public struct MsFormsByPerson: Codable, Hashable, Sendable {
+    public let email: String
+    public let forms: [MsFormAnswered]
+
+    public init(email: String, forms: [MsFormAnswered]) {
+        self.email = email
+        self.forms = forms
     }
 }
 
@@ -9137,6 +12633,128 @@ public struct FilesPlaces: Codable, Hashable, Sendable {
     }
 }
 
+public struct SavedFileSearch: Codable, Hashable, Sendable {
+    public struct Filter: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case folder
+            case document
+            case sheet
+            case deck
+            case pdf
+            case picture
+            case video
+            case audio
+            case text
+            case archive
+            case form
+            case other
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "folder": self = .folder
+                case "document": self = .document
+                case "sheet": self = .sheet
+                case "deck": self = .deck
+                case "pdf": self = .pdf
+                case "picture": self = .picture
+                case "video": self = .video
+                case "audio": self = .audio
+                case "text": self = .text
+                case "archive": self = .archive
+                case "form": self = .form
+                case "other": self = .other
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .folder: "folder"
+                case .document: "document"
+                case .sheet: "sheet"
+                case .deck: "deck"
+                case .pdf: "pdf"
+                case .picture: "picture"
+                case .video: "video"
+                case .audio: "audio"
+                case .text: "text"
+                case .archive: "archive"
+                case .form: "form"
+                case .other: "other"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Within: RawRepresentable, Codable, Hashable, Sendable {
+            case day
+            case week
+            case month
+            case quarter
+            case year
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "day": self = .day
+                case "week": self = .week
+                case "month": self = .month
+                case "quarter": self = .quarter
+                case "year": self = .year
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .day: "day"
+                case .week: "week"
+                case .month: "month"
+                case .quarter: "quarter"
+                case .year: "year"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let kinds: [Kind]?
+        public let places: [String]?
+        public let project: String?
+        public let who: String?
+        public let within: Within?
+        public let after: Int?
+        public let before: Int?
+        public let shared: Bool?
+        public let review: Bool?
+
+        public init(kinds: [Kind]? = nil, places: [String]? = nil, project: String? = nil, who: String? = nil, within: Within? = nil, after: Int? = nil, before: Int? = nil, shared: Bool? = nil, review: Bool? = nil) {
+            self.kinds = kinds
+            self.places = places
+            self.project = project
+            self.who = who
+            self.within = within
+            self.after = after
+            self.before = before
+            self.shared = shared
+            self.review = review
+        }
+    }
+
+    public let id: String
+    public let name: String
+    public let query: String
+    public let filter: Filter?
+
+    public init(id: String, name: String, query: String, filter: Filter? = nil) {
+        self.id = id
+        self.name = name
+        self.query = query
+        self.filter = filter
+    }
+}
+
 public struct FilesHome: Codable, Hashable, Sendable {
     public let waiting: [FileEntry]
     public let starred: [FileEntry]
@@ -9617,5 +13235,174 @@ public struct ComputerSessionsAnswer: Codable, Hashable, Sendable {
     public init(service: ComputerServiceState, sessions: [ComputerSessionRow]) {
         self.service = service
         self.sessions = sessions
+    }
+}
+
+public struct GuestAttempt: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case none
+        case making
+        case made
+        case refused
+        case unknown
+        /// A value this build does not know; `rawValue` keeps it.
+        case unrecognized(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "none": self = .none
+            case "making": self = .making
+            case "made": self = .made
+            case "refused": self = .refused
+            case "unknown": self = .unknown
+            default: self = .unrecognized(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .none: "none"
+            case .making: "making"
+            case .made: "made"
+            case .refused: "refused"
+            case .unknown: "unknown"
+            case .unrecognized(let value): value
+            }
+        }
+    }
+
+    public let state: State
+    public let linkId: String?
+    public let words: String?
+
+    public init(state: State, linkId: String? = nil, words: String? = nil) {
+        self.state = state
+        self.linkId = linkId
+        self.words = words
+    }
+}
+
+public struct ShowLive: Codable, Hashable, Sendable {
+    public struct Next: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case build
+            case slide
+            case end
+            case close
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "build": self = .build
+                case "slide": self = .slide
+                case "end": self = .end
+                case "close": self = .close
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .build: "build"
+                case .slide: "slide"
+                case .end: "end"
+                case .close: "close"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let kind: Kind
+        public let step: Int?
+        public let of: Int?
+        public let number: Int?
+        public let title: String?
+
+        public init(kind: Kind, step: Int? = nil, of: Int? = nil, number: Int? = nil, title: String? = nil) {
+            self.kind = kind
+            self.step = step
+            self.of = of
+            self.number = number
+            self.title = title
+        }
+    }
+    public struct Timer: Codable, Hashable, Sendable {
+        public let elapsed: Double
+        public let paused: Bool
+        public let target: Double?
+
+        public init(elapsed: Double, paused: Bool, target: Double?) {
+            self.elapsed = elapsed
+            self.paused = paused
+            self.target = target
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case elapsed, paused, target
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(elapsed, forKey: .elapsed)
+            try container.encode(paused, forKey: .paused)
+            try container.encode(target, forKey: .target)
+        }
+    }
+
+    public let showId: String
+    public let itemId: String
+    public let title: String
+    public let rev: Int
+    public let slide: Int
+    public let count: Int
+    public let step: Int
+    public let steps: Int
+    public let next: Next
+    public let notes: String
+    public let timer: Timer
+    public let blank: Bool
+    public let ended: Bool
+
+    public init(showId: String, itemId: String, title: String, rev: Int, slide: Int, count: Int, step: Int, steps: Int, next: Next, notes: String, timer: Timer, blank: Bool, ended: Bool) {
+        self.showId = showId
+        self.itemId = itemId
+        self.title = title
+        self.rev = rev
+        self.slide = slide
+        self.count = count
+        self.step = step
+        self.steps = steps
+        self.next = next
+        self.notes = notes
+        self.timer = timer
+        self.blank = blank
+        self.ended = ended
+    }
+}
+
+public struct MailWaiting: Codable, Hashable, Sendable {
+    public let days: Double?
+    public let routine: Bool
+    public let routineId: String?
+    public let error: String?
+
+    public init(days: Double?, routine: Bool, routineId: String? = nil, error: String? = nil) {
+        self.days = days
+        self.routine = routine
+        self.routineId = routineId
+        self.error = error
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case days, routine, routineId, error
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(days, forKey: .days)
+        try container.encode(routine, forKey: .routine)
+        try container.encodeIfPresent(routineId, forKey: .routineId)
+        try container.encodeIfPresent(error, forKey: .error)
     }
 }
