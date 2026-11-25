@@ -43,7 +43,7 @@ import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
@@ -288,7 +288,7 @@ export function SidebarView({
 const say = (title: string, err?: unknown): void => void loadToast().then((toast) => (err === undefined ? toast.message(title) : toast.error(title, { description: workErrorWords(err) || undefined })));
 
 /** A note's press: it spins until done; a refusal is one toast. One this window's key may not make says who can instead. */
-function useFixes(workspace: WorkspaceMeta, again: () => void): NoteFixes {
+function useFixes(workspace: WorkspaceMeta, again: () => Promise<void>): NoteFixes {
   const [busy, setBusy] = useState(false);
   const may = useLinksMay();
   return {
@@ -300,10 +300,11 @@ function useFixes(workspace: WorkspaceMeta, again: () => void): NoteFixes {
       return null;
     },
     run(fix) {
-      if (fix.kind === "retry") return again();
       if (fix.kind === "settings") return shell.openSettings("work");
       if (fix.kind === "open-vm") return void openVm(fix.link);
       setBusy(true);
+      // Retry asks each host for its places again, and spins until they have answered.
+      if (fix.kind === "retry") return again().finally(() => setBusy(false));
       const done =
         fix.kind === "allow"
           ? allowComputers(workspace, { vm: fix.vm }).then(again)
@@ -328,7 +329,11 @@ export function View(props: WorkViewProps) {
   const { workspace } = props;
   const [attempt, setAttempt] = useState(0);
   const reach = useReach(workspace, attempt);
-  const again = (): void => setAttempt((n) => n + 1);
+  const again = (): Promise<void> => {
+    const asked = reachAnswered(workspace, attempt + 1);
+    setAttempt((n) => n + 1);
+    return asked;
+  };
   if (!reach) return <Frame />;
   return <Place {...props} reach={reach} again={again} />;
 }
@@ -347,7 +352,7 @@ function Frame() {
   );
 }
 
-function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach: Reach; again(): void }) {
+function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach: Reach; again(): Promise<void> }) {
   const link = workspace.environmentId;
   // A new tab opens on Home where the workspace's host has one; else on the workspace's folder.
   const first = reach.sidebar.home ? HOME_PAGE : firstPage(workspace);

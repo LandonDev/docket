@@ -89,7 +89,8 @@ const SHAPE_GLYPH = { list: ListShape, grid: GridShape, columns: ColumnsShape, g
 /** What a note's press does; the view gives the handlers. */
 export interface NoteFixes {
   busy: boolean;
-  run(fix: NonNullable<FilesNote["fix"]>): void;
+  /** his press: a Retry's answer settles what it returns */
+  run(fix: NonNullable<FilesNote["fix"]>): void | Promise<void>;
   /** Who can, for a fix this window's key may not make (`managedElsewhere`): said in the press's place. */
   elsewhere?(fix: NonNullable<FilesNote["fix"]>): string | null;
 }
@@ -803,7 +804,7 @@ export function PageView({
   page: FilePage;
   panelId: string;
   /** the folder's rows; null while its place is not known yet */
-  listing: (Listing & { loadMore(): void; retry(): void | Promise<void> }) | null;
+  listing: (Listing & { loadMore(): void; retry(): void | Promise<void>; retryRest?(): Promise<void> }) | null;
   /** the copy of the place the folder is read from */
   copy: PlaceCopy | null;
   /** where the folder's rows are asked, for the shapes that list more than this folder (Columns); null where there is no host to ask */
@@ -1046,7 +1047,7 @@ export function PageView({
     // A page that failed waits for Retry on its line, rather than being asked again on every scroll.
     more: !!listing?.more && !listing.error,
     // A later page on its way (the places still searched are said on the page's line, not at its foot).
-    loadingMore: !!listing && entries.length > 0 && listing.loading && listing.more,
+    loadingMore: !!listing && entries.length > 0 && listing.loading && listing.more && !listing.retrying,
     renaming,
     onPick,
     onOpen: open,
@@ -1065,7 +1066,7 @@ export function PageView({
   const vmLive = !!copy?.place.vm && !!listing?.loaded && !listing.loading && !listing.sleeping && !listing.asOf && !listing.error;
   const down = slept ?? (vmLive && placeSaid?.fix?.kind === "wake" ? null : placeSaid);
   // Wake it over a VM folder is his press for that folder: it is listed again, and the wake goes on behind the answer.
-  const noteFixes: NoteFixes = copy?.place.vm && listing ? { ...fixes, busy: fixes.busy || listing.loading, run: (fix) => (fix.kind === "wake" ? listing.retry() : fixes.run(fix)) } : fixes;
+  const noteFixes: NoteFixes = copy?.place.vm && listing ? { ...fixes, busy: fixes.busy || !!listing.retrying, run: (fix) => (fix.kind === "wake" ? listing.retry() : fixes.run(fix)) } : fixes;
   const parent = trail.length > 1 ? trail[trail.length - 2]! : null;
   const toParent = parent ? () => onGo({ at: parent.at, name: parent.name }) : undefined;
   // A search that left a place out says so, with Retry, whether or not anything came back.
@@ -1085,7 +1086,6 @@ export function PageView({
       <DownEmpty
         live={lifeos}
         environmentId={copy!.link}
-        busy={!!listing?.loading}
         // Retry is for silence: it asks the host's LifeOS status again, then the folder.
         onRetry={() => refreshLifeos(copy!.link).catch(() => undefined).then(() => listing?.retry())}
       />
@@ -1172,10 +1172,10 @@ export function PageView({
     <MakingLine stage={acts.forms.stage ?? "Making the form…"} />
   ) : listing?.error && listing.away ? (
     // The word says it did not answer; the detail says what is still shown, as the asleep line does, never the same again.
-    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} {...(entries.length && listing.asOf ? { detail: `This is the list from ${clockTime(listing.asOf)}.` } : {})} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} {...(entries.length && listing.asOf ? { detail: `This is the list from ${clockTime(listing.asOf)}.` } : {})} onRetry={listing.lostPage ? (listing.retryRest ?? listing.loadMore) : listing.retry} />
   ) : listing?.error && entries.length ? (
     // The rows it has stay; a later page that failed is asked again from where it stopped.
-    <ViewStateLine word={listing.lostPage ? "The rest did not load" : "This folder did not load"} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+    <ViewStateLine word={listing.lostPage ? "The rest did not load" : "This folder did not load"} detail={listing.error} onRetry={listing.lostPage ? (listing.retryRest ?? listing.loadMore) : listing.retry} />
   ) : results && listing?.pending?.length ? (
     // A place still being searched: its rows join below as it answers, and the line says which.
     <NoteLine note={searchingNote(listing.pending)!} fixes={noteFixes} />

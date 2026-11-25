@@ -173,6 +173,16 @@ describe("what a sleeping VM folder shows", () => {
     expect(screen.getByText("The Windows VM is asleep")).toBeTruthy();
   });
 
+  it("spins Wake it for his press alone, never for a read the page asked by itself", () => {
+    draw(listing({ sleeping: "asleep", loading: true }));
+    const wake = screen.getByRole("button", { name: "Wake it" }) as HTMLButtonElement;
+    expect(wake.disabled).toBe(false);
+    expect(wake.querySelector("[data-busy]")).toBeNull();
+    cleanup();
+    draw(listing({ sleeping: "asleep", loading: true, retrying: true }));
+    expect((screen.getByRole("button", { name: "Wake it" }) as HTMLButtonElement).querySelector("[data-busy]")).not.toBeNull();
+  });
+
   it("rows read live put the place's older asleep line away", () => {
     draw(listing({}));
     expect(screen.queryByText("The Windows VM is asleep")).toBeNull();

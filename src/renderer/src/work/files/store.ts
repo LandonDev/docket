@@ -122,6 +122,14 @@ export const lifeosMoved = (answer: FilesPlaces | undefined, connected: boolean)
  * that pushes a change to its places is asked again, its last answer kept on screen until the new one lands. A host
  * that does not know `work.files.*` (a release behind) is read through `work.office.filesLibraries` instead.
  */
+/** His Retry of a workspace's places, by its key: each settles once every host the asking for `attempt` reached has answered or failed. */
+const reachWaiters = new Map<string, { attempt: number; settle(): void }[]>();
+/** A promise that settles once the places asked for `attempt` have each answered, or failed by their deadline. */
+export function reachAnswered(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, attempt: number): Promise<void> {
+  const key = reachKey(workspace);
+  return new Promise((settle) => void reachWaiters.set(key, [...(reachWaiters.get(key) ?? []), { attempt, settle }]));
+}
+
 export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
   const key = reachKey(workspace);
   const [shown, setShown] = useState<{ key: string; reach: Reach | null }>(() => ({ key, reach: reachKept.get(key)?.reach ?? null }));
@@ -179,6 +187,17 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
     };
     // Only the newest ask of a host lands.
     const asked = new Map<string, number>();
+    // The hosts that have answered (or failed) since this asking began: once all have, his Retry has its answer.
+    const heard = new Set<string>();
+    const answered = (link: string): void => {
+      heard.add(link);
+      if (!ready || !hosts.every((h) => heard.has(h))) return;
+      const waiting = reachWaiters.get(key) ?? [];
+      const mine = waiting.filter((w) => w.attempt <= attempt);
+      if (!mine.length) return;
+      reachWaiters.set(key, waiting.filter((w) => w.attempt > attempt));
+      for (const w of mine) w.settle();
+    };
     const ask = (link: string): void => {
       const mine = (asked.get(link) ?? 0) + 1;
       asked.set(link, mine);
@@ -188,6 +207,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         if (!current()) return;
         reads.set(link, { link, name, desktop: false, wire: reads.get(link)?.wire ?? "files", failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: unreachable(err) } });
         paint();
+        answered(link);
       };
       // Past the deadline the host shows as not answering; an answer that comes later still takes its place.
       const late = setTimeout(() => (timers.delete(late), failed(deadlineError(HOST_DEADLINE_MS))), HOST_DEADLINE_MS);
@@ -200,6 +220,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         keepFarName(link, answer.name);
         reads.set(link, { link, name, desktop: false, wire, answer });
         paint();
+        answered(link);
         if (!reading(answer)) return;
         const timer = setTimeout(() => (timers.delete(timer), ask(link)), READING_AGAIN_MS);
         timers.add(timer);
@@ -257,6 +278,8 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         listen(link);
       }
       paint();
+      // The own host may have answered before the settings named the rest.
+      if (heard.size) answered([...heard][0]!);
       copy = await registry
         .linkOf(own)
         .request<{ on: boolean }>("work.office.filesCopyGet", { workspaceId: workspace.id })
@@ -1068,7 +1091,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   const quiet = !more && !retry && !!was?.loaded && !was.error;
   // His Retry keeps what the page said until the answer replaces it; any other read of a page that failed clears the
   // failure, and the page draws its bones (never "empty" while a read is out).
-  if (retry && !more && was?.loaded) putListing(key, { ...was, loading: true, retrying: true, round });
+  if (retry && was?.loaded) putListing(key, { ...was, loading: true, retrying: true, round });
   else if (!quiet) putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
   const search = from.search;
   // A search's desktops are asked once a search, beside its host, and only for its first page: a push's read or a
@@ -1185,7 +1208,7 @@ function pushKey(copy: PlaceCopy, at: FolderRef): string | null {
  * A folder's rows, live: the first page on first use, more as the list nears its end (`loadMore`), again from the top
  * when its host says a name in it changed, and again when the window comes back to it.
  */
-export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort = DEFAULT_SORT): Listing & { loadMore(): void; retry(): Promise<void> } {
+export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort = DEFAULT_SORT): Listing & { loadMore(): void; retry(): Promise<void>; retryRest(): Promise<void> } {
   const key = from ? listingKey(from, at, sort) : "";
   const value = useSyncExternalStore(
     (listener) => {
@@ -1242,6 +1265,8 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     loadMore: () => void (from && load(key, from, at, sort, true)),
     // Retry, and Wake it over a sleeping folder, are his press; it settles when the answer lands.
     retry: () => (from ? load(key, from, at, sort, false, false, true, true) : Promise.resolve()),
+    // His Retry on a later page that failed: the rows above and the failure stay, that Retry spinning, until it lands.
+    retryRest: () => (from ? load(key, from, at, sort, true, false, false, true) : Promise.resolve()),
   };
 }
 

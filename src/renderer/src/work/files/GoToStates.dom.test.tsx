@@ -56,6 +56,25 @@ describe("Go to's states", () => {
     expect(screen.getByText("No matches")).toBeTruthy();
   });
 
+  it("keeps the failure in place on Retry, its Retry spinning alone, until the answer replaces it", async () => {
+    host.answer = () => Promise.reject(new Error("refused"));
+    draw();
+    fireEvent.change(field(), { target: { value: "run" } });
+    await settle();
+    let answer: (v: { entries: unknown[] }) => void = () => undefined;
+    host.answer = () => new Promise((resolve) => (answer = resolve));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    act(() => void vi.advanceTimersByTime(SLOW_MS));
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't load names");
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.queryByText("Loading…")).toBeNull();
+    await act(async () => answer({ entries: [] }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("No matches")).toBeTruthy();
+  });
+
   it("draws no panel for an empty field that found nothing", async () => {
     host.answer = () => Promise.resolve({ entries: [] });
     draw();

@@ -167,7 +167,8 @@ the first paint.
   the top when the host says a name changed or answers `stale`; a later page
   that fails keeps the rows above it and its cursor, `lostPage`, and the
   list's line says "The rest did not load" with a Retry that asks that page
-  again; a search keeps what it left out, `incomplete` for `more` and
+  again, keeping the line and the failure with that Retry spinning until the
+  page lands (`retryRest`), in Move to… too; a search keeps what it left out, `incomplete` for `more` and
   `asleep`, said over its results or under "Nothing found" with Retry,
   `searchGap`; his Retry keeps what the page said, a failure and its words or
   a search's gap, with that Retry spinning until the answer replaces it
@@ -1368,7 +1369,11 @@ A LifeOS row or a mail's file found by Home, Go to or a search opens from its
 own place (`sessionCopyOf`: LifeOS, or From mail), and Show in Its Folder goes
 to its project's folder, else the top of LifeOS, or to From mail
 (`sessionFolderOf`). A folder whose read failed with nothing listed offers no
-New.
+New. Every Retry in the place spins on itself alone until its answer: a
+place's Retry until each host has said its places again (`reachAnswered`),
+Go to's "Couldn't load names" and a linked file's Retry (its menu stays open)
+in place; the LifeOS place's Retry and Wake it never spin for a read the page
+asked by itself.
 
 **Waiting on you and the amber count** (files/waiting.ts). A pillar that
 keeps an agent's suggestions by file registers `registerFileWaiting`

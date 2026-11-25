@@ -5,14 +5,14 @@
  * and link the file there, a file of that name asks Replace or Keep Both, Just a copy links nothing and says where with
  * Show; the header then says where the linked file is and how it stands, with its presses in one menu.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileTab } from "@shared/contract-work-files";
 import type { CanvasItem } from "@shared/work";
 import type { FilePlace } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
-const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[] }));
+const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
 
 const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
 const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
@@ -30,6 +30,7 @@ vi.mock("../../lib/connection", async (original) => {
         if (world.exists && !params.exists) return { exists: { name: params.name } };
         return { saved: { name: params.name, ref: at(`/cloud/General/${String(params.name)}`), linked: params.link !== false } };
       }
+      if (method === "work.files.linkAct" && world.acting) return world.acting;
       if (method === "work.files.links" || method === "work.files.linkAct") return world.links;
       if (method === "work.files.preview") return { none: "There is no preview here." };
       if (method === "work.office.filesCopyGet") return { on: false };
@@ -236,5 +237,22 @@ describe("the header's linked files", () => {
     const rows = within(await screen.findByRole("menu")).getAllByRole("menuitem").map((r) => r.textContent);
     expect(rows).toContain("Save Again");
     expect(rows).toContain("Retry");
+  });
+
+  it("keeps the menu open on Retry, spinning in its row alone until the answer replaces it", async () => {
+    world.links = [link({ state: "waiting" })];
+    let answer: (links: unknown[]) => void = () => undefined;
+    world.acting = new Promise((resolve) => (answer = resolve));
+    controls();
+    fireEvent.click(await screen.findByRole("button", { name: /General/ }));
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Retry" }));
+    await waitFor(() => expect(world.calls.find((c) => c.method === "work.files.linkAct")?.params).toMatchObject({ id: "l1", act: "retry" }));
+    const retry = within(screen.getByRole("menu")).getByRole("menuitem", { name: "Retry" });
+    expect(retry.getAttribute("aria-busy")).toBe("true");
+    expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Unlink" }).getAttribute("aria-busy")).toBeNull();
+    await act(async () => answer([link()]));
+    await waitFor(() => expect(within(screen.getByRole("menu")).queryByRole("menuitem", { name: "Retry" })).toBeNull());
+    world.acting = null;
   });
 });

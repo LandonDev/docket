@@ -3,7 +3,7 @@ import type { FileTab } from "@shared/contract-work-files";
 import { parseGoTo, matchesName, nameWords, type GoToWhat } from "@shared/work/fileSearch";
 import { MAKE_WORDS, type FileEntry } from "@shared/work/files";
 import { Plus, Search } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
@@ -58,7 +58,8 @@ export function GoToField({
   // The names the host answered, and the words they answer: the rows stay drawn, inert, while newer words are asked,
   // and give way to Loading… once the lookup is slow, so no row of older words is taken or read as his.
   // A lookup that failed says so, with Retry, rather than reading as no match.
-  const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[]; failed?: boolean }>({ text: null, entries: [] });
+  // His Retry keeps the failure in place, its Retry spinning, until the answer replaces it.
+  const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[]; failed?: boolean; retrying?: boolean }>({ text: null, entries: [] });
   const [tries, setTries] = useState(0);
   const [at, setAt] = useState(0);
   // Return pressed before the names for his words came: the words it was pressed for, and it takes the first row once
@@ -94,7 +95,7 @@ export function GoToField({
   const on = Math.min(at, Math.max(0, rows.length - 1));
   const status: "loading" | "failed" | "none" | null = !fresh ? (slow ? "loading" : null) : names.failed ? "failed" : !rows.length && text.trim() ? "none" : null;
   const retry = (): void => {
-    setNames({ text: null, entries: [] });
+    setNames((was) => ({ ...was, retrying: true }));
     setTries((n) => n + 1);
     // Retry goes as the lookup starts again: the field takes the keys back.
     field.current?.focus();
@@ -197,8 +198,8 @@ export function GoToField({
             <div role="alert" className="flex h-8 shrink-0 items-center gap-2 ps-2 text-[13px]">
               <span className="min-w-0 flex-1 truncate text-destructive">Couldn't load names</span>
               {/* A press keeps the focus in the field; Tab from the field reaches it too. */}
-              <Button variant="ghost" size="xs" onMouseDown={(event) => event.preventDefault()} onClick={retry}>
-                Retry
+              <Button variant="ghost" size="xs" disabled={!!names.retrying} onMouseDown={(event) => event.preventDefault()} onClick={retry}>
+                <BusyLabel busy={!!names.retrying} label="Retry" />
               </Button>
             </div>
           ) : status === "none" ? (

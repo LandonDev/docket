@@ -240,6 +240,37 @@ describe("Move to…", () => {
   });
 });
 
+describe("Move to…'s later page that did not load", () => {
+  it("keeps the folders and the failure with its Retry spinning until the rest lands", async () => {
+    const { MoveDialog } = await import("./MoveDialog");
+    const { listingSeams } = await import("./store");
+    const folder = (name: string): FileEntry => ({ key: `file:env_box:/w/${name}`, ref: null, folder: at(`/w/${name}`), name, kind: "folder" });
+    let rest!: (page: { entries: FileEntry[] }) => void;
+    const pages: (() => Promise<{ entries: FileEntry[]; next?: string; trail?: { name: string; at: ReturnType<typeof at> }[] }>)[] = [
+      async () => ({ entries: [folder("Archive")], next: "c1", trail: [{ name: "Dummy Esports", at: at("/w") }] }),
+      async () => {
+        throw new Error("The box did not answer.");
+      },
+      () => new Promise((resolve) => (rest = resolve)),
+    ];
+    listingSeams.fetch = async () => pages.shift()!();
+    try {
+      render(<MoveDialog verb="move" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={{ folder: COPY, rows: [] } as never} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={async () => true} onClose={() => undefined} />);
+      await waitFor(() => expect(screen.getByText("The rest did not load.")).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(screen.getByText("The rest did not load.")).toBeTruthy();
+      const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+      expect(retry.disabled).toBe(true);
+      expect(retry.querySelector("[data-busy]")).not.toBeNull();
+      await act(async () => rest({ entries: [folder("Zed")] }));
+      await waitFor(() => expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Archive", "Zed"]));
+      expect(screen.queryByText("The rest did not load.")).toBeNull();
+    } finally {
+      delete listingSeams.fetch;
+    }
+  });
+});
+
 describe("Move to… across computers", () => {
   it("leaves Copy Here off in a folder on another computer, with the reason, and says why a press that fails carried nothing", async () => {
     const { MoveDialog } = await import("./MoveDialog");

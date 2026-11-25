@@ -22,7 +22,7 @@ import { kindOfEntry } from "@shared/work/files";
 
 const clock = (at: number): string => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
-export function useDocLinks(link: string, workspaceId: string, source: CanvasSource): DocLink[] {
+export function useDocLinks(link: string, workspaceId: string, source: CanvasSource): [DocLink[], (links: DocLink[]) => void] {
   const [links, setLinks] = useState<DocLink[]>([]);
   const key = JSON.stringify(source);
   useEffect(() => {
@@ -44,7 +44,7 @@ export function useDocLinks(link: string, workspaceId: string, source: CanvasSou
       off();
     };
   }, [link, workspaceId, key]);
-  return links;
+  return [links, setLinks];
 }
 
 type Act = "unlink" | "retry" | "replace" | "keep";
@@ -60,15 +60,16 @@ function actsOf(l: DocLink): { act: Act; label: string }[] {
 
 export function DocSaveControls({ workspace, source, itemId }: { workspace: WorkspaceMeta; source: CanvasSource; itemId: string }) {
   const link = workspace.environmentId;
-  const links = useDocLinks(link, workspace.id, source);
-  const [busy, setBusy] = useState(false);
+  const [links, putLinks] = useDocLinks(link, workspace.id, source);
+  // The press that is out, by its row's id: a Retry keeps the menu open and spins in its row until the answer replaces it.
+  const [busy, setBusy] = useState<string | null>(null);
   const run = (l: DocLink, act: Act): void => {
-    setBusy(true);
+    setBusy(`${act}:${l.id}`);
     void registry
       .linkOf(link)
       .request<DocLink[]>("work.files.linkAct", { workspaceId: workspace.id, id: l.id, act }, { timeoutMs: 180_000 })
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error(act === "unlink" ? "Not unlinked" : `${l.name} was not saved`, { description: workErrorWords(err) || undefined })))
-      .finally(() => setBusy(false));
+      .then(putLinks, (err: unknown) => void loadToast().then((toast) => toast.error(act === "unlink" ? "Not unlinked" : `${l.name} was not saved`, { description: workErrorWords(err) || undefined })))
+      .finally(() => setBusy(null));
   };
   const open = (l: DocLink, page: boolean): void =>
     void import("./openFrom").then((m) => m.openInFiles(workspace, page ? { page: { at: l.folder, name: l.place } } : { ref: l.ref, name: l.name }));
@@ -76,7 +77,7 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
   const rows: MenuRow[] = links.flatMap((l, i): MenuRow[] => [
     ...(i ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     { kind: "label", label: links.length > 1 ? `${l.name}: ${linkWords(l, clock)}` : l.name },
-    ...actsOf(l).map((a): MenuRow => ({ kind: "item", id: `${a.act}:${l.id}`, label: a.label })),
+    ...actsOf(l).map((a): MenuRow => ({ kind: "item", id: `${a.act}:${l.id}`, label: a.label, ...(a.act === "retry" ? { keepOpen: true, busy: busy === `retry:${l.id}` } : {}), ...(busy !== null ? { disabled: true } : {}) })),
     { kind: "item", id: `open:${l.id}`, label: "Open", ...(l.state === "gone" ? { disabled: true, reason: `${l.name} is not in ${l.place} any more.` } : {}) },
     { kind: "item", id: `show:${l.id}`, label: "Show in Files" },
     { kind: "item", id: `unlink:${l.id}`, label: "Unlink" },
@@ -102,7 +103,7 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
             <Button
               variant="ghost"
               size="xs"
-              disabled={busy}
+              disabled={busy !== null && !busy.startsWith("retry:")}
               data-doc-link={first.state}
               className={`max-w-64 min-w-0 shrink gap-1.5 font-normal ${needs ? "text-foreground" : "text-muted-foreground"}`}
             >

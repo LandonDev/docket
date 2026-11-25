@@ -225,7 +225,7 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
             </Button>
           ))
         )}
-        {listing.loading && listing.more && folders.length ? (
+        {listing.loading && listing.more && folders.length && !listing.retrying ? (
           <div aria-busy className="flex h-8 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground">
             <Spinner className="size-3" />
             Loading more
@@ -233,8 +233,8 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
         ) : listing.error && folders.length ? (
           <div className="flex h-8 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground">
             <span className="min-w-0 flex-1 truncate">The rest did not load.</span>
-            <Button variant="ghost" size="xs" onClick={listing.lostPage ? listing.loadMore : listing.retry}>
-              Retry
+            <Button variant="ghost" size="xs" disabled={!!listing.retrying} onClick={() => void (listing.lostPage ? listing.retryRest() : listing.retry())}>
+              <BusyLabel busy={!!listing.retrying} label="Retry" />
             </Button>
           </div>
         ) : null}

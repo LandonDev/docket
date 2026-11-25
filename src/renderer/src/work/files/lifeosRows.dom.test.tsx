@@ -269,3 +269,52 @@ describe("a folder whose read failed", () => {
     expect(within(page()).getByRole("button", { name: "New" })).toBeTruthy();
   });
 });
+
+describe("each Retry spins on itself alone, in place, until the answer", () => {
+  it("keeps \"The rest did not load\" with its Retry spinning until the rest lands", async () => {
+    const rest = later<FilesListing>();
+    const lost = (): never => {
+      throw new Error("The box did not answer.");
+    };
+    standIn({ id: "t1", kind: "page", name: "Dummy Esports", page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } }, { lists: [() => ({ entries: [row("Plan.docx")], trail: [], next: "c1" }), lost, () => rest.promise] });
+    render(<View {...props} />);
+    await waitFor(() => expect(screen.getByText("The rest did not load")).toBeTruthy());
+    fireEvent.click(within(page()).getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("The rest did not load")).toBeTruthy();
+    const retry = within(page()).getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => rest.settle({ entries: [row("Notes.docx")], trail: [] }));
+    await waitFor(() => expect(listRow("Notes.docx")).toBeTruthy());
+    expect(screen.queryByText("The rest did not load")).toBeNull();
+  });
+
+  it("spins the LifeOS place's Retry for his press alone, never for a read the page asked by itself", async () => {
+    setLifeosStatus("box", st("unreachable"));
+    const read = later<FilesListing>();
+    // The page's own first read is out.
+    const host = standIn({ id: "t1", kind: "page", name: "LifeOS", page: { at: { at: "place", id: "lifeos" }, name: "LifeOS" } }, { lists: [() => read.promise] });
+    render(<View {...props} />);
+    await waitFor(() => expect(page().querySelector("[data-lifeos-down]")?.textContent).toBe("LifeOS did not answer the boxRetry"));
+    await waitFor(() => expect(calls(host, "work.files.list").length).toBe(1));
+    const retry = within(page()).getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    expect(retry.querySelector("[data-busy]")).toBeNull();
+    await act(async () => read.settle({ entries: [], trail: [] }));
+  });
+
+  it("spins a place's Retry until every host has answered its places again", async () => {
+    const places = later<unknown>();
+    let ask = 0;
+    standIn({ id: "t1", kind: "page", name: "Gone", page: { at: { at: "place", id: "gone" }, name: "Gone" } }, { places: () => (++ask === 1 ? { host: "env_box", places: PLACES, rev: 1, sources: [] } : places.promise) });
+    render(<View {...props} />);
+    await waitFor(() => expect(screen.getByText("Gone is not here any more")).toBeTruthy());
+    fireEvent.click(within(page()).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(ask).toBe(2));
+    const retry = within(page()).getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => places.settle({ host: "env_box", places: PLACES, rev: 1, sources: [] }));
+    await waitFor(() => expect(within(page()).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull());
+  });
+});
