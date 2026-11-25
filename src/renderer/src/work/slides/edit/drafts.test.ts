@@ -150,6 +150,27 @@ describe("a deck's open box", () => {
     expect(await after.kept()).toEqual([]);
   });
 
+  it("of notes turns to Copy Words once newer notes of that slide save, and Restore sends nothing", async () => {
+    // Council r7 (Sol 4): the offer read the deck once, so Restore stayed on screen over notes saved since.
+    const before = store();
+    const first = deck();
+    const session = new HandSession(first.host, first.decks);
+    session.journalTo(before.journal);
+    session.typeNotes(3, "Thank the sponsors", "");
+    await before.s.settled();
+    const after = store(before.dir, 2);
+    const { host, decks } = deck();
+    const again = new HandSession(host, decks);
+    again.journalTo(after.journal);
+    await vi.waitFor(() => expect(again.get().offer).toMatchObject({ same: true, where: "Notes on slide 3" }));
+    // Newer notes of slide 3 save, from this window or another.
+    decks.view(await host.edit([{ op: "notes", slide: 3, text: "Thank the hosts", was: "" }]));
+    expect(again.get().offer).toMatchObject({ same: false, text: "Thank the sponsors" });
+    expect(again.saved(() => undefined)).toMatchObject({ actions: [{ label: "Copy Words" }, { label: "Discard" }] });
+    await again.restoreDraft();
+    expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+  });
+
   it("of later notes stay kept when an earlier send of them lands; refused, the line says Not saved with Retry", async () => {
     const before = store();
     const { host, decks } = deck();

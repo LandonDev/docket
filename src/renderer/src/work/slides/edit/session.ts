@@ -187,6 +187,21 @@ let opened = 0;
 
 const message = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
 
+/** A kept draft as offered, read against the deck as it is: a slide's notes must still be what they were typed over. Null: no deck draft. */
+function offerOf(draft: Draft, view: DeckView): NonNullable<HandState["offer"]> | null {
+  const body = draft.body;
+  if (body.kind !== "deck" && body.kind !== "notes") return null;
+  const slide = view.slides.find((s) => s.id === body.slideId && s.tint !== "del");
+  // Its place, by what it is and its slide's number: a slide gone since leaves only "Edits".
+  const where = slide ? `${body.kind === "notes" ? "Notes" : "Words"} on slide ${slide.number}` : "Edits";
+  const key = draft.base;
+  if (body.kind === "notes") return { at: draft.at, same: slide?.notes === body.was, text: body.text, where, key };
+  const { shapeId, cell, words, model } = body;
+  const found = slide?.shapes.find((s) => s.id === shapeId);
+  const shape = found && cell ? cellShape(found, cell) : found;
+  return { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model), where, key };
+}
+
 export class HandSession {
   private state: HandState = { picked: null, box: null, busy: 0, savedAt: null, failure: null, shapeLook: null, land: null, adding: null, undo: false, redo: false };
   private listeners = new Set<() => void>();
@@ -228,7 +243,9 @@ export class HandSession {
   constructor(
     private host: DeckHost,
     private store: DeckStore,
-  ) {}
+  ) {
+    store.subscribe(this.recheckOffer);
+  }
 
   get = (): HandState => this.state;
   subscribe = (listener: () => void): (() => void) => {
@@ -283,24 +300,21 @@ export class HandSession {
     const draft = this.offers.shift() ?? null;
     this.offered = draft;
     if (!draft || !view) return this.set({ offer: null });
-    const kept = draft.body;
-    if (kept.kind !== "deck" && kept.kind !== "notes") return this.offerNext();
-    const body: Extract<Draft["body"], { kind: "deck" | "notes" }> = kept;
-    const { slideId } = body;
-    const slide = view.slides.find((s) => s.id === slideId && s.tint !== "del");
-    // Its place, by what it is and its slide's number: a slide gone since leaves only "Edits".
-    const where = slide ? `${body.kind === "notes" ? "Notes" : "Words"} on slide ${slide.number}` : "Edits";
-    const key = draft.base;
-    if (body.kind === "notes") {
-      const { text, was } = body;
-      this.set({ offer: { at: draft.at, same: slide?.notes === was, text, where, key } });
-      return;
-    }
-    const { shapeId, cell, words, model } = body;
-    const found = slide?.shapes.find((s) => s.id === shapeId);
-    const shape = found && cell ? cellShape(found, cell) : found;
-    this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model), where, key } });
+    const offer = offerOf(draft, view);
+    if (!offer) return this.offerNext();
+    this.set({ offer });
   }
+
+  /**
+   * The shown offer read again as the deck changes (a save of his, a push from elsewhere): one whose slide's notes or
+   * shape's words moved on since turns to Copy Words, never back. Not while Restore sends it: its answer says.
+   */
+  private recheckOffer = (): void => {
+    const view = this.store.get().view;
+    if (!this.offered || !this.state.offer?.same || this.restoring || !view) return;
+    const now = offerOf(this.offered, view);
+    if (now && !now.same) this.set({ offer: now });
+  };
 
   /** Restore: the kept words, over a shape that still holds what the box opened on, sent as the box's commit sends them. A shape that moved on meanwhile turns the offer to Copy. */
   async restoreDraft(): Promise<void> {

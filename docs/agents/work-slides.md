@@ -1836,7 +1836,10 @@ are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files
 Restore, the next time the deck opens; two slides' drafts are offered one
 after the other, each naming its place ("Notes on slide 5 from 2:30 PM were
 not saved"), and his new words, in this session's own slot, never go
-over a draft he has not answered. A box's words keep a slot of their own the
+over a draft he has not answered. The offer shown is read again each time the
+deck's view changes (`recheckOffer`): once newer notes of that slide save, from
+this window or another, or the shape's words move on, Restore turns to Copy
+Words, never back. A box's words keep a slot of their own the
 same way, and no box opens until the first look for kept drafts answers. Notes as long as the outline carries
 (20,000 characters, the deck tool's `TEXT_CAP`, `NOTES_SHOWN_MAX`) may be cut,
 so they are words he cannot type in, with one muted "Too long to edit here"
