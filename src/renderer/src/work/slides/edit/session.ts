@@ -3,7 +3,7 @@ import type { Draft } from "@shared/work/drafts";
 import type { DraftJournal } from "../../canvas/drafts";
 import { copyText } from "../../../lib/clipboard";
 import { CloseRefused, FLUSH_WAIT_MS } from "../../canvas/flush";
-import { whenWords } from "../../files/fileText";
+import { notSavedWords, whenWords } from "../../files/fileText";
 import type { Unsaved } from "../../canvas/calm";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
@@ -799,6 +799,8 @@ export class HandSession {
     }
     if (failure?.message === SHAPE_GONE && copy) return { state: "conflict", detail: failure.message, actions: [{ id: "copy", label: "Copy words", run: copy }] };
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
+    // A save that did not go in is said at once, never as saving: his words wait in the box, and Retry sends them again.
+    if (failure) return { state: "conflict", detail: notSavedWords(failure.message), actions: [{ id: "retry", label: "Retry", run: () => void this.commit() }] };
     if (saving) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
   }

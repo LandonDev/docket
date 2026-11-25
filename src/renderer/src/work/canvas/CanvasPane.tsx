@@ -177,6 +177,7 @@ export function CanvasPane({
   kinds = CANVAS,
   tabbed = false,
   historyOpen = false,
+  saveLine = false,
   barLead,
   barEnd,
 }: {
@@ -190,6 +191,8 @@ export function CanvasPane({
   tabbed?: boolean;
   /** The item's History shows beside it already (a Files tab): its bar offers no second way in. */
   historyOpen?: boolean;
+  /** The item's save line is drawn beside it (a Files tab, a side file, a seat): a state line about saving is said there alone. */
+  saveLine?: boolean;
   /** The bar's first and last parts, where the pane is a second file beside a tab's own (SideFile): its head rides in the bar. */
   barLead?: ReactNode;
   barEnd?: ReactNode;
@@ -226,7 +229,7 @@ export function CanvasPane({
         end={barEnd}
       />
       <FailedHost.Provider value={environmentId}>
-        {feeds.status ? <StateLine line={feeds.status} /> : null}
+        {feeds.status && !(saveLine && feeds.status.saving) ? <StateLine line={feeds.status} /> : null}
         <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
             <PaneShell.Provider value={shell}>

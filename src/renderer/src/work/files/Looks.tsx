@@ -284,6 +284,7 @@ function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEnt
           environmentId={workspace.environmentId}
           feeds={feeds}
           shell={shell}
+          saveLine
           // The chat docks beside a file in its own tab: Ask on a selection takes the file there.
           onAsk={() => {
             shell.selection(null);

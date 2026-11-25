@@ -556,6 +556,21 @@ describe("the frame a kind drives through its shell", () => {
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 
+  it("says a save's trouble once: beside a thread in the state line, in a Files tab in the save line alone", async () => {
+    const { CanvasPane } = await import("./CanvasPane");
+    const { NO_FEEDS } = await import("./frame");
+    const shell = new Proxy({}, { get: () => () => undefined }) as CanvasShell;
+    const status = { tone: "failed" as const, word: "Couldn't save your words", detail: "The disk is full", saving: true };
+    const pane = (saveLine: boolean) => <CanvasPane item={DOC} environmentId="local" feeds={{ ...NO_FEEDS, status }} shell={shell} onAsk={() => undefined} kinds={drivenKinds(() => undefined)} saveLine={saveLine} />;
+    const view = render(pane(false));
+    expect(view.container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("Couldn't save your words");
+    view.rerender(pane(true));
+    expect(view.container.querySelector("[data-canvas-state]")).toBeNull();
+    // A line about anything else stays where the save line is drawn.
+    view.rerender(<CanvasPane item={DOC} environmentId="local" feeds={{ ...NO_FEEDS, status: { tone: "failed", word: "Can't draw the slides" } }} shell={shell} onAsk={() => undefined} kinds={drivenKinds(() => undefined)} saveLine />);
+    expect(view.container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("Can't draw the slides");
+  });
+
   it("floats the bar over a selection; Ask puts the chip in the thread's composer, unfolds the thread and drops the selection", async () => {
     const { shell, container } = await driven();
     fireEvent.click(screen.getByRole("button", { name: "Conversation" }));

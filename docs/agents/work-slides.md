@@ -1656,7 +1656,13 @@ once (`work.slides.edit`), whole or not at all.
   line says "The deck changed while you typed" with Reload, which reads the
   deck again and keeps his words over the shape as it is now, each `from`
   the new words still have kept (`rebase`), so the next commit sends them
-  over what is there.
+  over what is there. In a Files tab each is said once, in the save line
+  under the file's name (the pane draws no state line marked `saving` where
+  `saveLine` is set, CanvasPane.tsx): a refusal reads "Not saved." and the
+  host's sentence with Retry, at once and never Saving… while his words wait
+  in the box (`HandSession.saved`); a conflict reads its words with Reload,
+  a shape gone with Copy words. Beside a thread, which has no save line, the
+  state line says them.
 - **A slide an agent's suggestion changes** takes no box and no look from
   the row: its picture and shapes are the proposed deck's, and a hand edit
   built on them would write the suggestion's words as his. The press says

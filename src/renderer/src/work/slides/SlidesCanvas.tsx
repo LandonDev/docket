@@ -512,10 +512,10 @@ function useFeeds(
         ? null
         : failure?.conflict
           ? failure.message === SHAPE_GONE
-            ? { tone: "failed", word: failure.message, detail: "Copy your words before you go on", action: { label: "Copy words", run: copyDraft } }
-            : { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined }
+            ? { tone: "failed", word: failure.message, detail: "Copy your words before you go on", action: { label: "Copy words", run: copyDraft }, saving: true }
+            : { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined, saving: true }
           : failure
-            ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() } }
+            ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() }, saving: true }
             : renderError
               ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), action: retryRender ? { label: "Retry", run: retryRender } : undefined }
               : null,

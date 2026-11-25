@@ -113,7 +113,10 @@ describe("leaving the box keeps his words", () => {
     expect(session.get().box).toMatchObject({ phase: "typing" });
     expect(session.draftWords()).toBe("Who comes today");
     expect(session.get().failure?.message).toBe("Nothing was written: the deck could not be read.");
-    expect(session.saved(() => undefined).state).not.toBe("saved");
+    // The save line says it at once, whatever is still in the box: "Not saved." with the host's words and Retry, never Saving….
+    const line = session.saved(() => undefined, undefined, true);
+    expect(line).toMatchObject({ state: "conflict", detail: "Not saved. Nothing was written: the deck could not be read." });
+    expect(line.actions!.map((a) => a.label)).toEqual(["Retry"]);
     await expect(session.flush()).rejects.toThrow("Nothing was written");
     host.refuse = null;
     await session.commit();

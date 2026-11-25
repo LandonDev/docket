@@ -629,6 +629,7 @@ export function FileTabView({
                 shell={shell}
                 {...(kinds ? { kinds } : {})}
                 historyOpen={!!historyItem}
+                saveLine
                 onAsk={(selection: CanvasSelection) => {
                   shell.selection(null);
                   window.getSelection()?.removeAllRanges();

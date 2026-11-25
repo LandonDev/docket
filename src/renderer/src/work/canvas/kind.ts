@@ -194,6 +194,8 @@ export interface StatusLine {
   action?: { label: string; run(): void | Promise<void> };
   /** The word wraps beside the press, never cut: a word that is the whole fact and may be long (a computer's name). */
   wrap?: boolean;
+  /** It is about a save the kind also tells through `saved`: where the save line is drawn (Files), it is said there alone. */
+  saving?: boolean;
 }
 
 export interface WrittenLine {

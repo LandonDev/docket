@@ -105,6 +105,7 @@ export function SidePane({
           environmentId={workspace.environmentId}
           feeds={feeds}
           shell={shell}
+          saveLine
           barLead={lead}
           barEnd={close}
           {...(kinds ? { kinds } : {})}
