@@ -28,6 +28,7 @@ import {
 } from "../lib/settings";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
+import { workSwitch, workViewNow } from "../lib/workSwitch";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
 import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { PARK_MS } from "../lib/warmTabs";
@@ -273,7 +274,8 @@ export function installActiveSessionSync(): Teardown {
     }, MARK_SEEN_MS);
   };
   const syncFocus = () => {
-    const id = currentActiveSession()?.id;
+    // A thread under a Work view is not seen (Tasks, Projects cover it): it is marked when the view leaves.
+    const id = workViewNow() ? undefined : currentActiveSession()?.id;
     if (id === focusedId) return;
     const leaving = focusedId;
     focusedId = id;
@@ -302,6 +304,7 @@ export function installActiveSessionSync(): Teardown {
     sessionStore.onMetaChange(markSoon),
     projectStore.subscribe(scheduled),
     workspaceStore.subscribe(scheduled),
+    workSwitch.subscribe(scheduled),
     () => {
       if (markTimer != null) clearTimeout(markTimer);
     },

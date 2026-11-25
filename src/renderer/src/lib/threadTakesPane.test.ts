@@ -11,8 +11,8 @@ const app = readFileSync(join(__dirname, "..", "App.tsx"), "utf8");
 const body = (name: string): string => {
   const start = app.indexOf(`const ${name} = useCallback(`);
   expect(start, name).toBeGreaterThan(-1);
-  // To the hook's own dependency list: never into the next handler.
-  return app.slice(start, app.indexOf("\n  }, [", start));
+  // To the next declaration at the component's level: one handler, never the next.
+  return app.slice(start, app.indexOf("\n  const ", start + 1));
 };
 
 describe("a thread or a draft he opens takes the pane", () => {

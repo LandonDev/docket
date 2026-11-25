@@ -397,6 +397,19 @@ describe("installActiveSessionSync", () => {
     expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
   });
 
+  it("a thread under a Work view is not marked seen until the view leaves", async () => {
+    const { openWorkView } = await import("../lib/workSwitch");
+    openWorkView({ workspaceId: "w", view: "tasks" });
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 7 }));
+    teardown = installActiveSessionSync();
+    expect(markSessionSeen).not.toHaveBeenCalledWith("s-a", 7);
+    openWorkView(null);
+    await flush();
+    expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
+  });
+
   it("a switch before the throttle flushes marks the thread leaving at its latest update", async () => {
     vi.useFakeTimers();
     setTabs([tab("a"), tab("b")], "a");
