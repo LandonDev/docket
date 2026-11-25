@@ -4473,6 +4473,20 @@ other picked shape is the outline alone.
   Restore ("Restoring" while it runs), Restore off until the slides are
   there. A restore closes it; the copy from just before is the newest next
   time.
+- **Find** (`DeckFind.tsx`, `find.ts`), from Edit → Find… or ⌘F
+  anywhere in the deck, one he can only read too: the document's bar, with
+  its measures and words (a 32px line of 24px parts on `popover` with
+  `shadow-overlay`, its corners 10px over the buttons' 6, "Find", the count
+  "3 of 17" or "No results", Match case, Whole word, a hairline, Previous
+  match, Next match, Close find), floating 8px under the stage's top at its
+  end (the Format sheet's edge, where it stands beside), so nothing moves
+  when it opens. It finds as he types, slide by slide in the strip's
+  order, each slide's shapes back to front (a table cell by cell) and then
+  its notes. A step puts the slide on the stage and outlines the shape
+  (1px `sel-line-dark-pic`, no handles, as a build row's mark); a match in
+  the notes brings them into view. Escape gives the keyboard to what he
+  found: the shape picked, or the notes' words chosen in their field. It
+  reads and changes nothing: no Replace. No motion: a key opens it.
 - **Keys**, while the keyboard is in the deck (its body is marked
   `data-editor-keys="slides"`, `read` where he cannot edit it):
 
@@ -4491,6 +4505,7 @@ other picked shape is the outline alone.
   | While dragging: keep proportions, steps of 15 degrees; no pull to the guides; put it back | ⇧; ⌥ or ⌘; Escape |
   | A slide's menu, in the strip or the Sorter | the menu key, ⇧F10, a right-click |
   | Take the focused slide out | Delete, Backspace, in the strip or the Sorter |
+  | Find the deck's words; the next and the one before; close, keeping what he found | ⌘F; Return and ⇧Return in its field; Escape |
 
   A paste into the box is plain text, each line a paragraph.
 

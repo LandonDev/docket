@@ -56,6 +56,7 @@ export type SlidesMoment =
   | "copy"
   | "google"
   | "stage"
+  | "find"
   | "blank";
 
 void workCanvasChunk.load();
@@ -236,7 +237,7 @@ function setUp(moment: SlidesMoment): {
     };
   }
   // The stage at Fit in a wide pane: "Who comes" with its notes in the field he types in.
-  if (moment === "stage") {
+  if (moment === "stage" || moment === "find") {
     const view = whoComes();
     return { view: { ...view, slides: view.slides.map((s) => (s.id === 3 ? { ...s, notes: "Open with the turnout: 480 players and 6,200 on stream." } : s)) }, current: "3" };
   }
@@ -302,6 +303,8 @@ export function SlidesPreview({ moment = "sugg", previewWidth, previewHeight }: 
   if (current) store.set({ current });
   store.set({ look: look ?? "slide", sheet: !!sheet, sheetTab: tab ?? "format" });
   if (moment === "ppt") store.set({ side: "powerpoint" });
+  // Find open on "players": the title's shape on slide 3 in hand, outlined, the count beside the words.
+  if (moment === "find") store.set({ find: { open: true, query: "players", options: { matchCase: false, wholeWord: false }, current: 0, ask: 1 } });
   // The file's render in the deck's order; the proposed render in the revision's.
   let opened = 0;
   const docs = [sponsorDoc([1, 2, 3, 4, 5, 6, 8]), sponsorDoc([1, 2, 3, 6, 4, 7, 5, 8])];
@@ -428,6 +431,11 @@ function ThemeOpen({ view }: { view: DeckView }) {
  * The stage in a Files tab of a given size, for pictures at his display's widths:
  * `bun run ui:preview src/renderer/src/work/slides/SlidesCanvas.preview.tsx#StagePreview --props '{"width":3200,"height":1700}' --shot`.
  */
+/** Find on the deck's words, open on the stage (DeckFind.tsx): `--props '{"width":400}'` for the narrow pane. */
+export function FindPreview({ width = 864 }: { width?: number }) {
+  return <SlidesPreview moment="find" previewWidth={width} previewHeight={560} />;
+}
+
 export function StagePreview({ width = 1440, height = 820, blank = false }: { width?: number; height?: number; blank?: boolean }) {
   return <SlidesPreview moment={blank ? "blank" : "stage"} previewWidth={width} previewHeight={height} />;
 }

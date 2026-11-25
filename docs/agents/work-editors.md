@@ -43,6 +43,8 @@ In this order:
    (`file` kind, FileTextEditor.tsx) is marked `text` for the same reason
    and answers find: ⌘F opens its find bar (the code editor's, `editorSearch`),
    never the Files place's search.
+   A deck answers find too, its own and a read-only one's: ⌘F opens the bar
+   that finds its slides' words and notes (docs/agents/work-slides.md "Find").
 2. **The menu**, as before, everywhere else. Go to File… keeps ⌘P and Find… ⌘F
    outside an editor, and inside one until an editor answers them. In the
    Files place ⌘P is the place's Go to (the list, the sidebar, the bar, and

@@ -48,6 +48,8 @@ import { NoticeLine, useSlideFileActions } from "./slideFileActions";
 import { Clicker, useClickerShow } from "./show/Clicker";
 import { computerOf, InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
 import { forgetWithItems } from "../canvas/gone";
+import { DeckFind, useDeckMatches } from "./DeckFind";
+import type { DeckMatch } from "./find";
 
 export { freePage } from "./Picture";
 
@@ -224,7 +226,7 @@ export function SlidesBody({
   mediaSize,
   dragging: firstDrag,
 }: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
-  const { view, error, current, side, look, sheet, sheetTab, zoom } = useDeck(store);
+  const { view, error, current, side, look, sheet, sheetTab, zoom, find } = useDeck(store);
   useOpenShow(env, item.id, canPresent(view) && !error, () => startPresenting(host, store, { from: "start", mode: "full" }, engine));
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
@@ -351,6 +353,8 @@ export function SlidesBody({
   const slideHand = useMemo<SlideHand | null>(() => (editable ? { session, store, askName: setNaming } : null), [editable, session, store]);
   useFeeds(shell, view, error, renderError, current, side, select, host, run, retryRender, reviewRev, held, store, hand, session, reload, copyDraft);
   const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
+  // The match find holds: its slide is on the stage and its shape outlined there.
+  const found = useDeckMatches(view, find).current;
 
   // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
   // export first has nothing to try again, and one moved or taken away offers its folder in Files, which Retry cannot bring back.
@@ -387,6 +391,25 @@ export function SlidesBody({
     void session.commit();
     startPresenting(host, store, ask, engine);
   };
+  // Escape in find gives the keyboard to what he found, as the document's chooses the words: the shape picked, the
+  // notes' words chosen in their field; else the slide.
+  const foundClosed = (match: DeckMatch | null): void => {
+    const main = root?.querySelector<HTMLElement>("[data-slides-main]");
+    const button = match?.shape != null ? main?.querySelector<HTMLElement>(`[data-shape="${match.shape}"]`) : null;
+    if (match?.shape != null && button) {
+      session.pick(match.slideKey, match.shape);
+      button.focus({ preventScroll: true });
+      return;
+    }
+    const notes = match && match.shape === null ? main?.querySelector<HTMLElement>("[data-slide-notes-field], [data-slide-notes] p") : null;
+    if (notes) {
+      notes.focus({ preventScroll: true });
+      if (notes instanceof HTMLTextAreaElement) notes.setSelectionRange(match!.at, match!.at + match!.length);
+      return;
+    }
+    main?.querySelector<HTMLElement>("[data-slides-shapes]")?.focus({ preventScroll: true });
+  };
+  const findBar = find.open ? <DeckFind store={store} view={view} find={find} end={beside ? SHEET_WIDTH : 0} onClose={foundClosed} /> : null;
   return (
     <div
       ref={setRoot}
@@ -458,11 +481,13 @@ export function SlidesBody({
         />
       ) : null}
       {look === "sorter" ? (
-        <div ref={box} className="flex min-h-0 min-w-0 flex-1">
+        <div ref={box} className="relative flex min-h-0 min-w-0 flex-1">
+          {findBar}
           <Sorter view={view} current={shown?.key ?? null} width={size.width} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onOpen={(key) => store.set({ current: key, look: "slide" })} />
         </div>
       ) : (
-        <div ref={box} className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}>
+        <div ref={box} className={`relative flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}>
+          {findBar}
           <Strip view={view} current={shown?.key ?? null} narrow={narrow} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onPick={select} />
           {shown ? (
             <Main
@@ -495,6 +520,7 @@ export function SlidesBody({
               target={target}
               tone={tone}
               zoom={zoom}
+              found={found?.slideKey === shown.key ? found : null}
               under={beside ? null : formatSheet}
             />
           ) : null}
@@ -617,6 +643,9 @@ function useFeeds(
 
 const NO_EDITS: SlideChange["edits"] = [];
 
+/** A drawn box's four corners, as a quad lists them. */
+const quadOf = ([x0, y0, x1, y1]: Bbox): Quad => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+
 /** The tints a slide takes: the dark theme's on a dark picture, paper's on a light one. */
 const TINTS = {
   dark: { add: "bg-(--add-bg-dark-pic)", del: "bg-(--del-bg-dark-pic)" },
@@ -695,10 +724,13 @@ function Main({
   target,
   tone,
   zoom,
+  found,
   under,
 }: {
   /** Fit, or the slide at a share of its own size */
   zoom: StageZoom;
+  /** the match find holds on this slide: its shape outlined, its notes brought into view */
+  found: DeckMatch | null;
   /** the shape picked when the stage mounts (a preview) */
   picked?: number;
   /** the box open when the stage mounts (a preview) */
@@ -860,6 +892,13 @@ function Main({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked, shapes]);
   const adding = hand.adding?.slideKey === slide.key ? hand.adding : null;
+  // Find's shape: outlined on its own corners, else its drawn box; a match in the notes brings them into view.
+  const foundShape = found?.shape != null ? slide.shapes.find((s) => s.id === found.shape) : undefined;
+  const foundQuad: Quad | null = foundShape?.quad ?? (foundShape?.bbox ? quadOf(foundShape.bbox) : null);
+  const notesFound = found !== null && found.shape === null;
+  useEffect(() => {
+    if (notesFound) layer.current?.closest("[data-slides-main]")?.querySelector("[data-slide-notes]")?.scrollIntoView?.({ block: "nearest" });
+  }, [notesFound, found?.at]);
   // A change to the notes is drawn once, in the Notes section; the list above it is the slide's shapes.
   const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
@@ -1013,6 +1052,7 @@ function Main({
             {adding ? <Adding quad={adding.quad} width={w} height={h} sent={adding.total ? [adding.sent ?? 0, adding.total] : null} /> : null}
             {selection && selected ? <Selection selection={selection} width={w} height={h} handles={canMove(selected)} turn={canMove(selected) && turnable(selected)} /> : null}
             {hand.mark?.slideKey === slide.key ? <MarkOn mark={hand.mark} width={w} height={h} tone={tone} /> : null}
+            {foundQuad && !selection ? <MarkOn mark={{ slideKey: slide.key, quad: foundQuad, fill: false }} width={w} height={h} tone={tone} found /> : null}
             <Manipulate
               ref={manip}
               slide={slide}
@@ -1073,9 +1113,9 @@ function Main({
  * One look in both themes (`sel-line-dark-pic` on `paper`): it sits on the deck, not on the app.
  */
 /** What a row of the Format sheet names, marked on the stage while it is under his pointer or focus: a shape outlined, a table's row or column filled. */
-function MarkOn({ mark, width, height, tone }: { mark: Mark; width: number; height: number; tone: "dark" | "light" }) {
+function MarkOn({ mark, width, height, tone, found }: { mark: Mark; width: number; height: number; tone: "dark" | "light"; /** find's match, not a row's */ found?: boolean }) {
   return (
-    <svg data-slide-mark={mark.fill ? "band" : "shape"} aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
+    <svg data-slide-mark={found ? "found" : mark.fill ? "band" : "shape"} aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
       <polygon
         points={mark.quad.map(([x, y]) => `${x * width},${y * height}`).join(" ")}
         fill={mark.fill ? (tone === "dark" ? "var(--sel-bg-dark-pic)" : "var(--sel-bg-paper)") : "none"}

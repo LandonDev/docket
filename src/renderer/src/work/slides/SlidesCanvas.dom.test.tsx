@@ -70,6 +70,7 @@ import { CanvasSeat } from "../canvas/CanvasSeat";
 import { resetCanvasStore } from "../canvas/store";
 import { noteSlidesOpenedByHand } from "./openShow";
 import { noticeOf } from "./slideFileActions";
+import { workCommands } from "../../lib/appCommands";
 
 const WIDE = { width: 640 * 0.75, height: 360 * 0.75 };
 const DECK = fakeDoc(Array.from({ length: 12 }, (_, i) => ({ size: WIDE, runs: [{ str: `Slide ${i + 1}`, box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] })));
@@ -983,6 +984,93 @@ describe("the slides kind", () => {
     expect(written.textContent).toContain("Wrote notes for 12 slides");
     fireEvent.click(within(written).getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(deckHost.calls).toContainEqual(["undo", "w1"]));
+  });
+});
+
+describe("find on a deck's words", () => {
+  function words(hand?: DeckView["hand"]) {
+    open(
+      deckView({
+        slides: [
+          slide(1, { shapes: [{ id: 2, name: "Title 1", bbox: [0.1, 0.1, 0.9, 0.3], text: "Spring LAN", kind: "text", quad: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.3], [0.1, 0.3]] }] }),
+          slide(2, { shapes: [{ id: 3, name: "Body", bbox: [0.1, 0.4, 0.9, 0.7], text: "480 players", kind: "text", quad: [[0.1, 0.4], [0.9, 0.4], [0.9, 0.7], [0.1, 0.7]] }], notes: "Players arrive at 9" }),
+          slide(3, { shapes: [{ id: 5, name: "Table 4", bbox: [0.1, 0.4, 0.9, 0.8], text: "", kind: "table", cells: [["Team", "Players"]], quad: [[0.1, 0.4], [0.9, 0.4], [0.9, 0.8], [0.1, 0.8]] }] }),
+        ],
+        renders: { file: { rev: "f1", size: 10, pages: 3 }, proposed: null },
+        ...(hand ? { hand } : {}),
+      }),
+    );
+  }
+  const bar = () => document.querySelector<HTMLElement>("[data-deck-find]");
+  const count = () => document.querySelector("[data-deck-find-count]")?.textContent;
+  const field = () => screen.getByRole("textbox", { name: "Find" });
+
+  it("Edit → Find… opens the bar over the stage, on a deck he can only read too; it finds across slides and notes and steps match to match", async () => {
+    words();
+    const deck = await found("[data-slides]");
+    // The deck answers Find…, so ⌘F with the caret in it is the deck's and not the app's.
+    await waitFor(() => expect(deck.closest("[data-editor-answers]")?.getAttribute("data-editor-answers")).toContain("find"));
+    expect(bar()).toBeNull();
+    act(() => void workCommands.run("find"));
+    expect(bar()).not.toBeNull();
+    expect(document.activeElement).toBe(field());
+    expect(within(bar()!).getByRole("search", { name: "Find in deck" })).toBeTruthy();
+    fireEvent.change(field(), { target: { value: "players" } });
+    // The shape on slide 2 first: the slide goes on the stage and its shape is outlined.
+    expect(count()).toBe("1 of 3");
+    await waitFor(() => expect(thumbs()[1].getAttribute("aria-current")).toBe("true"));
+    expect((await found('[data-slide-mark="found"]')).querySelector("polygon")!.getAttribute("stroke")).toBe("var(--sel-line-dark-pic)");
+    // Return steps on: the notes of the same slide, with no outline on the slide.
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(count()).toBe("2 of 3");
+    expect(document.querySelector('[data-slide-mark="found"]')).toBeNull();
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(count()).toBe("3 of 3");
+    await waitFor(() => expect(thumbs()[2].getAttribute("aria-current")).toBe("true"));
+    // Past the last, the first again; Shift-Return steps back.
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    expect(count()).toBe("1 of 3");
+    fireEvent.keyDown(field(), { key: "Enter", shiftKey: true });
+    expect(count()).toBe("3 of 3");
+    // Match case: the notes' "Players" and the table's go.
+    fireEvent.click(screen.getByRole("button", { name: "Match case" }));
+    expect(count()).toBe("1 of 1");
+    fireEvent.change(field(), { target: { value: "nobody" } });
+    expect(count()).toBe("No results");
+    expect(screen.getByRole("button", { name: "Next match" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("Escape closes it and gives the keyboard to what he found: the shape picked, the notes' words chosen", async () => {
+    words({ undo: false, redo: false });
+    await found("[data-slides-stage]");
+    act(() => void workCommands.run("find"));
+    fireEvent.change(field(), { target: { value: "players" } });
+    await found('[data-slide-mark="found"]');
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(bar()).toBeNull();
+    const shape = await found('[data-shape="3"]');
+    await waitFor(() => expect(shape.getAttribute("aria-pressed")).toBe("true"));
+    expect(document.activeElement).toBe(shape);
+    // ⌘F again opens on his last words, chosen; the notes' match closed on chooses its words in the field.
+    act(() => void workCommands.run("find"));
+    expect(field()).toHaveProperty("value", "players");
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(count()).toBe("2 of 3");
+    fireEvent.click(screen.getByRole("button", { name: "Close find" }));
+    const notes = document.querySelector<HTMLTextAreaElement>("[data-slide-notes-field]")!;
+    expect(document.activeElement).toBe(notes);
+    expect([notes.selectionStart, notes.selectionEnd]).toEqual([0, 7]);
+  });
+
+  it("keeps its keys to itself: F5 and ⌘↩ typed in it start no show", async () => {
+    shows.asks.length = 0;
+    words();
+    await found("[data-slides-stage]");
+    act(() => void workCommands.run("find"));
+    expect(fireEvent.keyDown(field(), { key: "F5" })).toBe(true);
+    expect(fireEvent.keyDown(field(), { key: "Enter", metaKey: true })).toBe(true);
+    await new Promise((done) => setTimeout(done, 20));
+    expect(shows.asks).toHaveLength(0);
   });
 });
 

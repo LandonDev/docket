@@ -4,6 +4,7 @@ import { registry } from "../../lib/connection";
 import { toBase64 } from "../formats/model";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import type { ShowHost } from "./show/Show";
+import type { FindOptions } from "./find";
 import { linkShowRemote, type ShowRemote } from "./show/remote";
 import { forgetWithItems } from "../canvas/gone";
 
@@ -145,13 +146,24 @@ export interface DeckState {
   sheetTab: SheetTab;
   /** The stage's zoom: `fit` fills the pane, the notes still starting on screen; a number is the slide at that share of its own size. Kept while the window lives. */
   zoom: StageZoom;
+  /** Find on the deck's words (find.ts): its bar open or not, what he typed and how, the match in hand; `ask` counts each ⌘F, so the field takes the focus again. Kept closed, so the next ⌘F opens on the last words. */
+  find: DeckFind;
+}
+
+export interface DeckFind {
+  open: boolean;
+  query: string;
+  options: FindOptions;
+  /** the match in hand, in find's order; -1 with none */
+  current: number;
+  ask: number;
 }
 
 export type SheetTab = "format" | "animate";
 export type StageZoom = "fit" | number;
 
 export class DeckStore {
-  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format", zoom: "fit" };
+  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format", zoom: "fit", find: { open: false, query: "", options: { matchCase: false, wholeWord: false }, current: -1, ask: 0 } };
   private listeners = new Set<() => void>();
   get = (): DeckState => this.state;
   subscribe = (listener: () => void): (() => void) => {
@@ -161,6 +173,11 @@ export class DeckStore {
   set(patch: Partial<DeckState>): void {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
+  }
+  /** Edit → Find… and ⌘F in the deck: the bar opens, or its field takes the focus again with its words chosen. */
+  openFind(): void {
+    const find = this.state.find;
+    this.set({ find: { ...find, open: true, ask: find.ask + 1 } });
   }
   /** A new view keeps the slide on the stage when it is still there, else the slide in its place. */
   view(view: DeckView): void {

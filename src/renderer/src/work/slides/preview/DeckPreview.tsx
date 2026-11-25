@@ -105,12 +105,13 @@ export function deckRows(
 const linkRequest: Request = (env, method, params) => registry.linkOf(env).request(method, params);
 
 /**
- * Wraps the deck's Body: answers Export… and Print…, puts Export… in the pane's More, hears the Present menu's
+ * Wraps the deck's Body: answers Export…, Print… and Find…, puts Export… in the pane's More, hears the Present menu's
  * Preview, and draws Preview over the deck while it is up.
  */
 export function DeckPreviewLayer({ env, itemId, shell, request = linkRequest, children }: { env: string; itemId: string; shell: CanvasShell; request?: Request; children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
-  const { view } = useDeck(deckStoreOf(itemId));
+  const store = deckStoreOf(itemId);
+  const { view, side } = useDeck(store);
   const [on, setOn] = useState<PreviewOn | false>(false);
   // Each ask is a frame of its own: Print… while Preview shows another format opens it on Print anew.
   const [asked, setAsked] = useState(0);
@@ -125,7 +126,8 @@ export function DeckPreviewLayer({ env, itemId, shell, request = linkRequest, ch
     feedMore(shell, "export", [{ id: "export", label: "Export…", icon: Export, run: () => show("last") }]);
     return () => feedMore(shell, "export", null);
   }, [shell, ready, show]);
-  useWorkCommands(root, ready ? { export: () => show("last"), print: () => show("print") } : {});
+  // Edit → Find… and ⌘F find the deck's words (DeckFind.tsx), on a deck he can only read too; not while PowerPoint shows it.
+  useWorkCommands(root, ready ? { export: () => show("last"), print: () => show("print"), ...(side === "tempcode" ? { find: () => store.openFind() } : {}) } : {});
   const open = useCallback(() => show("last"), [show]);
 
   // What he picked stays for as long as the deck is open, so a second look opens where the first left off.

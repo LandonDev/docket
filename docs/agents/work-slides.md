@@ -1794,6 +1794,33 @@ Restore, the next time the deck opens. A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
 
+### Find
+
+Edit → Find… and ⌘F in a deck (`DeckFind.tsx`, the matching in `find.ts`,
+pure). `DeckPreviewLayer` answers the `find` work command (`useWorkCommands`
+on the root that answers Export… and Print…, so `data-editor-answers` lists
+all three and the menu's Find… gives up ⌘F while the caret is in the deck,
+docs/agents/work-editors.md "Who hears a key"), on a deck he can only read
+too, never while PowerPoint shows it. The bar's state is the deck store's
+`find` (open, his words, Match case and Whole word, the match in hand, and a
+count of asks so ⌘F again chooses the field's words); closed, it keeps his
+last words for the next ⌘F.
+
+It reads the outline the view holds and asks the host nothing: each slide in
+the strip's order (a slide a suggestion takes out left out), its shapes in
+the outline's order (back to front, as PowerPoint's Find walks them), a
+table cell by cell, then the slide's notes. Whole word is a match with no
+letter, digit or `_` on either side. Past 1,000 matches the count says
+"1,000+". As he types the match in hand is the first on the slide on the
+stage or after it; each match in hand puts its slide on the stage (the slide
+view, from the Sorter too) and outlines its shape (`MarkOn`, `found`), or,
+in the notes, scrolls them into view. Escape and Close find close it: on a
+shape the stage can pick, the shape is picked with the keyboard on it (so the
+row, Delete and the arrows act on it at once); on notes, their field takes
+the focus with the match chosen; else the slide. There is no Replace: his
+words change only by his hand in the box or the notes. A field's keys stay
+its own, so F5 or ⌘↩ in the find field starts no show.
+
 ## The show
 
 Built by SLD1 of the editors plan (`.temp-code/plans/editors/slides.md`;
