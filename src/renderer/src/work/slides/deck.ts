@@ -16,6 +16,12 @@ export interface DeckHost {
    * `layouts` is the picture of the deck's layouts, one page each (`DeckView.layoutsPic`).
    */
   read(which: "file" | "proposed" | "layouts", offset: number, length: number, rev?: string): Promise<Uint8Array>;
+  /**
+   * Bytes of one slide's own picture, a one-page PDF (`work.slides.slide`), by the slide's id in the file or the proposed
+   * deck; with `rev` (its `pic.rev`), bytes of another picture are refused (`RENDER_CHANGED`). Absent: the canvas reads
+   * the whole render.
+   */
+  slide?(which: "file" | "proposed", slide: number, offset: number, length: number, rev?: string): Promise<Uint8Array>;
   /** With `rev`, the proposed render the press was made on: the host refuses it once the changes moved on since. */
   review(changes: string[] | "all", verdict: "accept" | "reject", rev?: string): Promise<DeckView>;
   mode(mode: DeckMode): Promise<DeckView>;
@@ -60,6 +66,11 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
     read: async (which, offset, length, rev) => {
       const got = await call<{ data: string; rev?: string }>("work.slides.read", { which, offset, length });
       // Every frame of one picture comes from the revision the view advertised, as the phone's reads do.
+      if (rev !== undefined && got.rev !== undefined && got.rev !== rev) throw new Error(RENDER_CHANGED);
+      return fromBase64(got.data);
+    },
+    slide: async (which, slide, offset, length, rev) => {
+      const got = await call<{ data: string; rev?: string }>("work.slides.slide", { which, slide, offset, length });
       if (rev !== undefined && got.rev !== undefined && got.rev !== rev) throw new Error(RENDER_CHANGED);
       return fromBase64(got.data);
     },

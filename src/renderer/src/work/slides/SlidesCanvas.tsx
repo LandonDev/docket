@@ -19,6 +19,7 @@ import { OpenFailed } from "../canvas/FetchState";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { pictureIn, useFilePictures } from "./filePictures";
 import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/DeckRow";
 import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
 import type { MediaSize } from "./edit/Insert";
@@ -206,12 +207,13 @@ export function SlidesBody({
   }, [session, item.id]);
   // A render whose bytes moved on mid-read asks for the view again, whose new revision reads afresh.
   const refresh = useCallback(() => void openDeck(host, store), [host, store]);
-  const fileRender = useRender(host, "file", view?.renders.file ?? null, engine, refresh);
+  // The file's slides are pictured slide by slide, kept across his edits and a tab shown again (filePictures.ts); the
+  // proposed deck's render is read whole.
+  const { pictures: filePictures, state: fileState } = useFilePictures(host, item.id, engine, view, refresh);
   const proposedRender = useRender(host, "proposed", view?.renders.proposed ?? null, engine, refresh);
-  const fileDoc = fileRender.doc;
   const proposedDoc = proposedRender.doc;
   // The host's own word first; else a render this window could not read.
-  const renderError = view?.renderError ?? fileRender.error ?? proposedRender.error ?? undefined;
+  const renderError = view?.renderError ?? fileState.error ?? proposedRender.error ?? undefined;
   const box = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: fixedWidth ?? 0, height: fixedHeight ?? 0 });
@@ -235,10 +237,10 @@ export function SlidesBody({
   // A picture this window could not read is read again on Retry, the strip and the text diffs staying drawn meanwhile;
   // a deck the host has no picture of (its own word) has nothing here to read again.
   // Retry reads again only the render that failed, so the slides of the other never blank.
-  const fileFailed = fileRender.error !== null;
+  const fileFailed = fileState.error !== null;
   const proposedFailed = proposedRender.error !== null;
   const readFailed = !view?.renderError && (fileFailed || proposedFailed);
-  const retryFile = fileRender.retry;
+  const retryFile = useCallback(() => filePictures.retry(store.get().view), [filePictures, store]);
   const retryProposed = proposedRender.retry;
   const retryRender = useMemo(
     () =>
@@ -258,7 +260,7 @@ export function SlidesBody({
   const reviewRev = view?.changesRev ?? view?.renders.proposed?.rev;
   const pictured = !!view && !view.renderError && !!view.renders.proposed;
   const shownSlide = view ? (view.slides.find((s) => s.key === current) ?? view.slides[0]) : undefined;
-  const shownDoc = shownSlide && !view?.renderError ? (shownSlide.from === "proposed" ? proposedDoc : fileDoc) : null;
+  const shownDoc = shownSlide && !view?.renderError ? (shownSlide.from === "proposed" ? proposedDoc : pictureIn(fileState.shown, shownSlide).doc) : null;
   // A paint counts only for the stage mounted now. Each mount of the stage takes a token of its own and says when it
   // comes and goes: another slide (A, then B, then A again), PowerPoint and back, a failed open, any remount. The approval
   // leaves with its stage, and a paint from a stage already gone never counts, so the verdicts never open on a blank stage.
@@ -296,17 +298,18 @@ export function SlidesBody({
   // screen is drawn with its own pages, so a slide moved, added or taken out never shows another slide's picture.
   const pagesAt = useRef(new Map<string, Map<string, number>>());
   if (view) remember(pagesAt.current, view);
-  const fileRev = fileRender.rev;
+  const fileShown = fileState.shown;
   const proposedRev = proposedRender.rev;
   const pictureOf = useCallback<PictureOf>(
     (slide) => {
-      const doc = slide.from === "proposed" ? proposedDoc : fileDoc;
-      const pages = pagesAt.current.get((slide.from === "proposed" ? proposedRev : fileRev) ?? "");
+      if (slide.from === "file") return pictureIn(fileShown, slide);
+      const doc = proposedDoc;
+      const pages = pagesAt.current.get(proposedRev ?? "");
       if (!doc || !pages) return { doc, page: slide.page };
       const page = pages.get(slide.key);
       return page === undefined ? { doc: null, page: slide.page } : { doc, page };
     },
-    [fileDoc, proposedDoc, fileRev, proposedRev],
+    [fileShown, proposedDoc, proposedRev],
   );
   const [naming, setNaming] = useState<NameAsk | null>(null);
   const editable = !!view?.hand;
@@ -320,7 +323,7 @@ export function SlidesBody({
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => void openInPowerPoint(item.id, source, env)} />;
 
-  const revOf = (doc: PdfDoc): string | null => (doc === fileDoc ? fileRender.rev : doc === proposedDoc ? proposedRender.rev : null);
+  const revOf = (doc: PdfDoc): string | null => (filePictures.holds(doc) ? fileState.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];
   const narrow = size.width > 0 && size.width < NARROW;
   // The Format sheet beside the stage where the canvas has room, else under the slide in the notes' place.
