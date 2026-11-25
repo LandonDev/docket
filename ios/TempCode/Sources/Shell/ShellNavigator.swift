@@ -15,8 +15,8 @@ import TempCodeClient
 final class ShellNavigator {
     let tab: AppTab
     var sidebarPath: [Route] {
-        // He left the list a landing put on top: the landing is over (`WorkTab.ListLanding`).
-        didSet { if let landing, sidebarPath.last != landing.top { self.landing = nil } }
+        // He left the list a landing put on top, and the detail holds something: the landing is over.
+        didSet { if let landing, landing.ended(top: sidebarPath.last, detailEmpty: detailRoot == nil) { self.landing = nil } }
     }
     /// The day's first place or the Work list after a tab press, shown over his hidden sidebar while it stays on top.
     private(set) var landing: WorkTab.ListLanding?
@@ -24,6 +24,7 @@ final class ShellNavigator {
         // His press on the sidebar button over a wide route is that screen's alone (`SidebarVisibility`).
         // A held write is its route's too: another route never shows it, even for the half second it waits.
         didSet {
+            if let landing, landing.ended(top: sidebarPath.last, detailEmpty: detailRoot == nil) { self.landing = nil }
             let route = ShellPaths.identity(of: detailRoot)
             if let held = sidebarOverride, held.route != route { sidebarOverride = nil }
             if let held = heldWrite, held.route != route { heldWrite = nil }
@@ -71,6 +72,8 @@ final class ShellNavigator {
     var sinceShown: TimeInterval { splitOnScreen ? Date().timeIntervalSince(shownAt) : 0 }
     /// The window's width, for the fold's place (`ShellSplit`).
     var windowWidth: CGFloat = 0
+    /// The window is taller than wide (unfolded portrait, tabletop): the list asks its widest (`SidebarColumn`).
+    var windowTall = false
     /// Every host's lists, for placing a thread in its shell; the root sets it.
     @ObservationIgnored var hosts: () -> [HomeHostInput] = { [] }
 
@@ -80,6 +83,8 @@ final class ShellNavigator {
         detailRoot = memory.detailRoot
         detailStack = NavigationMemory.path(memory.detailStack)
         self.sidebarShown = sidebarShown
+        // A landing still in force when the last run ended (a same-day relaunch on Today's list).
+        landing = memory.landing
     }
 
     /// The detail's root takes the whole open Duo, its two halves either side of the fold (`ShellPaths.wide`).
@@ -105,7 +110,7 @@ final class ShellNavigator {
     /// What the split shows: a held write, else his toggle, hidden by a wide route, or his own press on that route.
     var sidebarVisible: Bool {
         if let heldWrite { return heldWrite.shown }
-        if let landing, landing.showsSidebar(pose: pose, top: sidebarPath.last, wide: wide) { return true }
+        if let landing, landing.showsSidebar(pose: pose, top: sidebarPath.last, wide: wide, detailEmpty: detailRoot == nil) { return true }
         return SidebarVisibility(preference: sidebarShown, override: sidebarOverride).shown(route: ShellPaths.identity(of: detailRoot), wide: wide)
     }
 
@@ -206,7 +211,11 @@ final class ShellNavigator {
             // The overlay closes on a pick, as Mail's does. A wide route already puts the sidebar away without writing
             // his toggle (`SidebarVisibility`), so opening one never saves "hidden" as the tab's choice for the list he
             // comes back to (council 13 and 14, Sol).
-            if ShellPose.pickHidesSidebar(pose: pose, wide: wide) { sidebarShown = false }
+            // An explicit pick that closes the overlay ends a landing too, so the item he tapped shows (council 17, Sol 3).
+            if ShellPose.pickHidesSidebar(pose: pose, wide: wide) {
+                sidebarShown = false
+                landing = nil
+            }
         }
     }
 
@@ -286,7 +295,7 @@ final class ShellNavigator {
 
     /// What the memory keeps of this tab.
     var memory: ColumnMemory {
-        ColumnMemory(sidebar: sidebarPath, detailRoot: detailRoot, detailStack: NavigationMemory.encode(detailStack), sidebarShown: sidebarShown)
+        ColumnMemory(sidebar: sidebarPath, detailRoot: detailRoot, detailStack: NavigationMemory.encode(detailStack), sidebarShown: sidebarShown, landing: landing)
     }
 
     /// The tab as a memory has it: an old save's Work screens moved here (`NavigationSnapshot.movingWork`).
@@ -294,5 +303,6 @@ final class ShellNavigator {
         sidebarPath = memory.sidebar
         detailRoot = memory.detailRoot
         detailStack = NavigationMemory.path(memory.detailStack)
+        landing = memory.landing
     }
 }

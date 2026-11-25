@@ -212,6 +212,7 @@ struct RootView: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onChange(of: pose, initial: true) { for navigator in navigators { navigator.pose = pose } }
         .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
+        .onChange(of: size.height > size.width, initial: true) { for navigator in navigators { navigator.windowTall = size.height > size.width } }
         // The launch's first frame on screen: the signpost `launch.firstFrame` (Perf/LaunchFrames.swift).
         .onAppear { LaunchFrames.rootAppeared() }
         .onAppear {

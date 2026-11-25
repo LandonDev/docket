@@ -8,8 +8,8 @@ import Testing
         #expect(ShellPose.of(horizontal: .regular, vertical: .regular, size: CGSize(width: 951, height: 669)) == .split(sidebar: .tiled))
     }
 
-    @Test func `unfolded portrait overlays the sidebar behind the system toggle`() {
-        #expect(ShellPose.of(horizontal: .regular, vertical: .regular, size: CGSize(width: 669, height: 951)) == .split(sidebar: .overlay))
+    @Test func `unfolded portrait tiles the sidebar beside the detail, as iOS 27.1 draws it (iw13)`() {
+        #expect(ShellPose.of(horizontal: .regular, vertical: .regular, size: CGSize(width: 669, height: 951)) == .split(sidebar: .tiled))
     }
 
     @Test func `folded portrait is the stack`() {
@@ -98,6 +98,8 @@ import Testing
         #expect(SidebarColumn.of(halfOpen: false, foldX: 475) == SidebarColumn(min: 260, ideal: 260, max: 320))
         #expect(SidebarColumn.of(halfOpen: true, foldX: 475) == SidebarColumn(min: 260, ideal: 475, max: 475))
         #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
+        // A window taller than wide asks the widest, so the list's rows keep their words (iw13 measured 250 there).
+        #expect(SidebarColumn.of(halfOpen: false, foldX: 334, tall: true) == SidebarColumn(min: 320, ideal: 320, max: 320))
     }
 
     @Test("the unfolded Duo's detail as measured: 547 pt beside the 320 pt sidebar iOS keeps and the 84 pt tab rail, the pager; 680 and up, two panes") func theUnfoldedDuoDetail() {
@@ -118,8 +120,9 @@ import Testing
         ("folded-landscape", .compact, .compact, CGSize(width: 678, height: 466), .stack(short: true)),
         ("unfolded", .regular, .regular, CGSize(width: 951, height: 669), .split(sidebar: .tiled)),
         ("half-open", .regular, .regular, CGSize(width: 951, height: 669), .split(sidebar: .tiled)),
-        ("unfolded-portrait", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .overlay)),
-        ("tabletop", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .overlay)),
+        // Upright tiles too: iOS 27.1 lays the split side by side at 669×951 (iw13), and the split asks the balanced style.
+        ("unfolded-portrait", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .tiled)),
+        ("tabletop", .regular, .regular, CGSize(width: 669, height: 951), .split(sidebar: .tiled)),
     ]
 
     @Test(arguments: duoPoses.map(\.name))
@@ -192,10 +195,11 @@ import Testing
         let shownDetail = SidebarButtonPlace.shows(in: .detail, pose: pose, sidebarShown: true)
         let hiddenSidebar = SidebarButtonPlace.shows(in: .sidebar, pose: pose, sidebarShown: false)
         let hiddenDetail = SidebarButtonPlace.shows(in: .detail, pose: pose, sidebarShown: false)
-        // A stack has no sidebar button; a split has it in the sidebar's bar while it shows, the detail's while not
-        // (the overlay keeps the detail's too, under the overlay).
+        // A stack has no sidebar button; a split has one, in the sidebar's bar while it shows, the detail's while not
+        // (iw13 drew both at once in the upright poses).
         #expect(shownSidebar == pose.isSplit)
-        #expect(shownDetail == pose.isOverlay)
+        #expect(!shownDetail)
+        #expect(!SidebarButtonPlace.shows(in: .detail, pose: .split(sidebar: .overlay), sidebarShown: true))
         #expect(!hiddenSidebar)
         #expect(hiddenDetail == pose.isSplit)
         #expect(SidebarButtonPlace.edge(of: .sidebar) == .trailing)

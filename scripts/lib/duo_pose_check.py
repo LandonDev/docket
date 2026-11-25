@@ -87,8 +87,12 @@ if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measu
     sb = notes.get('sidebar', '')
     sbw, split = int(notes.get('sidebar.width', '0')), int(notes.get('split.width', '0'))
     folded = pose in ('folded', 'folded-landscape')
-    want_sb = 'stack' if folded else ({'shown': 'visible' if pose in ('unfolded', 'half-open') else 'overlay', 'hidden': 'hidden'}.get(asked) if asked else None)
+    # Every regular pose tiles (`ShellPose.of`, the split's balanced style), upright too (iw13).
+    want_sb = 'stack' if folded else ({'shown': 'visible', 'hidden': 'hidden'}.get(asked) if asked else None)
     if want_sb and sb != want_sb: problems.append(f'sidebar {sb!r}, asked {asked!r} → {want_sb!r}')
+    # One sidebar button on screen at most, where the system's toggle stood (iw13 drew two side by side).
+    buttons = sum(int(notes.get(f'sidebar.buttons.{c}', '0') or 0) for c in ('sidebar', 'detail'))
+    if buttons > 1: problems.append(f'{buttons} sidebar buttons on screen (sidebar {notes.get("sidebar.buttons.sidebar")}, detail {notes.get("sidebar.buttons.detail")}), want one')
     # What the shell holds: the window less its safe area's sides (the tab rail is the right inset).
     # The split's own note is information only: it once lagged a fold back by 4 pt.
     safe = r.get('safeArea') or {}

@@ -1720,6 +1720,8 @@ else:
     # Before the press, the button stood once in the bar of the column his toggle sat in: the sidebar's while it showed.
     where = 'sidebar' if before == 'shown' else 'detail'
     if drawn[where] != 1: problems.append(f"{drawn[where]} sidebar buttons in the {where}'s bar over the Outbox before the press, want 1")
+    other = 'detail' if where == 'sidebar' else 'sidebar'
+    if drawn[other] != 0: problems.append(f"{drawn[other]} sidebar buttons in the {other}'s bar too before the press, want one button on screen")
     if want == before: problems.append(f'the press left the choice {before}')
     if at >= 500: problems.append(f'the press came {at} ms after Work appeared, past the startup half second it must survive')
     if notes.get('sidebar.chosen') != want: problems.append(f"chosen {notes.get('sidebar.chosen')} after the settle, want {want}")
@@ -1728,6 +1730,8 @@ else:
     # After it, once more where the toggle now sits.
     now = 'sidebar' if want == 'shown' else 'detail'
     if notes.get(f'sidebar.buttons.{now}') != '1': problems.append(f"sidebar.buttons.{now} {notes.get(f'sidebar.buttons.{now}')!r} after the settle, want '1'")
+    gone = 'detail' if now == 'sidebar' else 'sidebar'
+    if notes.get(f'sidebar.buttons.{gone}', '0') not in ('0', None): problems.append(f"sidebar.buttons.{gone} {notes.get(f'sidebar.buttons.{gone}')!r} after the settle, want none: one button on screen")
 if problems:
     print(f"ios-sim-proof: sidebar tap FAIL ({name}): {'; '.join(problems)}", file=sys.stderr); sys.exit(1)
 print(f"ios-sim-proof: sidebar tap PASS ({name}): {notes['sidebar.press']}, kept through the settle")
@@ -1759,7 +1763,17 @@ work_m1() (
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   appearance light
   TC_ACTION=today-tick launch_app work-day
-  sleep 6; snap m1-today-tick-light
+  sleep 10; snap m1-today-tick-light
+  # The shot shows a row ticked (its Done capsule), never the plain page again (iw13): the hook notes the row it ticked.
+  if [ -n "$POSE" ]; then
+    python3 - "$OUT/layout/$POSE/m1-today-tick-light.json" <<'PY' || return 1
+import json, sys
+tick = (json.load(open(sys.argv[1])).get('notes') or {}).get('today.tick')
+if not tick or tick == 'none':
+    print(f'ios-sim-proof: today tick FAIL: no Due row was ticked (today.tick {tick!r})', file=sys.stderr); sys.exit(1)
+print(f'ios-sim-proof: today tick PASS ({tick})')
+PY
+  fi
   # The open Duo picks the first held row for the empty detail.
   if [ -n "$start_pose" ]; then
     fold unfolded

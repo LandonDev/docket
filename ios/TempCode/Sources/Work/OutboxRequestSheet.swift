@@ -159,9 +159,10 @@ struct OutboxRequestSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
         }
-        // Another request's countdown (Send, Close, then this one opened), a reply's or the Outbox's own: their Undo
-        // over this sheet, which covers the tab's foot. This request's own is its foot's, as before.
-        .outboxUndoOverSheet()
+        // Every countdown's Undo over this sheet, outside its stack: this request's own (so a row he opens during the
+        // wait never covers it), another request's (Send, Close, then this one opened), a reply's or the Outbox's own,
+        // since the sheet covers the tab's foot. One copy of each.
+        .outboxUndoOverSheet(own: requestId)
         .tcSheet(.editor)
         .task { await load() }
         #if DEBUG
@@ -320,9 +321,9 @@ struct OutboxRequestSheet: View {
     @ViewBuilder
     private func foot(_ request: OutboxRequest, held: Set<String>) -> some View {
         switch phase {
-        case .waiting(let press):
-            UndoCapsule(line: press.waitingLine, identifier: "outbox-request-undo") { wait.undo(requestId) }
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12)))
+        case .waiting:
+            // Its Undo is the sheet's outer foot's (`outboxUndoOverSheet(own:)`), over any row he pushes, one copy.
+            EmptyView()
         case .done:
             wide("Done", prominent: true, identifier: "outbox-request-done") { dismiss() }
                 .padding(.horizontal, Layout.textEdge)

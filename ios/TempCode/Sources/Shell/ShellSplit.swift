@@ -28,7 +28,7 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     @State private var foldX: CGFloat = 0
 
     /// The desktop's 260 pt workspace column (`SidebarColumn`), the fold's when half open.
-    private var sidebarColumn: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
+    private var sidebarColumn: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX, tall: navigator.windowTall) }
 
     var body: some View {
         // Read so a stray split (`ShellNavigator.visibilityAsk`) reads its binding again: the split's own value for one
@@ -72,6 +72,9 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
             }
             .environment(\.sidebarButtonColumn, SidebarButtonColumn(navigator: navigator, column: .detail))
         }
+        // Side by side in every regular pose, as `ShellPose` says: the system's automatic style tiled the upright open Duo
+        // already (iw13), and asking for it keeps the rule and the drawing one.
+        .navigationSplitViewStyle(.balanced)
         // A LifeOS screen's mail thread is pushed onto the split's stack, hoisted out of LifeKitUI's own.
         .lifeHostEnvironment()
         // The fold is the window's centre line; the split may start short of the window's leading edge.
@@ -176,6 +179,11 @@ struct SidebarButtonItem: ViewModifier {
     let column: Column
 
     private var shows: Bool { SidebarButtonPlace.shows(in: column, pose: navigator.pose, sidebarShown: navigator.splitShown) }
+    #if DEBUG
+    /// The page this modifier is on is the one its column shows (a page pushed over it disappears): the probe counts
+    /// a button only there, so a covered page's toolbar item is never a second one.
+    @State private var pageShown = false
+    #endif
 
     func body(content: Content) -> some View {
         content
@@ -185,13 +193,16 @@ struct SidebarButtonItem: ViewModifier {
                     ToolbarItem(placement: SidebarButtonPlace.edge(of: column) == .trailing ? .topBarTrailing : .topBarLeading) {
                         Button(navigator.splitShown ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.leading") { navigator.pressSidebar() }
                             .accessibilityIdentifier("shell-sidebar-button")
-                            #if DEBUG
-                            .onAppear { SidebarButtonProbe.moved(navigator, column, by: 1) }
-                            .onDisappear { SidebarButtonProbe.moved(navigator, column, by: -1) }
-                            #endif
                     }
                 }
             }
+            #if DEBUG
+            .onAppear { pageShown = true }
+            .onDisappear { pageShown = false }
+            .onChange(of: pageShown && shows) { was, now in
+                if was != now { SidebarButtonProbe.moved(navigator, column, by: now ? 1 : -1) }
+            }
+            #endif
     }
 }
 

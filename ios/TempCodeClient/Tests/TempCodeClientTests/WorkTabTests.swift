@@ -237,7 +237,7 @@ import TempCodeContract
 
     static let poses: [(name: String, pose: ShellPose)] = [
         ("folded", .stack(short: false)), ("folded-landscape", .stack(short: true)), ("unfolded", .split(sidebar: .tiled)),
-        ("half-open", .split(sidebar: .tiled)), ("unfolded-portrait", .split(sidebar: .overlay)), ("tabletop", .split(sidebar: .overlay)),
+        ("half-open", .split(sidebar: .tiled)), ("unfolded-portrait", .split(sidebar: .tiled)), ("tabletop", .split(sidebar: .tiled)),
     ]
 
     @Test(arguments: poses.map(\.name))
@@ -283,5 +283,34 @@ import TempCodeContract
         #expect(!list.showsSidebar(pose: pose, top: .place(.today), wide: false))
         // His toggle is untouched throughout.
         #expect(hidden.preference == false)
+    }
+
+    // MARK: - the landing carried and kept, and closed by a pick over an overlay (council 17, Sol 2 and 3)
+
+    @Test(arguments: poses.map(\.name))
+    func `a landing carries to the next list while the detail is empty, and comes back on a same-day relaunch`(_ name: String) throws {
+        let pose = try #require(Self.poses.first { $0.name == name }).pose
+        // He pressed the Work tab he was on, with his sidebar hidden: the Work list shows.
+        let list = WorkTab.ListLanding(top: nil)
+        #expect(list.showsSidebar(pose: pose, top: nil, wide: false, detailEmpty: true) == pose.isSplit)
+        // He taps Files: a list in the sidebar, the detail still empty. It shows, never the blank detail alone.
+        #expect(list.showsSidebar(pose: pose, top: .place(.files), wide: false, detailEmpty: true) == pose.isSplit)
+        #expect(!list.ended(top: .place(.files), detailEmpty: true))
+        // He opens a file: something holds the detail, and he has left the landing's list. His saved choice decides.
+        #expect(list.ended(top: .place(.files), detailEmpty: false))
+        // Today, the day's first place, keeps showing beside the row it picks (tiled): still its list on top.
+        let day = WorkTab.ListLanding(top: .place(.today))
+        #expect(!day.ended(top: .place(.today), detailEmpty: false))
+        #expect(day.showsSidebar(pose: pose, top: .place(.today), wide: false) == pose.isSplit)
+        // A same-day relaunch: the landing comes back with the Work column, and an older save reads none.
+        let memory = ColumnMemory(sidebar: [.place(.today)], sidebarShown: false, landing: day)
+        let back = try JSONDecoder().decode(ColumnMemory.self, from: JSONEncoder().encode(memory))
+        #expect(back.landing == day && back.sidebarShown == false)
+        let old = try JSONDecoder().decode(ColumnMemory.self, from: Data(#"{"sidebar":[],"sidebarShown":false}"#.utf8))
+        #expect(old.landing == nil)
+        // In the overlay pose an explicit pick of an ordinary row closes the overlay (and with it the landing), so the
+        // item he tapped shows; a tiled pose keeps Today beside it.
+        #expect(ShellPose.pickHidesSidebar(pose: pose, wide: false) == pose.isOverlay)
+        #expect(ShellPose.pickHidesSidebar(pose: .split(sidebar: .overlay), wide: false))
     }
 }

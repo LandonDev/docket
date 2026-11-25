@@ -25,6 +25,10 @@ enum TodayFeed {
         // A host's LifeOS signing out, heard by its Get or push whether or not Today shows: its sessions end (their
         // late answers land nowhere) and Today forgets what they gave.
         WorkHost.heardLifeosSignOut = { host in
+            #if DEBUG
+            // The fixture day never signed in through the host: its sign-out takes nothing from Today.
+            if TestHooks.lifeFixtures { return }
+            #endif
             WorkLifeHost.signedOut(host: host)
             store.lifeosSignedOut(host: host)
         }

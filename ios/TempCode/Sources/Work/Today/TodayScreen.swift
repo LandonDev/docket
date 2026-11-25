@@ -379,13 +379,22 @@ struct TodayScreen: View {
     }
 
     #if DEBUG
-    /// `TC_TEST_ACTION=today-tick`: the first Due row's tick, pressed once the fresh page has it (the m1 proof).
+    /// `TC_TEST_ACTION=today-tick`: the first Due row's tick, pressed as soon as the fresh page has one (the m1
+    /// proof), waiting for it rather than giving up on a page that painted its kept rows first (iw13 never ticked);
+    /// `today.tick` notes the row it ticked, or that none came.
     private func proofTick() async {
-        guard TestHooks.action == "today-tick", !store.cached else { return }
-        try? await Task.sleep(for: .seconds(4))
-        guard let row = TodayStore.rows(store.page).first(where: { TodaySources.tick($0) != nil && store.isFresh($0) }),
-              let press = TodaySources.tick(row), TestHooks.once("today-tick") else { return }
-        act(row, press)
+        guard TestHooks.action == "today-tick" else { return }
+        for _ in 0..<100 {
+            if let row = TodayStore.rows(store.page).first(where: { TodaySources.tick($0) != nil && store.isFresh($0) }),
+               let press = TodaySources.tick(row) {
+                guard TestHooks.once("today-tick") else { return }
+                act(row, press)
+                LayoutProbe.note("today.tick", row.key)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        LayoutProbe.note("today.tick", "none")
     }
     #endif
 

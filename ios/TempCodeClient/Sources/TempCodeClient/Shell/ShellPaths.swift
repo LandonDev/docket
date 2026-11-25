@@ -245,18 +245,22 @@ public struct ColumnMemory: Codable, Hashable, Sendable {
     public var detailStack: Data?
     /// This tab's own sidebar toggle; nil in a save from before each tab kept its own.
     public var sidebarShown: Bool?
+    /// A landing still showing its list over his hidden sidebar (`WorkTab.ListLanding`), so a same-day relaunch comes
+    /// back on the list he saw; nil in an older save, and when none is in force.
+    public var landing: WorkTab.ListLanding?
 
-    public init(sidebar: [Route] = [], detailRoot: Route? = nil, detailStack: Data? = nil, sidebarShown: Bool? = nil) {
+    public init(sidebar: [Route] = [], detailRoot: Route? = nil, detailStack: Data? = nil, sidebarShown: Bool? = nil, landing: WorkTab.ListLanding? = nil) {
         self.sidebar = sidebar
         self.detailRoot = detailRoot
         self.detailStack = detailStack
         self.sidebarShown = sidebarShown
+        self.landing = landing
     }
 
     /// Nothing open and nothing pushed: the tab at its root.
     public var isRoot: Bool { sidebar.isEmpty && detailRoot == nil }
 
-    private enum CodingKeys: String, CodingKey { case sidebar, detailRoot, detailStack, sidebarShown }
+    private enum CodingKeys: String, CodingKey { case sidebar, detailRoot, detailStack, sidebarShown, landing }
 
     /// A route this build cannot read (a later contract changed one of its bodies) costs only itself: the sidebar
     /// keeps the routes before it, and a detail root it cannot read goes with what was pushed over it. The other
@@ -273,6 +277,7 @@ public struct ColumnMemory: Codable, Hashable, Sendable {
         detailRoot = saved ? root : nil
         detailStack = saved && root == nil ? nil : (try? c.decodeIfPresent(Data.self, forKey: .detailStack)) ?? nil
         sidebarShown = (try? c.decodeIfPresent(Bool.self, forKey: .sidebarShown)) ?? nil
+        landing = (try? c.decodeIfPresent(WorkTab.ListLanding.self, forKey: .landing)) ?? nil
     }
 }
 

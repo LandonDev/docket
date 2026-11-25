@@ -87,6 +87,11 @@ final class WorkLifeHost: LifeActions {
     /// screen shows it. Its stores stop and forget every query and value (a late answer has nowhere to land), the
     /// token goes, and it reads as signed out until a fresh session is made (the host saying LifeOS connected again).
     func signedOut() {
+        #if DEBUG
+        // The proofs' fixture day is LifeKit's own and never signed in through the host: the test host saying its
+        // LifeOS is signed out ends nothing here, so Today's Due rows stay for the m1 tick (iw13 had none to tick).
+        if TestHooks.lifeFixtures { return }
+        #endif
         end(state: "signed-out", words: Self.words(.host("signed-out")))
     }
 

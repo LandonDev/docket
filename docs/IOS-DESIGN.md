@@ -260,8 +260,12 @@ The pose is the client package's `ShellPose`, decided once at RootView from
 the window's size classes and its own bounds and published as `\.shellPose`:
 compact width is `.stack(short:)` (short when the height is compact too, the
 folded landscape pose, where every list title is inline); regular width is
-`.split(sidebar:)`, the sidebar tiled beside the detail when the window is
-wider than tall and over it behind the system toggle when taller. A screen
+`.split(sidebar:)`, the sidebar tiled beside the detail in every regular
+pose, upright too: iOS 27.1 lays the open Duo's split side by side at
+669×951 (iw13 measured a 250 pt list beside the detail), and the split asks
+the balanced style so the rule and the drawing stay one. The overlay mode is
+kept for a split told otherwise; in it a pick hides the sidebar. In a window
+taller than wide the list asks its widest, 320 pt, so its rows keep their words. A screen
 reads `\.shellPose`, never `horizontalSizeClass`, for a shell decision; the
 detail column's own size class is the system's and is not promised.
 `columnVisibility` always carries the expanded preference (the remembered
@@ -712,7 +716,7 @@ than the window). The rules are the client package's
 | Folded portrait | 466×678, compact×regular | 466 | The phone's screen, unchanged |
 | Folded landscape | 678×466, compact×compact | 678 | The pager; the header is one line; the segment bar leaves while the field has focus |
 | Unfolded landscape | 951×669, regular×regular | 951 less the 84 pt tab rail, or 547 beside the sidebar (iOS keeps it at 320) | Hero and chat side by side from 680 pt, the chat at least 360; the pager beside the sidebar |
-| Unfolded portrait | 669×951, regular×regular | 669, the sidebar over it when shown | The pager: 669 is under the 680 two panes need |
+| Unfolded portrait | 669×951, regular×regular | 669, or what the 320 pt sidebar beside it leaves | The pager: 669 is under the 680 two panes need |
 | Half open | 951×669, regular×regular, partly open | 867 with the sidebar hidden; shown, the sidebar fills the first panel to the fold (456) and the thread starts past the band (371) | Two panes on the fold's band with the sidebar hidden; the pager beside it |
 
 **The sidebar keeps 320 on iOS 27.1, and the desktop's rule stays.** The
@@ -2570,8 +2574,9 @@ milestone 46 built, where it lives now:
   changed clears its tick, and a row opened through `request.view` starts
   unticked until he ticks it. The foot is two wide glass capsules, Not Now
   and "Send N" ("Approve N" when the ticked actions mix). Send freezes
-  exactly the ticked receipts and waits the phone's five seconds: the foot
-  becomes the undo capsule naming what goes ("Sending 2 mails to 2
+  exactly the ticked receipts and waits the phone's five seconds: the
+  sheet's foot, outside its stack so a row opened during the wait never
+  covers it, becomes the undo capsule naming what goes ("Sending 2 mails to 2
   people", Undo), each ticked row keeps its own words (its act, and when a
   later one goes), and the rows left out dim. Closing the sheet never sends it early: the frozen press waits
   out its five seconds (`RequestPresses`) with its Undo at the tab's foot (or over another request's sheet that
@@ -4558,7 +4563,8 @@ after. `columnVisibility` always carries the expanded preference, so the
 sidebar arrives with the expansion and never flickers in. The sidebar button
 is the shell's own (`sidebar.leading`, Show Sidebar and Hide Sidebar, where
 the system's toggle sat: at the trailing edge of the sidebar's bar while it
-shows, else at the leading edge of the detail's), on every page of each
+shows, else at the leading edge of the detail's; one button on screen, never
+both), on every page of each
 column, the root, each page the shell pushes over it and each page a screen
 pushes itself (Page Preview, a thread's diff, report, HTML render, agents
 list and subagent, a version compare, an agent's detail, Diagnostics:
@@ -4724,8 +4730,9 @@ it. What Work adds (the plan "All of Work on the iPhone", M0d):
   `ContentUnavailableView` when empty, one line with Try Again over what showed when
   a read fails, pull to refresh, the pick and the kept top row. Today is its first
   full user.
-- **A tab built in the overlay pose.** Unfolded-portrait and tabletop draw the list over the detail, his toggle as
-  he left it. A tab first built or picked there makes its split write `.detailOnly` as it appears; that write is the
+- **A tab built in the upright poses.** Unfolded-portrait and tabletop draw the list beside the detail (iw13), his
+  toggle as he left it; the Outbox and Today pick their first row there as the tiled Duo does. A tab first built or
+  picked there makes its split write `.detailOnly` as it appears; that write is the
   split's own, never his toggle (`ShellPose.keepsVisibilityWrite`'s `sinceShown`), and since the split acts only on
   a change of the value it reads, its binding answers that `.detailOnly` for one turn, then the shell's `.all`
   (`SplitAnswer`, `ShellPose.echoTurn`), so the list comes back (iw12: Work's tab drew only "Nothing Selected").
@@ -4733,7 +4740,7 @@ it. What Work adds (the plan "All of Work on the iPhone", M0d):
   the middle: the thing stands on the upper half, its controls lie on the lower, and
   nothing sits in the band (`TabletopHalves`, client package). The simulator holds the
   pose (four runs on the Mac): `TC_DUO_POSE=tabletop` (`tt`), `DuoPose.tabletop`, the
-  sidebar over the detail as in `unfolded-portrait`.
+  sidebar beside the detail as in `unfolded-portrait`.
 - **The fold cycle.** `TC_PROOF_SET=work TC_WORK_ONLY=fold` takes each Work screen
   folded, unfolded and folded again with the app running: the Outbox scrolled with an
   item open, a Files folder, a Work thread on its file with a typed draft and a chip in

@@ -417,12 +417,12 @@ describe('duo_work_fold_check.py', () => {
   })
 
   it('holds the sidebar to the states the route and the pose allow', () => {
-    // Ordinary: hidden where he chose shown is wrong; overlay in the tall pose is right.
+    // Ordinary: hidden where he chose shown is wrong.
     fails(workFold({ sidebars: ['stack', 'hidden', 'stack'] }), 'stop 2 (unfolded): sidebar hidden, want visible (ordinary route)')
-    expect(workFold({ sidebars: ['stack', 'overlay', 'stack'], classified: 'unfolded-portrait' }).status).toBe(0)
-    // Tabletop is the same tall window: the sidebar over the detail, never beside it.
-    expect(workFold({ sidebars: ['stack', 'overlay', 'stack'], classified: 'tabletop' }).status).toBe(0)
-    expect(workFold({ sidebars: ['stack', 'visible', 'stack'], classified: 'tabletop' }).status).toBe(1)
+    // The tall poses tile as the wide ones do (iw13: iOS 27.1 lays the split side by side there): beside, never over.
+    expect(workFold({ sidebars: ['stack', 'visible', 'stack'], classified: 'unfolded-portrait' }).status).toBe(0)
+    expect(workFold({ sidebars: ['stack', 'visible', 'stack'], classified: 'tabletop' }).status).toBe(0)
+    expect(workFold({ sidebars: ['stack', 'overlay', 'stack'], classified: 'tabletop' }).status).toBe(1)
     expect(workFold({ sidebars: ['stack', 'hidden', 'stack'], notes: [{ 'sidebar.chosen': 'hidden' }, { 'sidebar.chosen': 'hidden' }, { 'sidebar.chosen': 'hidden' }] }).status).toBe(0)
     // Folded is always the stack.
     fails(workFold({ sidebars: ['visible', 'visible', 'stack'] }), 'stop 1 (folded): sidebar visible, want stack')

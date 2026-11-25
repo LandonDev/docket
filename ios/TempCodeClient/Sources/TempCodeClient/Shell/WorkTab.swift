@@ -44,15 +44,22 @@ public enum WorkTab {
     /// A landing on a list he must see: the day's first place opened by his entry, or the Work list after a press on the
     /// tab he is on. Both clear the detail, so with his sidebar hidden the split would show "Nothing Selected" alone
     /// (council 16, Sol 3). `top` is the sidebar's top route the landing put there (nil: the Work list itself).
-    public struct ListLanding: Hashable, Sendable {
+    public struct ListLanding: Hashable, Sendable, Codable {
         public var top: Route?
         public init(top: Route?) { self.top = top }
 
-        /// Whether the landing shows the sidebar over his saved toggle: in a split pose, while the sidebar's top is still
-        /// the list it landed on and the detail holds no wide route. His toggle itself is never written, so the routes he
-        /// opens after he leaves that list follow it again; his own press on the sidebar button ends the landing.
-        public func showsSidebar(pose: ShellPose, top now: Route?, wide: Bool) -> Bool {
-            pose.isSplit && now == top && !wide
+        /// Whether the landing shows the sidebar over his saved toggle: in a split pose, with no wide route in the
+        /// detail, while the sidebar's top is still the list it landed on, or while the detail is empty, so a list he
+        /// goes on to from there (Files from the Work list) shows too, never a blank detail alone (council 17, Sol 2).
+        /// His toggle itself is never written: once he leaves the landing's list and opens something in the detail, his
+        /// saved choice decides again; his own press on the sidebar button, or a pick that closes an overlay, ends it.
+        public func showsSidebar(pose: ShellPose, top now: Route?, wide: Bool, detailEmpty: Bool = false) -> Bool {
+            pose.isSplit && !wide && (now == top || detailEmpty)
+        }
+
+        /// Whether the landing is over: he left its list and something holds the detail.
+        public func ended(top now: Route?, detailEmpty: Bool) -> Bool {
+            now != top && !detailEmpty
         }
     }
 

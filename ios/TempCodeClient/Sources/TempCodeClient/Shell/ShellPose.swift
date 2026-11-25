@@ -39,7 +39,11 @@ public enum ShellPose: Sendable, Hashable {
         case .compact:
             return .stack(short: vertical == .compact)
         case .regular:
-            return .split(sidebar: size.width < size.height ? .overlay : .tiled)
+            // Tiled in every regular pose, upright too: iOS 27.1 lays the open Duo's split side by side at 669×951
+            // (iw13: a 250 pt list beside the detail), and the split asks the balanced style so it always does
+            // (`ShellSplit`). The overlay mode stays for a split that is told otherwise.
+            _ = size
+            return .split(sidebar: .tiled)
         }
     }
 
@@ -100,7 +104,8 @@ public enum SidebarButtonPlace: Sendable, Hashable {
         guard pose.isSplit else { return false }
         switch column {
         case .sidebar: return sidebarShown
-        case .detail: return !sidebarShown || pose.isOverlay
+        // One button: the detail's bar holds it only while the sidebar is put away (iw13 drew two side by side).
+        case .detail: return !sidebarShown
         }
     }
 
@@ -221,8 +226,11 @@ public struct SidebarColumn: Sendable, Hashable {
     public static let width: CGFloat = 260
     public static let widest: CGFloat = 320
 
-    public static func of(halfOpen: Bool, foldX: CGFloat) -> SidebarColumn {
+    public static func of(halfOpen: Bool, foldX: CGFloat, tall: Bool = false) -> SidebarColumn {
         if halfOpen, foldX > width { return SidebarColumn(min: width, ideal: foldX, max: Swift.max(widest, foldX)) }
+        // A window taller than wide (unfolded portrait, tabletop): the list asks its widest, so its rows are not cut to a
+        // few letters (iw13 measured 250 there and cut "Send to Kare…").
+        if tall { return SidebarColumn(min: widest, ideal: widest, max: widest) }
         return SidebarColumn(min: width, ideal: width, max: widest)
     }
 }

@@ -22,7 +22,8 @@ import sys
 
 STOPS = [('folded', 1), ('unfolded', 2), ('folded', 3)]
 # The shell's sidebar by the pose LayoutProbe classified: collapsed, tiled beside the detail, or over it.
-SHAPES = {'folded': 'stack', 'folded-landscape': 'stack', 'unfolded': 'tiled', 'half-open': 'tiled', 'unfolded-portrait': 'overlay', 'tabletop': 'overlay'}
+# Every regular pose tiles (`ShellPose.of`, the split's balanced style): upright too, as iOS 27.1 draws it (iw13).
+SHAPES = {'folded': 'stack', 'folded-landscape': 'stack', 'unfolded': 'tiled', 'half-open': 'tiled', 'unfolded-portrait': 'tiled', 'tabletop': 'tiled'}
 
 
 def allowed(shape, route, chosen, override):
