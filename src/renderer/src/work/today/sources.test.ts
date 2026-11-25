@@ -164,6 +164,20 @@ describe("due", () => {
     expect(w.open).toHaveBeenCalledWith(JOBS[0], TASKS[0]);
   });
 
+  it("a task of a project names it on its second line, and Open project opens its page in the task's job", async () => {
+    const lan = { _id: "lp1", name: "Spring LAN" };
+    const openProject = vi.fn();
+    const w = { ...ways(), projectOf: (t: DueTask) => (t.projectId === "lp1" ? lan : null), openProject };
+    const rows = dueRows([task("t3", "purdue", "Order jerseys", { dueAt: at(23, 15), projectId: "lp1" }), task("t7", "purdue", "Tonight", { dueAt: at(23, 23) })], at(23, 12), w);
+    const [inProject, loose] = rows;
+    expect(inProject!.detail).toBe("Spring LAN");
+    expect(inProject!.acts!.map((a) => a.label)).toEqual(["Tomorrow", "Open project"]);
+    await inProject!.acts![1]!.run();
+    expect(openProject).toHaveBeenCalledWith(JOBS[0], lan);
+    expect(loose!.detail).toBeUndefined();
+    expect(loose!.acts!.map((a) => a.label)).toEqual(["Tomorrow"]);
+  });
+
   it("a row's tick and press look up the job when pressed: one built for a workspace since removed acts on the sector's job now", async () => {
     // Two workspaces hold Purdue; the row was built while the box's routed it.
     const mac = job("purdue", "mac");

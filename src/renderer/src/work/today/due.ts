@@ -17,12 +17,15 @@ import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayW
  * `tasks:list` on the all-sector session, so this list and the Tasks view
  * never disagree. The tick is the Tasks view's: Done goes through the job's
  * host (`work.tasks.done`), so a task a thread worked completes with that
- * thread's link. Tomorrow snoozes it to the next morning.
+ * thread's link. Tomorrow snoozes it to the next morning. A task of a
+ * LifeOS project names it on the row's second line, and Open project opens
+ * its page; the names come from one `projects:list` read beside the tasks'.
  */
 
 const SECTION: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true, bones: "tick" };
 
-export type DueTask = { _id: string; title: string; sector: SectorKey; status: string; priority?: string; dueAt?: number; pinned?: boolean };
+export type DueTask = { _id: string; title: string; sector: SectorKey; status: string; priority?: string; dueAt?: number; pinned?: boolean; projectId?: string };
+export type DueProject = { _id: string; name: string };
 
 export const taskKey = (id: string): string => `task:${id}`;
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -32,6 +35,9 @@ type Ways = {
   open(workspace: TodayWorkspace, task: DueTask): void;
   done(workspace: TodayWorkspace, task: DueTask): Promise<void>;
   tomorrow(task: DueTask): Promise<void>;
+  /** the task's project, where it has one LifeOS still lists */
+  projectOf?(task: DueTask): DueProject | null;
+  openProject?(workspace: TodayWorkspace, project: DueProject): void;
 };
 
 /**
@@ -44,11 +50,13 @@ export function dueRows(tasks: readonly DueTask[], now: number, ways: Ways, time
     .filter((task) => isTodayTask(task, now, timeZone) && ways.workspaceOf(task.sector))
     .map((task): TodayRow => {
       const workspace = ways.workspaceOf(task.sector)!;
+      const project = ways.projectOf?.(task) ?? null;
       return {
         key: taskKey(task._id),
         section: SECTION.id,
         sector: task.sector,
         title: task.title,
+        ...(project ? { detail: project.name } : {}),
         ...(task.dueAt !== undefined ? { at: task.dueAt, when: formatDue(task.dueAt, now), ...(task.dueAt < now ? { late: true } : {}) } : {}),
         workspace: { environmentId: workspace.environmentId, workspaceId: workspace.workspaceId },
         // The job is looked up when he presses, not when the row was built: a row kept from before a reopen acts on the
@@ -65,13 +73,28 @@ export function dueRows(tasks: readonly DueTask[], now: number, ways: Ways, time
           const now = ways.workspaceOf(task.sector);
           if (now) ways.open(now, task);
         },
-        acts: [{ label: "Tomorrow", run: () => ways.tomorrow(task) }],
+        acts: [
+          { label: "Tomorrow", run: () => ways.tomorrow(task) },
+          ...(project && ways.openProject
+            ? [
+                {
+                  label: "Open project",
+                  run: async () => {
+                    const now = ways.workspaceOf(task.sector);
+                    if (now) ways.openProject!(now, project);
+                  },
+                },
+              ]
+            : []),
+        ],
       };
     });
 }
 
 const pick = (value: DueTask[]): DueTask[] => value;
 const idOf = (task: DueTask): string => task._id;
+const pickProjects = (value: DueProject[]): DueProject[] => value;
+const idOfProject = (project: DueProject): string => project._id;
 const NO_ARGS = {};
 const NONE: readonly TodayRow[] = [];
 
@@ -89,6 +112,9 @@ async function away<T>(key: string, run: () => Promise<T>): Promise<T> {
 function useDue(env: TodayEnv): TodayAnswer {
   const now = useMinute();
   const read = useLifeosRows<DueTask[], DueTask>(env, "tasks:list", NO_ARGS, pick, idOf);
+  // The projects' names, for the row's second line: a row waits for none of them.
+  const projectRows = useLifeosRows<DueProject[], DueProject>(env, "projects:list", NO_ARGS, pickProjects, idOfProject).rows;
+  const projects = useMemo(() => new Map((projectRows ?? []).map((p) => [p._id, p])), [projectRows]);
   const lifeos = env.lifeos;
   // A task is written through the session it was read through: its sector's own, where the first session lacks it.
   const sessionOf = read.sessionOf;
@@ -109,6 +135,8 @@ function useDue(env: TodayEnv): TodayAnswer {
               undo: () => mutate(sessionOf(task.sector), "tasks:reopen", { id: task._id }).finally(() => comeBack(taskKey(task._id))),
             }),
           ).then(() => undefined),
+        projectOf: (task) => (task.projectId ? (projects.get(task.projectId) ?? null) : null),
+        openProject: (workspace, project) => goTo(workspace, { view: "projects", project: project._id }),
         tomorrow: (task) =>
           away(taskKey(task._id), () =>
             act({
@@ -119,7 +147,7 @@ function useDue(env: TodayEnv): TodayAnswer {
             }),
           ).then(() => undefined),
       }),
-    [read.rows, now, workspaceOf, sessionOf],
+    [read.rows, now, workspaceOf, sessionOf, projects],
   );
   // What a row's presses close over: the jobs they open in and the sessions they write through.
   const ways = useMemo(() => ({}), [workspaceOf, sessionOf]);
