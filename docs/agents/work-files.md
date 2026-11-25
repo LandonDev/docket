@@ -388,7 +388,8 @@ only where the window's key may read (`work.files.read` is a read method, so a r
 has no bytes, so none is offered with one selected, nor a file the VM keeps in the cloud. Each file goes in turn,
 its row saying "Downloading… 2.1 of 8.4 MB". Each part goes straight to the disk as it comes, never whole in the
 window: main begins the file in Downloads with the first part under a short name of its own ("TempCode download <id>.download", `wx`: a long name that fits Downloads would not fit
-with ".download" after it), adds each part,
+with ".download" after it), adds each part whole (a disk that takes only some of a write is given the rest, and one
+that takes nothing fails the part, so a cut file is never said Downloaded),
 and on the last names it under its own safe, free name (a link, never over a file that took the name meanwhile;
 on a disk with no links the name taken empty first (`wx`), then the whole part renamed onto it, so the name never holds a
 part-copied file, and a name taken meanwhile takes the next number;

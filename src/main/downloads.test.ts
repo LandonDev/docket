@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' }, ipcMain: { handle: () => {} } }))
 // A disk that refuses the finished file's name: every way of naming it fails. And a disk with no links (FAT), where
 // another file takes the free name between its check and the link.
-// `copying` sees a slow copy halfway through: the bytes under its destination name before the rest arrive.
+// `copying` sees a slow copy halfway through: the bytes under its destination name before the rest arrive. `takes`: a
+// disk that takes at most that many bytes of each write (space running short), none at 0.
 const refuse = vi.hoisted(() => ({
   name: false,
+  takes: null as null | number,
   links: null as null | ((path: string) => void),
   copying: null as null | ((dest: string) => void)
 }))
@@ -18,6 +20,12 @@ vi.mock('node:fs/promises', async (real) => {
   }
   return {
     ...fs,
+    open: async (...a: Parameters<typeof fs.open>) => {
+      const file = await fs.open(...a)
+      const write = file.write.bind(file) as (b: Uint8Array, o?: number, l?: number) => Promise<{ bytesWritten: number }>
+      if (refuse.takes !== null) Object.assign(file, { write: (b: Uint8Array, o = 0, l = b.byteLength - o) => write(b, o, Math.min(l, refuse.takes!)) })
+      return file
+    },
     link: (...a: Parameters<typeof fs.link>) => (refuse.name ? refused() : refuse.links ? noLinks(String(a[1])) : fs.link(...a)),
     rename: (...a: Parameters<typeof fs.rename>) => (refuse.name ? refused() : fs.rename(...a)),
     copyFile: async (...a: Parameters<typeof fs.copyFile>) => {
@@ -261,5 +269,30 @@ describe('a download written part by part', () => {
     expect(await parts.end(id, true)).toBe(join(dir, name))
     expect(readdirSync(dir)).toEqual([name])
     expect(readFileSync(join(dir, name), 'utf8')).toBe('whole')
+  })
+
+  it('writes the rest of a part a disk took only some of, and fails a write that takes nothing: never a cut file kept', async () => {
+    // Council r7 (Sol 1): a short write was taken as the whole part, and the cut file was named Downloaded.
+    const { mkdtempSync, readFileSync, readdirSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    const parts = partWriter(() => dir)
+    try {
+      refuse.takes = 4
+      const id = await parts.begin('Notes.txt')
+      await parts.part(id, new TextEncoder().encode('fifteen bytes!!'))
+      expect(await parts.end(id, true)).toBe(join(dir, 'Notes.txt'))
+      expect(readFileSync(join(dir, 'Notes.txt'), 'utf8')).toBe('fifteen bytes!!')
+      // The disk takes no more: the part fails, so the caller takes the file away.
+      refuse.takes = 0
+      const full = await parts.begin('Report.pdf')
+      await expect(parts.part(full, new Uint8Array(8))).rejects.toThrow()
+      expect(await parts.end(full, false)).toBeNull()
+      expect(readdirSync(dir)).toEqual(['Notes.txt'])
+    } finally {
+      refuse.takes = null
+    }
   })
 })

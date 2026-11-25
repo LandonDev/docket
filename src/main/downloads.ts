@@ -98,7 +98,15 @@ export function partWriter(dir: () => string): {
     },
     async part(id, bytes) {
       if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error('nothing to save')
-      await of(id).file.write(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
+      const file = of(id).file
+      const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+      // A disk may take only some of a write (space running short): the rest follows, and one that takes nothing
+      // fails the part, so the caller takes the file away rather than keep it cut.
+      for (let at = 0; at < data.byteLength; ) {
+        const { bytesWritten } = await file.write(data, at, data.byteLength - at)
+        if (bytesWritten <= 0) throw new Error('the disk took no more of the file')
+        at += bytesWritten
+      }
     },
     end,
   }
