@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { ADMIN_USER, daemonEnv, rigConfig, rigPaths, type Instance, type RigConfig, type RigPaths } from './machine/config'
+import { ADMIN_USER, daemonEnv, rigConfig, rigPaths, scratchMachineRefusal, type Instance, type RigConfig, type RigPaths } from './machine/config'
 import { keepLiveTpm, qemuPid, saveTpm, startQemu, startTpm, stopTpm } from './machine/daemons'
 import { qmp, quit, sendKey } from './machine/qmp'
 import { startWatcher } from './watcher'
@@ -38,6 +38,9 @@ export class StandingMachine implements VmMachine {
   ) {
     this.c = rigConfig(env, undefined, instance)
     this.p = rigPaths(this.c)
+    // the throwaway's disk survives no crash of the box: never a machine outside a scratch root
+    const why = scratch.throwaway || scratch.extra ? scratchMachineRefusal(env) : null
+    if (why) throw new Error(`a throwaway machine needs a scratch root: ${why}`)
   }
 
   cannot(): string | null {

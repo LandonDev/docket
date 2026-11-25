@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { actRow, coresUsed, parseSizes, quantile, rateRow, traceStages, type SeenFrame } from './vmScreenRows'
+import { actRow, coresUsed, liveAppTrouble, parseSizes, quantile, rateRow, traceStages, type SeenFrame } from './vmScreenRows'
 
 /** Frames 16 ms apart from `from` (ms), each captured `lag` ms before it arrived. */
 const steady = (from: number, n: number, lag = 5, bytes = 1000): SeenFrame[] => Array.from({ length: n }, (_, i) => ({ us: (from + i * 16) * 1000, ts: (from + i * 16 - lag) * 1000, bytes }))
@@ -76,5 +76,18 @@ describe("the VM screen bench's rows", () => {
 
   it('answers no stage for a trace with no pointer event', () => {
     expect(traceStages('nothing', 300)).toMatchObject({ n: 0 })
+  })
+
+  it('pulls a scratch machine down when the live app is slow twice running, or the disk under pressure once', () => {
+    const ok = { appMs: 90, ioSome: 2 }
+    const slow = { appMs: 1200, ioSome: 2 }
+    expect(liveAppTrouble([])).toBeNull()
+    expect(liveAppTrouble([ok, ok])).toBeNull()
+    // one slow answer is a blip
+    expect(liveAppTrouble([ok, slow])).toBeNull()
+    expect(liveAppTrouble([slow, ok])).toBeNull()
+    expect(liveAppTrouble([slow, slow])).toContain('1200 ms twice running')
+    expect(liveAppTrouble([{ appMs: null, ioSome: 0 }, { appMs: null, ioSome: 0 }])).toContain('did not answer')
+    expect(liveAppTrouble([ok, { appMs: 90, ioSome: 31 }])).toContain("pressure is 31%")
   })
 })

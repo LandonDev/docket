@@ -150,3 +150,29 @@ export function traceStages(trace: string, quietMs: number): TraceStages {
   })
   return { n, usbP50: quantile(usb, 0.5), usbMax: usb.length ? Math.max(...usb) : NaN, drawP50: quantile(draw, 0.5), drawP95: quantile(draw, 0.95) }
 }
+
+/** The live app comes first (the master's rule, 2026-11-24: a scratch boot froze it for 82 s). */
+export const LIVE_APP_MAX_MS = 800
+export const IO_PRESSURE_MAX = 30
+/** How often a scratch machine's watch reads the app and the disk. */
+export const WATCH_MS = 5000
+
+/** One reading: the live app's answer to `admission.get` in ms (null: no answer), and `/proc/pressure/io`'s some avg10. */
+export interface LiveReading {
+  appMs: number | null
+  ioSome: number
+}
+
+/**
+ * Why a scratch machine must come down now, from the watch's last readings (oldest first), or null: the app slow
+ * or silent twice running (one slow answer is a blip), or the disk's pressure past its line once.
+ */
+export function liveAppTrouble(last: readonly LiveReading[]): string | null {
+  const now = last.at(-1)
+  if (!now) return null
+  if (now.ioSome > IO_PRESSURE_MAX) return `the disk's pressure is ${now.ioSome}%`
+  const slow = (r: LiveReading) => r.appMs === null || r.appMs > LIVE_APP_MAX_MS
+  const before = last.at(-2)
+  if (before && slow(before) && slow(now)) return now.appMs === null ? 'the live app did not answer twice running' : `the live app answered in ${Math.round(now.appMs)} ms twice running`
+  return null
+}

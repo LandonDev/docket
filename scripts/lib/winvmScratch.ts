@@ -25,7 +25,7 @@ import { VM_COMPUTER, VmPicture } from '../../src/main/server/work/winvm/picture
 import { SshGuest } from '../../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../../src/main/server/work/winvm/standing'
 import { pictureToolsAt, VmScreen } from '../../src/main/server/work/winvm/window'
-import type { SeenFrame } from '../perf/vmScreenRows'
+import { liveAppTrouble, WATCH_MS, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
 
 /** The owner's machines' folder: the base image and the keys are read from it, never written. */
 const SHARED = '/srv/agents/win-vm'
@@ -73,21 +73,13 @@ export class BenchViewer implements ViewerSocket {
   }
 }
 
-/**
- * The live app comes first (the master's rule, 2026-11-24: a bench's boot froze it for 82 s). While a scratch
- * machine exists the app is timed every few seconds and the disk's pressure read; past either line the machine is
- * pulled down at once and the script ends. Answers why the run may not go on, or null.
- */
-export const LIVE_APP_MAX_MS = 800
-export const IO_PRESSURE_MAX = 30
-export function liveAppTrouble(): string | null {
+/** One reading of the live app (`tc-local admission.get`, in ms; null when it did not answer) and the disk's pressure. */
+export function liveAppReading(): LiveReading {
   const t0 = performance.now()
   const r = Bun.spawnSync(['tc-local', 'admission.get', '{}'], { stdout: 'ignore', stderr: 'ignore', timeout: 5000 })
   const ms = performance.now() - t0
-  if (r.exitCode !== 0 || ms > LIVE_APP_MAX_MS) return `the live app answered in ${Math.round(ms)} ms (exit ${r.exitCode})`
   const some = /^some avg10=([\d.]+)/m.exec(readFileSync('/proc/pressure/io', 'utf8'))
-  if (some && Number(some[1]) > IO_PRESSURE_MAX) return `the disk's pressure is ${some[1]}%`
-  return null
+  return { appMs: r.exitCode === 0 ? ms : null, ioSome: some ? Number(some[1]) : 0 }
 }
 
 export interface Scratch {
@@ -114,7 +106,8 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
   requireScratchMachine()
   const root = process.env.WINVM_DIR!
   if (!root.startsWith('/dev/shm/')) throw new Error(`WINVM_DIR ${root}: a scratch machine's disk lives in memory, under /dev/shm, never on the box's one disk`)
-  const trouble = liveAppTrouble()
+  const first = liveAppReading()
+  const trouble = liveAppTrouble([first, first])
   if (trouble) throw new Error(`not starting a machine: ${trouble}`)
   mkdirSync(root, { recursive: true })
   for (const name of ['base', 'keys']) if (!existsSync(join(root, name))) symlinkSync(join(SHARED, name), join(root, name))
@@ -145,13 +138,16 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
     o.log(`removed the scratch disk (${machine.c.dir})`)
   }
   let stopping = false
+  const readings: LiveReading[] = []
   const watch = setInterval(() => {
-    const why = stopping ? null : liveAppTrouble()
+    if (stopping) return
+    readings.push(liveAppReading())
+    const why = liveAppTrouble(readings.splice(0, readings.length - 2))
     if (!why) return
     stopping = true
     o.log(`STOPPING: ${why}`)
     void remove().finally(() => process.exit(3))
-  }, 4000)
+  }, WATCH_MS)
   return {
     machine,
     guest,
