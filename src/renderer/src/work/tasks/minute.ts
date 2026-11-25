@@ -35,9 +35,13 @@ function subscribe(listener: Listener): () => void {
   };
 }
 
-/** What the clock reads now: kept for the minute, so a render reads one time; a minute gone by with no reader moves it. */
+/**
+ * What the clock reads now: one time for the whole minute, so every reader of a render reads the same; once the minute
+ * has turned (its timer not yet run, or no reader holding it) the next read moves it, so a reader mounting then reads
+ * the new minute as a reader of its own clock did.
+ */
 function read(): number {
-  if (!listeners.size && minuteOf(Date.now()) !== minuteOf(current)) current = Date.now();
+  if (minuteOf(Date.now()) !== minuteOf(current)) current = Date.now();
   return current;
 }
 
