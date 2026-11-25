@@ -150,8 +150,9 @@ A key without `approve` is refused before any of this, and `video.*` is not
 on the app bridge, so no thread can call it. The answer is the mode the guest
 took, `{ ok: true, width, height, scale }` (its pixels and Windows' scale in
 percent), and its streams then close `resized`; or `unsupported` from a
-source with no `size` of its own (`VideoSource.size`). Every source answers
-`unsupported` today; the Windows VM's (`VmPicture`) takes sizes in M3b.
+source with no `size` of its own (`VideoSource.size`). Every source but the
+Windows VM's answers `unsupported`; `VmPicture.size` takes sizes on
+virtio-gpu and answers `unsupported` on std VGA ("The Windows VM" below).
 `fixed` takes one of `VIDEO_FIXED_SIZES` (1280×800, 1920×1200, 2560×1600),
 the guest's own pixels.
 
@@ -970,7 +971,7 @@ use physical pixels.
   new build.
 - **The display** (`VmScreen`, work/winvm/window.ts): the box browser's
   `BoxXDisplay` at the guest's own size (screen.json; a new disk's at the
-  setting below), 120 Hz, under
+  setting below; on virtio-gpu whatever size the guest takes), 120 Hz, under
   `<userData>/winvm/picture/display/`, started before QEMU and started with
   the stop signals blocked, as QEMU is, since QEMU's window dies with its X
   server. It ends when QEMU exits, by the keeper or, after a stop of the
@@ -986,6 +987,21 @@ use physical pixels.
   missing, `unsupported` while it sleeps. While anyone watches, the keeper
   does not put it to sleep. When it sleeps its streams end with `ended`.
   Who may watch is `mayWatch`, as for the box's browser.
+- **Its engines** (`vmEngineTune`, window.ts) run `--fps 60` (the guest
+  never draws faster), start at 8 Mbit/s and top at 20 up to 2560×1600,
+  12 and 40 above, and are pinned to CPUs 26 to 31 by `taskset` before
+  `spawnLowered`'s nice 10 (`LowerOptions.cpus`, childPriority.ts): the
+  VM's encoding takes six of the box's 32 CPUs at most, whatever is
+  watched. The box's browser's engines start exactly as before
+  (`BROWSER_TUNE`, 120 fps on any CPU).
+- **Its size follows him** on virtio-gpu (`VmDisplay`, work/winvm/display.ts;
+  work-winvm.md "The picture"): `video.size` from his drive stream sets the
+  guest's mode through the door, the display follows by RandR
+  (`BoxXDisplay.resize`, box/randr.ts: QueryExtension, CreateMode,
+  AddOutputMode, SetScreenSize and SetCrtcConfig by hand in xclient.ts, no
+  `xrandr`), the VM's streams end `resized` and every VM engine stops, the
+  warm ones too, before a lease is given again. On std VGA `video.size`
+  answers `unsupported`. The box's browser's display never resizes.
 - **Its rows** (`joinRows`, work/winvm/host.ts): while threads drive it,
   the rows of their sessions on the VM's service (work/winvm/vm.ts), each
   `computer: 'vm:windows'`; while none does and it is awake, one idle row of

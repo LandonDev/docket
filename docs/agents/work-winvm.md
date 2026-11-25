@@ -225,6 +225,30 @@ drives is put right at once with one sleep and wake. A new disk has no file and 
 Screen size setting is taken by a new Set up**, not by the next wake; a Windows restart inside a run keeps the run's
 size.
 
+**On virtio-gpu the guest follows his picture** (plan stage 1; the device is `run/machine.json`'s, which every
+start reads, and no machine is moved to it yet: that is the Turn on of a later slice). A wake there reads the
+guest's mode the same way and sets the display to it live (`VmDisplay.follow`), with no sleep and wake; the
+mismatch rule above is std VGA's alone. His size ask (`video.size`, live-video.md "The size ask") reaches
+`VmPicture.size`, which maps it by `askedMode` (Fit by `guestSizeFor` with the host's caps; a fixed size at the
+largest scale that keeps 1024×640 points, or 100% for Faster) and answers `unsupported` on std VGA, asleep or with
+no window. `VmDisplay` (display.ts) then makes the change, one at a time:
+
+1. The X screen grows by RandR where the new size is larger (`VmScreen.resize`, box/randr.ts).
+2. `display.set { width, height, scale }` through the door (`guestDisplay`, door.ts; docs/computer-protocol.md
+   §29.9). As soon as it answers, `run/screen.json` says the size the guest took, so a stop of the service from
+   here leaves it true. viogpudo may keep another size than the ask (it refuses 5120×2880): the box follows what
+   it took.
+3. QEMU's window is waited for at that size, 5 s at most (`VmScreen.windowSize`: the display's largest window).
+4. The VM's streams end `resized` (4108) and every VM engine stops, the warm ones too: an engine fixes its size
+   at its start. No lease is given until step 5 is done (`VmDisplay.lease`; a lease that was starting as the
+   change began gives its engine back and asks again). A stop made on purpose never counts as an engine crash.
+5. The X screen shrinks where the new size is smaller, and leases open again.
+
+A failure leaves the size that is true and says why: before step 2 nothing changed (a grown screen shrinks back);
+after it the guest's size is the file's, the engines restart at it, and the error names the step that failed.
+The door's verb is the Windows service's (M3c of the VM screen plan); until it lands the guest answers `-32601`
+and `scripts/e2e-winvm-resize.ts` stands in with `viogpures.exe`. That proof is written and not yet run.
+
 Where the `qemu-window` tool (scripts/work-tools/winvm.json) and `screen-relay` are both installed, a wake starts a
 private X display of the VM's own at the guest's 1280×800 first (`VmScreen`, window.ts: the box browser's
 `BoxXDisplay` given a size), and QEMU draws the guest's screen in its GTK window there. QEMU's window dies with its X
