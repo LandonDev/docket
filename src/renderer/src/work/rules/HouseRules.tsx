@@ -270,7 +270,21 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
       ) : facts.status === "error" ? (
         <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>
       ) : (
-        <PageRow title="Read my sent mail for how I write" description={line} error={error}>
+        <PageRow
+          title="Read my sent mail for how I write"
+          description={line}
+          error={
+            error ? (
+              // LifeOS's silence: Retry reads the count again, spinning in place until the answer replaces the line.
+              <span data-voice-failed className="inline-flex flex-wrap items-center gap-x-2">
+                {error}
+                <Button variant="ghost" size="xs" className="-my-1" disabled={again.retrying} onClick={again.retry}>
+                  <BusyLabel busy={again.retrying} label="Retry" />
+                </Button>
+              </span>
+            ) : undefined
+          }
+        >
           <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} onChange={flip} />
         </PageRow>
       )}

@@ -218,6 +218,31 @@ describe("the voice row while LifeOS is down", () => {
     expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
     expect(screen.queryByText(/socket closed/)).toBeNull();
   });
+
+  /** Council round 12 (Opus, Settings 1): LifeOS's silence on the count had no Retry. */
+  it("gives that line its Retry, which reads the count again, spinning in place until the answer", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] });
+    state.voice = { on: true, count: null, since: null, from: [], error: "LifeOS did not answer: socket closed" };
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    const line = document.querySelector<HTMLElement>("[data-voice-failed]")!;
+    const asks = calls.filter((c) => c.method === "work.rules.voice").length;
+    let open!: () => void;
+    state.gate = new Promise<void>((r) => (open = r));
+    state.voice = null;
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(calls.filter((c) => c.method === "work.rules.voice").length).toBe(asks + 1);
+    const pressed = document.querySelector<HTMLElement>("[data-voice-failed]")!;
+    expect(pressed.textContent).toContain("LifeOS did not answer the box");
+    expect(within(pressed).getByRole("button", { name: "Retry" }).hasAttribute("disabled")).toBe(true);
+    state.gate = null;
+    open();
+    await settle();
+    expect(document.querySelector("[data-voice-failed]")).toBeNull();
+    expect(screen.getByText(/^2 mails from landon@purdue\.edu since /)).toBeTruthy();
+  });
 });
 
 describe("the rule dialog", () => {

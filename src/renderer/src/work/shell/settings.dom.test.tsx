@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /** Settings → Work: each host's LifeOS sign-in lives on Connections now, and a workspace page's failed read offers Retry. */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { resetLifeos, setLifeosStatus } from "./lifeos";
+import { resetLifeos, setLifeosSession, setLifeosStatus } from "./lifeos";
 
 // A link's transport by hand where a test sets one; else the real hook.
 const transport = vi.hoisted(() => ({ now: null as string | null }));
@@ -285,6 +286,35 @@ describe("Sign in to LifeOS", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  /** Council round 12 (Sol, Settings 2): Retry cleared the failed row for a bone, with no sign the press was heard. */
+  it("keeps the failed code row with Retry spinning in place until the new code lands; New code the same", async () => {
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    const answers: ((v: unknown) => void)[] = [];
+    const request = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.reject(Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" })))
+      .mockImplementation(() => new Promise((r) => answers.push(r)));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+    // The ask is out: the row stays, its Retry spinning and held, and no bone takes its place.
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    expect(retry.querySelector("[data-busy]")).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    await act(async () => answers.shift()!({ code: "ABCD-1234", expiresAt: Date.now() - 1_000 }));
+    expect(screen.getByText("ABCD-1234")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // Past its life: New code spins where it stands, the old code kept, until the new one lands.
+    await act(async () => screen.getByRole("button", { name: "New code" }).click());
+    expect(screen.getByText("ABCD-1234")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New code" }).querySelector("[data-busy]")).toBeTruthy();
+    await act(async () => answers.shift()!({ code: "WXYZ-5678", expiresAt: Date.now() + 60_000 }));
+    expect(screen.getByText("WXYZ-5678")).toBeTruthy();
+  });
+
   /** Council round 9 (Opus, Settings 1): a code past its life said Expired, and nothing in the dialog asked for a new one. */
   it("puts New code where the timer stood once the code expires, which asks the same computer for a new one", async () => {
     const request = vi.fn(() => Promise.resolve({ code: "WXYZ-5678", expiresAt: Date.now() + 60_000 }));
@@ -308,5 +338,46 @@ describe("Sign in to LifeOS", () => {
     await act(() => Promise.resolve());
     expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
     expect(screen.queryByText("ABCD-1234")).not.toBeNull();
+  });
+});
+
+/** Council round 12 (Opus, Settings 2): the sectors read that failed under a connected status had no Retry. */
+describe("Settings → Work's sectors read", () => {
+  it("says LifeOS did not answer with Retry, which reads it again, spinning in place until the sectors land", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(() => new Promise(() => {})), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    setWorkOn("env_box", true);
+    const read = { mode: "fail" as "fail" | "wait" | "ready", listeners: new Set<() => void>() };
+    const client = {
+      url: "https://lifeos.test",
+      watchQuery: (ref: unknown) => ({
+        localQueryResult: () => {
+          if (getFunctionName(ref as never) !== "sectors:list") return undefined;
+          if (read.mode === "fail") throw new Error("socket closed");
+          return read.mode === "wait" ? undefined : [{ key: "purdue", label: "Purdue", order: 2 }];
+        },
+        onUpdate: (fn: () => void) => {
+          read.listeners.add(fn);
+          return () => void read.listeners.delete(fn);
+        },
+      }),
+      mutation: async () => null,
+      close: async () => {},
+    };
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    setLifeosSession({ environmentId: "env_box", sector: null, client: client as never, state: "connected" });
+    render(<WorkSettingsBody />);
+    const line = await screen.findByText("LifeOS did not answer the box");
+    read.mode = "wait";
+    await act(async () => fireEvent.click(within(line.closest("section")!).getByRole("button", { name: "Retry" })));
+    const section = screen.getByText("LifeOS did not answer the box").closest("section")!;
+    // The read is out: the line stays, its Retry spinning, never the bones.
+    expect(section.textContent).toContain("LifeOS did not answer the box");
+    expect(section.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(within(section).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
+    read.mode = "ready";
+    await act(async () => read.listeners.forEach((fn) => fn()));
+    await waitFor(() => expect(screen.queryByText("LifeOS did not answer the box")).toBeNull());
+    expect(screen.getByText("Purdue")).toBeTruthy();
   });
 });

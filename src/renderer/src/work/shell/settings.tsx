@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { SectorKey, WorkDesktop, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosKeyState, LifeosState, LifeosStatus } from "@shared/contract-work-lifeos";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -10,7 +10,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { Skeleton } from "../../components/ui/skeleton";
 import { SettingSwitch } from "../../components/setting-switch";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
@@ -29,6 +29,7 @@ import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
 import { LifeosLine } from "../connections/LifeosLine";
+import { useAgainKept, type AgainKept } from "./againKept";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
@@ -118,12 +119,44 @@ const MailSettingsSection = mailSettingsChunk.surface("Section", (
   </PageSection>
 ));
 
-/** The sectors LifeOS has, each with its dot: what this host's Work threads can be linked to. Signed out, nothing: Connections holds the sign-in. */
+/**
+ * The sectors LifeOS has, each with its dot: what this host's Work threads can be linked to. Signed out, nothing:
+ * Connections holds the sign-in. A read that failed under a connected status says so with Retry, which reads it again,
+ * the line kept with Retry spinning until the answer replaces it.
+ */
 function SectorsSection({ environmentId }: { environmentId: string }) {
+  const again = useAgainKept();
+  return <SectorsRead key={again.attempt} environmentId={environmentId} again={again} />;
+}
+
+function SectorsRead({ environmentId, again }: { environmentId: string; again: AgainKept }) {
   const session = useLifeosSession(environmentId, null);
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
+  const loading = listed.status === "loading";
+  const { settle } = again;
+  useEffect(() => void (loading || settle()), [loading, settle]);
   if (session.state !== "connected") return null;
-  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>{sessionFailure("unreachable", false, lifeosHostName(environmentId))}</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
+  const retrying = loading && again.retrying;
+  const failed = listed.status === "failed" || retrying;
+  return (
+    <PageSection title="LifeOS">
+      {failed ? (
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" disabled={retrying} onClick={again.retry}>
+              <BusyLabel busy={retrying} label="Retry" />
+            </Button>
+          }
+        >
+          {sessionFailure("unreachable", false, lifeosHostName(environmentId))}
+        </PageError>
+      ) : listed.status === "loading" ? (
+        <PageRowsSkeleton rows={1} description control="none" />
+      ) : (
+        <SectorsRow sectors={listed.value} />
+      )}
+    </PageSection>
+  );
 }
 
 function SectorsRow({ sectors }: { sectors: { key: string; label: string; order: number }[] }) {
@@ -163,29 +196,42 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
   const [token, setToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The code's ask that failed takes the bones' place, with Retry asking the same computer again (`asks`).
+  // The code's ask that failed takes the bones' place, with Retry asking the same computer again.
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [asks, setAsks] = useState(0);
+  // A press that asks again (Retry, New code) is out: the row it was pressed on stays, the press spinning in place,
+  // until the new code or the new cause replaces it.
+  const [asking, setAsking] = useState(false);
+  const mounted = useRef(true);
   const { root, closeThen } = useClosingDialog(onClose, pending);
   const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (code) return;
-    let live = true;
-    setCodeError(null);
+  const ask = (): Promise<void> =>
     link.request<{ code: string; expiresAt: number }>("work.lifeos.pairStart", {}).then(
-      (answer) => live && setCode(answer),
+      (answer) => {
+        if (!mounted.current) return;
+        setCode(answer);
+        setCodeError(null);
+      },
       (err: unknown) => {
-        if (!live) return;
+        if (!mounted.current) return;
         // The host's silence by the rule's words ("The box did not answer"); any other cause in Work's.
         const silent = err instanceof Error && (err.name === "TimeoutError" || err.name === "ConnectionLostError");
         setCodeError(silent ? sessionFailure("unanswered", false, hostOf(environmentId)) : failureWords(err, hostOf(environmentId), "did not start the sign-in"));
       },
     );
+  const askAgain = (): void => {
+    setAsking(true);
+    void ask().finally(() => mounted.current && setAsking(false));
+  };
+  // The first ask, under the code's bone.
+  useEffect(() => {
+    mounted.current = true;
+    if (!code) void ask();
     return () => {
-      live = false;
+      mounted.current = false;
     };
-  }, [code, link, asks, environmentId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a dialog: a later ask is his press
+  }, []);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -238,12 +284,12 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
                 <span className="text-xs text-muted-foreground tabular-nums">{`${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`}</span>
               ) : code ? (
                 // A code past its life asks the same computer for a new one, in the timer's place (the ask's effect).
-                <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={() => setCode(null)}>
-                  New code
+                <Button variant="ghost" size="xs" className="-me-2 shrink-0" disabled={asking} onClick={askAgain}>
+                  <BusyLabel busy={asking} label="New code" align="end" />
                 </Button>
               ) : codeError ? (
-                <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={() => setAsks((n) => n + 1)}>
-                  Retry
+                <Button variant="ghost" size="xs" className="-me-2 shrink-0" disabled={asking} onClick={askAgain}>
+                  <BusyLabel busy={asking} label="Retry" align="end" />
                 </Button>
               ) : null}
             </div>
