@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -9,6 +9,7 @@ import { readDocx } from 'work-kit/formats/docx'
 import type { ClientRequest } from '@shared/contract'
 import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
 import type { CanvasSource } from '@shared/work'
+import { attachmentDir, setAttachmentDirContext } from '../../attachmentDir'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { servicePaths } from '../service/config'
@@ -81,7 +82,8 @@ async function rig() {
     log: () => {},
     push: () => {},
     reaches: (by: Caller, path: string) => by.kind !== 'remote' || path.startsWith(work),
-    scopeOf: (id: string) => (id === 't1' ? { sessionId: 't1', workspaceId: 'w1', sector: null, host: 'env_box', away: false, routineRunId: null, shared: () => false } : null),
+    // t1 a Work thread of the Northside job; chat1 a Work Chat, no workspace.
+    scopeOf: (id: string) => (id === 't1' ? { sessionId: 't1', workspaceId: 'w1', sector: null, host: 'env_box', away: false, routineRunId: null, shared: () => false } : id === 'chat1' ? { sessionId: 'chat1', workspaceId: null, sector: null, host: 'env_box', away: false, routineRunId: null, shared: () => false } : null),
     canvas: {
       paneOf: (id: string) => id,
       get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1' } : id === 'other' ? { id: 'other', sessionId: 't2' } : null),
@@ -123,6 +125,28 @@ const word = (r: Awaited<ReturnType<typeof rig>>, name = 'review.docx') => {
 }
 const threadsOf = (s: ReturnType<typeof readDocx>['sidecar']) => s.threads.map((t) => [t.quote, t.resolved, t.comments.map((c) => c.author)])
 const authorsOf = (s: ReturnType<typeof readDocx>['sidecar']) => [...new Set(s.changes.filter((c) => c.kind !== 'format').map((c) => c.author))].sort()
+
+describe("a Word file dropped on a document in a Work Chat (sol S2)", () => {
+  it("keeps its document in Work's imports folder, never in the thread's attachments the drop's upload landed in", async () => {
+    const r = await rig()
+    const data = join(r.dir, 'data')
+    setAttachmentDirContext({ session: () => null, projectCwd: () => null, workspacePath: () => null, dataDir: data })
+    try {
+      // The chunked upload with `into: 'workspace'` lands a Work Chat's file in its attachment folder (index.ts dirFor).
+      const landed = join(attachmentDir('chat1'), 'review.docx')
+      mkdirSync(dirname(landed), { recursive: true })
+      copyFileSync(join(CORPUS, 'review.docx'), landed)
+      const got = await r.ask<ImportAnswer>('work.formats.import', { sessionId: 'chat1', from: { at: 'source', source: { at: 'file', host: 'env_box', path: landed } } })
+      const doc = (got.source as { path: string }).path
+      // Where the bytes import put it: `<data>/attachments/work-imports`, which no thread's cleanup empties.
+      expect(dirname(doc)).toBe(realpathSync(join(data, 'attachments', 'work-imports')))
+      expect(doc.startsWith(realpathSync(attachmentDir('chat1')))).toBe(false)
+      expect(existsSync(doc)).toBe(true)
+    } finally {
+      setAttachmentDirContext(null)
+    }
+  }, 60_000)
+})
 
 describe('a Word file opened in the canvas', () => {
   it('becomes a .tcdoc beside it, with its threads stored, a branch per author, and the canvas item reopened on it', async () => {

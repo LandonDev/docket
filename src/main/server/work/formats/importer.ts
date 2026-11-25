@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, dirname, extname, join } from 'node:path'
+import { basename, dirname, extname, join, sep } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { Block, Imported } from 'work-kit/formats'
 import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
 import { canvasSourcePath, paneWorkspace, type CanvasSource } from '@shared/work'
+import { attachmentDirsOf } from '../../attachmentDir'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
@@ -88,6 +89,17 @@ function folderFor(ctx: WorkCtx, sessionId: string | undefined): string {
   return canonicalPath(dir)
 }
 
+/** Whether a file lies in one of a thread's attachment folders (attachmentDir.ts); none where the server has set none. */
+function inAttachments(path: string, sessionId: string): boolean {
+  let dirs: string[]
+  try {
+    dirs = attachmentDirsOf(sessionId)
+  } catch {
+    return false
+  }
+  return dirs.some((dir) => path.startsWith(`${canonicalPath(dir)}${sep}`))
+}
+
 /** Scratch files for a job, under the formats pillar's own folder. */
 export const scratchDir = (ctx: WorkCtx): string => {
   const dir = join(ctx.dataDir, 'formats', 'scratch')
@@ -145,6 +157,9 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
     // A Word file of a Teams library opened in a Files tab: Files keeps the document in the workspace's own folder.
     const placed = importPlaceFor(original, params.itemId)
     if (placed) folder = placed
+    // A file a drop kept in the thread's own attachments (a Work Chat with no workspace folder): its document goes where
+    // a dropped file's always went (`folderFor`), never into a folder the thread's deletion or cleanup empties.
+    else if (params.sessionId && inAttachments(original, params.sessionId)) folder = folderFor(ctx, params.sessionId)
     // Never beside a file others can open: the document would sync to them. It goes under this host's data instead.
     else if (sharedOf(ctx, { at: 'file', host: ctx.host, path: original })) {
       folder = importFolderOf(ctx.dataDir, { host: ctx.host, path: original })
