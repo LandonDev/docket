@@ -334,6 +334,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null);
   // Retry on a failed read asks again; a refused switch keeps its own line with no Retry (the switch is the retry).
   const [attempt, setAttempt] = useState(0);
+  // His Retry keeps the failed line, spinning in place, until the answer replaces it.
+  const [retrying, setRetrying] = useState(false);
   const [localHost, setLocalHost] = useState<string | null>(null);
   // The desktops the workspace's host knows that this window may have no link to (a PC registered with the box).
   const [far, setFar] = useState<WorkDesktop[]>([]);
@@ -349,8 +351,13 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         setSettings(value);
         setFar(known);
         setError(null);
+        setRetrying(false);
       },
-      (err: unknown) => live && setError(failureWords(err, hostOf(workspace.environmentId), "did not send this workspace's settings")),
+      (err: unknown) => {
+        if (!live) return;
+        setError(failureWords(err, hostOf(workspace.environmentId), "did not send this workspace's settings"));
+        setRetrying(false);
+      },
     );
     return () => {
       live = false;
@@ -432,12 +439,13 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={retrying}
                   onClick={() => {
-                    setError(null);
+                    setRetrying(true);
                     setAttempt((n) => n + 1);
                   }}
                 >
-                  Retry
+                  <BusyLabel busy={retrying} label="Retry" />
                 </Button>
               )
             }

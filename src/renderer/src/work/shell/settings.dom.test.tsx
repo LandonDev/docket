@@ -80,6 +80,9 @@ describe("Settings → Work", () => {
     expect(screen.getByText("The host did not answer")).toBeTruthy();
     reads.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // Council round 12 (the walk): the line stays, its Retry spinning, until the answer replaces it.
+    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(reads.asked).toBe(2);
     expect(screen.queryByText("The host did not answer")).toBeNull();
