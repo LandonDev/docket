@@ -151,6 +151,22 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
       })
       .optional()
   }),
+  /**
+   * A copy of a shape, PowerPoint's Duplicate, Copy and Paste: on slide `to` (absent: its own), in `box` (absent: where
+   * it lies; given for a shape in a group, which the copy leaves), on top of the others. Its words, look, picture and
+   * media come with it; a chart gets its own copy; its effects stay with the first. `file`: his paste from another deck,
+   * that shape's slide cut out of its deck (`work.slides.clip`) and brought by `work.slides.attach`; `slide` and `shape`
+   * are then that deck's. `id`: the shape id to give it, when the same list edits it.
+   */
+  z.object({
+    op: z.literal('copy'),
+    slide,
+    shape,
+    to: slide.optional(),
+    box: box.optional(),
+    file: z.string().min(1).max(1000).optional(),
+    id: z.number().int().positive().max(2_000_000_000).optional().describe('To edit it later in this list.')
+  }),
   /** A shape off its slide, with what only it used: its picture, chart or media, and the effects that played on it. */
   z.object({ op: z.literal('delete'), slide, shape }),
   /** A shape's fill: a colour, or null for none. */
@@ -669,6 +685,8 @@ export const SlidesRequestSchemas = [
   request('work.slides.copyToEdit', z.object({ itemId })),
   /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF. `layouts`: one page per entry of `DeckView.layouts`, each layout as an empty slide that says what goes where (`DeckView.layoutsPic`). */
   request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed', 'layouts']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
+  /** → { data: base64, size, rev }: bytes of a slide of the file cut out of the deck (a .pptx of that slide alone), by its id: the shape he copies, for his paste into another deck, which brings it with `work.slides.attach`; `rev` names the deck's bytes and the slide */
+  request('work.slides.clip', z.object({ itemId, slide, offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → { data: base64, size, rev }: bytes of one slide's own picture (a one-page PDF), by the slide's id in the file or in the proposed deck; `rev` is the slide's `pic.rev` */
   request('work.slides.slide', z.object({ itemId, which: z.enum(['file', 'proposed']), slide, offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: accept writes the changes into the file; reject drops them */
@@ -743,6 +761,7 @@ export const SLIDES_CAPS = {
   'work.slides.read': 'read',
   'work.slides.show': 'read',
   'work.slides.slide': 'read',
+  'work.slides.clip': 'operate',
   'work.slides.build': 'read',
   'work.slides.media': 'read',
   'work.slides.review': 'operate',

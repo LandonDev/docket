@@ -530,6 +530,7 @@ and the deck"); every other part keeps its bytes.
 | `fill`, `line` | a colour or none; the outline's weight in points and its dash | the slide |
 | `grid` | a table's row or column put in before a place, or taken out; the table grows and shrinks by it | the slide |
 | `hide` | a slide left out of the show | the slide |
+| `copy` | a copy of a shape on top of a slide's shapes (`to`, else its own), in `box` (else where it lay; a shape in a group needs one, and comes out of the group), a new id for each shape it holds, its connector ends dropped on another slide; a placeholder on a slide of another layout, or from another deck, is a shape of its own where it lay (its words keep only their own look). Its pictures and media are shared within the deck and brought from another, a chart copied; its effects stay with the first. With `file`, the shape comes from a slide another deck cut out (`work.slides.clip`), and `slide` and `shape` are that deck's; a link to a slide of that deck goes | the slide (a picture or a chart from another deck: its relationships and the parts it brings) |
 | `duplicate` | a copy right after its slide, with its own copy of each chart and workbook; pictures and media are shared, as PowerPoint shares them; its notes page copied whole (looks, pictures and what they hold) onto the copy's own (`copy_notes`) | the new slide and what it holds for itself, the presentation, the content types |
 | `section` | one started at a slide, one renamed, one taken away (its slides join the one before; the first one's, the next) | the presentation |
 | `layout` | another of the deck's layouts for a slide | the slide's relationship to its layout |
@@ -577,7 +578,8 @@ edit names it by that token and nothing else, never a path.
 
 - **By hand**: `work.slides.attach` takes the file in pieces of at most
   4 MB; the first piece names it and is answered the token. A picture up
-  to 50 MB, a video up to 500 MB. A thread is refused.
+  to 50 MB, a video, or a pasted shape's slide (a `.pptx`, for `copy`), up
+  to 500 MB. A thread is refused.
 - **An agent** names an absolute path on the deck's host in `slides_edit`;
   the tool copies the file in at once and stores the token, so the
   suggestion still has its picture when the file it came from moves on.
@@ -724,7 +726,8 @@ thread (`rowSession`):
 | `work.slides.versions` | read | → `DeckVersion[]`, the kept copies newest first |
 | `work.slides.version` | read | `{itemId, version, offset, length}`: bytes of a kept copy's picture, drawn the first time → `{data, size, rev}`; refused for a thread |
 | `work.slides.restore` | operate | `{itemId, version}`: puts a kept copy in the file's place → `DeckView`; refused for a thread |
-| `work.slides.attach` | operate | one piece of a picture or a video he is adding by hand → `{token}`; refused for a thread |
+| `work.slides.attach` | operate | one piece of a picture, a video or a pasted shape's slide he is adding by hand → `{token}`; refused for a thread |
+| `work.slides.clip` | operate | `{itemId, slide, offset, length}` → `{ data, size, rev }`: a slide of the file cut out of the deck (a .pptx of it alone, the tool's `solo` as the `pptx → pptxclip` job), for a shape he copies into another deck; kept in the deck's `clips/` by the deck's bytes and the slide (`rev`), the newest four; at most 4 MB a call; refused for a thread. Operate, not read: a read key gets no file bytes from it |
 | `work.slides.preview` | operate | `{itemId, format, layout?, hidden?, page?, picture?, video?, office?}` → `DeckOut`: the deck as a format holds it ("Preview and export"), made from the file as it is now, or the one already made when the file did not change |
 | `work.slides.previewRead` | read | → `{ data, size, rev }`: bytes of a file `work.slides.preview` made, by its 32-character rev, at most 4 MB a call |
 | `work.slides.reach` | read | → `DeckReach` (`pdf`, `video`): whether PowerPoint draws this deck from this host: `ready`, `asleep`, `not open` or `none` |
@@ -1793,6 +1796,38 @@ are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files
 Restore, the next time the deck opens. A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a
 change to them as the struck and added words), and none when there are none.
+
+### Copy and paste
+
+His hand's Duplicate, Copy and Paste of a shape (`edit/clipboard.ts`), each
+one `copy` edit, picked once it lands, as an added shape is:
+
+- **⌘D** (Ctrl+D off the Mac) on the picked shape lays a copy 12 points
+  (`COPY_STEP`) down and right. A second ⌘D on that copy after he moved it
+  lays the next as far again from it, as PowerPoint's does. A shape with
+  no box of its own goes without one: the host places it, or says why not.
+  View → Split Right gives ⌘D up while the caret is in a deck he edits by
+  hand (`editorHeld` names `split_right`, `EDITOR_KEY_IDS`).
+- **⌘C** is the window's own copy event: with the keyboard in the deck and
+  not in a field, the picked shape is held for this window (where it came
+  from, its box) and its words go on the clipboard as text, beside a mark
+  of the clipboard's own type (`SHAPE_TYPE`), on a deck he can only read
+  too. A copy anywhere else since takes the mark away.
+- **⌘V** is the paste event, on a deck he edits, while the clipboard's mark
+  is the held shape's: it lies on the slide on the stage, over its first
+  (a step on) where it came from that slide and in its own place on
+  another, a step further on each paste after. Within the deck the edit
+  names the shape as it is now. From another deck in this window (another
+  item, another host), its slide is cut out on its own host
+  (`work.slides.clip`, read by range, one `rev`), brought here as a file
+  (`work.slides.attach`, "Pasted shape.pptx") while its place is outlined
+  with "Adding", then the `copy` names it by its token.
+- A field keeps its keys and its clipboard (the notes, the typing box,
+  find); a slide a suggestion changes says the stage's refusal once.
+
+Not proven in real PowerPoint yet: `op_copy` reads back in python-pptx and
+LibreOffice on the box, and its pack takes it back byte for byte; the VM
+proof ("Proven against real PowerPoint") waits for the next run there.
 
 ### Find
 

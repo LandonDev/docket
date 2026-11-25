@@ -49,6 +49,7 @@ import { Clicker, useClickerShow } from "./show/Clicker";
 import { computerOf, InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
 import { forgetWithItems } from "../canvas/gone";
 import { DeckFind, useDeckMatches } from "./DeckFind";
+import { copyShape, duplicateShape, heldShape, IN_FIELD, pasteShape } from "./edit/clipboard";
 import type { DeckMatch } from "./find";
 
 export { freePage } from "./Picture";
@@ -355,6 +356,40 @@ export function SlidesBody({
   const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
   // The match find holds: its slide is on the stage and its shape outlined there.
   const found = useDeckMatches(view, find).current;
+  // ⌘C and ⌘V (and Edit → Copy and Paste) with the keyboard in the deck and not in a field: the picked shape is held for
+  // a paste in this window, its words on the clipboard; a paste lays it on the slide on the stage (edit/clipboard.ts).
+  useEffect(() => {
+    if (!root) return;
+    const mine = (): boolean => {
+      const at = document.activeElement;
+      return !!at && root.contains(at) && !at.closest(IN_FIELD);
+    };
+    const onCopy = (event: ClipboardEvent): void => {
+      const { view: now, look: seen } = store.get();
+      const on = session.get().picked;
+      const slide = on && seen === "slide" ? now?.slides.find((s) => s.key === on.slideKey) : undefined;
+      const shape = slide?.shapes.find((s) => s.id === on!.shapeId);
+      if (!mine() || !slide || !shape || session.get().box) return;
+      event.preventDefault();
+      copyShape(event.clipboardData, { env, itemId: item.id, host, slideId: slide.id, slideKey: slide.key, shapeId: shape.id, box: shape.own?.box ?? null }, shape);
+    };
+    const onPaste = (event: ClipboardEvent): void => {
+      const { view: now, current: key, look: seen } = store.get();
+      const clip = heldShape(event.clipboardData);
+      if (!mine() || !now?.hand || !clip || seen !== "slide") return;
+      event.preventDefault();
+      const slide = now.slides.find((s) => s.key === key) ?? now.slides[0];
+      const why = slide ? session.slideRefusal(slide) : null;
+      if (why) return void sayError(new Error(why), why);
+      if (slide) void pasteShape(clip, { env, itemId: item.id, host, session, store, slide, size: now.size ?? { width: 12_192_000, height: 6_858_000 } });
+    };
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [root, store, session, env, item.id, host]);
 
   // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
   // export first has nothing to try again, and one moved or taken away offers its folder in Files, which Retry cannot bring back.
@@ -421,7 +456,7 @@ export function SlidesBody({
         // The keys that start a show, while the keyboard is in the deck (PowerPoint's own, and a clicker's F5); in the
         // typing box ⌘↩ is the box's, and a show started from it takes his words first.
         // A field's keys are its own: F5 or ⌘↩ typed in the notes, a box or a sheet's field never starts the show.
-        const inField = !!(event.target as Element).closest?.("input, textarea, [contenteditable=true], [data-slide-typing]");
+        const inField = !!(event.target as Element).closest?.(IN_FIELD);
         const ask = canPresent(view) && !inField ? presentKey(event) : null;
         if (ask) {
           event.preventDefault();
@@ -437,6 +472,15 @@ export function SlidesBody({
           // With the box open (the keyboard on the row) they are the box's own.
           if (hand.box) session[dir]();
           else if (view.hand[dir]) void session.step(dir);
+          return;
+        }
+        // PowerPoint's Duplicate on the picked shape (Split Right gives ⌘D up here: lib/appCommands.ts `editorHeld`).
+        if (modKey(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "d") {
+          event.preventDefault();
+          const on = hand.picked && look === "slide" ? view.slides.find((s) => s.key === hand.picked!.slideKey) : undefined;
+          const why = on ? session.slideRefusal(on) : null;
+          if (why) sayError(new Error(why), why);
+          else if (picked && !hand.box) void duplicateShape(session, store, picked.slide, picked.shape);
           return;
         }
         // The row's keys, on the picked shape.

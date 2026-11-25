@@ -6,7 +6,8 @@ import { joinStep } from './deck'
 
 /**
  * The files an edit brings to a deck (docs/agents/work-slides.md "Files an
- * edit brings"): a picture or a video for an `insert`. The file is kept in
+ * edit brings"): a picture or a video for an `insert`, a pasted shape's
+ * slide for a `copy`. The file is kept in
  * the deck's `attach/` folder (`dir` below: view.ts `deckDir(…, 'attach')`)
  * under a name the host gives (a token), and an edit names it by that token
  * and nothing else: never a path. When the edit runs, the files ride with
@@ -15,19 +16,24 @@ import { joinStep } from './deck'
 
 const PICTURES = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tif', 'tiff']
 const VIDEOS = ['mp4', 'm4v', 'mov', 'wmv', 'avi', 'mpg', 'mpeg']
-export const ATTACH_TOKEN = new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(${[...PICTURES, ...VIDEOS].join('|')})$`)
+/** A shape he pastes from another deck: that shape's slide cut out of its deck (`work.slides.clip`). */
+const CLIPS = ['pptx']
+export const ATTACH_TOKEN = new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(${[...PICTURES, ...VIDEOS, ...CLIPS].join('|')})$`)
 export const PICTURE_MAX = 50 * 1024 * 1024
 export const VIDEO_MAX = 500 * 1024 * 1024
 /** A file brought and never used (an upload he walked away from) goes after this. */
 const UNUSED_MS = 60 * 60_000
 
 const extOf = (name: string): string => extname(name).slice(1).toLowerCase()
-const capOf = (ext: string): number => (VIDEOS.includes(ext) ? VIDEO_MAX : PICTURE_MAX)
+// A slide cut out for a paste holds its videos too.
+const capOf = (ext: string): number => (VIDEOS.includes(ext) || CLIPS.includes(ext) ? VIDEO_MAX : PICTURE_MAX)
+/** The file an edit brings, by its token: an added picture's or video's, a pasted shape's slide. */
+export const fileOf = (op: SlideOp): string | undefined => (op.op === 'insert' || op.op === 'copy' ? op.file : undefined)
 const sizeWords = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))} MB`
 
 function tokenFor(name: string): string {
   const ext = extOf(name)
-  if (!PICTURES.includes(ext) && !VIDEOS.includes(ext)) throw new Error(`${name} is not a picture or a video a deck can hold (PNG, JPEG, GIF, BMP, TIFF; MP4, MOV, WMV, AVI, MPEG).`)
+  if (!PICTURES.includes(ext) && !VIDEOS.includes(ext) && !CLIPS.includes(ext)) throw new Error(`${name} is not a picture or a video a deck can hold (PNG, JPEG, GIF, BMP, TIFF; MP4, MOV, WMV, AVI, MPEG).`)
   return `${randomUUID()}.${ext}`
 }
 
@@ -64,14 +70,15 @@ export function attachFile(dir: string, path: string): string {
  * file did not come.
  */
 export function withAttached(dir: string, joined: string, input: string, ops: SlideOp[]): { from: 'pptx' | 'pptxplus'; input: string; ops: SlideOp[]; files: string[]; done(): void } {
-  if (!ops.some((op) => op.op === 'insert' && op.file !== undefined)) return { from: 'pptx', input, ops, files: [], done() {} }
+  if (!ops.some((op) => fileOf(op) !== undefined)) return { from: 'pptx', input, ops, files: [], done() {} }
   const files: string[] = []
   const paths: string[] = []
   const named = ops.map((op) => {
-    if (op.op !== 'insert' || op.file === undefined || !ATTACH_TOKEN.test(op.file) || !existsSync(join(dir, op.file))) return op
-    const name = `f${files.length}${extname(op.file)}`
+    const file = fileOf(op)
+    if (file === undefined || !ATTACH_TOKEN.test(file) || !existsSync(join(dir, file))) return op
+    const name = `f${files.length}${extname(file)}`
     files.push(name)
-    paths.push(join(dir, op.file))
+    paths.push(join(dir, file))
     return { ...op, file: name }
   })
   if (!paths.length) return { from: 'pptx', input, ops: named, files, done() {} }
@@ -81,7 +88,7 @@ export function withAttached(dir: string, joined: string, input: string, ops: Sl
 
 /** Lets go of the files no waiting edit names any more: at once for those an edit used, after an hour for one brought and never used. */
 export function sweepAttached(dir: string, waiting: readonly SlideOp[], used: readonly string[] = []): void {
-  const kept = new Set(waiting.flatMap((op) => (op.op === 'insert' && op.file ? [op.file] : [])))
+  const kept = new Set(waiting.flatMap((op) => fileOf(op) ?? []))
   for (const name of readdirSync(dir)) {
     if (kept.has(name)) continue
     const path = join(dir, name)

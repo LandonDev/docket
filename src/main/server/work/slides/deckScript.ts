@@ -1758,9 +1758,10 @@ def op_hide(prs, op):
 OWN_PARTS = ('/chart', '/chartStyle', '/chartColorStyle', '/chartUserShapes', '/package', '/oleObject', '/diagramData', '/diagramLayout', '/diagramQuickStyle', '/diagramColors', '/diagramDrawing')
 
 
-def clone_part(part):
-    """A copy of a part under a free name of its own kind, with a copy of every part it holds for itself."""
-    pkg = part.package
+def clone_part(part, pkg=None):
+    """A copy of a part under a free name of its own kind, with a copy of every part it holds for itself; into another
+    deck's package ('pkg'), with a copy of every part it holds."""
+    pkg = pkg or part.package
     m = re.match(r'^(.*?)(\d+)(\.[^./]+)$', str(part.partname))
     name = pkg.next_partname(m.group(1) + '%d' + m.group(3)) if m else PackURI(re.sub(r'(\.[^./]+)$', r'-copy\1', str(part.partname)))
     new = part.__class__.load(name, part.content_type, pkg, part.blob)
@@ -1768,8 +1769,8 @@ def clone_part(part):
     for rid, rel in part.rels.items():
         if rel.is_external:
             ids[rid] = new.relate_to(rel.target_ref, rel.reltype, is_external=True)
-        elif rel.reltype.endswith(OWN_PARTS):
-            ids[rid] = new.relate_to(clone_part(rel.target_part), rel.reltype)
+        elif rel.reltype.endswith(OWN_PARTS) or rel.target_part.package is not pkg:
+            ids[rid] = new.relate_to(clone_part(rel.target_part, pkg), rel.reltype)
         else:
             ids[rid] = new.relate_to(rel.target_part, rel.reltype)
     if hasattr(new, '_element'):
@@ -1859,6 +1860,91 @@ def op_duplicate(prs, op):
         copy_notes(slide.notes_slide.part, new.notes_slide.part, slide.part)
     place_after(prs, nel, op['slide'])
     section_place(prs, nel.id, op['slide'])
+
+
+def op_copy(prs, op):
+    """A copy of a shape, PowerPoint's Duplicate, Copy and Paste: from this deck, or from a slide another deck's shape
+    was cut out with (file). On top of the slide's shapes, a shape id of its own for each shape it holds, in its box.
+    Its pictures and media are shared within the deck and brought from another, a chart is copied; its effects stay
+    with the first."""
+    pkg = prs.part.package
+    if op.get('file'):
+        path = attached(op, 'shape')
+        try:
+            src_prs = Presentation(path)
+        except Exception:
+            raise Fail('the shape to paste did not come whole')
+        if op.get('to') is None:
+            raise Fail('a shape from another deck needs the slide it goes on')
+    else:
+        src_prs = prs
+    src, _ = slide_by_id(src_prs, op['slide'])
+    sh = shape_on(src, op['slide'], op['shape'])
+    dst, _ = slide_by_id(prs, op['slide'] if op.get('to') is None else op['to'])
+    unit = unit_of(sh._element)
+    if unit.tag == MC_ALT:
+        raise Fail('this shape is copied in PowerPoint')
+    box = op.get('box')
+    if box is None and unit.getparent().tag == qn('p:grpSp'):
+        raise Fail('a shape in a group is copied out of it into a box of its own')
+    new_id = op.get('id')
+    taken = set()
+    for e in dst._element.iter(qn('p:cNvPr')):
+        try:
+            taken.add(int(e.get('id')))
+        except (TypeError, ValueError):
+            pass
+    if new_id is not None and new_id in taken:
+        raise Fail('slide %d already has a shape %d' % (op['slide'] if op.get('to') is None else op['to'], new_id))
+    el = copy.deepcopy(unit)
+    nxt = max(taken | set([0])) + 1
+    for i, nv in enumerate(el.iter(qn('p:cNvPr'))):
+        if i == 0 and new_id is not None:
+            nid = new_id
+        else:
+            while nxt in taken or nxt == new_id:
+                nxt += 1
+            nid = nxt
+        taken.add(nid)
+        nv.set('id', str(nid))
+    same_slide = dst.part is src.part
+    # A connector's ends name shapes of the slide it was on: on another they would name others.
+    if not same_slide:
+        for c in list(el.iter(qn('a:stCxn'), qn('a:endCxn'))):
+            c.getparent().remove(c)
+    # A placeholder holds a place of its own slide's layout: on a slide of another it is a shape of its own, where it lay.
+    if src_prs is not prs or dst.slide_layout.part is not src.slide_layout.part:
+        held = list(el.iter(qn('p:ph')))
+        if held and box is None:
+            box = [int(sh.left or 0), int(sh.top or 0), int(sh.width or 1), int(sh.height or 1)]
+        for ph in held:
+            ph.getparent().remove(ph)
+    ids, gone = {}, set()
+    for e in el.iter('*'):
+        for k, v in list(e.attrib.items()):
+            if not k.startswith('{%s}' % NS_R) or v in ids or v in gone:
+                continue
+            rel = src.part.rels[v] if v in src.part.rels else None
+            if rel is None or (rel.reltype.endswith('/slide') and src_prs is not prs):
+                gone.add(v)
+            elif rel.is_external:
+                ids[v] = dst.part.relate_to(rel.target_ref, rel.reltype, is_external=True)
+            elif rel.reltype.endswith(OWN_PARTS) or rel.target_part.package is not pkg:
+                ids[v] = dst.part.relate_to(clone_part(rel.target_part, pkg), rel.reltype)
+            else:
+                ids[v] = dst.part.relate_to(rel.target_part, rel.reltype)
+    # What named a part the copy cannot bring (a link to a slide of another deck) goes, the link with it.
+    for e in list(el.iter('*')):
+        if any(k.startswith('{%s}' % NS_R) and v in gone for k, v in e.attrib.items()) and e.getparent() is not None:
+            e.getparent().remove(e)
+    rename_rids(el, ids)
+    dst.shapes._spTree.insert_element_before(el, 'p:extLst')
+    if box is not None:
+        x, y, w, h = (int(v) for v in box)
+        if w < 1 or h < 1:
+            raise Fail('a shape keeps some width and height')
+        made = dst.shapes._shape_factory(el)
+        made.left, made.top, made.width, made.height = Emu(x), Emu(y), Emu(w), Emu(h)
 
 
 SECTION_URI = '{521415D9-36F7-43E2-AB2F-B90AF26B5E84}'
@@ -2142,7 +2228,7 @@ def op_builds(prs, op):
 
 OPS = {'text': op_text, 'cell': op_cell, 'notes': op_notes, 'chart': op_chart, 'add': op_add, 'remove': op_remove, 'move': op_move,
        'runs': op_runs, 'format': op_format, 'geometry': op_geometry, 'order': op_order, 'insert': op_insert, 'delete': op_delete,
-       'fill': op_fill, 'line': op_line, 'grid': op_grid, 'hide': op_hide, 'duplicate': op_duplicate, 'section': op_section,
+       'fill': op_fill, 'line': op_line, 'grid': op_grid, 'hide': op_hide, 'duplicate': op_duplicate, 'section': op_section, 'copy': op_copy,
        'layout': op_layout, 'theme': op_theme, 'transition': op_transition, 'builds': op_builds}
 
 

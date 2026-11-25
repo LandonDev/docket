@@ -4506,8 +4506,12 @@ other picked shape is the outline alone.
   | A slide's menu, in the strip or the Sorter | the menu key, ⇧F10, a right-click |
   | Take the focused slide out | Delete, Backspace, in the strip or the Sorter |
   | Find the deck's words; the next and the one before; close, keeping what he found | ⌘F; Return and ⇧Return in its field; Escape |
+  | Duplicate the picked shape (12pt down and right; again after a move, as far again) | ⌘D |
+  | Copy the picked shape (its words to other apps); paste it on the slide on the stage, from this deck or another | ⌘C; ⌘V |
 
-  A paste into the box is plain text, each line a paragraph.
+  A paste into the box is plain text, each line a paragraph. A shape pasted
+  from another deck has its place outlined with "Adding" while its slide
+  travels, as a picture's does.
 
 ## Scrolling
 

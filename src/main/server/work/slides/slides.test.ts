@@ -92,7 +92,7 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
     }
     // An edit of the deck itself (a section, the theme) names no slide: the fake leaves it be.
     if (!('slide' in op)) return
-    const k = at(op.slide)
+    const k = op.op === 'copy' && op.file !== undefined ? at(op.to ?? 0) : at(op.slide)
     if (k < 0) return say(`there is no slide ${op.slide}`)
     const s = d.slides[k]
     if (op.op === 'remove') {
@@ -112,6 +112,16 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
       if (brought === null) return say(`the ${op.what} to add did not come with the edit`)
       return void s.shapes.push({ id: op.id ?? Math.max(...s.shapes.map((x) => x.id)) + 1, name: 'New', kind: op.what === 'picture' ? 'picture' : 'text', bbox: [0, 0, 1, 1], text: brought !== undefined ? `${op.what} of ${brought} bytes` : (op.text ?? '') })
     }
+    if (op.op === 'copy') {
+      // From this deck, or from the slide a paste brought: the shape on top of the slide it lands on, with an id of its own.
+      const from = op.file !== undefined ? clips.get(op.file) : d
+      if (!from) return say('the shape to paste did not come with the edit')
+      const shape = from.slides.find((x) => x.id === op.slide)?.shapes.find((x) => x.id === op.shape)
+      if (!shape) return say(`slide ${op.slide} has no shape ${op.shape}`)
+      const to = op.to !== undefined ? d.slides[at(op.to)] : s
+      if (!to) return say(`there is no slide ${op.to}`)
+      return void to.shapes.push({ ...shape, id: op.id ?? Math.max(...to.shapes.map((x) => x.id)) + 1 })
+    }
     if (op.op === 'delete') return void (s.shapes = s.shapes.filter((x) => x.id !== op.shape))
     if (!('shape' in op)) return
     const sh = s.shapes.find((x) => (typeof op.shape === 'number' ? x.id === op.shape : x.name === op.shape))
@@ -126,9 +136,12 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
 
 /** The files the job in hand brought, by the names its edits use (`f0.png`), as sizes. */
 const attached = new Map<string, number>()
+/** The slides another deck's shape was cut out with, by the names the edits use (`f0.pptx`). */
+const clips = new Map<string, FakeDeck>()
 /** A fake job's deck: a `pptxplus` input is split as the real converter splits it, its files noted by name. */
 function fakeDeckIn(job: { from: string; input: string; output: string; options?: unknown }): string {
   attached.clear()
+  clips.clear()
   if (job.from !== 'pptxplus') return job.input
   const names = (job.options as { files?: string[] }).files ?? []
   const deck = `${job.output}.in`
@@ -136,6 +149,8 @@ function fakeDeckIn(job: { from: string; input: string; output: string; options?
   splitStep(job.input, [deck, ...files])
   names.forEach((name, i) => {
     attached.set(name, statSync(files[i]).size)
+    // A slide cut out of another deck (a paste) is read as a deck.
+    if (name.endsWith('.pptx')) clips.set(name, readFake(files[i]))
     rmSync(files[i])
   })
   return deck
@@ -167,6 +182,18 @@ const FAKE: Converter[] = [
       const d = readFake(job.input)
       // With `looks` on, the outline says what its layouts are drawn from, as the real tool does: here, their names.
       writeFileSync(job.output, fakeInfo(d))
+      return {}
+    }
+  },
+  // A slide cut out of the deck for a paste into another: the fake's keeps that slide alone.
+  {
+    from: 'pptx',
+    to: 'pptxclip',
+    async run(job) {
+      calls.push('pptxclip')
+      const d = readFake(job.input)
+      const at = (job.options as { slide: number }).slide
+      writeFileSync(job.output, fakeBytes({ layouts: d.layouts, slides: [d.slides[at - 1]] }))
       return {}
     }
   },
@@ -2187,6 +2214,36 @@ describe('the files an edit brings', () => {
     // Taken back and put back with no file to bring: the packs hold what the edit changed.
     expect((await call('work.slides.step', { itemId: item.id, dir: 'undo' })).slides[0].shapes).toHaveLength(2)
     expect((await call('work.slides.step', { itemId: item.id, dir: 'redo' })).slides[0].shapes).toHaveLength(3)
+  })
+
+  it('a shape he copies is its slide cut out of the deck, read by range; his paste in another deck brings it and copies the shape onto his slide', async () => {
+    const item = openDeck(fileSource(path))
+    const second = join(dir, 'Other.pptx')
+    writeFileSync(second, fakeBytes({ layouts: ['Title and Content'], slides: [slide(300, 'Elsewhere')] }))
+    const other = openDeck(fileSource(second))
+    await call('work.slides.open', { itemId: item.id })
+    calls.length = 0
+    const clip = await call<{ data: string; size: number; rev: string }>('work.slides.clip', { itemId: item.id, slide: 257, offset: 0, length: 1 << 20 })
+    expect(calls).toEqual(['pptxclip'])
+    const bytes = Buffer.from(clip.data, 'base64')
+    expect(bytes.length).toBe(clip.size)
+    // The same slide of the same bytes is cut once: a second read is the kept copy, under the same rev.
+    const again = await call<{ rev: string }>('work.slides.clip', { itemId: item.id, slide: 257, offset: 0, length: 4 })
+    expect([again.rev, calls.filter((c) => c === 'pptxclip').length]).toEqual([clip.rev, 1])
+    await expect(call('work.slides.clip', { itemId: item.id, slide: 999, offset: 0, length: 4 })).rejects.toThrow('The deck has no slide 999.')
+    // Pasted in the other deck: brought as a file of its own, then the copy names it.
+    const { token } = await piece(other, 'clip.pptx', bytes)
+    expect(token).toMatch(/^[0-9a-f-]{36}\.pptx$/)
+    const shape = FAKE_DECK.slides[1].shapes[1]
+    const view = await call('work.slides.edit', { itemId: other.id, ops: [{ op: 'copy', slide: 257, shape: shape.id, to: 300, file: token, box: [0, 0, 100, 100] }] })
+    expect(view.slides[0].shapes.at(-1)).toMatchObject({ text: shape.text })
+    expect(kept(other)).toEqual([])
+    // Within one deck it is the copy alone, with no file.
+    const dup = await call('work.slides.edit', { itemId: item.id, ops: [{ op: 'copy', slide: 256, shape: FAKE_DECK.slides[0].shapes[0].id, box: [10, 10, 100, 100] }] })
+    expect(dup.slides[0].shapes).toHaveLength(FAKE_DECK.slides[0].shapes.length + 1)
+    // A thread copies nothing by hand.
+    const thread = { kind: 'model' as const, caps: [], sessionId: 't1' }
+    await expect(slides.handle!(ClientRequestSchema.parse(req('work.slides.clip', { itemId: item.id, slide: 257, offset: 0, length: 4 })), work.ctx, thread)).rejects.toThrow('Only the owner copies a shape by hand')
   })
 
   it('refuses a file that is no picture or video, one too large, a token that is not this deck\'s, and a thread', async () => {

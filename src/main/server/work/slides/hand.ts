@@ -1,14 +1,14 @@
 import { existsSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { CanvasItem } from '@shared/work'
 import type { DeckVersion, SlideOp } from '@shared/contract-work-slides'
 import { copyWhole } from '../pdf/file'
-import { sweepAttached, withAttached } from './attach'
+import { fileOf, sweepAttached, withAttached } from './attach'
 import { joinStep, splitStep, type DeckInfo } from './deck'
 import { HAND_STEPS, hands, lineOf } from './handLine'
 import { SlidesStore } from './store'
-import { CHANGED_WHILE, deckDir, deckKey, deckPath, handKey, hashFile, isFirstVersion, keepHistory, keepOutline, outlineAt, replaceKeeping, scratch, sharedJob, writing, versionAt, type Ctx, type Guard } from './view'
+import { CHANGED_WHILE, deckDir, deckKey, deckPath, handKey, hashFile, isFirstVersion, keepHistory, keepOutline, outlineAt, replaceKeeping, scratch, serial, sharedJob, writing, versionAt, type Ctx, type Guard } from './view'
 
 /**
  * His own edits to a deck (docs/agents/work-slides.md "Edits by hand"). An
@@ -74,7 +74,7 @@ export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signa
       } finally {
         job.done()
       }
-      used = ops.flatMap((op) => (op.op === 'insert' && op.file ? [op.file] : []))
+      used = ops.flatMap((op) => fileOf(op) ?? [])
       splitStep(out, [next, pack, info])
       await keepHistory(ctx, item, base, true)
       const name = packName()
@@ -169,6 +169,48 @@ export async function restoreVersion(ctx: Ctx, item: CanvasItem, version: string
       // The deck as it is now joins the list; the copy he picked is not let go to make room, even the oldest of thirty.
       await keepHistory(ctx, item, base, false, version)
       replaceKeeping(path, join(dir, version), was)
+    } finally {
+      rmSync(base, { force: true })
+    }
+  })
+}
+
+/** How many cut-out slides a deck keeps: enough for a few copies in a row, each read by range. */
+const CLIPS_KEPT = 4
+
+/**
+ * A shape he copies, for a paste into another deck (docs/agents/work-slides.md "Copy and paste"): the slide it is on,
+ * cut out of the deck as it is on disk (the tool's `solo`, every other slide gone), so its words, pictures, media and
+ * chart ride along. Kept in the deck's `clips/` folder by the deck's bytes and the slide, and read by range with that
+ * `rev`; the newest four stay.
+ */
+export async function clipPath(ctx: Ctx, item: CanvasItem, slideId: number, signal?: AbortSignal): Promise<{ path: string; rev: string }> {
+  return serial(ctx, item, async () => {
+    const path = await deckPath(ctx, item, signal)
+    const base = await scratch(ctx, item, 'clip')
+    try {
+      copyWhole(path, base)
+      const hash = hashFile(base)
+      const at = (await outlineAt(ctx, item, base, hash, signal)).slides.findIndex((s) => s.id === slideId)
+      if (at < 0) throw new Error(`The deck has no slide ${slideId}.`)
+      const dir = await deckDir(ctx, item, 'clips')
+      const rev = createHash('sha256').update(`${hash}:${slideId}`).digest('hex').slice(0, 32)
+      const out = join(dir, `${rev}.pptx`)
+      if (!existsSync(out)) {
+        const made = `${out}.${randomUUID().slice(0, 8)}.part`
+        try {
+          await ctx.convert({ from: 'pptx', to: 'pptxclip', input: base, output: made, options: { slide: at + 1 }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
+          renameSync(made, out)
+        } finally {
+          rmSync(made, { force: true })
+        }
+        const kept = readdirSync(dir)
+          .filter((f) => f.endsWith('.pptx'))
+          .map((f) => ({ f, at: statSync(join(dir, f)).mtimeMs }))
+          .sort((a, b) => b.at - a.at)
+        for (const old of kept.slice(CLIPS_KEPT)) rmSync(join(dir, old.f), { force: true })
+      }
+      return { path: out, rev }
     } finally {
       rmSync(base, { force: true })
     }

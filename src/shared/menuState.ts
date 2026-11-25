@@ -19,8 +19,8 @@ export interface MenuState {
   live?: boolean
 }
 
-/** The rows a Work editor can take the key of: Sidebar's ⌘B (bold), Search's ⌘K (link), Go to File's ⌘P (Print) and Find's ⌘F (the editor's find). */
-export const EDITOR_KEY_IDS = ['toggle_sidebar', 'open_search', 'go_to_file', 'find'] as const
+/** The rows a Work editor can take the key of: Sidebar's ⌘B (bold), Search's ⌘K (link), Go to File's ⌘P (Print), Find's ⌘F (the editor's find) and Split Right's ⌘D (a deck's Duplicate). */
+export const EDITOR_KEY_IDS = ['toggle_sidebar', 'open_search', 'go_to_file', 'find', 'split_right'] as const
 
 /** The rows whose keys Word for the web owns while it has the focus: ⌘F, ⌘P, ⌘S, ⇧⌘E, ⌘K and ⌘B; of these, Find, Print, Export and Save are turned off. */
 export const LIVE_KEY_IDS = ['find', 'go_to_file', 'print', 'save_all', 'export', 'open_search', 'toggle_sidebar'] as const

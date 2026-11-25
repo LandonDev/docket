@@ -32,6 +32,7 @@ In this order:
    | `data-editor-keys` (any value but `read` and `text`) | ⌘B and ⌘K (bold, link) |
    | any, `read` included | ⌘P once that editor answers Print…, ⌘F once it answers find |
    | `data-editor-keys="document"` | also ⌥⌘0 to ⌥⌘3 (Normal text, Heading 1 to 3) |
+   | `data-editor-keys="slides"` | also ⌘D (Duplicate: Split Right's key) |
 
    "That editor" is the one holding the caret: its Body's root lists what it
    answers in `data-editor-answers` (`useWorkCommands` writes it,
@@ -84,7 +85,7 @@ How it is built:
   accelerators, so nothing is registered for them on any platform, and gives
   Print… the ⌘P it takes from Go to File… as a `pageKey` (shown, left to the
   page; on macOS main drops the menu's own click when it came by ⌘ or Ctrl).
-  Main takes only the four ids of `EDITOR_KEY_IDS` at a window's word.
+  Main takes only the five ids of `EDITOR_KEY_IDS` at a window's word.
 - Before this (found at DOC0): ⌘B in a document toggled the sidebar and made
   nothing bold, because the resolver had no rule for a document and stopped
   the key before BlockNote heard it. `work/docs/editorKeys.dom.test.tsx` holds

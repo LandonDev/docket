@@ -213,6 +213,8 @@ export function editorHeld(target: unknown): string[] {
     ...(styles(editor) ? ["toggle_sidebar", "open_search"] : []),
     ...(editorAnswers(target, "print") ? ["go_to_file"] : []),
     ...(editorAnswers(target, "find") ? ["find"] : []),
+    // A deck he edits by hand duplicates the picked shape on ⌘D, PowerPoint's own key: Split Right gives it up there.
+    ...(editor === "slides" ? ["split_right"] : []),
   ];
 }
 
@@ -357,6 +359,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
         if (styles(editor) && (k === "b" || k === "k")) return null;
         if (k === "p" && editorAnswers(target, "print")) return { id: "print" };
         if (k === "f" && editorAnswers(target, "find")) return { id: "find" };
+        // A deck he edits by hand: ⌘D duplicates the picked shape, as in PowerPoint (SlidesCanvas.tsx).
+        if (editor === "slides" && k === "d") return null;
       }
     }
 

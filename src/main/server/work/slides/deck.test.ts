@@ -583,6 +583,76 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       expect((await inspect(charted.output)).slides.find((x) => x.id === 265)!.shapes.at(-1)).toMatchObject({ kind: 'chart', chart: { categories: ['Mon', 'Tue'], series: [{ name: 'Seen', values: [1, 2] }] } })
     })
 
+    it('copy: a shape duplicated in its box on top of its slide, out of a group, onto another slide; the slide alone changes', async () => {
+      const input = file(readFileSync(FEATURE))
+      const part = await slidePart(input, 258)
+      const before = await inspect(input)
+      const was = shape(before, 258, 3)
+      const box: [number, number, number, number] = [was.own!.box[0] + 152400, was.own!.box[1] + 152400, was.own!.box[2], was.own!.box[3]]
+      const { output } = await apply(input, [{ op: 'copy', slide: 258, shape: 3, box, id: 900 }], true)
+      expect(await partsDiff(input, output)).toEqual({ changed: [part], added: [], gone: [] })
+      const after = await inspect(output)
+      const made = shape(after, 258, 900)
+      expect(made.own!.box).toEqual(box)
+      expect([made.name, made.text, made.kind]).toEqual([was.name, was.text, was.kind])
+      // On top of the others, and the first is as it was.
+      expect(after.slides.find((x) => x.id === 258)!.shapes.at(-1)!.id).toBe(900)
+      expect(shape(after, 258, 3).own).toEqual(was.own)
+      // A shape in a group comes out of it, into the box he gives; with none it says so.
+      await expect(apply(input, [{ op: 'copy', slide: 258, shape: 5 }], true)).rejects.toThrow('copied out of it into a box of its own')
+      const inGroup = shape(before, 258, 5)
+      const out = await apply(input, [{ op: 'copy', slide: 258, shape: 5, box: inGroup.own!.box, id: 901 }], true)
+      const loose = shape(await inspect(out.output), 258, 901)
+      expect(loose.group).toBeUndefined()
+      expect(loose.own!.box.map((v, i) => Math.abs(v - inGroup.own!.box[i]) <= 2)).toEqual([true, true, true, true])
+      // Onto another slide, with an id of the slide's own when none is asked; a taken id is refused.
+      const onto = await apply(input, [{ op: 'copy', slide: 258, shape: 3, to: 265 }], true)
+      const there = (await inspect(onto.output)).slides.find((x) => x.id === 265)!.shapes
+      expect(there.at(-1)).toMatchObject({ text: was.text, own: was.own })
+      expect(new Set(there.map((x) => x.id)).size).toBe(there.length)
+      await expect(apply(input, [{ op: 'copy', slide: 258, shape: 3, id: 3 }], true)).rejects.toThrow('already has a shape 3')
+    })
+
+    it('copy: a picture pasted from another deck brings its picture; a table keeps its cells; taken back, the deck is as it was', async () => {
+      const input = file(readFileSync(FEATURE))
+      // The other deck: a blank deck with a picture on its slide, cut down to that slide as the window's ⌘C asks.
+      const blank = file(BLANK_DECK)
+      const [first] = (await inspect(blank)).slides
+      const other = await applyWith(blank, [{ op: 'insert', slide: first.id, what: 'picture', file: 'f0.png', box: [100000, 200000, 2000000, 1000000], id: 50 }], [['f0.png', attach('red2.png', PNG)]])
+      const clip = (await runner.convert({ from: 'pptx', to: 'pptxclip', input: other.output, output: join(dir, `clip-${++n}.pptx`), options: { slide: 1 } })).output
+      const part = await slidePart(input, 265)
+      const pasted = await applyWith(input, [{ op: 'copy', slide: first.id, shape: 50, to: 265, file: 'f0.pptx', box: [300000, 300000, 2000000, 1000000], id: 950 }], [['f0.pptx', clip]])
+      const d = await partsDiff(input, pasted.output)
+      expect(d.changed).toEqual([part.replace('slides/', 'slides/_rels/') + '.rels', part].sort())
+      expect(d.added).toHaveLength(1)
+      expect(d.added[0]).toMatch(/^ppt\/media\/image\d+\.png$/)
+      expect(createHash('sha256').update(await (await JSZip.loadAsync(readFileSync(pasted.output))).file(d.added[0])!.async('nodebuffer')).digest('hex')).toBe(createHash('sha256').update(PNG).digest('hex'))
+      expect(shape(await inspect(pasted.output), 265, 950)).toMatchObject({ kind: 'picture', own: { box: [300000, 300000, 2000000, 1000000] } })
+      // LibreOffice draws the deck with its pasted picture, page for page as it drew it before.
+      const pages = async (deck: string): Promise<number> => readFileSync((await runner.convert({ from: 'pptx', to: 'pdf', input: deck, output: join(dir, `r-${++n}.pdf`) })).output, 'latin1').match(/\/Type\s*\/Page[^s]/g)?.length ?? 0
+      expect(await pages(pasted.output)).toBe(await pages(input))
+      // From another deck it needs the slide it goes on.
+      await expect(applyWith(input, [{ op: 'copy', slide: first.id, shape: 50, file: 'f0.pptx' }], [['f0.pptx', clip]])).rejects.toThrow('needs the slide it goes on')
+      // A table on its own slide: its cells come with it.
+      const table = (await inspect(input)).slides.flatMap((x) => x.shapes.map((sh) => ({ slide: x.id, sh }))).find((x) => x.sh.kind === 'table' && x.sh.own)!
+      const dup = await apply(input, [{ op: 'copy', slide: table.slide, shape: table.sh.id, box: table.sh.own!.box, id: 960 }], true)
+      expect(shape(await inspect(dup.output), table.slide, 960).cells).toEqual(table.sh.cells)
+      // His edit taken back: the pack gives the deck before it, byte for byte.
+      const stepped = join(dir, `step-${++n}.bin`)
+      const joined = join(dir, `plus-${++n}.bin`)
+      joinStep([input, clip], joined)
+      await runner.convert({ from: 'pptxplus', to: 'pptxstep', input: joined, output: stepped, options: { ops: [{ op: 'copy', slide: first.id, shape: 50, to: 265, file: 'f0.pptx', box: [0, 0, 100000, 100000] }], files: ['f0.pptx'] } })
+      const [next, pack, info] = [join(dir, `n-${++n}.pptx`), join(dir, `p-${n}.pack`), join(dir, `i-${n}.json`)]
+      splitStep(stepped, [next, pack, info])
+      const undone = join(dir, `u-${++n}.bin`)
+      const both = join(dir, `b-${n}.bin`)
+      joinStep([next, pack], both)
+      await runner.convert({ from: 'pptxstep', to: 'pptxstep', input: both, output: undone })
+      const back = join(dir, `back-${n}.pptx`)
+      splitStep(undone, [back, join(dir, `bp-${n}.pack`), join(dir, `bi-${n}.json`)])
+      expect(await partsDiff(input, back)).toEqual({ changed: [], added: [], gone: [] })
+    })
+
     it('insert: a video brings its media, a poster and its timing node', async () => {
       const input = file(readFileSync(FEATURE))
       const part = await slidePart(input, 265)

@@ -352,6 +352,15 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(editorHeld(target("text"))).toEqual(["go_to_file", "find"]);
     expect(editorHeld(target(null))).toEqual([]);
     answers = null;
+    // A deck he edits by hand holds Split Right's ⌘D for Duplicate; one he can only read leaves it the app's.
+    expect(editorHeld(target("slides"))).toEqual(["toggle_sidebar", "open_search", "split_right"]);
+  });
+
+  it("a deck he edits by hand keeps ⌘D (Duplicate); elsewhere ⌘D splits the pane", () => {
+    expect(resolve(inEditor("d", "slides"), ctx)).toBeNull();
+    expect(resolve(inEditor("d", "read"), ctx)).toEqual({ id: "split_right" });
+    expect(resolve(inEditor("d", "document"), ctx)).toEqual({ id: "split_right" });
+    expect(resolve(inEditor("d", null), ctx)).toEqual({ id: "split_right" });
   });
 
   it("runs a command only when an editor answers it, as one window event", () => {

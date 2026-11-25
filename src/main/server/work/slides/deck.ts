@@ -188,6 +188,19 @@ export const SLIDES_CONVERTERS: Converter[] = [
       return {}
     }
   },
+  // The deck cut down to one slide (its place, from 1), for a shape he copies into another deck (`work.slides.clip`):
+  // the shape's words, pictures, media and chart ride in it to the deck he pastes into, which may be on another host.
+  {
+    from: 'pptx',
+    to: 'pptxclip',
+    needs: 'python-pptx',
+    async run(job, run) {
+      const place = z.object({ slide: z.number().int().min(1).max(100_000) }).safeParse(job.options ?? {})
+      if (!place.success) throw new Error('a clip names the slide it is cut from')
+      await runDeck(run, ['solo', job.input, String(place.data.slide), job.output])
+      return {}
+    }
+  },
   { from: 'pptx', to: 'pptxedit', needs: 'python-pptx', run: runEdit },
   // The same, with the files the edits bring carried in the input (a picture, a video).
   { from: 'pptxplus', to: 'pptxedit', needs: 'python-pptx', run: runEdit },
@@ -318,5 +331,7 @@ export function slideOfOp(op: SlideOp): number {
   if (makesSlide(op)) return op.id ?? 0
   if (op.op === 'theme') return DECK_ITSELF
   if (op.op === 'section') return op.act === 'add' ? op.at : DECK_ITSELF
+  // A copy changes the slide it lands on; from another deck, `slide` is that deck's.
+  if (op.op === 'copy') return op.to ?? op.slide
   return op.slide
 }

@@ -40,6 +40,8 @@ export interface DeckHost {
   version(version: string, offset: number, length: number, rev?: string): Promise<{ data: Uint8Array; size: number; rev: string }>;
   /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. `sent`: told the bytes the host holds after each piece. */
   attach(name: string, data: Uint8Array, sent?: (bytes: number) => void): Promise<string>;
+  /** A slide of the file cut out of the deck (a .pptx of it alone), by range: a shape he copies, for his paste into another deck (`work.slides.clip`). */
+  clip?(slide: number, offset: number, length: number): Promise<{ data: Uint8Array; size: number; rev: string }>;
   onView(listener: (view: DeckView) => void): () => void;
   /** A show's step pictures and clips, by their `rev` (`work.slides.build`, `work.slides.media`), and the word that more of them is ready. */
   build?(rev: string, offset: number, length: number): Promise<Uint8Array>;
@@ -99,6 +101,10 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
         if (data.length === 0) break;
       }
       return token!;
+    },
+    clip: async (slide, offset, length) => {
+      const got = await call<{ data: string; size: number; rev: string }>("work.slides.clip", { slide, offset, length });
+      return { data: fromBase64(got.data), size: got.size, rev: got.rev };
     },
     onView: (listener) =>
       link().onPush((push) => {

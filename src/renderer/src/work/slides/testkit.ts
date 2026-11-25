@@ -98,6 +98,15 @@ function arranged(view: DeckView, op: SlideOp): DeckView {
       return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.filter((sh) => sh.id !== op.shape) }));
     case "insert":
       return onSlide(op.slide, (s) => ({ ...s, shapes: [...s.shapes, inserted(s, op, size)] }));
+    case "copy": {
+      // From this deck the shape itself; from another, a stand-in named by the file its slide came in.
+      const from = op.file === undefined ? view.slides.find((s) => s.id === op.slide)?.shapes.find((sh) => sh.id === op.shape) : boxShape(0, [0, 0, 0.1, 0.1], { kind: "text", name: "Pasted", text: `pasted from ${op.file}` }, size);
+      if (!from) return view;
+      return onSlide(op.to ?? op.slide, (s) => {
+        const made = { ...from, id: op.id ?? Math.max(1, ...s.shapes.map((sh) => sh.id)) + 1 };
+        return { ...s, shapes: [...s.shapes, op.box ? placed(made, { op: "geometry", slide: s.id, shape: made.id, box: op.box }, size) : made] };
+      });
+    }
     case "fill":
       return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.map((sh) => (sh.id === op.shape ? { ...sh, fill: op.color === null ? "none" : typeof op.color === "string" ? op.color : slotHex(op.color.slot, view) } : sh)) }));
     case "line":
@@ -292,6 +301,12 @@ export function fakeDeckHost(initial: DeckView): DeckHost & {
       if (host.hold) await host.hold;
       const bytes = new TextEncoder().encode(`%PDF ${version}`);
       return { data: bytes.subarray(offset, offset + length), size: bytes.length, rev: "aaaaaaaaaaaaaaaa" };
+    },
+    /** A slide cut out for a paste elsewhere: ten bytes of the slide's id, in pieces as asked. */
+    async clip(slide: number, offset: number, length: number) {
+      host.calls.push(["clip", { slide, offset }]);
+      const all = new Uint8Array(10).fill(slide % 256);
+      return { data: all.subarray(offset, offset + length), size: all.length, rev: "c1" };
     },
     async restore(version: string) {
       host.calls.push(["restore", version]);

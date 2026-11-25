@@ -11,7 +11,7 @@ import { copyToEdit } from './copyToEdit'
 import { deckUploadBytes } from './googleDeck'
 import { attachPiece } from './attach'
 import { BLANK_DECK } from './blankDeck'
-import { handEdit, handStep, restoreVersion, versionsOf } from './hand'
+import { clipPath, handEdit, handStep, restoreVersion, versionsOf } from './hand'
 import { forgetHands } from './handLine'
 import { versionRead } from './version'
 import { deckPreviewer } from './preview'
@@ -42,6 +42,7 @@ const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.copyToEdit',
   'work.slides.read',
   'work.slides.slide',
+  'work.slides.clip',
   'work.slides.show',
   'work.slides.review',
   'work.slides.mode',
@@ -168,6 +169,12 @@ export const slides: WorkModule = {
         if (req.params.which === 'proposed') mine()
         const { path, rev } = await slidePath(ctx, item, req.params.which, req.params.slide, signal)
         if (req.params.which === 'proposed') mine()
+        return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
+      }
+      // A shape he copies, for his paste into another deck (hand.ts `clipPath`): his hand's, as an attach is.
+      case 'work.slides.clip': {
+        if (by.kind === 'model') throw new Error('Only the owner copies a shape by hand; an agent reads a deck with slides_read.')
+        const { path, rev } = await clipPath(ctx, item, req.params.slide, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
       case 'work.slides.show':
