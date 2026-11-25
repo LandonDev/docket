@@ -184,7 +184,7 @@ const KINDS_BARE: OutboxItem[] = [
   held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", MOVE, 31),
   held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", LINK, 20),
   held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", { chat: "Esports Staff, General", text: "The bus leaves the CoRec at 6:30 AM on Saturday. Bring your ID and your jersey." }, 12),
-  held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu" }, 6),
+  held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu", calendarId: "c_9f2k1@group.calendar.google.com" }, 6),
   // The one error example, kept apart: a payload its kind cannot read says so in one quiet line.
   held(28, "teams.post", "Post in Esports Staff › General: an old draft", "Post", "not a payload", 3),
 ];
@@ -380,6 +380,8 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
       const convex = new FakeConvex();
       convex.answer("events:get", { _id: "ev_call", title: "Kickoff call with Northside PT", sector: "purdue", startsAt: at(27, 14), endsAt: at(27, 15), allDay: false, location: "Zoom" });
       convex.answer("events:range", []);
+      // The answer goes on the team's shared calendar, named as LifeOS syncs it.
+      convex.answer("sources:list", [{ _id: "src_staff", kind: "gcal", channel: "c_9f2k1@group.calendar.google.com", account: "landon@purdue.edu", label: "Esports Staff" }]);
       convex.answer("chats:get", {
         chat: { _id: "c1", source: "teams", account: "landon@purdue.edu", channel: "chat", name: "Sam Ortiz", kind: "dm", sector: "purdue", lastAt: at(20, 9, 40), lastText: "Can varsity do Thursday at 7?", lastWho: "Sam Ortiz", lastFromMe: false },
         source: null,
