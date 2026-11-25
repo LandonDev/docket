@@ -788,6 +788,7 @@ export function resetFilesStore(): void {
   listingMeta.clear();
   listingRound.clear();
   listingListeners.clear();
+  for (const heard of keepHears.values()) heard.off();
   keepHears.clear();
   changing.clear();
   firstPages.clear();
@@ -923,23 +924,31 @@ export function dropListings(which: (meta: Pick<ListingMeta, "link" | "workspace
 export const listingsKept = (): { listings: number; sets: number; empty: number } => ({ listings: listings.size, sets: listingListeners.size, empty: [...listingListeners.values()].filter((set) => !set.size).length });
 
 /** Each host's pushes, heard once for the keep: a folder named while no one shows it is read again when it is shown. */
-const keepHears = new Map<string, unknown>();
+const keepHears = new Map<string, { host: unknown; off: () => void }>();
 function hearForKeep(link: string): void {
-  // Once per link: again only for a link made anew (a host paired again).
+  // Once per link: again only for a link made anew (a host paired again, a far desktop's route changed), when what
+  // the old one heard goes (Sol round 2, S16).
   const host = filesLink(link);
-  if (keepHears.get(link) === host) return;
-  keepHears.set(link, host);
+  if (keepHears.get(link)?.host === host) return;
+  keepHears.get(link)?.off();
   // A reopened link: every folder kept from it may have changed while it was cut, so each is read when shown again
   // (the shown one reads at once, below in useListing).
-  host.onOpen(() => {
+  const offOpen = host.onOpen(() => {
     for (const meta of listingMeta.values()) if (meta.link === link) meta.dirty = true;
   });
-  host.onPush((push) => {
+  const offPush = host.onPush((push) => {
     if (push.push !== "work.files") return;
     for (const meta of listingMeta.values()) {
       if (meta.link !== link || meta.workspaceId !== push.workspaceId) continue;
       if ((meta.pushAt && push.at === meta.pushAt) || (meta.lens && (push.tabs !== undefined || push.marks))) meta.dirty = true;
     }
+  });
+  keepHears.set(link, {
+    host,
+    off: () => {
+      offOpen();
+      offPush();
+    },
   });
 }
 

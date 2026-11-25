@@ -19,7 +19,14 @@ export const farName = (link: string): string | undefined => names.get(link);
 export const keepFarName = (link: string, name: string | undefined): void => void (name && names.set(link, name));
 
 /** The window reaches `link` only through `via`, the host of the workspace being shown. */
-export const reachThrough = (link: string, via: string, workspaceId: string): void => void through.set(link, { via, workspaceId });
+export function reachThrough(link: string, via: string, workspaceId: string): void {
+  // The same route keeps its record, so the link made for it is the same one (Sol round 2, S16).
+  const was = through.get(link);
+  if (was?.via !== via || was.workspaceId !== workspaceId) through.set(link, { via, workspaceId });
+}
+
+/** The link made for each far desktop, kept while its route and the host in between stand: one object a route. */
+const made = new Map<string, { far: { via: string; workspaceId: string }; via: Link; link: FilesLink }>();
 
 
 /** The link Files asks a host through: the window's own, or the workspace's host for a desktop it cannot reach. */
@@ -27,7 +34,9 @@ export function filesLink(link: string): FilesLink {
   const far = registry.has(link) ? undefined : through.get(link);
   if (!far) return registry.linkOf(link);
   const via = registry.linkOf(far.via);
-  return {
+  const kept = made.get(link);
+  if (kept && kept.far === far && kept.via === via) return kept.link;
+  const wrapper: FilesLink = {
     request<T>(method: string, params?: unknown, options?: LinkRequestOptions): Promise<T> {
       if (!ACROSS.has(method)) return Promise.reject(new Error("That computer is reached through another host: open the file to see it."));
       const { workspaceId = far.workspaceId, ...rest } = (params ?? {}) as { workspaceId?: string };
@@ -37,4 +46,6 @@ export function filesLink(link: string): FilesLink {
     onPush: () => () => {},
     onOpen: (listener) => via.onOpen(listener),
   };
+  made.set(link, { far, via, link: wrapper });
+  return wrapper;
 }
