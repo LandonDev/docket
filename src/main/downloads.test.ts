@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' }, ipcMain: { handle: () => {} } }))
 // A disk that refuses the finished file's name: every way of naming it fails. And a disk with no links (FAT), where
 // another file takes the free name between its check and the link.
-const refuse = vi.hoisted(() => ({ name: false, links: null as null | ((path: string) => void) }))
+// `copying` sees a slow copy halfway through: the bytes under its destination name before the rest arrive.
+const refuse = vi.hoisted(() => ({
+  name: false,
+  links: null as null | ((path: string) => void),
+  copying: null as null | ((dest: string) => void)
+}))
 vi.mock('node:fs/promises', async (real) => {
   const fs = await real<typeof import('node:fs/promises')>()
   const refused = (): Promise<never> => Promise.reject(Object.assign(new Error('ENAMETOOLONG: name too long'), { code: 'ENAMETOOLONG' }))
@@ -15,7 +20,14 @@ vi.mock('node:fs/promises', async (real) => {
     ...fs,
     link: (...a: Parameters<typeof fs.link>) => (refuse.name ? refused() : refuse.links ? noLinks(String(a[1])) : fs.link(...a)),
     rename: (...a: Parameters<typeof fs.rename>) => (refuse.name ? refused() : fs.rename(...a)),
-    copyFile: (...a: Parameters<typeof fs.copyFile>) => (refuse.name ? refused() : fs.copyFile(...a))
+    copyFile: async (...a: Parameters<typeof fs.copyFile>) => {
+      if (refuse.name) return refused()
+      if (!refuse.copying) return fs.copyFile(...a)
+      const bytes = await fs.readFile(a[0])
+      await fs.writeFile(a[1], bytes.subarray(0, bytes.length >> 1), { flag: 'wx' })
+      refuse.copying(String(a[1]))
+      await fs.appendFile(a[1], bytes.subarray(bytes.length >> 1))
+    }
   }
 })
 const { freeName, safeFileName } = await import('./downloads')
@@ -208,6 +220,30 @@ describe('a download written part by part', () => {
     expect(readFileSync(join(dir, 'Budget.xlsx'), 'utf8')).toBe('the other download')
     expect(readFileSync(join(dir, 'Budget (1).xlsx'), 'utf8')).toBe('this download')
     expect(readdirSync(dir).sort()).toEqual(['Budget (1).xlsx', 'Budget.xlsx'])
+  })
+
+  it('on a disk with no links, the final name never holds a part-copied file: it is taken empty, then the whole part renamed onto it', async () => {
+    // Council r6 (Sol 5): the exclusive copy wrote under the final name, and another app could open it half-copied.
+    const { mkdtempSync, readFileSync, readdirSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    const parts = partWriter(() => dir)
+    const id = await parts.begin('Clip.mov')
+    await parts.part(id, new TextEncoder().encode('the whole clip'))
+    const seen: string[] = []
+    refuse.links = () => undefined
+    refuse.copying = (dest) => seen.push(readFileSync(dest, 'utf8'))
+    try {
+      expect(await parts.end(id, true)).toBe(join(dir, 'Clip.mov'))
+    } finally {
+      refuse.links = null
+      refuse.copying = null
+    }
+    expect(seen.filter((bytes) => bytes !== '' && bytes !== 'the whole clip')).toEqual([])
+    expect(readFileSync(join(dir, 'Clip.mov'), 'utf8')).toBe('the whole clip')
+    expect(readdirSync(dir)).toEqual(['Clip.mov'])
   })
 
   it('saves a long name that fits the folder: the part-written file wears a short name of its own, so its ending never pushes the name past the limit', async () => {
