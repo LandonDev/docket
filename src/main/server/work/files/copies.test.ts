@@ -22,7 +22,7 @@ import { startFileAutosaves } from './autosave'
 import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
 import { stayFollowed, staysLeft } from './copyStays'
-import { forgetUploads, lookAll, setUploadReader, uploadTiming, uploadWrote } from './uploads'
+import { cloudOf, forgetUploads, lookAll, setUploadReader, uploadTiming, uploadWrote } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
 const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void | Promise<void>) | null }))
@@ -1376,6 +1376,11 @@ describe('Save as Word to a folder he picks', () => {
     expect(got).toMatchObject({ name: 'Plan 2.docx', ref: { host: MAC, path: join(general, 'Plan 2.docx') } })
     expect(readFileSync(join(general, 'Plan 2.docx'), 'utf8')).toBe('word export')
     expect(readFileSync(join(general, 'Plan.docx'), 'utf8')).toBe('word')
+    // The file it made is followed to the cloud as any write of ours there: the Mac alone says it lies in a library.
+    expect(cloudOf(WS, MAC, got.ref.path)).toBeUndefined()
+    setUploadReader(async () => false)
+    await lookAll(box.ctx)
+    expect(cloudOf(WS, MAC, got.ref.path)).toMatchObject({ is: 'uploading' })
   })
 
   it('refuses a thread, a read key and a key that may not approve, and writes nothing', async () => {
@@ -1414,7 +1419,7 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
   })
 
-  it('is unknown where the Mac cannot read it, and asked no more', async () => {
+  it("keeps the computer's own line where its holder cannot read OneDrive (a PC), and asks no more", async () => {
     let asks = 0
     setUploadReader(async () => (asks++, null))
     const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
@@ -1422,7 +1427,8 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     await settled()
     await lookAll(box.ctx)
     await lookAll(box.ctx)
-    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'unknown' })
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
     expect(asks).toBe(1)
   })
 
@@ -1469,6 +1475,46 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
     answer(true)
     await looking
     expect(await cloudOfTab(tabId)).not.toMatchObject({ is: 'uploaded' })
+    // Asked again after the newer write, the Mac's yes is of it: only that one says In Teams.
+    const again = lookAll(box.ctx)
+    await new Promise((r) => setTimeout(r, 20))
+    answer(true)
+    await again
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
+  })
+
+  it('tells no cloud from the moment a new send leaves, and an answer asked before it is of the older bytes', async () => {
+    let uploaded = true
+    let answer: ((v: boolean) => void) | null = null
+    setUploadReader(() => (answer ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(uploaded)))
+    const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    await lookAll(box.ctx)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
+    // A look is under way when the next save's send leaves and is held on its way to the Mac.
+    answer = () => undefined
+    const looking = lookAll(box.ctx)
+    await new Promise((r) => setTimeout(r, 20))
+    let open!: () => void
+    hold = new Promise((r) => (open = r))
+    await editorSaves(copy, 'workbook three')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(await backOf(tabId)).toMatchObject({ is: 'sending' })
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    // The Mac's yes about the older bytes lands while the send is out: nothing is told of the new ones.
+    answer!(true)
+    await looking
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    answer = null
+    uploaded = false
+    await lookAll(box.ctx)
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    open()
+    await settled()
+    // The send landed: from here its own write is followed.
+    await lookAll(box.ctx)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploading' })
   })
 
   it("is the workspace's host's question alone", async () => {

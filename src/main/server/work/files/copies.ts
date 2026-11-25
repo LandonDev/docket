@@ -16,7 +16,7 @@ import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
 import { admitCaller, admitWrite, locate, type DoorPlace } from './policy'
 import { saveCopy, saveFile, versionWord, workDone } from './save'
-import { uploadWrote } from './uploads'
+import { uploadPending, uploadWrote } from './uploads'
 import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
 import { farMoved } from './moved'
@@ -162,6 +162,8 @@ export const unreachable = (err: unknown): boolean =>
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
 export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean, op?: string): Promise<WrittenBack> {
+  // From the moment new bytes leave for the file, what OneDrive did with the last ones is not told of it (uploads.ts).
+  if (!keep) uploadPending(ctx, r)
   let got = await deliverOnce(ctx, r, data, keep, op)
   // SharePoint's own rewrite of an Office file in a Teams library, seconds after its upload, is no one's edit
   // (body.ts): found changed with its body as we last read or wrote it, the file is written over by its new version.

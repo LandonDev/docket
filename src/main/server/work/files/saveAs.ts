@@ -15,6 +15,7 @@ import { admitCaller, locate, workspaceHere } from './policy'
 import { versionWord } from './save'
 import { makeBytes, makeFolderRef } from './verbs'
 import { vmReadVersioned } from './vmVerbs'
+import { uploadPending, uploadWrote } from './uploads'
 import { liveRev, wordTiming } from './word'
 import { canonicalPath } from '../service/ctx'
 import type { DocRevision } from '../service/wire'
@@ -156,6 +157,8 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
     if (!ref || ref.at !== 'file') throw new Error('The file was not made.')
     // Only a linked file needs the version it was made at: the next write goes over it by that version alone.
     const version = !p.linked ? '' : p.vm ? (await vmReadVersioned(ref.path, 0, 1)).version : versionWord(await versionOf(ref.path))
+    // A file made in the VM's library is followed until OneDrive has it, as any write of ours there is (uploads.ts).
+    if (p.vm) uploadWrote(ctx, { workspace_id: p.workspaceId, host: ctx.host, path: ref.path, vm: true })
     return { path: ref.path, name: done.entries[0]!.name, version }
   }
   // A library on another computer of his: that host makes the file in its folder through its own door (`writeBack` with `into`).
@@ -169,14 +172,20 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
     throw new OpLost(err instanceof Error ? err.message : String(err))
   })) as WrittenBack
   if (!('copy' in got)) throw new Error('The file was not made.')
+  // That host says whether it lies in a folder OneDrive syncs; until then nothing is told of the cloud.
+  uploadWrote(ctx, { workspace_id: p.workspaceId, host: p.at.host, path: got.copy.path, vm: false })
   return { path: got.copy.path, name: got.copy.name, version: got.copy.version }
 }
 
 /** A file written over by version: this host's through its door, another computer's by its own (`writeBack`). */
 async function putOver(ctx: WorkCtx, r: Spot & { version: string }, data: Buffer): Promise<{ version: string } | { conflict: { changed: number; version: string } | { gone: true } }> {
+  // Another computer's write is followed by `deliver`; one into the VM's library here is followed from this send on (uploads.ts).
+  const vmHere = r.host === ctx.host && !!r.vm
+  if (vmHere) uploadPending(ctx, r)
   const got = r.host === ctx.host ? await writeBytes(ctx, LOCAL, { workspaceId: r.workspace_id, ref: { at: 'file', host: r.host, path: r.path }, data, version: r.version }, METHOD) : await deliver(ctx, { ...r, vm: 0 }, data, false)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) throw new Error('The file was not written.')
+  if (vmHere) uploadWrote(ctx, r)
   return { version: got.version }
 }
 

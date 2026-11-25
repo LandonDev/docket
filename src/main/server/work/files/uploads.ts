@@ -17,6 +17,12 @@ import { locate } from './policy'
  * (the cloud filter's own in-sync mark, read from the listing), on another host of his through `work.files.uploaded`
  * (a Mac's File Provider item: uploaded and not uploading). Nothing here wakes the VM; while an upload there is still
  * owed the keeper does not put it to sleep (`uploadsOwed`).
+ *
+ * In Teams is told only of our bytes (decision 18 of plan-cBclQIRDtvVS): a send that leaves drops what was known of the
+ * last one (`uploadPending`), and an answer settles only the record it was asked about, never one a newer write or
+ * send made since. Neither holder's read names the version its flag is of yet (a Mac's File Provider keys, the VM
+ * helper's `synced`), so what a look says is still of the path as it lies; no new In Teams comes from that alone. A
+ * computer that cannot say (a PC, an older host) leaves the computer's own line, no record of the cloud.
  */
 
 /**
@@ -54,6 +60,18 @@ export function uploadWrote(ctx: WorkCtx, r: { workspace_id: string; host: strin
   uploads.set(keyOf(r.workspace_id, r.host, r.path), { workspaceId: r.workspace_id, host: r.host, path: r.path, vm, wrote: now, saved: now, looking: true, ...(vm ? { cloud: { is: 'uploading', at: now } } : {}) })
   filesState(ctx).tabs.touch(r.workspace_id)
   soon(ctx, vm ? 0 : uploadTiming.every)
+}
+
+/**
+ * A send of ours to the file is on its way (copies.ts `deliver`): what OneDrive did with the bytes before it is no longer
+ * the file's, so its tab tells no cloud until that send's write is followed (`uploadWrote`). Asked no more meanwhile, and
+ * not seeded again from the tab's older save time.
+ */
+export function uploadPending(ctx: WorkCtx, r: { workspace_id: string; host: string; path: string; vm: number | boolean }, now = Date.now()): void {
+  const key = keyOf(r.workspace_id, r.host, r.path)
+  const had = uploads.get(key)
+  uploads.set(key, { workspaceId: r.workspace_id, host: r.host, path: r.path, vm: !!r.vm, wrote: now, saved: had?.saved ?? now, looking: false })
+  if (had?.cloud) filesState(ctx).tabs.touch(r.workspace_id)
 }
 
 /** What OneDrive has done with a file our save wrote, for its tab; none before a write of ours. */
@@ -105,6 +123,8 @@ export function lookAll(ctx: WorkCtx, now: () => number = Date.now): Promise<voi
     const far = new Map<string, Upload[]>()
     for (const u of due) if (!u.vm) (far.get(`${u.host}\u0000${u.workspaceId}`) ?? far.set(`${u.host}\u0000${u.workspaceId}`, []).get(`${u.host}\u0000${u.workspaceId}`)!).push(u)
     const settle = (u: Upload, got: { cloud: CloudBack | undefined; looking: boolean } | null): void => {
+      // A newer write or send of ours made another record while this one was asked: the answer is of older bytes.
+      if (uploads.get(keyOf(u.workspaceId, u.host, u.path)) !== u) return
       const was = JSON.stringify(u.cloud)
       // another host's file in no folder OneDrive syncs: nothing to tell of it, and it is asked no more
       if (got === null) {
@@ -162,7 +182,8 @@ function outcome(ctx: WorkCtx, u: Upload, uploaded: boolean | null | 'outside', 
   const late = now() - u.wrote >= uploadTiming.late
   const at = u.saved
   if (uploaded === 'outside') return null
-  if (uploaded === null) return { cloud: { is: 'unknown', at }, looking: false }
+  // A computer that cannot say keeps its own line (Saved to the PC); the VM's older helper still says OneDrive uploads it.
+  if (uploaded === null) return { cloud: u.vm ? { is: 'unknown', at } : undefined, looking: false }
   if (uploaded) return { cloud: { is: 'uploaded', at: now() }, looking: false }
   if (!late) return { cloud: { is: 'uploading', at }, looking: true }
   const onedrive = u.vm ? storedStatus(ctx.db)?.status.onedrive : undefined

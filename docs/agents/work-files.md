@@ -2505,11 +2505,30 @@ said "Saved to Teams" at the first and the owner read it as a lie. One piece now
 workbooks, text and Word alike (files/uploads.ts):
 
 - **Where it is followed.** Every write through `deliver` (copies.ts: a copy's send, a Word file's save, Keep Both's
-  file beside) records the file on the workspace's host (`uploadWrote`), looked at every 2 s until OneDrive has it
+  file beside) and every Save As… write into the VM's library or another computer's folder (saveAs.ts `makeIn` and
+  `putOver`: the file it makes, his Replace, a link's later writes) records the file on the workspace's host
+  (`uploadWrote`), looked at every 2 s until OneDrive has it
   (`lookAll`), for at most 30 minutes. Each other host is asked once a sweep for all its owed files
   (`work.files.uploaded {refs}`, each file through that host's door alone), every host at once, each under its own
   deadline (`uploadTiming.ask`, 10 s), so one that does not answer holds up no other; a host a build behind is asked
-  file by file. An answer about an earlier write never marks a newer one uploaded (the newer write is a new record). A tab whose save went before the host started is looked at again when its
+  file by file. A save of this host's own library on its own disk has no record, so its line is the kind's own Saved.
+- **In Teams only for our bytes** (plan-cBclQIRDtvVS decision 18). A send that leaves for the file drops what OneDrive
+  did with the last bytes at once (`uploadPending`, from `deliver` and Save As's VM write): the tab tells no cloud while
+  it is out, nor after a refusal or a conflict, until its own write is followed. An answer settles only the record it
+  was asked of: one about an earlier write or from before a send now under way is dropped (a newer write is a new
+  record). The window holds the same rule (fileText.ts `cloudOfBack`): a send's answer newer than the tab's back is
+  said as the computer's receipt alone, never with the tab's older cloud. Neither holder's read names the version its
+  flag is of: a Mac's File Provider keys are of the path (and lag a write by about 0.6 s, hence the 2 s wait), and
+  the VM helper's `synced` is a second `FindFirstFileW` beside the one its size and change time come from, with no
+  hash. So In Teams still comes from the path as it lies, as on 1.0.373, and nothing new says it from that alone. The
+  helper change that would bind it, waiting for a VM YES: `files.stat` reads the placeholder state from the same
+  find data as its size and change time (thread compatibility mode set before that one `FindFirstFileW`) and answers
+  them together; the box then says In Teams only when `synced` comes with the size and change time of the version its
+  own write got, and keeps uploading otherwise (SharePoint's rewrite, body.ts, changes both and needs its own rule).
+  Out of this slice too: the VM's write receipt is still `VersionOf` read after ReplaceFile, not the staged bytes
+  (save-truth-audit.md A2's rare pair), and a linked file's line says "Saved to <folder>" (shared/work/saveAs.ts
+  `linkWords`) where only its computer holds the bytes.
+- **Seeded.** A tab whose save went before the host started is looked at again when its
   tabs are read (`seedUpload`). The tab carries what is known as `cloud` (`CloudBack`): `uploading`, `uploaded`,
   `late` with `why`, or `unknown`.
 - **The Windows VM.** The helper's `files.stat` answers `synced`: the cloud filter's own reading of the file's
@@ -2527,7 +2546,8 @@ workbooks, text and Word alike (files/uploads.ts):
   (a Mac says the old version is uploaded for about 0.6 s after a write): the File Provider item's
   `NSURLUbiquitousItemIsUploadedKey` and `IsUploadingKey`, read by JXA through osascript with no prompt
   (`MAC_UPLOAD_STATE`, about 60 ms a read). A file in no library there answers `outside` and nothing is told; a
-  computer that cannot read them (a PC, an older build) answers null: "Saved to <computer>. OneDrive uploads it".
+  computer that cannot read them (a PC, an older build) answers null, and its tab keeps the computer's own line
+  ("Saved to <computer> 9:12 PM"), asked no more.
 - **Late.** Not uploaded a minute after the write: in the VM, asleep, OneDrive not running, or signed out (the
   guest's stored status), else maybe paused, each with what he can do.
 - **The line** (renderer files/fileText.ts `cloudLine`): applied to any saved line of a copy that saves back or a

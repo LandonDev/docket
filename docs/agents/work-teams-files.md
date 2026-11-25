@@ -79,6 +79,11 @@ What the disk says, and how it is read (`office/files/library.ts`):
   looked at closer, so a walk over a library OneDrive has not listed yet never
   holds the host. A workbook is
   read through Excel (`office_range_read`), a PDF in the canvas.
+- **In Teams** on a save line is told only from the holder's own read, asked
+  after our write and settled on that write's record (files/uploads.ts;
+  work-files.md "Saved is not uploaded"). A Mac's File Provider keys and the
+  VM helper's `synced` are of the path, not of a version, so no new place says
+  In Teams from them; a PC, which cannot read them, keeps "Saved to <PC>".
 
 ## The Windows VM
 

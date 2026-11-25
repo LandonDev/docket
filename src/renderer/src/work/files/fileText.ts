@@ -170,6 +170,14 @@ const LATE_WHY: Record<NonNullable<CloudBack["why"]> | "paused", (computer: stri
 };
 
 /**
+ * What OneDrive did, as the tab tells it of the copy's save the tab carries: a send's answer newer than the tab's is of
+ * bytes the host has not followed to the cloud yet, so the line says the computer's receipt alone until the tab catches up.
+ */
+export function cloudOfBack(tab: { back?: CopyBack; cloud?: CloudBack }, back: CopyBack | undefined): CloudBack | undefined {
+  return back && tab.back && back !== tab.back ? undefined : tab.cloud;
+}
+
+/**
  * A saved line of a file in a Teams or OneDrive library, told by what OneDrive has done with our save (docs/DESIGN.md
  * "The Files place"): the computer holding the bytes is not yet the file in Teams. `service` is Teams or OneDrive,
  * `computer` the one that holds the file ("the Windows VM"). Any other line stands as it is.

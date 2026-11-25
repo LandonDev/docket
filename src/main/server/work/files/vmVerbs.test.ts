@@ -17,6 +17,7 @@ import { files } from './index'
 import { forgetVmLists } from './places/teams'
 import { setThreadsMayWrite } from './policy'
 import { settleTrash } from './trash'
+import { cloudOf, forgetUploads, lookAll } from './uploads'
 import { approver, at, HOST, peer, phone, thread, window, WS, type Rig, makeRig } from './testkit'
 
 // Save as Word to… writes the Work service's Word export; here a stand-in's bytes.
@@ -47,6 +48,8 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   let journal: Map<string, unknown>
   let lose: number
   let refuseRecycle: boolean
+  /** what the stand-in's `files.stat` says of OneDrive's upload (absent: a helper that cannot say) */
+  let synced: boolean | undefined
   /** the stand-in's Recycle Bin: where each thing lies there, and the path it had */
   let recycled: Map<string, { path: string; f: { path: string; dir: boolean; data: string; modified: number } }>
 
@@ -91,7 +94,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
         case 'files.list':
           return [...disk.values()].filter((f) => dirOf(f.path).toLowerCase() === (args.dir as string).toLowerCase()).map((f) => entryOf(f.path))
         case 'files.stat':
-          return entryOf(args.path as string)
+          return { ...entryOf(args.path as string), ...(synced === undefined ? {} : { synced }) }
         case 'files.read': {
           const f = disk.get((args.path as string).toLowerCase())!
           return { data: f.data, size: Buffer.from(f.data, 'base64').length, eof: true, ...(args.version ? { version: versionOf(f.path), changed: f.modified } : {}) }
@@ -169,6 +172,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     recycled = new Map()
     lose = 0
     refuseRecycle = false
+    synced = undefined
     disk = new Map()
     put(`${GENERAL}\\Plan.txt`, false, 'first')
     put(`${GENERAL}\\Budgets`, true)
@@ -181,6 +185,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   })
   afterEach(() => {
     vi.useRealTimers()
+    forgetUploads()
     setVmCall(null)
     setThreadsMayWrite(false)
     closeFilesState(rig.db)
@@ -322,6 +327,23 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       // A key that may not approve neither saves there nor touches the link.
       await expect(call('work.files.saveAs', { source, at: at(GENERAL), format: 'docx', op: op() }, phone)).rejects.toThrow('this key may not change it')
       await expect(call('work.files.linkAct', { id: link!.id, act: 'unlink' }, phone)).rejects.toThrow()
+    })
+
+    it('follows a Save As into a VM library to the cloud, and drops what OneDrive did once the link writes it again', async () => {
+      const source = { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }
+      const made = `${GENERAL}\\Agenda.docx`
+      await call('work.files.open', { ref: source })
+      await call('work.files.saveAs', { source, at: at(GENERAL), format: 'docx', name: 'Agenda', place: 'General', op: op() }, approver)
+      // The file Save As made has its record, as any write of ours into a library does: never In Teams before OneDrive has it.
+      expect(cloudOf(WS, HOST, made)).toMatchObject({ is: 'uploading' })
+      synced = true
+      await lookAll(rig.ctx)
+      expect(cloudOf(WS, HOST, made)).toMatchObject({ is: 'uploaded' })
+      // The link's next write is new bytes: OneDrive's word on the last ones is not told of them.
+      synced = undefined
+      const [link] = await call<{ id: string }[]>('work.files.links', { source }, approver)
+      await call('work.files.linkAct', { id: link!.id, act: 'retry' }, approver)
+      expect(cloudOf(WS, HOST, made)).toMatchObject({ is: 'uploading' })
     })
 
     it('refuses a template and a name NTFS would not take, before the guest is asked', async () => {

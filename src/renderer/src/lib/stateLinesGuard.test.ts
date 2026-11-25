@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { STATE_LINES, type StateFact } from "@shared/work/stateLines";
-import { stateLineSources } from "./stateLineSources.test-support";
+import { IN_CLOUD, stateLineSources } from "./stateLineSources.test-support";
 
 const KNOWN: readonly { file: string; literal: string; fact: StateFact; wall: string }[] = [];
 
 function overclaims(literal: string, fact: StateFact): boolean {
+  // In Teams is said only from the holder's read settled on our write's own record (files/uploads.ts).
+  if (IN_CLOUD.test(literal.trimStart())) return fact !== "cloud read";
   return /^`?(?:Saved|Sent)\b/.test(literal.trimStart()) && (fact === "queued" || fact === "stored token");
 }
 

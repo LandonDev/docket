@@ -39,7 +39,7 @@ import { dockShape, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
-import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { openSaveAs } from "./saveAsPort";
@@ -385,7 +385,7 @@ export function FileTabView({
           : frameLine(copy, item, workspace.environmentId, tab.stays ? { ...(item?.kind === "document" && meta ? { saveAs: () => openSaveAs(item.id) } : {}) } : undefined)
         : (kindLine ?? frameLine(null, item, workspace.environmentId));
   // A save into a Teams or OneDrive library says what OneDrive has done with it, never Saved to Teams before it uploads.
-  const line = said && copy ? cloudLine(said, tab.cloud, serviceOf(tab), copy.host) : said;
+  const line = said && copy ? cloudLine(said, cloudOfBack(tab, back), serviceOf(tab), copy.host) : said;
   // Once a copy's kind has saved, the host sends the copy to its file (one send at a time there, the newest bytes).
   const saving = !!(copy && tab.back);
   const lastLine = useRef<SavedLine | null>(null);

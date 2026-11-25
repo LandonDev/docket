@@ -1,8 +1,11 @@
-export type StateFact = "answer" | "held === writes" | "live session" | "stored token" | "queued" | "read" | "local";
+// `cloud read`: the file's holder said OneDrive has it, asked after the write of ours the line names and settled on that
+// write's own record (files/uploads.ts), never an answer about older bytes or from before a send now on its way.
+export type StateFact = "answer" | "held === writes" | "live session" | "stored token" | "queued" | "read" | "local" | "cloud read";
 
 type Line = readonly [literal: string, fact: StateFact];
 const R = "src/renderer/src/work";
 const H = "src/main/server/work";
+const S = "src/shared/work";
 
 // Read by stateLinesGuard.test.ts. A repeated literal has one entry per use, in source order.
 export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
@@ -44,6 +47,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     // A copy whose edits go nowhere: the host's record of it (files/copyStays.ts), nothing sent.
     ["`Edits stay in this tab, not on ${host}`", "local"],
     ["`Saved, uploading to ${service}…`", "answer"],
+    ["`In ${service} ${whenWords(cloud.at, now)}`", "cloud read"],
     ["`Saved to ${computer}. OneDrive uploads it`", "answer"],
   ],
   [`${R}/files/wordSave.ts`]: [
@@ -307,6 +311,24 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${H}/threads/record.ts`]: [
     ["Moved", "answer"],
     ["Copied", "answer"],
+  ],
+  [`${S}/files.ts`]: [
+    ["`Deleted from ${drive ?? place.name} at once; ${names.length === 1 ? 'it' : 'they'} cannot be put back.`", "read"],
+  ],
+  [`${S}/msforms.ts`]: [
+    ["`Added a ${questionWords(q)}`", "read"],
+    ["Moved questions", "read"],
+  ],
+  [`${S}/review.ts`]: [
+    ["Sent ", "read"],
+    ["Done", "local"],
+    ["Moved to next week", "answer"],
+  ],
+  // A linked file's line: the link's record after the write's answer (files/saveAs.ts), said by both sides.
+  [`${S}/saveAs.ts`]: [
+    ["`Saved to ${l.place} ${time(l.at)}`", "answer"],
+    ["`Saved to ${l.place}`", "answer"],
+    ["`Moved or deleted in ${l.place}`", "answer"],
   ],
   [`${H}/winvm/files.ts`]: [
     ["`Copied ${name} from ${from} on the Windows VM into the workspace as ${relative(into.folder, dest) || free}.`", "answer"],
