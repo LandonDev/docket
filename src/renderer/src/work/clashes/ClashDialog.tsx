@@ -21,9 +21,10 @@ import { writeMail } from "../mail/mailto";
 import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
-import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSession, useLifeosStatusHeard, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
+import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine } from "../shell/DownLine";
+import { useHostDown } from "../shell/lifeosLive";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -370,19 +371,7 @@ function Body({
   return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} hostDown={down} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
 }
 
-/**
- * The host's own LifeOS session as a session that is down, or null while it reads or is on its way. The clash's
- * writes (a decline, a time, a move, This is fine) run on the host through its own session, whatever this window's
- * may do: they are offered by the host's state, said with its computer named.
- */
-export function useHostDown(environmentId: string): LifeosSession | null {
-  // Heard, never asked: the dialog's own session (`useLifeosSession`) already watches the host.
-  const status = useLifeosStatusHeard(environmentId);
-  const silent = useLifeosUnanswered(environmentId) && status?.lifeos.state !== "connected";
-  if (!status && !silent) return null;
-  const host: LifeosSession = { environmentId, sector: null, client: null, state: silent ? "unreachable" : status!.lifeos.state, ...(silent ? { unanswered: true as const } : {}) };
-  return downOf(host) ? host : null;
-}
+export { useHostDown } from "../shell/lifeosLive";
 
 /** The two events in time order with the drive between them, the ways out under each, and the foot. */
 export function Events({

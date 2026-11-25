@@ -20,6 +20,12 @@ export function lifeosDownWords(state: LifeosStateName | "unanswered", withheld?
   return host ? `Not signed in to LifeOS on ${at}` : "Not signed in to LifeOS";
 }
 
+/**
+ * A session on its way, in one wording everywhere (a wait: no press goes with it), its computer named: "LifeOS is
+ * still connecting on the box"; with no computer known, "LifeOS is still connecting".
+ */
+export const connectingWords = (host?: string | null): string => (host ? `LifeOS is still connecting on ${nameInLine(host)}` : "LifeOS is still connecting");
+
 /** A host's name at the head of a line: "The box", "This Mac", "MacBook". */
 export const atHead = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1);
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LifeosStateSchema } from "@shared/contract-work-lifeos";
 import { sessionFailure } from "./lifeos";
-import { lifeosDownWords } from "./lifeosWords";
+import { connectingWords, lifeosDownWords, lifeosStateOf } from "./lifeosWords";
 
 /** The rule's words with no weight (the capture window's), the same function lifeos.ts says them by. */
 describe("lifeosDownWords", () => {
@@ -18,5 +18,17 @@ describe("lifeosDownWords", () => {
     expect(lifeosDownWords("refused", false, "This PC")).toBe("LifeOS refused this PC's sign-in");
     expect(lifeosDownWords("off", false, "This Mac")).toBe("Work is off on this Mac");
     expect(lifeosDownWords("unanswered", false, "This Mac")).toBe("This Mac did not answer");
+  });
+});
+
+describe("connectingWords", () => {
+  it("says a session on its way one way, its computer named", () => {
+    expect(connectingWords("The box")).toBe("LifeOS is still connecting on the box");
+    expect(connectingWords("This Mac")).toBe("LifeOS is still connecting on this Mac");
+    expect(connectingWords(null)).toBe("LifeOS is still connecting");
+  });
+
+  it("is read back as connecting", () => {
+    expect(lifeosStateOf(connectingWords("The box"))).toBe("connecting");
   });
 });
