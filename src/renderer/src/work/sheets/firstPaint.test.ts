@@ -40,10 +40,15 @@ describe("the sheet canvas and the first paint", () => {
   });
 
   it("loads the formula worker only when a sheet opens", () => {
+    // The xlsx decode's own modules (perf M9) are the decode worker and what it runs: reached only by `import()`.
+    const decode = new Set(["xlsxDecode.ts", "xlsxDecode.worker.ts"]);
     for (const file of shipped) {
+      if (decode.has(file)) continue;
       const text = read(file);
       expect(/^import[^;]*from\s+["']work-kit\/sheet\/(worker|xlsx)/m.test(text), `${file} imports the worker or the importer statically`).toBe(false);
+      expect(/^import(?!\s+type\b)[^;]*from\s+["']\.\/xlsxDecode(\.worker)?["']/m.test(text), `${file} imports the xlsx decode statically`).toBe(false);
     }
     expect(read("grid.ts")).toContain('import("work-kit/sheet/worker?worker")');
+    expect(read("grid.ts")).toContain('import("./xlsxDecode.worker?worker")');
   });
 });

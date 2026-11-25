@@ -42,3 +42,13 @@ describe("a view's own chunk", () => {
     expect(reaches('src/renderer/src/work/money/MonthBars.tsx', 'node_modules/recharts').length).toBe(1)
   })
 })
+
+describe("the sheet's chunk", () => {
+  it('holds no xlsx reader: an Excel file is read in a worker module of its own (perf M9)', () => {
+    expect(reaches('src/renderer/src/work/sheets/SheetBody.tsx', 'node_modules/work-kit/sheet/xlsx')).toEqual([])
+    expect(reaches('src/renderer/src/work/sheets/SheetBody.tsx', 'src/renderer/src/work/sheets/xlsxDecode')).toEqual([])
+    // and the worker module is what reaches it
+    expect(reaches('src/renderer/src/work/sheets/xlsxDecode.worker.ts', 'node_modules/work-kit/sheet/xlsx').length).toBe(1)
+  })
+})
+

@@ -3,6 +3,7 @@ import type { SheetCellJson } from "@shared/contract-work-sheets";
 import { fontsOfSnapshot, readObjectsResource, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
 import type { Book, Decode, GridLink, Workbook } from "./sync";
 import { snapshotMedia } from "./objects";
+import type { XlsxDecoded } from "./xlsxDecode";
 
 /**
  * The grid the sheet canvas draws: work-kit's `SheetCanvas` on Univer, and
@@ -26,6 +27,45 @@ export interface SheetGrid {
 }
 
 let SheetWorker: (new () => Worker) | null = null;
+
+/** The window's one decode worker, made on the first Excel file; null where a window has no workers. */
+let decoder: Worker | null = null;
+let decodes = 0;
+const waiting = new Map<number, { resolve(got: XlsxDecoded): void; reject(error: Error): void }>();
+
+/**
+ * An Excel package read in the decode worker, its bytes transferred (the caller keeps none of them), or here where a
+ * window has no workers. A worker that cannot start or fails reads it here, as before.
+ */
+async function decodeOffThread(bytes: Uint8Array): Promise<XlsxDecoded> {
+  if (typeof Worker === "undefined") return (await import("./xlsxDecode")).decodeXlsx(bytes);
+  if (!decoder) {
+    try {
+      const Made = (await import("./xlsxDecode.worker?worker")).default;
+      decoder = new Made();
+    } catch {
+      return (await import("./xlsxDecode")).decodeXlsx(bytes);
+    }
+    decoder.onmessage = (event: MessageEvent<{ id: number; got?: XlsxDecoded; error?: string }>) => {
+      const one = waiting.get(event.data.id);
+      waiting.delete(event.data.id);
+      if (event.data.got) one?.resolve(event.data.got);
+      else one?.reject(new Error(event.data.error ?? "The workbook could not be read"));
+    };
+    decoder.onerror = () => {
+      for (const one of waiting.values()) one.reject(new Error("The workbook could not be read"));
+      waiting.clear();
+      decoder = null;
+    };
+  }
+  const id = ++decodes;
+  // (a copy whose buffer is the package's alone: a view into a larger buffer is never handed over whole)
+  const own = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes : bytes.slice();
+  return new Promise<XlsxDecoded>((resolve, reject) => {
+    waiting.set(id, { resolve, reject });
+    decoder!.postMessage({ id, bytes: own.buffer }, [own.buffer as ArrayBuffer]);
+  });
+}
 
 const sheetOf = (handle: SheetHandle, sheet: string) => handle.api.getActiveWorkbook()?.getSheetBySheetId(sheet) ?? null;
 
@@ -70,15 +110,10 @@ export const univerGrid: SheetGrid = {
 
   async decode(bytes, format): Promise<Book> {
     if (format === "xlsx") {
-      // An Excel file's charts and pictures are read with it, and each picture's bytes kept by its part for the grid to draw.
-      const { importXlsx, readMedia } = await import("work-kit/sheet/xlsx");
-      const { workbook, objects } = importXlsx(bytes);
-      const media = new Map<string, { bytes: Uint8Array; type: string }>();
-      for (const picture of objects.pictures) {
-        const got = media.has(picture.part) ? undefined : readMedia(bytes, picture.part);
-        if (got) media.set(picture.part, { bytes: got, type: picture.contentType });
-      }
-      return { workbook: workbook as never, objects, media };
+      // An Excel file's charts and pictures are read with it, and each picture's bytes kept by its part for the grid to
+      // draw; in a worker, its bytes handed over (perf M9), so a big book never holds the window still while it is read.
+      const got = await decodeOffThread(bytes);
+      return { workbook: got.workbook as never, objects: got.objects, media: new Map(got.media.map((m) => [m.part, { bytes: m.bytes, type: m.type }])) };
     }
     // A sheet the service holds keeps its charts and pictures in its snapshot, a made picture's bytes beside them.
     const workbook = JSON.parse(new TextDecoder().decode(bytes)) as Workbook & { resources?: Array<{ name: string; data: string }> };
