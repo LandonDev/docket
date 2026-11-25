@@ -176,6 +176,33 @@ describe("a sheet's tab shown again", () => {
     again();
   });
 
+  it("an earlier load that lands after a newer one leaves the newer book and its revision (sol S6)", async () => {
+    const host = countingHost(BOOK);
+    const gates: Array<() => void> = [];
+    const open = host.open;
+    host.open = async (first) => {
+      await new Promise<void>((r) => gates.push(r));
+      return open(first);
+    };
+    const sync = syncOf("local\\nraced", () => new SheetSync(host, decode));
+    const first = sync.start();
+    first();
+    const again = sync.start();
+    await settle(() => gates.length === 2);
+    // The second open answers at revision 4 and its book lands first.
+    host.state.rev = 4;
+    gates[1]!();
+    await settle(() => sync.rev === 4);
+    const key = sync.state.book!.key;
+    // The first open's answer (revision 3) comes last: it is dropped.
+    host.state.rev = 3;
+    gates[0]!();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sync.rev).toBe(4);
+    expect(sync.state.book!.key).toBe(key);
+    again();
+  });
+
   it("goes with its item: five sheets opened and closed hold nothing", async () => {
     for (let i = 0; i < 5; i++) {
       const sync = syncOf(`local\nsheet${i}`, () => new SheetSync(countingHost(BOOK), decode));

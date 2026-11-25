@@ -170,6 +170,8 @@ export class SheetSync {
   private readonly listeners = new Set<() => void>();
   private live = 0;
   private books = 0;
+  /** goes up with every open or load begun: only the newest may land (sol S6), whatever the body's mounts meanwhile */
+  private loads = 0;
   /** the bytes of pictures made here, until the grid lets go */
   private made = new MadePictures();
   /** the made pictures whose bytes the host has: a list sends them no more */
@@ -242,15 +244,18 @@ export class SheetSync {
 
   /** Opens again from nothing: Retry after a failure. */
   async open(): Promise<void> {
+    const mine = ++this.loads;
     try {
       // The first piece of the book comes with the view (`first`), so a book of one piece is one request. A failure
       // already said stays until the host answers (his Retry spins meanwhile), never bones in its place.
       const { first, ...view } = await this.host.open(true);
+      // An open begun later (the tab shown again) answers for the item now (sol S6).
+      if (mine !== this.loads) return;
       this.set({ failed: null });
       this.view(view);
-      await this.load(view.rev, first);
+      await this.load(view.rev, first, mine);
     } catch (error) {
-      this.set({ failed: message(error, "The host did not answer"), loading: null });
+      if (mine === this.loads) this.set({ failed: message(error, "The host did not answer"), loading: null });
     }
   }
 
@@ -258,7 +263,7 @@ export class SheetSync {
    * Reads the book at `rev`: its first piece (carried by the open when it came with it), then the rest a few at a time,
    * each into its place, with what has come said for a book of more than one piece.
    */
-  private async load(rev: number, first?: LoadAnswer): Promise<void> {
+  private async load(rev: number, first?: LoadAnswer, mine = ++this.loads): Promise<void> {
     const head = first && first.rev === rev ? first : await this.host.load(rev, 0, LOAD_MAX);
     const start = fromBase64(head.data);
     const size = Math.max(head.size, start.length);
@@ -282,7 +287,9 @@ export class SheetSync {
     const book = await this.decode(got === size ? whole : whole.subarray(0, got), head.format);
     // No body shows the item now (its tab went while the book came): the book is not kept, so it never sits outside
     // the two kept ones (sol S6); a body that comes back reads the file again.
-    if (!this.isShown()) return;
+    // A newer load begun meanwhile (the tab shown again) has its own book: this one would replace it and drop the edits
+    // made on it (sol S6).
+    if (!this.isShown() || mine !== this.loads) return;
     this.kept = { book, rev: head.rev };
     this.reset(head.rev);
     this.set({ book: this.drawn() });
