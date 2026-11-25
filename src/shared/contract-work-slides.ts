@@ -443,8 +443,8 @@ export interface DeckView {
    * the nth entry of `layouts`. `rev` changes only when a layout, a master or the theme does.
    */
   layoutsPic?: { rev: string; size: number }
-  /** the deck's theme: twelve colours as hex by Office's names (dk1, lt1, accent1 …), and its heading and body fonts */
-  theme?: { colors: Record<string, string>; major: string; minor: string }
+  /** the deck's theme: twelve colours as hex by Office's names (dk1, lt1, accent1 …), and its heading and body fonts; `name`, the theme's own where the file gives one ("Purdue 2026") */
+  theme?: { colors: Record<string, string>; major: string; minor: string; name?: string }
   /**
    * Present where he can edit the deck by hand (a .pptx on this host): whether one of his own edits can be taken
    * back or put back now. Both are false once anything else changed the file.

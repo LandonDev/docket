@@ -4363,7 +4363,9 @@ other picked shape is the outline alone.
 - **Theme** is the word and its chevron: a 288px popover, 6px in, a row per
   theme (8px in, 8px radius): its ten colours as one 16px strip at 4px
   radius on `image-outline`, its name 13/20, its two fonts 12/16 muted; the
-  deck's own on `muted`. One press writes it and closes. "Edit master
+  deck's own on `muted`. A deck that wears none of them (a school's or a
+  company's template) has its own first, by the name its file gives it
+  (else "This deck's theme"), on `muted`. One press writes it and closes. "Edit master
   slides…" waits for the PowerPoint switch and is not drawn.
 - **The Format sheet** (`edit/FormatSheet.tsx`), from Format in the row:
   280px at the stage's end on `background` with a hairline on its leading

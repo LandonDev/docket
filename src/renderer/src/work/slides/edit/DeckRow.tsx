@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { DeckColour, DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
 import { themeEdit } from "@shared/work/deckThemes";
+import { officeTheme } from "./ThemeMenu";
 import { DEFAULT_TWIN, drawnAs, FONT_FAMILIES, fontStatus, twinOf } from "work-kit/fonts";
 import {
   AlignMenu,
@@ -11,7 +12,6 @@ import {
   GROUP,
   menuItem,
   nextSize,
-  OFFICE_THEME,
   resolveColour,
   RowMenuItem,
   RowMenuLabel,
@@ -20,14 +20,12 @@ import {
   RowMenuSeparator,
   SizeField,
   SIZES,
-  THEME_SLOTS,
   toggleItem,
   undoHint,
   type Colour,
   type FormatItem,
   type FormatKey,
   type FormatRowOut,
-  type OfficeTheme,
 } from "work-kit/format";
 import { IS_MAC } from "../../../lib/platform";
 import { usePresentMenu, warmShow, type PresentAsk } from "../Present";
@@ -60,15 +58,7 @@ const KEY = { bold: "bold", bulleted: "bulleted", italic: "italic", numbered: "n
 /** What the row acts on: the box's selection, the picked shape whole, or nothing. */
 export type Target = { kind: "box"; showing: Showing } | { kind: "shape"; slide: DeckSlide; shape: DeckShape; showing: Showing } | null;
 
-/** The deck's theme as Office keeps it: its twelve colours (Office's own where the deck names none) and two fonts. */
-export function officeTheme(view: DeckView): OfficeTheme {
-  const colours = { ...OFFICE_THEME.colours };
-  for (const slot of THEME_SLOTS) {
-    const hex = view.theme?.colors[slot]?.replace(/^#/, "");
-    if (hex && /^[0-9a-f]{6}$/i.test(hex)) colours[slot] = hex.toUpperCase();
-  }
-  return { name: view.name, colours, fonts: { heading: view.theme?.major || OFFICE_THEME.fonts.heading, body: view.theme?.minor || OFFICE_THEME.fonts.body } };
-}
+export { officeTheme } from "./ThemeMenu";
 
 /** What the row and the keys act on now. */
 export function targetOf(view: DeckView, slide: DeckSlide | undefined, hand: HandState, session: HandSession): Target {

@@ -222,6 +222,24 @@ describe("Theme", () => {
     fireEvent.click(rows[2]);
     await waitFor(() => expect(t.edits()).toEqual([[themeEdit(DECK_THEMES[2])]]));
   });
+
+  it("puts a deck's own theme first, by its name, marked, when it wears none of the list's; picking it changes nothing", async () => {
+    const colors = { ...DECK_THEMES[0].colours, accent1: "CFB991", dk2: "000000" };
+    await t.stage({ ...handView(), theme: { colors, major: "Acumin Pro", minor: "Acumin Pro", name: "Purdue 2026" } });
+    fireEvent.click(control("Theme"));
+    const rows = await waitFor(() => {
+      const got = [...document.querySelectorAll<HTMLElement>("[data-theme]")];
+      expect(got).toHaveLength(DECK_THEMES.length + 1);
+      return got;
+    });
+    expect(rows[0].dataset.theme).toBe("own");
+    expect(rows[0].getAttribute("aria-current")).toBe("true");
+    expect(rows[0].textContent).toBe("Purdue 2026Acumin Pro");
+    expect(rows.slice(1).every((r) => r.getAttribute("aria-current") === null)).toBe(true);
+    fireEvent.click(rows[0]);
+    await new Promise((done) => setTimeout(done, 50));
+    expect(t.edits()).toEqual([]);
+  });
 });
 
 describe("the view switch", () => {

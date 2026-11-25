@@ -1,6 +1,6 @@
 import type { DeckView } from "@shared/contract-work-slides";
 import { DECK_THEMES } from "@shared/work/deckThemes";
-import { FormatWordButton, RowPopover, useLayerOpen, type OfficeTheme } from "work-kit/format";
+import { FormatWordButton, OFFICE_THEME, RowPopover, THEME_SLOTS, useLayerOpen, type OfficeTheme } from "work-kit/format";
 import { ROW_PRESS } from "../../../components/ui/press";
 
 /**
@@ -13,6 +13,16 @@ import { ROW_PRESS } from "../../../components/ui/press";
 
 /** The ten a picker shows, in Office's order: the two grounds and two inks, then the six accents. */
 const SHOWN = ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"] as const;
+
+/** The deck's theme as Office keeps it: its twelve colours (Office's own where the deck names none) and two fonts. */
+export function officeTheme(view: DeckView): OfficeTheme {
+  const colours = { ...OFFICE_THEME.colours };
+  for (const slot of THEME_SLOTS) {
+    const hex = view.theme?.colors[slot]?.replace(/^#/, "");
+    if (hex && /^[0-9a-f]{6}$/i.test(hex)) colours[slot] = hex.toUpperCase();
+  }
+  return { name: view.theme?.name || view.name, colours, fonts: { heading: view.theme?.major || OFFICE_THEME.fonts.heading, body: view.theme?.minor || OFFICE_THEME.fonts.body } };
+}
 
 /** Whether the deck wears this theme now: its ten colours and its two fonts. */
 export function wears(view: DeckView, theme: OfficeTheme): boolean {
@@ -38,17 +48,21 @@ export function ThemeMenu({ view, disabled, onPick }: { view: DeckView; disabled
   );
 }
 
-/** The themes, one row each: its ten colours as a strip, its name and its two fonts; the deck's own marked. */
+/**
+ * The themes, one row each: its ten colours as a strip, its name and its two fonts; the deck's own marked. A deck that
+ * wears none of them (a school's or a company's template) has its own first, under the name its file gives it.
+ */
 export function ThemeList({ view, onPick }: { view: DeckView; onPick(theme: OfficeTheme): void }) {
+  const own = view.theme && !DECK_THEMES.some((theme) => wears(view, theme)) ? { ...officeTheme(view), name: view.theme.name || "This deck's theme" } : null;
   return (
     <>
-      {DECK_THEMES.map((theme) => {
-        const on = wears(view, theme);
+      {(own ? [own, ...DECK_THEMES] : DECK_THEMES).map((theme) => {
+        const on = theme === own || wears(view, theme);
         return (
           <button
-            key={theme.name}
+            key={theme === own ? "own" : theme.name}
             type="button"
-            data-theme={theme.name}
+            data-theme={theme === own ? "own" : theme.name}
             aria-current={on || undefined}
             onClick={() => onPick(theme)}
             className={`flex w-full flex-col gap-2 rounded-lg p-2 text-start ${on ? "bg-muted" : ROW_PRESS}`}

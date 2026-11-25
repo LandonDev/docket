@@ -1488,7 +1488,9 @@ once as a toast; `saving` and `saved` on the save line follow it.
   first time the popover opens, else the names alone), shape fill (`fill`,
   a theme swatch as `{slot, tint}`), Arrange (`order`), Format (the sheet,
   kept in the deck's store as `sheet`), Insert, Theme (`themeEdit` of
-  `DECK_THEMES`) and the view switch (`look`: `slide` or `sorter`).
+  `DECK_THEMES`; a deck that wears none of them has its own first, from
+  `officeTheme` under `DeckView.theme.name`, the theme's name the deck tool
+  reads from the file) and the view switch (`look`: `slide` or `sorter`).
 - **Insert** (`edit/Insert.tsx`, boxes in `edit/add.ts`): a text box with the
   word "Text" (the outline lists an empty box as no text shape, so it could
   take no words), a preset, a table, a picture or a video. No chart: nothing

@@ -1,4 +1,4 @@
-import type { DeckParagraph, DeckShape, SlideOp, DeckColour } from "@shared/contract-work-slides";
+import type { DeckParagraph, DeckShape, DeckTextFrame, SlideOp, DeckColour } from "@shared/contract-work-slides";
 
 /**
  * His words in a shape as the typing box holds them (docs/agents/work-slides.md
@@ -91,7 +91,7 @@ export interface Cell {
 export const typesIn = (shape: DeckShape): boolean => typable(shape) || (shape.kind === "table" && !!shape.cells?.length && !!shape.quad);
 
 /** PowerPoint's own margins inside a cell, in EMU: a tenth of an inch at the sides, a twentieth above and below. */
-const CELL_FRAME = { anchor: "top", insets: [91_440, 45_720, 91_440, 45_720], fit: "none", wrap: true } as const;
+const CELL_FRAME: DeckTextFrame = { anchor: "top", insets: [91_440, 45_720, 91_440, 45_720], fit: "none", wrap: true };
 
 /** Where each column and row of a table starts and ends, as shares of its box: the file's widths and heights, else even. */
 function cellLines(table: DeckShape): [cols: number[], rows: number[]] {
@@ -128,7 +128,7 @@ export function cellAt(table: DeckShape, x: number, y: number): Cell {
  * box, turned with it), its words a paragraph a line of the cell, in no look of their own, so the box draws them in the
  * table's ink and the file keeps the table style's. Null for a cell the table does not have.
  */
-export function cellShape(table: DeckShape, { row, col }: Cell): DeckShape | null {
+export function cellShape(table: DeckShape, { row, col }: Cell): (DeckShape & { quad: NonNullable<DeckShape["quad"]> }) | null {
   const words = table.cells?.[row]?.[col];
   const quad = table.quad;
   if (words === undefined || !quad) return null;

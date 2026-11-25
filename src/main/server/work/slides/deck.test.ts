@@ -207,6 +207,8 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       expect(d.slides[8].hidden).toBe(true)
       expect([d.width, d.height]).toEqual([12192000, 6858000])
       expect(d.theme).toMatchObject({ major: 'Cambria', minor: 'Calibri', colors: { dk1: '000000', lt1: 'FFFFFF', accent2: 'D34B36' } })
+      // The theme's own name, which the Theme list shows for a deck that wears none of its own.
+      expect(d.theme!.name).toBe('Office Theme')
       expect(Object.keys(d.theme!.colors)).toHaveLength(12)
       expect(d.layoutInfo!.find((l) => l.name === 'Title and Content')).toEqual({ name: 'Title and Content', master: 0, holds: [{ kind: 'title', idx: 0 }, { kind: 'body', idx: 1 }, { kind: 'date', idx: 10 }, { kind: 'footer', idx: 11 }, { kind: 'number', idx: 12 }] })
     })

@@ -248,7 +248,7 @@ RUN_CAP = 400
 
 
 def theme_of(prs):
-    """The first master's theme: its twelve colours as hex and its heading and body fonts."""
+    """The first master's theme: its name, its twelve colours as hex and its heading and body fonts."""
     out = {'colors': {}, 'major': '', 'minor': ''}
     try:
         master = prs.slide_masters[0]
@@ -256,6 +256,8 @@ def theme_of(prs):
         root = etree.fromstring(rel.target_part.blob, PARSER)
     except Exception:
         return out
+    if root.get('name'):
+        out['name'] = root.get('name')
     for el in xp(root, './a:themeElements/a:clrScheme/*'):
         c = el.find('{%s}srgbClr' % NS_A)
         if c is not None:
