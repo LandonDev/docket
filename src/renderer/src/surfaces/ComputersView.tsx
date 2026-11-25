@@ -320,7 +320,6 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
       onFaster={faster}
       action={action}
       views={views}
-      className="ps-0"
     />
   );
 }

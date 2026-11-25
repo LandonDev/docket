@@ -4,7 +4,7 @@
 // fill. Rendered by nothing in the app.
 import { ComputersPage, RestingVmPicture } from "./ComputersView";
 import { restingVmTiles, type VmState } from "../lib/winvmWake";
-import fixtures from "./ComputersView.fixtures";
+import fixtures, { barStates } from "./ComputersView.fixtures";
 
 /** The page's header over its body: the stage's bar. */
 const HEADER = 40;
@@ -50,6 +50,23 @@ export function ComputersVm() {
           </figure>
         );
       })}
+    </div>
+  );
+}
+
+// `#ComputersBarStates --props '{"width":1440,"height":900}'`: the page in every state of One bar (the prototypes'
+// states.html and more.html), at a window's size: the body is the window less the 40px header.
+export function ComputersBarStates({ width = 1440, height = 900 }: { width?: number; height?: number }) {
+  return (
+    <div className="flex flex-col gap-8 p-4">
+      {barStates.map((state) => (
+        <figure key={state.name} className="m-0 flex flex-col gap-2">
+          <figcaption className="text-xs text-muted-foreground">{state.name}</figcaption>
+          <div className="flex w-full flex-col border border-border bg-background" style={{ maxWidth: width, height }}>
+            <ComputersPage {...state.props} size={{ width, height: height - HEADER }} />
+          </div>
+        </figure>
+      ))}
     </div>
   );
 }

@@ -32,7 +32,8 @@ import { restartVm, setVmScreen, sleepVm } from "../../../work/winvm/vmPresses";
  * the title (a press goes to the thread that drives it), one muted status
  * sentence, then the delay (a quiet number that opens), Keys while he drives
  * the Windows VM, the VM's menu, Take over or Hand back, Stop, and the views
- * (Pop out, Full screen). Under 640px the delay and Pop out give way, whole.
+ * (Pop out, Full screen). Under 640px the delay and Pop out give way, whole;
+ * under 480px the status sentence too, so the title reads whole.
  */
 
 /** What a computer says first: that he drives, a card's question, else the step's words. */
@@ -396,6 +397,8 @@ export interface ComputerBarProps {
   onMenuOpen?: (open: boolean) => void;
   /** the pop-out's smaller controls */
   small?: boolean;
+  /** it gives way by its own width (the page, the pop-out); afloat it is narrow by design and keeps every part */
+  fold?: boolean;
   className?: string;
 }
 
@@ -403,7 +406,7 @@ export interface ComputerBarProps {
  * The bar, pure. Its title leads (13px medium), the status sentence follows it on the same line (12px muted, the
  * driving words and a card's question in foreground), and every press sits at its end, always shown.
  */
-export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, reading, onFaster, vm, screen = null, action, views, onMenuOpen, small = false, className }: ComputerBarProps) {
+export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, reading, onFaster, vm, screen = null, action, views, onMenuOpen, small = false, fold = true, className }: ComputerBarProps) {
   const line = tile ? tileLine(tile) : null;
   const asking = !!tile?.entry.row.asking && !tile.driving;
   const thread = tile && !tile.entry.row.threadId.startsWith("vm:") ? tile.entry.row.threadId : null;
@@ -412,7 +415,7 @@ export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, read
   const state = vm?.state ?? (vmHere ? "awake" : null);
   const parts: ReactNode[] = tile ? [line && (tile.driving || asking) ? <span className="text-foreground">{line}</span> : line, tile.pictureOnly && !tile.driving ? NO_LIVE_PICTURE : null, where === undefined ? tile.where : where] : [];
   return (
-    <div data-slot="computer-bar" className={cn("@container/bar flex h-10 min-w-0 flex-1 items-center gap-1 ps-3 pe-2", className)}>
+    <div data-slot="computer-bar" className={cn(fold && "@container/bar", "flex h-10 min-w-0 flex-1 items-center gap-1 ps-3 pe-2", className)}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Glyph tile={tile} />
         <TruncateTip text={title}>
@@ -424,7 +427,7 @@ export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, read
             <span className={cn("max-w-[50%] shrink-0 truncate leading-5 font-medium", small ? "text-xs" : "text-[13px]")}>{title}</span>
           )}
         </TruncateTip>
-        {small ? null : <Facts parts={parts} className="min-w-0 truncate text-xs leading-4 text-muted-foreground" />}
+        {small ? null : <Facts parts={parts} className="flex-nowrap overflow-hidden text-xs @max-[480px]/bar:hidden leading-4 whitespace-nowrap text-muted-foreground [&>span]:min-w-0 [&>span]:truncate" />}
       </div>
       <span data-slot="computer-reads" className="flex shrink-0 items-center gap-0.5">
         {reading && !small ? <DelayButton reading={reading} onFaster={onFaster} onOpenChange={onMenuOpen} /> : null}

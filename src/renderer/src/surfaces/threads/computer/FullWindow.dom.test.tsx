@@ -127,6 +127,8 @@ describe("the full window's body", () => {
     expect(bar.className).toContain("w-[min(560px,calc(100%-32px))]");
     expect(bar.className).toContain("bg-popover");
     expect(bar.querySelector('[data-slot="computer-bar"]')).not.toBeNull();
+    // narrow by design, it gives nothing way: the delay and Pop out stay
+    expect(bar.querySelector('[data-slot="computer-bar"]')!.className).not.toContain("@container/bar");
   });
 
   it("away, the bar is gone from the eye, the pointer and a screen reader; called, it comes back", () => {

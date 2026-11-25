@@ -133,7 +133,7 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
       </div>
       {/* the computer's bar afloat over the top edge's middle, on the popover's ground: no words read on matte */}
       <div ref={barRef} data-slot="full-window-bar" data-shown={barShown || undefined} aria-hidden={barShown ? undefined : true} className={cn(FLOAT, !barShown && AWAY)}>
-        <ComputerBar tile={tile} name={name} onOpenSession={onOpenSession} where={tile?.where} onTookOver={onTookOver} reading={reading} views={views} onMenuOpen={onMenuOpen} className="pe-1.5" />
+        <ComputerBar tile={tile} name={name} onOpenSession={onOpenSession} where={tile?.where} onTookOver={onTookOver} reading={reading} views={views} onMenuOpen={onMenuOpen} fold={false} className="pe-1.5" />
       </div>
     </div>
   );

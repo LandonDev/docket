@@ -7,7 +7,8 @@ import type { ComputerTile } from "../lib/computers";
 import type { ComputersPageProps, Place } from "./ComputersView";
 import { drawnPixelated, fitStage, type PictureKind } from "../lib/stageLayout";
 import { VM_STILL, tile } from "./threads/computer/FullWindow.fixtures";
-import { PIXELATED, Viewport, ViewportLine, pictureClass } from "./threads/computer/Viewport";
+import { PIXELATED, Viewport, ViewportLine, pictureClass, type PlateProps } from "./threads/computer/Viewport";
+import type { VmState } from "../lib/winvmWake";
 
 const still = (app: string, state: string): string => new URL(`../../../main/server/computer/fixtures/apps/${app}/${state}/window.jpg`, import.meta.url).href;
 const noop = (): void => {};
@@ -97,3 +98,35 @@ const fixtures: ComputersFixture[] = [
 ];
 
 export default fixtures;
+
+/** The VM's picture box with its plate over the desk it slept on, sized as the place sizes the live one. */
+const plated = (plate: PlateProps) => (place: Place): ReactNode => {
+  const fit = place.stage ? fitStage(place.room, SHOTS.vm, 2, "screen") : null;
+  return (
+    <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
+      <Viewport fill face={{ kind: "plate", plate }} label="Windows VM" size={SHOTS.vm} />
+    </div>
+  );
+};
+const vmAt = (state: VmState["state"], more: Partial<VmState> = {}): VmState => ({ state, cannot: null, error: null, display: { screen: "fit", detail: "sharp", canResize: true }, ...more });
+const idleVm = tile({ ...vm, driving: false, idle: true, entry: { ...vm.entry, row: { ...vm.entry.row, driver: undefined, idle: true } } });
+const threadVm = tile({ ...vm, title: "Travel budget for nationals", doing: "Typing in Excel", driving: false, idle: false, entry: { ...vm.entry, row: { ...vm.entry.row, threadId: "t7", driver: undefined } } });
+const resting = (state: VmState): ComputerTile => tile({ ...idleVm, vm: state });
+const vmShot = shot("vm", "Live view of Windows VM", "screen");
+const one = (t: ComputerTile, picture: (place: Place) => ReactNode, more: Partial<ComputersPageProps> = {}): ComputersPageProps => ({ tiles: [t], onOpenSession: noop, pictureOf: (_t, place) => picture(place), vms: { box: t.vm ?? vmAt("awake") }, ...more });
+
+/** One bar in every state (the prototypes' states.html and more.html). */
+export const barStates: { name: string; props: ComputersPageProps }[] = [
+  { name: "Asleep: the desk washed back, since when, and Wake after his own Sleep", props: one(resting(vmAt("asleep", { heldAsleep: true })), plated({ title: "Asleep", detail: "Since 1:14 PM", still: VM_STILL })) },
+  { name: "Waking, counted against the usual wake", props: one(resting(vmAt("waking")), plated({ title: "Waking the Windows VM", detail: "6 s of about 13", spin: true, still: VM_STILL })) },
+  { name: "Connecting: the last picture under a lighter wash", props: one(idleVm, plated({ title: "Connecting", spin: true, still: VM_STILL, light: true })) },
+  { name: "Idle: the delay a quiet number, Take over the one press", props: one(idleVm, vmShot, { reading: { delayMs: 31, fps: 60, picture: { width: 2912, height: 1868, scale: 2 }, link: "good" } }) },
+  { name: "A thread drives: its title leads and goes to the thread", props: one(threadVm, vmShot, { reading: { delayMs: 33, fps: 58, link: "good" } }) },
+  { name: "He drives: Keys, the menu, Hand back with its key cap", props: one(vm, vmShot, { reading: { delayMs: 31, fps: 60, link: "good" } }) },
+  { name: "Link poor: the number gives way to two words", props: one(vm, vmShot, { reading: { delayMs: 212, fps: 22, link: "poor" } }) },
+  { name: "Lost: the last picture washed back while the page tries again", props: one(idleVm, plated({ title: "Reconnecting to The box", detail: "Try 2 of 5", spin: true, still: VM_STILL })) },
+  { name: "Not set up: the plate on the bare box, one press to Settings", props: one(resting(vmAt("none")), plated({ title: "The Windows VM is not set up" })) },
+  { name: "The box's page on the stage: Take over, no VM menu", props: { tiles: [browser, mac], onOpenSession: noop, pictureOf, reading: { delayMs: 28, fps: 60, link: "good" } } },
+  { name: "A Mac's window on the stage: Stop alone, in its own shape", props: { tiles: [{ ...mac, entry: { ...mac.entry, row: { ...mac.entry.row, lastCallAt: 40 } } }], onOpenSession: noop, pictureOf } },
+  { name: "Nothing driven: the header says the page's name", props: { tiles: [], onOpenSession: noop } },
+];
