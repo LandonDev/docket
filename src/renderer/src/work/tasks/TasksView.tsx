@@ -18,6 +18,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { type Task, type TaskActions, type TasksClient, viewsClients } from "./client";
 import { useMinute } from "./minute";
+import { useKeptRows, WindowedRows, type RowPlace } from "../windowed";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { shared, useShared } from "./store";
 import { sessionWaits } from "../shell/lifeos";
@@ -131,7 +132,9 @@ export function Tasks({
   startThread: (about: ContextChip, at?: { cwd: string; projectId: string | null }) => void;
   useThread?: UseThread;
 }) {
-  const tasks = client.useOpenTasks();
+  // A push answers every open task again: each task that holds what it held stays the same object, so its memoised row
+  // does not draw (the perf pass's M12).
+  const tasks = useKeptRows(client.useOpenTasks() ?? null, idOfTask);
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
   const now = useMinute();
@@ -171,20 +174,31 @@ export function Tasks({
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
           <h2 className="mb-1 ps-9 pe-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
-          {rows.map((task) => (
-            <TaskRow
-              key={task._id}
-              task={task}
-              meta={meta(task)}
-              due={task.dueAt === undefined ? undefined : formatDue(task.dueAt, now)}
-              overdue={task.dueAt !== undefined && task.dueAt < now}
-              actions={actions}
-              onStart={start}
-              onOpen={open}
-              onCode={code}
-              useThread={useThread}
-            />
-          ))}
+          {/* Past 80 rows only those near the screen are mounted, each with its place in the group (work/windowed.tsx). */}
+          <WindowedRows
+            count={rows.length}
+            rowHeight={32}
+            getKey={(index) => rows[index]!._id}
+            sizeKey="work-tasks-list"
+            render={(index, place) => {
+              const task = rows[index]!;
+              return (
+                <TaskRow
+                  key={task._id}
+                  task={task}
+                  meta={meta(task)}
+                  due={task.dueAt === undefined ? undefined : formatDue(task.dueAt, now)}
+                  overdue={task.dueAt !== undefined && task.dueAt < now}
+                  actions={actions}
+                  onStart={start}
+                  onOpen={open}
+                  onCode={code}
+                  useThread={useThread}
+                  place={place}
+                />
+              );
+            }}
+          />
         </section>
       ))}
       <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
@@ -192,6 +206,8 @@ export function Tasks({
     </div>
   );
 }
+
+const idOfTask = (task: Task): string => task._id;
 
 /** A due time inside a line ("Due yesterday"): LifeOS's row label, its day word in lower case after "Due". */
 export function dueMidLine(ms: number, now: number): string {
@@ -331,11 +347,14 @@ const TaskRow = memo(function TaskRow({
   onOpen,
   onCode,
   useThread,
+  place,
 }: {
   task: Task;
   meta: string | undefined;
   due: string | undefined;
   overdue: boolean;
+  /** Its place in a windowed group, for a screen reader. */
+  place?: RowPlace;
   actions: TaskActions;
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
@@ -355,7 +374,7 @@ const TaskRow = memo(function TaskRow({
   }, [ticked]);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div role="listitem" className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
+      <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
         <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
         <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
