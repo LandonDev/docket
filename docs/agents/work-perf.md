@@ -158,8 +158,9 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
 - History: 20 compares no screen shows (`COMPARES_KEPT`, work/history/store.ts).
 - What a canvas kind keeps of an item goes when the item closes (`forgetWithItems`, work/canvas/gone.ts): decks,
   dashboards, forms, slides, as PDFs and sheets already did.
-- A live Office page hidden 10 minutes with no show unloads through Word's own unload (`HIDDEN_UNLOAD_MS`,
-  work/office/live/layer.ts).
+- A live Office page hidden an hour with no show unloads through Word's own unload (`HIDDEN_UNLOAD_MS`,
+  work/office/live/layer.ts), except the one he looked at last, which no timer lets go; `MOST_LOADED` still bounds
+  the count.
 - The React Compiler's refusals under work/ only go down: `scripts/react-compiler-ratchet.json` (321 on Nov 25; ui:preview pages are not counted),
   held by scripts/compilerRatchet.test.ts in the commit gate's guards (`bun scripts/react-compiler-tally.ts --only
   work --check`, about 13 s).

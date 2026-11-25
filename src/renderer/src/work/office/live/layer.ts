@@ -28,8 +28,10 @@ export interface LiveState {
 
 export const MOST_LOADED = 3;
 /** A guest hidden this long with no show is let go through Word's own unload, whatever the count: a live Office page holds
- *  hundreds of megabytes, and a tab he left an hour ago does not need it. His next show loads it again. */
-export const HIDDEN_UNLOAD_MS = 10 * 60_000;
+ *  hundreds of megabytes, and a tab he left an hour ago does not need it. His next show loads it again. The guest he
+ *  looked at last is never let go on a timer: coming back to it after Mail or lunch costs Word 25 to 35 s and his place
+ *  in the file. `MOST_LOADED` still bounds how many stay. */
+export const HIDDEN_UNLOAD_MS = 60 * 60_000;
 /** Past this the bar says nothing more: the page is shown as it is. */
 export const READY_AFTER_MS = 90_000;
 
@@ -182,6 +184,8 @@ export class LiveLayer {
     }
     guest.shownAt = ++this.clock;
     this.stopHiddenTimer(key);
+    // The guest he looked at last before this one loses that place: a hidden one's hour starts now.
+    for (const [other, was] of this.guests) if (other !== key && !was.visible && !this.hiddenTimers.has(other)) this.armHidden(other, was);
     guest.anchor = anchor;
     guest.visible = rect.width > 0 && rect.height > 0;
     guest.rect = rect;
@@ -200,6 +204,13 @@ export class LiveLayer {
     guest.visible = false;
     this.paint(guest);
     this.stopHiddenTimer(key);
+    this.armHidden(key, guest);
+  }
+
+  /** Starts a hidden guest's hour (HIDDEN_UNLOAD_MS), unless it is the one he looked at last: that one waits for another show. */
+  private armHidden(key: string, guest: Guest): void {
+    const last = Math.max(...[...this.guests.values()].map((g) => g.shownAt));
+    if (guest.shownAt === last) return;
     this.hiddenTimers.set(
       key,
       setTimeout(() => {

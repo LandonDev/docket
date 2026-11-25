@@ -20,7 +20,9 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
   hidden with their old rectangles, or a thread's pane inert under a Work view. `seatShown` (its `checkVisibility()`
   and no `[inert]` above it) hides the guest then, once, and a MutationObserver on the classes, `inert`, `hidden` and
   styles above the body hears it at once; the guest comes back in place, still loaded, when the body shows again.
-  At most three stay loaded per window; the one shown least recently goes.
+  At most three stay loaded per window; the one shown least recently goes. A guest hidden an hour with no show
+  unloads through Word's own unload (`HIDDEN_UNLOAD_MS`), but never the one he looked at last: coming back to it after
+  Mail or a lunch would cost Word 25 to 35 s and his place in the file. Its hour starts only once another is shown.
 - A browser window (`/ui`) has no guest tag: Live there opens the address in a tab of its own.
 
 ## The fence (`src/main/officeLive.ts`)

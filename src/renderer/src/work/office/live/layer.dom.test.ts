@@ -142,24 +142,36 @@ describe("the layer", () => {
     expect(el.style.zIndex).toBe("var(--layer-dialog)");
   });
 
-  it("lets a guest hidden HIDDEN_UNLOAD_MS with no show go, and a show before then keeps it", async () => {
+  it("lets a guest hidden an hour with no show go, and a show before then keeps it; the one he last looked at stays", async () => {
+    expect(HIDDEN_UNLOAD_MS).toBe(60 * 60_000);
     vi.useFakeTimers();
     try {
       const b = bridge();
       const layer = new LiveLayer(() => b as never);
+      const loaded = (): (string | null)[] => guests().map((g) => g.getAttribute("data-office-live"));
       layer.show("a", FILE, RECT, false);
       layer.show("k", `${FILE}&k`, RECT, false);
+      layer.show("m", `${FILE}&m`, RECT, false);
       await vi.advanceTimersByTimeAsync(0);
       layer.hide("a");
       layer.hide("k");
+      layer.hide("m");
       await vi.advanceTimersByTimeAsync(HIDDEN_UNLOAD_MS - 1000);
       layer.show("k", `${FILE}&k`, RECT, false);
       await vi.advanceTimersByTimeAsync(2000);
-      // The one hidden past the time went (through Word's unload where it has a guest id); the one shown again stays.
-      expect(guests().map((g) => g.getAttribute("data-office-live"))).toEqual(["k"]);
+      // The one hidden past the time went (through Word's unload where it has a guest id); the one shown again stays,
+      // and so does m, the one he had looked at last before it: it lost that only when k was shown.
+      expect(loaded()).toEqual(["k", "m"]);
       layer.hide("k");
-      await vi.advanceTimersByTimeAsync(HIDDEN_UNLOAD_MS + 1);
-      expect(guests()).toEqual([]);
+      // k is the one he looked at last: no timer lets it go, however long he is away (Mail, another view, a lunch).
+      await vi.advanceTimersByTimeAsync(3 * HIDDEN_UNLOAD_MS);
+      expect(loaded()).toEqual(["k"]);
+      // Another file shown takes that place; k's hour starts then.
+      layer.show("a", FILE, RECT, false);
+      await vi.advanceTimersByTimeAsync(HIDDEN_UNLOAD_MS - 1000);
+      expect(new Set(loaded())).toEqual(new Set(["a", "k"]));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(loaded()).toEqual(["a"]);
     } finally {
       vi.useRealTimers();
     }
