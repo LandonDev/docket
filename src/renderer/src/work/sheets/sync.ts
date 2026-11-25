@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import type { ObjectChange, SheetObjects } from "work-kit/sheet";
+import { typedDrawn } from "@shared/work/cellInput";
 import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
 import { FileIds, listChanges, listMedia, MadePictures, objectListOf, pictureAdded, tabList } from "./objects";
@@ -406,6 +407,9 @@ export class SheetSync {
     // beside it) the host's LibreOffice does to the file itself, and every grid then reads the file again.
     let moves: SheetMutationJson[] = [];
     let moveStop: string | null = null;
+    // A number or a truth value he typed, as the file saves it: laid back in the grid once the turn is kept, since the
+    // grid's editor leaves his words drawn as its own text ("42" left-aligned) until the sheet is read again.
+    let drawn: SheetMutationJson[] = [];
     let commands = 0;
     let gathering = false;
     const settle = (): void => {
@@ -416,12 +420,15 @@ export class SheetSync {
       const taken = moved ? moves : group;
       const why = moved ? moveStop : stop;
       const ran = commands;
+      const typed = drawn;
+      drawn = [];
       group = [];
       stop = null;
       moves = [];
       moveStop = null;
       commands = 0;
       if (why) return this.stop(grid, why, grid.onCommand ? ran : 1);
+      if (typed.length) grid.apply(typed);
       if (lists.length) {
         const keys = new Set(lists.map(listKey));
         this.queue = this.queue.filter((m) => !isObjectList(m) || !keys.has(listKey(m)));
@@ -470,6 +477,8 @@ export class SheetSync {
       // cell editor's own document takes each key he types (`doc.mutation.rich-text-editing`), and what he commits
       // comes as the workbook's own mutation.
       if (BOOKKEEPING.has(mutation.id) || this.reverting || !ofUnit(mutation, grid.unitId)) return;
+      const cells = mutation.id === SET_RANGE_VALUES ? typedDrawn((mutation.params as { cellValue?: Record<string, Record<string, SheetCellJson | null>> }).cellValue ?? {}) : null;
+      if (cells) drawn.push({ id: SET_RANGE_VALUES, params: { ...(mutation.params as object), cellValue: cells } });
       const view = this.state.view;
       if (view?.store === "package") {
         const got = forPackage(mutation, (sheet, row, col) => grid.formula(sheet, row, col), {

@@ -1357,6 +1357,25 @@ describe("the sheet kind", () => {
     expect(line.textContent).toContain("Read only");
   });
 
+  it("draws a number he typed as the number the file saves, right-aligned, without a reload (decision 15)", async () => {
+    for (const store of ["package", "tcsheet"] as const) {
+      cleanup();
+      resetSheetSyncs();
+      open(sheetView({ store }));
+      await gridUp();
+      // The cell editor hands back its own document: "42" in the editor's font, which the grid draws as words.
+      const doc = { body: { dataStream: "42\r\n", textRuns: [{ st: 0, ed: 2, ts: { ff: "system-ui", fs: 9.75 } }], paragraphs: [{ startIndex: 2 }] } };
+      act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 5: { 0: { v: "42", p: doc } } } } }));
+      await waitFor(() => expect(cell("A6").className).toContain("text-right"));
+      expect(cell("A6").textContent).toBe("42");
+      // and words stay words, drawn as he typed them
+      act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 5: { 1: { v: "007", p: { ...doc, body: { ...doc.body, dataStream: "007\r\n" } } } } } } }));
+      await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "edit").length).toBeGreaterThan(0));
+      expect(cell("B6").className).not.toContain("text-right");
+      expect(cell("B6").textContent).toBe("007");
+    }
+  });
+
   it("says a workbook the host's importer refused in Work's words, naming the computer, never the importer's reason", async () => {
     open(sheetView({ readOnly: "This file cannot be opened here: it is a binary workbook (.xlsb)" }));
     await gridUp();

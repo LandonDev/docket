@@ -102,3 +102,20 @@ export function typedCell<C extends TypedCellLike>(cell: C, { runs = true }: { r
       return rich && runs ? cell : { ...cell, v: typed.value, t: words.startsWith("'") ? CELL_FORCE_STRING : CELL_STRING, ...(rich ? { p: null } : {}) };
   }
 }
+
+/**
+ * The cells of an edit in the grid that save as a number or a truth value (`typedCell`), as the grid should draw them
+ * now: the grid's editor keeps what he typed as its own text ("42" left-aligned) until the sheet is read again, though
+ * the file holds the number. Text, a formula, a fill and text he styled are the grid's already. Null when none is.
+ */
+export function typedDrawn<C extends TypedCellLike>(cellValue: Record<string, Record<string, C | null | undefined>>): Record<string, Record<string, C>> | null {
+  let out: Record<string, Record<string, C>> | null = null;
+  for (const [r, row] of Object.entries(cellValue))
+    for (const [c, cell] of Object.entries(row ?? {})) {
+      if (!cell) continue;
+      const typed = typedCell(cell);
+      if (typed === cell || (typed.t !== CELL_NUMBER && typed.t !== CELL_BOOLEAN)) continue;
+      ((out ??= {})[r] ??= {})[c] = typed;
+    }
+  return out;
+}

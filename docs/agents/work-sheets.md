@@ -522,10 +522,15 @@ and a LifeOS sheet lay and log the cells he meant. Excel's and Google's
 writers then keep text as text: each string goes behind the apostrophe both
 apps keep as no character (`office/grid.ts` `edit`, `google/grid.ts`
 `typed`), never read again as a number, a date or a formula. The grid he
-typed in still draws what Univer made of it until the sheet is next read.
-Tests: shared/work/cellInput.test.ts, sheets/typedWords.test.ts (an .xlsx
-from the patch writer read back by each cell's `t`), office/grid.test.ts,
-google/grid.test.ts, sheets/host/host.test.ts; journey J71.
+typed in draws the cell as it saves at once: once his turn is kept, the sync
+lays each cell `typedDrawn` (shared/work/cellInput.ts) names back in the grid
+as the number or truth value it is, the editor's document dropped (`apply`,
+which is not told back), so "42" stands right-aligned as a number without a
+reload; text stays as the editor drew it, and a turn that is stopped lays
+nothing. Tests: shared/work/cellInput.test.ts, sheets/typedWords.test.ts (an
+.xlsx from the patch writer read back by each cell's `t`), office/grid.test.ts,
+google/grid.test.ts, sheets/host/host.test.ts, sheets/SheetBody.dom.test.tsx
+(the number drawn right-aligned on an Excel file and a `.tcsheet`); journey J71.
 
 ## Other formats in
 

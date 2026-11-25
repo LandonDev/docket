@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CELL_BOOLEAN, CELL_FORCE_STRING, CELL_NUMBER, CELL_STRING, plainWords, typedCell, typedWords } from "./cellInput";
+import { CELL_BOOLEAN, CELL_FORCE_STRING, CELL_NUMBER, CELL_STRING, plainWords, typedCell, typedDrawn, typedWords, type TypedCellLike } from "./cellInput";
 
 /** The cell editor's document as the grid commits it: the words a key at a time, each run in the editor's own font. */
 const typedDoc = (words: string) => {
@@ -57,5 +57,19 @@ describe("a cell as the grid commits his typing", () => {
     const plainText = { v: null, p: typedDoc("007") };
     for (const cell of [styled, plainText, { v: "42", t: CELL_STRING }, { v: "42", t: CELL_FORCE_STRING }, { f: "=A1", v: 3 }, { si: "x" }, { v: 42 }, { v: "" }, { s: { bl: 1 } }])
       expect(typedCell(cell)).toBe(cell);
+  });
+});
+
+describe("what the grid draws after his typing", () => {
+  it("names the cells that save as a number or true or false, as the file holds them, and no other", () => {
+    const drawn = typedDrawn<TypedCellLike>({
+      1: { 0: { p: typedDoc("42"), s: "st1" }, 1: { p: typedDoc("TRUE") }, 2: { p: typedDoc("007") }, 3: { v: "=SUM(A1:A2)", f: "=SUM(A1:A2)" } },
+      2: { 0: { v: "3.5" }, 1: { v: 9, t: CELL_NUMBER }, 2: null },
+    });
+    expect(drawn).toEqual({ 1: { 0: { v: 42, t: CELL_NUMBER, p: null, s: "st1" }, 1: { v: 1, t: CELL_BOOLEAN, p: null } }, 2: { 0: { v: 3.5, t: CELL_NUMBER } } });
+  });
+
+  it("is null where the grid draws every cell as the file holds it already", () => {
+    expect(typedDrawn({ 0: { 0: { p: typedDoc("Hotel") }, 1: { v: "'42" }, 2: { v: 12, t: CELL_NUMBER } } })).toBeNull();
   });
 });
