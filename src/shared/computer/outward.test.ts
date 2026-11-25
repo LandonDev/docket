@@ -1639,6 +1639,7 @@ describe("a page's own outward controls: Microsoft Forms from SharePoint and Exc
     expect(mirrorPage(page('https://remotedesktop.google.com/access/session/x', 'heading "x"', 'group', 'button "x"'))).toBe(true)
     expect(mirrorPage(page(LIBRARY, 'heading "x"', 'group', 'button "x"'))).toBe(false)
     expect(isMirrorUrl('https://RemoteDesktop.google.com/access')).toBe(true)
+    expect(isMirrorUrl('https://remotedesktop.google.com./access')).toBe(true)
     expect(isMirrorUrl('https://remotedesktop.google.com.example.com/')).toBe(false)
     expect(isMirrorUrl('not a url')).toBe(false)
   })
