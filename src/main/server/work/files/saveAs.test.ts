@@ -155,7 +155,8 @@ describe('Save As… formats', () => {
       doc.rev = 'r2'
       post({ doc: source().path, rev: doc.rev })
       post({ doc: source().path, rev: doc.rev })
-      expect((await links())[0]?.state).toBe('saving')
+      // Inside the pause the last Saved line stays (the calm rule).
+      expect((await links())[0]?.state).toBe('saved')
       await vi.advanceTimersByTimeAsync(wordTiming.pause - 1)
       expect(doc.exported).toHaveLength(baseline)
       await vi.advanceTimersByTimeAsync(1)
@@ -199,13 +200,36 @@ describe('Save As… into the workspace folder', () => {
     expect((await links())[0]!.state).toBe('saved')
   })
 
-  it('says Saving while his newest words are not in the file, and only then Saved', async () => {
+  it('keeps Saved through the pause, and says Saving once his words waited past it with nothing written', async () => {
     await save({ at: { at: 'place', id: 'folder' } })
     doc.text = 'two'
     doc.rev = 'r-two'
     await autosaveLinks(box.ctx, Date.now())
+    expect((await links())[0]!.state).toBe('saved')
+    // Words seen a pause ago, not written yet.
+    doc.rev = 'r-three'
+    await autosaveLinks(box.ctx, Date.now() - wordTiming.pause - 1)
     expect((await links())[0]!.state).toBe('saving')
     expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx one')
+  })
+
+  it('says Saving only once a write has been out a while, and Saved when it lands', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    let open!: () => void
+    doc.text = 'two'
+    doc.rev = 'r-two'
+    const t = Date.now()
+    await autosaveLinks(box.ctx, t)
+    doc.gate = new Promise<void>((ok) => (open = ok))
+    const writing = autosaveLinks(box.ctx, t + linkTiming.pause + 1)
+    await new Promise((r) => setTimeout(r, 20))
+    expect((await links())[0]!.state).toBe('saved')
+    await new Promise((r) => setTimeout(r, 650))
+    expect((await links())[0]!.state).toBe('saving')
+    open()
+    await writing
+    expect((await links())[0]!.state).toBe('saved')
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx two')
   })
 
   it('rewrites a linked PDF whole, and a second link of the same document too', async () => {

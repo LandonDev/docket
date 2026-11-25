@@ -293,15 +293,24 @@ async function saveAsReserved(
   return { saved: { name: made.name, ref: { at: 'file', host: at.host, path: made.path }, linked: !!doc } }
 }
 
-const inFlight = new Set<string>()
+/** Each link's write under way, by its row's id, and since when. */
+const inFlight = new Map<string, number>()
+/** How long a write may be out before the header says Saving… (canvas/calm.ts `SEND_SHOWN_MS`, the one rule). */
+export const SEND_SHOWN_MS = 600
 /** Each linked document's live revision when last seen, and since when: the pause is counted from it. */
 const seenRevs = new Map<string, { rev: string; at: number }>()
 
-/** How a link stands for the header: the record's state, and whether the document holds words the file does not yet. */
-function viewOf(r: LinkRow): DocLink {
-  const seen = seenRevs.get(r.doc)?.rev
-  const behind = seen !== undefined && seen !== r.saved_rev
-  const state: DocLink['state'] = r.state === 'ok' ? (inFlight.has(r.id) || behind ? 'saving' : 'saved') : r.state
+/**
+ * How a link stands for the header: the record's state, and whether his newest words are on their way to the file.
+ * Saving… only once a write has been out `SEND_SHOWN_MS`, or his words waited past the pause with nothing written
+ * (the calm rule, canvas/calm.ts); inside that the last Saved line stays, as the document's own line beside it does.
+ */
+function viewOf(r: LinkRow, now = Date.now()): DocLink {
+  const seen = seenRevs.get(r.doc)
+  const sent = inFlight.get(r.id)
+  const waited = seen !== undefined && seen.rev !== r.saved_rev && now - seen.at >= wordTiming.pause
+  const saving = (sent !== undefined && now - sent >= SEND_SHOWN_MS) || waited
+  const state: DocLink['state'] = r.state === 'ok' ? (saving ? 'saving' : 'saved') : r.state
   const folder = r.path.slice(0, Math.max(r.path.lastIndexOf('/'), r.path.lastIndexOf('\\')))
   return {
     id: r.id,
@@ -325,7 +334,7 @@ export function linksOf(ctx: WorkCtx, by: Caller, p: { workspaceId: string; sour
   const doc = linkableDoc(ctx, attachmentFileIn(ctx, p.workspaceId, p.source) ?? p.source)
   if (!doc) return []
   const rows = ctx.db.prepare(`SELECT * FROM work_files_links WHERE workspace_id = ? AND doc = ? ORDER BY made_at`).all(p.workspaceId, doc) as unknown as LinkRow[]
-  return rows.map(viewOf)
+  return rows.map((r) => viewOf(r))
 }
 
 /** The words a link's line says, for the log. */
@@ -419,8 +428,10 @@ async function writeLinkNow(ctx: WorkCtx, id: string, rev: string | null): Promi
   // The row as it is in this turn: unlinked, or stopped by a change made there, it is not written.
   const r = rowOf(ctx, id)
   if (!r || (r.state !== 'ok' && r.state !== 'waiting') || inFlight.has(r.id)) return
-  inFlight.add(r.id)
-  filesState(ctx).tabs.touch(r.workspace_id)
+  inFlight.set(r.id, Date.now())
+  // The header reads the links again on a push: one when the write has been out long enough to be said.
+  const shown = setTimeout(() => filesState(ctx).tabs.touch(r.workspace_id), SEND_SHOWN_MS)
+  shown.unref?.()
   const now = Date.now()
   try {
     const out = await exportBytes(ctx, { at: 'file', host: ctx.host, path: r.doc }, r.format)
@@ -445,6 +456,7 @@ async function writeLinkNow(ctx: WorkCtx, id: string, rev: string | null): Promi
     else ctx.db.prepare(`UPDATE work_files_links SET state = 'refused', detail = ?, tried_at = ? WHERE id = ?`).run(words.slice(0, 300), now, r.id)
     ctx.log(`files: a linked file was not written: ${words}`)
   } finally {
+    clearTimeout(shown)
     inFlight.delete(r.id)
     filesState(ctx).tabs.touch(r.workspace_id)
   }
