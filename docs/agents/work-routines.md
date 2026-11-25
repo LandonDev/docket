@@ -249,6 +249,10 @@ Mac is awake; the detail's "Runs on" says so.
 
 ## The screens
 
+On the phone (M5b, ios-client.md "A job's small places") a job's Routines unfolds a routine's last five runs
+(`work.routines.runs`) and offers Run Now (`runNow`) beside Pause and Resume; the editor stays here.
+
+
 A linked Work workspace's column gains **Routines** after Mail, Tasks,
 Agenda and Docs (`WORK_VIEWS.routines`, the `work-routines-view` chunk).
 The view (prototype routines.html, "List and detail"): the routines,

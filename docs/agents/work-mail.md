@@ -39,6 +39,14 @@ The composer is LifeOS's, unchanged. Its Send (`useOutboxActions().send`)
 is wrapped by `sendThroughHost`: the draft is saved as he sees it
 (`compose.save` on the window's session), then the window asks the host
 `work.mail.send {id, seen, sendAt?}` (approve; a model caller is refused).
+A fault after LifeOS may have taken the send (its answer lost on the
+host's own link, or the read after a hold send failing) answers
+`outcome unknown: …` (`OUTCOME_UNKNOWN`), never a refusal; LifeOS's own no
+(a `ConvexError`) is said as it is. `work.mail.sendNow {id, sendAt?}`
+names the time his screen showed, and a mail moved since is refused
+(`TIME_CHANGED`; LifeOS's own `compose:sendNow` takes no time, so its time
+is read just before the write); a Send Now whose LifeOS answer was lost is
+`outcome unknown: …` too.
 The host reads the row as LifeOS holds it now (`compose:get`, as the owner)
 and refuses it when it no longer says what the composer saved (`seen`: who
 it goes to, the subject, the words, the HTML and the files, each attachment
@@ -163,7 +171,9 @@ Mail's cancel and move of a thread's draft go through the same row: it is
 held again only once LifeOS took it back. The phones read it too (LifeKit `ScheduleTime`):
 Scheduled and the thread's foot show the two-zone line with Cancel, a tap
 offers Edit or Cancel Send, and the phone's own Send later carries the
-device's zone; the phone has no zone picker, Send now or Move.
+device's zone; the phone has no zone picker or Move. On TempCode's phone a
+mail he timed in Mail also has Cancel Send, Reschedule and Send Now in its
+Outbox item (below, "The phone").
 
 ## The outgoing rules
 
@@ -728,6 +738,34 @@ it. One switch, "As it looks", draws the mail as it will arrive: the HTML
 this host sends (`outgoingMail`: the outgoing rules on his words, then the
 quote) in a mail frame on white, with no colour moved, nothing folded, and
 a link's real address under it while the pointer is on the link.
+
+## The phone
+
+The iPhone's Work tab has Mail as a place (docs/agents/ios-client.md "Mail
+as a place (M2a)", docs/IOS-DESIGN.md "### Mail"): LifeKitUI's Mail for
+every job on the whole LifeOS session, with the job filter, its two pages on
+the open Duo.
+
+- **Waiting on** is the bar's hourglass, LifeKitUI's `MailWaitingScreen`:
+  Nudge is `work.mail.nudge` and opens the drafting thread; Dismiss and its
+  Undo are LifeOS's `mailWaits:dismiss` and `putBack`. Put off is the
+  desktop's alone.
+- **A mail he timed** in Mail is in the Outbox's Scheduled section, and its
+  item has Cancel Send, Reschedule and Send Now (`work.mail.cancel`,
+  `reschedule`, `sendNow`). Send Now is gated (Touch ID or the passcode),
+  waits the phone's five seconds with Undo and is kept in the press record
+  until the host answers. A thread's draft the hold timed keeps the
+  Outbox's own Cancel send and Send now.
+- **Ask** in an open mail opens the mail chat `work.mail.chat.find` names,
+  else a sheet whose first send makes one (`session.create` with
+  `mailAdopt`). It opens on its own page: a mail thread is no canvas item,
+  so the phone cannot seat the mail beside the chat.
+- **A mail's file** in a thread's pane, or a chat's file, is fetched first
+  (`work.canvas.fetch`, its push for the bar), then read by its kind; More
+  has Save to Workspace (`work.canvas.keep`). LifeKitUI's own reader still
+  opens a file in Quick Look from LifeOS's store: it has no host slot.
+- **Agenda** shows the host's clash lines and leave times
+  (`LifeActions.mark(of:)`, from `work.clashes.list`).
 
 ## Proving it
 

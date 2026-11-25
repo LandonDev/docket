@@ -2105,8 +2105,8 @@ the line, with when they were read ("This is the list from 1:40 PM."), and a
 copy's line names that desktop by its last read or the name the box gave it
 (FilesView.tsx `copyHostOf`), never "another computer" while it is known. The
 journey's desk runs on the box itself, so it registers as the box's machine
-name. The phone lists the box's own
-places alone; it does not yet list a desktop's.
+name. The phone lists a desktop's places the same way, through the
+workspace's host, and reads them only.
 
 Proven 2026-11-24 in the Windows rig (.temp-code/plans/landed/pc-setup/files-across/):
 a stand-in Mac window listed and opened `J:\Esports` on the rig PC through a
@@ -3201,10 +3201,24 @@ editor takes a `.tcdoc` or a `.tcsheet`, and where the host will not open it
 there (a Word or Excel file) Quick Look stands in its place, read only
 ("Edit on your computer").
 
-Until F3 and F4 land here the phone degrades: search filters the rows it
-already holds until `work.files.search` answers, and Quick Look shows the
-facts until `work.files.preview` does. Not on the phone yet: Move, Copy,
-the Trash lens, Empty Trash, tabs, thumbnails.
+Files is a place of the phone's Work tab for every job at once (the job
+filter narrows it), each folder a route that a relaunch keeps. Move… and
+Copy… (a sheet of the job's places and folders, or a file row dropped on a
+folder row), Delete and Put Back (the Trash lens) go through the grammar's
+`refusal` with `to` and ask `questionFor`'s question before a change others
+will see, sending his yes as `asked` (and `forGood` on a drive with no bin);
+whatever the host still refuses shows in its words. Go To asks `names`;
+search asks each job's host and merges as they answer; saved searches are
+read and run, never made. Where the host draws pictures a folder shows as
+icons (`thumbs`). A desktop the workspace may use is listed through the
+workspace's host (`work.files.across`, `places` and `list`): read there, a
+file opened as the host's copy with its progress (`opening`), and changed
+on that desktop, not from the phone. Each folder's first page of names is
+kept on the phone for the cold paint. A file row's menu has Add to
+Thread… (the job's open Work threads; the row's `fileChipOf` chip waits in
+that thread's box, nothing sent), and a file row dragged onto a Work
+thread's box is the same chip. Not on the phone yet: Empty Trash, tabs, the
+columns view, making a saved search.
 
 ## Unproven
 

@@ -165,7 +165,7 @@ no review round.
 ## Not built
 
 There is no command palette in the app (⌘K is search), so a play is not
-started from one. Plays are not `@`-mentionable and are not on the phone.
+started from one. Plays are not `@`-mentionable. On the phone (M5b, ios-client.md "A job's small places") a job's Plays lists them and runs one that takes a line of text, a date or nothing (`work.routines.playStart`); a play about a thing is started from it on the computer.
 Starting a play from a draft's composer, a play's own model, and per-play
 counts of runs are on the owner's list (.temp-code/plans/landed/F-plays.md).
 

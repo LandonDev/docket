@@ -196,6 +196,13 @@ its tab. Three views, kept in the item's state:
 The prototype's third view ("A list of changes") and people in the bar are
 not built.
 
+## On the phone
+
+A version's compare on the phone has Restore for every version but the
+newest (`work.history.restore`, in the Swift subset): written at once with
+Undo on his own document, a branch that waits in Review Changes on a shared
+one. docs/agents/work-phone-files.md "History's Restore".
+
 ## Proven, and not
 
 Proven by tests: `formats/diff/diff.test.ts`,

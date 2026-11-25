@@ -173,7 +173,9 @@ is left as it was, its answers too. A thread reaches the same from
 `work.forms.{open, save, review, mode, publish, close, responses}` and the
 `work.forms` push (`src/shared/contract-work-forms.ts`). Every method but
 `open` and `responses` is the owner's: a thread's call is refused. Each is
-carried on a relayed lane (`FORMS_RELAY` is empty: work.md "The relay").
+carried on a relayed lane (`FORMS_RELAY` is empty: work.md "The relay"). `work.forms.close {open: true}` (Reopen)
+shares the link again, so past the door it asks the person check with approve on the key itself
+(`mustBePerson(by, 'approve')`); Close stays operate.
 
 ## Known limits
 
@@ -184,5 +186,5 @@ carried on a relayed lane (`FORMS_RELAY` is empty: work.md "The relay").
   answer.
 - Reading a portal or a PDF into a form is not built: those fills stay in
   the browser (M37) and PDF (M33) canvases, which show each value's source.
-- The phone draws the form through the web (`phone: 'web'`); nothing
-  native is built.
+- The phone draws a form's answers natively, and its job's Forms lists our forms with Close and Reopen (M5b);
+  the form itself is edited on the computer.

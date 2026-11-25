@@ -602,7 +602,20 @@ nothing is lost on Cancel, a failed Save or a quit, and a scan the phone
 cannot write is held in memory with Try Again, and no second scan is taken
 while it is. A receipt goes only to the host of the job it shows: a retry
 goes to that host alone, and waits on the phone while it does not answer,
-since the key dedupes only per host; once a part has gone the job is fixed. The phone has no Money page.
+since the key dedupes only per host; once a part has gone the job is fixed.
+
+A job's Money is a page on the phone (docs/IOS-DESIGN.md "Money"): a row on
+the job's page after Projects, opened also by Today's Owed rows and a
+waiting receipt's tell. One `work.money.read` (the phone's narrower view,
+`MoneyReadPhoneSchema` in wireSchemas.ts) paints To confirm, Owed, the
+month's or year's figures and its eight newest rows, read again on the
+`work.money` push. His presses write the job's own ledger and tell no one:
+Accept (`work.money.accept`, in a sheet with the picture from
+`work.money.picture`, the fields as read), Discard (`work.money.drop`,
+Undo with `undo: true`) and Paid (`work.money.paid` with the row as the
+phone read it; `changed` reads again and says so). Entries, trips,
+invoices, the rate and export stay on the desktop. The rules and words
+are `MoneyPage` in the client package.
 
 ## For others
 

@@ -328,6 +328,18 @@ method can be given a small source here on `ask.ts`, as Files is.
   for a thread): then the tab waits in Files, behind the one shown, and the
   window stays with him.
 
+## The phone
+
+The Search tab's **Work** scope, beside Threads and Files (docs/agents/ios-client.md "Search's Work scope"):
+the same two speeds, the same hosts (the box as the Work home, `own: true` to the rest) and the same rows,
+from a Swift port of `model.ts` (`WorkSearchModel`) that `scripts/ios-work-search-fixture.test.ts` holds to
+this window's model step by step, and of `controller.ts` (`WorkSearchRun`). Recent stands before he types. A
+hit opens its place on the phone where there is one (a person, a conversation, a meeting's page, a job's
+Tasks or Mail, a thread, a held item, a file seated through `work.files.open`) and tells its host; a kind with
+no phone place is shown, not a button. The phone holds the search to no single job, so it never offers
+"Search all jobs", and it does not search his other computers' folders ("All files for …" asks the job's
+host alone).
+
 ## For agents
 
 `work_search { query, kinds?, limit? }` (read only; `search/tools.ts`) runs

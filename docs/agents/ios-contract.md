@@ -47,7 +47,11 @@
   `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
   pins its rules; `DecoderRulesTests.swift` proves the decoder on
   hand-written JSON, so it passes before the fixtures are re-recorded.
-  Milestone 47 added a Work thread's items and LifeOS's screens: the
+  All of Work on the iPhone's M3c added Share and the clicker: `work.guests.forItem`, `setRole` and `attempt` (`GuestAttempt`), `work.guests.create` with a file's source and the `attempt` key (its `PHONE_PARAMS` narrowing is gone; a repeat's answer carries `again` and no `url`), `work.slides.show.state` and `press` (`ShowLive`), and the `work.slides.show` push.
+  All of Work on the iPhone's M5a added the week and the money: `work.review.week` (each host's part, the contract's own `ReviewBody`; its tuples `points`, `ran` and `before.points` decode as `[[JSONValue]]`, read by `WeekReview.hostPoints`/`hostRan`), `list` (`ReviewKeptList`), `settle` (`ReviewSettled`), `undo` and `seen`; `work.money.read` (the phone's view `MoneyReadPhone`), `sums` (`MoneySums`), `accept` and `paid` (`MoneyActed`, read as a phone view), `drop` and `picture` (`MoneyPicture`).
+  M5b added a job's small places: `work.routines.plays` (`PlayPhoneRow`), `playStart`, `runs` and `runNow` (`RoutineRunPhone`); `work.templates.list` (`TemplatePhone`) and `make`; `work.dashboards.refresh` (a block's `from` is `DashFromPhone`, its sheet `DashSheetPhone`); `work.forms.list` (`FormListPhoneRow`) and `close`; `work.msforms.get`, `responses` (`MsFormResponsesPhone`), `close` and `seen` (`MsFormPhoneRow` gained `unseen` and `stopped`, both optional); `work.health` (`HealthReportPhone`) and `work.lapses` (`LapsePhone`); `work.winvm.state`, `wake` and `sleep` (`WinvmStatePhone`); `video.copy`; the pushes `work.winvm` and `work.routines.plays`.
+  All of Work on the iPhone's M2a added Mail as a place: `work.mail.waiting` (`MailWaiting`), `reschedule`, `sendNow`, `cancel`, `chat.adopt` and `chat.find`, and a mail's file: `work.canvas.fetch`, `read` and `keep` with the `work.canvas.fetch` push (`WorkCanvasFetchPush`); Waiting on's rows, Dismiss and Undo are LifeKit's reads on the LifeOS session, not this wire.
+  All of Work on the iPhone's M2b added Messages: `work.messages.send` (with the phone's `attempt` key), `attempt`, `undo`, `retry`, `search`, `unread`, `drafts` and `dropDraft`, with `ChatHit`, `ChatDraft`, `MessagesAttempt` and `MessagesUnread` named; LifeOS's chat shapes are the client package's own (`ChatModels`), read through LifeKit, not this wire. Milestone 47 added a Work thread's items and LifeOS's screens: the
   `work.canvas` and `work.routines` pushes, `CanvasItem` and `FrameTable`
   named, and `work.lifeos.jwt`, `work.mail.send`, `work.rules.forDraft`,
   `work.workspace.get/set`, `work.canvas.list/open/close`,
@@ -94,6 +98,28 @@
   `SheetPhoneView`) and the `work.docs` (`{ doc }`) and `work.sheets`
   (`{ sessionId, itemId, rev }`) pushes, which move `WorkHost.docsRev` and
   `sheetsRev`.
+
+  All of Work on the iPhone M1 adds `work.tasks.done`, `work.mail.nudge`,
+  `work.messages.unanswered`, `work.money.owed`, `work.prep.upcoming`,
+  `work.review.ready`, `work.clashes.list` and `work.clashes.leave`.
+  The Outbox adds `decide` for item decisions or request receipts,
+  `requests`, `request.get`, `request.view` and `decline`. The request
+  list carries summaries. The detail and changed-row reads carry the
+  current receipts. `RemotePushSchema` carries messages, money, prep,
+  clashes, review and Microsoft Forms changes. Those pushes and the
+  existing Outbox request push move `WorkHost` counters for fresh reads.
+  The clashes list, request list and Forms push use phone views pinned
+  with `Reads`.
+  M4b adds `work.search.query` and `work.search.opened`, with
+  `WorkSearchOpen`, `WorkSearchHit` and `WorkSearchAnswer` named (the
+  client package already has a `SearchHit` and a `SearchAnswer`); a hit
+  is the contract's own `SearchHitSchema`, so the phone sends back to
+  `opened` the very hit it was given (`WorkSearchModelTests` round-trips
+  every fixture hit).
+  M4a adds `work.canvas.mentions` (its answer `MentionAnswerSchema` in
+  wireSchemas.ts, a `Mirror` of `MentionAnswer`, with `MentionHit` and
+  `MentionAnswer` named; a hit's chip is the generated `ContextChip`) and
+  `work.canvas.reorder` (answered as `work.canvas.list` is).
 
 **Switches that must stay whole.** A new held act kind, chip kind or pillar id
 regenerates the Swift contract, and every phone `switch` over that enum with

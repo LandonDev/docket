@@ -199,7 +199,10 @@ it ("read them with msform_answers"; the read-only judge's `readRefused`, workbo
   work-files.md), just before its workbook, whose row reads "Answers to <form>" and whose menu holds Open the Form.
 - **Connections**: one row a host with the carrier, "Microsoft Forms", signed in as the account the last pass read,
   or Needs you when a pass met Microsoft's sign-in; the Office-live tenant row reads "Office and Forms for the web".
-- **The phone**: a Forms row lists the job's Microsoft forms (`work.msforms.list`) and opens each in Safari.
+- **The phone**: a Forms row lists the job's Microsoft forms (`work.msforms.list`) after TempCode's own; one that
+  collected opens its answers in the app (`get`, `responses`, then `seen`), a draft in Safari. Close is operate;
+  Reopen (`work.msforms.close {open: true}`) asks approve on the key itself past the door (`mustBePerson`), so
+  an operate key, a thread, another host and an MCP key cannot restart collecting (M5b).
 
 ## Answers as data in Work
 

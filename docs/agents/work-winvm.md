@@ -65,6 +65,11 @@ Windows has (screen.json), his choice, and whether Windows takes a new size whil
 the forward's unix socket and the token; `touch()` marks a call; `setViewers(n)` and `setDriving(on)` hold it
 awake while anyone watches or he drives. `WAKING_WORDS` is what a waking call says.
 
+
+On the phone (M5b) the Computers place leads with the VM's row: its state in words, its last fault, and Wake or
+Sleep for an operate key (`work.winvm.state`, `wake`, `sleep`; the `work.winvm` push keeps it in step;
+ios-client.md "A job's small places"). Setup, restore points and the screen's settings stay on the computer.
+
 ## Setup
 
 One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the base image the rig has

@@ -400,6 +400,14 @@ rules; nothing about the wire is the phone's own.
   row opens; the Settings words); `WorkDigest` is one host's ledger on
   `WorkHost.digest`, read when the Digest first opens, kept by the push after
   that, read again when a day is made, cleared when Work goes off.
+- **Kept days.** Each read and push writes the host's newest fourteen days
+  and the rows each drew to the Work cache's SQLite file (`DigestKept`,
+  `WorkCache.digest`: display data alone, no settings, no row of no day),
+  keyed and dropped with every other kept row and under the same file
+  protection. A cold open draws them while the host has not answered on this
+  link (`HostInput.kept`; never under a refused key), read-only: a day drawn
+  from them is marked seen only once its host answers
+  (`DigestModel.seenCalls(_:live:)`). Work off drops them.
 - **Screen.** `ios/TempCode/Sources/Work/Digest/DigestScreen.swift`,
   `Route.digest` (a sidebar list). Title "Digest"; "Since the digest",
   "Today, 8:00 AM", "Yesterday", then dates; a row is the job's dot (a muted

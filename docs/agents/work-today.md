@@ -8,7 +8,8 @@ docs/DESIGN.md "Today"; the plan was `.temp-code/plan-jv8ZMpWjma9R.md`.
 
 Today is built in the window alone. It has no pillar id, no server folder,
 no table, no wire, no push and no tool: it reads what the views already
-read. It has no phone page.
+read. The phone gets no host method either: it ports these rules to Swift
+("The phone" below), and its page arrives with M1a's screen.
 
 ## Reaching it
 
@@ -431,3 +432,61 @@ is open the anchor stands down.
 - `bun run ui:preview src/renderer/src/work/today/TodayView.preview.tsx#TodayPreview --shot`:
   every state in light and dark, with made-up rows.
 - The live run and the timings: `.temp-code/plans/landed/R3-today.md`.
+
+## The phone
+
+The phone has Today, built from the same reads, by a Swift port of this
+folder's rules in `ios/TempCodeClient/Sources/TempCodeClient/Work/Today/`
+(no SwiftUI, no socket, no LifeKit). The page is built: the Work tab opens
+on it, `TodayStore` (`TodayReads.swift`) reads the hosts and takes LifeOS's
+lists from the app's LifeKit reads, and `ios/TempCode/Sources/Work/Today/`
+draws it (docs/IOS-DESIGN.md "Today", docs/agents/ios-client.md "Today"):
+
+- `TodayTypes.swift`: the seam as values. A row's press is a `TodayTarget`
+  (held, request, event, task, mail, chat, money, form, review, tell, prep) whose
+  `route` is the phone's place for it, or nil while that place is not built,
+  and then the row is not a button. A verb is a `TodayPress` (prepare, done,
+  tomorrow, nudge, dismiss, markRead, resolve), a Retry a `TodayRetry`. Every
+  value is `Sendable`, `Hashable` and, for the cache, `Codable`.
+- `TodayModel.swift`: `model.ts` and `stable.ts` function for function
+  (`dayBounds`, `dayAfter`, `jobsOf`, `workspaceFor`, `offlineHosts`, the
+  LifeOS host choice and cover, `merge`, `fold`, `page` with `apart`,
+  `jobsOnly` and the lost line with a wait's `waits`, the `connecting`
+  reach, `keepRows`), the store's keeping rule
+  (`kept`, `stillGiven`, `broken`), and the Work list's line (the next
+  meeting, else what is due, never the Outbox's count: `workListLine`).
+- `TodayWords.swift`: every time and count a row says, as the desktop words
+  it. `TodaySources.swift`: each source's rows and marks from plain inputs
+  that decode the JSON the desktop reads (Held with the threads' requests,
+  `askedItemKeys`; Also's kinds `docs.guest`, `guests.edited`,
+  `guests.opened`). `JobReads.answer` in `TodayReads.swift` is `read.ts`'s
+  `snapshot()`.
+- `Work/Cache/WorkCache.swift`: what the phone keeps on disk (Today's rows
+  with no verbs, the Outbox's waiting rows from the summary alone, the
+  Digest's newest fourteen days with the rows each drew (`WorkCache.digest`,
+  Work/Digest/DigestKept.swift: no settings, no row of no day), a folder's
+  last page of names) and `WorkCacheDrop`, which
+  keys go on a replaced key, a lost capability, a sign-out, Work off or a
+  removed host.
+
+The fixtures hold the two to one answer.
+`src/renderer/src/work/today/phoneFixtures.test.ts` runs this folder's model
+and each source's pure function over a set of cases and checks
+`ios/TempCodeClient/Tests/TempCodeClientTests/Fixtures/today/<case>.json`;
+`TodayParityTests.swift` replays every file through the port field for
+field. A change to Today here fails the vitest until the files are written
+again, and the box's Swift test until the port says the same:
+
+```bash
+UPDATE_FIXTURES=1 NODE_ENV=test bunx vitest run src/renderer/src/work/today/phoneFixtures.test.ts
+```
+
+The cases include requests in Held, the guest kinds, a LifeOS that is
+connecting and a read that waits on another host's LifeOS. What the
+fixtures do not reach is held by TodayStoreTests: `snapshot()`'s states,
+a purge, a host not linked, the read-to map.
+
+What the phone leaves out: the Files source (not registered here either),
+the keys, the toasts' strip and the held sheet (the phone opens the
+Outbox's own item), and `hostFailureWords`'s plain words for a host's
+error: the port hands the error on, and the screen words it.

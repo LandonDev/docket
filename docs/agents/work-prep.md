@@ -188,7 +188,19 @@ More: Open thread (the brief's while it is being written, else the follow-up's, 
 - **Today**: `work/prep/today.ts` is one of Today's sources (`TODAY_SOURCES`). It adds a mark to a meeting's row (`event:<LifeOS event id>`), never a row of its own: a press opens the meeting's page in its job (`goTo`), and the row says "Prep is ready" only for `briefed` (`meetingMark` in `model.ts`). It reads `work.prep.upcoming` for the day on every host with Work on (`useEachWorkspace`) and again on the `work.prep` push; a host answers every job of its own, so a meeting is taken from its own job's answer alone. A host that does not answer adds no line to Today: a mark is only ever an extra.
 - **Clashes** owns clashes and drive time. The page shows its leave time, nothing else of a clash.
 - **Review**: its slipped meeting's Follow up opens the same target.
-- **The phone** has no page of its own. A brief or a follow-up thread ends with the page's words as its last message, so the phone shows them in the thread. The wire is carried by the relay, so a native page can come later.
+- **The phone** has the page; see "The phone" below.
+
+## The phone
+
+`Route.prep` (ios/TempCode/Sources/Work/Prep/PrepScreen.swift, docs/IOS-DESIGN.md "A meeting's page") reads
+`work.prep.page` as a phone view (`PrepPageAnswerSchema` in wireSchemas.ts: the doc's added people, a file's chip, the
+notes file's source, `invited` and the ahead switch are left out) and again on the `work.prep` push. Prepare and
+Follow Up call `brief` and `followUp`; his notes go through `notes` with `base`, 500 ms after he stops typing and at
+once on leaving; Add N Tasks calls `decide`. The rules are the client package's `PrepRules` (the header's verb by
+`headVerb`'s rule, the host's bound read on the phone's clock since the phone does not pass a thread's status yet),
+`PrepTicks` and `PrepNotesDesk`. Today's meeting rows, their prep marks and the digest's `{view: 'prep', at}` open it.
+Not on the phone yet: Add People (`people` is on the wire), Write in a Document, a recording as the notes, Prepare
+ahead.
 
 ## Proofs
 

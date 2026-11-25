@@ -597,6 +597,15 @@ place, the canvas kind) and a time; in a Work thread they lead the list,
 in a code thread they follow the files, threads and notes. Enter or a click
 takes the typed `@words` out and adds the chip.
 
+**The phone** (docs/agents/ios-client.md "A thread with its things"): a
+Work thread's composer asks the same method on the same beat when the box
+ends on `@words`, draws the rows over the box, and holds the picks in the
+thread's own chip box until Send writes their `chipLine`s above his words;
+the sent bubble reads them back as `sentChipsOf` does. A Files, Outbox or
+People row dropped on the box, and Files' Add to Thread…, add the same
+chip. The Item segment's switcher moves the shown item up or down
+(`work.canvas.reorder`).
+
 ## The first paint
 
 Nothing here is in the first paint (docs/agents/work.md "The first

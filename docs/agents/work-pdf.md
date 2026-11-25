@@ -430,6 +430,14 @@ the ICC profile and qcms (pdf.js fetches those only from its worker by a
 base URL, which hashed assets cannot give; CMYK falls back to pdf.js's own
 conversion) and quickjs (form scripts, which the canvas never runs).
 
+## On the phone
+
+The phone's reader draws his highlights, their notes and a form's values on
+PDFKit and changes them over `work.pdf.mark`, `unmark`, `setField` and
+`review` (each in the Swift subset; `review` with the keys shown, never
+`all`). Signing and export stay on the computer. The account is
+docs/agents/work-phone-files.md "Highlights, notes and fields".
+
 ## What is proven
 
 On the box, with `TEMP_CODE_WORK_TOOLS_DATA=/srv/agents/temp-code-data`:

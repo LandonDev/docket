@@ -387,7 +387,9 @@
   pushes `presence` on a change. A state that forbids a call answers one line
   (`relayRefusal`): `unavailable: the Mac is locked` (the screen method
   only), `… asleep`, `… unreachable since HH:MM`; a drop mid-request is
-  `linkDown: …` and closes the lane 4010; an unregistered host is 503 at the
+  `linkDown: …` and closes the lane 4010, and so is every hand-off the box
+  could not finish (the 30-second frame deadline, its service closing): the
+  frame may have run, so the phone checks; an unregistered host is 503 at the
   upgrade. `/mcp` takes `host` and `env_…:id` sessions (docs/remote-mcp.md
   "Hosts"). A Mac with no delivery of its own sends its notices as
   `relay.notice`. Seams: `TEMP_CODE_PRESENCE`, `presence.set` under

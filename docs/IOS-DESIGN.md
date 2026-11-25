@@ -30,21 +30,74 @@ no workspace, no thread type, no status, generic chevrons.
 ## Information architecture
 
 ```
-Home                      Inbox                 Search
-├ Chats (threads outside every workspace)               ← across all hosts
-└ Workspace rows (logo, name, the rail's one status mark)
-   └ Workspace (pushed): the desktop's middle sidebar
-      ├ Project card ▸ the lines of what needs saying
-      ├ Chats (threads with no project)
-      └ "n archived projects" at the end
+Home                      Work                      Inbox       Search
+├ Chats (code threads     ├ places for every job
+│  outside every           │  (the Outbox; Today, Mail,
+│  workspace)              │  Tasks… as each ships)
+└ Code workspace rows     ├ Jobs: a row a Work workspace
+   └ Workspace (pushed):  │  └ the job's page (pushed)
+      the desktop's       ├ Work Chats
+      middle sidebar      └ Digest, Computers while driven
 Project shell (the detail): the strip, then the thread its chip selects
    (one screen, five shapes by type; subagents push over it) or the draft
 Thread, bare: a chat outside every workspace
 Settings (hosts, notifications, appearance) from the Home header
 ```
 
-Tab bar with three tabs: Home, Inbox, Search. Settings is a button in the
-Home navigation bar, as in Apple's own apps. No fourth tab for hosts.
+Tab bar with four tabs: Home, Work, Inbox, Search. Home is code alone. Work is
+absent while every host has Work off, and then the bar is the three it was.
+Settings is a button in the Home navigation bar, as in Apple's own apps; the
+Work list's bar has Work's own settings. No tab for hosts.
+
+**The Work tab** is one more `ShellSplit` on its own `ShellNavigator`, the
+engine Home uses, so a fold is a size change and nothing else. Its sidebar
+root is the **Work list** (Work/Shell/WorkListView.swift on the client
+package's `WorkList.sections`): the places for every job at once, then
+**Jobs** (a row a Work workspace, led by its sector's dot, the rail's one
+status mark, + in the header for a new one), then Work Chats, the Digest, and
+Computers while something is driven. A place has a row only once the build
+draws it (`WorkPlace.shipped`: the Outbox, the Digest and Computers today; the
+order to come is Today, Outbox, Mail, Messages, Tasks, Agenda, Files, People,
+then the jobs, Work Chats, Review, Digest, Computers, Connections). **A place
+is a list**: its row pushes `Route.place(place, job:)` in the sidebar column
+and what he picks opens in the detail, so on a phone it is list then thing and
+on the open Duo two columns with a back chevron to the Work list. A job's row
+pushes the job's page (`WorkspaceScreen`), whose title is a menu of the jobs.
+The rules, all pure and tested in WorkTabTests:
+
+- **Where it opens.** His own entry into the tab (a press on it, a launch on
+  it, the first foreground of a day) opens the day's first place on the first
+  entry of each local day and when nothing was ever saved for the tab, else
+  where he was (`WorkTab.opensFirstPlace`; the first place is Today, and the
+  Outbox until Today ships). A draft he left in the detail is never covered:
+  a project's draft, or an open thread whose box holds words, a chip or a
+  photo (`WorkTab.holdsDraft`, `UnsentThreads`). The first foreground means
+  a return from the background, never the return from `.inactive` that the
+  system's Face ID sheet or Control Center makes mid-press.
+  What brings him there (a notice, a link, a new thread) stamps the day, so it
+  is that day's first entry and stays on screen.
+- **A second press on the tab** goes back to the Work list
+  (`WorkTab.popsToList`).
+- **What opens where.** A route something outside a tab names opens in the
+  tab `ShellPaths.tab(of:isWork:)` gives: Work's places and screens, a Work
+  thread (its scope), a Work workspace and Work Chats in the Work tab, the
+  rest on Home; a thread no host lists yet opens on Home, as before. New
+  Thread in a Work workspace focuses its draft in the Work tab; a file's Ask
+  opens its thread in the tab the file is in. With Work off everywhere such a
+  route opens on Home.
+- **A held notice** lands the Outbox, then the item, in that order
+  (`ShellPaths.list(under:)`), so Back at compact width is the list, then the
+  Work list.
+- **Memory.** The place is kept per tab under `navigation.memory.v3` as
+  before, and each tab keeps its own sidebar toggle
+  (`ColumnMemory.sidebarShown`). A save from before the Work tab
+  (`hasWorkTab` absent) keeps its shape until the hosts' cached lists are
+  read, then `NavigationSnapshot.movingWork` moves what Home held of Work (the
+  sidebar when its first list is Work's, the detail and its stack when its
+  root is) to the Work tab, a place under its old route (`.outbox`, `.digest`,
+  `.computers`) becoming `Route.place`, and the tab follows what he was looking
+  at. A launch on the Work tab keeps the tab until the hosts are read
+  (`WorkTab.shows`).
 
 Home is the desktop's sidebar in two pushed levels of one
 NavigationStack: Home is the far-left workspace column, a workspace is the
@@ -249,7 +302,8 @@ in flight is a live chip at the row's end (`DraftSending`, the desktop's
 working mark in its glyph slot, no tap and no menu, never saved, selected
 once its thread is on screen, gone the moment the thread's meta lands and
 its own chip takes the place; while nothing is selected the row scrolls to
-it (`StripModel.scrollTarget`). `ProjectLanding.active` is the first step of the desktop's `landingOf`: the
+it (`StripModel.scrollTarget`). The row scrolls only a picked chip that is not wholly in view, never one he
+tapped where he could see it, and brings a later chip to the leading margin whole. `ProjectLanding.active` is the first step of the desktop's `landingOf`: the
 scope's most recent active root by its last event, a batch thread standing
 in for its master, none when the thread on screen is already in the scope.
 The strip (`StripMetrics` in Tokens.swift) is a 40 pt live row: the live
@@ -855,6 +909,20 @@ the reason in the field in place of the placeholder; the field is off and
 `+` and the button leave. A light impact on send and on a queue, a selection
 tick when the hold turns into a queue, never on typing; the field clears
 without animation. The list behind it dismisses the keyboard interactively.
+
+**The composer's `@` in a Work thread.** Typing `@` at the start of a word opens a
+list over the box on the same glass as the box, its own shape: up to four and a half
+rows show and the rest scroll. A row is the kind's glyph in the glyph column, the
+thing's name in the title step (two lines at most), and its fact and time in the meta
+step under it; the whole row is the 44 pt press. Loading… with a small spinner before
+the first answer, No Matches when nothing does, and one quiet line for what could not
+be searched. The list appears and leaves with no motion (a key opens and closes it),
+and its rows never empty under the typing: the last answer stays, cut to what still
+matches. A tap takes the `@words` out of the box and puts the chip over the field:
+the chips sit in one row above the box, each its glyph and name on the fill at the
+row radius with its Remove, arriving on `appear`; a chip alone sends. A file, held
+act or person row dragged onto the box is the same chip. The sent bubble shows the
+chips over his words, as the box showed them.
 
 **The project's draft.** A project keeps one remembered draft, the
 desktop's new-chat screen (lib/projectDrafts.ts), and a workspace's loose
@@ -2312,25 +2380,32 @@ child's.
 
 ## Work on the phone
 
-The approved pages are `.temp-code/prototypes/work-workspaces-2/phone-nav.html`
-(one Home with two headings) and `phone-outbox.html` (the Outbox as Home's
-first row, Away's end as one notice and one list). The owner's rule: the
-phone does everything the desktop does. What milestone 46 built:
+Work has its own tab since 2026-11-24 (the plan "All of Work on the iPhone",
+its prototypes under `.temp-code/prototypes/work-ios/`; "Information
+architecture" above has the tab's rules). The pages approved before it are
+`.temp-code/prototypes/work-workspaces-2/phone-nav.html` (one Home with two
+headings, which the tab replaced) and `phone-outbox.html` (the Outbox's list,
+Away's end as one notice and one list). The owner's rule: the phone does
+everything the desktop does. Its words follow the desktop's: a read that
+failed offers "Try Again" on every Work screen, never "Retry"; a held item
+put away "will not be sent"; a field's limit is said only near it. What
+milestone 46 built, where it lives now:
 
-- **Home.** While any host has Work on, the **Outbox** row leads Home:
-  the `paperplane` glyph in the 28 pt mark slot, "Outbox", and the waiting
-  count as a plain stamp. Held is not Needs you: the count is never amber
-  and no Outbox surface takes the warning wash or an orange dot. **Work
-  Chats** follows Chats. The Work workspaces sit under a "Work" section
-  header after the code workspaces, each led by its **sector's dot** (8 pt)
-  in the mark slot, never a tile. With Work off on every host, Home is
-  exactly what it was.
+- **The Work list.** The **Outbox** row leads the Work list: the `paperplane`
+  glyph in the 28 pt mark slot, "Outbox", and the waiting count as a plain
+  stamp (`WorkPlaceRow`). Held is not Needs you: the count is never amber
+  and no Outbox surface takes the warning wash or an orange dot. The Work
+  workspaces sit under a "Jobs" section header, each led by its **sector's
+  dot** (8 pt) in the mark slot, never a tile; **Work Chats** and the Digest
+  follow. Home has no row of Work's, and with Work off on every host there is
+  no Work tab.
 - **Sector hues** (`Tint.sector`, Work/WorkStyles.swift): cosmic, hypixel,
   purdue, ref, unify, life, light and dark, from the prototype kit's oklch
   values. Used only for a Work workspace's dot, an Outbox band's dot and the
   held detail's place line.
-- **The Outbox** is a pushed list (the sidebar in the split poses) in
-  Outbox 2's order (prototype A, `.temp-code/prototypes/work-outbox-2/phone.html`):
+- **The Outbox** is a place of the Work tab, a pushed list (the sidebar in
+  the split poses) in Outbox 2's order (prototype A,
+  `.temp-code/prototypes/work-outbox-2/phone.html`):
   **Asked in threads** (a thread's open request, one row each: a
   `checklist` glyph, its head "Send 10 mails to 10 people", the thread's
   title under it, the time; the row opens the request sheet), **Not sent**
@@ -2349,25 +2424,76 @@ phone does everything the desktop does. What milestone 46 built:
   "Sending", "Changed" (the thread rewrote it), else when it was held. A
   failed send carries the destructive dot and its reason as the meta line.
   Swipe trailing and the context menu offer Send (Send Again) and Discard
-  on what waits on a plain press. Empty: "Nothing Held". The count on Home
-  and the host's `waiting` are one rule, `OutboxModel.needsHim`, the shared
-  `needsHim` (held, live, failed, and out of date until put away; never
-  sending or scheduled), held to the desktop's fixture in
-  OutboxWaitingTests.
+  on what waits on a plain press, for a key that may press them. On the
+  open Duo the first held item fills an empty detail, in the order the
+  sections draw (a request is never picked). Empty: "Nothing Held". Every
+  Outbox count on the phone (the Work list's Outbox row, Today's line) is
+  one function, `OutboxModel.waitingCount`: the shared `needsHim` (held,
+  live, failed, and out of date until put away; never sending or
+  scheduled, held to the desktop's fixture in OutboxWaitingTests), less
+  what a Send holds back right now; Today's `needsHim` calls it.
+- **The next item.** On the open Duo the detail keeps the item he opened,
+  through its Send's five seconds (its bar steps away while the capsule
+  offers Undo). When the item leaves the list (sent once its wait ends,
+  discarded, scheduled), the detail takes the next row after it that waits
+  on him and that he saw in the list, else the nearest before it, else it
+  clears; a row that arrived since is never the next
+  (`OutboxModel.pickOrder` into `ShellSelection.decide`). At compact width
+  the detail returns to the list.
+- **Select.** "Select" sits in the list's bar for a key that may send and
+  decide, while a row takes a tick; the title reads "3 Selected" ("Select
+  Items" before the first) and Done ends it. Each row that waits on a
+  plain press shows a tick (`checkmark.circle.fill` in the tint, else the
+  empty ring) in its mark column; a failed send, an out-of-date item, a
+  live act, a computer act and one whose last send may have gone take none
+  and step back (`OutboxModel.tickable`). A section's heading carries
+  "Select All" (or "Deselect All") at its trailing edge, never broken; at
+  accessibility sizes the heading wraps and the word sits under it. A
+  press on many says an item the host could not confirm as "May have
+  gone" in its row and in the sum, never "not sent". On a phone the
+  foot is Clear and "Send 3…", each a glass capsule over the scroll edge (plain
+  words there read over the row behind), "Send 3…" the prominent one, which opens the summary as a sheet
+  (`tcSheet(.editor)`, Close at the top); on the open Duo the summary is
+  the detail column itself.
+- **The summary** says in one sentence what will go, in the kinds' own
+  words ("Send 2 mails to 2 people and post 1 message", master's
+  `summaryHead`), then a row per item with its tick and a chevron that
+  opens the item to read (no bar there). A LifeOS reply that quotes its
+  mail, read whole when ticked, says "Open to send" and stays out of Send.
+  Its foot: Discard N as plain destructive text at the leading edge, Send
+  N as the prominent capsule. Send asks the owner's check once for the
+  group (bound to every item and the revision he saw of each), then waits
+  the same five seconds with Undo as one press ("Sending 2 mails to 2
+  people and posting 1 message"), then each host hears one
+  `work.outbox.decide {items, via: 'phone', many: true}` (`GroupPress`);
+  a group never carries a grant or `again`. Discard asks once, "Discard
+  3?", with "Why, for the thread", then goes at once as one item's Discard
+  does. The capsule then says the sum ("Sent 2, 1 not sent", "Discarded
+  3"); an item that did not go stays in the list with the host's reason as
+  its meta line, in the destructive ink, until his next press on it.
+- **Kept rows.** Each answer of a host's list writes its waiting rows to
+  the phone's Work cache (`WorkCache.waiting`: the act, what it is about,
+  its place, its time; never the payload; `OutboxKeeping`). On a cold
+  launch the list paints them, one band per place, and the count counts
+  them, until that host answers on this link. A kept row opens a read view
+  (its words and a spinner, or the read's error with Retry) and has no
+  swipe, menu or tick; the detail's bar waits for the item read fresh on
+  this link (`work.outbox.get`).
 - **Inks.** The Outbox's bands, held detail and stamps draw meta and stamps in
   `label` for the 4.5:1 floor, ordered by size and weight: the hierarchical
   secondary and tertiary measure 3.4:1 and 1.7:1 on white, less in a list's
   section header. This covers the band's name and count, the held detail's place,
-  time, field labels, addresses and state line, the Home row's count and each
+  time, field labels, addresses and state line, the Work list row's count and each
   row's time. The rest of the phone keeps the steps' own inks
   (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
   line (dot, workspace, "from <thread>" or "from a routine", time), the
   list row's act as the title (title3 semibold; one name, `OutboxModel.title`),
-  a timed send's "Scheduled for Wed 8:00 AM" with the `clock` glyph, then
-  the host's one sentence of what the press does that its fields do not say
-  (`effect`, subheadline in `label`; a timed send's is "Sends as you.",
-  its time leading the item), then the notes that apply, one
+  a timed send's "Scheduled for Wed 8:00 AM" with the `clock` glyph as its
+  one line (`OutboxModel.scheduledLine`; its From says as whom), else the
+  host's one sentence of what the press does that its fields do not say
+  (`effect`, subheadline in `label`; `effectLine` gives none for a timed
+  send, so no sentence under its time can say the opposite), then the notes that apply, one
   line each in meta with a glyph in a 16 pt column: "Not sent. <why>" (the
   destructive dot, its words in the destructive ink: the only colour),
   "Out of date. <why>" (`clock.arrow.circlepath`), "The thread rewrote this
@@ -2388,7 +2514,11 @@ phone does everything the desktop does. What milestone 46 built:
   alert, "Discard this?", with one optional field, "Why, for the thread":
   the thread hears it was discarded, with his line when he wrote one. Edit
   is a form sheet: each field a person reads and the message.
-- **After Send** the detail returns to the list and the item leaves it; an
+- **After Send** the detail returns to the list (on the open Duo it stays
+  until the item leaves; see The next item) and the item leaves it. An item
+  opened from anywhere but the Outbox's list (Today's row, its pick on the
+  open Duo, a notice) brings the Outbox's list up with its countdown, over
+  where he was, so Back returns there; an
   **undo capsule** (glass, 44 pt, one line "Sending to …" and Undo) floats
   over the list's foot for five seconds, entering and leaving from the
   same edge (opacity alone with Reduce Motion). The host hears nothing
@@ -2420,14 +2550,16 @@ phone does everything the desktop does. What milestone 46 built:
   exactly the ticked receipts and waits the phone's five seconds: the foot
   becomes the undo capsule naming what goes ("Sending 2 mails to 2
   people", Undo), each ticked row keeps its own words (its act, and when a
-  later one goes), and the rows left out dim. Closing the sheet or leaving the app never sends it early:
-  the frozen press waits out its five seconds (`RequestPresses`), and a
-  sheet opened again shows it waiting, then its answer. Then each row's result lands in its line (a muted
+  later one goes), and the rows left out dim. Closing the sheet never sends it early: the frozen press waits
+  out its five seconds (`RequestPresses`), and a sheet opened again shows it waiting, then its answer. Leaving
+  the app or losing the link cancels it, as every phone Send, and the line under the head says so ("Not sent:
+  TempCode left the screen"). A press whose answer was lost keeps Send busy and the line says "Checking…" until
+  the request is read back; Send keeps its name for VoiceOver, its value "Sending" while the spinner shows. Then each row's result lands in its line (a muted
   check, with "Queued in LifeOS", "Posted", "Discarded" or "Scheduled" only
   where the word adds to the check, or the destructive dot and the reason),
   a row the press did not take reads "Left out" at full ink, and the foot
   is Done. Not Now declines
-  and closes. A key without approve reads why and cannot press. Nothing
+  and closes. A key that may not answer it reads why and cannot press. Nothing
   here wears the warning colour: held is not Needs you.
 - **The thread's card**: a Work thread's `outbox_request` call (its
   result's `{outboxRequest: {id, host}}`) is drawn as its card alone, in
@@ -2440,9 +2572,28 @@ phone does everything the desktop does. What milestone 46 built:
   Answered, declined or run out, it is one muted line ("Sent 8, 1 not
   sent", "Not now. …"). A group holding an open request stays open, as one
   holding a held call does.
+- **The check before an outward press.** Send, Send Later, Send Now, Send
+  and stop holding, Discard (after its prompt), Cancel Send, a request's
+  Send, Edit's Save, Undo of a result, a guest link's Create and New
+  Address, and a held mail's Send ask Touch ID, Face ID or the passcode
+  through the system's own sheet, once per attempt, before the five
+  seconds start; a pass covers a minute while TempCode stays in front.
+  Nothing of ours is drawn for it: no alert, no spinner of our own. A
+  cancel says "Nothing was sent." in the press's own line.
+- **The bar's lines.** Each refusal is one line where the press was, never
+  an alert: the list's capsule, the held detail's
+  state line, the line under a transcript's opened act, the request sheet's
+  line under its head, the Edit sheet's and
+  the guest link sheet's error line, the composer's own error. With no
+  link, Send is still drawn (the key may press) and a press says "Not
+  connected to <host>" at once, asking nothing. A press whose answer was
+  lost reads "Checking…" in the row's meta line, in the detail's state line
+  (no bottom bar until it is read back) and as the transcript line's lead
+  word, then "Changed" or "No longer waits" after the read-back; "May have
+  gone" keeps the item's Check Sent first and Send Again.
 - **The digest** (docs/agents/work-digest.md "The phone") is a pushed list
-  (the sidebar in the split poses), reached from a **Digest** row on Home
-  after the Outbox (the `newspaper` glyph, no count) and from the day's
+  (the sidebar in the split poses), reached from a **Digest** row at the Work
+  list's foot (the `newspaper` glyph, no count) and from the day's
   notice. Sections by day, newest first, under the Outbox's gray band step:
   "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
   job's sector dot in the mark column (a muted ring for a row about no one
@@ -2453,7 +2604,8 @@ phone does everything the desktop does. What milestone 46 built:
   day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is one line, "Nothing Since Oct 24"; VoiceOver says a row's job before its title; a host that did not answer is
-  one meta line at the foot. Settings → Work has its Digest section after the
+  one meta line at the foot. A cold open with a host away draws the days the phone kept of it (its newest fourteen
+  and the rows each drew), as they were: nothing is marked seen from them until the host answers. Settings → Work has its Digest section after the
   group with the Work switch and LifeOS, only while some host has Work on:
   Time, then Held items, Routine results, Messages and mail and Meetings, each
   a menu of three levels. The time's wheel keeps his latest pick: a slow
@@ -2461,30 +2613,38 @@ phone does everything the desktop does. What milestone 46 built:
 - **A held notice** (the host's `needs_you` with `tc.held`) opens its item
   over the Outbox, and a request's notice opens its sheet over the Outbox.
   Its category is Open alone: nothing sends from the lock screen.
-- **Away** is a check item ("Away", `moon`) in the host menu beside the
-  fleet switches. When it ends: one note at the top of Home ("Away ended.
+- **Away** is two check items in the host menu beside the fleet switches:
+  **Away for Code** (`house`) and **Away for Work** (`briefcase`), each with
+  the decisions its threads made this stretch as the item's second line
+  ("3 decisions", none while there are none). A host one release behind
+  keeps one item, "Away" (`moon`), for both. When the last kind ends: one note at the top of Home ("Away ended.
   7 held, 4 decided without you" and Review), and a notification "Away
   ended" when the end reaches the app while it is not in front (a
   suspended app hears nothing; the note is then the notice). Review is a document sheet "While
   You Were Away": the span, then Held (each with its verb), Failed,
   Decided without you (a thread and its count, which opens it), Written on
   your files (Undo where the write has a way back), each left out when
-  empty.
+  empty, and one footer line: "Away never sends a held item."
 - **Settings → Work** is a row under Hosts while any host has Work: per
   host, the switch, LifeOS's state in words, Grants (each with Remove, no
-  confirm), and each add-on's tools with Runs, Held or Off.
+  confirm), and each add-on's tools with Runs, Held or Off. The first
+  host's group also holds the phone's own switch, "Require Face ID to Send"
+  (Touch ID, Optic ID or Passcode as the phone has), on by default, right
+  under Work; turning it off asks the check once. With no passcode set its
+  footer says "Set a passcode on this iPhone to send from here."
 - **A Work workspace's screen** is the workspace screen; a host that
   cannot reach LifeOS says so once above the threads ("Sign in to LifeOS
   on <host> …", or "Can’t reach LifeOS. Retrying…").
 
 - **A grant** is made from a held item's Send: a press and hold on Send
   opens its menu, "Send and stop holding" › the grant's name (a mail's
-  account and recipients, an add-on call's server and tool); the grant is
-  made, then the item's Send waits its five seconds. Only a key with admin
-  sees the menu; Settings → Work lists the grant with Remove.
+  account and recipients, an add-on call's server and tool); the Send waits
+  its five seconds with the grant riding it, and the grant is made only when
+  they end, just before the send, so Undo takes back both. Only a key with
+  admin sees the menu; Settings → Work lists the grant with Remove.
 - **New Work workspace**: the "Work" header's + opens a form sheet (Name,
   Sector with its dot, Host when several have Work); the workspace opens
-  when it lands. **New Work Chat**: Work Chats' compose button opens a
+  when it lands. **New Chat**: Work Chats' compose button opens a
   sheet with the first message and Start; the thread opens.
 - **The held line in a thread**: under a Work thread's call the host held,
   one muted line, the Outbox glyph in the glyph column, "Held" and the act.
@@ -2518,6 +2678,16 @@ What milestone 47 added (approved pages `phone-life.html` and
   at half strength under the one status line.
 - **Mail, Tasks and Agenda are LifeOS's own screens** (work-kit's
   LifeKitUI), narrowed to the workspace's sector, so no sector dot shows.
+  A job's page shows that job's rows alone, never another sector's.
+- **Tasks and Agenda for every job** are places of the Work tab: the same
+  LifeKitUI screen, in the detail, over every job's sector at once, each row
+  with its sector's dot, and the job filter in the bar (All Jobs, then each
+  job with its dot) narrowing it to one. The open Duo gives it the whole
+  width, the sidebar put away, so LifeKitUI shows its two pages. Where no
+  host signs the whole session the place shows one job at a time and the
+  filter has no All Jobs; with nothing that can read LifeOS, one line says
+  why ("No computer that holds a job is online."). Agenda's rows carry the
+  host's marks: when to leave, and a clash in the warning ink under the place.
   They keep LifeOS's type ladder (body and subheadline), beside the app's
   15/13/11 list ladder, as the approved page draws them. Their sheets are
   LifeOS's. Send in their composer goes to the host (the hold, for a
@@ -2543,15 +2713,28 @@ What milestone 47 added (approved pages `phone-life.html` and
   words, Cancel and Start. Nothing runs until Start; the thread opens.
 - **Item | Chat**: a Work thread with an open item is two segments, the
   item's name (cut to fit) and Chat. Under the bar one row holds the
-  item's More (Make a Guest Link for a document or sheet, Close); with
-  several items the row leads with the shown one's name as a menu to
-  switch. One item's name shows once, in the segment.
+  item's More (Share… for a document or sheet, Close); with
+  several items a glyph beside More opens the items by name, the shown
+  one ticked, and under them Move Up and Move Down for the shown one (the
+  thread's order, `work.canvas.reorder`; off at either end). One item's
+  name shows once, in the segment.
 - **The hosted editor**: a LifeOS document or sheet loads `/w/open` in a
-  web view at full width with no inset; the page draws its own loading
-  and its own review. It never raises the keyboard before his first
-  touch. Its failure is the system's unavailable view, "This page cannot
+  web view at full width with no inset, in the native frame (M3c): the
+  address asks `chrome=none`, so the page draws no title or role bar and the
+  app's bar is the only heading. The paper's shape and its determinate bar
+  show at once; the web view, made warm beforehand (`HostedWebPool`), fades
+  in over it on `Motion.base` when the page says it has drawn (a page from
+  before the bridge is shown two seconds after it loads). It never raises
+  the keyboard before his first touch, and takes no touch while hidden.
+  While he types, a format row sits above the keyboard on the system's bar
+  material: the line's style as a menu of the styles the page offers, then
+  Bold and Italic, then the bulleted, numbered and check lists, each a 44 pt
+  glyph on the selected fill while the caret's words have it. Undo and Redo
+  lead More, only while there is something to undo or redo, set apart by a
+  divider; Find… opens the system's find bar, whose count and steps the page
+  answers. Its failure is the system's unavailable view, "This page cannot
   be reached right now", with Try Again. The edit menu over a selection
-  leads with Ask.
+  leads with Ask, then Comment for a document.
 - **Native kinds**: a PDF in the system's viewer with the page capsule
   ("6 of 14", glass) at its foot and Ask at its top corner; a deck's
   render with the filmstrip under it and, while changes wait, the review
@@ -2605,7 +2788,7 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   medium; it opens the thread) over one meta line, what it is doing (or
   "You are driving") and where it runs. No buttons on a tile: Take Over,
   Hand Back and Stop are on its full screen. With nothing driven the list
-  says "Nothing Is Being Driven".
+  says "No Computer in Use".
 - **Ask** from an item is a form sheet: the selection as its chip, his
   words, Send; then Chat shows.
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
@@ -2618,17 +2801,30 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   Resume.
 - **Write in My Voice** is the first row of the house rules page.
 
-The voice note (capture from anywhere, docs/agents/work-capture.md "The
+Capture (capture from anywhere, docs/agents/work-capture.md "The
 phone"):
 
-- **The way in** is a microphone (`mic`) in Home's toolbar, before Settings,
-  while any host has Work on. It opens a sheet that fills the height (the
-  editor kind), "Voice Note": the words
-  (a field he can edit, "Note"), then Sector (Unsorted with the quiet dot, or
-  a sector with its dot) and Start Thread, then the reason a save failed as
-  the section's footer in destructive text. Cancel keeps the draft; Save is
-  the one confirm, a spinner while it goes.
-- **The hold control** sits alone in the sheet's bottom bar: a 72 pt circle
+- **The way in** is the `plus` ("Capture") in the Work list's bar, before
+  Work Settings, and in Today's bar, while some host's key may file a note,
+  take a receipt or upload; and the "Capture" and "Voice Note" App Shortcuts
+  and controls (the Action button, Control Center, the Lock Screen), which
+  open the same sheet over whatever tab shows. It fills the height (the
+  editor kind), "Capture": the words (a field he can edit, "Note", focused
+  when "Capture" opened it, the keyboard down for "Voice Note"), then Sector
+  (Unsorted with the quiet dot, or a sector with its dot) and Start Thread,
+  then the reason a save failed as the section's footer in destructive
+  text. Once he adds any, the photos and files stand in a section of their
+  own (a 36 pt picture at the row radius or the `doc` glyph, the name
+  cut in the middle, the size as a stamp; swipe to remove), with Job (a
+  picker of the jobs a file can go to, each with its dot) when there is more
+  than one, and the footer saying where they went ("2 files go to Purdue.")
+  or what could not be read. Last, one section of plain rows: Scan Receipt
+  (`doc.viewfinder`), Add Photos (`photo.on.rectangle`, the system's photo
+  picker) and Add Files (`doc`, the system's file picker). Cancel keeps the
+  draft; Save is the one confirm, a spinner while it goes, the success
+  haptic when a note is filed or a file is queued.
+- **The hold control** closes the form, in its flow under the last rows (never floating over them, so the Job row
+  stays whole at a large text size): a 72 pt circle
   on the fill step with `mic.fill`, one line under it in meta ("Hold to
   Talk", the clock while it listens, a spinner while the last words land,
   or why it cannot listen). Held, it grows to 1.12 on the layout spring;
@@ -2706,18 +2902,32 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):,
   while one is held, and Home's press opens that section again until the
   scan is kept or let go.
 
-- **The way in** is a Files row on a Work workspace's screen, after
-  Projects and before Routines, on the Home row grid (`folder`). The tab bar
-  stays Home, Inbox, Search.
-- **Files** is a plain list: Recent and Starred, then Places under a
-  "Places" header, then From Mail, each only when the host lists it (a
-  remote key is told only what it could name; From Mail arrives with F4). A
+- **The way in** is Files on the Work list, a place for every job at once
+  (`FilesPlaceScreen`, the sidebar column). A job's page has a Files row
+  too, after Projects and before Routines (`folder`): the same place
+  narrowed to that job.
+- **Files** is a plain list, one band a job, the job's name and its
+  sector's dot over its band while more than one job shows; the bar's job
+  filter narrows it to one (All Jobs, then each job). A band holds Recent
+  and Starred, the job's places, the folders of his other computers the
+  job's host reaches for the phone (`desktopcomputer`, the computer's name
+  as the stamp; one that did not answer is its name at half strength with
+  "Not reachable", a press asks again), From Mail, then Trash, each only
+  when the host lists it (a remote key is told only what it could name). A
   place two computers hold is one row. A row is the house row: the glyph
-  in the 28 pt mark slot, the name, one fact as the stamp (a place's state
-  while it does not answer, its team, a lens's count). A place that does
-  not answer sits at half strength.
-- **A place, a folder, a lens** pushes a plain list of the host's rows in
-  its order, a page at a time (the next page as the last row shows, a
+  in the 28 pt mark slot, the name, one fact as the stamp in the secondary
+  label ink (a place's state while it does not answer, its team, a lens's
+  count). A place that does not answer has its glyph and name at half
+  strength; its state stays legible. The bar holds Go To
+  (`arrow.forward.circle`, ⌘P), Saved Searches while the host has any, and
+  New while one job shows.
+- **A place, a folder, a lens** pushes a plain list in the sidebar column
+  (`Route.folder`: a relaunch comes back on it; a file picked opens in the
+  detail, `Route.filesFile`, and its row wears the selected fill on the open
+  Duo). On a cold launch the list paints the names kept from its last read
+  (`FolderKept`; a kept file row opens nothing until the folder answers,
+  and a read that fails over kept rows says so in one line above them).
+  The host's rows come in its order, a page at a time (the next page as the last row shows, a
   spinner row only while one is out; a next page that fails keeps the rows
   and ends the list with the host's sentence and Try Again). Each row: the kind's glyph, the name (cut
   in the middle), one fact: what is happening to it ("Esports Staff is in
@@ -2733,18 +2943,49 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):,
   any other failed read says "Can’t Open <name>" with the reason and Try
   Again. The reason is the host's sentence alone, never the wire's code
   word ("internal: …", `FilesRules.sentence`). Pull to refresh.
-- **Presses**: the context menu holds Star (Unstar), Rename… and Delete;
-  swipe leading stars, swipe trailing deletes (never a full swipe). Each is
+- **Presses**: the context menu holds Star (Unstar), Rename…, Move…,
+  Copy… and, under a divider, Delete; swipe leading stars, swipe trailing
+  deletes (never a full swipe). A Trash row holds Put Back alone. Each is
   offered only where `FilesRules.offers` says the place does it for this
   key (a key without operate sees none; a shared place asks approve), and
   a refusal the host still gives shows in an alert as the host words it.
-  Rename is the system alert with one field. Delete moves to Trash at once
-  and puts the Outbox's undo capsule over the list's foot for five seconds
-  ("Deleted Budget.xlsx", Undo puts it back).
-- **Search** is the system field on every list. It filters the rows the
-  phone already holds at once (every word, case and accents ignored), then
-  shows the host's search across the workspace once it answers (F4); a
-  host that cannot search leaves the first. Nothing on screen says which.
+  A computer reached through the job's host is read here and changed on
+  that computer: its rows hold none of these. Rename is the system alert
+  with one field. Delete moves to Trash at once and puts the Outbox's undo
+  capsule over the list's foot for five seconds ("Deleted Budget.xlsx",
+  Undo puts it back); where others can open the place it asks first, the
+  desktop's words ("Delete Budget.xlsx for everyone?" over who can open
+  it; a drive with no bin "Delete Roster.xlsx for good?"), as a
+  confirmation dialog with Delete in the destructive role.
+- **Move… and Copy…** open a sheet at half height: the job's places, then
+  their folders a level at a time, and the folder shown takes the bar's
+  prominent glass button (Move Here, Copy Here). Where the change cannot go
+  the button gives way to the grammar's sentence ("Teams files stay in
+  Teams."). A move or copy into a place others can open asks its one
+  question once the sheet goes ("Move to Esports Staff?" over "Everyone in
+  that team can open it."); his yes goes with the change. A file row
+  drags onto a folder row in the same job (the open Duo, a pointer): the
+  same Move, asked the same way. A done change gives a light impact.
+- **The grid**: where the host draws pictures (not a computer reached
+  through it, not the Windows VM) the bar's overflow holds View as Icons:
+  tiles of the host's small pictures (`work.files.thumbs`, asked forty at
+  a time, once a run) with the kind's glyph until one comes or where none
+  does, the name under it in two lines. The choice is kept.
+- **A file of another computer** opens as the copy its job's host makes:
+  its row and the page's loading bar follow the bytes (`work.files` push's
+  `opening`), then the reader as for any file.
+- **Go To** is a sheet with the search field focused: as he types, the
+  names each job's host has seen (`work.files.names`, recents first with
+  no words); Return takes the first. A folder pushes, a file opens.
+- **Search** is the system field on every list. On Files it filters the
+  rows the phone already holds at once (every word, case and accents
+  ignored), then takes each job's host's search as it answers, newest
+  change first, each row led by its job's dot while several jobs show
+  (`FilesFound`); the next keystroke cancels what is still out, and an
+  answer for older words never lands. A job whose host could not search is
+  named in one line. A folder's field filters its own rows. A saved search
+  (made on his computer) runs from Saved Searches into the same list, its
+  name as the header with a clear button.
 - **New** (+ in the bar, where the place makes or takes uploads) is a form
   sheet, "New": the kind as one segmented control (Document, Sheet,
   Folder), the name field with the kind's "Untitled …" as its placeholder,
@@ -2791,8 +3032,256 @@ Not on the phone, and why: LifeOS's project cards on a Work workspace's
 screen (no wire lists them yet); the recording player of a meeting; a Word
 or an Excel file in the hosted editor (the desktop's own editor saves those;
 the phone says "Edit it on your computer" and still shows its comments and
-changes); Files' Move and Copy, Trash and Empty Trash (the desktop's alone
-for now).
+changes); Files' Empty Trash, tabs, the columns view and making a saved
+search (the desktop's alone for now); a change to a computer's files
+reached through the job's host (made on that computer); Add to Thread and
+the drop into a thread's box (M4a).
+
+### Today
+
+Today is the Work tab's first place (prototype `.temp-code/prototypes/work-ios/today.html`): the first row of
+the Work list, with the day on its second line: the next meeting with its time ("Budget sync at 2:00 PM"), else
+what is due ("Book the ballroom due at 3:00 PM", "3 due, 1 late"), else none, and never the Outbox's count, which its
+own row says one row down (`TodayModel.workListLine`), and where the tab opens at the day's first entry. One list for every job, drawn on
+`WorkPlaceScreen` (Work/Today/TodayScreen.swift):
+
+- **Order and words** are the window's, by the Swift port (`Work/Today` in the client package): Waiting on you,
+  Meetings, Due, Waiting on others, Messages, Owed, then Also (the review's cue and the digest's rows). A section
+  that has not answered draws three redacted rows in its rows' shape; an empty one says so in one muted line;
+  rows that are over sit muted and folded at the section's head ("2 earlier"); past the fold, "3 more". No count
+  beside a heading: the rows and the Work list's line say it.
+- **The row** is the house row: the lead in the mark slot (a task's tick, else the job's sector dot), the title
+  and one line under it, the trailing fact with its live line under it ("2:00 PM" over "in 25 min", "Leave 5:10
+  PM", "Now"). Late is said in the warning ink, a failed or clashing line in the destructive ink. VoiceOver reads
+  the job first.
+- **A press** opens the row's thing (`row.route`); a row whose place the phone has not built is not a button.
+  On the open Duo the list picks its first held row for the empty detail.
+- **The verbs** are swipe actions and the context menu, at most two, drawn only on a fresh row and for a key that
+  may press them: the tick (`work.tasks.done`, Undo reopens it in LifeOS), Tomorrow (LifeKit's `tasks:snooze`,
+  Undo `tasks:unsnooze`) and Nudge (`work.mail.nudge`: a thread that drafts the follow-up opens; nothing goes
+  until he sends). None sends to anyone, so none asks for the owner's check. Each answer is the shared undo
+  capsule; its Undo shows the row again only once LifeOS took it back, else it says "Couldn’t undo". A ticked row leaves on `Motion.rowLeave`; nothing animates on the first paint.
+- **States.** The LifeOS sections give way to one line when no host can read LifeOS ("Not signed in to LifeOS on
+  Box"; Retry only where LifeOS was silent), or
+  when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
+  press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
+  that are offline, a Work host not yet linked this launch among them, are named once at the foot. All clear:
+  "All Clear" over "Nothing needs you today." or what tomorrow starts with.
+- **Large text.** At accessibility sizes a row's title and line wrap to three lines and its time goes under them;
+  VoiceOver hears "late" and "over", which the ink alone tells the eye.
+- **Speed.** The first frame paints yesterday's rows from the disk (`WorkCacheStore`), each opening its thing to
+  read until it is fresh; the fresh page lands as a diff that keeps every unchanged row as the value it was. The
+  hosts' lists are read once and again on their pushes and at midnight; LifeOS's own queries live only while
+  Today is on screen. The minute's words are said when Today comes on screen and on each return to the
+  foreground, then once a minute, at the minute. A kept row carries no live line, and a meeting or due row kept
+  on another day is not painted.
+
+### Messages
+
+Messages is a place of the Work tab, after Outbox in the Work list: every job's chat (Slack, Discord, iMessage,
+Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents/work-messages.md "The phone").
+
+- **The list** (Work/Messages/MessagesScreen.swift) sits in the sidebar column on `WorkPlaceScreen`, with the
+  job filter in the bar. One row a conversation, unread first, then the newest: the job's dot in the mark slot
+  (All Jobs only), the route's glyph in the glyph slot (`number` for Slack, `gamecontroller` Discord, `message`
+  iMessage, `person.3` Teams; no brand marks), the name (semibold while unread), the last words under it ("You:"
+  for his own, a group's writer by first name) and the time as the stamp, in the tint while unread. No count, no
+  badge: unread is the weight and the stamp's ink. A leading swipe marks it read or unread (LifeOS's own mark).
+  Empty: "No Messages". The reads are LifeKit's live `chats:list`, one a sector, on the whole LifeOS session
+  (`LifeReach`), else the picked job's; held only while the list is on screen.
+- **A conversation** (`Route.chat`, Work/Messages/ChatScreen.swift) opens in the detail, over Messages' list (Back
+  from a notice's conversation is the list). On the open Duo the list picks its first unread for an empty detail.
+  The title is the conversation's name with its fact under it ("Slack, CosmicGames"); More holds Mark Unread and
+  Open in <app>. The messages run oldest to newest and open at the foot; a run (one writer, under five minutes'
+  gap) shows its writer and time once. A Slack reply shows what it answers in one muted line. Opening it marks
+  it read when someone wrote since he last saw it.
+- **His reply** is the house's composer box at the foot (`ComposerBox`, no `+`). Send is the composer's own
+  button; it goes through the host only by his press: no link says "Not connected to <host>" at once, the owner's
+  check runs (`PressGates`), then the undo capsule waits five seconds ("Sending to Dana Lee", Undo) in which the
+  host hears nothing; going to the background or losing the link puts the words back and says why. Then one
+  `work.messages.send` with a fresh attempt key, written to `PressLedger` first. LifeOS's own row then shows
+  under his words: "Sending" with Undo inside LifeOS's undo time, "Not sent." with its reason and Retry (the
+  owner's check again). A refusal puts his words back before what he typed since. A lost answer reads
+  "Checking…" and is read back by the key on the next link (`work.messages.attempt`, which sends nothing): sent,
+  never got (the words come back to send again by his press), refused, or "May have gone", whose words wait aside
+  until Use Words.
+- **Copy where nothing sends.** A Discord or Teams conversation, or one LifeOS says it cannot send to, puts
+  LifeOS's reason over the box in one quiet line and makes the button Copy.
+- **A thread's draft** shows over the box in one quiet line with its first words: a held reply ("A thread's draft
+  waits in the Outbox") with Open, which opens its Outbox item, where it is sent; a copy-only draft ("Draft from
+  <thread>") with Copy, which leaves the conversation once copied.
+- **A file** under its message: its name in the tint when a reader kind shows it (PDF, document, sheet, deck,
+  picture, video, recording); a press seats it in the job's Messages pane on the host and opens it on its own
+  page (`Route.file`). "Coming from LifeOS" with a spinner until LifeOS has it; its failure in the destructive
+  ink.
+- **Today's** Messages rows open their conversation, and Mark read writes LifeOS's mark through LifeKit.
+
+### People
+
+People is a place of the Work tab, after Agenda in the Work list (docs/agents/work-people.md "The phone").
+
+- **The list** (Work/People/PeopleScreen.swift) sits in the sidebar on `WorkPlaceScreen` with the job filter and
+  search. One row a person, each once across jobs, newest contact first, then by name: the job's dot (All Jobs),
+  the name, their first address under it. LifeOS's directory has no role, so the row says none. Search keeps the
+  people every typed word is in, by name or address. Empty: "No People".
+- **A person's page** (`Route.person`, PersonScreen.swift) in the detail: the name as the title, their addresses
+  and numbers as one line, their notes, then a section only for what has something: Mail, Coming Up, Asked for by
+  Them, Waiting on Them, Shared with Them, Past Meetings, Answered. A mail opens in the job's Mail on that thread,
+  a meeting opens its page, a task its sheet, a form the job's forms. A shared item says what the link lets them
+  do and until when; it opens nothing on the phone. Nothing open: one line. The page is asked at once, never
+  waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words, a failed read
+  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person".
+  At accessibility sizes a row's name and address wrap.
+- **The bar** holds Write (LifeKitUI's own composer to their first address; its send is held like every send) and
+  New Thread (the house's sheet with their person chip, in the job).
+
+### A meeting's page
+
+A meeting's page (`Route.prep`, Work/Prep/PrepScreen.swift) opens from Today's meeting rows and their prep mark,
+from a person's meetings and from a prep notice, in the detail. LifeKitUI's Agenda cannot open it: its links name
+no event.
+
+- **The head**: the event's title, and one line under it ("Today, 2:00 to 2:45 PM, RecWell 204, leave 1:30 PM";
+  a place that is only a link is left out; the leave time only while it is ahead). A failed part, or a refresh
+  that failed, is one line with Retry (`PillButton`); a Prepare, Follow Up or filing that failed keeps its reason
+  in that line, with no Retry that would only read the page.
+- **The verb** in the bar is the one where the meeting stands (`PrepRules.verb`, the desktop's `headVerb`):
+  Prepare, Preparing (a spinner, which opens the thread), Add Notes, Follow Up, Following Up, or none. More holds
+  Open Thread, Prepare Again and Add Notes.
+- **The body**: before the meeting the brief leads (its bones while its thread writes), then Agreed, Last time,
+  People, Tasks, Files and Links. After it the outcome leads: the summary, Notes, Decided, To Do, Open Questions,
+  Mail (the follow-up draft, which waits in the Outbox), then the brief under "Brief" and the rest.
+- **Notes** are a field in their own section, kept as he types (500 ms of quiet, and at once when he leaves or the
+  app goes to the background). Another window's newer words are never written over unseen: his stay, a line says
+  so, and Keep Mine saves them.
+- **To Do**: suggested tasks start unticked. Tick All, and "Add 3 Tasks" while any is ticked, sit at the section's
+  foot. A task LifeOS did not take keeps why on its own row; Retry files those again.
+
+### A clash
+
+A clash (`Route.clash`, Work/Clash/ClashScreen.swift) is a sheet on a phone (half height first) and the detail on
+the open Duo. It opens from Today's Resolve and from a clash's tell or notice.
+
+- **The title** says what is wrong: "Two things at once", "23 minutes short", "About 10 minutes short".
+- **Each event** is a section headed by its job's dot and name: its title, its time, its place, then the ways out
+  it allows while it is ahead: Decline and Propose New Time for an invitation. A move and Running late stay on the
+  desktop. Then the drive between them ("38 min drive, 24 mi"; an overlap asks the host for the miles).
+- **This Is Fine** quiets the clash until either event changes; the capsule offers Undo, which takes back the
+  pair it was pressed for even once the host's push has reloaded the page without it, and reads the clash again.
+- **States.** A first read that failed is "Can’t Read This Clash" with Try Again, never "No Longer a Clash", which
+  is said only for a read that worked (the bar says "Clash"). A refresh that failed over a clash on screen is one
+  red line at the top with Retry.
+- **Decline and Propose New Time** open a short form: what it does and who hears, a note, and for a proposal two
+  date pickers filled with the first time the drive allows. Send goes to other people, so it is his press alone:
+  the owner's check, then one `work.clashes.answer` through the press record, at once as the desktop sends. A
+  reply that never came keeps Send off and says to check the calendar.
+
+### Mail
+
+Mail is the Work list's third place: LifeKitUI's own Mail, for every job at once as Tasks and Agenda are (each row
+led by its job's dot, the job filter in the bar, the whole width and its two pages on the open Duo).
+
+- **Waiting on** is one bar item, the hourglass, filled while it shows: the place swaps to LifeKitUI's Waiting on
+  list and back, with no motion, and a fold keeps which one shows. Its rows' Nudge opens the thread that drafts
+  the follow-up; Dismiss has the shared undo capsule. Nudge shows only for a key that may start the thread.
+- **Ask** sits in an open mail's bar (in More on the cover), only for a key that may make a mail chat. It opens
+  the chat about that mail, else a sheet titled Ask with the mail as its chip and the field "Ask about this
+  mail"; Ask stays off until he writes. The chat opens on its own page.
+- **A mail he timed** in Mail: its Outbox item's bar holds Cancel Send at the leading edge, then Reschedule (a
+  menu of the Send later times and Pick a Time…) and Send Now, the one prominent press. Only Send Now asks the
+  owner's check and waits its five seconds; the state line keeps "Scheduled for …" with its clock glyph.
+- **A mail's file** waits in the reader's own loading shape, its bar filling once LifeOS's store says the size,
+  over "Coming from LifeOS"; a refusal is the host's words with Try Again. More adds Save to Workspace before
+  Close; the capsule names the copy it made ("Saved to the workspace as Budget (1).xlsx").
+- **Agenda** draws the host's leave time in the time column and each clash as a line under the place, in the
+  desktop's words ("Overlaps Budget review, 2:30 PM", "23 min short after Staff meeting (Purdue)").
+
+### Review
+
+Review is a place of the Work tab, in the Work list's foot before the Digest: the week across every job, the
+desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). One list on `WorkPlaceScreen`
+(Work/Review/ReviewScreen.swift); a row's thing opens in the detail.
+
+- **The bar** holds the week as its one menu, named "This Week", "Last Week" or "Week of Nov 10": the two
+  newest, then the weeks the hosts kept, then Previous Week and Next Week. The title stays Review.
+- **The head** is one muted line of when it was made ("Made Friday at 4:00 PM"), a host that is off ("The Mac is
+  off. …"), a list read in part, then the red lines (a host that did not answer, a source that feeds more than one
+  section), the first with Retry, as the desktop's head.
+- **Hours**: one row a job, every job listed (the empty one is the news), its sector dot in the mark slot, the
+  name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted), then under it the facts
+  ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"), "Threads ran 2 hr", the week before where
+  it says something, and Money's line ("Money $2,400.00 in, $312.50 out"). The footer says once that calendar
+  time is measured and desk time an estimate.
+- **Shipped**: each job's rows (dot, the thing's own title, what it was: "Sent to Dana Lee"), five a job, then "3
+  more". A row opens its task, mail or held item.
+- **Slipped**: each job's open rows (dot, title, the detail the desktop says), tasks due before the week behind "12
+  older", rows a kept week saw dealt with since behind their own fold, muted and with no presses. The three
+  presses are the desktop's, named for the kind (Done, Nudge, Open, Follow up; Next week; Drop, Stop waiting,
+  Discard, None needed): the leading swipe is the first, the trailing swipe the other two, all three in the
+  context menu and as accessibility actions; never a full swipe. A row whose source did not answer stands as
+  last known with no presses. A press makes the row leave on `Motion.rowLeave` with a light impact and the
+  shared undo capsule; a nudge opens the thread that drafts it. None sends to anyone, so none asks the owner's
+  check.
+- **States**: the first read draws the rows' shape redacted; "Nothing slipped" only where every source answered,
+  else "Not counted". Opening a week tells its hosts he has seen it, so Today's row and the digest's line go.
+
+### Money
+
+Money is a job's own page, a row on the job's page after Projects; it is never a place for every job. It opens
+from that row, Today's Owed rows and a waiting receipt's tell (Work/Money/MoneyScreen.swift).
+
+- **The bar** holds the span as one menu (Month or Year, Previous, Next); the span names the figures' section
+  ("November 2026").
+- **To Confirm** leads while anything waits: the receipt glyph, who it is from (else the file's name), its day,
+  its amount; "Reading" with a spinner while the host reads it, with no press. A press opens the accept sheet
+  (`tcSheet(.editor)`): the picture, then Amount, Date, In or Out, Who, For and Category as read, his to change;
+  Accept stays off until an amount and a day are there. Discard is the trailing swipe and the context menu, with
+  Undo in the capsule.
+- **Owed to You** and **You Owe**: who (or what a cost to be paid back was for), the rest and how long it has been
+  open under it, the amount trailing. Paid is the leading swipe, the context menu and an accessibility action; a
+  row with money both ways has none (it is settled in the sheet on the desktop).
+- **The span**: while a newly picked span is read, its section draws its bones, never the old span's sums under
+  the new name. In, Out and Net as three figures in one row (stacked at accessibility sizes), then the eight newest entries (who, the day and
+  category under it, the amount trailing, money in in the success ink), then "4 more in the ledger".
+- **States**: a fault of the books is one red line at the top in the desktop's words; a job that never had money
+  is one empty state ("Can’t Read Money" for a first read that failed); a read that failed keeps what showed with
+  Retry (`PillButton`). A receipt's picture that does not come drops its slot; the fields stand alone.
+
+### A job's small places
+
+A job's page holds the small places below the views (M5b): Plays and Routines after Files, then Forms. Each is one
+plain list of house rows (the name at the title step, one meta line, one trailing stamp), its first read a spinner,
+empty its `ContentUnavailableView`, a failed read with Try Again; pull reads again. Its presses are the system's
+swipes, context menu and accessibility actions; a press answers with a light impact and one toast line. None is a
+card. Connections and Computers sit in the Work list's foot.
+
+- **Plays**: the name, then "Takes a line of text and a date" in meta. A play the phone can run opens the run sheet
+  (`tcSheet(.form)`): the instructions muted at six lines, the Text field ("Paste or type what it works from") and the
+  Date it takes, Cancel and Run in the bar, Run off until each is there; Run opens the thread it started. A play about
+  a mail, a task, an event or a file opens nothing here.
+- **Routines**: a tap unfolds the last five runs under the routine (the system's disclosure): a check, a spinner
+  while it works, the destructive dot and the cause in its ink when it failed; the outcome and when it fired. A run
+  that started a thread opens it. Run Now is the leading swipe and the context menu; Pause and Resume stay trailing.
+- **Forms**: TempCode's forms, then Microsoft's, each section headed only when both are there ("TempCode",
+  "Microsoft"). The stamp is how it stands ("Open", "Closed, 3 responses", "3 responses, 2 new"). Close is the
+  trailing swipe on a form that takes answers; Reopen on a closed one, only for a key that may, after the owner's
+  check. A Microsoft form that collected opens its **answers** in the detail: each answer under its question (meta
+  over body), the stamp as the header, "Read at 2:10 PM" in the footer, Open in Forms and Close or Reopen in the
+  bar's menu.
+- **Files' New** adds "From a Template" under the kinds where the place makes files: a row a template with its kind's
+  glyph; it pushes its fields, one field a row, and Make writes it into the folder; the toast says what is left to
+  fill.
+- **A dashboard** reads every figure again on a pull; a block whose sheet the phone has opens it on a tap (a LifeOS
+  sheet in the hosted editor, a form's answers), with the press's scale and no other mark.
+- **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks; a
+  row's title, the host's one line under it, its word trailing ("Ready" muted, "Needs you" in the warning ink,
+  "Broken" in the destructive ink, both semibold). A row that does not work offers "Open on <computer>" in its swipe
+  and context menu.
+- **Computers** leads with the Windows VM where a host keeps it: "Windows VM", how it stands ("Asleep", the step while
+  it wakes), its last fault in the destructive ink, and one bordered capsule, Wake or Sleep, a spinner while it moves.
+  The live picture's foot has Copy beside Paste while he drives.
+- **Settings → Work** lists each host's jobs (sector dot, name); one pushes its settings as plain values (Model,
+  Reasoning, Write in My Voice, Windows VM, its computers) and "Open on <computer>".
 
 ## A file on the phone
 
@@ -2801,16 +3290,21 @@ docs/agents/work-phone-files.md), and the same kind's view sits in a Work
 thread's Item segment. The file gets the room; the controls sit where iOS
 puts them.
 
-- **The bar** is the system's, inline: the file's name (without `.tcdoc` or
-  `.tcsheet`, our own two formats). Trailing: Ask (the
+- **The bar** is the system's, inline: the file's own name, centred however
+  many presses sit at its trailing end, cut in the middle so a long one keeps
+  its extension (without `.tcdoc` or `.tcsheet`, our own two formats; a file
+  is named by its path, so the page, Files and the thread's item agree).
+  Trailing: Ask (the
   `bubble.left` item, for a key that may act), then More.
   No second header, no chip beside the name.
 - **More** lists, in this order and only where each can act: Find… (a PDF, a
   deck: the system's find bar), Comments, Review Changes (only while
   something waits), Page Preview (a document) or Print… (a PDF, a deck: they
   already show the pages that print, so Print opens the system's print sheet
-  and there is no second look at the same pages), Share…, Make a Guest Link,
-  then Close under a divider. While Print reads its pages a spinner stands in
+  and there is no second look at the same pages), Share… (a document or a
+  sheet, LifeOS's or a `.tcdoc` or `.tcsheet` file), then Close under a
+  divider. The hosted editor adds Undo and Redo at the top and its own
+  Find…; a deck whose show runs on one of his computers adds Clicker first. While Print reads its pages a spinner stands in
   More's place. The thread's Item segment shows the same rows in its own
   More. A key that may only read has no Ask and no Close.
 - **The review row** sits under the bar only while an agent's changes wait:
@@ -2819,7 +3313,7 @@ puts them.
   none of the changes, so he decides them only where he can read them. A
   deck's row, under a slide that shows the change, keeps Reject, and Accept
   as the one tinted button. A key that may not act reads the count and has no
-  buttons.
+  buttons. The count is in the label ink, medium: it is a press.
 - **The body** runs edge to edge: the hosted editor at full width, PDF
   pages, a deck one slide to a page, a picture, a video on its black matte.
   In a wide column a paper kind keeps the 640 pt reading measure, centred;
@@ -2859,8 +3353,8 @@ puts them.
 words picked under it, a field, Cancel and Send. From a thread the words go to
 that thread. From Files they go to the thread that already holds the file, or
 to a new one in the workspace with the file as its item; either way he lands
-in the thread, which opens on the file with Chat beside it. Nothing is made
-until he sends.
+in the thread on its Chat, where his words are, with the file one swipe back.
+Nothing is made until he sends.
 Where the file will not open in the new thread the sheet stays with his words
 and the host's reason, and Send again finishes the same thread.
 
@@ -2888,7 +3382,8 @@ cannot act reads the threads and has no field.
 row a change. A document's row is the block's old words struck through in
 `Tint.destructiveText` and its new ones underlined in `Tint.successText`
 (`ChangeText`, which the history compare draws with too); a sheet's row leads
-with the cell ("C4", meta semibold, tabular) over the same two lines; a
+with the cell ("C4", meta semibold, tabular; "'Q3 Plan'!C4" where the changes
+reach two tabs) over the same two lines; a
 format or a rule an agent proposed on a sheet is its words alone, drawn as a
 document's added words ("Bold, yellow fill on B2:B9"). The
 agent's reason heads the cells it changed together, once, as a group header;
@@ -2905,6 +3400,49 @@ the host found changed since the agent saw it says so the same way from the
 first read and has no Accept swipe; with only such rows left, Accept All is
 off. A failed read is the system's unavailable view with the host's words and
 Try Again.
+
+**Highlights, notes and fields** (a PDF): his highlights are a neutral wash of
+the paper's ink over each line, with the system's note glyph at the first
+line's end when he left a note. Highlight heads the selection's menu. A tap
+on a highlight opens a field sheet titled "Highlight": the words in quotation
+marks (meta, four lines), "Add a note", Cancel and Save, and Remove Highlight
+as the destructive row under them. A form's values sit in the file's own
+fields, drawn read only; an agent's value that waits wears the added tint on
+paper. A tap on a field opens a field sheet titled with its label: the field
+(a text field, a switch for a checkbox, a picker for a choice), where the value
+came from in the footer ("From Purdue profile: “Landon Hale”"), Cancel and
+Save, and while an agent's value waits Reject and Accept in the bottom bar,
+Accept the prominent one. A signature and its date say "Sign this on your
+computer." While values wait the review row over the pages reads "3 values to
+check" with Reject and Accept: the values are on the page.
+
+**A meeting**: the recording's player first (audio: Play in a 44 pt target,
+the system's slider, "1:23 / 45:10" in the stamp step, tabular; a video: the
+system's player in its shape), a hairline, then one plain list: "Tasks" (those
+that wait, an empty circle, then those added, a filled check in the success
+tint; each its words with "Due …" under it in meta and its moment at the
+trailing end, a press that plays from there), then "Transcript" (who in meta
+semibold, when in the stamp step, the words under them; a tap plays from that
+line). A task swipes Add (trailing, a full swipe too) and Drop (leading,
+never full). The bottom bar's one prominent press is "Add 3 Tasks" while any
+wait. A recording the phone cannot play says "This recording plays on your
+computer." in its row.
+
+**Restore** (a version's compare): Restore is the bar's one trailing press on
+every version but the newest. On his own document the undo capsule says
+"Restored" with Undo, and the compare reads "No Changes"; on one others can
+open it says "Waiting in Review Changes" and has no Undo, since nothing was
+written.
+
+**Two pages and the table** (the Duo): a document with comments, a deck with
+notes, a video and a meeting's video take two pages on the open Duo upright,
+split at the fold's band (each page at least 320 pt): the thing on the
+leading page, its comments, notes or transcript on the trailing. The comments'
+page has "Comments" as its header row (the title step, semibold) and the reply
+field under it; the deck's notes keep the meta step. On a table the thing
+stands above the band and the rest lies below it. Nothing sits within the
+band; a fold keeps the page he is on, and the hosted document is never loaded
+again.
 
 **Page Preview** (a push titled "Page Preview", a document's): the document
 as it will print, its Word file drawn on the host, in the system's viewer,
@@ -2934,8 +3472,9 @@ screen, and the phone carries the notes and the two presses.
   launches), Blank or Unblank, then End Show under a divider, in red.
 - **Upright**, top to bottom: the slide's speaker notes in the document type
   at the size he chose, the 640 pt measure, scrolling on their own and back at
-  the top on each slide, stopping 8 pt above the count line, with no text
-  selection (a drag there steps the show); "No notes" in the meta step for a
+  the top on each slide, stopping 8 pt above the count line, its last line
+  fading out over one line's height where the notes run on (the fade follows
+  the text size), with no text selection (a drag there steps the show); "No notes" in the meta step for a
   slide without any; the count line, "4 / 12" in the title step, semibold,
   and the time since the show began at its trailing end, both in tabular
   digits, with "Blank" beside the count while the screen shows black; Previous
@@ -2968,6 +3507,33 @@ screen, and the phone carries the notes and the two presses.
   slide" and "Previous slide" to VoiceOver, and the screen holds at the
   accessibility text sizes in both appearances.
 
+- **The way in**: a "Showing on <computer>" row at the Work list's foot
+  while a show runs on one of his computers (the `av.remote` glyph, the deck's
+  name and "4 of 12" under it in the meta step), and Clicker at the head of a
+  showing deck's More. Either opens the clicker as a full-screen cover on the
+  host's show (`work.slides.show.state`, `press`, the `work.slides.show`
+  push).
+
+### Share
+
+One sheet, the desktop's (`ShareLinkSheet`), from Share… in a document's or
+sheet's More: a form sheet titled Share. On top: For, Can (segmented, only
+where the item has more than one role) and Ends (a day, a week, thirty days,
+ninety, named by their dates); Create in the bar. Under the form, Purdue's
+line for a Purdue workspace's file, or the host's refusal in the destructive
+text ink. Create shows the address once in its own section with Copy and
+Share, and New Link in the bar's leading place. Under it, Links: each live
+link's name, then one meta line ("Edit · made Nov 20 · opened Nov 22, 3:10
+PM · until Dec 20"), and a 44 pt More with Replace Address… (asked first:
+the current address stops opening), the role, and Revoke in red. Where no
+link can be made, the host's one line stands in the form's place with Done.
+Create waits until the host that keeps the item's links has answered. A
+press whose answer was lost says "Checking whether the link was made" under
+the form, which waits; closing and opening the sheet again keeps the same
+press, so no second link is made. A link the read-back finds made shows its
+line ("The link was made. Its address showed once: Replace Address makes a
+new one.") with New Link in the bar.
+
 ## Save to TempCode
 
 The share extension's one sheet (`Work/Share/ShareSheetView.swift`,
@@ -2985,7 +3551,9 @@ any app into a Work workspace's own folder.
   files."); Save takes the rest.
 - **Workspace**: his Work workspaces as rows, each led by its sector's 8 pt
   dot, the name in the label ink, the last used checked with the tinted
-  checkmark and first in the list. With several hosts a row carries its
+  checkmark and first in the list; never used, the job open in the app is
+  checked; with neither, none is, and Save waits for his pick (never the
+  first in the list). With several hosts a row carries its
   host's name as a meta line. The list is what the app last wrote for the
   extension, so the sheet is whole in its first frame. The rows dim with
   the rest of the list while it saves.
@@ -3182,7 +3750,7 @@ left in a view.
 
 | Interaction | Motion | Name |
 | --- | --- | --- |
-| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch; reduced motion dims to 60 % instead | `.buttonStyle(.pressable)` (`Motion.press`, `Motion.pressScale`, `Motion.pressDim`); `.pressableStatic` dims without scaling where a scale would fight a swipe |
+| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch, the system's highlight under a pointer (`.hoverEffect(.highlight)`); reduced motion dims to 60 % instead | `.buttonStyle(.pressable)` (`Motion.press`, `Motion.pressScale`, `Motion.pressDim`); `.pressableStatic` dims without scaling where a scale would fight a swipe |
 | Push and pop | the system navigation transition, untouched | |
 | Sheets | the system sheet, 16 pt radius, detents and sizing by `SheetRules` ("iPhone Duo") | `Radius.sheet`, `tcSheet` |
 | Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
@@ -3567,6 +4135,125 @@ the field, the bar and the dock and not the keyboard's own cost, and it
 draws at 60 Hz, one layout per 16.7 ms where the phone lays out twice. The
 render server is not measured at all. Those are the phone's to show.
 
+### The Work perf proof
+
+`TC_PROOF_SET=work-perf bun scripts/ios-sim-proof-local.ts` runs on the perf
+set's Measure build, headless, against the same test server. Its runs are
+`TC_WORK_PERF_RUNS` (default `launch-today rest-today list-idle list-busy editor`). The app runs each itself (`TC_TEST_WORK_PERF`,
+`TC_TEST_WORK_PERF_SPLIT`, `Sources/Perf/LaunchFrames.swift`) and adds each
+launch's split to `Documents/work-perf/<run>.json` (`WorkPerfFile` in the
+client package); `scripts/lib/ios_work_perf_check.py` judges it against
+`scripts/lib/ios_work_perf_gates.json`.
+
+`launch-today` is a cold launch onto Today, measured three ways: `empty` (the
+caches dropped before they open, the threads' and Work's), `cached` (after a
+launch that filled them) and `restored` (after a launch that left a workspace
+open, so the saved screen comes back). Each fill launch opens Today (launch
+route `today`), so the measured launch after it comes back onto Today; the
+server has Work on with the work set's m1 seeds and no relayed hosts, and
+Today's LifeOS part reads the fixtures. A measured launch waits up to 30
+seconds for every host that can list (a relayed host only while its carrier
+says it answers) and, on Today, for Today's fresh page (`WorkPerfWait`); a
+split whose wait ran out carries a note naming what never came, and the
+checker leaves it out. `locked` needs the cache behind the phone's
+lock, which the simulator cannot make: the checker prints it "not run". Each
+launch reports, in milliseconds from the process start (the kernel's, read
+with `sysctl`):
+
+- the first frame on screen: the first display tick after the root view
+  appears;
+- the first Today row on screen, and the first from the disk (a row whose
+  source has not answered on this launch, `TodayStore.isFresh`);
+- the cached row taking a touch: the first display tick on which the
+  window's hit test at the row's middle lands in its list cell. This is a hit
+  test, not a tap: it says nothing covers the row and the list takes
+  touches, without XCUITest.
+
+What gates are counts of what the app owns, held in every pass:
+
+| Gate | Holds |
+| --- | --- |
+| `network-before-frame` | No request the socket began before the first frame, in every split: tickets, socket opens and calls, counted by `SocketRequests` (DEBUG and Measure builds; a Release build counts nothing, and a report from one fails this gate). Every build holds each socket's start until the first frame (`LaunchClock.holdSockets`, `FirstFrameGate`) |
+| `rows-remade` | When the fresh page lands over the disk's, no Today row whose data did not change has its state made again (`LaunchRowLedger`: a row made again while on screen, its data, less its verbs, the same as at its last make). Rows that changed are reported apart |
+| `rest-ticks` | `rest-today`: with Today on screen and nothing arriving for ten seconds, the repeating tasks alive (`TickLedger`) are no more than Today needs: one, the minute's words |
+| `rest-queries` | `rest-today`: Today's own LifeOS live queries held are no more than it needs (mail waits, the session's cover, each sector's people) |
+| `rest-polls` | `rest-today`: no host read in the ten seconds |
+| `list-rows-built` | `list-idle`, `list-busy`: the fixture list built no more rows before the finger moved, and held no more alive at once in the measured pass, than its visible window and one page (twice the most rows it showed) |
+| `list-rows-remade` | No row's state built a second time over the check, none built in the still seconds after the scroll, and in `list-busy` at least one push for another place arrived in them, so the count judged something |
+| `list-offset-writes` | No scroll the app made itself (`PlaceTop`'s return to a kept row) while the finger moved |
+
+What is only reported, until it holds in three passes on the phone: the
+three times against the 400 ms budget (`first-frame`, `cached-row`,
+`row-hit`, the best pass), the process's CPU time, the rows made,
+`rest-cpu` (the main thread's CPU in `rest-today`'s ten seconds against
+10 ms a second), the list check's frames (late, p95, worst, hitch, the main
+thread's p95; judged on the real Duo with its thermal state written down),
+and `editor-memory`.
+
+**The list check** (`WorkListCheck`, Sources/Perf/WorkListCheck.swift, in
+every build): 1,000 sample files (`WorkListRow.fixture`, their words made
+once off the main actor) in the Files place's own frame and row
+(`WorkPlaceScreen`, `FilesRowLabel`), each row's state counted by a probe
+(`ListCheckLedger`). After the first rows settle it scrolls down and up once
+to warm, then again measured at 3,000 pt/s one display tick at a time, then
+stands still for six seconds; `list-busy` has the server play other places'
+traffic (`/load`) through them. In the proof the app shows it in a window of
+its own over Home (`list` split); Settings → Diagnostics pushes it.
+
+**The editor run** opens a seeded document (`Perf poster` in `Perf editor`,
+scripts/lib/ios-work-perf-seeds.ts) over the reader route. Every run samples
+the app's `phys_footprint` every half second (`WorkPerfMemory`, with the
+hosted pages loaded in the run); the script samples the WebKit processes of
+this simulator by pid once a second (`editor-webkit.json`, resident memory:
+`ps` cannot read another process's footprint). The checker reports both
+against 300 MB for the app and 700 MB with WebKit, and says when no hosted
+page loaded: the test server serves no hosted editor yet, so in the
+simulator the figures cover the reader's fallback. The plan's 2,000-row
+thread under the document is not seeded; Instruments on the phone is the
+figure that counts.
+
+#### Clocks
+
+A Work screen at rest runs only the repeating tasks this table names, each
+registered by name in `TickLedger` while it lives (Sources/Perf/TickLedger.swift,
+in every build; Settings → Diagnostics shows what is alive). `scripts/ios-tick-ledger.test.ts` holds
+every unbounded loop in a Work view to a name here, each name to the file that
+runs it, and `rest-today`'s allowance to Today's count. Bounded waits (a proof
+hook's hundred tries, a sheet waiting for its socket) are not clocks.
+
+| Clock | Screen | What it does |
+| --- | --- | --- |
+| `today.minute` | Today | Says the minute's words, once a minute at the minute (Today/TodayScreen.swift) |
+| `messages.hold` | Messages, a chat, People, a person | Holds the screen's LifeOS live queries; it wakes once an hour and does nothing (Messages/MessagesReads.swift) |
+| `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
+
+Every other Work screen runs none.
+
+The signposts, subsystem `dev.landon.tempcode` (`Signposts` in the client
+package): `launch.firstFrame` and `launch.cachedRow`; in `list`,
+`today.cached` (Today's first rows from the disk on screen) and `today.fresh`
+(every source answered). The categories `file` (`first`, `whole`) and
+`press` (a press to its answer) exist and are unused. Settings → Diagnostics' Work
+Checks shows the phone's own numbers: this launch's first frame and cached
+row, Run List Check (rows built against the limit, any rebuilt, late frames,
+hitch time), the repeating tasks alive (`TickLedger`), and the Work cache's
+size on disk and protection class.
+
+#### Access on Work's screens
+
+`scripts/ios-work-access.test.ts` holds what a source can show: under
+Reduce Motion a Work transition that moves fades instead
+(`reduceMotion ? .opacity : …`) and a moving `Motion` name has its fade
+beside it; glass comes only through `tcGlass` and the system's glass
+buttons, which turn solid under Reduce Transparency; an ink at a fixed alpha
+over a picture turns solid under Increase Contrast (`colorSchemeContrast`),
+and outlines use `Surface.hairline`. On the open Duo a pointer gets the
+system's highlight on every pressable row and button, and the desktop's keys
+work where the phone has the command: ⌘N New in Files, ⌘↩ Send on a held
+item, a chat's reply and Ask, ⌘Z Undo on the undo capsule. A searchable
+list takes the system's own ⌘F. VoiceOver's order, the largest text and the
+pointer's look are the Mac's shots.
+
 ### On the phone
 
 What only the phone shows: the render server's cost (the glass, the blur),
@@ -3763,6 +4450,7 @@ table as code; its aliases are the shot vocabulary).
 | `unfolded` (`ul`) | 180° | portrait | 951 × 669 | regular × regular | `LCD-1` (3) | 2853 × 2007 |
 | `unfolded-portrait` (`up`) | 180° | landscape-left | 669 × 951 | regular × regular | `LCD-1` (3) | 2007 × 2853 |
 | `half-open` (`ho`) | 130°, from 0° | portrait | 951 × 669 | regular × regular; `hinge.state` partiallyOpen | `LCD-1` (3) | 2853 × 2007 |
+| `tabletop` (`tt`) | 130°, from 0° | landscape-left | 669 × 951 | regular × regular; `hinge.state` partiallyOpen | `LCD-1` (3) | 2007 × 2853 |
 
 The inner panel's native orientation is a quarter turn from the outer's, so
 a device held portrait shows a landscape window when open; "unfolded
@@ -3893,7 +4581,19 @@ keeps the item alone, never a patch.
 
 **Search.** The system field on the search-role tab, placed by the system in
 every pose (unfolded it sits at the bar's trailing end); a fold keeps the
-text and the rows. Results at regular width sit in a 720 pt measure
+text and the rows. The **Work** scope (beside Threads and Files, shown as the
+field opens while a Work host lets the key search) draws the desktop's rows:
+a `SectionHeader` band a kind in the desktop's order (Recent first, before he
+types), each row the kind's glyph in the 20 pt column, the title in `.title`,
+its one fact under it in `.meta` with his words in weight, and the job (its
+dot and name as a stamp) trailing only while rows of several jobs stand
+together; "All mail for …" in the accent at meta weight narrows to the kind,
+and the bar's filled filter (`line.3.horizontal.decrease.circle.fill`, "All
+Kinds") widens again. A row with no place on the phone is drawn the same and
+does not press. A file's row shows a small spinner in its trailing slot while
+the host seats it. What could not be searched sits at the list's foot as
+stamps; "Nothing for …" is the system's search empty view. Nothing animates
+on a keystroke. Results at regular width sit in a 720 pt measure
 (`Layout.listMeasure`). The decided fallback, if a pose ever moves the
 field, is the navigation drawer always shown in every pose, the commented
 line in `SearchField`; never a custom field.
@@ -3912,6 +4612,62 @@ ignores the keyboard.
 a display size, a size class or a cutout. The card's widths are flexible and
 its row heights fixed; Apple documents a Dynamic Island on both of the Duo's
 displays, so every presentation can show.
+
+### Work in every pose
+
+The Work tab is one more split on the shell's engine, so everything above holds for
+it. What Work adds (the plan "All of Work on the iPhone", M0d):
+
+- **The pick.** On the open Duo, wider than tall, a place's list in the sidebar fills
+  an empty detail with its first row that needs him, so the right side is never
+  blank on arrival. A pick still in the list stays; when the picked row leaves (sent,
+  discarded) the next takes the detail, or the detail clears. Nothing is picked in a
+  stack, in the overlay pose, by a list that is not the sidebar's top, or over
+  something he opened from elsewhere. The rule is the client package's
+  `ShellSelection.decide`; a list applies it from an `.onChange` of its rows and the
+  pose, never from a body (`placePick`, Work/Shell/WorkPlaceScreen.swift). A pick
+  opens the row through the navigator: it only reads. The Outbox is the first list
+  that picks.
+- **The selected row.** The row whose item the detail shows sits on
+  `Surface.groupSelected`, in the split poses only (`placeSelected`).
+- **Wide routes.** LifeOS's Mail, Tasks and Agenda (a job's or every job's), an open file, and a thread with a
+  file beside its chat take the whole open Duo (`ShellPaths.wide`). The sidebar's
+  state is derived: his toggle for the tab, hidden by a wide route without writing
+  the toggle, and his press on the sidebar button over a wide route kept as that
+  route's own choice until he leaves it (`SidebarVisibility`). A fold writes neither.
+  A Work thread turns wide when its first item lands, after its route opened: the
+  thread screen tells the navigator (`itemsMoved`), and the split asks again.
+- **List positions.** Each list's top row lives in the navigator's memory by its
+  route (`ShellNavigator.tops`), written once a scroll settles (`onScrollPhaseChange`
+  to idle), never under a moving finger, and read when the list is built again, so a
+  fold or a pose change that rebuilds a list comes back at its row. The list scrolls
+  by `ScrollPosition` over its rows' ids (`placeTop`). The memory is not kept across
+  launches.
+- **A place's frame.** `WorkPlaceScreen` is the one frame a place's list uses: the
+  place's title, a job filter in the bar (All Jobs, then each job with its sector's
+  dot), search when the place has it, the rows' shape redacted on the first load,
+  `ContentUnavailableView` when empty, one line with Try Again over what showed when
+  a read fails, pull to refresh, the pick and the kept top row. Today is its first
+  full user.
+- **On a table.** Half open and turned tall (669 × 951), the fold's band lies across
+  the middle: the thing stands on the upper half, its controls lie on the lower, and
+  nothing sits in the band (`TabletopHalves`, client package). The simulator holds the
+  pose (four runs on the Mac): `TC_DUO_POSE=tabletop` (`tt`), `DuoPose.tabletop`, the
+  sidebar over the detail as in `unfolded-portrait`.
+- **The fold cycle.** `TC_PROOF_SET=work TC_WORK_ONLY=fold` takes each Work screen
+  folded, unfolded and folded again with the app running: the Outbox scrolled with an
+  item open, a Files folder, a Work thread on its file with a typed draft and a chip in
+  its box, and Mail with a thread open.
+  scripts/lib/duo_work_fold_check.py holds, at every stop, the typed route
+  (`work.route`), the picked row (`work.picked`), the list's top row (`work.top`), the
+  draft's length (`draftChars`), the box's chips (`work.chips`; the thread step must
+  have a draft and a chip, `typed`), an open sheet (`work.sheet`, never gone between
+  stops), his chosen sidebar (`sidebar.chosen`, never written by a fold), the shown
+  sidebar (`sidebar`) as the route and the pose allow it (an ordinary route
+  `visible` or `overlay` as he chose, else `hidden`; a wide route `hidden` unless his
+  press there; `stack` folded), no row made twice (`row-inits.json`), and the hosted
+  web view the same object (`web.instance`) with its loads (`web.loads`) not grown. A
+  hosted document and a typed mail reply join once a seed opens them.
 
 ### The proof
 

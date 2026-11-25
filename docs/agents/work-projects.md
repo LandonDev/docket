@@ -53,6 +53,12 @@ A pick writes `work.projects.link`; a refusal stays in the picker as its one lin
 
 These landed first and are told in [work.md](work.md): "Mirrors follow LifeOS" (`work/projects/mirrors.ts`: a mirror is made from LifeOS's own row, renamed with it, archived when the project is over and none of its threads works, brought back on reopen), "A Work project's settings" (`work/shell/ProjectSettings.tsx`) and the server's refusal of code settings for a Work project (`workProjectGate.ts`).
 
+## The phone
+
+A project's LifeOS document or sheet opens in the hosted editor from LifeKitUI's project page (M5b:
+`WorkLifeHost.offers(document:)`, `open(document:)` through `work.guests.ticket`); a note stays a plain row, and
+the board stays on the computer.
+
 ## The host's side
 
 `src/main/server/work/projects/` and `src/shared/contract-work-projects.ts`. `projects` is a pillar of the frame (`PILLAR_IDS`, milestone 51 in "not built" words).

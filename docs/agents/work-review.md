@@ -484,10 +484,28 @@ what he sees. A Work Chat is in no job and is told so.
   this host's Work threads opened and touched since the span began, 200 at
   most). A sheet, a deck or a file on disk names no author.
 
+## The phone
+
+Review is a place of the phone's Work tab (docs/IOS-DESIGN.md "Review",
+docs/agents/ios-client.md "Review and Money"): the client package's
+`ReviewStore` asks each linked host for `work.review.week` and Money's
+sums, as store.ts does, and merges the parts with `WeekReview.merge`, a
+Swift port of this pillar's `review.ts`. The port cannot drift unseen:
+`src/renderer/src/work/review/phoneFixtures.test.ts` runs the real
+`review.ts` over its cases and holds
+`ios/TempCodeClient/Tests/TempCodeClientTests/Fixtures/review/*.json` to
+what it gives (`UPDATE_FIXTURES=1` writes them), and
+`WeekReviewParityTests.swift` holds the Swift merge and words to the same
+files. A change here is carried to the port in the same commit. The
+presses are the page's: `work.review.settle` on the host `settleHost`
+names, Undo by `work.review.undo`, a held item's Open and a meeting's
+Follow up opened in place, `work.review.seen` once a week when the week
+draws. Today's row and a review tell open the week they name.
+
 ## Not built
 
-The page on the phone (the wire is ready for one). A count or a mark on the
-rail's row. A timer. A week grid.
+A count or a mark on the rail's row. A timer. A week grid. On the phone:
+Make again, Print and the copy of the text (the desktop's).
 
 ## Proofs
 

@@ -305,6 +305,14 @@ files meeting tasks itself:
 - `meeting_notes { meeting, summary?, decisions?, questions?, actions? }`
   writes the notes and says what was dropped and why.
 
+## On the phone
+
+The phone's meeting view plays the original recording as the system's player
+asks for it, by range through `work.meetings.recording` (nothing kept on the
+phone), and decides the tasks with `work.meetings.decide`. Both are in the
+Swift subset, and `MeetingPhoneSchema` carries `media.kind` and
+`notes.actions`. docs/agents/work-phone-files.md "A meeting".
+
 ## The canvas
 
 The approved prototype is `.temp-code/prototypes/work-workspaces-2/meeting.html`,

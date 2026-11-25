@@ -366,3 +366,14 @@ Tests: `clashes/places.test.ts` (the words and the patches) and
 `clashes/StartPlaces.dom.test.tsx` (the rows, the dialog, each patch, a
 refusal, signed out, bones). Pictures: `StartPlaces.preview.tsx` through
 `bun run ui:preview`.
+
+## The phone
+
+A clash on the phone (ios/TempCode/Sources/Work/Clash/ClashScreen.swift, docs/IOS-DESIGN.md "A clash") is a sheet
+on a phone and the detail on the open Duo, opened by Today's Resolve and by a clash's tell or notice (its key
+`clash:<id>`). It reads `work.clashes.list` over a fortnight and finds the clash by its id or by an event of it.
+The phone's clash row carries each side's `can` and `guests`; it offers Decline and Propose New Time where `can`
+allows them (a move and Running late stay the desktop's). The drive is the clash's own, else `work.clashes.miles`
+between the two events. This Is Fine is `waive` with `seen` and Undo. His answer is `answer` with `seen` for a time,
+through the owner's check and the press record (`PressLedger.run(.clashAnswer)`, ref `clash:<id>`); a reply lost on
+the way is read back by the clash list on the next link: gone is done, still listed may have gone.

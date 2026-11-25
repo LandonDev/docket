@@ -158,7 +158,9 @@ work/digest/sources/lapses.ts): each six hours and at start it reads
 (`lapseStage`) tells "Windows evaluation ends Feb 17" fourteen days before,
 which waits for the day's digest, and "Windows evaluation ends Feb 17 at
 1:22 AM" on the last day, which carries its end as its clock and so
-interrupts, on the desktop and on the phone. A press opens Connections. A
+interrupts, on the desktop and on the phone. A press opens Connections, on the phone too (M5b: a place of the
+Work list's foot while a row does not work or an end is near; each row that does not work offers "Open on
+<computer>", `work.reveal`, since every fix works in that computer's own window). A
 new end date is a new lapse; one renewed or gone takes its rows with it.
 The window's own toast (`LapseNotices`) is gone: `work.lapses` is still
 answered for a client that wants the list.

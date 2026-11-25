@@ -147,8 +147,9 @@ link word the expiry day in `hisZone(ctx)`.
 |---|---|---|
 | `work.guests.list {}` | read | every listed link, live first, with when the service last saw each opened and how many sockets it holds |
 | `work.guests.forItem {source}` | read | one item's links, for its Share popover |
-| `work.guests.create {source, title, name, role, expiresAt}` | approve | his own link; answers `{link, url}`, the only time the address exists |
-| `work.guests.rekey {linkId}` | approve | a new address for a live link, shown once; the one before opens nothing from then on |
+| `work.guests.create {source, title, name, role, expiresAt, attempt?}` | approve | his own link; answers `{link, url}`, the only time the address exists. `attempt` (the phone's, 8 to 64 characters): a repeat of the key makes no second link (below) |
+| `work.guests.attempt {attempt}` | approve | what became of a Create link by its key, read without making anything: `{state: none \| making \| made \| refused \| unknown, linkId?, words?}` |
+| `work.guests.rekey {linkId, attempt?}` | approve | a new address for a live link, shown once; the one before opens nothing from then on. `attempt` (the phone's) is answered once on Create's rows (`rekeyOnce`): a repeat answers `{again: true}` with no address, and `work.guests.attempt` reads it back |
 | `work.guests.revoke {linkId}` | operate | at once |
 | `work.guests.setRole {linkId, role}` | approve | what a live link may do, at once; the address stays |
 | `work.guests.ticket {source, title}` | operate | the owner's hosted editor (below); `source` is a LifeOS row or `{at: 'item', itemId}` for a document or sheet kept as a file |
@@ -544,10 +545,40 @@ redeem still answers `role: 'edit'` whatever the token says
 The phone (milestone 47) asks a ticket each time it shows a LifeOS document
 or sheet in a thread's Item segment and loads the address in a WKWebView
 with a store of its own that keeps nothing (`.nonPersistent()`), so each
-open is a new pass. Make a Guest Link in the item's More calls
-`work.guests.create` (approve) and shows the address once: a LifeOS row, or a
-`.tcdoc` or `.tcsheet` kept as a file by `{at: 'file', host, path}` ("A
-file's link" above; the phone's Swift reads the wire's own source union).
+open is a new pass. Share… in the item's More opens the phone's Share sheet
+(below).
+
+### Share on the phone
+
+The phone's sheet is the desktop's one Share sheet (`ShareLinkSheet`,
+ios Work/Items/GuestLinkSheet.swift; rules in the client's
+Work/Guests/ShareRules.swift, held to `SHARE_REFUSALS` and `guestRolesOf` by
+scripts/ios-share-fixture.test.ts): For, Can, Ends (a day, a week, thirty
+days, ninety); Create shows the address once with Copy and Share; the item's
+live links under it, each with its line of facts and a menu of Replace
+Address…, the role and Revoke; a host's refusal in the form's place; Purdue's
+line under the form. It takes a LifeOS document or sheet and a `.tcdoc` or
+`.tcsheet` kept as a file, sent as `{at: 'file', host, path}` ("A file's
+link" above; the phone's Swift reads the wire's own source union), and a
+sheet's link views or edits (`ShareSource.of`). It asks the host that `served elsewhere`
+names when the first one does not keep the item's links. Create, the role and
+a new address go through `PressGates` first; Create also through the press
+record under an attempt key.
+
+**The attempt key** (guests/attempts.ts, as Messages' Send,
+messages/attempts.ts): the host writes the key's row in the same turn as its
+check, before anything is made, and keeps what it did for a day (a phone key past
+the day, `phone-<ms>-…`, reads back as unknown and a repeat of it is refused, never
+made anew: `attemptAge.ts`). A repeat
+while the first is still making waits on the same answer, address and all; a
+repeat after it answered gets `{link, again: true}` and no address, since the
+address is never kept (the sheet says so and points at Replace Address); a
+refusal is said again in the same words; a key cut off by a restart reads
+"The host restarted while making the link…"; a key reused for another item or
+person is refused. The phone keeps one key until a press is answered, so
+Create after a lost answer makes no second link, and on its next link it reads
+a lost press back by `work.guests.attempt`. The desktop sends no key and is
+unchanged. Tests: guests/attempts.test.ts.
 
 ### A file in the hosted editor
 
@@ -594,6 +625,46 @@ The page's own Comment action is a guest's (`commentsOnPage` in
 src/hosted/guest/session.ts): the owner's pass shows none, since the page
 would take his words and send none of them (`Session.comment` is a guest's).
 His comments are made in TempCode: on the phone, Comment in the edit menu.
+
+### The phone's frame
+
+The phone opens the ticket's address with `&chrome=none` in the fragment
+(`/w/open#t=<ticket>&chrome=none`; the host never sees a fragment). The page
+then draws no line of its own and no format row: the app's bar is the only
+heading, and the app draws the row and Find. Only the owner's page reads the
+word (`frameOf` in src/hosted/guest/frame.ts); a guest's link keeps its line
+whatever its address says, and a page without the word is as it always was.
+Once the ticket is used the address keeps `#chrome=none` alone, so a reload
+of the tab keeps the frame.
+
+Where the app's web view listens (`window.webkit.messageHandlers.tcFrame`),
+the page answers a closed set of messages, and drops anything else unread.
+The app calls `window.tcFrame.receive(message)` with:
+
+- `{kind: 'format', what: 'bold' | 'italic'}`, `{kind: 'format', what:
+  'style', style}` (only a style the page offered), `{kind: 'format', what:
+  'list', list: 'bullet' | 'number' | 'check'}`;
+- `{kind: 'find', what: 'search', query}`, `{kind: 'find', what: 'next' |
+  'previous' | 'clear'}`;
+- `{kind: 'undo'}`, `{kind: 'redo'}`.
+
+The page posts back `{kind: 'drawn', v: 1, offers: {format, find, undo}}` once,
+two frames after the editor hands over its text (a sheet: after its grid is
+up; a page that opens nothing: at once, so the app shows its words);
+`{kind: 'state', editing, style, styles, bold, italic, list, undo, redo}` at
+most once a frame and only when it changed (`editing` is the text holding the
+focus: the keyboard is up); and `{kind: 'found', query, count, at}` after each
+find (`at` from 1, 0 with none). Find draws its matches with the page's own
+highlights (`::highlight(tc-find-hit)`, `tc-find-current` in guest.css) and
+never takes the focus, so it raises no keyboard. A reader's page writes
+nothing; a sheet offers Undo and Redo alone. Code: frame.ts (the set, pure),
+frameDoc.ts (the document's side); tests beside them, GuestFrame.dom.test.tsx,
+and the frame's cases in DocPage's and SheetPage's tests.
+
+The page's word of its pass (`opened`, `passEnded`: "For the phone" above)
+goes to a second handler, `tempcodeHosted` (phone.ts), with or without the
+frame. The app hears both on one coordinator, from the ticket's origin in the
+main frame alone (ios HostedItemView.swift).
 
 ## The screens
 

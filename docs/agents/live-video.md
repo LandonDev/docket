@@ -1116,6 +1116,8 @@ The iPhone plays a stream as the desktop's viewer does, natively
   Mac's row; `video.open`, `video.close` and `video.paste` are the box's to
   answer, and `computer.drive` names only the box's own page or VM, so none of
   them crosses (`RELAY_NOT_CARRIED`).
+- **Copy** (M5b): while he drives, the full screen's foot has Copy beside Paste: `video.copy {stream}`
+  (approve, never on a relayed lane) brings the far clipboard's text to the phone's (`LiveVideo.copy`).
 - **The stream** (`ios/TempCodeClient/Sources/TempCodeClient/Video/`):
   `NSL1.swift` reads frames and writes acks byte for byte as nsl1.ts;
   `AccessUnit.swift` turns an Annex B access unit into a `CMSampleBuffer` (the

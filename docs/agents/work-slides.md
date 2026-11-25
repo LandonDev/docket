@@ -1905,11 +1905,19 @@ through the app's own wire; the show runs in one window, whose state
 - **On the phone** it is the app's own page (`/ui`): at most 640px wide,
   while a show of the deck runs elsewhere, the deck's item is the clicker
   (`show/Clicker.tsx`, drawn over the page: docs/DESIGN.md "The
-  clicker") and goes back to the canvas when the show ends. Nothing hosted,
-  no ticket and no Swift: the phone's native clicker is a later round and
-  calls the same three methods. The push is not in the phone's Swift
-  contract subset (`gen-swift-contract.ts` `SUBSET`); the phone build adds
-  its rows.
+  clicker") and goes back to the canvas when the show ends.
+- **In the iPhone app** the clicker is native (ios Work/Clicker/, the iPhone
+  plan's M3c): `work.slides.show.state` and `press` and the
+  `work.slides.show` push are in the Swift subset (`ShowLivePhoneSchema`,
+  `ShowPressAnswerPhoneSchema`, `WorkSlidesShowPushSchema`). `WorkHost.shows`
+  holds the running shows by id, read at each open and kept by the push
+  (newer `rev` wins, an ended show goes); `ShowLink` maps the wire onto the
+  clicker's `ClickerWire` (`ClickerShow(live)`, `ClickerPress.act`: Previous
+  is `prev`). The way in: a "Showing on <computer>" row at the Work list's
+  foot while a show runs (one row a host, the newest show), and Clicker in a
+  deck's More while a show of that item runs. A show is matched to a deck by
+  its item id, so a deck the phone opened as another item (a Files tab beside
+  the thread's) reaches its show from the Work list's row.
 
 Tests: `clicker.test.ts` (a second device drives, a jump, a stale press
 dropped before and after the window took it, a press no window takes, the

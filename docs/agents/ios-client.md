@@ -321,8 +321,9 @@
   scripts/ios-duo-pose.sh `<udid> <pose>|lit|state` poses the "TempCode Duo"
   simulator over `hinge` (brew artemnovichkov/tap/hinge) and reads the lit
   panel from `devicectl device info displays`. The poses are `folded|fp`,
-  `folded-landscape|fl`, `unfolded|ul`, `unfolded-portrait|up`, `half-open|ho`
-  (`DuoPose` in the client package is the table). `TC_DUO_POSE=<pose>` is an
+  `folded-landscape|fl`, `unfolded|ul`, `unfolded-portrait|up`, `half-open|ho`,
+  `tabletop|tt` (`DuoPose` in the client package is the table; half-open and
+  tabletop are told from the open windows by the hinge alone). `TC_DUO_POSE=<pose>` is an
   axis on every proof set (the Duo by default, the lit panel captured, shots
   in `shots/<pose>/`, each shot's layout report in `layout/<pose>/` checked
   against the pose's row by `pose_check`; `fold <pose>` with the app running;
@@ -788,20 +789,36 @@
   whole payload, `discard`, `results(since:)`, `undo`, `setAway`,
   `setWork`, `grants`, `ungrant`, `rules`, `setRule`. A host with Work off,
   or from before Work, is `isOn == false` and shows nothing of Work.
-- **Home** (Shell/HomeSections.swift): a host's Work rows never mix with
-  code. `HomeHostInput.workOn` (the switch) splits each host in two:
-  `entries` are the code half as before (Chats leaves out Work threads,
-  the code workspaces leave out `kind: work`), and `home.work` is the Work
-  band: Work Chats (`workChatsKey`), then each Work workspace. With every
-  host's switch off `home.work` is empty and Home is what it was
-  (WorkHomeTests). The view puts the Outbox row first, Work Chats after
-  Chats, and the Work workspaces under a "Work" header, each led by its
-  sector's dot (`SectorDot`, `Tint.sector`).
+- **Home and the Work tab** (Shell/HomeSections.swift, Shell/WorkTab.swift): a
+  host's Work rows never mix with code. `HomeHostInput.workOn` (the switch)
+  splits each host in two: `entries` are the code half, all Home draws (Chats
+  leaves out Work threads, the code workspaces leave out `kind: work`), and
+  `home.work` is Work's: Work Chats (`workChatsKey`), then each Work
+  workspace. With every host's switch off `home.work` is empty and the bar
+  has no Work tab (WorkHomeTests, WorkTabTests). The Work tab is the fourth
+  `AppTab` (`work`, after Home), a `ShellSplit` on its own `ShellNavigator`;
+  its root is `WorkListView` over `WorkList.sections`: the places this build
+  draws (`WorkPlace.shipped`), the jobs under a "Jobs" header, each led by its
+  sector's dot (`SectorDot`, `Tint.sector`), Work Chats, then the Digest and
+  Computers while something is driven. A place is `Route.place(WorkPlace,
+  job:)` in the sidebar column (`WorkPlaceList` draws it); the routes
+  `.outbox`, `.digest` and `.computers` are only what an old save names
+  (`Route.current`). Which tab a route from outside opens in is
+  `ShellPaths.tab(of:isWork:)` over `ShellPaths.isWork(_:hosts:)`; RootView's
+  `show(_:)` selects it, `enterWork()` applies the day's first place
+  (`WorkTab.opensFirstPlace`, the stamp `work.tab.day` in defaults; on a
+  return from the background only, never over `WorkTab.holdsDraft`: a
+  project's draft or an open thread's unsent box, `UnsentThreads`) and
+  `moveWork()` moves an old save's Work screens once the cached lists are
+  read (`NavigationSnapshot.movingWork`, `hasWorkTab`). docs/IOS-DESIGN.md
+  "Information architecture" has the rules in words. The proof's launch
+  routes for Work (`work`, `outbox`, `digest`, `work-view`, …) open in the
+  Work tab and wait for the host's switch; `TC_WORK_ONLY=m0` shoots the tab.
 - **The Outbox** (TempCode Sources/Work): `OutboxModel` (client package)
   is the desktop's model.ts in Swift: `payloadView` (a payload object has no
   key order once decoded, so From, To, Cc, Bcc, Subject lead), `applyEdits`
   (a text beside an `html` rewrites it), `parseAddresses`, `bands`, the
-  route's `key`/`ref`, Away's words. Routes `.outbox` (sidebar),
+  route's `key`/`ref`, Away's words. Routes `.place(.outbox)` (sidebar),
   `.outboxItem(environmentId:ref:)` and `.workSettings` (detail).
 - **Outbox 2 on the phone** (M6): `OutboxModel.needsHim` is the shared
   count (held, live, failed, out of date until put away); `waits(state)` is
@@ -815,24 +832,85 @@
   it was opened, `freeze` takes the press at Send; `RequestPressWait` holds
   each frozen press its five seconds with no early send and keeps the
   answer by request id, RequestPressWaitTests); `WorkHost`
-  keeps `requests` (open ones, approve keys) and presses `discard(reason:)`
+  keeps `requests` (open ones, for a key KeyMay lets list them,
+  `.outboxRequests`) and presses `discard(reason:)`
   (with `rev`, as Send, Cancel Send and Send Now),
   `later`, `cancelSend`, `sendNow`, `undoSend`, `askAgain`, `request`,
   `viewRow`, `answer`, `decline`, every one `via: .phone`. The app's
   Work/OutboxRequestSheet.swift holds `OutboxRequestCenter` (RootView's
   `OutboxRequestSheetHost`), the sheet and the transcript's
   `OutboxRequestInline` (ActionGroup.swift); Work/OutboxDiscard.swift is
-  Discard's alert with its reason. `PushTarget.request` opens the sheet over
-  the Outbox (`NavigationRouter.open`).
-- **Send waits five seconds on the phone** (`OutboxPresses`): the host
-  hears nothing until the wait ends, so the capsule's Undo is a true undo;
-  a second Send or the app leaving the screen sends the waiting one at
-  once. The desktop sends on the press (landed/M14.md); the phone follows
-  phone-outbox.html.
+  Discard's alert with its reason (`outboxDiscardPrompt`), which then calls
+  `OutboxPresses.discard(_:reason:)`. Every press is drawn by its own
+  KeyMay row: Send, Edit and Discard by `.outboxSend`, Send Later by
+  `.outboxDecide`, the timed bar by `.outboxSendNow` and `.outboxCancelSend`,
+  the out-of-date bar by `.outboxDiscard` and `.outboxAskAgain`, the grant
+  by `.outboxGrant`, the request sheet by `.outboxDecide` and
+  `.outboxRequestGet`. The list's ids for the Duo pick (`placeTop`,
+  `placePick`, `OutboxPick`) are the sections' held items in draw order.
+  `PushTarget.request` opens the sheet over the Outbox (`.place(.outbox)`).
+- **Send waits five seconds on the phone** (`SendWait` in the client
+  package, `OutboxPresses` its adapter): the host hears nothing until the
+  wait ends, so the capsule's Undo is a true undo. Send Later and Send Now
+  ride the same wait (`HeldPress.Act`: `.send`, `.later(at:)`,
+  `.sendNow`); a request's Send waits its own five seconds in
+  `RequestPresses`. A second Send waits its
+  own turn: its five seconds start once the first has gone or been undone,
+  never two in flight and never one sent early. When the wait ends the
+  phone checks the link, the key (KeyMay `.outboxSend`) and the item's
+  `updatedAt` again, and a failed check sends nothing and says why in the
+  capsule. The desktop sends on the press (landed/M14.md); the phone
+  follows phone-outbox.html.
+- **Before the wait: the link, then the owner's check** (M1b). With no
+  link the press is refused at once and says "Not connected to <host>" in
+  its own line (the list's capsule, the detail's state line, the inline
+  line under a transcript's act); nothing is asked or written. Then
+  `PressGates` (app, Work/PressGates.swift) asks Touch ID, Face ID or the
+  passcode through `LAContext` `.deviceOwnerAuthentication`, once per
+  attempt (Send in every form, Discard after its prompt, Cancel Send, a
+  request's Send, Edit's Save), by `PressGate`'s rule (client package): the press is bound to
+  the host, the key (its id and capabilities), the act, the item's ref and
+  its `updatedAt`; a pass covers 60 seconds in this foreground and ends on
+  background, on the phone locking
+  (`protectedDataWillBecomeUnavailableNotification`), on the scene leaving
+  `.active` (except while the system's own sheet is up) and on a key change.
+  A cancel or a failure says "Nothing was sent." With the check on and no
+  passcode set, every outward press says "Set a passcode on this iPhone to
+  send from here." The switch is Settings → Work's "Require Face ID to
+  Send" (the phone's sensor word), per phone (`work.press.gate` in
+  defaults, absent means on); turning it off asks the check once. A proof
+  sets it with `TC_PROOF_PRESS_GATE=off|on` (scripts/ios-sim-proof.sh writes
+  the key after every install; the simulator has no Face ID enrolled, so with
+  the check on a Send waits at the passcode sheet).
+- **Never twice, never silently** (`PressLedger`, client package
+  Work/Outbox/PressLedger.swift, over `PendingPresses`): `WorkHost.send`,
+  `discard` and `edit` write the press to `work-presses.json` under
+  Application Support (one file per phone, every host; in memory off the
+  phone) before the request leaves, and throw `notConnected` at once with no
+  link (`WorkHost.linked`, the client's status). The host's answer, done or
+  refused in its words, clears it. A lost socket after it left, or 15
+  seconds with no answer, leaves it Checking (`PressLedger.Unknown`, no
+  toast): the row's meta line and the detail's state line say "Checking…"
+  and offer no second Send or Discard. On the host's next link
+  (`WorkHost.connected`, also after a relaunch, when every kept press
+  starts Checking) each press with no request left on a socket is read back
+  with `work.outbox.get` by its ref (`PressTruth.outbox`): done clears it;
+  still waiting as he saw it clears it; "Changed", "No longer waits" and
+  "May have gone" stay until his next press (the last keeps the item's own
+  Check Sent first and Send Again). `again` is the press site's
+  (`HeldPress`: his own Send Again on one item whose outcome the host
+  calls unknown), never WorkHost's.
+- **A grant is made when the wait ends** (`HeldPress`, `SendWait`'s
+  payload): "Send and stop holding" puts the grant's matcher and label on
+  the waiting press; at dispatch, after the link, key and revision checks,
+  `work.outbox.grant` is asked and then `work.outbox.send`. Undo inside the
+  five seconds takes back both; a refused grant sends nothing and says the
+  host's words. A press from a group or a request carries no grant and no
+  `again`.
 - **A held notice opens its item**: the host's notice carries `tc.held`
   (apnsPayload.ts, carried through `relay.notice`), `PushTarget.held` reads
-  it, `NavigationRouter.open` routes to `.outboxItem` over `.outbox`
-  (`ShellNavigator.openHeld`: the Outbox lands first, so Send returns to
+  it, `NavigationRouter.open` routes to `.outboxItem` over the Outbox in the Work tab
+  (`ShellNavigator.open(_:over:)`: the Outbox lands first, so Send returns to
   the list and its Undo). Its category stays `tc.thread` (Open alone):
   nothing sends from the lock screen. Only a host that posts to Apple
   itself carries `tc.held`; through the hub (`hub.notify`, infra/hub) the
@@ -866,10 +944,13 @@
   `away.get`/`away.set` never cross a relay: a relayed Mac's end and its
   decisions are not read, though the review lists every Work host's writes
   since the stretch began. `WorkHost` keeps each host's switch in defaults
-  (`work.on.<env>`), so the cached paint has the Work band and a host that
+  (`work.on.<env>`), so the cached paint has the Work tab and a host that
   does not answer `work.get` keeps its Work rows.
-- **Send waits in the app**: the waiting press goes at once when the app
-  goes to the background (not on a mere inactive moment).
+- **Send waits in the app**: the app going to the background (not a mere
+  inactive moment), or the link to the press's host dropping, cancels
+  every press still waiting and puts each item back in the list; the
+  capsule says "Not sent: TempCode left the screen" (or "lost the link to
+  <host>") until it has been on screen for a toast's time.
 - **The proof**: `TC_PROOF_SET=work bun scripts/ios-sim-proof-local.ts`
   seeds Work through scripts/lib/ios-work-seeds.ts (the test server runs
   its add-ons in process with `TC_TEST_ADDONS=1`, and `POST /work-held`
@@ -915,6 +996,249 @@
   `TC_TEST_SHEET=start-thread-mail|start-thread-task`,
   `TC_TEST_ACTION=start-thread` and `media-comment:<words>`,
   `TC_TEST_OPEN=browser-held` and `compare`.
+- The Duo engine for Work (M0d of "All of Work on the iPhone"; docs/IOS-DESIGN.md
+  "Work in every pose"): Work/Shell/WorkPlaceScreen.swift is a place's list frame
+  (`WorkPlaceScreen`: title, job filter, search, the states, refresh,
+  `PerfCounter.workPlaceBody`) and its three modifiers, which a list may take alone:
+  `placePick` (the open Duo's pick by `ShellSelection.decide`, from `.onChange` of the
+  rows and the pose), `placeTop` (the top row in `ShellNavigator.tops` by route
+  identity, written when a scroll settles, `ScrollPosition` by row id) and
+  `placeSelected` (`Surface.groupSelected` in a split). The Outbox takes all three
+  (`OutboxPick`: a row's id is its entry's). `TabletopHalves` (client package) is the
+  table's two halves. Probes (DEBUG): `work.route` (RootView), `work.picked`,
+  `work.top`, `work.sheet` (every `tcSheet`), `web.instance` and `web.loads`
+  (HostedItemView), and Outbox rows in `row-inits.json` as `work:<id>`
+  (`rowInitProbe(work:)`). `TC_PROOF_SET=work TC_WORK_ONLY=fold` is the Work fold
+  cycle (`duo_work_fold_cycle`, paired with the acting key, the Duo from folded;
+  `TC_WORK_FOLDS` narrows it), held by scripts/lib/duo_work_fold_check.py (tested in
+  scripts/ios-duo-checks.test.ts); its Outbox rows are `seedFoldHeld`
+  (scripts/lib/ios-work-seeds.ts) and `TC_TEST_PLACE_TOP` scrolls a place's list to a
+  row index once it lands. `TC_WORK_ONLY=m2|m3|m4|m5` are the proof steps M2d, M3d,
+  M4c and M5c (`work_m2` to `work_m5`, the Duo from folded, each part back in its
+  starting pose). A Work place opens with `TC_TEST_ROUTE=place` (`TC_TEST_WORK_VIEW`
+  names it, `TC_TEST_JOB` narrows it to a job by name, `TC_TEST_OPEN=chat:|person:<sector>:<id>`
+  opens a conversation or a person); `WorkPlaceScreen` writes `Documents/place-<place>.json`
+  once its list answers (`TestHooks.recordPlaceLoaded`), `place_shot` waits on it and
+  scripts/lib/work_place_check.py holds the count. Seeds: `seedM2`, `seedFilesM3`,
+  `seedSearchM4`, `seedM5` (scripts/lib/ios-work-seeds.ts).
+- Tasks, Agenda and Away by kind (M1c of "All of Work on the iPhone"). Tasks and Agenda
+  are places of the Work tab (`WorkPlace.shipped`), drawn by Work/Life/LifePlaceScreen.swift
+  as LifeKitUI's own screen in the detail (`ShellPaths.lifePlaces`: Mail, Tasks, Agenda
+  take the detail and are wide). The client package's `LifeReach` (Work/Life/LifeReach.swift,
+  LifeReachTests) decides where they read: the whole LifeOS session (`work.lifeos.jwt {}`)
+  signed by the Work home when the phone knows it, else the first open host that holds a
+  job and whose key may sign; a host whose whole-session call fails goes in `refused` and
+  the places read per job, each on its own host's token, with no All Jobs; with no host
+  that can sign, one line says why. `WorkLifeHost.every(client)` is the one every-job host
+  per signing host: one `LifeClient`, a `LifeStore` and `LifeScene` kept per filter pick
+  (`narrow(to:)`), the store it leaves paused (`setAuthenticated(false)`); Start Thread on
+  an item starts in its sector's job on that host (`startIn`). The filter is
+  `WorkPlaceScreen`'s `JobFilter` (`all: false` per job). A job's own page shows its sector
+  alone (`LifeReach.sectors(ofJob:)`); a workspace with no sector shows no sector's rows.
+  Baseline w22, w27 and w29 saw other sectors' rows because the fixture store showed every
+  sector (LifeKit's fixture mail list never ends a page); the fixture book now ends
+  `mail:list` at its first page and the store shows the sectors on screen. Away
+  (`AwayKinds`, Work/Shell/AwayKinds.swift, AwayKindsTests): the host menu has Away for
+  Code and Away for Work, each with its stretch's decisions under its name, counted by the
+  thread's scope (a thread no longer listed counts as Code, as the host reads a row with
+  none); `away.set` carries `{code}` or `{work}` to a host whose state names a kind, and
+  `{enabled}` to one a release behind, which gets one Away. A stretch runs while any kind
+  is on and began at the earliest flip of the kinds on (`AwayKinds.since`). The review
+  sheet's footer says Away never sends a held item. Agenda shows no clash or leave-by mark
+  of the host's yet: LifeKitUI has no slot for one (the M1c report names the slot).
+- **Today** (plan "All of Work on the iPhone", M1a; docs/IOS-DESIGN.md "Today"): the store is
+  the client package's `TodayStore` (Work/Today/TodayReads.swift), one per app
+  (`TodayFeed.store`, app Work/Today/TodayFeed.swift). `TodayFeed` hands it each host whole
+  (`TodayHostInput`: the Outbox's items less what a Send holds back, the digest's rows, the
+  catalog, the push counters, the link) under Observation, and LifeOS's lists from
+  `TodayLife` while Today is on screen: one session through `LifeReach.reach` and
+  `WorkLifeHost.every`, a sector it lacks (`auth:caller`) through that job's
+  `WorkLifeHost.of`; tasks and events are the stores' own kept lists, mail waits, the cover
+  and people are Today's own queries, held only while it shows. The store reads each host
+  (`TodayHostReads`, `WorkHost+Today.swift`: messages, money, prep, review, clashes; the
+  digest's ledger once) when its link goes live, again when its counter moves, and at
+  midnight; never before the first frame. Responses has no source yet: `MsFormPhoneRow`
+  carries no unseen count. Rows from the disk (`WorkCacheStore`, Work/Cache, one SQLite file
+  under complete protection, out of backups, through `OrderedWriter`; the rules in
+  `WorkCacheBook`) paint the first frame, open read only (`isFresh`) and are kept by
+  `keepRows` when the fresh page agrees. A kept row has no verbs and no live line ("Now", "in 25
+  min"), and is kept under the host its press opens on (`WorkCache.hostOf`); each host's rows carry
+  the local day they were kept on, and a launch on another day paints no meeting, due or Also row
+  from the disk (`WorkCache.todayShown`). A store whose folder or files cannot be put under
+  complete protection and out of backups does not open: the rows live in memory for that launch
+  (`TodayDiskCache.opened`, `OutboxDiskCache.opened`, `protect:`). A key the host refused
+  (`TodayHostInput.revoked`), a removed host, Work off and a key paired again purge that host:
+  its rows and answers go from memory and disk, a read of it still out answers into nothing
+  (a per-host epoch), and nothing of it is written again; `TodayFeed` drops its Outbox rows
+  (`OutboxKeeping.kept`) on the same changes. Sign-out on the phone is a host's removal. A refused
+  key is a latch (`WorkHost.refused`, `opened`): it holds until a link truly opens, so the status
+  line's Retry lifts nothing, and on the refusal the host's Outbox items and requests, the Digest's
+  ledger and kept days, Files' places and listings (`FilesHost.revoked`) and every kept row of the
+  host on disk go; a Digest, Outbox or Files read or merge still out answers into nothing. The four
+  caches (Today, the Outbox, the Digest, the folders) share one connection (`WorkCacheStore.shared`),
+  so one lock serializes each write's `WorkCacheFence` check and commit with every purge, and a drop
+  is one statement. Every loss goes through `WorkCacheStore.purge`: a refused key and a removed host
+  (with each host relayed through it) close the fence, Work off and a key paired again (`WorkHost`
+  init) move it; a write queued before carries an old `stamp` and is refused. A carrier that refuses
+  the key refuses every host relayed through it too (`WorkHost.carrierRefused`, set by the
+  registry), whether or not their lanes try. Work off also drops Files' listings and kept folders,
+  and a list read out when it went off lands nowhere (`cleared`). A host's LifeOS signing out, heard
+  by its Get at a link or its push (`heardLifeos`), drops its Today rows (`.lifeosSignedOut`), and
+  Today forgets what a signed-out session gave from memory (`forgetSignedOut`) and writes every host
+  again. The same sign-out ends that host's open LifeOS sessions at once, whether or not Today shows
+  (`WorkHost.heardLifeosSignOut`, set by `TodayFeed`: `WorkLifeHost.signedOut` resets each store's
+  queries and forgets the token, and a session counter drops a sign-in or token still out), and
+  `TodayStore.lifeosSignedOut` takes that host's narrowed sectors (`TodayLifeInput.narrowed`), or
+  every LifeOS row when it held the whole session. A session the host refused keeps the state it refused with (`WorkLifeHost.refusedState`):
+  Today says it as the desktop's `downOf` does, a LifeOS still connecting as a wait, and makes the
+  session again once the host says its LifeOS connected. A purge made while the file would not open (a locked launch)
+  is kept in the defaults (`WorkCachePurges`) and run when the file next opens, before any write. A refused host is said
+  in its own words at Today's foot ("Box refused this iPhone’s key", `Block.refused`), never
+  "offline", and the page is never All Clear or "No Jobs Yet" over it. A Work host that has not
+  linked on this launch answers Held and Also with "Not connected", so the page settles and names
+  it at the foot. A host's kept rows of each host-read section (Held, Also, Messages, Owed,
+  Responses) stay on the page, read only, with their times said again, until that host's own part
+  of the section answers without error, whether it sleeps, connects or failed; the part is the row's own
+  job for a job's read (one job's failure never brings back a row another job let go), and a host
+  with no job known yet (a cold launch before the catalog) has not answered. Once it has, those
+  kept rows are done with and a later failed read never brings them back, and a kept chat a fresh
+  row gives, or one he read to, makes no second row. Today writes each linked host source by
+  source: what answered fresh, what has not the kept rows on the page, so one list that always
+  fails stops nothing being written. A return from the background counts as a first try
+  (`TodayFeed.open`: no failed attempt yet), and LifeOS's sections keep what they had while no
+  host has linked again. Each ask of a job read is numbered, and fails at six seconds with the
+  desktop's "It did not answer in time" (`TodayStore.deadline`), its late answer dropped; Retry on
+  a host's line lists its Outbox and digest again too (`todayRelist`). One tell told by two hosts
+  is one Also row (`DigestModel.mergeRows`). A review read that failed counts as none. A host's
+  failed line is Work's own words (`WorkErrorWords`, the desktop's `workErrorWords`; "did not
+  answer" only for the deadline), the empty line never stands beside a failure, and a down session
+  is said in its state with its computer, Retry only for silence. Each job's read follows the desktop's `snapshot()` (`JobReads.answer`:
+  a value read again on a push is not loading, an offline job is away, stale only when every
+  job out has a value); prep gives marks alone. A thread's open request is one Held row
+  ("Asked in" its thread) that opens its sheet, and the items it lists are not listed again. A
+  LifeOS failure's Retry asks LifeKit again through `TodayStore.retryLife` (`TodayLife.retry`).
+  A host whose LifeOS says it is connecting is one line with a spinner (`.connecting`, a lost
+  read's `waits`). A Mark read that went through is kept (`markedRead`), so an older copy from
+  a host behind never comes back. The clock is said on appear and on each return to the
+  foreground, then each minute; the feed moves it on any change of its inputs once the minute
+  moved. Verbs drawn: the tick,
+  Tomorrow, Nudge and Mark read (LifeKit's `chats:markRead`); Dismiss, Prepare and Resolve are not
+  (no LifeKit write for mail waits, no composer or clash screen here). Undo shows a task again
+  only once LifeOS took it back ("Couldn’t undo" else). Tests: TodayStoreTests, TodayModelTests,
+  TodayParityTests, WorkCacheRuleTests, WorkCacheBookTests, WorkCacheStoreTests (the Mac),
+  WorkTabTests.
+- **Messages** (M2b; docs/agents/work-messages.md "The phone"). `.messages` is in
+  `WorkPlace.shipped`; the list is `MessagesScreen` (sidebar), a conversation `Route.chat`
+  (`ChatScreen`, detail, over the list: `ShellPaths.list(under:)`). Reads are LifeKit's live
+  `chats:list`, `chats:get` and `chats:messages` on the LifeOS session (`MessagesReads`, held
+  while on screen by `holdingChats`), the read mark and `chats:requestFiles` through
+  `LifeStore.mutate`. The pure rules are the client package's `Work/Messages`: `ChatModels`
+  (LifeOS's shapes, a new source decodes as `.other`), `MessagesRules` (the port of
+  src/shared/work/messages.ts and the view's row rules, held to the desktop by
+  Fixtures/messages/rules.json, written by scripts/ios-messages-fixture.test.ts), `ReplyWay`,
+  `ReplyLine`, `ChatThreadDraft`, `ChatFiles`, `ChatPress` (the ledger's ref
+  `chat:<workspace>:<chat>`, the attempt key, the pane `msgpane_<workspace>`) and `ReplyDesk`
+  (his words per conversation, in `MessagesDesks`). Send is `MessagesPresses` (app): the
+  link, `PressGates`, `SendWait`'s five seconds, then `WorkHost.sendReply` through
+  `PressLedger.run(.chatReply, attempt:)`. `PendingPress.Kind.chatReply.readsBack` is true: a
+  lost answer is read back by `WorkHost.checkChatPresses` (`work.messages.attempt`), and the
+  Outbox's read-back leaves it alone (`readsItem`). Today's chat rows open the conversation
+  and draw Mark read. Tests: MessagesRulesTests, ReplyDeskTests, MessagesPressTests,
+  PressRulesTests, ShellPathsTests, DigestModelTests, TodayModelTests.
+- **People, a meeting's page and a clash (M2c).** Three routes in the detail: `Route.person`
+  (Work/People/PersonScreen.swift, over People's list, `PeopleScreen` in the sidebar),
+  `Route.prep` (Work/Prep/PrepScreen.swift) and `Route.clash` (Work/Clash/ClashScreen.swift;
+  `ClashOpen` draws it as a sheet on a phone through `ClashCenter` and `clashSheet()`, the
+  detail on the open Duo). `.people` joins `WorkPlace.shipped`. People has no `work.people.*`:
+  the directory and a person's page are LifeOS's `people:directory` and `people:page` through
+  LifeKit on the place's session (`PeopleReads`, held while on screen), joined with
+  `work.guests.list` and `work.msforms.byPerson` (`WorkHost.formsAnswered`). Write presents
+  LifeKitUI's composer (`LifeSheet.compose(.new(to:))`, its send held as every send); New Thread
+  is `WorkLifeHost.startThread(about:in:)` with the person chip. The meeting's page reads
+  `work.prep.page` (a phone view, `PrepPagePhone`) on the job's host and again on its
+  `work.prep` push; Prepare and Follow Up start their threads (`work.prep.brief`, `followUp`,
+  operate); his notes go through `PrepNotesDesk` (500 ms of quiet, at once on leaving, `base`
+  and the host's `conflict`); ticked tasks are filed by `work.prep.decide` (`PrepTicks`). Today's
+  meeting rows and prep marks (`TodayTarget.event`, `.prep`) and the digest's `{view: 'prep'}`
+  open the page; LifeKitUI's Agenda cannot (its `LifeLink` has no event). The clash reads
+  `work.clashes.list` over a fortnight and finds the clash by id or by an event of it
+  (`ClashRules.find`); the drive is the clash's own or `work.clashes.miles`; This Is Fine is
+  `work.clashes.waive` with Undo; Decline and Propose New Time are `work.clashes.answer` through
+  `PressGates` and `PressLedger.run(.clashAnswer)`, read back by the clash list
+  (`PressTruth.clash`). Today's Resolve and a clash's tell or notice (its key `clash:<id>`,
+  `DigestModel.route(_:environmentId:key:)`) open it. Pure rules: `ClashRules`, `ClashPress`,
+  `PrepRules`, `PrepTicks`, `PrepNotesDesk`, `PeopleRules`. Tests: ClashRulesTests,
+  PrepRulesTests, PeopleRulesTests, ShellPathsTests, DigestModelTests, PushTargetTests,
+  TodayModelTests, KeyMayTests.
+- **Mail as a place (M2a).** `.mail` is in `WorkPlace.shipped`: `LifePlaceScreen(view: .mail)`, LifeKitUI's
+  `MailScreen` for every job on the whole LifeOS session with the job filter, as Tasks and Agenda are (wide: its
+  two pages on the open Duo). Mail's bar has one more item, the hourglass, which shows LifeKitUI's
+  `MailWaitingScreen` in the place (`WorkLifeHost.waitingOn`, kept through a fold): Nudge is `work.mail.nudge` and
+  opens the thread that drafts it (`nudgesWaits` is KeyMay's `.mailNudge`); Dismiss and its Undo are LifeOS's
+  `mailWaits:dismiss` and `putBack`, which `LifeWriteFence` passes. Ask in an open mail
+  (`asks(about:)`: `.mailChatAdopt`, the sector not in `MailRules.withheld`, a job of it on the host) opens the
+  chat `work.mail.chat.find` names, else `StartThreadSheet` as Ask, whose Send makes a mail chat with
+  `session.create {mailAdopt}`; it opens in the detail, since a LifeOS mail thread is no canvas item the chat could
+  sit beside. A mail he timed in Mail (the Outbox lists it on its way with `scheduledFor`,
+  `MailRules.timedInMail`) has Cancel Send, Reschedule (the Send later times, Pick a Time…) and Send Now in its
+  Outbox bar, through `work.mail.cancel`, `reschedule` and `sendNow`; Send Now is gated, waits its five seconds
+  (`HeldPress.Act.mailNow`) and is recorded as `.mailSendNow`. A mail's file (the canvas's `mail` arm, a chat's
+  too) is fetched onto its host before its kind reads it (`FetchFirst`, `WorkCanvas.fetch`, the
+  `work.canvas.fetch` push's share in the reader's loading shape), and More offers Save to Workspace
+  (`ReaderVerb.keep`, `work.canvas.keep`). LifeKitUI's own mail reader has no host slot for a file (a tap reads
+  LifeOS's bytes into Quick Look), so a mail's file reaches the phone's reader only as an item of a thread's
+  pane or a chat's file. Agenda's events carry the host's marks (`mark(of:)`): `work.clashes.list` over a
+  fortnight, each clash in the desktop's `clashLines` words and the list's leave times (`MailRules.marks`), read
+  again on the `work.clashes` push. A task's source reply stays hidden: no host method holds one. Pure rules:
+  `MailRules`; tests: MailRulesTests, LifeWriteFenceTests, DigestModelTests.
+- **Review and Money (M5a).** `.review` is in `WorkPlace.shipped` (the Work list's foot, before the Digest):
+  `ReviewScreen` (Work/Review) on `WorkPlaceScreen`, over `ReviewFeed.store`, the client package's `ReviewStore`.
+  The store asks every linked host with Work on whose key may (`work.review.week`, approve) for its part of the
+  week, and Money's sums (`work.money.sums`) beside it; the parts are merged by `WeekReview.merge`, the Swift port
+  of src/shared/work/review.ts held to it by `src/renderer/src/work/review/phoneFixtures.test.ts`, which writes
+  `Fixtures/review/*.json` that `WeekReviewParityTests` replays (`UPDATE_FIXTURES=1` writes them). The zone weeks
+  are cut in is the Work home's (`work.review.list`, which also lists the kept weeks for the bar's week menu). A
+  press on a slipped row goes where `ReviewDesk.settleHost` says (a nudge to a host with a workspace of the job,
+  else the row's host); a held item's Open and a meeting's Follow up open the Outbox item and the meeting's page
+  instead (`ReviewDesk.press`). A settled row leaves until a read no longer lists it open (`stillAway`); the
+  capsule's Undo is `work.review.undo`. `work.review.seen` goes once a week a run when the week draws. Today's
+  review row and a review tell (`DigestModel.reviewWeek`) set the week they name before Review opens. A job's
+  Money is a row on the job's page after Projects (`Route.workView(view: "money")`, `"money"` in
+  `DigestModel.phoneViews`, so Today's Owed rows and a waiting receipt's tell open it): `MoneyScreen` over one
+  `work.money.read` (the phone's view, `MoneyReadPhoneSchema`), read again on the `work.money` push; To Confirm's
+  Accept sheet and Discard with Undo, Owed's Paid, the month's or year's figures and newest rows. Pure rules:
+  `MoneyPage`, `ReviewDesk`; tests: MoneyPageTests, ReviewStoreTests, WeekReviewParityTests, DigestModelTests,
+  PushTargetTests, TodayModelTests, WorkTabTests, KeyMayTests.
+- **A job's small places (M5b).** The job's page gains **Plays** before Routines (`Route.workView(view: "plays")`,
+  `"plays"` in `DigestModel.phoneViews`): `PlaysScreen` (app Work/Places) lists the job's plays (`work.routines.plays`,
+  read again on the `work.routines.plays` push, `WorkHost.playsRev`), proposals left out; a play that takes a line
+  of text, a date or nothing opens the run sheet, whose Run starts it (`work.routines.playStart`, operate) and opens
+  the thread; a play about a thing reads "Takes a mail" and opens nothing (`PlayRun`). **Routines** unfold each
+  routine's last five runs (`work.routines.runs`; a run that started a thread opens it) and offer Run Now as the
+  leading swipe and the context menu (`work.routines.runNow`, operate; `RoutineRuns`). **Files' New** lists the job's
+  templates under "From a Template" where the place makes files (`work.templates.list`); one pushes its fields, and
+  Make writes it into the folder he is in (`work.templates.make` with `into`, the phone's day for Date,
+  `TemplateFill`); `work.templates.fields` is the Save dialog's and is not on the phone. A **dashboard**'s pull reads
+  every figure again (`work.dashboards.refresh`, operate); a block whose sheet has a place on the phone opens it
+  (`DashSource`: a LifeOS sheet in the hosted editor, a Microsoft form's answers; a sheet kept as a file opens
+  nothing; the block's `from` is `DashFromPhone`). **Forms** is `FormsScreen`: TempCode's forms (`work.forms.list`),
+  then Microsoft's, Close (operate) on one that takes answers, Reopen on a closed one only for a key with approve
+  (KeyMay `.formsReopen`, `.msformsReopen`: `work.forms.close?open=true`, the host's `mustBePerson(by, 'approve')`),
+  after `PressGates`; a Microsoft form that collected opens its answers (`Route.msformAnswers`,
+  `MsFormAnswersScreen`: `work.msforms.get`, `responses`, then `seen` when any were new; Open in Forms in the bar's
+  menu). A **project's** LifeOS document or sheet opens through `work.guests.ticket` as an item's does
+  (`WorkLifeHost.offers(document:)`, `open(document:)`, `LifeDocItem`: an item with no thread, `Route.file`).
+  **Connections** is a place of the Work list's foot, shown while a row does not work or a known end is within 14
+  days (`ConnectionsFeed` reads each linked host's `work.health` and `work.lapses` at most every five minutes;
+  `Connections.sections` is the desktop's `sectionsOf` without the LifeOS state words); every fix a host names works
+  in a computer's own window, so a row that does not work offers "Open on <computer>" (`work.reveal`, Settings →
+  Connections there). **Computers** shows while something is driven or a host keeps the Windows VM: the VM's row says
+  how it stands and offers Wake or Sleep (`work.winvm.state`, `wake`, `sleep`, operate; the `work.winvm` push sets
+  `WorkHost.winvm`; `WinvmWords`), and the live picture's foot has Copy beside Paste while he drives (`video.copy`,
+  approve, onto the phone's clipboard; `LiveVideo.copy`). **Settings → Work** lists each host's jobs; one pushes its
+  settings to read (`work.workspace.get`: model, reasoning, Write in My Voice, the Windows VM, the computers) with
+  "Open on <computer>" (`work.reveal {settings: 'work'}`). Pure rules: Work/Places/SmallPlaces.swift; tests:
+  SmallPlacesTests, KeyMayTests, ShellPathsTests, DigestModelTests, PushTargetTests, LiveVideoTests (the Mac).
 
 ## A Work thread's items and LifeOS's screens (milestone 47)
 
@@ -942,7 +1266,9 @@
 - **The Item segment** (ThreadFrame.swift `segments(for:hasItems:)`): a
   Work thread that is its transcript alone and has an open item is Item
   and Chat; a thread with a hero of its own keeps it. The bar shows the
-  item's name (`ItemLabel.short`); several items switch from the name.
+  item's name (`ItemLabel.short`); several items switch from the glyph
+  beside More, whose menu also moves the shown item up or down the
+  thread's order (`work.canvas.reorder`, operate; `CanvasOrder.moved`).
 - **LifeOS's screens** (app Work/Life): one `WorkLifeHost` per Work
   workspace holds a `LifeClient` and a `LifeStore` narrowed to the
   workspace's sector, signed in with the JWT its host signs
@@ -961,7 +1287,8 @@
   day (debug builds).
 - **Ask** from an item opens a sheet with the selection (or the PDF's
   page) as its chip and sends to the thread (`WorkHost.ask`), then shows
-  Chat; the thread's own composer holds no chips.
+  Chat. The thread's own composer holds its own chips ("A thread with its
+  things" below).
 - **Routes**: `.workView(environmentId:workspaceId:view:)` (`mail`,
   `tasks`, `agenda`, `projects`, `routines`), in the detail column.
 
@@ -978,10 +1305,11 @@
   `comments:list`) over the workspace's narrowed JWT; nothing new crosses
   TempCode's wire, so the contract did not move.
 - **The host's members.** `WorkLifeHost` keeps `showsProjects` false (the
-  Projects row is its place, so Tasks' menu does not offer it) and
-  `offers(document:)` false: a project's LifeOS document or sheet is a
-  plain row on the phone until a later milestone opens it through
-  `work.guests.ticket`, as an item's document does.
+  Projects row is its place, so Tasks' menu does not offer it).
+  `offers(document:)` is true for a project's LifeOS document or sheet
+  (M5b) when the key may ask a ticket: `open(document:)` opens it in the
+  hosted editor through `work.guests.ticket`, as an item's document does
+  (`LifeDocItem`, `Route.file`); a note stays a plain row.
 - **A Work project's card** (`ProjectCardView`, `showsBranch` false from
   `WorkspaceScreen` when the workspace's kind is `work`) draws no branch
   line.
@@ -1006,18 +1334,21 @@
 
 - **The Forms row** in a Work workspace's head (`WorkViewRows`, after
   Routines, the `checklist` glyph) pushes `.workView(view: "forms")`, which
-  `WorkViewScreen` draws as `MsFormsScreen` (Work/Items/MsFormsScreen.swift):
+  `WorkViewScreen` draws as `FormsScreen` (Work/Places/FormsScreen.swift, M5b:
+  TempCode's own forms first, then these):
   the job's Microsoft forms from `work.msforms.list`
   (`client.work.canvas.msforms`), newest change first as the host keeps
   them, one row a form, its title and how it stands as the stamp
   (`MsForms.stamp`: "Draft", "3 responses", "Closed, 3 responses"). Pull
   to read again; "No Forms" when there are none; the read's error with Try
   Again.
-- **A tap opens it in Safari** (`MsForms.url`, TempCodeClient
-  Work/Items/MsForms.swift): the response link while it collects, else the
-  builder made from the form's id as the desktop's `builderOf` makes it; an
-  id outside Forms' alphabet opens nothing. The phone makes and changes no
-  form: that is the desktop's, where the hold applies.
+- **A tap opens its answers** in the app once it has collected (M5b,
+  `MsFormAnswersScreen`; "A job's small places" above), a draft in Safari
+  (`MsForms.url`, TempCodeClient Work/Items/MsForms.swift): the response
+  link while it collects, else the builder made from the form's id as the
+  desktop's `builderOf` makes it; an id outside Forms' alphabet opens
+  nothing. Close and Reopen are the only changes the phone makes to a form;
+  making and editing one is the desktop's, where the hold applies.
 - **The wire**: `work.msforms.list` answers each form's whole view; the
   contract (`MsFormsListPhoneSchema`, `MsFormPhoneRow` in wireSchemas.ts,
   in scripts/gen-swift-contract.ts's SUBSET) names the six fields the phone
@@ -1033,16 +1364,96 @@
   project is xcodegen's from before it (the box has no xcodegen; the Mac's
   build generates it from `project.yml`'s `Sources`).
 
-## A voice note (capture from anywhere, 2026-11-20)
+## Capture (capture from anywhere, 2026-11-20; one sheet, All of Work on the iPhone M4b)
 
-- Home's microphone (while a host has Work on) opens `VoiceNoteSheet`: hold
-  to talk, transcribed on the phone only (`OnDeviceSpeech`,
-  `requiresOnDeviceRecognition`; no on-device model is a refusal, never a
-  server), a sector (Unsorted or one of six, the host's last by default),
-  Start Thread, Save through `work.capture.file`. `VoiceNote` and
-  `Dictation` (client package Work/Capture) hold the draft, the host, the
-  key and the hold's states; `WorkHost.captureState()` and `capture(...)`
-  are the wire. The account is docs/agents/work-capture.md "The phone".
+- **One sheet**, `CaptureSheet` (Work/Capture/CaptureSheet.swift), "Capture": the note's field (typed, or said
+  with the hold control at the sheet's foot: `OnDeviceSpeech`, `requiresOnDeviceRecognition`; no on-device
+  model is a refusal, never a server), a sector (Unsorted or one of six, the host's last by default), Start
+  Thread, then Scan Receipt, Add Photos and Add Files. Save files the words through `work.capture.file` (as
+  the voice note always has) and queues each photo or file for the top of the chosen job's own folder through
+  Save to TempCode's queue (`ShareInbox.add`, then `ShareBridge.drain`: its own item, its own `op`, sent
+  once; a refusal shows at the head of that job's Files as every queued file's does). Scan Receipt closes the
+  sheet and opens the document camera (`CaptureDesk.scanReceipt`, then `ReceiptFlow.press`). `VoiceNote` and
+  `Dictation` (client package Work/Capture) hold the draft, the host, the key and the hold's states;
+  `CaptureRules` is what one Save does (`plan`) and the job a file goes to (`job`: the one he picked, else the
+  note's sector's, else the last used); `WorkHost.captureState()` and `capture(...)` are the wire.
+- **The ways in.** The `plus` in the Work list's bar and Today's (`CaptureButton`, drawn where some host's key
+  may file a note, take a receipt or upload), and two App Shortcuts, "Capture" and "Voice Note"
+  (`CaptureIntent`, `VoiceNoteIntent` in Activity/Shared/CaptureIntents.swift, compiled into the app and the
+  widget extension; `TempCodeShortcuts` in the app), offered to the Action button, Spotlight and Siri, and as
+  two controls in the widget extension (`CaptureControl`, `VoiceNoteControl` in Activity/CaptureControls.swift)
+  for Control Center and the Lock Screen. Every way in calls `CaptureDesk.shared.open(_:)` and nothing else:
+  "Capture" opens with the field focused, "Voice Note" with the keyboard down; an intent files nothing, sends
+  nothing and starts no thread. `CaptureSheetHost` presents the sheet from RootView over every tab; a thread
+  his Save started opens in the Work tab. The proofs' `TC_TEST_SHEET=capture`, `voice-note` and `receipt`
+  open it there. The account is docs/agents/work-capture.md "The phone".
+
+## A thread with its things (All of Work on the iPhone M4a)
+
+- **`@` in a Work thread's composer.** The box ends on `@words`
+  (`MentionTrigger`: the last token opens with `@`) and the field's
+  `ComposerDraft` assigns `mention` only when those words change, so
+  outside the field only the list's own view (`MentionPanel`,
+  Thread/ComposerMentions.swift) runs for a key typed after the `@`. The
+  list asks `work.canvas.mentions {sessionId, text}` (approve, `screen`:
+  KeyMay's `canvasMentions`; a key that may not, or a code thread, gets no
+  list) through `MentionAsk`: the first ask at once, the rest 120 ms after
+  the last key, the ask keyed on the words so a new key cancels the one
+  before; the last answer stays, cut to the rows whose names still hold
+  every word, until the next lands. Rows: the kind's glyph, the name, the
+  hit's fact and time (`MentionWords.detail`, the desktop's `whenWords`);
+  Loading… before the first answer, No Matches, and one quiet line for
+  kinds the host could not search (`MentionWords.failed`: LifeOS's state on
+  that host, else "Couldn't search everything"). A hit carries no job, so a
+  Work Chat's rows do not name theirs. A tap puts the chip in the box and
+  takes the `@words` out (`ComposerDraft.takeMention`, a named write).
+- **Chips.** Each thread has its own `ChipBox` (`ComposerChips.shared`, by
+  host and thread; eight at most, the same thing once), drawn over the box
+  (`ComposerChipRow`, each with Remove). A chip alone sends. The send
+  writes the chips' lines above his words (`ChipWords.message`, now word
+  for word the desktop's `chipLine`: the nouns, a file's and a form's
+  source as JSON with its brackets escaped, a file's place and path and
+  never its words, `quote` before `excerpt`); a refused send gives both
+  back (`ChipBox.restore`). The sent bubble draws them back from the text
+  (`SentChips.of`, the desktop's `sentChipsOf`) as `SentChipRow` over his
+  words; Copy still copies the message whole.
+- **Drop and Add to Thread.** A Work thread's box is a `.dropDestination`
+  for `ChipDrag` (any JSON with a `chip`): a Files row's `FileDrag` carries
+  its chip (`FileChips.of`, files.ts `fileChipOf`), an Outbox row its held
+  act (`RowChips.held`, the host's own held acts only) and a People row its
+  person (`RowChips.person`). Files' row menu has Add to Thread…
+  (`AddToThreadSheet`: the job's open Work threads, pinned then newest,
+  `AddToThread.threads`); a pick adds the chip to that thread's box and
+  opens the thread with it waiting. Nothing sends. LifeKitUI's Mail, Tasks
+  and Agenda rows are work-kit's and are not draggable yet.
+- **The file beside the chat.** A Work thread with an item is a wide route
+  on the open Duo (`ShellPaths.wide`, `hasItem` read without observing the
+  canvas); the thread screen calls `ShellNavigator.itemsMoved()` when its
+  first item opens or its last closes, so the split asks again (items land
+  after the route opens). The fold cycle's thread step types a draft and
+  puts a chip in the box (`TC_TEST_CHIP`); `work.chips` is the box's count.
+
+## Search's Work scope (All of Work on the iPhone M4b)
+
+- The Search tab gains a third scope, **Work**, beside Threads and Files, offered while a host with Work on
+  lets this key ask `work.search.query` (`KeyMay.searchQuery`, `.searchOpened`: approve on `screen`). With it
+  the scopes show as the field opens, so Recent (the hosts' newest openings, titles and ids only) stands
+  before he types.
+- `WorkSearchModel` (client package Work/Search) is the port of the window's `model.ts`: generations, what is
+  out, the two speeds, the rows in their order (kinds in `SEARCH_ORDER`, a thing once, rows standing keep
+  their place, Recent one list across hosts), the quiet lines, the highlight. `scripts/ios-work-search-fixture.test.ts`
+  runs the window's model over scripted cases into Fixtures/search/model.json and `WorkSearchModelTests`
+  replays them, so the two cannot drift unseen. `WorkSearchRun` is `controller.ts`: each host's instant tier
+  on every change of his words, each pending source 120 ms after his last key and from two characters, six
+  seconds an ask, a new keystroke cancelling all that is out. `WorkSearchHosts` asks every connected host
+  with Work on, the box first as the Work home (the desktop's `workHome` fallback), the others with `own`.
+- A hit opens where the phone has its place (`WorkSearchTarget.of`): a person's page, a conversation, an
+  event's meeting page, the job's Tasks or Mail, a thread at its row, a held item, a file seated in its job's
+  Files pane (`WorkHost.openFound`, `work.files.open` with the hit's ref) and then the reader. Money, routines,
+  projects and any kind with no phone place are shown and are not buttons. A tap tells the hit's host
+  (`work.search.opened`, never waited on). A result opens in the Search tab's own columns, not the Work tab.
+  "All mail for …" holds the search to one kind; the bar's filled filter widens it again. Return in the field
+  takes the first row.
 
 ## The Files place (the files pillar's F9, 2026-11-23)
 
@@ -1086,12 +1497,14 @@
   `UploadSource` (FilesUpload.swift) is picked bytes or a picked file (its
   digest read through once, its bytes a range at a time; the app copies a
   picked file first and removes the copy when the upload ends).
-- **The app** (ios/TempCode/Sources/Work/Files/): `WorkViewRows` draws a
-  Files row after Projects (`.workView(view: "files")`, `FilesScreen`);
-  `FolderScreen` is a place, folder or lens, pushed as `FilesFolderRoute`
-  inside the detail stack (not Codable: a cold launch keeps the Files
-  screen and drops what was over it); `FileRow` and `FilesRowLabel` the
-  row; `FilesSearchList` the search field's list; `FilesNewSheet` New and
+- **The app** (ios/TempCode/Sources/Work/Files/): Files is a place of the
+  Work tab for every job (`FilesPlaceScreen`, `WorkPlace.files`); a job's
+  page's Files row opens it narrowed (`.place(.files, job:)`), and
+  `FilesScreen` is that narrowing for `.workView(view: "files")`.
+  `FolderScreen` is a place, folder or lens as `Route.folder` in the
+  sidebar column (Codable: a relaunch keeps it, with `through` for a
+  computer the job's host reaches); a file opens as `Route.filesFile` in
+  the detail; `FileRow` and `FilesRowLabel` the row; `FilesNewSheet` New and
   Upload; `FilesParts.swift` Delete's undo capsule (the Outbox's
   `UndoCapsule`, now shared). **`FilesOpen.page(client:route:)` is the one
   place a file is opened**: its `.item` line draws `FileItemScreen`, which
@@ -1103,12 +1516,29 @@
   for sound and video, Open in Word from `FilesHost.officeAddress`; also what stands in a file-kept document's place where
   the hosted editor will not open it). `ItemBody` reads the `file` canvas kind as "This file opens
   in Files." (a thread's canvas seats none before F5).
-- **What degrades until the host builds it**: `work.files.search` and
-  `names` (F4): the search field filters the rows the phone holds;
-  `work.files.preview` and `thumbs` (F3): Quick Look shows the facts and
-  Open the original; `home` is not read (Recent and Starred are lenses the
-  places list carries). A lens or place the host does not list is not
-  drawn.
+- **Every job, moves and the grid (M3a, 2026-11-24)**: `FilesRoot`
+  (client package Work/Files/FilesRules.swift) lays out a band a job
+  (`jobs`, `unique`, `shown` by the filter, `band`: lenses, places, far
+  computers, From Mail, Trash). `FilesHost` gains `move` and `copy` (with
+  `asked`), `trash {asked, forGood}`, `names` (Go To), `searches` and a saved
+  search run, `loadThumbs` (forty a call, once a run, by `thumbKey`),
+  `loadFar` and `list(through:)` (a computer the workspace may use, asked
+  through its host by `work.files.across`, its answer read as that method's),
+  and `opening` (a copy's progress from the `work.files` push, by
+  `FilesRules.openingTag`, the host's tag). `FilesRules.refusal` takes `to`
+  (the grammar's across-place sentences), `question`, `audience`,
+  `deleteAsk` and `noBinDrive` port `questionFor`, `audienceOf`, `deleteAsk`
+  and `noBinDrive`. `FilesFound` merges a search across jobs (the local
+  filter at once, each host's rows as they land, an older query's answer
+  dropped, a failed job named). `FolderKept` keeps each folder's first page
+  (`WorkCache.FolderPage` with `rows`, no file ref) for the cold paint, in the
+  store Today and the Outbox share (`FolderDiskCache`). The app's
+  `FilesDesk` (FilesChange.swift) runs Move, Copy, Delete and Put Back with
+  the question and Undo; `FileDrag` drags a file row onto a folder row;
+  `FilesGoTo` is Go To; `FilesGrid` the icons. A change on a computer
+  reached through the host is that computer's (not offered here).
+  `home` is not read (Recent and Starred are lenses the places list
+  carries). A lens or place the host does not list is not drawn.
 - **The proof's hooks** (DEBUG, Work/Files/FilesProof.swift):
   `TC_TEST_ROUTE=work-view TC_TEST_WORK_VIEW=files` opens the first Work
   workspace's Files; `TC_TEST_FILES="<place>/<folder>/…/<file>"` walks it
@@ -1148,6 +1578,32 @@
 - **From Files** a seated file opens on that page; Ask there finds the
   thread that holds the file or starts one with it (`FileAsk`,
   `WorkHost.ask(workspaceId:item:chip:text:session:)`).
+- **M3b, the reader**: a PDF's highlights, notes and fields over
+  `work.pdf.mark`, `unmark`, `setField`, `review` (`PdfLayer.swift`,
+  `PdfLayerModel`, `PdfLayerDraw`); a meeting's recording played by range
+  (`work.meetings.recording`, `MeetingPlayer`) and its tasks decided
+  (`work.meetings.decide`, `MeetingActions`); history's Restore
+  (`work.history.restore`, `HistoryRestore`); Ask landing on Chat
+  (`WorkCanvas.landOnChat`, `AskLanding`, `ThreadScreenModel.land`); two
+  pages and the table for a document with comments, a deck with notes and a
+  video (`ReaderHalves`, `ReaderSpread`, `ReaderBeside`). Tests:
+  `ReaderLayerTests`.
+- **M3c, the editor's frame, Share and the clicker**: the hosted page opens
+  with `chrome=none` (`HostedBridge.framed`) and talks over one bridge, the
+  `tcFrame` handler (`HostedFrame`: `drawn`, `state`, `found` in; format,
+  find, undo and redo out; only from the ticket's origin in the main frame);
+  the web view fades in on `drawn`, the format row (`HostedFormatRow`) shows
+  while he types, More's Undo, Redo and Find ask the page
+  (`ReaderCommands.frame`, `ReaderFacts.finds/undo/redo`), Find is the
+  system's find bar over a `UIFindSession` the page answers. Share is
+  `ShareLinkSheet` over `work.guests.forItem`, `create` (with an attempt key,
+  `PendingPress.Kind.guestLink` now reads back by `work.guests.attempt`),
+  `setRole`, `rekey`, `revoke` (`ShareSource`, `ShareRules`,
+  `WorkHost+Guests.swift`). The clicker runs on `work.slides.show.state`,
+  `press` and the `work.slides.show` push (`WorkHost.shows`, `showsRev`,
+  `ShowLink`, `HostClicker`), reached from the Work list's "Showing on" row
+  and a showing deck's More (`ReaderVerb.clicker`). Tests:
+  `EditorFrameTests`, scripts/ios-share-fixture.test.ts.
 - **Save to TempCode** is the share extension `TempCodeShare`
   (ios/TempCode/ShareExtension/, the sheet in Sources/Work/Share/): one queue
   in the App Group (`ShareInbox`), one uploader (`ShareUploader`), the places
@@ -1206,3 +1662,250 @@ most easily breaks:
 - **A view's body counts itself** where the perf set gates it
   (`let _ = PerfCounters.bump(...)`); a new view on the push or key path
   that should stay still gets a counter and a gate.
+
+## Outward presses on the phone
+
+Every later milestone adds its rows here before its screen ships.
+
+Each row is a control on the phone that can send, post, share, publish,
+answer or reopen; its keyboard shortcut or accessibility action counts as
+the control. The host checks the capability at its door
+(`capabilityRefusal`, src/shared/capabilities.ts); the person check is the
+literal word a pillar asks past the door (the Outbox's `mustBePerson`,
+src/main/server/work/outbox/person.ts; the rules pillar; mail's
+`mustApprove`), where `admin` does not stand in. The phone draws a press
+only where KeyMay (client package Work/Shell/KeyMay.swift, asked as
+`client.work.may(.method)`) says the host would allow it, so a key that may
+only read sees none of these. KeyMay is held to the host by
+scripts/ios-keymay-fixture.test.ts, which writes
+Tests/TempCodeClientTests/Fixtures/keymay.json from the host's own rules for
+read, operate, approve, admin, combined, device, pending and revoked keys;
+KeyMayTests holds the Swift table to that file. A row marked **Gated**
+asks the owner's check (`PressGates`, Touch ID, Face ID or the passcode)
+once per attempt before it goes or starts its wait, after the link (no
+link: "Not connected to <host>" at once); a key that may not press sees no
+press and so no check. A file in a place others
+can open, or a mail's file, also takes the word approve (files/policy.ts):
+the host's `can` list per place says so and `FilesRules.offers` reads it.
+App files are under ios/TempCode/Sources.
+
+The rules every press below keeps (fix round 2):
+
+- **Frozen, then checked twice.** A press freezes its host, the key it goes
+  out under (`PressGates.key`: the key's id and words, and the foreground it
+  was pressed in, `|f<n>`, which leaving the screen moves on) and what it
+  sends before the owner's check. When the system answers, `PressGates.allow`
+  looks the host's client up again: another host, or another key on it
+  (even one with the same capability), voids the pass and sends nothing
+  (`PressGate.holds`). Each wait checks the key once more when its seconds
+  end (`SendWait.Check.key`, `SendWait.why`): a key that differs only in its
+  foreground is "TempCode left the screen", so a group's next host, or the
+  send after a grant, never goes after a background and return. Share waits until the host
+  that serves the item's links answered before it offers Create.
+- **The ledger's answer is the host's.** `PressLedger.reached` counts the
+  host's words and a refusal the phone made before anything left (an
+  encode failure is `ActionError`, never `TransportError.decoding`). The
+  box's `linkDown` for a relayed Mac (every hand-off the box could not
+  finish says `linkDown:`, relay.ts `forward`: a 30-second deadline, its
+  service closing, no presence row), a host's `outcome unknown:` (Mail's
+  send whose LifeOS answer was lost, mail/index.ts `OUTCOME_UNKNOWN`), a
+  lost socket and a yes the phone cannot read (`.decoding`) are not
+  answers: the press stays Checking, keeps its attempt key, and is read
+  back. The host's "It may have gone" is `.mayHaveGone`, late or not.
+- **A late answer reaches its screen.** An answer after the fifteen
+  seconds, and every read-back, goes to its kind's hearer
+  (`PressLedger.listen`: a reply's desk by its attempt key, a Create
+  link's sheet by its item, a request's sheet by its id); a late refusal
+  says the host's words on the item, and a press on many says each item's
+  own outcome (`runMany`'s `outcome`, `DecisionResult.states`). A pushed
+  item settles a lost press on it at once (`PressLedger.heard`, a mail Send
+  of a thread's draft too), and a press settled twice is heard once.
+- **Each part that has not left is asked again.** A press on many goes host
+  by host, and a send waits for its grant's answer: before each part's
+  request (the grant's too) the app must be in front, the host linked and
+  its key the one he pressed under (`SendWait.mayStart`,
+  `HeldPress.dispatch(ready:)`; grouped Discard freezes its keys as Send
+  does); a part that may not start is said beside those that went, never
+  sent. The record asks the same once more where the request leaves
+  (`PressLedger.mayLeave`, set at the root, with the key each press carries
+  and the method the key must still press), and the socket asks it again as
+  its send queue releases the frame, after any write the frame waited
+  behind (`Transport.release`, a task-local the record sets; a grant and a
+  link's role go through `PressLedger.guarded`): a press it stops never left,
+  its record goes and its site puts the thing back with the line. Every
+  press carries the key the owner's check passed (Mail Send, Try Again,
+  Create, Replace, Discard, Edit, a clash's answer, a form's Reopen and Undo
+  of a Result too; Reopen and Undo, outside the record, through `guarded`). A grant whose answer was lost says
+  so (`HeldPress.GrantLost`); a send that did not start after a grant was
+  made says the grant stands.
+- **One reading of each item's answer.** A group's on-time answer and its
+  late one read an item the host could not confirm (`outcomeUnknown`) as
+  "May have gone", never "not sent" (`DecisionResult.state`,
+  `GroupOutcome`), and so does a request's row, its head and the note to its
+  thread (the host keeps `unknown` on the row's result), and the item's own
+  page ("May have gone. … Check Sent first.", never "Not sent"). A request
+  answered `running` is Checking on the press's own answer too
+  (`PressLedger.NotYetKnown`); its end, from a push or a fresh read, settles
+  the press even while its first request is still parked
+  (`WorkHost.requestEnded`, `settle(final:)`), and a running answer after an
+  end changes nothing. A refused key closes the request sheet and drops a
+  read or a receipt started under it (`keyEpoch`). Mail's Send, Send Now and
+  a hold send it could not confirm, and Messages' Try Again, answer
+  `outcome unknown:` when LifeOS may have taken them (server/work/outcome.ts).
+  A lost Try Again settles from the conversation's own read, asked once it
+  went Checking and awaited (`retryNow`, then the seed: LifeKit drops an
+  equal value, so a change is never waited for), by its outbox id, a reply
+  the page no longer holds reading May have gone (`RetryReadBack.truths`);
+  a reply lost across a relaunch says so on its conversation
+  (`MessagesDesks.readBack(…, host:, ref:)`). An attempt key carries when it
+  was made (`PendingPress.newAttempt`, `phone-<ms>-<uuid>`): one older than
+  the host keeps answers reads back as unknown and a repeat of it is refused
+  (server/work/attemptAge.ts), never "never heard" or sent anew.
+- **Undo is on screen for the whole wait.** An item's own page wears the
+  Outbox's capsule when the Duo's sidebar is hidden or shows another place
+  than the Outbox (`SendUndoPlace`); a thread's held line says a cancelled
+  Send itself (`OutboxPresses.notice(for:)`); from
+  anywhere else the Outbox's list comes up for a press counting, queued or
+  on its way. At accessibility sizes the capsule's line wraps and Undo sits
+  under it.
+- **A locked launch keeps the file.** `work-presses.json` holds ids, refs
+  and times, under protection until the first unlock. A file that is there
+  and will not read is never taken for none: no press leaves and nothing is
+  written over it until it reads (`PendingPresses.read`,
+  `PressLedger.readIfUnread`, `unreadLine`).
+
+| Control (view) | Host method | Capability | Person check | A repeat |
+|---|---|---|---|---|
+| Send, list swipe and context menu (Work/OutboxScreen.swift) | `work.outbox.send {ref, rev, again?}` after the phone's five-second wait (`SendWait`, Work/OutboxPresses.swift) | approve | approve | **Gated.** `rev` is the shown `updatedAt` (`CHANGED_SINCE`); `store.claim` runs one press; `again` only on his Send Again of one `outcomeUnknown` item (`HeldPress`); the wait holds one press per item and sends one at a time; `PressLedger` keeps the press until the host answers, so a second Send waits for its read-back (Checking…) |
+| Send, the detail's bar (Work/OutboxItemScreen.swift) | the same | approve | approve | **Gated.** The same |
+| Send in a transcript (Work/HeldInline.swift) | the same | approve | approve | **Gated.** The same |
+| Send and stop holding, the Send button's menu (Work/OutboxItemScreen.swift) | `work.outbox.grant {from, matcher, label}` at the wait's end, then Send (`HeldPress.dispatch`) | admin | admin, then approve for the Send | **Gated** (one check for both). The grant rides the waiting press, so Undo takes back both; a refused grant sends nothing; never from a group or a request |
+| Discard (OutboxScreen, OutboxItemScreen, HeldInline) | `work.outbox.discard {ref}` | approve | approve | **Gated**, after its confirm. A decided item cannot change (`PRESSABLE`); `PressLedger` keeps the press until the host answers |
+| Send N, the summary of the ticked rows (Work/OutboxSelect.swift `OutboxSummary`, a sheet from the list's Send N… or the open Duo's detail) | `work.outbox.decide {items: [{ref, do: 'send', rev}], via: 'phone', many: true}`, one per host, after the phone's five-second wait as one press (`OutboxPress.group`, `GroupPress`) | approve | approve | **Gated** (one check for the group, bound to every item's ref and revision). Each item's `rev` is what he saw; never `again` and never a grant, even for a group of one; the wait holds the group as one press beside single Sends; `PressLedger.runMany` writes every item before the call and reads each back by its ref if the answer is lost; the host answers each item, and one that did not go keeps its reason in its row |
+| Discard N, the same summary | `work.outbox.decide {items: [{ref, do: 'discard', rev, reason?}], via: 'phone', many: true}`, one per host, at once | approve | approve | **Gated**, after its confirm with "Why, for the thread". The same `rev`, ledger and per-item results |
+| Edit's Save (Work/OutboxItemScreen.swift) | `work.outbox.edit {ref, payload, rev}` | approve | approve | **Gated.** `rev` is the `updatedAt` the Edit sheet showed; the host refuses an edit over a newer one (`CHANGED_SINCE`, under the item's lock) and a decided item; `PressLedger` keeps the press until the host answers (a read-back that finds the item moved counts the edit done) |
+| Undo a Result (Work/ResultsSheet.swift; Work/AwayReview.swift) | `work.outbox.undo {id}` | approve | approve | **Gated.** The key is frozen before the owner's check, and `WorkHost.undo` runs through `PressLedger.guarded`, so it is asked before the request and again as the socket releases the frame. The host undoes once; the row reads Undone |
+| Grant Remove (Work/WorkSettingsScreen.swift) | `work.outbox.ungrant {id}` | admin | admin | removing a removed grant changes nothing |
+| An add-on tool's rule (Work/WorkSettingsScreen.swift) | `work.outbox.setRules` | admin | admin | sets a value |
+| A held mail's Send, LifeKitUI's composer (Work/Life/WorkLifeHost.swift `hold`) | `work.mail.send {id, seen, sendAt?, sendZone?}` after the phone's five-second wait (`MailPresses`, Work/Life/MailPresses.swift) | approve | approve | **Gated** (the refusal is the composer's own error line, `HeldSendRefusal.gate`). The composer closes on the press and Mail's capsule says "Sending" with Undo for the five seconds, put up for each press as its own countdown starts (a second draft waits behind the first and gets its Undo when its turn comes; the first's is shown again over the second composer's words); Undo sends nothing and opens the draft again; the background, a lost link or a key that may no longer send cancels the wait and says why in the capsule and in the sticky toast the Outbox uses (`FleetToastCenter`, which waits for his tap, so a lock in the five seconds or a person's page with no capsule still shows it; a refused send too); a Send that was Checking is heard when its late answer or read-back comes (`presses.listen(.mailSend)`, `WorkHost.mailHeard`, `MailRules.heardLate`): "Sent" in the Mail place that said Checking, and a not-sent or may-have-gone line also as the sticky toast, after a relaunch too; a person's page, which draws no Mail capsule, shows the wait with Undo in TempCode's own `UndoCapsule` (`MailPresses.counting(on:)`); an Undo that comes too late (a shake or ⌘Z) says what became of it: "Already sent", "Already on its way", "It was not sent" or "Checking whether it went" (`SendWait.lateUndo`); the draft stays in LifeOS whatever happens. A second Send of a draft that waits says "Already sending". `seen` must match what LifeOS holds; `HeldSendCheck` re-reads an older composer's draft. `PressLedger.run(.mailSend)` keeps the press under the draft (`PendingPress.mailRef`); a lost answer says "Checking whether it went" and the composer closes on it (LifeKitUI says "Not sent" for anything `hold` throws, so `hold` answers words for Checking and Already Sent, and throws only a refusal); a press still out says the same before any owner's check. Each lost one is read back by the draft's status in LifeOS (`checkMailPresses`, `PressTruth.mail`) on every link and as soon as a LifeOS session opens: a draft still a draft is free to send, one on its way says "This mail already went". A key without approve is told so before any owner's check. LifeKitUI's Retry on a failed mail (`compose:retry`) is fenced (`LifeWriteFence`): on the phone it sends nothing and LifeKitUI says its own "Couldn't send"; a failed mail is not sent again from the phone (its row opens no composer, and the host sends only a draft), only from LifeOS on the computer. Outside TempCode's own screens, routed to the host: keep |
+| A reply to a task's Slack or Messages source, LifeKitUI's `TaskReply` (Send, Retry, Undo) | none: no host method holds a task's reply (`work.messages.send` names a conversation, a task's reply names only its message) | none | none | Not drawn: work-kit's `repliesToSources` defaults to `!holdsSends`, so the field is hidden in TempCode; `LifeWriteFence` still refuses `replies:send` and `replies:retry` behind it |
+| Send Now on a mail he timed in Mail, the Outbox item's bar (Work/OutboxItemScreen.swift `mailTimedBar`) | `work.mail.sendNow {id, sendAt}` after the phone's five-second wait (`HeldPress.Act.mailNow`, Work/OutboxPresses.swift) | approve | approve | **Gated.** `sendAt` is the time he saw: the host refuses a mail moved since (`TIME_CHANGED`; the hold's under the item's lock, LifeOS's own by a read just before its write). `PressLedger.run(.mailSendNow)` keeps the press under the item's ref with that time; a lost answer reads back by the Outbox's item (`MailRules.sendNowTruth`: gone or timed earlier is done, the same time still waits). It goes after LifeOS's undo time |
+| Reschedule and Cancel Send on a mail he timed in Mail (the same bar) | `work.mail.reschedule {id, sendAt, sendZone}`, `work.mail.cancel {id}`, at once | approve | approve | Not outward: each moves or takes back his own mail; Cancel says "already on its way" when LifeOS answers `back: false`. LifeKitUI's Scheduled mailbox keeps its own Cancel (`compose:cancel` to LifeOS) and has no Send Now or Reschedule |
+| Nudge and Dismiss, Waiting On (LifeKitUI's `MailWaitingScreen` in Mail's place; Work/Life/WorkLifeHost.swift `nudge`) | `work.mail.nudge {workspaceId, threadId}`; Dismiss and its Undo are LifeOS's `mailWaits:dismiss` and `mailWaits:putBack` through `LifeWriteFence` | operate; LifeOS's token | operate | Nudge starts a thread that only drafts and opens it; Dismiss tells no one |
+| Ask on an open mail (LifeKitUI's `ThreadView` bar; `WorkLifeHost.ask`) | `work.mail.chat.find`, then the chat there is, else `session.create {…, mailAdopt}` on his first send (`StartThreadSheet` as Ask) | read; operate | operate (adopt refuses a thread's call) | none: each first send makes one chat; Find opens the one there is |
+| Save to Workspace, More on a mail's file (Work/Items/ItemPage.swift; Work/Reader/FileReaderPage.swift) | `work.canvas.keep {itemId}` | operate | none | each press makes a numbered copy ("Budget (1).xlsx"); nothing leaves his computer |
+| Create a link in Share (Work/Items/GuestLinkSheet.swift `ShareLinkSheet`, from More's Share…) | `work.guests.create {…, attempt}` | approve | none | **Gated** (the refusal in the sheet's footer; a host refusal in the form's place). Offered once the serving host answered; the host, its key and the draft are frozen before the check. One attempt key per item in `GuestAttempts`, kept through a lost answer, a busy refusal, the sheet opened again and a relaunch (the press record's), until the host answered, a read-back found nothing made, or his New Link; while a lost one is read back by `work.guests.attempt` the form waits ("Checking whether the link was made."), and one found made shows without its address |
+| A link's role in Share (`ShareLinkSheet`'s row menu) | `work.guests.setRole` | approve | none | **Gated.** Setting the role it has sends nothing |
+| Replace Address… in Share (`ShareLinkSheet`'s row menu, asked first) | `work.guests.rekey {linkId, attempt}` | approve | none | **Gated.** `WorkHost.replaceAddress`: one attempt key a link (`GuestAttempts`, the record's `.guestRekey`), so a repeat after a lost answer replaces nothing again and answers `again`; read back by `work.guests.attempt`; while Checking no second Replace; a fresh key only for his next press once the last one's end is known |
+| Revoke in Share (`ShareLinkSheet`'s row menu, asked first) | `work.guests.revoke` | operate | none | revoking a revoked link changes nothing |
+| The clicker's presses (Work/Clicker/HostClicker.swift over `ShowLink`) | `work.slides.show.press {showId, act, rev}` | operate | operate on the key itself (clicker.ts `refuse`) | not outward: it steps his own show on his own screen; a press made on an old `rev` is dropped by the host (`moved`) |
+| New Address (Work/WorkSettingsScreen.swift) | `work.guests.rekey {linkId, attempt}` | approve | none | **Gated.** The same as Replace Address… |
+| Revoke a guest link (Work/WorkSettingsScreen.swift, asked first) | `work.guests.revoke` | operate | none | revoking a revoked link changes nothing |
+| Upload into a folder (Work/Files/FilesNewSheet.swift) | `work.files.upload`, `attachment.chunk`, `attachment.commit` | operate; approve for a place others can open | the place's `can` | `op`, fresh per call |
+| Make, rename, delete, put back, star (Work/Files/FilesNewSheet.swift, FolderScreen.swift, FilesChange.swift) | `work.files.make`, `rename`, `trash {asked?, forGood?}`, `restore`, `star` | operate; approve where others can open | the place's `can`; a delete others will see, or on a drive with no bin, asks the desktop's question first and sends his yes (`asked`, `forGood`; the host refuses it without). Put Back and Delete's Undo ask operate on the key itself (`admitRestore`): an admin-only key is offered neither, nor a Delete (`FilesHost.caps.operate` is KeyMay's `.filesRestore`) | a fresh `op` each |
+| Move… and Copy…, and a file dropped on a folder row (Work/Files/FilesChange.swift `FilesDesk`, FolderScreen.swift) | `work.files.move`, `copy {refs, to, op, asked?}` | operate on `screen`; approve where the source or the folder it goes to is one others can open | the grammar's `refusal` with `to`; into a place others can open, the question `questionFor` words, then `asked` (the host's `admitWrite` refuses a shared change without it) | a fresh `op` each |
+| Save to TempCode (the share extension; Work/Share/ShareSheetView.swift) | `attachment.settings`, `work.files.upload {own: true}`, `attachment.chunk`, `attachment.commit` | operate | none | `op` is `<item>-<attempt>` until the host answers; a re-begin after a lost commit answers `landed` |
+| Capture's Save, the words (Work/Capture/CaptureSheet.swift) | `work.capture.file {key, …}` | operate | none | `key`, the same across retries. Not outward: his own quick add; Start Thread starts one only on this press |
+| Capture's Save, photos and files (the same) | `attachment.settings`, `work.files.upload {own: true}`, `attachment.chunk`, `attachment.commit`, through Save to TempCode's queue | operate | the job's own folder only (the top of it) | the queue's `<item>-<attempt>` `op` |
+| The "Capture" and "Voice Note" App Shortcuts and controls (Activity/Shared/CaptureIntents.swift) | none | none | none | They open the sheet and send nothing |
+| Receipt's Save (Work/Money/ReceiptSheet.swift) | `work.money.receive` per part | operate | none | the receipt's `key`, made at scan time |
+| Comment, reply, resolve, reopen (Work/Reader/CommentSheets.swift) | `work.docs.thread {source, change}` | operate | none | none; the button holds while one is on its way |
+| Accept or reject a change (Work/Reader/ReviewSheet.swift) | `work.history.decide` or `work.sheets.review` | operate | none | `editedAt`; one decision at a time |
+| Highlight, a highlight's note, Remove Highlight (Work/Items/PdfItemView.swift, Work/Reader/PdfLayerSheets.swift) | `work.pdf.mark`, `work.pdf.unmark` | operate | none | none; one press at a time (`PdfLayerModel`). A row on the host: the file is never written and nothing leaves |
+| A PDF field's value, an agent's value's Accept or Reject, the row's Accept All and Reject All (the same) | `work.pdf.setField`, `work.pdf.review {keys}` | operate | none | the keys shown, never `all`; a row on the host until his export |
+| A meeting's task Add or Drop, Add N Tasks (Work/Items/ItemKindViews.swift `MeetingPage`) | `work.meetings.decide {itemId, actionIds, decision}` | approve | none | files each in LifeOS for the job, sends to no one: not gated, as `work.prep.decide`; a filed task is not filed again |
+| Restore a version, its Undo (Work/Items/ItemKindViews.swift `CompareView`) | `work.history.restore {source, versionId}` | operate | none | not outward: his own document is written at once (Undo restores the version cut before); one others can open gets a branch of suggestions that waits for his Accept in Review Changes (the row above) |
+| Accept or reject a deck's change (Work/Items/PdfItemView.swift) | `work.slides.review {…, rev}` | operate | none | `rev` |
+| A media frame note (Work/Items/MediaItemView.swift) | `work.media.note` | operate | none | none |
+| House rules: add, save, order, remove, a proposal's Add Rule (Work/HouseRulesScreen.swift; Work/Items/ItemKindViews.swift) | `work.rules.add`, `edit`, `order`, `remove`, `decide` | approve | approve | none |
+| Write in My Voice (Work/HouseRulesScreen.swift) | `work.workspace.set` | admin | none | sets a value |
+| Routine Pause or Resume (Work/Items/RoutinesScreen.swift) | `work.routines.pause` | operate | none | sets a value |
+| Digest time and levels (Work/WorkSettingsScreen.swift) | `work.digest.set` on every host | admin | none | sets a value |
+| The Work switch (Work/WorkSettingsScreen.swift) | `work.set` | admin | none | sets a value |
+| Away for Code or Work on or off (Work/AwayReview.swift `AwayMenuItem`) | `away.set` | approve; never on a relayed lane | none | sets a value |
+| A clash's Decline, its sheet's Decline (Work/Clash/ClashScreen.swift `ClashAnswerSheet`) | `work.clashes.answer {eventId, way: 'decline', comment?}`, at once | approve | approve (the handler's own check, a thread refused) | **Gated.** `PressLedger.run(.clashAnswer)` keeps the press under `clash:<id>`; a lost answer says "The host did not confirm the send. Check the calendar before trying again." and holds Send; the next link reads the clash list: gone is done, still listed may have gone |
+| A clash's Propose New Time, its sheet's Send (the same) | `work.clashes.answer {eventId, way: 'propose', start, end, seen, comment?}`, at once | approve | approve | **Gated.** The same; `seen` is the pair as the sheet showed it, and the host refuses a time once either event moved |
+| This Is Fine on a clash (the same) | `work.clashes.waive {id, on, seen}` | operate | none | tells no one; Undo sends `on: false` |
+| Prepare, Follow Up on a meeting's page (Work/Prep/PrepScreen.swift) | `work.prep.brief`, `work.prep.followUp` | operate | none (a thread's call refused) | each starts a Work thread that only drafts; a second press while one works answers the same thread |
+| Add N Tasks on a meeting's page (the same) | `work.prep.decide {taskIds, decision: 'accept'}` | approve | none | files in LifeOS, sends to no one; each task's key `prep:<page>:<task>` files it once |
+| Approve or Deny, Run now or Skip (Thread/CardActions.swift; Thread/AgentDetailScreen.swift) | `session.approve` | approve | none | the host's `requestId` answers once; `deciding` holds a second tap |
+| The same from a notice (Push/PushDelegate.swift; `tc.approval`, `tc.run-skip`) | `session.approve` | approve | none | as above; Approve and Run now ask the passcode (`.authenticationRequired`), Deny and Skip do not. A held act's notice (`tc.held`) has no Send |
+| A question's answer (Thread/CardActions.swift) | `session.answer` | operate | none | the request answers once |
+| A thread's permission (Thread/ComposerRow.swift) | `session.permission` | approve | none | sets a value |
+| Ask about an item or a file (Work/Items/ItemPage.swift; Work/Reader/FileReaderPage.swift) | `session.send`, or `work.canvas.open` and `session.create` | operate | none | none |
+| An `@` pick, a dropped row, Add to Thread… (Thread/ComposerMentions.swift; Work/Files/AddToThreadSheet.swift) | none: the chip waits in the box; it goes only as words of his next Send (`session.send`) | `@` asks approve (`work.canvas.mentions`); Add to Thread is offered with `session.send` | none | none; the same chip is held once |
+| Move Up, Move Down in the item switcher (Work/Items/ItemPage.swift) | `work.canvas.reorder {sessionId, order}` | operate | none | sets an order: not outward |
+| New Work workspace, new Work chat (Work/WorkCreateSheets.swift) | `workspace.create`, `session.create` | operate | none | none |
+| Live computer: Take Over, Hand Back (Work/Items/LivePicture.swift) | `computer.drive` | operate; never on a relayed lane | none | sets a value |
+| Live computer: Stop (Work/Items/LivePicture.swift) | `computer.stop` | operate | none | none |
+| Live computer: Paste, the button and ⌘V (Work/Items/LivePicture.swift) | `video.paste` | approve; never on a relayed lane | none | none |
+| The browser item's Take Over (Work/Items/ItemKindViews.swift) | `work.browser.drive` | operate | none | sets a value |
+| Send, a conversation's composer (Work/Messages/ChatScreen.swift, `MessagesPresses`) | `work.messages.send {workspaceId, chatId, text, attempt}` after the phone's five-second wait (`SendWait`) | approve | approve | **Gated.** A fresh `attempt` a press, which the host answers once for a day (`work.messages.attempt` reads it back without sending); `PressLedger` keeps the press under the ref `chat:<workspace>:<chat>`, so a second Send there waits for its read-back (Checking…) |
+| Undo, under his reply while LifeOS holds it (Work/Messages/ChatScreen.swift) | `work.messages.undo {workspaceId, chatId, id}` | approve | approve | takes back nothing twice: LifeOS answers the words once, a second Undo is refused |
+| Retry, under his failed reply (Work/Messages/ChatScreen.swift) | `work.messages.retry {workspaceId, chatId, id}` | approve | approve | **Gated.** LifeOS retries a failed row only. `PressLedger.run(.chatRetry)` under LifeOS's outbox row (`ChatPress.retryRef`): while it is out or its answer was lost the row says Sending… or Checking… and offers no Retry, until LifeOS's own row, read once the host is linked again, says what became of it (`settleRetry`, `PressTruth.retry`: still failed is never taken) |
+| Copy a thread's copy-only draft (Work/Messages/ChatScreen.swift) | `work.messages.dropDraft {workspaceId, id}` after the copy | operate | operate | dropping a dropped draft changes nothing; nothing is sent |
+| A held chat draft's Open (Work/Messages/ChatScreen.swift) | none: opens its Outbox item, whose Send is the Outbox's row above | none | none | the Outbox's |
+| A slipped row's Done, Next week, Drop, Stop waiting, None needed in Review, the swipes, context menu and accessibility actions (Work/Review/ReviewScreen.swift) | `work.review.settle {row, how, tz, sector?}` on the host `ReviewDesk.settleHost` names | approve | none (a thread's call refused) | the thing's own write and nothing else (a task done or moved, a wait put off or dismissed, a mark): not gated, nothing leaves; the row leaves and Undo is `work.review.undo {token}`, good once for half an hour |
+| A slipped held item's Discard in Review (the same) | `work.review.settle {row: {kind: 'held'}, how: 'drop'}`, which calls the Outbox's discard on the item's host | approve | none past the door | not gated, as the desktop's; never a send. Open on a held row is the Outbox item, whose Send is the Outbox's row above |
+| A slipped mail's Nudge in Review (the same) | `work.review.settle {row: {kind: 'mail'}, how: 'now'}` on a host with a workspace of the job | approve | none past the door | starts a thread that only drafts (held as every draft) and opens it; the host starts it only while the wait is the row's own |
+| Accept and Discard on To Confirm, a job's Money (Work/Money/MoneyScreen.swift) | `work.money.accept {id, fields}`; `work.money.drop {id}`, Undo `{id, undo: true}` | operate | none (a thread's call refused) | his own ledger: nothing leaves. The host files a receipt once (a repeat answers what was filed, or refuses other figures); a discard after a filing answers `dropped: false` ("… was already filed") |
+| Paid on an open row, a job's Money (the same) | `work.money.paid {workspaceId, at: {ref, row, sig}}` | operate | none (a thread's call refused) | the row as the phone last read it: a row that changed answers `changed` and nothing is written ("The ledger changed. Showing it as it is now."); a row with money both ways has no Paid (it is settled in the sheet) |
+| Close and Reopen on one of our forms, Forms' swipe, context menu and accessibility actions (Work/Places/FormsScreen.swift) | `work.forms.close {itemId, open}` | operate | Reopen: approve on the key (`mustBePerson`, M5b); Close: none (a thread refused) | **Reopen is gated**: it shares the public link again. Setting the state it has changes nothing |
+| Close and Reopen on a Microsoft form, Forms' list and the answers' menu (the same; `MsFormAnswersScreen`) | `work.msforms.close {workspaceId, formId, open}` | operate | Reopen: approve on the key (M5b); Close: none (a thread refused) | **Reopen is gated**: Forms takes answers again. A closed form's Collect is the held publish, on the desktop |
+| Answers seen, opening a Microsoft form's answers (the same) | `work.msforms.seen` | operate | none | marks what was new as seen and the tell done; nothing leaves |
+| Run on a play (Work/Places/PlaysScreen.swift) | `work.routines.playStart {id, inputs}` | operate | none (a thread refused) | starts a Work thread that only drafts and opens it; each press starts one |
+| Run Now on a routine (Work/Items/RoutinesScreen.swift) | `work.routines.runNow {id}` | operate | none (a thread refused) | the run already running answers; a routine's sends are held as every thread's |
+| Make from a template, Files' New (Work/Files/FilesNewSheet.swift) | `work.templates.make {workspaceId, template, into, fields, today}` | operate | none | each press makes a new file in the folder (a numbered name); nothing leaves |
+| A dashboard's pull to refresh (Work/Items/ItemKindViews.swift) | `work.dashboards.refresh {itemId}` | operate | none (a thread refused) | reads the sheets again; writes nothing |
+| Wake and Sleep on the Windows VM, Computers (Work/ComputersScreen.swift) | `work.winvm.wake`, `work.winvm.sleep` | operate | Sleep: a thread refused | sets the machine's state; a second press while it moves is not drawn |
+| Copy in the live picture, while he drives (Work/Items/LivePicture.swift) | `video.copy {stream}` | approve; never on a relayed lane | none | reads the far clipboard onto his own; nothing leaves |
+| Open on <computer>, Connections and a job's settings (Work/Places/ConnectionsScreen.swift, JobSettingsView.swift) | `work.reveal {target: {settings}}` | approve, on `screen` | none | the host's window goes to the page; it presses nothing there. Not drawn while the box says a relayed Mac is locked: KeyMay's live lane is `.relayedLocked` then (`KeyMay.Lane.of`, `WorkHost.relayLocked`) |
+| Done on a task (Today's tick, Work/Today/TodayScreen.swift) | `work.tasks.done {workspaceId, taskId}` | approve | none. The host checks the task's sector against the workspace | no attempt key |
+| Send N on a thread's request (Work/OutboxRequestSheet.swift) | `work.outbox.decide {request, receipts}` after the phone's five-second wait (`RequestPressWait`) | approve | approve on a client key | **Gated.** The ticked receipts, the host and the key are frozen; the background or a lost link cancels the wait and says so, and at its end the link and the key are checked again (`RequestPresses.check`). `PressLedger.run(.outboxDecide)` under `request:<id>`: a lost answer is Checking, never "Not sent", and the request is read back on the next link and on its push (answered is his press, its rows' results shown, once the host no longer says `running`: claimed with items still going is still Checking; open is not sent). After a relaunch the record's own press keeps the sheet Checking and refuses a second Send before the owner's check; Checking is said in the label's ink, and VoiceOver hears "Checking". The host claims the request once |
+| Send Later, and Send Now on a send the hold timed (Work/OutboxItemScreen.swift) | `work.outbox.decide {items: [{do: 'later'}]}`, `work.outbox.sendNow {ref, rev}`, after the five-second wait | approve | approve | **Gated.** `PressLedger.run(.outboxLater)` and `(.outboxSendNow)` under the item's ref: Send Later reads back scheduled as done; Send Now reads back by the time he saw (`PressTruth.sendNow`: still that time is not sent, sent or on its way is done) |
+| Not Now on a request (Work/OutboxRequestSheet.swift) | `work.outbox.decline {request}` | approve | approve on a client key | a decided request keeps its state |
+
+## The Work perf proof
+
+`TC_PROOF_SET=work-perf bun scripts/ios-sim-proof-local.ts` is the Work
+performance proof (docs/IOS-DESIGN.md "The Work perf proof"): the perf set's
+Measure build, headless, its own runs (`TC_WORK_PERF_RUNS`, default
+`launch-today rest-today list-idle list-busy editor`), each launch run by the app itself (`TC_TEST_WORK_PERF`,
+`TC_TEST_WORK_PERF_SPLIT`, `Sources/Perf/LaunchFrames.swift`) and added as a
+split to `Documents/work-perf/<run>.json`. scripts/lib/ios_work_perf_check.py
+judges it against scripts/lib/ios_work_perf_gates.json
+(scripts/ios-work-perf-check.test.ts feeds it canned reports). The client
+package holds the pure parts under `Support/`: `Signposts` (subsystem
+`dev.landon.tempcode`, categories `launch`, `list`, `file`, `press`),
+`LaunchMarks` and `LaunchClock` (this launch's marks from the kernel's process
+start), `SocketRequests` (the socket's requests, counted in DEBUG and Measure
+builds only), `LaunchRowLedger`, `WorkPerfReport` and `WorkPerfWait` (what a
+measured launch waits for: every host that can list, a relayed one only while
+its carrier says it answers, and Today's fresh page on a launch onto Today; its
+note names what never came). In a work-perf run the layout probe stands down,
+as in a perf run. It is a hand run (docs/release-gate.md).
+
+The list runs and Settings → Diagnostics' Run List Check share
+`WorkListCheck` (Sources/Perf/WorkListCheck.swift): the client package holds
+its fixture rows (`WorkListRow.fixture`), the row ledger
+(`ListCheckLedger`), the report (`WorkListReport`, the `list` field of a
+`WorkPerfReport`) and the checker's words (`WorkListCheckRules`); the app's
+own scrolls are `PerfCounters.offsetWrites`, counted where `PlaceTop`
+brings a list back to its kept row. Every run also carries the app's
+footprint (`WorkPerfMemory`); the editor run's document is seeded by
+scripts/lib/ios-work-perf-seeds.ts and its WebKit processes sampled by the
+script (`work_perf_webkit`). The guards beside it: scripts/ios-body-reads.test.ts
+(a Work view's body and view helpers reach a model only through `PURE_READS`,
+each checked in its source, bookkeeping `@ObservationIgnored`),
+scripts/ios-tick-ledger.test.ts (every unbounded loop in a Work view is a
+clock IOS-DESIGN "Clocks" names, registered in `TickLedger`, which records in
+every build), scripts/ios-work-access.test.ts (Reduce Motion, Reduce
+Transparency, Increase Contrast and the keys), and the literal guard, which
+counts Work's views too.
+
+No socket starts before the first frame, in every build: `AppModel` holds
+`LaunchClock.sockets` (a `FirstFrameGate`) at launch, `EnvironmentClient.start`
+paints from the cache and then starts its socket only once the gate opens, and
+the gate opens at the first frame's mark (or after `FirstFrameGate.cap`, three
+seconds, when no frame comes, as in a background launch). The caller is not
+held: `registry.sync()` and `ready` come as before.

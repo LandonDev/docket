@@ -101,8 +101,10 @@
   `workOnly`), the away notice line folded into the run, and on the way
   back one toast "Decided without you in N threads" with Review
   (chrome/AwayReturn.tsx, AwayReviewDialog in the dialogs chunk). The phone
-  decodes the rows and keeps one switch that sets both (WorkHost.swift
-  `setAway`, `away.set { enabled }`); it reads on only while both are.
+  has Away for Code and Away for Work in its host menu, each with its
+  tally by the thread's scope (`AwayKinds`, `away.set {code}` or
+  `{work}`); a host one release behind gets one switch that sets both
+  (`{enabled}`). Its stretch runs while any kind is on.
 - Proof: `bun run script:e2e-away` (a haiku thread asks a question while
   away and finishes without a card; a safe-mode haiku thread's Bash write
   is allowed with no card; a flip off reaches a running turn); unit tests

@@ -42,3 +42,14 @@ The page and the tool read nothing a thread of that sector cannot already read w
 - Renderer: `work/people/people.test.ts` (search, faces, the links named for a person, attendees, Write's port), `work/people/PeopleView.dom.test.tsx` (the list, the page's sections and verbs, where each row opens, the ways in), `work/agenda/AgendaPeople.dom.test.tsx`, and the new target cases in `tasks/TasksView.dom.test.tsx`.
 - LifeOS: `test/behaviour/people.test.ts`, `test/fence/public/people.ts`. work-kit: `src/mail/person.jsdom.tsx`.
 - Look: `bun run ui:preview src/renderer/src/work/people/PeopleView.preview.tsx#PeoplePreview --props '{"state":"page"}' --shot` (`list`, `page`, `quiet`).
+
+## The phone
+
+People is a place of the phone's Work tab (ios/TempCode/Sources/Work/People/, docs/IOS-DESIGN.md "People"). There is
+no `work.people.*`: the list is `people:directory` per sector and the page is `people:page {id, sector, shared}`,
+both live through LifeKit on the place's LifeOS session (the whole session, else the job's own), joined with the
+host's `work.guests.list` (the links named for the person, `PeopleRules.links`, as `linksFor`) and
+`work.msforms.byPerson` (Answered). Every job's directories are one list, each person once in the first job that
+names them (`PeopleRules.directory`). Write presents LifeKitUI's composer (`LifeSheet.compose(.new(to:))`); New
+Thread starts the person chip's thread in the job. A row of the directory has no role: LifeOS's directory gives
+none. A shared item opens nothing on the phone.

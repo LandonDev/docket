@@ -116,6 +116,11 @@ owner's. A remote key sees a dashboard only when it could name every file
 the page reads itself (`fenceDash`). Each is carried on a relayed lane
 (`DASHBOARDS_RELAY` is empty: work.md "The relay").
 
+On the phone (M5b) a dashboard's pull is `work.dashboards.refresh` for a key with operate, and a block opens its
+sheet where the phone has it: a LifeOS sheet in the hosted editor, a Microsoft form's answers. The phone's view
+carries each block's `from` with its counts, sheet and the sheet's title (`DashFromPhoneSchema`); a sheet kept as a
+file opens nothing there.
+
 ## Known limits
 
 - Excel files (`.xlsx` packages) and Google sheets are not read yet.

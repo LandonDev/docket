@@ -16,12 +16,16 @@ The native clicker is built and has no way in yet: "The clicker" below.
   route `Route.file(environmentId:item:sessionId:)` (a `CanvasItem` is
   `Codable`, so a launch restores the page). It wraps the kind's own view
   (`ItemBodyView`), which the thread's Item segment (`ItemPage`) shows too.
-- The bar is the system's: the file's name (`ReaderVerbs.title`: without
-  `.tcdoc` or `.tcsheet`), Ask (a key that may operate) and More. More's rows
+- The bar is the system's: the file's own name, centred whatever sits at the
+  trailing end (`ReaderVerbs.title(of:)`: a file's name from its path, so the
+  page, Files and the thread's item name it alike; without `.tcdoc` or
+  `.tcsheet`; anything else by its item's title), Ask (a key that may
+  operate) and More. More's rows
   are one rule for both hosts of a file, `ReaderVerbs.of(item, facts)` in the
-  client package: Find… (a PDF, a deck), Comments, Review Changes, Page
-  Preview (a document) or Print… (a PDF, a deck), Share…, Make a Guest Link,
-  Close. A row is there only when it can act: `ReaderFacts` carries what the
+  client package: Undo and Redo (the hosted editor, only while there is
+  something to undo or redo), Clicker (a deck whose show runs), Find… (a PDF,
+  a deck, the hosted editor), Comments, Review Changes, Page Preview (a
+  document) or Print… (a PDF, a deck), Share… (the one Share sheet), Close. A row is there only when it can act: `ReaderFacts` carries what the
   host and the key allow (a key that may only read has no Ask and no Close),
   and a host that lacks a wire simply has no row.
 - `ReaderFrame` wraps the kind's view on both hosts: the review row while
@@ -151,9 +155,12 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   format or a rule an agent proposed (`SheetView.changes`, carried by
   `SheetPhoneViewSchema`) is a row too: its words drawn as a document's added
   words, under its change set's reason, decided by its own id through
-  `work.sheets.review` as a cell is; an `orphaned` one only Reject takes. The
-  sheet view names a sheet by Univer's id, not its tab, so an address reads
-  "C4".
+  `work.sheets.review` as a cell is; an `orphaned` one only Reject takes. A
+  cell's address names its tab ("'Q3 Plan'!C4") where the open rows reach
+  more than one tab, by the name the host sends (`SheetView.tabs`, each tab's
+  name by its sheet id; `ReviewTabs`); an older host's rows read the cell
+  alone. The last decision closes the sheet once it lands, never an empty
+  sheet saying "Nothing waits".
 - It works for LifeOS's documents, for documents kept as `.tcdoc` files and
   for sheets kept as files (`ReaderFile.parts`); not for a Word file.
 - The page's review row over a document or a sheet only counts and opens
@@ -209,7 +216,8 @@ opens the system's print sheet (`ReaderPrint`).
   from the ticket's origin in the main frame (`HostedNote`). The view asks a
   new ticket and loads it in a new web view, as Try Again does (the old page's
   store holds a dead renewal key, and a new ticket on the same path would only
-  change the fragment). Once in a row (`HostedRejoin`): a page that ends again
+  change the fragment), with the paper shown until the new page says it drew
+  (`HostedFrame.reset`). Once in a row (`HostedRejoin`): a page that ends again
   before it opened shows its own words; a page that opened may rejoin at the
   next end. An end while the screen is not forward (another page over it, the
   app in the background) waits for it to come forward.
@@ -275,7 +283,10 @@ pictures and three movies.
 
 - **The sheet** is `ShareSheetView` on `ShareSheetModel`
   (ios/TempCode/Sources/Work/Share/, compiled into the extension and the app):
-  what was shared, the Work workspaces with the last used checked, the folder
+  what was shared, the Work workspaces with the last used checked (else the
+  one the app last had open, `ShareTargets.open`, written by the app as Work's
+  route moves; else none, and Save waits for his pick:
+  `ShareTargets.preselected`), the folder
   (a picker of folders only, read from the host level by level with
   `work.files.list {foldersOnly}`), Save. `ShareViewController`
   (ios/TempCode/ShareExtension/) copies each shared file into its own
@@ -361,8 +372,12 @@ pictures and three movies.
 
 Proof: `TC_PROOF_SET=work TC_WORK_ONLY=share` opens the same sheet over Home
 in each state (`TC_TEST_SHARE`, `ShareProofSheet`; `unread` and `unread-all`
-draw a file not read), then makes one real save;
-`verifyShare` reads the workspace's folder back by the file's sha256. Not
+draw a file not read), then one real save: Save first with no job checked
+(it must stay off and queue nothing), then Purdue Esports picked by name
+(`TC_SHARE_JOB`) and saved. The report says `done` only once the host took
+the file and the sheet said Saved; `verifyShare` reads that job's folder back
+by the file's sha256. The run fails unless both the no-pick case and that
+read-back passed (`shareProven`, scripts/ios-share-verdict.test.ts). Not
 proven: the sheet from another app's share sheet (the simulator registers the
 extension; the drive was not run), and a large video on a phone network.
 
@@ -399,8 +414,12 @@ this build's (PF5).
   desktop's docked chat does (docs/agents/work-files.md "Ask"), in its
   order: `session.create` in the workspace with the file's chip as `about`,
   `work.canvas.open` with the file's kind, source and title, then
-  `session.send`. He lands in the thread, which opens on its Item segment
-  (the file), Chat one swipe away. Nothing is made until he sends. The phone is
+  `session.send`. He lands in the thread on its Chat, where his words are:
+  the thread's chosen segment is set to Chat before it opens
+  (`ThreadScreenModel.land`), and the host's announcement that the file was
+  seated there selects nothing (`WorkCanvas.landOnChat`, `AskLanding`: that
+  one `opened`, for that file). A pager whose segments grow under it (the
+  item arriving) puts back the page he chose. Nothing is made until he sends. The phone is
   stricter than the desktop in two things. Where the file will not open in
   the new thread the words do not go: the sheet keeps them with the host's
   reason, and Send again opens the file in that same thread and sends
@@ -416,22 +435,108 @@ this build's (PF5).
   start-over is dropped. The start-over runs in the screen's own task, not a
   page's (the pager it replaces would cancel it): a spinner while it reads,
   and a page 1 that does not come says why with Try Again. No two pages of different versions show together.
-- **Share…** has no row. The one way to share a file from the phone today is
-  the guest link, which is its own row (Make a Guest Link: a LifeOS document
-  or sheet, or a `.tcdoc` or `.tcsheet` kept as a file, for a key that may
-  approve; `ItemBody.guestSource`). A file goes as `{at: 'file', host, path}`
-  from its item, the path the host last pushed; the host refuses one it cannot
-  share (another computer's, one others can open, a host no guest reaches) and
-  the sheet shows its words under the form. A sheet's link views or edits
-  (`GuestLinkDraft.roles`), starting at View. No wire lets a remote key draft a mail
-  with a file, so there is no second way to list; `ReaderFacts.shares` is
-  the switch for when one exists.
+- **Share…** is the one Share sheet (M3c, `ShareLinkSheet`;
+  docs/agents/work-guests.md "Share on the phone"): a guest link for a LifeOS
+  document or sheet or a `.tcdoc` or `.tcsheet` file, for a key that may
+  approve. A file goes as `{at: 'file', host, path}` from its item, the path
+  the host last pushed; the host refuses one it cannot share (another
+  computer's, one others can open, a host no guest reaches) and the sheet
+  shows its words in the form's place. A sheet's link views or edits. No wire
+  lets a remote key draft a mail with a file, so it is the only way to share.
+
+## Highlights, notes and fields (M3b)
+
+What the host keeps over a PDF (docs/agents/work-pdf.md) is drawn on the
+phone's PDFKit pages and changed there, over `work.pdf.mark`, `unmark`,
+`setField` and `review` (operate). The file is never written: each is a row on
+the host, and every press answers the whole view, which replaces the one shown
+(`PdfLayerModel`, one press at a time). `PdfPhoneViewSchema` carries `fields`,
+`marks`, `xfaOnly` and `formError` (absent from an older host: no layer).
+
+- **Drawing** (`PdfLayerDraw`): each highlight is a neutral wash of the
+  paper's ink per line with the note glyph at its first line when it has a
+  note; a field the file has a widget for shows its value in that widget, made
+  read only; a field with no widget (an overlay an agent placed) is its words
+  in its box; an agent's value that waits wears the added tint. The reader's
+  own annotations are named (`PdfLayerName`) and all taken off before a new
+  view draws. The boxes are the host's shares of the crop box, top left
+  (`PdfBox`).
+- **Highlight** heads the selection's menu (`ReaderPDFView.buildMenu`) for a
+  key that may act: one mark a page the selection crosses, a box per line, at
+  most 200. A refusal is an alert in the host's words.
+- **A tap** on a highlight opens its sheet: the words in quotation marks, the
+  note, Save and Remove Highlight. A changed note lays the new mark first and
+  takes the old after (the host has no edit). A tap on a field opens its
+  sheet: its label, where the value came from ("From Purdue profile: “…”",
+  `PdfFields.source`), a field, a switch or a picker by its type, Save, and
+  while an agent's value waits Reject and Accept. A signature and the day he
+  signed say "Sign this on your computer." (`work.pdf.sign` needs approve and
+  the pad.)
+- **The row** over the pages counts the values that wait ("3 values to
+  check") with Reject All and Accept All: the values are on the page, so he
+  decides where he reads them, and the call names the keys shown, never the
+  host's "all".
+
+## A meeting (M3b)
+
+`MeetingItemView`: the recording's player over the tasks the meeting yielded
+and its transcript. `MeetingPhoneSchema` carries `media.kind` and
+`notes.actions`.
+
+- **The player** (`MeetingPlayer`, `RecordingLoader`) plays the original
+  recording as it is read: the system's player asks for byte ranges through a
+  resource loader and each is read with `work.meetings.recording` (read, one
+  2 MB chunk a call, `MeetingRecording.ranges`), so nothing of it is written
+  to the phone's disk and it starts before the whole file is here. A first
+  one-byte read gives the name and size; a type the system cannot play (WebM,
+  Ogg; `MeetingRecording.type`) says "This recording plays on your
+  computer." Audio is a row (Play, the slider, the time); a video is the
+  system's player. A line of the transcript, or a task's time, plays from
+  its moment.
+- **The tasks** (`MeetingActions`): those that wait first, then those filed; a
+  dropped one is not shown. Swipe Add (a full swipe too) or Drop (never a full
+  swipe), and the bar's "Add 3 Tasks", go through `work.meetings.decide`
+  (approve): accept files each in LifeOS for the job and sends to no one, so
+  no Touch ID. What LifeOS would not file is said in its words.
+
+## History's Restore (M3b)
+
+A version's compare has Restore in its bar for every version but the newest
+(`HistoryRestore.restores`), for a key that may operate
+(`work.history.restore`). The host's rule decides the rest
+(docs/agents/work-history.md "Restore"): on his own document the version is
+written back at once and the capsule says "Restored" with Undo, which
+restores the version the host cut just before; on a document others can open
+the restore is a branch of suggestions, the capsule says "Waiting in Review
+Changes", and nothing reaches anyone until he accepts it there. So Restore is
+never outward and asks no Touch ID.
+
+## Two pages and the table (M3b)
+
+`ReaderHalves` (client, beside `TabletopHalves`) is the rule: open and upright
+like a book, the fold's band stands between two pages of at least 320 pt, the
+thing on the leading one and what goes with it on the trailing; half open on a
+table, the band lies across and the thing stands above it, what goes with it
+below. Anywhere else the file keeps its one column, and nothing sits in the
+band.
+
+- A deck with notes: the slide and its strip, then the notes
+  (`PdfPages`, `ReaderSpread`).
+- A video: the picture, then its comments and field (`MediaItemView`); a
+  meeting's video, then its tasks and transcript.
+- A document with comments: the document, then the comments as a page
+  (`CommentsSheet(page: true)`, no bar of its own). `ReaderBeside` lays the two
+  out with one `Layout`, so the document never changes its place in the tree and
+  a fold never loads the hosted page again.
+- The layout probe notes `reader.halves` (`pages`, `table`, `beside`,
+  `single`). The table pose is unseen on the simulator until `tabletop` joins
+  `DuoPose` (docs/IOS-DESIGN.md "Work in every pose").
 
 ## Proofs
 
 - Pure logic runs in `swift test` (ios/TempCodeClient: `ReaderTests` with
-  `HostedRejoinTests`,
-  `ReaderReviewTests`, `FileAskTests`, `WorkItemsTests`, `ShellPathsTests`). On the box the
+  `HostedRejoinTests`, `ReaderReviewTests`, `FileAskTests`, `WorkItemsTests`,
+  `ShellPathsTests`, `ReaderLayerTests`). On the box the
   files that need no socket also run in a scratch package with the Swift
   6.4.2 toolchain; anything on `FakeWebSocket` needs the Mac.
 - The simulator: `TC_PROOF_SET=work TC_WORK_ONLY=reader bun

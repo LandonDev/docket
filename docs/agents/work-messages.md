@@ -44,8 +44,9 @@ and Connections share), `serviceState`, `syncWhen`, `syncLine`, `fileMarkers`, `
 
 | Method | Cap | What |
 |---|---|---|
-| `work.messages.send {workspaceId, chatId, replyTo?, text}` | approve, no thread | his own reply: `chats:reply` as the owner → `{id}` (LifeOS's outbox row); with `OWN_REPLY_HELD` a held `chat.reply` with no thread, and `id` is the held item's |
-| `work.messages.undo {workspaceId, chatId, id}`, `retry {…}` | approve, no thread | `replies:undo` → `{text}`, `replies:retry` → `{}`; refused unless the conversation is the workspace's and the reply is one of its newest hundred messages' |
+| `work.messages.send {workspaceId, chatId, replyTo?, text, attempt?}` | approve, no thread | his own reply: `chats:reply` as the owner → `{id}` (LifeOS's outbox row); with `OWN_REPLY_HELD` a held `chat.reply` with no thread, and `id` is the held item's; with `attempt` (the phone's) a repeat of the key gets the first answer for a day and LifeOS hears it once (`attempts.ts`); a phone key past the day (`phone-<ms>-…`, `attemptAge.ts`) reads back as unknown and a repeat of it is refused, never sent anew |
+| `work.messages.attempt {workspaceId, attempt}` | approve, no thread | what became of a Send by its key, sending nothing: `{state: 'none' \| 'sending' \| 'sent' \| 'refused' \| 'unknown', id?, words?}` |
+| `work.messages.undo {workspaceId, chatId, id}`, `retry {…}` | approve, no thread | `replies:undo` → `{text}`, `replies:retry` → `{}`; refused unless the conversation is the workspace's and the reply is one of its newest hundred messages'; a Try Again whose LifeOS answer was lost (no `ConvexError`) answers `outcome unknown: …` (server/work/outcome.ts), never a refusal |
 | `work.messages.search {workspaceId, query, limit?}` | read | `chats:search` → `{hits}` |
 | `work.messages.unanswered {workspaceId}` | read | `chats:unanswered` → `{rows: ChatWaiting[]}` (Today) |
 | `work.messages.unread {workspaceId}` | read | `chats:unread` → `{unread, newest?}` |
@@ -72,6 +73,7 @@ answered as if it did not exist when its sector differs (`chatIn`).
 | `index.ts` | `ensure` (`work_messages_drafts`), `handle`, `tools`, `acts`, `mentions`, `preamble`, `start`, the workspace hooks, `health` |
 | `lifeos.ts` | the fenced reads, `refusalWords` (LifeOS's ConvexError as its words) |
 | `replies.ts` | his presses and the drafts |
+| `attempts.ts` | his Send answered once by its attempt key (`work_messages_attempts`), and the key's read-back |
 | `held.ts` | the held kind `chat.reply` |
 | `tools.ts` | `messages_read`, `messages_draft_reply`, the preamble line |
 | `health.ts` | Connections' rows |
@@ -536,7 +538,7 @@ his chat.
 
 ## Proofs
 
-`messages/messages.test.ts` (the fence on each read, health's rows and the
+`messages/attempts.test.ts` (a double send and a double tap go once, a lost answer read back by its key, a refusal and may-have-gone answered again and never sent, a restart's cut key, another conversation's key refused, kept a day), `messages/messages.test.ts` (the fence on each read, health's rows and the
 fold, the push, the push when the waiting list moves), `held.test.ts` (held,
 Away, once on two presses, no thread's press, no grant, stale and not sent,
 a Slack parent pinned at hold and stale when unpinned and overtaken),
@@ -556,3 +558,30 @@ hands on) and `live.dom.test.tsx` (his Send's failure read, a Discard of a
 draft no longer listed, the copy-only drafts read again on the link's open,
 a refused file tab said). What has run against the live
 LifeOS, and what has not, is `.temp-code/plans/landed/R3-messages.md`.
+
+## The phone
+
+The iPhone draws Messages as a place of the Work tab (docs/IOS-DESIGN.md "Work on the phone", ### Messages;
+docs/agents/ios-client.md "Work on the phone"). It reads the conversations as the window does, straight from LifeOS
+through LifeKit's live queries (`chats:list` a sector, `chats:get`, `chats:messages`), on the whole LifeOS session
+where a host signs one, else the job's own; it writes there only the read mark and `chats:requestFiles`. Everything
+else goes through the host, as the window's does:
+
+- **His Send** is `work.messages.send` with an `attempt` key the phone makes fresh for each press and writes down
+  before the request leaves (`PendingPress`, `PressLedger`), after the owner's check and the phone's five seconds
+  with Undo. The host keeps each key's answer for a day (`work_messages_attempts`): a repeat of the key, a double
+  tap or a retry of a lost request, gets the first answer, and LifeOS is asked once. A key reused for another
+  conversation or job is refused (`ATTEMPT_OTHER`). A key cut off by a host restart before LifeOS answered reads
+  as may have gone (`ATTEMPT_CUT`), never sent again.
+- **A lost answer** is read back on the next link by `work.messages.attempt {workspaceId, attempt}`, which sends
+  nothing: `sent` (with LifeOS's outbox row), `none` (the host never heard it: the words go back to him to send by
+  a new press), `refused` (its words), `unknown` (may have gone; the words wait aside), `sending` (asked again next
+  link). The desktop sends no key and is unchanged.
+- **Undo, Retry, drafts** are the window's methods: `work.messages.undo` and `retry` on his reply's row, and a
+  thread's copy-only drafts by `work.messages.drafts`, dropped by `dropDraft` once copied. A thread's held reply
+  opens its Outbox item; the phone never presses it from the conversation.
+- **A chat's file** opens in the reader: `work.canvas.open` on the job's Messages pane (`msgpane_<id>`) with the
+  mail arm `{at: 'mail', from: 'chat', …}`, which the host fetches as the owner (`file.ts`), then the file's page.
+- **The rules** the phone draws by are a Swift port of src/shared/work/messages.ts and the view's row rules
+  (`MessagesRules`, `ChatFiles` in ios/TempCodeClient), held to them by scripts/ios-messages-fixture.test.ts, which
+  writes the desktop's answers to `Fixtures/messages/rules.json`.

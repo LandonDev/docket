@@ -1118,7 +1118,9 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
   - **Ticks** (click, X, Shift-click or Shift+X for a range, Select N)
     turn the detail into the summary list (`Ticked.tsx` over
     `SummaryList.tsx`): one head sentence of what goes (`summaryHead`:
-    "Send 4 mails to 4 people, post 1 message and accept 1 invite"), a row
+    "Send 4 mails to 4 people, post 1 message and accept 1 invite"; an
+    add-on's call that names its people counts as a mail there, and one that
+    names no one says its tool and add-on, "Echo with League, 3 times"), a row
     per item with its tick, glyph, act, about and a chevron that opens it in
     place (sentence, notes and the thing, no border). A computer act, an
     act read from a live screen and a LifeOS reply that quotes its mail
@@ -1291,7 +1293,10 @@ list, from its notice (the tell's key `request:<id>` in `tc.work.tell`,
 `PushTarget.request`) and from the thread's card (the tool's
 `{outboxRequest: {id, host}}`, `OutboxModel.requestOf`). Every phone Send,
 Send later, Send now and a request's Send waits the phone's five seconds
-with Undo before the host hears it. `undoSend` is in the phone's wire
+with Undo before the host hears it. A request claimed with its items still
+going reads `running: true` (requests.ts keeps the claimed ids in memory
+while `decide` runs), and no item it has not reached is called "not
+started" until the press ends; the end is pushed. `undoSend` is in the phone's wire
 (`WorkHost.undoSend`) but no screen offers it yet: the five seconds come
 first.
 

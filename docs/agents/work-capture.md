@@ -122,13 +122,32 @@ A frame change in the main process, kept small:
   the line away with no press and the draft stays; hidden, a push asks
   nothing. It wears Work's theme.
 
-## The phone: a voice note
+## The phone: Capture
 
-The iOS client's way in (built 2026-11-20). Home's toolbar carries a
-microphone (`mic`, "Voice Note") while any host has Work on; it opens a sheet
-that fills the height (`tcSheet(.editor)`: at the medium detent the hold
-control covered Start Thread and Home showed through the glass), "Voice
-Note":
+The iOS client's way in (the voice note 2026-11-20; one sheet since All of
+Work on the iPhone M4b). The `plus` in the Work list's bar and Today's
+("Capture", while some host's key may file a note, take a receipt or upload)
+opens one sheet that fills the height (`tcSheet(.editor)`: at the medium
+detent the hold control covered Start Thread), "Capture": the note, typed or
+said, then Scan Receipt, Add Photos and Add Files.
+
+- **Without opening the app first.** Two App Shortcuts, "Capture" and "Voice
+  Note" (`CaptureIntent`, `VoiceNoteIntent`), for the Action button,
+  Spotlight and Siri, and the same two as controls for Control Center and
+  the Lock Screen (the widget extension's `CaptureControl` and
+  `VoiceNoteControl`). Each opens the app on the sheet ("Capture" with the
+  field focused, "Voice Note" with the keyboard down) and does nothing else:
+  it files no task, sends nothing and starts no thread.
+- **Photos and files** go to the top of a job's own folder through Save to
+  TempCode's queue (docs/agents/work-phone-files.md "Save to TempCode"): each
+  is an item of its own with its own `op`, sent once, refused in the host's
+  words at the head of that job's Files. The job is the one he picks, else
+  the note's sector's, else the last a file went to (`CaptureRules.job`); a
+  shared place is never a target. Save queues the files first, then files
+  the words; a note that fails keeps the sheet with its reason, the files
+  already on their way.
+- **Scan Receipt** closes the sheet and opens the document camera, as the
+  receipt's own way in did (Money's, below).
 
 - **Hold to talk.** The 72 pt control at the sheet's foot (in `tcBottomBar`)
   listens while held: the press grows it at once on the layout spring (a
@@ -172,12 +191,15 @@ Note":
   the wire, `Methods.WorkCaptureState` and `Methods.WorkCaptureFile` in the
   generated contract (`CaptureState`, `CaptureFiled`). Tests:
   `VoiceNoteTests.swift` (both suites) and `WorkHostTests`'s capture case.
-  The sheet opens for a shot with `TC_TEST_SHEET=voice-note` (debug builds);
+  `CaptureDesk` (the one door every way in calls) and `CaptureRules` (what a
+  Save does, the job a file goes to) are pure, tested in `CaptureDeskTests`;
+  the sheet is ios/TempCode/Sources/Work/Capture/CaptureSheet.swift. The
+  sheet opens for a shot with `TC_TEST_SHEET=capture` or `voice-note` (debug builds);
   the work proof set ends with it light and dark (w60, w61), and
   `TC_WORK_ONLY=capture` shoots it alone.
 
-The receipt glyph (`doc.viewfinder`, "Receipt") sits beside the microphone
-under the same rule, but it is Money's, not capture's: it scans a receipt
+Scan Receipt (`doc.viewfinder`) is in the sheet under its own rule (a key that
+may `work.money.receive`), but it is Money's, not capture's: it scans a receipt
 and sends it to the job's ledger on its host, and nothing of it goes to
 LifeOS (docs/agents/work-money.md; the sheet is docs/IOS-DESIGN.md "The
 receipt").
