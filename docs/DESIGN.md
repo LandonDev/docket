@@ -2009,7 +2009,9 @@ Around the canvas:
   the list's spinner and its verb until the host answers, each row its
   own: "Opening… 1.2 of 3.4 MB", "Renaming…" with the name he typed in
   the name's place, "Moving…", "Copying…", "Deleting…", "Downloading…
-  2.1 of 8.4 MB"; a row that went keeps its word for 2 s while the list is
+  2.1 of 8.4 MB", drawn whole where who and when stand (their 296px, or
+  When's 128px where Who has gone; under 360px the spinner alone, by the
+  name); a row that went keeps its word for 2 s while the list is
   read again, so it does not show its old self between), then who last changed it
   (160px) and when (128px, right aligned, tabular), both 12px muted. The
   head keeps the room the list's scroll bar takes, so Changed ends on its

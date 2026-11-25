@@ -245,6 +245,8 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
 /** The columns' widths, shared by the heads and the rows. Who changed it is the first to go as the list narrows; when it changed stays beside the name longest. */
 const COL_BY = "hidden w-40 shrink-0 @[560px]/files-list:block";
 const COL_CHANGED = "hidden w-32 shrink-0 text-end @[360px]/files-list:block";
+/** A busy row's words, in By's and Changed's room: Changed's alone where By has gone, none under 360px. */
+const COL_BUSY = "hidden w-32 shrink-0 @[360px]/files-list:flex @[560px]/files-list:w-74";
 
 /** A column's head that sorts: a press sorts by it, a second press turns the order round. */
 function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; label: string; sort: FileSort; onSort(next: FileSort): void; className: string }) {
@@ -358,16 +360,27 @@ const FileRow = memo(function FileRow({
           </TruncateTip>
         )}
         {busy !== null ? (
-          // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
-          // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
-          // The whole of it on hover.
-          <RowWords data-files-busy="" busy words={busy.word} cut="max-w-0 @[360px]/files-list:max-w-40" />
+          // Under 360px of list, where neither column shows, the spinner stays by the name and the words go from sight
+          // (still read out): the name has first claim on the row.
+          <span data-files-busy-narrow="" className="flex min-w-0 shrink-[999] @[360px]/files-list:hidden">
+            <RowWords busy words={busy.word} cut="max-w-0" />
+          </span>
         ) : (
           <RowState entry={entry} />
         )}
       </span>
-      <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? <WhereWords where={entry.where} /> : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
-      <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
+      {busy !== null ? (
+        // His act's words stand where who and when stand (both and the gap between, 296px; Changed's 128px where By has gone), so
+        // "Downloading… 2.1 of 8.4 MB" is read whole beside a name that keeps its own room. The whole of it on hover.
+        <span data-files-busy="" className={COL_BUSY}>
+          <RowWords busy words={busy.word} />
+        </span>
+      ) : (
+        <>
+          <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? <WhereWords where={entry.where} /> : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
+          <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
+        </>
+      )}
     </div>
   );
   if (head === undefined) return line;

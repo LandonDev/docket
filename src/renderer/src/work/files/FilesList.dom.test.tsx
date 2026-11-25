@@ -184,18 +184,21 @@ describe("the states", () => {
 
 describe("a row being opened", () => {
   /** Council round 6 (Sol P2): the progress beside the name took its whole width in a narrow list and pushed the name out. */
-  it("gives way to the name: its words cut at the By column's width and gone from sight under 360px of list, still read out", () => {
+  /** Council round 1 of the files pass (Opus 15): cut beside the name it read "Dow…", while By beside it had 160px. */
+  it("says its words where who and when stand, whole; under 360px of list only the spinner stays by the name, the words read out", () => {
     const key = "file:env_box:/w/Events/Budget.xlsx";
     draw({ busy: new Map([[key, { word: "Opening… 8.0 of 20 MB" }]]) });
     const busy = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy]")!;
-    expect(busy.className).toContain("shrink-[999]");
-    expect(busy.className).not.toContain("shrink-0");
+    expect(busy.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-32", "@[360px]/files-list:flex", "@[560px]/files-list:w-74"]));
     expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
-    const words = busy.querySelector("span.truncate")!;
-    expect(words.textContent).toBe("Opening… 8.0 of 20 MB");
-    // Under 360px of list no width at all, the words still in the row for a reader; above it the By column's width.
-    expect(words.className.split(" ")).toContain("max-w-0");
-    expect(words.className).toContain("@[360px]/files-list:max-w-40");
+    expect(busy.querySelector("span.truncate")!.textContent).toBe("Opening… 8.0 of 20 MB");
+    // Who and when give it their room while it lasts.
+    expect(row("Budget.xlsx").textContent).not.toContain("Nov");
+    // Narrow: the spinner by the name, which keeps first claim; the words in the row for a reader, at no width.
+    const narrow = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy-narrow]")!;
+    expect(narrow.className.split(" ")).toEqual(expect.arrayContaining(["shrink-[999]", "@[360px]/files-list:hidden"]));
+    expect(narrow.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    expect(narrow.querySelector("span.truncate")!.className.split(" ")).toContain("max-w-0");
   });
 });
 
