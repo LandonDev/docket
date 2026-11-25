@@ -3854,8 +3854,9 @@ opening puts the focus on Edit.
   number under each in 12px tabular muted, the page being read on `muted`; a
   press goes to that page.
 - **Who drew it** is one line over the first sheet, as wide as the paper, at
-  least 24px tall and 8px above it, 12/16 muted: "As LibreOffice draws it",
-  "As Word draws it" (or Excel, or PowerPoint) only when that app drew it,
+  least 24px tall and 8px above it, 12/16 muted: "As drawn here" for our
+  own drawing (LibreOffice on the file's host, never named), "As Word draws
+  it" (or Excel, or PowerPoint) only when that app drew it,
   "The file itself" for a PDF, "As it will print" for Print. A file that is
   its own text or files has no such line. Where the real app is in reach the
   line ends in a ghost extra-small button, "Check in Word": his press draws

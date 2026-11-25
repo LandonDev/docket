@@ -568,8 +568,8 @@ the document’s preview source.
   against the libraries as they stand then, and a refusal answers
   `notInReach: 'none'` with its reason in the log. Where no renderer is
   ready (`RENDER_PROVEN` lists only the VM today, so a file of his Mac's
-  OneDrive is not offered it), Preview stays as drawn here: LibreOffice's
-  picture, with no Check in Word. Proven with stand-ins
+  OneDrive is not offered it), Preview stays as drawn here: its line reads
+  "As drawn here" and no Check in Word shows. Proven with stand-ins
   (`wordHolder.test.ts`, preview.test.ts "Check in Word on a Teams Word
   file"); the live proof in the VM waits for `VM YES`.
 - A LifeOS document another host serves is drawn, read and exported on that

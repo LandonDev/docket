@@ -76,11 +76,16 @@ export function openingFormat(formats: readonly PreviewFormat[], kind: string, i
   return has(kept) ? kept : (formats[0]?.id ?? "");
 }
 
-/** Who drew a picture, as the line over the first sheet says it; null for a picture that is the file's own text or files. */
+/**
+ * Who drew a picture, as the line over the first sheet says it; null for a picture that is the file's own text or
+ * files. Our own drawing (LibreOffice, on the file's host) is "As drawn here": a program's name is never on screen,
+ * and only his own app, when it drew, is named.
+ */
 export function drawnByLine(picture: PreviewPicture, format: PreviewFormat | undefined): string | null {
   if (picture.kind !== "paged") return null;
   if (picture.drawnBy === "tempcode") return format?.verb === "Print…" ? "As it will print" : "The file itself";
-  return `As ${{ libreoffice: "LibreOffice", word: "Word", excel: "Excel", powerpoint: "PowerPoint" }[picture.drawnBy]} draws it`;
+  if (picture.drawnBy === "libreoffice") return "As drawn here";
+  return `As ${{ word: "Word", excel: "Excel", powerpoint: "PowerPoint" }[picture.drawnBy]} draws it`;
 }
 
 /** "Page 2 of 5", "Slide 1 of 12", or the place in a whole of which only part was drawn. */

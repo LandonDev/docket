@@ -992,7 +992,7 @@ host's side is `slides/out.ts` (`deckOut`).
 
 | Format | The file | The picture | His rows |
 |---|---|---|---|
-| PowerPoint | the .pptx itself | the deck's own render, "As LibreOffice draws it"; "Check in PowerPoint" draws `pptx → pdf+powerpoint` on his press | none |
+| PowerPoint | the .pptx itself | the deck's own render, "As drawn here"; "Check in PowerPoint" draws `pptx → pdf+powerpoint` on his press | none |
 | PDF | the slides, notes pages, or handouts of 2, 3, 4 or 6 a page | the file itself | Layout; Paper for notes and handouts; Hidden slides |
 | Print | the same pages, handed to this computer's PDF viewer (`printPdf`) | "As it will print" | as PDF |
 | Pictures | a .zip of `Slide 01.png` … (PNG or JPEG) | the files, as small pictures | Type; Size (1,280, 1,920 or 3,840 wide) |

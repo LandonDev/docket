@@ -80,7 +80,7 @@ describe("the words", () => {
   });
 
   it("says who drew a picture, once, and nothing for a file that is its own text", () => {
-    expect(drawnByLine(paged("r"), FORMATS[0])).toBe("As LibreOffice draws it");
+    expect(drawnByLine(paged("r"), FORMATS[0])).toBe("As drawn here");
     expect(drawnByLine(paged("r", 3, { drawnBy: "word" }), FORMATS[0])).toBe("As Word draws it");
     expect(drawnByLine(paged("r", 3, { drawnBy: "powerpoint" }), FORMATS[0])).toBe("As PowerPoint draws it");
     expect(drawnByLine(paged("r", 3, { drawnBy: "tempcode" }), FORMATS[1])).toBe("The file itself");
@@ -123,7 +123,7 @@ describe("the frame", () => {
 
     await f.answer({ picture: paged("r1"), drops: ["3 suggestions go as tracked changes", "Aptos is drawn as Carlito here; Word will use Aptos"] });
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
-    expect(head()).toBe("As LibreOffice draws it");
+    expect(head()).toBe("As drawn here");
     const col = column()!;
     expect(within(col).getByText("In this format")).toBeTruthy();
     expect(within(col).getByText("3 suggestions go as tracked changes")).toBeTruthy();
@@ -375,7 +375,7 @@ describe("the frame", () => {
     // It cannot say how many it is drawing: nobody has counted.
     expect(head()).toBe("Drawing the pages");
     await f.answer({ picture: paged("r2", 73), drops: [] });
-    await waitFor(() => expect(head()).toBe("As LibreOffice draws it"));
+    await waitFor(() => expect(head()).toBe("As drawn here"));
     expect(screen.queryByRole("button", { name: /Draw all/ })).toBeNull();
     expect(document.querySelector("[data-preview-notes]")).toBeNull();
   });
@@ -390,7 +390,7 @@ describe("the frame", () => {
     expect(f.asked.at(-1)).toEqual({ format: "docx", opts: { pages: [1, Number.MAX_SAFE_INTEGER] } });
     expect(head()).toBe("Drawing 2,084 pages");
     await f.answer({ picture: paged("r2", 2084), drops: [] });
-    await waitFor(() => expect(head()).toBe("As LibreOffice draws it"));
+    await waitFor(() => expect(head()).toBe("As drawn here"));
     expect(screen.queryByRole("button", { name: /Draw all/ })).toBeNull();
   });
 
@@ -516,7 +516,7 @@ describe("the real app's own picture", () => {
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Check in Word" })));
     await f.fail("Word closed while it was drawing");
     await waitFor(() => expect(toasts).toEqual(["error: Word did not draw it — Word closed while it was drawing"]));
-    expect(head()).toBe("As LibreOffice draws itCheck in Word");
+    expect(head()).toBe("As drawn hereCheck in Word");
     expect(document.querySelector<HTMLElement>("[data-paged-sheets]")!.style.opacity).toBe("1");
   });
 
@@ -530,7 +530,7 @@ describe("the real app's own picture", () => {
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Check in Word" })));
     await waitFor(() => expect(toasts).toEqual(["error: Word is not in reach"]));
     expect(calls).toBe(1);
-    expect(head()).toContain("As LibreOffice draws it");
+    expect(head()).toContain("As drawn here");
   });
 
   it("never offers it for an app that is shut or absent, for a format that has no pages, or when the source has no way to ask", async () => {

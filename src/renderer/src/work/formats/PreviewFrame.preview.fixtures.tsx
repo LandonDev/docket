@@ -1,6 +1,6 @@
 // Fixtures for `bun run ui:preview src/renderer/src/work/formats/PreviewFrame.preview.tsx#PreviewFrame --width 864`.
 export default [
-  { name: "Word, as LibreOffice draws it, with what it drops and Check in Word", props: { moment: "word" } },
+  { name: "Word, as drawn here, with what it drops and Check in Word", props: { moment: "word" } },
   { name: "With a page set-up: the Page section over the losses, and a kind's own row", props: { moment: "setup" } },
   { name: "Beside a thread (502px): the column folded, the format a menu, the Page button", props: { moment: "folded" } },
   { name: "At 400px: Edit as its glyph, no zoom", props: { moment: "tiny" } },

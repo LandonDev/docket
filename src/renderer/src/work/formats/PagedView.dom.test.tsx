@@ -88,18 +88,18 @@ describe("the pages", () => {
   });
 
   it("puts the frame's line over the first sheet and its column beside the paper, and drops the column in a narrow canvas", async () => {
-    const wide = show(2, { head: <span>As LibreOffice draws it</span>, side: <span>In this format</span> });
+    const wide = show(2, { head: <span>As drawn here</span>, side: <span>In this format</span> });
     await waitFor(() => expect(sheets()).toEqual([1, 2]));
-    expect(screen.getByText("As LibreOffice draws it")).toBeTruthy();
+    expect(screen.getByText("As drawn here")).toBeTruthy();
     const side = document.querySelector<HTMLElement>("[data-paged-side]")!;
     expect(side.style.width).toBe("232px");
     expect(side.className).toContain("sticky");
     wide.view.unmount();
 
-    show(2, { head: <span>As LibreOffice draws it</span>, side: <span>In this format</span>, width: 500 });
+    show(2, { head: <span>As drawn here</span>, side: <span>In this format</span>, width: 500 });
     await waitFor(() => expect(sheets()).toEqual([1, 2]));
     expect(document.querySelector("[data-paged-side]")).toBeNull();
-    expect(screen.getByText("As LibreOffice draws it")).toBeTruthy();
+    expect(screen.getByText("As drawn here")).toBeTruthy();
   });
 
   it("gives the paper more of a wide canvas when no column stands beside it", async () => {
