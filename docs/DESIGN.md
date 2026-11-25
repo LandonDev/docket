@@ -3513,13 +3513,13 @@ set by hand.
   merge that would empty cells asks first, in the app's own confirm. The
   row ends in Preview, as a document's does (the row's way out, its eye
   glyph and word), opening Preview on the format he last used.
-- **Find in the sheet** (work-kit's, with Pin B) is the document's find bar over the grid's top end, 8px down and
+- **Find in the sheet** is the document's find bar over the grid's top end, 8px down and
   16px in from its right edge: the same 360px bar, words and keys, with Whole cell in Whole word's place. A match
   is washed at `find-hit`'s weight on the cells; the one he steps to is selected. Replace is there only where he
   may edit. The formula bar's first field is the **Name Box**: he types a place (B2:D9, Roster!A1, a name) and
   Return goes there; one that is not there stays, ringed in `destructive`. While he types a formula in the bar, a
   press or a drag on the grid puts the range's reference in at the caret.
-- **Freeze and Hide** (work-kit's, with Pin B) are rows of the grid's right-press menu where the sheet's store
+- **Freeze and Hide** are rows of the grid's right-press menu where the sheet's store
   keeps them: Freeze › (Freeze panes, Freeze top row, Freeze first column, and under a rule Unfreeze panes), and on
   whole rows or columns Hide row or Hide column, with Unhide where one is hidden. A **sheet tab** is dragged into
   its place: a 2px `accent` line in the gap, no tab moving under the pointer; ⌥← and ⌥→ move the focused tab.
@@ -3630,8 +3630,8 @@ set by hand.
 - **A format or a rule an agent proposes** changes no cell's value, so it
   sits in no cell: it steps with the cell changes in the bar's stepper,
   its range marked as a waiting change is, and while the stepper is on it
-  the formula bar says it in words ("Bold, yellow fill on
-  B2:B9"). One whose rows or columns moved since says so there and can
+  the formula bar says it in words, in muted ink with no tint ("Bold,
+  yellow fill on B2:B9"): it takes nothing away. One whose rows or columns moved since says so there and can
   only be rejected.
 
 **A sheet opened as a copy** (an `.xls`, `.ods` or `.tsv`, which opens as

@@ -1187,7 +1187,7 @@ describe("the sheet kind", () => {
     expect(screen.getAllByRole("button", { name: "Export" }).length).toBeGreaterThan(0);
   });
 
-  it("Edit → Find… and ⌘F open the grid's own find bar where the pinned work-kit has one (Pin B), on a sheet he can only read too", async () => {
+  it("Edit → Find… and ⌘F open the grid's own find bar, on a sheet he can only read too", async () => {
     open(sheetView({ store: "package", readOnly: "This file cannot be opened here: a password" }), { find: true });
     await gridUp();
     // The canvas is asked for its find, and the body answers find, so the app hands ⌘F and Edit → Find… to it.
@@ -1215,7 +1215,7 @@ describe("the sheet kind", () => {
     expect(grid.layoutGiven).toBeUndefined();
   });
 
-  it("a work-kit before Pin B has no find: the body does not answer it, so ⌘F stays the app's", async () => {
+  it("a grid with no find: the body does not answer it, so ⌘F stays the app's", async () => {
     open(sheetView({ store: "package" }));
     await gridUp();
     await waitFor(() => expect(document.querySelector("[data-sheet-item]")?.getAttribute("data-editor-answers")?.split(" ")).toContain("print"));
@@ -1918,11 +1918,14 @@ describe("a format or a rule an agent proposed", () => {
 
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(cell("B2").dataset.mark).toBe("current"));
-    expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Bold, yellow fill on B2:C3 (the totals)");
+    expect(document.querySelector("[data-sheet-said]")?.textContent).toBe("Bold, yellow fill on B2:C3 (the totals)");
+    // muted ink with no tint: it takes nothing away
+    expect(document.querySelector("[data-sheet-said]")?.className).not.toContain("--del-bg");
+    expect(document.querySelector("[data-sheet-was]")).toBeNull();
 
     // a name sits in no cell: the bar still says it
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
-    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("The name Budgeted for E2:E5"));
+    await waitFor(() => expect(document.querySelector("[data-sheet-said]")?.textContent).toBe("The name Budgeted for E2:E5"));
     expect(cell("B2").dataset.mark).toBe("pending");
 
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
@@ -1933,7 +1936,7 @@ describe("a format or a rule an agent proposed", () => {
     open(sheetView({ changes: [said("f1", { state: "orphaned" })] }));
     await gridUp();
     const bar = await screen.findByRole("toolbar", { name: "Review changes" });
-    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Bold, yellow fill on B2:C3. Rows or columns changed since: reject it"));
+    await waitFor(() => expect(document.querySelector("[data-sheet-said]")?.textContent).toBe("Bold, yellow fill on B2:C3. Rows or columns changed since: reject it"));
     fireEvent.click(within(bar).getByRole("button", { name: "Reject" }));
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["review", { which: { ids: ["f1"] }, verdict: "reject" }]));
   });

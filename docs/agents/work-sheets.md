@@ -1624,13 +1624,13 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   A: on the branch `pin-a-formula-commit`, needs a signed release; until the pin moves, the cell editor alone), are
   ended into the queue before a close, quit or reload.
 
-- **Find and Replace in the grid** (work-kit's find bar, Pin B: branch `m9-kit`, needs a signed release). The body
-  asks the canvas for `find` and, where the pinned kit's handle has one (`handle.find`, `kitFind`), answers the `find`
-  work command, so Edit → Find… and ⌘F open the grid's own bar, on a sheet he can only read too; Replace is offered
-  only where he may edit, and writes as any typed edit (one `set-range-values` a cell, Replace all one step of Undo).
-  Before the pin moves the body answers no `find` and ⌘F stays the app's. The same pin brings the Name Box, pointing at
-  cells from the formula bar, and the canvas's `layout`.
-- **Freeze panes, Hide and Unhide, and the tabs' order** (work-kit's canvas `layout`, Pin B). The host says per store
+- **Find and Replace in the grid** (work-kit's find bar, from work-kit v97). The body asks the canvas for `find` and,
+  where its handle has one (`handle.find.available`), answers the `find` work command, so Edit → Find… and ⌘F open the
+  grid's own bar, on a sheet he can only read too; Replace is offered only where he may edit, and writes as any typed
+  edit (one `set-range-values` a cell, Replace all one step of Undo; what it writes is typed as his typing is,
+  decision 15). The same pin brings the Name Box, pointing at cells from the formula bar, the canvas's `layout`, and
+  `said`: a format or a rule an agent proposed is said in the bar in muted ink, a cell's own change (`was`) on its tint.
+- **Freeze panes, Hide and Unhide, and the tabs' order** (work-kit's canvas `layout`, v97). The host says per store
   what keeps them (`SHEET_LAYOUT` in the contract, `view.layout`), and the body hands that list to the canvas, none on a
   sheet he cannot edit. A .tcsheet and a LifeOS sheet keep all three in the service engine's snapshot, and the Excel
   export writes them (`writer.ts`: `freeze`, a row's and a column's `hd`, `sheetOrder`). An opened Excel file keeps

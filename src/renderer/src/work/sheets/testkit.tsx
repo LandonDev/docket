@@ -249,11 +249,11 @@ export interface FakeGrid extends SheetGrid {
   dataChrome: boolean | undefined;
   /** what the canvas was last told a note's pop-over offers (`noteControls`) */
   noteControls: SheetCanvasProps["noteControls"];
-  /** the layout changes the canvas was last told this store keeps (`layout`, work-kit's from Pin B) */
+  /** the layout changes the canvas was last told this store keeps (`layout`) */
   layoutGiven: readonly string[] | undefined;
-  /** whether the canvas was asked for its find (`find`, work-kit's from Pin B) */
+  /** whether the canvas was asked for its find (`find`) */
   findAsked: boolean | undefined;
-  /** each open of the grid's find (`withReplace`), on a grid made with `find: true` (a kit with Pin B) */
+  /** each open of the grid's find (`withReplace`), on a grid made with `find: true` */
   findOpened: boolean[];
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
@@ -427,10 +427,10 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
   };
 
   function FakeCanvas(props: SheetCanvasProps) {
-    const { snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection } = props;
+    const { snapshot, marks, was, said, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection } = props;
     grid.noteControls = noteControls;
-    grid.findAsked = (props as { find?: boolean }).find;
-    grid.layoutGiven = (props as { layout?: readonly string[] }).layout;
+    grid.findAsked = props.find;
+    grid.layoutGiven = props.layout;
     grid.objectsGiven = { objects, media, onObjects };
     grid.styleKeys = styleKeys;
     grid.filter = filter;
@@ -508,7 +508,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         },
         onMutation: (listener: (m: SheetMutationJson) => void) => (listeners.add(listener), () => listeners.delete(listener)),
         focus: () => undefined,
-        // A kit with Pin B hands its find on the handle; one before it has none.
+        // A grid made with find hands it on the handle (`available`); the test's other grids have none.
         ...(options.find ? { find: { available: true, open: (withReplace?: boolean) => void grid.findOpened.push(!!withReplace) } } : {}),
         objects: fakeObjects(objects, (change) => grid.objectsGiven?.onObjects?.(change)),
         // A grid with no tables: the format row's table menu reads it and listens for none.
@@ -549,7 +549,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         <div data-slot="sheet-formula-bar" className="flex h-8 min-w-0 flex-none items-center gap-2 border-b border-border pr-3 pl-2">
           <span className="flex h-6 w-18 flex-none items-center overflow-hidden rounded-md border border-input px-2 text-xs whitespace-nowrap tabular-nums">{selection?.reference}</span>
           <span aria-hidden className="w-3.5 flex-none text-center font-serif text-[13px] text-muted-foreground italic">fx</span>
-          {was !== undefined ? <span data-sheet-was className="flex-none rounded-sm bg-(--del-bg) px-1 text-[13px] leading-5">{was}</span> : null}
+          {said !== undefined ? <span data-sheet-said className="min-w-0 shrink truncate text-[13px] leading-5 text-muted-foreground">{said}</span> : was !== undefined ? <span data-sheet-was className="flex-none rounded-sm bg-(--del-bg) px-1 text-[13px] leading-5">{was}</span> : null}
           <span data-sheet-formula className="min-w-0 flex-1 truncate text-[13px] leading-5 tabular-nums">{active?.f ?? (active ? String(active.v ?? "") : "")}</span>
         </div>
         <div className="relative min-h-0 flex-1 overflow-hidden">

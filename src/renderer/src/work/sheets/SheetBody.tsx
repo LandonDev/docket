@@ -179,8 +179,8 @@ export function Body(props: Props) {
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row, showFolder);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
-  // Edit → Find… and ⌘F: the grid's own find bar, where the pinned work-kit has one (`handle.find`, Pin B); before, ⌘F stays the app's.
-  const finder = kitFind(handle);
+  // Edit → Find… and ⌘F: the grid's own find bar (`handle.find`); a grid with none leaves ⌘F the app's.
+  const finder = handle?.find?.available ? handle.find : null;
   useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print"), ...(shareTargetOf(props.source, "sheet") ? { share: () => openShare(item.id) } : {}), ...(finder ? { find: () => finder.open() } : {}) } : {});
   // What Preview draws: one source for as long as the item shows the same workbook.
   const previewStore = view?.store;
@@ -222,7 +222,9 @@ export function Body(props: Props) {
 
   // The cell in hand, when a suggestion is laid in it: what the value replaces. Read on every render, which each laying causes.
   // While the stepper is on a format or a rule, which sits in no cell, the bar says that change in words.
-  const was = (selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined) ?? (change?.kind === "said" ? saidLine(change.said) : undefined);
+  // A format or a rule sits in no cell and takes nothing away: the bar says it in muted ink, not on the removed tint (`said`).
+  const cellWas = selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined;
+  const said = cellWas === undefined && change?.kind === "said" ? saidLine(change.said) : undefined;
 
   // A sheet that did not open says so once, in the body: the bar keeps no line about it.
   // Retry tries again what failed: the grid's own code (fetched afresh), the host's open, or both.
@@ -296,7 +298,8 @@ export function Body(props: Props) {
           {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
           marks={marks}
           presence={others.presence}
-          was={was}
+          was={cellWas}
+          said={said}
           // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
           // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
           objects={book.objects ?? (controls.includes("objects") || view.legacyCharts?.length ? NO_OBJECTS : undefined)}
@@ -305,11 +308,10 @@ export function Body(props: Props) {
           onReady={setHandle}
           onSelection={onSelection}
           labels={LABELS}
-          // Find and Replace in the grid, a reader's too (Replace only where he may edit); a kit before Pin B has no such prop.
-          {...KIT_FIND}
-          // Freeze, Hide and Unhide, tabs in order: what this store keeps, as its host says (`view.layout`); none on a sheet he
-          // cannot edit. A kit before Pin B takes no such prop and draws none.
-          {...(view.layout?.length && !locked && !state.reloading ? kitLayout(view.layout) : {})}
+          // Find and Replace in the grid, a reader's too (Replace only where he may edit).
+          find
+          // Freeze, Hide and Unhide, tabs in order: what this store keeps, as its host says (`view.layout`); none on a sheet he cannot edit.
+          {...(view.layout?.length && !locked && !state.reloading ? { layout: view.layout } : {})}
           className="min-h-0 min-w-0 flex-1"
         />
         {siding ? (
@@ -341,15 +343,6 @@ const importAsk =
     return sync.host.imported(act);
   };
 
-/** The grid's find, where the pinned work-kit hands one (Pin B: `handle.find`); null before, or in a grid made without it. */
-function kitFind(handle: SheetHandle | null): { open(withReplace?: boolean): void } | null {
-  const find = (handle as (SheetHandle & { find?: { available: boolean; open(withReplace?: boolean): void } }) | null)?.find;
-  return find?.available ? find : null;
-}
-/** `layout` on the canvas (work-kit's from Pin B): the layout changes the store keeps. */
-const kitLayout = (layout: readonly string[]) => ({ layout }) as unknown as Record<string, never>;
-/** `find` on the canvas: a prop of work-kit's from Pin B; the kit before it takes none. */
-const KIT_FIND = { find: true } as unknown as Record<string, never>;
 
 const LABELS = { failed: "Couldn't draw this sheet." };
 const NO_OBJECTS = { charts: [], pictures: [], warnings: [] };
