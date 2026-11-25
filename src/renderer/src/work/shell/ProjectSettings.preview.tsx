@@ -23,6 +23,8 @@ const GUESTS: Record<string, GuestLinkRow[] | null> = { none: [], two: [guest("a
 const REACH: Record<string, LifeosReach> = {
   ready: { status: "ready" },
   loading: { status: "loading" },
+  connecting: { status: "loading", waits: "LifeOS is still connecting on the box" },
+  retrying: { status: "failed", line: "LifeOS did not answer the box", press: { label: "Retry", run: noop }, busy: true },
   signedOut: { status: "failed", line: "Not signed in to LifeOS", press: { label: "Sign in", run: noop } },
   unreachable: { status: "failed", line: "LifeOS did not answer", press: { label: "Retry", run: noop } },
   withheld: { status: "failed", line: "This computer cannot read LifeOS through the box" },

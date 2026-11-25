@@ -197,7 +197,11 @@ nothing.
   a read to it says no empty line (`ShownSection.left`); one that held
   nothing else is left out whole, as is one whose only read was lost to an
   offline host the foot names (`bare` in model.ts), and the page is still
-  never All clear over either.
+  never All clear over either. A job read through another host whose LifeOS
+  says it is connecting (`Lost.waits`, from `useHostLive` on that slot's host)
+  is said the same way, once for the page by host, "LifeOS is still connecting
+  on Mac" over what it left out, with no press; once that host is back, its
+  sections show their own loading until the rows land.
   A held calendar act's details use the same helper. A muted line with no
   press wraps across the job and time columns; one with Sign in wraps in
   the titles' column.

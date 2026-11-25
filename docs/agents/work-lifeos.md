@@ -199,8 +199,17 @@ through the host's own session (a clash's ways out, a recording's Accept,
 Files' search and Home, a routine's wait) asks `useHostLive`: down, or a wait
 while the host says it is connecting, each said by `HostLine` (the wait with
 no press) and each holding the control; an open form keeps its text and holds
-its submit until the host says connected. LifeOS on its way reads one way
-everywhere, `connectingWords`: "LifeOS is still connecting on the box". One
+its submit until the host says connected. A held calendar or chat reply, a
+Settings section (`LifeosLine`), a mirrored project's sheet and an open Start
+places form say that wait too, in their reads' place. LifeOS on its way reads one way
+everywhere, `connectingWords`: "LifeOS is still connecting on the box". A Retry
+he presses keeps its line, spinning in place, until the answer replaces it: a
+read that mounts afresh through `useAgainKept` (`shell/againKept.ts`), "<host>
+is not connected" through `retryLink` (`shell/linkRetry.ts`), which waits for
+the link to try; only a read the reader asks by itself draws its bones. A way
+back from a page inside a view (Back to Agenda, Back to People, Back to
+Projects) is drawn in every state: the frame draws a view's `Title` whatever
+the session says. One
 JWT ask is out a session at a time (`openSession`): Retry and the session's
 own opening share it, and a failure never takes the place of a client that
 reads.

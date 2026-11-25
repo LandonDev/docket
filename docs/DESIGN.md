@@ -4213,11 +4213,24 @@ reads again: while that read is out the reader draws its own loading state
 everywhere: "LifeOS is still connecting on the box" (`connectingWords`). Once
 the host has said so (`useHostLive`'s `waits`), the wait is said once where a
 down state's line would stand (the view frame's body, a canvas body, the
-first chat card, Today's LifeOS line, a held mail's note), muted, with none of the
+first chat card, Today's LifeOS line, a held mail's note, a held calendar or
+chat reply's reads, a settings section, a project sheet's fields, an open Start
+places form), muted, with none of the
 controls the host would refuse (a clash's ways out, a recording's Accept, an
 open form's submit, which keeps his text); a status not heard yet keeps
-its bones. A Retry spins on the button pressed alone, never on another
-press that asks the same host, nor for a check the page ran by itself. A read that failed is never said
+its bones (the + menu's a muted bone row). On Today a job read through
+another computer that says it is connecting is one such line for the page,
+that computer named, with what it left out. A way back from a page inside a
+view (Back to Agenda, Back to People, Back to Projects) needs no session and
+stays through every state; the page's own controls are held. A Retry spins on
+the button pressed alone, never on another
+press that asks the same host, nor for a check the page ran by itself, and
+the line it was pressed on stays, spinning, until the answer replaces it: a
+new cause, or what was read. Bones are for a read the reader asks by itself
+(another item, LifeOS back), never for his press (`useAgainKept`,
+work/shell/againKept.ts, for a read that mounts afresh). Retry on "<host> is
+not connected" waits for the link to try (`retryLink`). A held mail's Retry
+asks the host's LifeOS status first, then the mail. A read that failed is never said
 as a sign-out (Capture names this computer with Retry). A part that stands in
 for what it could not read (a held act's details, a chat card, Running
 late's place in a clash, the Start places dialog) draws
@@ -4237,8 +4250,8 @@ and drops its line with no press: a fresh answer or push that says connected
 asks again for a session that is down, and Waiting on and Connections read
 again; a status that goes down while Waiting on is open takes its days' row down at once, its switch kept. The sign-in dialog's code ask that fails says so in the code's place
 with Retry, which asks the same computer again, and a code past its life gives
-its timer's place to New code, which does the same; bones are for an ask still
-out. A long computer name wraps; the red word is
+its timer's place to New code, which does the same; each keeps its row,
+spinning, until the new code or cause lands; bones are for the first ask. A long computer name wraps; the red word is
 never cut (`StatusMark`'s `wrap`).
 
 ## Motion values
