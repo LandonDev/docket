@@ -120,8 +120,12 @@ workspace's own sector sent in the last 30 days, at most 10, each cut to
 instructions. Only mail LifeOS sent is there: mail he sent from Outlook or
 Gmail directly is not. `work.rules.voice` answers the page's line: the
 count, the oldest date and the From addresses, and `on` from the host's own
-row whatever LifeOS answers: unreachable, `count` is null and `error` says
-why, so the switch still shows and he can turn it off. A window whose key
+row whatever LifeOS answers, so the switch still shows and he can turn it
+off. While the session is not connected `count` is null and there is no
+`error`: the page says that state once, at Waiting on, and the row stays
+quiet, reading again once the host says connected (`useLiveDown`); a read of
+a connected session that fails sends `error`, which the row says as "LifeOS
+did not answer the box". A window whose key
 may not write the workspace's settings (`linkMay`, [work.md](work.md) "The
 switch") is not shown the Voice section, nor asked for its line.
 

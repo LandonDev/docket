@@ -1695,12 +1695,14 @@ Around the canvas:
     says "nothing" only where every source of it answered, every host
     among them: with LifeOS out it reads "Not counted", otherwise "Some of
     it could not be read", the line over the sections saying what. A host
-    that left LifeOS out says why once, by the rule, its computer named, with
-    ", so the calendar, tasks and mail are not counted." after it: "LifeOS
+    that left LifeOS out says why once, by the rule, its computer named, from
+    its live status, with ", so the calendar, tasks and mail are not counted."
+    after the last such line: "LifeOS
     did not answer the box" red with a Retry that asks that host alone; "Not
     signed in to LifeOS on the box" muted with Sign in, a sign-in that waits
-    with Show the code, Work off with Open Settings, else who can; "The box
-    is still connecting to LifeOS" with no press. The line goes once that
+    with Show the code, Work off with Open Settings, else who can; "LifeOS is
+    still connecting on the box" with no press. A host a build behind keeps its
+    plain line beside the others' named ones. The line goes once that
     host's LifeOS says connected again; a host a build behind keeps "LifeOS
     did not answer, so the calendar, tasks and mail are not counted.". A host that did not answer is named in his
     words ("The Mac did not answer: it timed out.", never a wire method),
@@ -4121,7 +4123,12 @@ drawn. On Today a job's session on another host that is down
 is one line for the page a host and state, naming what every section left
 out ("Refereeing's meetings, tasks and mail left out"), its Retry asking
 that host alone; a section that held nothing else is left out. Review names
-each host that left LifeOS out the same way, once. A read that failed is never said
+each host that left LifeOS out the same way, once, and says what the page does
+without it once, after the last line. Every line is the host's live status's,
+never a reason an older read saved (`useLiveDown`, work/shell/lifeosLive.ts):
+a status that changes changes the line and its press at once, and connected
+reads again. A session on its way is a wait with no press, one wording
+everywhere: "LifeOS is still connecting on the box" (`connectingWords`). A read that failed is never said
 as a sign-out (Capture names this computer with Retry). A part that stands in
 for what it could not read (a held act's details, a chat card, Running
 late's place in a clash, the Start places dialog) draws

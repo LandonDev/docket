@@ -186,7 +186,15 @@ reader holds a down session to one rule (docs/DESIGN.md "Loading and empty
 states"): said once, the computer named, `downPress`'s one press, no header
 press whose dialog needs the session; `shell/DownLine.tsx` is the line a held
 act or a chat card draws, and `shell/sessionDown.dom.test.tsx` mounts each
-reader in each down state. One
+reader in each down state. A reader that keeps the cause of a failed read
+(Waiting on's days, a held mail's read, Review's week, Voice, a routine's
+wait, Files' LifeOS place, a dashboard's tile) asks `useLiveDown`
+(`shell/lifeosLive.ts`) what to say now: the host's live status over the saved
+cause, so a sign-in begun elsewhere is Show the code at once and connecting a
+wait; a status heard since that says connected reads again. A control whose act
+runs on the host through the host's own session (a clash's ways out, a
+recording's Accept) asks `useHostDown`. LifeOS on its way reads one way
+everywhere, `connectingWords`: "LifeOS is still connecting on the box". One
 JWT ask is out a session at a time (`openSession`): Retry and the session's
 own opening share it, and a failure never takes the place of a client that
 reads.

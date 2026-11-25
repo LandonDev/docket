@@ -582,7 +582,7 @@ typing; until the first, one muted row says Loading…, and a kind that could
 not be searched says so in one muted row: LifeOS's kinds alone in the
 host's LifeOS state as this window last heard it, its computer named
 (`mentionFailWords`, canvas/mentionFail.ts, `lifeosHeardWords`: "Not signed in
-to LifeOS on the box", "LifeOS is still connecting", "LifeOS did not answer
+to LifeOS on the box", "LifeOS is still connecting on the box", "LifeOS did not answer
 the box"), else "Couldn't search everything". Run a play…'s picker says the
 same, muted. Each
 kind is a group under its name with its glyph, a muted fact (a sender, a

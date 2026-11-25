@@ -479,8 +479,9 @@ never Retry, which would read the same missing session; "LifeOS did not
 answer the box" only for a wait, else "LifeOS could not read the waiting
 time", each in red with Retry at the row's end. The row also hears the host's status: a sign-out (refused, a
 sign-in that waits, Work off, LifeOS unreachable) while the page is open takes the days' row down at once, the
-select gone and the switch kept; it says "LifeOS is still connecting" on the way back and reads again when the
-host says connected. The host reads the routine before it waits on the
+select gone and the switch kept; it says "LifeOS is still connecting on the box" with no press on the way back,
+over any older read's cause, a sign-in begun elsewhere says Show the code, and the row reads again when the host
+says connected (`useLiveDown`). The host reads the routine before it waits on the
 days, so every ask is numbered as it starts and an answer replaces only the
 half (the days with their error, or the routine) no newer ask set
 (`laidOver`): a Retry that answers after he flipped the switch brings the
