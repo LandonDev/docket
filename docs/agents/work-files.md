@@ -2502,7 +2502,12 @@ over a file that changed there.
   the newest unclaimed draft is offered (`useDocDrafts` in DocumentCanvas.tsx) with Restore and Discard: Restore sends
   its updates up the open socket as his edits go (the host's door judges them as any) and hands them to the editor's
   provider, so Yjs merges them with what the document holds now; what changed since is kept beside them, never
-  written over. With no socket ready yet, Restore says so and the draft stays.
+  written over. With no socket ready yet, Restore says so and the draft stays. Restore first judges the draft by
+  what the service holds (`draftFits` in host.ts: the state vector of the service's own SyncStep1, grown by each
+  update it sends down): a draft whose structs hang from text the document no longer has (it was made again since: a
+  Word file imported again, a whole-text write, a History restore), which Yjs would hold unseen as pending structs,
+  is not sent. Its record stays, and the line says "Edits from 2:30 PM were not saved. The document changed since"
+  with Copy Edits (`draftWords`: the words it typed, on the clipboard) and Discard.
 - **A sheet's draft** (`DraftBody` kind `sheet`): the mutations the host has not answered, the batch on its way and
   the queue after it, under the file's revision, and on a shared .csv its cache too (`3@<gen>`: a co-author's change
   makes a new cache that starts again at a revision the draft may share) (`SheetSync.note`, after each push into the

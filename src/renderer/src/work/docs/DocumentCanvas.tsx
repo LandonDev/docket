@@ -37,6 +37,7 @@ import { hostName } from "../../lib/threadResources";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, SavedLine, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { dayTime } from "../../lib/duration";
+import { copyText } from "../../lib/clipboard";
 import { useWorkCommands } from "../formats/command";
 import { registerFlush } from "../canvas/flush";
 import { Preview } from "../formats/PreviewFrame";
@@ -46,7 +47,7 @@ import { Doc, Export, Share } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { DOC_FONTS } from "./fonts";
-import { docHost, savesOf, servedBy, type DocHost, type DocSaves } from "./host";
+import { docHost, draftWords, savesOf, servedBy, type DocHost, type DocSaves } from "./host";
 import { blockFacts, docDrops, docPreviewSource } from "./previewSource";
 import { decided, editMovesMarks, markedBlocks, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
@@ -867,10 +868,14 @@ export function selectionChip(text: string, open: Pick<DocOpen, "title" | "sourc
  * applied are kept on this computer as they are sent (host.ts `keepDrafts`), under this open's own base so an earlier
  * draft is never written over; as it opens, the newest unclaimed one is offered in the save line. Restore sends its
  * updates up the open socket as his edits go and lays them on the editor's document: Yjs merges them with what the file
- * holds now, so what changed since is kept beside them, never written over. Discard lets it go.
+ * holds now, so what changed since is kept beside them, never written over. Discard lets it go. A draft made on a
+ * document that was made again since (its updates hang from text it no longer has) is not sent, where Yjs would hold
+ * it unseen: its record stays, and the line offers Copy Edits, his typed words on the clipboard, beside Discard.
  */
 export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell: CanvasShell): boolean {
   const [offer, setOffer] = useState<Draft | null>(null);
+  // Restore found the document made again since the draft: it can only be copied out, or let go.
+  const [changed, setChanged] = useState(false);
   useEffect(() => {
     if (!journal || !host.keepDrafts) return;
     let live = true;
@@ -888,26 +893,27 @@ export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell:
   useEffect(() => {
     if (!offer || !shell.saved || offer.body.kind !== "document") return;
     const frames = offer.body.frames;
+    const restore = {
+      id: "restore",
+      label: "Restore",
+      run: () => {
+        // Sent again, they are kept under this open's base until applied; the old record goes only once they are on their way.
+        const got = host.replay?.(frames) ?? "later";
+        if (got === "sent") {
+          journal?.drop(offer);
+          setOffer(null);
+        } else if (got === "changed") setChanged(true);
+        else void loadToast().then((toast) => toast.error("The document is not connected yet. Try Restore again in a moment"));
+      },
+    };
+    const copy = { id: "copy", label: "Copy Edits", run: () => void copyText(draftWords(frames)) };
     shell.saved({
       state: "conflict",
-      detail: `Edits from ${whenWords(offer.at)} were not saved`,
-      actions: [
-        {
-          id: "restore",
-          label: "Restore",
-          run: () => {
-            // Sent again, they are kept under this open's base until applied; the old record goes only once they are on their way.
-            if (host.replay?.(frames)) {
-              journal?.drop(offer);
-              setOffer(null);
-            } else void loadToast().then((toast) => toast.error("The document is not connected yet. Try Restore again in a moment"));
-          },
-        },
-        { id: "discard", label: "Discard", run: () => (journal?.drop(offer), setOffer(null)) },
-      ],
+      detail: changed ? `Edits from ${whenWords(offer.at)} were not saved. The document changed since` : `Edits from ${whenWords(offer.at)} were not saved`,
+      actions: [changed ? copy : restore, { id: "discard", label: "Discard", run: () => (journal?.drop(offer), setOffer(null)) }],
     });
     return () => shell.saved?.(null);
-  }, [offer, shell, host, journal]);
+  }, [offer, changed, shell, host, journal]);
   return offer?.body.kind === "document";
 }
 

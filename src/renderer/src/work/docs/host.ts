@@ -1,5 +1,6 @@
 import type { DocMode, DocOpen, DocReady, DocsPush, DocThreadOp, DocThreadRow, DocToken } from "@shared/contract-work-docs";
 import type { CanvasSource } from "@shared/work";
+import * as Y from "yjs";
 import { registry } from "../../lib/connection";
 import { PAUSE_MS } from "../canvas/calm";
 
@@ -48,9 +49,12 @@ export interface DocHost {
   keepDrafts?(journal: { keep(frames: string[]): void; clear(): void } | null): void;
   /**
    * A kept draft's updates, sent again up the open socket as his edits are (the host's door judges them as any) and laid
-   * on the editor's document: Yjs merges them, so nothing newer is written over. False with no socket open to take them.
+   * on the editor's document: Yjs merges them, so nothing newer is written over. `later` with no socket open to take
+   * them (or none that has heard what the service holds); `changed`, nothing sent, where they hang from text the
+   * document no longer has (it was made again since: a Word file imported again, a whole-text write, a History restore),
+   * which Yjs would park unseen.
    */
-  replay?(frames: string[]): boolean;
+  replay?(frames: string[]): "sent" | "later" | "changed";
 }
 
 /** The host that serves a LifeOS document, from the refusal of one that does not ("served elsewhere: env_box"). */
@@ -115,9 +119,11 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
     },
     replay: (frames) => {
       const live = [...(relayedOf.get(socket)?.open ?? [])].find((s) => s.ready());
-      if (!live) return false;
+      const served = live?.served();
+      if (!live || !served) return "later";
+      if (!draftFits(frames, served)) return "changed";
       live.inject(frames);
-      return true;
+      return "sent";
     },
   };
 }
@@ -150,6 +156,60 @@ export function asUpdate(bytes: Uint8Array): Uint8Array | null {
   out[name.length + 1] = 2;
   out.set(bytes.subarray(at), name.length + 2);
   return out;
+}
+
+/** A Sync or SyncReply frame's step and the bytes it carries (a state vector for step 0, an update for 1 and 2); null for any other. */
+export function syncPayload(bytes: Uint8Array): { step: number; payload: Uint8Array } | null {
+  let at = 0;
+  const varUint = (): number | null => {
+    let n = 0;
+    for (let shift = 0; at < bytes.length && shift < 35; shift += 7) {
+      const b = bytes[at++]!;
+      n += (b & 0x7f) * 2 ** shift;
+      if (b < 0x80) return n;
+    }
+    return null;
+  };
+  const name = varUint();
+  if (name === null) return null;
+  at += name;
+  const type = varUint();
+  const step = varUint();
+  const length = varUint();
+  if ((type !== 0 && type !== 4) || step === null || step > 2 || length === null || at + length > bytes.length) return null;
+  return { step, payload: bytes.subarray(at, at + length) };
+}
+
+/**
+ * Whether a kept draft's updates (Update frames, base64) take on the document the service holds (`served`, its state
+ * vector): each struct they add follows on from what it has of that writer, and each one they hang from (an origin, a
+ * parent) is there or in the draft. A document made again since lacks them, and Yjs would hold the draft unseen.
+ */
+export function draftFits(frames: readonly string[], served: ReadonlyMap<number, number>): boolean {
+  try {
+    const updates = frames.map((frame) => syncPayload(new Uint8Array(fromBase64(frame)))?.payload);
+    if (!updates.length || updates.some((u) => !u)) return false;
+    const merged = Y.mergeUpdates(updates as Uint8Array[]);
+    const { from, to } = Y.parseUpdateMeta(merged);
+    for (const [client, clock] of from) if ((served.get(client) ?? 0) < clock) return false;
+    const there = (id: Y.ID | null | string | undefined): boolean =>
+      !id || typeof id === "string" || id.clock < (served.get(id.client) ?? 0) || (id.clock >= (from.get(id.client) ?? Infinity) && id.clock < (to.get(id.client) ?? 0));
+    return Y.decodeUpdate(merged).structs.every((struct) => !(struct instanceof Y.Item) || (there(struct.origin) && there(struct.rightOrigin) && there(struct.parent as Y.ID | string | null)));
+  } catch {
+    return false;
+  }
+}
+
+/** The words a kept draft typed, in the order they were typed: what Copy Edits puts on the clipboard. */
+export function draftWords(frames: readonly string[]): string {
+  try {
+    const updates = frames.map((frame) => syncPayload(new Uint8Array(fromBase64(frame)))?.payload).filter((u): u is Uint8Array => !!u);
+    return Y.decodeUpdate(Y.mergeUpdates(updates))
+      .structs.map((struct) => (struct instanceof Y.Item && struct.content instanceof Y.ContentString ? struct.content.str : ""))
+      .join("");
+  } catch {
+    return "";
+  }
 }
 
 const READY = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 } as const;
@@ -218,7 +278,7 @@ export const NO_SAVES: DocSaves = { edited: null, asked: null, storedAt: null, f
 
 
 type Relayed = {
-  open: Set<{ settled(store: boolean): Promise<number | null>; ready(): boolean; inject(frames: string[]): void }>;
+  open: Set<{ settled(store: boolean): Promise<number | null>; ready(): boolean; served(): ReadonlyMap<number, number> | null; inject(frames: string[]): void }>;
   /** where the updates not yet applied there are kept on this computer, and those updates (`asUpdate` frames, base64) */
   journal?: { keep(frames: string[]): void; clear(): void } | null;
   pending: string[];
@@ -377,6 +437,8 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
      */
     private unacked = 0;
     private stateSent = false;
+    /** What the service holds, as this socket heard it: its SyncStep1's state vector, grown by each update it sent down. */
+    private holds: Map<number, number> | null = null;
     /** How many updates this socket has sent: one sent while a store is made may not be in it. */
     private sentCount = 0;
     private waiters = new Set<() => void>();
@@ -392,6 +454,11 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
     /** Open, with its own state sent: a draft's updates may go up it. */
     ready(): boolean {
       return this.readyState === READY.OPEN && this.stateSent;
+    }
+
+    /** What the service holds, once it has said (its SyncStep1); null before. */
+    served(): ReadonlyMap<number, number> | null {
+      return this.holds;
     }
 
     /** A kept draft's updates: each sent up as his edits are, and handed to the provider as the service's, so the editor shows it. */
@@ -515,6 +582,13 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
     /** A frame from the host: a SyncStatus says one update this socket sent is applied there, or was refused. */
     private heard(bytes: Uint8Array): void {
       const head = frameHead(bytes);
+      const sync = head?.type === 0 || head?.type === 4 ? syncPayload(bytes) : null;
+      try {
+        if (sync?.step === 0) this.holds = Y.decodeStateVector(sync.payload);
+        else if (sync && this.holds) for (const [client, clock] of Y.parseUpdateMeta(sync.payload).to) this.holds.set(client, Math.max(clock, this.holds.get(client) ?? 0));
+      } catch {
+        // A frame Yjs cannot read says nothing of what the service holds.
+      }
       if (head?.type !== 8) return;
       if (head.value === 1) this.unacked = Math.max(0, this.unacked - 1);
       else relayed.lost = this.failed = new Error(NOT_TAKEN);
