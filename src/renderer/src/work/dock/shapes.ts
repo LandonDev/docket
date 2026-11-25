@@ -4,7 +4,7 @@
  * `beside` px. Where the body cannot hold both, the chat lies over the whole body instead, its close still at its head.
  */
 export const DOCK_SIZE = { width: 360, min: 360, max: 720 } as const;
-/** Under this much view the sidebar folds itself away while a dock is open, and comes back when it closes. */
+/** Under this much view Mail's sidebar folds itself away while a dock is open, and comes back when it closes. */
 export const DOCK_FOLD_AT = 900;
 
 /** The widest the dock may be in a body of `body` px that keeps `beside` px for what it sits beside (unmeasured, 0: the bound alone). */
@@ -21,5 +21,11 @@ export function dockShape(body: number, width: number, beside: number): { over: 
   return { over: false, width: clampDock(width, body, beside) };
 }
 
-/** Whether the sidebar folds itself away: under `foldAt` of view always, under 900px while a chat is docked. */
-export const sidebarFolds = (view: number, docked: boolean, foldAt: number): boolean => view > 0 && (view < foldAt || (docked && view < DOCK_FOLD_AT));
+/**
+ * Whether the sidebar folds itself away: under `foldAt` of view always, and while a chat is docked wherever the
+ * sidebar's `side` px would leave the body too narrow for what the chat sits beside (`beside`), so the chat would lie
+ * over it. A 1440px window with the rail and the workspace's column leaves a 980px view: the sidebar folds, and the
+ * file keeps its 440px beside the chat.
+ */
+export const sidebarFolds = (view: number, docked: boolean, foldAt: number, side: number, beside: number): boolean =>
+  view > 0 && (view < foldAt || (docked && dockShape(view - side, DOCK_SIZE.min, beside).over));

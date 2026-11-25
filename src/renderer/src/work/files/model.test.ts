@@ -552,11 +552,17 @@ describe("the chat docked beside a file", () => {
     expect(dockShape(0, 400)).toEqual({ over: false, width: 400 });
   });
 
-  it("folds the sidebar under 640px always, and under 900px only while a chat is docked", () => {
+  it("folds the sidebar under 640px always, and while a chat is docked wherever it would leave the chat over the file", () => {
     expect(sidebarFolds(600, false, 640)).toBe(true);
     expect(sidebarFolds(800, false, 640)).toBe(false);
     expect(sidebarFolds(800, true, 640)).toBe(true);
-    expect(sidebarFolds(900, true, 640)).toBe(false);
+    // A 1440px window with the rail (200) and the workspace's column (260): a 980px view. With the 200px sidebar the
+    // tab's body is 780px, too narrow for 440 + 360, so the sidebar folds and the chat sits beside the file.
+    expect(sidebarFolds(980, true, 640)).toBe(true);
+    expect(sidebarFolds(980, false, 640)).toBe(false);
+    // 1000px leaves the body 800: the file keeps its 440px beside the chat with the sidebar open.
+    expect(sidebarFolds(999, true, 640)).toBe(true);
+    expect(sidebarFolds(1000, true, 640)).toBe(false);
     expect(sidebarFolds(0, true, 640)).toBe(false);
   });
 });

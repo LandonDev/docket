@@ -514,8 +514,11 @@ control, takes it away.
 - **Its shapes** (model.ts): 360px to start, 360 to 720, never leaving the
   file under 440px (`clampDock`, `dockMost`); a tab body under 800px gets
   the dock over the whole body instead, with its close control at its head
-  (`dockShape`); the sidebar folds itself under 900px of view while the
-  shown tab's dock is open, and comes back when it closes (`sidebarFolds`).
+  (`dockShape`); while the shown tab's dock is open the sidebar folds itself
+  wherever its 200px (`SIDEBAR_WIDTH`) would put the dock over the file, a
+  view under 1000px, and comes back when it closes (`sidebarFolds`,
+  decision 12: Files folds its own sidebar first; the workspace column is
+  the threads planner's, handed over in SEAMS).
 - No key opens it yet: ⌘L is the selection bar's Ask, and taking it in the
   Files map would need a new app command and an App case.
 - The dock's parts that know nothing of files live in `work/dock/` (the shell, the sash, the sizes, the draft and thread

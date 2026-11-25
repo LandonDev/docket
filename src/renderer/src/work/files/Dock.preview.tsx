@@ -1,9 +1,12 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/Dock.preview.tsx#DockDraft` (and #DockThread, #FilesSide,
-// #DockNarrow, #DockAt820): a file open in its Files tab with a chat docked at its right, on a draft and on a thread with a
-// few messages; under 800px the chat lies over the file, at 820px it sits beside it.
+// #DockNarrow, #DockAt820, #DockIn980): a file open in its Files tab with a chat docked at its right, on a draft and on a thread
+// with a few messages; under 800px the chat lies over the file, at 820px it sits beside it; in a 980px Files view the
+// sidebar folds so the chat sits beside the file.
 // Rendered by nothing in the app.
 import type { FileTab } from "@shared/contract-work-files";
 import type { CanvasItem } from "@shared/work";
+import type { FilePlace } from "@shared/work/files";
+import { registry } from "../../lib/connection";
 import { defineChunk } from "../../lib/lazyChunk";
 import { newSession, type Block, type Session } from "../../lib/session";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -12,11 +15,21 @@ import { workCanvasChunk } from "../../surfaces/chunks";
 import { SessionActionsContext, type SessionActions } from "../../surfaces/threadChat";
 import { addContextChip, resetContextChips } from "../canvas/chips";
 import { CANVAS } from "../canvas/registry";
+import { answerAs } from "../kit.preview";
 import { fileChip } from "./dockThread";
 import { FileTabView } from "./FileTabView";
+import { SidebarView } from "./FilesView";
+import { SIDEBAR_WIDTH, sidebarFolds, sidebarOf } from "./model";
 import { filesPanelId } from "./TabRow";
 
 const workspace = { id: "w", environmentId: "local", path: "/w" };
+// The workspace's host is linked and open: the composer says nothing of a connection (unlinked, it said "local is offline").
+answerAs(() => {
+  throw new Error("not asked in this preview");
+});
+const realStatus = registry.statusOf.bind(registry);
+const open = { ...realStatus("local"), transport: "open" } as ReturnType<typeof registry.statusOf>;
+Object.assign(registry, { statusOf: (id: string) => (id === "local" ? open : realStatus(id)) });
 const tab: FileTab = { id: "t1", kind: "file", name: "Spring LAN budget request.docx", itemId: "pi1" };
 const item: CanvasItem = {
   id: "pi1",
@@ -82,12 +95,15 @@ function seed(id: string, meta: Partial<SessionMeta> | null, blocks: Block[]): v
   if (meta) sessionStore.adopt({ id, environmentId: "local", status: "idle", archived: false, workspaceId: "w", projectId: null, scope: "work", createdAt: now, updatedAt: now, ...meta } as SessionMeta, { created: true });
 }
 
-function Frame({ width, preset }: { width: number; preset: { id: string; draft: boolean } }) {
-  room = width;
+function Frame({ width, preset, side = null }: { width: number; preset: { id: string; draft: boolean }; side?: React.ReactNode }) {
+  room = side ? width - SIDEBAR_WIDTH : width;
   return (
     <SessionActionsContext.Provider value={actions}>
       <div className="flex h-[620px] w-full overflow-hidden border border-border" style={{ maxWidth: width }}>
-        <FileTabView tab={tab} item={item} panelId={filesPanelId(tab.id)} workspace={workspace} where="Events" copy={null} onClose={() => undefined} kinds={kinds} dockPreset={preset} />
+        {side}
+        <div className="flex min-w-0 flex-1">
+          <FileTabView tab={tab} item={item} panelId={filesPanelId(tab.id)} workspace={workspace} where="Events" copy={null} onClose={() => undefined} kinds={kinds} dockPreset={preset} />
+        </div>
       </div>
     </SessionActionsContext.Provider>
   );
@@ -134,6 +150,17 @@ export function DockNarrow() {
 export function DockAt820() {
   seedThread();
   return <Frame width={820} preset={{ id: "s1", draft: false }} />;
+}
+
+const place = (over: Pick<FilePlace, "id" | "kind" | "name">): FilePlace => ({ host: "", env: "env_local", shared: false, can: [], state: { state: "ok" }, root: { at: "place", id: over.id }, ...over });
+const places = sidebarOf([{ link: "local", name: "This Mac", desktop: true, wire: "files", answer: { host: "env_local", rev: 1, sources: [], places: [place({ id: "home", kind: "home", name: "Home" }), place({ id: "recent", kind: "recent", name: "Recent" }), place({ id: "starred", kind: "starred", name: "Starred" }), { ...place({ id: "folder", kind: "folder", name: "Dummy Esports" }), root: { at: "file", host: "env_local", path: "/w" } }] } }], "local");
+
+/** A 980px Files view (a 1440px window with the rail and the workspace's column): the sidebar folds itself, so the file keeps 440px beside the chat. */
+export function DockIn980() {
+  seedThread();
+  const view = 980;
+  const side = sidebarFolds(view, true, 640) ? null : <SidebarView model={places} workspace={{ ...workspace, name: "Dummy Esports", kind: "work" } as never} at={{ at: "place", id: "folder" }} note={null} onGo={() => undefined} onNewTab={() => undefined} />;
+  return <Frame width={view} preset={{ id: "s1", draft: false }} side={side} />;
 }
 
 const sideItem: CanvasItem = { ...item, id: "pi2", title: "Run of show.md", source: { at: "file", host: "env_local", path: "/w/Events/Run of show.md" } };

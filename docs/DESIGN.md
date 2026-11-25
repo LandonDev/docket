@@ -2225,9 +2225,11 @@ Around the canvas:
   keeps its own placeholder and send waits (a code thread's field says it
   too). Where the tab's body
   cannot keep the file at 440px beside it, the dock lies over the whole
-  body instead, its head and Close where they were. Under 900px of view
-  the sidebar folds itself while the dock is open and comes back when it
-  closes. A selection's Ask opens the dock with the selection's chip.
+  body instead, its head and Close where they were. Before it would lie
+  over the file, Files folds its own sidebar: while the dock is open the
+  sidebar folds itself wherever keeping it would leave the body under
+  800px (a view under 1000px; a 1440px window with the rail and the
+  workspace's column is 980), and comes back when the dock closes. A selection's Ask opens the dock with the selection's chip.
   **States**: loading is the list's own bones (a 16px square and a line a
   row); an empty folder is one `Empty` ("This folder is empty"); a folder
   that did not load is `Empty` with why and Retry, and one that is gone,

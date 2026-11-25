@@ -1,5 +1,5 @@
 import type { FileCrumb, FilePage, FileSearchFilter, FilesPlaces, FileTab } from "@shared/contract-work-files";
-import { clampDock as clampDockIn, DOCK_FOLD_AT, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds } from "../dock/shapes";
+import { clampDock as clampDockIn, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds as sidebarFoldsIn } from "../dock/shapes";
 import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
 import { kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind, type Refusal } from "@shared/work/files";
@@ -876,7 +876,11 @@ export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null
  * asking about; at 440 the file stays in view beside a 360px chat there.
  */
 export const DOCK = { ...DOCK_SIZE, file: 440 } as const;
-export { DOCK_FOLD_AT, sidebarFolds };
+/** The sidebar's width beside the tabs (FilesView's `data-files-sidebar`). */
+export const SIDEBAR_WIDTH = 200;
+/** Whether the sidebar folds itself away in a view `view` px wide: under `foldAt` always, and while the shown tab's chat
+ *  is docked wherever the open sidebar would put the chat over the file (decision 12: Files folds its own sidebar first). */
+export const sidebarFolds = (view: number, docked: boolean, foldAt: number): boolean => sidebarFoldsIn(view, docked, foldAt, SIDEBAR_WIDTH, DOCK.file);
 
 /** The widest the dock may be in a body of `body` px (unmeasured, 0: the bound alone). */
 export const dockMost = (body = 0): number => dockMostIn(body, DOCK.file);

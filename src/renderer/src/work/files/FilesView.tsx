@@ -427,7 +427,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   }, []);
   const tab = view.tabs.find((t) => t.id === view.selected) ?? view.tabs[0] ?? null;
   const [docked] = useDock(workspace.id, tab?.kind === "file" ? tab.id : null);
-  // Narrow, or under 900px with a chat docked beside the file, the sidebar is folded away until he asks for it; wide, it is there unless he folded it.
+  // Narrow, or with a chat docked where the open sidebar would put it over the file, the sidebar is folded away until he asks for it; wide, it is there unless he folded it.
   const narrow = sidebarFolds(width, docked, SIDEBAR_FOLD_AT);
   const [peek, setPeek] = useState(false);
   const sidebarOpen = narrow ? peek : !folded;
