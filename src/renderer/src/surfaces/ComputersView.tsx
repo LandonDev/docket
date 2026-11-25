@@ -12,7 +12,7 @@ import { driveName, handBack, tileKey, useComputers, viewKey, type ComputerTile 
 import { registry } from "../lib/connection/registry";
 import { useDriveHold } from "../lib/driveHold";
 import { previewContext } from "../lib/computerSessions";
-import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow } from "../lib/fullWindow";
+import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow, type ScreenRect } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
@@ -21,7 +21,7 @@ import { IS_MAC } from "../lib/platform";
 import { restingVm, restingVmTiles, useVmStates, wakeVm, WAKING_LINE, type VmState } from "../lib/winvmWake";
 import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
-import { ComputerBar, ViewButton, tileLine } from "./threads/computer/ComputerBar";
+import { ComputerBar, OpenSettingsButton, ViewButton, WakeButton, tileLine, vmScreenSeam, type BarReading } from "./threads/computer/ComputerBar";
 import { ENDED_WORDS, PIXELATED, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
 import { drivenScreen } from "../lib/video/videoInput";
 
@@ -197,51 +197,24 @@ export function RestingVmPicture({ host, vm, place, wake = wakeVm }: { host: str
 
 export interface TileProps {
   tile: ComputerTile;
-  onOpenSession: (threadId: string, host: string) => void;
-  /** the picture; left out where no desktop draws one (the browser /ui): the caption alone */
+  /** the picture; left out where no desktop draws one (the browser /ui): its name alone */
   picture?: ReactNode;
-  /** on the stage, with the controls; else a strip tile, a press on which puts it there */
+  /** on the stage, its bar the page's header; else a strip tile, a press on which puts it there */
   stage?: boolean;
   onStage?: () => void;
-  onTookOver?: () => void;
-}
-
-/** Where the stage's picture is on his screen, from a control in its tile: full screen grows it from there. */
-function pictureRectOf(control: Element) {
-  const picture = control.closest("[data-slot=computer-tile]")?.querySelector("[data-slot=computer-picture-room]");
-  return picture ? screenRectOf(picture.getBoundingClientRect()) : undefined;
 }
 
 /** One computer, on the stage or in the strip: the same element either way, so its picture's canvas stays. */
-export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTookOver }: TileProps) {
+export function Tile({ tile, picture, stage = true, onStage }: TileProps) {
   // a tile of the computer he drives holds his drive: leaving the page with nothing else of his showing it hands it back
   useDriveHold(`${tile.entry.host}\n${driveName(tile)}`, tile.driving, () => handBack(tile));
   const line = tileLine(tile);
   // where it runs is said once: a picture this desktop may not draw already names the machine
   const where = picture && tile.shownOn ? null : tile.where;
   return (
-    <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", stage ? "gap-2" : "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
+    <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", !stage && "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
-      {stage ? (
-        <ComputerBar
-          tile={tile}
-          onOpenSession={onOpenSession}
-          where={where}
-          onTookOver={onTookOver}
-          views={
-            picture && !tile.shownOn && !tile.vm ? (
-              <>
-                <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
-                  <PictureInPicture className="size-4" />
-                </ViewButton>
-                <ViewButton label="Full screen" onClick={(e) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile), from: pictureRectOf(e.currentTarget) })}>
-                  <Maximize2 className="size-4" />
-                </ViewButton>
-              </>
-            ) : null
-          }
-        />
-      ) : (
+      {stage ? null : (
         <div className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 font-medium">
             {tile.entry.row.asking ? <StatusMark state="waiting" word={false} /> : null}
@@ -256,6 +229,13 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
   );
 }
 
+/** The page's frame around its header: the way back and the window's own buttons; none in a fixture. */
+export interface PageFrame {
+  besideRail?: boolean;
+  onClose: () => void;
+  onToggleSidebar: () => void;
+}
+
 export interface ComputersPageProps {
   tiles: readonly ComputerTile[];
   onOpenSession: (threadId: string, host: string) => void;
@@ -263,10 +243,47 @@ export interface ComputersPageProps {
   pictureOf?: (tile: ComputerTile, place: Place) => ReactNode;
   /** the body's size before it is measured: a fixture's, drawn with no layout pass */
   size?: Size;
+  frame?: PageFrame;
+  /** each host's Windows VM, for its bar's menu */
+  vms?: Readonly<Record<string, VmState>>;
+  /** the delay's numbers of the stage's stream, as far as they are known (lib/video: the ping, the worker's draw) */
+  reading?: BarReading | null;
 }
 
-/** The page's body: the stage and the strip, or the one empty state. */
-export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: ComputersPageProps) {
+/** The bar of the computer on the stage, as the page's header has it. */
+function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, reading }: { tile: ComputerTile; vm: VmState | null; picture: boolean; onOpenSession: (threadId: string, host: string) => void; onTookOver: () => void; pictureRect: () => ScreenRect | undefined; reading?: BarReading | null }) {
+  const isVm = tile.computer.startsWith("vm:");
+  const views =
+    picture && !tile.shownOn && !tile.vm ? (
+      <>
+        <ViewButton label="Pop out" fold onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
+          <PictureInPicture className="size-4" />
+        </ViewButton>
+        <ViewButton label="Full screen" onClick={() => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile), from: pictureRect() })}>
+          <Maximize2 className="size-4" />
+        </ViewButton>
+      </>
+    ) : null;
+  const action = !isVm || !vm ? undefined : vm.state === "none" ? <OpenSettingsButton /> : vm.state === "asleep" && vm.heldAsleep ? <WakeButton host={tile.entry.host} /> : undefined;
+  return (
+    <ComputerBar
+      tile={tile}
+      onOpenSession={onOpenSession}
+      onTookOver={onTookOver}
+      // where it runs is said once: a picture this desktop may not draw already names the machine
+      where={picture && tile.shownOn ? null : tile.where}
+      reading={reading}
+      vm={isVm ? vm : null}
+      screen={isVm ? vmScreenSeam(tile.entry.host, vm ?? undefined) : null}
+      action={action}
+      views={views}
+      className="ps-0"
+    />
+  );
+}
+
+/** The page: its header (the stage's bar, or its name when nothing is driven), the stage and the strip, or the one empty state. */
+export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, frame, vms, reading }: ComputersPageProps) {
   const page = useRef<HTMLDivElement>(null);
   const measured = useSize(page);
   const size = measured.width > 0 || !given ? measured : given;
@@ -284,11 +301,10 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   }, [asked, tiles]);
   const front = stageOf(keyed, pick, kept);
   if (front !== kept) setKept(front);
+  const staged = tiles.find((tile) => tileKey(tile, tiles) === front);
   // ⌃⌘F takes the stage's computer full screen while it has a live picture here
-  const staged = !pictureOf ? tiles.find((tile) => tileKey(tile, tiles) === front) : undefined;
-  const offer = staged && !staged.vm && !staged.shownOn ? { host: staged.entry.host, threadId: viewKey(staged), name: tileLabel(staged) } : null;
+  const offer = !pictureOf && staged && !staged.vm && !staged.shownOn ? { host: staged.entry.host, threadId: viewKey(staged), name: tileLabel(staged) } : null;
   useEffect(() => (offer ? offerFullScreen(offer) : undefined), [offer?.host, offer?.threadId, offer?.name]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (tiles.length === 0) return <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />;
   const layout = stageLayout(size, tiles.length);
   const picture =
     pictureOf ??
@@ -300,6 +316,31 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
       ) : (
         <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} />
       ));
+  const pictures = new Map(keyed.map(({ tile, key }) => [key, picture(tile, key === front ? { stage: true, room: layout.room } : { stage: false })]));
+  // where the stage's picture is on his screen: full screen grows it from there
+  const pictureRect = (): ScreenRect | undefined => {
+    const room = page.current?.querySelector("[data-stage] [data-slot=computer-picture-room]");
+    return room ? screenRectOf(room.getBoundingClientRect()) : undefined;
+  };
+  const bar = staged ? (
+    <StageBar
+      tile={staged}
+      vm={staged.vm ?? vms?.[staged.entry.host] ?? null}
+      picture={!!pictures.get(front ?? "")}
+      onOpenSession={onOpenSession}
+      onTookOver={() => void (focusOnDrive.current = true)}
+      pictureRect={pictureRect}
+      reading={reading}
+    />
+  ) : null;
+  const header = <ComputersHeader {...frame} bar={bar} />;
+  if (tiles.length === 0)
+    return (
+      <>
+        {header}
+        <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />
+      </>
+    );
   // the strip in the order they acted, the latest first; the elements stay in one order, so none is ever remade
   const rank = new Map([...keyed].sort((a, b) => b.lastCallAt - a.lastCallAt || a.key.localeCompare(b.key)).map((k, i) => [k.key, i]));
   const others = tiles.length - 1;
@@ -309,45 +350,49 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
       : layout.strip === "below"
         ? { gridTemplateColumns: `repeat(${Math.min(others, 2)}, minmax(0, 1fr))` }
         : { gridTemplateColumns: "minmax(0, 1fr)" };
+  // the stage's picture sits in the middle of its room, both ways; under it on a narrow page the strip follows at once
   const stagePlace: CSSProperties =
-    layout.strip === "side" ? { gridColumn: 1, gridRow: `1 / span ${others + 1}` } : layout.strip === "below" ? { gridColumn: "1 / -1", gridRow: 1 } : {};
+    layout.strip === "side"
+      ? { gridColumn: 1, gridRow: `1 / span ${others + 1}`, minHeight: layout.room.height }
+      : layout.strip === "below"
+        ? { gridColumn: "1 / -1", gridRow: 1 }
+        : { minHeight: layout.room.height };
   return (
-    <div ref={page} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
-      <div data-slot="computer-tiles" data-strip={layout.strip} className="grid items-start gap-4 p-4" style={grid}>
-        {[...keyed]
-          .sort((a, b) => a.key.localeCompare(b.key))
-          .map(({ tile, key }) => {
-            const on = key === front;
-            const place: Place = on ? { stage: true, room: layout.room } : { stage: false };
-            return (
-              <div key={key} className={cn("min-w-0", on && "flex justify-center")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
-                <Tile
-                  tile={tile}
-                  stage={on}
-                  onStage={() => setPick(key)}
-                  onTookOver={() => void (focusOnDrive.current = true)}
-                  onOpenSession={onOpenSession}
-                  picture={picture(tile, place)}
-                />
-              </div>
-            );
-          })}
+    <>
+      {header}
+      <div ref={page} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
+        <div data-slot="computer-tiles" data-strip={layout.strip} className="grid items-start gap-4 p-4" style={grid}>
+          {[...keyed]
+            .sort((a, b) => a.key.localeCompare(b.key))
+            .map(({ tile, key }) => {
+              const on = key === front;
+              return (
+                <div key={key} className={cn("min-w-0", on && "flex items-center justify-center")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
+                  <Tile tile={tile} stage={on} onStage={() => setPick(key)} picture={pictures.get(key)} />
+                </div>
+              );
+            })}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-/** The page's 40px header: the glyph and its name. */
-export function ComputersHeader({ besideRail = false, onClose, onToggleSidebar }: { besideRail?: boolean; onClose: () => void; onToggleSidebar: () => void }) {
+/**
+ * The page's 40px header. It IS the bar of the computer on the stage; the page's own name stays as its heading for a
+ * screen reader, and shows when nothing is driven.
+ */
+export function ComputersHeader({ besideRail = false, onClose, onToggleSidebar, bar }: Partial<PageFrame> & { bar?: ReactNode }) {
   return (
     <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
-      {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
-      {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-        <Desktop className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate font-medium">Computers</span>
-      </div>
-      {IS_MAC ? null : <WindowControls />}
+      {IS_MAC && !besideRail && onClose ? <div className="w-[78px] shrink-0" /> : null}
+      {besideRail || !onClose || !onToggleSidebar ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
+      <h1 className={bar ? "sr-only" : "m-0 flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px] font-medium"}>
+        {bar ? null : <Desktop aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+        <span className="min-w-0 truncate">Computers</span>
+      </h1>
+      {bar}
+      {IS_MAC || !onClose ? null : <WindowControls />}
     </div>
   );
 }
@@ -370,9 +415,10 @@ export function ComputersView({ besideRail = false, onClose, onToggleSidebar, on
   usePageEscape(() => close.current(), { fields: "blur", enabled: !tiles.some((t) => t.driving) });
   return (
     <div role="region" aria-label="Computers" data-computers className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
-      <ComputersHeader besideRail={besideRail} onClose={onClose} onToggleSidebar={onToggleSidebar} />
       <ComputersPage
         tiles={tiles}
+        vms={vms}
+        frame={{ besideRail, onClose, onToggleSidebar }}
         // the browser /ui draws no picture of any machine: the same tiles, their captions alone
         {...(previewContext().desktop ? {} : { pictureOf: () => null })}
         onOpenSession={(threadId, host) => {

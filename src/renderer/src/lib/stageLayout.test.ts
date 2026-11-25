@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION_GAP, CAPTION_HEIGHT, STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, drawnPixelated, fitStage, pictureKind, stageLayout, stageOf } from "./stageLayout";
+import { STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, drawnPixelated, fitStage, pictureKind, stageLayout, stageOf } from "./stageLayout";
 
-const caption = CAPTION_GAP + CAPTION_HEIGHT;
 
 describe("the Computers page's stage", () => {
-  it("gives one computer the page less its inset and its caption, both ways", () => {
-    expect(stageLayout({ width: 1200, height: 860 }, 1)).toEqual({ room: { width: 1200 - STAGE_INSET * 2, height: 860 - STAGE_INSET * 2 - caption }, strip: "none", stripWidth: 0 });
+  it("gives one computer the page less its inset, both ways: the header is its bar, so no caption takes a share", () => {
+    expect(stageLayout({ width: 1200, height: 860 }, 1)).toEqual({ room: { width: 1200 - STAGE_INSET * 2, height: 860 - STAGE_INSET * 2 }, strip: "none", stripWidth: 0 });
+    expect(stageLayout({ width: 1800, height: 860 }, 3).room.height).toBe(860 - STAGE_INSET * 2);
   });
 
   it("puts the others in a strip beside it, 176 to 240 wide, and under it on a page narrower than 640", () => {

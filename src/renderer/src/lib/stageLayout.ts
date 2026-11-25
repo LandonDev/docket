@@ -12,11 +12,8 @@ export interface Size {
 
 /** The page's inset on every side. */
 export const STAGE_INSET = 16;
-/** Between the stage and the strip, and between the picture and its caption. */
+/** Between the stage and the strip. */
 export const STAGE_GAP = 16;
-export const CAPTION_GAP = 8;
-/** The caption's row under the stage's picture: a 20px title over a 16px line. */
-export const CAPTION_HEIGHT = 36;
 /** The strip's tiles are this wide, and no wider. */
 export const STRIP_MIN = 176;
 export const STRIP_MAX = 240;
@@ -32,14 +29,16 @@ export interface StageLayout {
   stripWidth: number;
 }
 
-/** The page's room for its computers (`page`, the area under the header), and how many there are. */
+/**
+ * The page's room for its computers (`page`, the area under the header, which is the stage's bar), and how many there
+ * are. The picture has all of it, 16px in: no caption row takes a share.
+ */
 export function stageLayout(page: Size, count: number): StageLayout {
   const inner = { width: Math.max(0, page.width - STAGE_INSET * 2), height: Math.max(0, page.height - STAGE_INSET * 2) };
-  const caption = CAPTION_GAP + CAPTION_HEIGHT;
-  if (count <= 1) return { room: { width: inner.width, height: Math.max(0, inner.height - caption) }, strip: "none", stripWidth: 0 };
-  if (page.width < STRIP_BELOW) return { room: { width: inner.width, height: Math.max(0, inner.height - caption) }, strip: "below", stripWidth: 0 };
+  if (count <= 1) return { room: inner, strip: "none", stripWidth: 0 };
+  if (page.width < STRIP_BELOW) return { room: inner, strip: "below", stripWidth: 0 };
   const stripWidth = Math.round(Math.min(STRIP_MAX, Math.max(STRIP_MIN, inner.width * 0.18)));
-  return { room: { width: Math.max(0, inner.width - stripWidth - STAGE_GAP), height: Math.max(0, inner.height - caption) }, strip: "side", stripWidth };
+  return { room: { width: Math.max(0, inner.width - stripWidth - STAGE_GAP), height: inner.height }, strip: "side", stripWidth };
 }
 
 /**

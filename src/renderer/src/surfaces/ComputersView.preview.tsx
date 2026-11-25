@@ -6,6 +6,9 @@ import { ComputersPage, RestingVmPicture } from "./ComputersView";
 import { restingVmTiles, type VmState } from "../lib/winvmWake";
 import fixtures from "./ComputersView.fixtures";
 
+/** The page's header over its body: the stage's bar. */
+const HEADER = 40;
+
 export function ComputersStates({ only }: { only?: number[] }) {
   const shown = only ? only.map((i) => fixtures[i]).filter(Boolean) : fixtures;
   return (
@@ -13,7 +16,7 @@ export function ComputersStates({ only }: { only?: number[] }) {
       {shown.map((fixture) => (
         <figure key={fixture.name} className="m-0 flex flex-col gap-2">
           <figcaption className="text-xs text-muted-foreground">{fixture.name}</figcaption>
-          <div className="flex w-full flex-col border border-border bg-background" style={{ maxWidth: fixture.width, height: fixture.height }}>
+          <div className="flex w-full flex-col border border-border bg-background" style={{ maxWidth: fixture.width, height: fixture.height + HEADER }}>
             <ComputersPage {...fixture.props} size={{ width: fixture.width, height: fixture.height }} />
           </div>
         </figure>
@@ -36,7 +39,7 @@ export function ComputersVm() {
         return (
           <figure key={state.name} className="m-0 flex flex-col gap-2">
             <figcaption className="text-xs text-muted-foreground">{state.name}</figcaption>
-            <div className="flex w-full flex-col border border-border bg-background" style={{ maxWidth: 960, height: 640 }}>
+            <div className="flex w-full flex-col border border-border bg-background" style={{ maxWidth: 960, height: 640 + HEADER }}>
               <ComputersPage
                 tiles={tiles}
                 onOpenSession={() => undefined}

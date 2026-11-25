@@ -40,6 +40,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** One computer on the stage, its bar in the header, with no picture drawn: what the bar holds. */
+const staged = (t: ComputerTile, onOpenSession: (thread: string, host: string) => void = () => undefined, picture?: React.ReactNode) =>
+  render(<ComputersPage tiles={[t]} onOpenSession={onOpenSession} pictureOf={() => picture ?? null} size={{ width: 1200, height: 800 }} />);
+const bar = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="computer-bar"]')!;
+
 describe("the Computers page", () => {
   it("keeps the same picture through Take over: one call, and the page's tile, box and canvas stay as its row moves to the pane's thread", async () => {
     const calls: { method: string; params: unknown }[] = [];
@@ -139,22 +144,29 @@ describe("the Computers page", () => {
     expect(document.querySelector("[data-stage]")!.getAttribute("aria-label")).toBe("Second");
   });
 
-  it("a stage's caption says its thread, what it is doing and where, as one comma sentence; its title goes to the thread", () => {
+  it("the header is the stage's bar: its thread, what it is doing and where, as one comma sentence; its title goes to the thread; the page's name stays its heading", () => {
     const opened: [string, string][] = [];
-    render(<Tile tile={tile()} onOpenSession={(thread, host) => opened.push([thread, host])} />);
-    const facts = screen.getByRole("article").querySelector('[data-slot="facts"]')!;
+    staged(tile(), (thread, host) => opened.push([thread, host]));
+    expect(screen.getByRole("heading", { name: "Computers" }).className).toContain("sr-only");
+    // the picture has the stage alone: no caption under it
+    expect(screen.getByRole("article").querySelector('[data-slot="computer-bar"]')).toBeNull();
+    const facts = bar().querySelector('[data-slot="facts"]')!;
     expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "The box"]);
     fireEvent.click(screen.getByRole("button", { name: "File the March expense report" }));
     expect(opened).toEqual([["t1", "box"]]);
     // a page he drives reads so, in the foreground
     cleanup();
-    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
+    staged(tile({ driving: true, doing: null }));
     expect(tileLine(tile({ driving: true, doing: "stale" }))).toBe("You are driving");
     expect(screen.getByText("You are driving").className).toContain("text-foreground");
     // between calls there is only where it runs
     cleanup();
-    render(<Tile tile={tile({ doing: null })} onOpenSession={() => undefined} />);
-    expect([...screen.getByRole("article").querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["The box"]);
+    staged(tile({ doing: null }));
+    expect([...bar().querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["The box"]);
+    // nothing driven: the header says the page's name
+    cleanup();
+    render(<ComputersPage tiles={[]} onOpenSession={() => undefined} />);
+    expect(screen.getByRole("heading", { name: "Computers" }).className).not.toContain("sr-only");
   });
 
   it("gives the Windows VM he drives one quiet Keys menu beside Hand back, and the browser none", async () => {
@@ -162,7 +174,7 @@ describe("the Computers page", () => {
     vi.spyOn(await import("../lib/computerVideo"), "pressKeys").mockImplementation(async (...args) => (pressed.push(args), true));
     const base = tile();
     const vmTile = tile({ browser: false, computer: "vm:windows", driving: true, doing: null, entry: { ...base.entry, previewHost: "box", previewKey: "vm:windows" } });
-    render(<Tile tile={vmTile} onOpenSession={() => undefined} />);
+    staged(vmTile);
     const keys = screen.getByRole("button", { name: "Keys" });
     expect(keys.getAttribute("data-variant")).toBe("ghost");
     expect(screen.getByRole("button", { name: "Hand back" }).getAttribute("data-variant")).toBe("default");
@@ -172,34 +184,34 @@ describe("the Computers page", () => {
     await act(async () => {});
     expect(pressed).toEqual([["box", "vm:windows", [224, 226, 76]]]);
     cleanup();
-    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
+    staged(tile({ driving: true, doing: null }));
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
   });
 
   it("shows the stage's controls always: Take over only where the computer takes input, Stop unless it is idle, and Hand back alone while he drives", () => {
-    render(<Tile tile={tile()} onOpenSession={() => undefined} />);
-    const controls = screen.getByRole("article").querySelector<HTMLElement>('[data-slot="computer-controls"]')!;
+    staged(tile());
+    const controls = bar().querySelector<HTMLElement>('[data-slot="computer-controls"]')!;
     // never behind a hover
     expect(controls.parentElement!.className).not.toContain("opacity-0");
     expect(within(controls).getByRole("button", { name: "Take over" }).getAttribute("data-variant")).toBe("secondary");
     expect(within(controls).getByRole("button", { name: "Stop File the March expense report" })).not.toBeNull();
     cleanup();
     // a Mac's own window takes no input; the Windows VM does
-    render(<Tile tile={tile({ browser: false, computer: "window:t1" })} onOpenSession={() => undefined} />);
+    staged(tile({ browser: false, computer: "window:t1" }));
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
     cleanup();
-    render(<Tile tile={tile({ browser: false, computer: "vm:windows" })} onOpenSession={() => undefined} />);
+    staged(tile({ browser: false, computer: "vm:windows" }));
     expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
     cleanup();
     // ...unless it has no window of its own (its tools are missing): its 4 fps picture alone
-    render(<Tile tile={tile({ browser: false, computer: "vm:windows", pictureOnly: true })} onOpenSession={() => undefined} />);
+    staged(tile({ browser: false, computer: "vm:windows", pictureOnly: true }));
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
     cleanup();
     // an idle page has nothing to stop
-    render(<Tile tile={tile({ idle: true, doing: null })} onOpenSession={() => undefined} />);
+    staged(tile({ idle: true, doing: null }));
     expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
     cleanup();
-    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
+    staged(tile({ driving: true, doing: null }));
     const back = screen.getByRole("button", { name: "Hand back" });
     expect(back.getAttribute("data-variant")).toBe("default");
     expect(back.hasAttribute("data-hand-back")).toBe(true);
@@ -292,8 +304,9 @@ describe("the Windows VM in every state", () => {
     expect(within(tile).getByRole("status").textContent).toBe("Waking the Windows VM");
     // the box keeps the picture's 16:10 so nothing moves when it comes
     expect((tile.querySelector('[data-face="none"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
-    expect(within(tile).getByRole("button", { name: "Take over" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: /Wake the Windows VM/ })).toBeNull();
+    // its bar is the header's: Take over wakes it and takes over, one press; no Wake beside it
+    expect(within(bar()).getByRole("button", { name: "Take over" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Wake/ })).toBeNull();
     // the caption says where it runs; its state is said once, in the box
     expect(within(tile).queryByText(/^Asleep/)).toBeNull();
   });
@@ -340,7 +353,7 @@ describe("driving from the page", () => {
 
   it("gives the keyboard back to the picture after a pick from the Keys menu", async () => {
     vi.spyOn(await import("../lib/computerVideo"), "pressKeys").mockResolvedValue(true);
-    render(<Tile tile={vmTile()} onOpenSession={() => undefined} picture={<div role="application" tabIndex={0} aria-label="Live view of Windows VM" />} />);
+    staged(vmTile(), undefined, <div role="application" tabIndex={0} aria-label="Live view of Windows VM" />);
     fireEvent.click(screen.getByRole("button", { name: "Keys" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Windows key" }));
     await act(async () => new Promise((r) => setTimeout(r, 50)));
@@ -351,14 +364,14 @@ describe("driving from the page", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const calls: { method: string; params: unknown }[] = [];
     vi.spyOn(registry, "link").mockReturnValue({ request: async (method: string, params: unknown) => void calls.push({ method, params }) } as never);
-    const view = render(<Tile tile={vmTile()} onOpenSession={() => undefined} />);
+    const view = render(<Tile tile={vmTile()} />);
     view.unmount();
     await act(async () => void vi.advanceTimersByTime(1500));
     expect(calls).toEqual([{ method: "computer.drive", params: { computer: "vm:windows", driver: "agent" } }]);
     // handed back with its own button (the row says so): nothing more is sent when the tile goes
     calls.length = 0;
-    const again = render(<Tile tile={vmTile()} onOpenSession={() => undefined} />);
-    again.rerender(<Tile tile={vmTile({ driving: false })} onOpenSession={() => undefined} />);
+    const again = render(<Tile tile={vmTile()} />);
+    again.rerender(<Tile tile={vmTile({ driving: false })} />);
     again.unmount();
     await act(async () => void vi.advanceTimersByTime(3000));
     expect(calls).toEqual([]);
@@ -380,8 +393,8 @@ describe("driving from the page", () => {
   it("fills the stage with the VM's screen in its shape, and holds a window's picture to twice its pixels, drawn crisp", () => {
     const room = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="computer-picture-room"]')!;
     const view = render(<ComputersPage tiles={[vmTile({ driving: false })]} onOpenSession={() => undefined} size={{ width: 3200, height: 1800 }} />);
-    // the room is 3168 by 1724 under the caption: the screen takes its full height
-    expect(room().style.width).toBe("2758px");
+    // the room is 3168 by 1768, all of the page 16px in: the screen takes its full height
+    expect(room().style.width).toBe("2828px");
     expect(room().className).not.toContain("pixelated");
     view.rerender(<ComputersPage tiles={[tile()]} onOpenSession={() => undefined} size={{ width: 3200, height: 1800 }} />);
     expect(room().style.width).toBe("2560px");
