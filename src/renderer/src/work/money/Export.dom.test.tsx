@@ -15,6 +15,7 @@ vi.mock("../../lib/connection", async (original) => ({
     primary: () => ({ environmentId: "mac" }),
     linkOf: () => ({
       onPush: () => () => {},
+      onOpen: () => () => {},
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         return host.answer(method, params);

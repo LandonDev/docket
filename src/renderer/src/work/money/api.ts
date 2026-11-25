@@ -35,6 +35,9 @@ const periodKey = (p: Period): string => `${p.from}|${p.to}`;
  * period: under a new period's label nothing of the old one is shown, and a
  * failed read keeps only the same period's last answer.
  */
+/** A window that comes to the front reads the ledger again only when its last read is at least this old. */
+export const FOCUS_AGAIN_MS = 60_000;
+
 export function useMoney(env: string, workspaceId: string, period: Period): [MoneyLoad, () => Promise<void>] {
   const key = periodKey(period);
   const [state, setState] = useState<{ key: string; read: MoneyRead | null; error: string | null; loading: boolean }>({ key, read: null, error: null, loading: true });
@@ -57,17 +60,30 @@ export function useMoney(env: string, workspaceId: string, period: Period): [Mon
       );
   }, [env, workspaceId, from, to]);
   useEffect(() => {
+    let readAt = Date.now();
+    const again = (): void => {
+      readAt = Date.now();
+      void fetch();
+    };
     void fetch();
-    const again = () => void fetch();
-    window.addEventListener("focus", again);
-    const off = registry.linkOf(env).onPush((push) => {
+    // The host pushes what waits to be confirmed, not a ledger edited elsewhere (its sheet, an agent): a window coming to
+    // the front reads again, but at most once a minute (perf M10: it read the whole period on every focus). After the
+    // link went down and came back, one read takes what it missed.
+    const onFocus = (): void => {
+      if (Date.now() - readAt >= FOCUS_AGAIN_MS) again();
+    };
+    window.addEventListener("focus", onFocus);
+    const link = registry.linkOf(env);
+    const off = link.onPush((push) => {
       if (push.push === "work.money" && push.workspaceId === workspaceId) again();
     });
+    const offOpen = link.onOpen(again);
     return () => {
       // A late answer of this period never paints over the next one's.
       asked.current++;
-      window.removeEventListener("focus", again);
+      window.removeEventListener("focus", onFocus);
       off();
+      offOpen();
     };
   }, [env, workspaceId, fetch]);
   // Until the new period's own answer lands, the view has nothing of it to show.

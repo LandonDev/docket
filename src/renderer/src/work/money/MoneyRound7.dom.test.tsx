@@ -26,6 +26,7 @@ vi.mock("../../lib/connection", async (original) => ({
     primary: () => ({ environmentId: "mac" }),
     linkOf: () => ({
       onPush: () => () => {},
+      onOpen: () => () => {},
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         if (method === "work.money.read") return host.read({ from: params.from as string, to: params.to as string });

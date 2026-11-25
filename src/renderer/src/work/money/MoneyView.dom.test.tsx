@@ -19,11 +19,17 @@ const host: { asked: { method: string; params: Record<string, unknown> }[]; read
   },
   answer: () => null,
 };
+const opens = vi.hoisted(() => new Set<() => void>());
+/** The link to the host comes back after a cut: what was missed is read once. */
+const reopen = (): void => {
+  for (const open of [...opens]) open();
+};
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
     linkOf: () => ({
       onPush: () => () => {},
+      onOpen: (listener: () => void) => (opens.add(listener), () => void opens.delete(listener)),
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         if (method === "work.money.read") return host.read({ from: params.from as string, to: params.to as string });
@@ -64,6 +70,31 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe("the Money view's reads (perf M10)", () => {
+  it("reads at most once on five focus events in a minute, and once when the link comes back", async () => {
+    mount();
+    await settle();
+    const reads = asked("work.money.read").length;
+    const start = Date.now();
+    const clock = vi.spyOn(Date, "now");
+    for (let i = 0; i < 5; i++) {
+      clock.mockReturnValue(start + 1_000 + i * 12_000);
+      await act(async () => void window.dispatchEvent(new Event("focus")));
+    }
+    clock.mockReturnValue(start + 61_000);
+    await act(async () => void window.dispatchEvent(new Event("focus")));
+    clock.mockRestore();
+    await settle();
+    expect(asked("work.money.read").length).toBe(reads + 1);
+    // A paid row while the link was down shows after it reopens.
+    host.read = (p) => readOf(p, ALL_ROWS.map((r) => ({ ...r, status: "Paid" as const })));
+    await act(async () => reopen());
+    await settle();
+    expect(asked("work.money.read").length).toBe(reads + 2);
+    expect(document.querySelector("[data-money-figures]")!.textContent).not.toContain("Owed to you");
+  });
+});
+
 describe("the Money view", () => {
   it("reads the period the stepper stands on, and draws a chart for a year alone", async () => {
     mount();
@@ -92,7 +123,7 @@ describe("the Money view", () => {
     expect(figures.textContent).toContain("Owed to you");
     expect(figures.textContent).toContain("You owe");
     host.read = (p) => readOf(p, ALL_ROWS.map((r) => ({ ...r, status: "Paid" as const })));
-    await act(async () => void window.dispatchEvent(new Event("focus")));
+    await act(async () => reopen());
     await settle();
     expect(document.querySelector("[data-money-figures]")!.textContent).not.toContain("Owed to you");
     expect(screen.queryByRole("region", { name: "You owe" })).toBeNull();
@@ -319,7 +350,7 @@ describe("the Money view", () => {
     host.read = () => {
       throw new Error("The box did not answer");
     };
-    await act(async () => void window.dispatchEvent(new Event("focus")));
+    await act(async () => reopen());
     await settle();
     expect(screen.getByText("Money did not load")).toBeTruthy();
     expect(document.querySelector("[data-money-figures]")).toBeTruthy();

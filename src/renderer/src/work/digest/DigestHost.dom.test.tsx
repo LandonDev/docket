@@ -249,11 +249,33 @@ describe("the digest's toast", () => {
 
 describe("the zone the digest's time is kept in", () => {
   const said = () => w().calls.filter((c) => c.method === "work.digest.here").map((c) => c.env).sort();
-  it("is said by the window he comes to, to every host with Work on", async () => {
+  it("is said by the window he comes to, to every host with Work on, and again only when the zone changed or 15 minutes passed", async () => {
     await mount();
-    w().calls.length = 0;
-    act(() => void window.dispatchEvent(new Event("focus")));
-    expect(said()).toEqual(["box", "mac"]);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 16 * 60_000);
+    try {
+      w().calls.length = 0;
+      act(() => void window.dispatchEvent(new Event("focus")));
+      expect(said()).toEqual(["box", "mac"]);
+      // Five more focus events inside the minute: nothing more is said.
+      for (let i = 1; i <= 5; i++) {
+        clock.mockReturnValue(now + 16 * 60_000 + i * 10_000);
+        act(() => void window.dispatchEvent(new Event("focus")));
+      }
+      expect(said()).toEqual(["box", "mac"]);
+      // He is somewhere else now: the next focus says it.
+      const zone = vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({ timeZone: "Europe/Lisbon" } as Intl.ResolvedDateTimeFormatOptions);
+      act(() => void window.dispatchEvent(new Event("focus")));
+      zone.mockRestore();
+      expect(said()).toEqual(["box", "box", "mac", "mac"]);
+      // And 15 minutes on, the same zone is said once more.
+      w().calls.length = 0;
+      clock.mockReturnValue(now + 40 * 60_000);
+      act(() => void window.dispatchEvent(new Event("focus")));
+      expect(said()).toEqual(["box", "mac"]);
+    } finally {
+      clock.mockRestore();
+    }
   });
   it("is not said by a window in the background when its link comes back", async () => {
     await mount();

@@ -220,7 +220,11 @@ export function loadDigest(): Promise<void> {
  */
 /** When this window last came to the front: said with its zone, and said the same again on a reconnect. */
 let focusedAt = Date.now();
-function sayHere(environmentId: string, focused = typeof document === "undefined" || document.hasFocus()): void {
+/** A focus says the zone again only when it changed or this long passed since it was said to that host (perf M10). */
+export const HERE_AGAIN_MS = 15 * 60_000;
+/** What each host was last told, and when: a focus with the same zone inside `HERE_AGAIN_MS` tells it nothing. */
+const told = new Map<string, { zone: string; at: number }>();
+function sayHere(environmentId: string, focused = typeof document === "undefined" || document.hasFocus(), onFocus = false): void {
   if (!focused) return;
   let zone = "";
   try {
@@ -228,7 +232,14 @@ function sayHere(environmentId: string, focused = typeof document === "undefined
   } catch {
     return;
   }
-  if (zone) void registry.linkOf(environmentId).request("work.digest.here", { zone, at: focusedAt }).catch(() => {});
+  if (!zone) return;
+  const last = told.get(environmentId);
+  if (onFocus && last?.zone === zone && Date.now() - last.at < HERE_AGAIN_MS) return;
+  told.set(environmentId, { zone, at: Date.now() });
+  void registry
+    .linkOf(environmentId)
+    .request("work.digest.here", { zone, at: focusedAt })
+    .catch(() => told.delete(environmentId));
 }
 
 // ── seen, until the host has heard ───────────────────────────────────────
@@ -361,6 +372,7 @@ export function openTell(row: TellRow): void {
 
 /** Test seam. */
 export function resetDigestStore(): void {
+  told.clear();
   hosts.clear();
   loading.clear();
   aligning = false;
@@ -426,7 +438,7 @@ workSwitch.subscribe(() => {
 if (typeof window !== "undefined")
   window.addEventListener("focus", () => {
     focusedAt = Date.now();
-    for (const id of workSwitch.hosts()) sayHere(id, true);
+    for (const id of workSwitch.hosts()) sayHere(id, true, true);
   });
 
 // Hosts already on and linked when this chunk lands.

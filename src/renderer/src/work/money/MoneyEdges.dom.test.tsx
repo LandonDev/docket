@@ -26,6 +26,7 @@ vi.mock("../../lib/connection", async (original) => ({
     primary: () => ({ environmentId: "mac" }),
     linkOf: () => ({
       onPush: () => () => {},
+      onOpen: () => () => {},
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         if (method === "work.money.read") return host.read({ from: params.from as string, to: params.to as string });
@@ -140,7 +141,10 @@ describe("a write that only waits as a suggestion", () => {
     expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
     // He rejects the suggestion in the sheet: the next read has nothing waiting, and Restore columns is back.
     waits = false;
+    // (a minute on: a focus reads again at most once a minute)
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 61_000);
     await act(async () => void window.dispatchEvent(new Event("focus")));
+    clock.mockRestore();
     await settle();
     expect(screen.getByRole("button", { name: "Restore columns" })).toBeTruthy();
     expect(screen.queryByText("Restored as a suggestion: accept it in the ledger")).toBeNull();
