@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { ADMIN_USER, daemonEnv, rigConfig, rigPaths, scratchMachineRefusal, type Instance, type RigConfig, type RigPaths } from './machine/config'
 import { keepLiveTpm, qemuPid, saveTpm, startQemu, startTpm, stopTpm } from './machine/daemons'
-import { qmp, quit, sendKey } from './machine/qmp'
+import { qmp, quit, screendump, sendKey } from './machine/qmp'
 import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
@@ -128,7 +128,20 @@ export class StandingMachine implements VmMachine {
     await saveTpm(this.p, this.p.runTpm)
   }
 
-  /** Pulls the plug: for a proof's cleanup, never the keeper's sleep. */
+  /** QMP's screendump: the size of the PNG it wrote, or null when it wrote none (live resize's check after its start). */
+  async shows(): Promise<{ width: number; height: number } | null> {
+    const file = join(this.p.run, 'check.png')
+    try {
+      await qmp(this.p.qmp, screendump(file))
+      return pngSize(readFileSync(file))
+    } catch {
+      return null
+    } finally {
+      rmSync(file, { force: true })
+    }
+  }
+
+  /** Pulls the plug: for a proof's cleanup, and for a start on virtio that failed before it goes back to its restore point; never the keeper's sleep. */
   async forceStop(): Promise<void> {
     if (!this.running()) return stopTpm(this.p)
     await qmp(this.p.qmp, quit).catch(() => {})
@@ -148,7 +161,7 @@ export class StandingMachine implements VmMachine {
    * live state is kept first when it is newer than the run's copy (a crash, the guest's own stop).
    */
   points(): PointStore {
-    const qcow = new QcowPoints({ disk: this.p.runDisk, vars: this.p.runVars, tpm: this.p.runTpm, dir: this.pointsDir })
+    const qcow = new QcowPoints({ disk: this.p.runDisk, vars: this.p.runVars, tpm: this.p.runTpm, dir: this.pointsDir, run: this.p.run })
     const settled = async () => {
       if (this.running()) throw new Error('the machine is running')
       await keepLiveTpm(this.c, this.p)
@@ -171,4 +184,12 @@ export class StandingMachine implements VmMachine {
   pid(): number | null {
     return qemuPid(this.c, this.p)
   }
+}
+
+/** A PNG's width and height from its header; null when it is not one or is empty. */
+export function pngSize(png: Buffer): { width: number; height: number } | null {
+  if (png.length < 24 || png.toString('latin1', 12, 16) !== 'IHDR') return null
+  const width = png.readUInt32BE(16)
+  const height = png.readUInt32BE(20)
+  return width > 0 && height > 0 ? { width, height } : null
 }

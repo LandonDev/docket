@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { QcowPoints } from './points'
+import { readGuestScreen, readMachineDevice, writeGuestScreen, writeMachineDevice } from './guestScreen'
 
 /**
  * The restore points over a real qcow2 overlay on a backing image (qemu-img
@@ -12,7 +13,7 @@ import { QcowPoints } from './points'
  */
 
 let dir: string
-let f: { disk: string; vars: string; tpm: string; dir: string }
+let f: { disk: string; vars: string; tpm: string; dir: string; run: string }
 const write = (byte: string) => execFileSync('qemu-io', ['-c', `write -P ${byte} 0 4k`, f.disk], { stdio: 'pipe' })
 const holds = (byte: string) => {
   try {
@@ -28,7 +29,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'winvm-points-'))
   const base = join(dir, 'base.qcow2')
   execFileSync('qemu-img', ['create', '-q', '-f', 'qcow2', base, '16M'])
-  f = { disk: join(dir, 'disk.qcow2'), vars: join(dir, 'OVMF_VARS.fd'), tpm: join(dir, 'tpm'), dir: join(dir, 'points') }
+  f = { disk: join(dir, 'disk.qcow2'), vars: join(dir, 'OVMF_VARS.fd'), tpm: join(dir, 'tpm'), dir: join(dir, 'points'), run: join(dir, 'run') }
   execFileSync('qemu-img', ['create', '-q', '-f', 'qcow2', '-b', base, '-F', 'qcow2', f.disk])
   writeFileSync(f.vars, 'vars before')
   mkdirSync(f.tpm)
@@ -61,6 +62,42 @@ describe('restore points on a qcow2 overlay', () => {
     expect(points.list().map((p) => p.name)).toEqual(['two'])
     expect(snapshots()).not.toContain('tc-point-aaaaaa1')
     expect(existsSync(join(f.dir, 'aaaaaa1'))).toBe(false)
+  })
+
+  it('records the device and size the run had, and a vga point restored on a virtio run writes vga back', async () => {
+    const points = new QcowPoints(f)
+    // a run from before live resize: no machine.json, no screen.json
+    await points.save({ id: 'aaaaaa1', name: 'Before', at: 1, by: 'owner' })
+    expect(points.list()[0]).toMatchObject({ device: 'vga', screen: { width: 1280, height: 800 } })
+    writeMachineDevice(f.run, 'virtio')
+    writeGuestScreen(f.run, { width: 3456, height: 2234 })
+    await points.restore('aaaaaa1')
+    expect(readMachineDevice(f.run)).toBe('vga')
+    expect(readGuestScreen(f.run)).toEqual({ width: 1280, height: 800 })
+  })
+
+  it('a virtio point restored after a downgrade writes virtio back, at its size', async () => {
+    const points = new QcowPoints(f)
+    writeMachineDevice(f.run, 'virtio')
+    writeGuestScreen(f.run, { width: 2560, height: 1600 })
+    await points.save({ id: 'bbbbbb2', name: 'On virtio', at: 2, by: 'owner' })
+    // Turn off: std VGA at 1280×800
+    writeMachineDevice(f.run, 'vga')
+    writeGuestScreen(f.run, { width: 1280, height: 800 })
+    await points.restore('bbbbbb2')
+    expect(readMachineDevice(f.run)).toBe('virtio')
+    expect(readGuestScreen(f.run)).toEqual({ width: 2560, height: 1600 })
+  })
+
+  it('a point saved before live resize, with neither, restores as std VGA at 1280×800', async () => {
+    const points = new QcowPoints(f)
+    await points.save({ id: 'cccccc3', name: 'Old', at: 3, by: 'owner' })
+    // what a point.json of the older code holds
+    writeFileSync(join(f.dir, 'cccccc3', 'point.json'), JSON.stringify({ id: 'cccccc3', name: 'Old', at: 3, by: 'owner' }) + '\n')
+    writeMachineDevice(f.run, 'virtio')
+    await points.restore('cccccc3')
+    expect(readMachineDevice(f.run)).toBe('vga')
+    expect(readGuestScreen(f.run)).toEqual({ width: 1280, height: 800 })
   })
 
   it('takes only its own ids, never a path', async () => {

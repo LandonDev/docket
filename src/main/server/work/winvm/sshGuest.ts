@@ -91,6 +91,11 @@ export class SshGuest implements VmGuest {
     await this.ssh(ADMIN_USER, 'shutdown /h', '', 30_000)
   }
 
+  async shutdown(): Promise<void> {
+    // a full shutdown, not Fast Startup's hybrid one, and never /f: an app with unsaved work may say no
+    await this.ssh(ADMIN_USER, 'shutdown /s /full /t 0', '', 30_000)
+  }
+
   async reboot(): Promise<void> {
     await this.ssh(ADMIN_USER, 'shutdown /r /t 0', '', 30_000)
     // wait for SSH to go before the caller waits for it to come back

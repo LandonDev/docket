@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto'
-import { WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmPoint, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
+import { join } from 'node:path'
+import { LIVE_RESIZE_WORDS, WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmDetail, type WinvmDevice, type WinvmDisplay, type WinvmPoint, type WinvmScreen, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
 import type { PointStore } from './points'
 import { psQuote } from './machine/guest'
+import { VGA_DEFAULT } from './machine/qemu'
 import { DOOR_PORT, SETUP_LOG, setupScript } from './setup'
+import { ADAPTERS_SCRIPT, CURSOR_SCRIPT, DRIVER_FILES, IBEAM_FILE, stageScript, VIRTIO_ADAPTER } from './liveResize'
 
 /**
  * The keeper of the box's standing Windows machine (docs/agents/work-winvm.md):
@@ -30,6 +33,10 @@ export interface VmMachine {
   keepTpm(): Promise<void>
   /** keys pressed on the machine's own keyboard (QEMU's key names): they reach what takes no input from a program in the guest */
   key?(...qcodes: string[]): Promise<void>
+  /** QMP's screendump of the guest's display: its size, or null when it is empty */
+  shows?(): Promise<{ width: number; height: number } | null>
+  /** pulls the plug: only for a machine that will not shut down and is about to go back to a restore point */
+  forceStop?(): Promise<void>
 }
 
 /** The SSH connection that carries the forward to the door. */
@@ -46,6 +53,8 @@ export interface VmGuest {
   hibernate(): Promise<void>
   /** restarts Windows and returns once it has gone down */
   reboot(): Promise<void>
+  /** a clean, full shutdown (`shutdown /s /full /t 0`): never a hibernate, never forced, so an app may refuse it */
+  shutdown(): Promise<void>
   /** sha256 of the service in the guest; null when it has none */
   serviceHash(): Promise<string | null>
   /** copies the box's service in over the guest's; its version */
@@ -91,6 +100,25 @@ export interface KeeperDeps {
   beforeSleep?(): Promise<void>
   /** how long a wake waits for Windows; default 5 min, setup's first boot and restart 10 min */
   timeouts?: Partial<Timeouts>
+  /** live resize (liveResize.ts); a keeper without it offers none */
+  display?: KeeperDisplay
+}
+
+/** The guest's display, as the box keeps it beside the run (guestScreen.ts), and what live resize needs of the box. */
+export interface KeeperDisplay {
+  /** the device the run's machine.json names */
+  device(): WinvmDevice
+  /** written before a start on a device, never after */
+  setDevice(device: WinvmDevice): void
+  /** the size and scale the guest last took (screen.json); null before one */
+  screen(): { width: number; height: number; scale?: number } | null
+  setScreen(size: { width: number; height: number }): void
+  /** his choice: Fit or a size, Sharp or Faster */
+  choice(): { screen: WinvmScreen; detail: WinvmDetail }
+  /** the virtio-win tool's driver folder on the box, installed first when it is missing; `progress` hears its lines */
+  driver(progress: (line: string) => void): Promise<string>
+  /** the box's colour I-beam (resources/winvm/tc-ibeam.cur) */
+  cursor(): string
 }
 
 interface Timeouts {
@@ -101,8 +129,10 @@ interface Timeouts {
   hibernate: number
   knock: number
   knockEvery: number
+  /** a clean shutdown before live resize's start: past it, the move is called off */
+  shutdown: number
 }
-const TIMEOUTS: Timeouts = { setupScript: 240_000, ready: 300_000, setupReady: 600_000, hibernate: 180_000, knock: 30_000, knockEvery: 1000 }
+const TIMEOUTS: Timeouts = { setupScript: 240_000, ready: 300_000, setupReady: 600_000, hibernate: 180_000, knock: 30_000, knockEvery: 1000, shutdown: 180_000 }
 
 export const SLEEP_AFTER_MS: Record<WinvmSleepAfter, number | null> = { '15m': 15 * 60_000, '30m': 30 * 60_000, '2h': 120 * 60_000, never: null }
 
@@ -115,6 +145,12 @@ export const NO_POINT = 'That restore point is gone.'
 export const BEFORE_SETUP = 'Before setup'
 export const HELD = 'A thread is using the Windows VM. Stop it or take over first.'
 export const RESTARTING_WORDS = 'Restarting Windows'
+export const DRIVES = 'You are driving the Windows VM. Hand it back first.'
+export const OWED = 'Windows is still sending a saved file to OneDrive. Try again in a minute.'
+export const NO_LIVE_RESIZE = 'This host has no live resize.'
+/** Windows did not stop within the shutdown's wait: an app holds unsaved work. Nothing new is started. */
+export const SHUTDOWN_REFUSED = 'An app in Windows kept it from restarting. Save your work and try again.'
+export const BEFORE_LIVE_RESIZE = 'Before live resize'
 /** How many wakes the usual wake is the median of. */
 export const WAKES_KEPT = 5
 /** The longest a sleep waits for its picture. */
@@ -147,6 +183,8 @@ export class Keeper {
   private wakes: number[] = []
   /** asleep by a person's Sleep: the page waits for his Wake */
   private heldAsleep = false
+  /** on virtio, whether this keeper has seen the hardware pointer on: a service stopped before step 6 is finished at the next wake */
+  private cursorChecked = false
   private readonly t: Timeouts
 
   constructor(private readonly d: KeeperDeps) {
@@ -162,7 +200,25 @@ export class Keeper {
   }
 
   state(): WinvmState {
-    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since, wakeMs: median(this.wakes), heldAsleep: this.heldAsleep && this.name === 'asleep' }
+    const display = this.displayNow()
+    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since, wakeMs: median(this.wakes), heldAsleep: this.heldAsleep && this.name === 'asleep', ...(display ? { display } : {}) }
+  }
+
+  /** The guest's screen and his choice; none before it is set up. Only virtio takes a new size while it runs. */
+  private displayNow(): WinvmDisplay | null {
+    const d = this.d.display
+    if (!d || this.name === 'none') return null
+    const device = d.device()
+    const size = d.screen() ?? VGA_DEFAULT
+    const choice = d.choice()
+    return { device, width: size.width, height: size.height, scale: size.scale ?? 100, fit: choice.screen === 'fit', detail: choice.detail, canResize: device === 'virtio' }
+  }
+
+  /** His screen choice changed (index.ts keeps it): the state says so. */
+  refresh(): void {
+    const state = this.state()
+    this.d.push(state)
+    for (const fn of [...this.stateListeners]) fn(state)
   }
 
   private readonly stateListeners = new Set<(state: WinvmState) => void>()
@@ -267,6 +323,7 @@ export class Keeper {
         await this.d.guest.ready(this.t.ready)
         await this.serviceUp()
         await this.openDoor()
+        await this.cursorOnce()
         this.touch()
         if (cold) this.wakes = [...this.wakes, this.now() - began].slice(-WAKES_KEPT)
         this.set('awake', null, null)
@@ -409,11 +466,17 @@ export class Keeper {
    * Makes the disk from the base image (unless it has one) and sets the guest up as the admin: the service,
    * its logon task, hibernate, no lock on resume, Windows Update, tcuser's policies. Then a restart, so the
    * policies hold from tcuser's logon, and the door is knocked: the service still runs under them.
+   *
+   * A new disk comes up on virtio-vga by itself (live resize): machine.json is written before its first start,
+   * a cold boot of the base image, the driver bound during setup and taken at its restart, the hardware pointer
+   * after it. A box that cannot have the driver sets it up on std VGA and says why in the log. A disk that
+   * exists keeps the device it has.
    */
   setup(): Promise<WinvmState> {
     return this.serial(async () => {
       const cannot = this.d.machine.cannot()
       if (cannot) throw new Error(cannot)
+      let driver: string | null = null
       try {
         if (this.d.machine.hasDisk()) {
           // the keeper's own point before it changes the guest's setup, taken asleep
@@ -423,6 +486,7 @@ export class Keeper {
         } else {
           this.set('setting-up', 'Making the disk', null)
           await this.d.machine.makeDisk()
+          driver = await this.newDiskDriver()
         }
         this.set('setting-up', 'Starting Windows')
         this.closeLink()
@@ -432,6 +496,7 @@ export class Keeper {
         if (!token) this.d.token.set((token = randomBytes(32).toString('hex')))
         this.set('setting-up', 'Setting Windows up')
         this.d.log(`winvm: setup: ${(await this.setupScript(token)).split('\n').filter((l) => l.startsWith('step:')).join(', ')}`)
+        if (driver) await this.stageDriver(driver, true)
         this.set('setting-up', "Copying TempCode's helper into Windows")
         await this.serviceUp()
         this.set('setting-up', 'Restarting Windows')
@@ -439,6 +504,97 @@ export class Keeper {
         await this.d.guest.ready(this.t.setupReady)
         this.set('setting-up', 'Connecting to Windows')
         await this.d.guest.startService()
+        await this.openDoor()
+        if (driver) await this.cursorOn()
+        this.touch()
+        this.set('awake', null, null)
+        return this.state()
+      } catch (e) {
+        this.fail(e)
+        throw e
+      }
+    })
+  }
+
+  /** A new disk's driver, and machine.json `virtio` before its first start; null leaves it on std VGA. */
+  private async newDiskDriver(): Promise<string | null> {
+    const d = this.d.display
+    if (!d) return null
+    this.set('setting-up', LIVE_RESIZE_WORDS.driver)
+    try {
+      const folder = await d.driver((line) => this.d.log(`winvm: virtio-win: ${line}`))
+      d.setDevice('virtio')
+      return folder
+    } catch (e) {
+      this.d.log(`winvm: the new disk is set up on std VGA, with no live resize: ${words(e)}`)
+      return null
+    }
+  }
+
+  /** Step 2 of live resize, and a new disk's setup: the driver and the I-beam copied in, the driver staged (`install`: bound to the device there now). */
+  private async stageDriver(folder: string, install = false): Promise<void> {
+    const d = this.d.display!
+    for (const f of DRIVER_FILES) await this.d.guest.upload(join(folder, f), f)
+    await this.d.guest.upload(d.cursor(), IBEAM_FILE)
+    this.d.log(`winvm: live resize: ${(await this.d.guest.admin(stageScript({ install }), 120_000)).trim().split(/\r?\n/).slice(-3).join(' | ')}`)
+  }
+
+  /** Why live resize may not be turned on or off now; null when it may. */
+  liveResizeRefusal(held: () => boolean): string | null {
+    if (!this.d.display) return NO_LIVE_RESIZE
+    const cannot = this.d.machine.cannot()
+    if (cannot) return cannot
+    if (!this.d.machine.hasDisk()) return NOT_SET_UP
+    if (held()) return HELD
+    if (this.driving) return DRIVES
+    // the idle sleep waits for it too: a restart now would cut OneDrive's upload of his save
+    if (this.d.owed?.()) return OWED
+    return null
+  }
+
+  /**
+   * Turn on live resize: moves Windows from std VGA to virtio-vga ("The standing VM" in the plan). The steps, each
+   * said in the state as it runs: (1) the virtio-win tool installed on the box when missing; (2) awake, the driver
+   * copied in and staged, tcuser's I-beam set; (3) a clean shutdown, called off when Windows has not stopped in 3
+   * minutes (nothing new is started: it stays on std VGA); (4) the TPM kept, then a restore point of the stopped
+   * machine, which records std VGA; (5) machine.json written `virtio`, and only then the start, checked over SSH and
+   * by QMP's picture: a failed check goes back to the point by itself, std VGA with it; (6) the hardware pointer.
+   * machine.json changes once, just before the one start on virtio: at any stop before it the guest last ran on
+   * std VGA and the file says so; after it, both say virtio.
+   */
+  upgrade(held: () => boolean): Promise<WinvmState> {
+    const no = this.liveResizeRefusal(held)
+    if (no) return Promise.reject(new Error(no))
+    return this.serial(async () => {
+      const no = this.liveResizeRefusal(held)
+      if (no) throw new Error(no)
+      const d = this.d.display!
+      if (d.device() === 'virtio') return this.state()
+      const W = LIVE_RESIZE_WORDS
+      try {
+        this.set('setting-up', W.driver, null)
+        const folder = await d.driver((line) => this.d.log(`winvm: virtio-win: ${line}`))
+        this.set('setting-up', W.stage)
+        if (!this.d.machine.running()) await this.d.machine.start()
+        await this.d.guest.ready(this.t.ready)
+        await this.stageDriver(folder)
+        this.set('setting-up', W.restart)
+        await this.shutDown()
+        await this.d.machine.keepTpm()
+        this.set('setting-up', W.point)
+        const point = await this.keepPoint(BEFORE_LIVE_RESIZE, 'keeper')
+        this.set('setting-up', W.start)
+        d.setDevice('virtio')
+        try {
+          await this.d.machine.start()
+          await this.d.guest.ready(this.t.setupReady)
+          await this.onVirtio()
+        } catch (e) {
+          await this.backToPoint(point, e)
+        }
+        this.set('setting-up', W.cursor)
+        await this.cursorOn()
+        await this.serviceUp()
         await this.openDoor()
         this.touch()
         this.set('awake', null, null)
@@ -448,6 +604,88 @@ export class Keeper {
         throw e
       }
     })
+  }
+
+  /**
+   * Turn off live resize: a clean shutdown and a start on std VGA at 1280×800 (screen.json written to match).
+   * Windows goes back to its Basic Display Driver by itself: viogpudo binds only the virtio device. A hibernated
+   * guest is woken first, on the device it slept on, so it is never resumed on the other.
+   */
+  downgrade(held: () => boolean): Promise<WinvmState> {
+    const no = this.liveResizeRefusal(held)
+    if (no) return Promise.reject(new Error(no))
+    return this.serial(async () => {
+      const no = this.liveResizeRefusal(held)
+      if (no) throw new Error(no)
+      const d = this.d.display!
+      if (d.device() === 'vga') return this.state()
+      const W = LIVE_RESIZE_WORDS
+      try {
+        this.set('setting-up', W.restart, null)
+        if (!this.d.machine.running()) await this.d.machine.start()
+        await this.d.guest.ready(this.t.ready)
+        await this.shutDown()
+        await this.d.machine.keepTpm()
+        this.set('setting-up', W.startVga)
+        d.setDevice('vga')
+        d.setScreen(VGA_DEFAULT)
+        await this.d.machine.start()
+        await this.d.guest.ready(this.t.setupReady)
+        await this.serviceUp()
+        await this.openDoor()
+        this.touch()
+        this.set('awake', null, null)
+        return this.state()
+      } catch (e) {
+        this.fail(e)
+        throw e
+      }
+    })
+  }
+
+  /** A clean shutdown, waited for; past the wait the move is called off and nothing new starts. */
+  private async shutDown(): Promise<void> {
+    this.closeLink()
+    // SSH goes with Windows: the call's own end says nothing
+    await this.d.guest.shutdown().catch((e) => this.d.log(`winvm: shutdown: ${words(e)}`))
+    if (!(await this.d.machine.stopped(this.t.shutdown))) throw new Error(SHUTDOWN_REFUSED)
+  }
+
+  /** Step 5's check: Windows names the VirtIO GPU adapter, and QMP's picture has the desktop. */
+  private async onVirtio(): Promise<void> {
+    const adapters = await this.d.guest.admin(ADAPTERS_SCRIPT, 60_000)
+    if (!adapters.includes(VIRTIO_ADAPTER)) throw new Error(`Windows did not take the VirtIO GPU adapter (it names ${adapters.trim().split(/\r?\n/).join(', ') || 'none'})`)
+    if (this.d.machine.shows && !(await this.d.machine.shows())) throw new Error("QEMU's picture of Windows is empty")
+  }
+
+  /** Step 5 failed: the machine stopped, and the disk, firmware, TPM and std VGA put back as the point holds them. */
+  private async backToPoint(point: WinvmPoint, cause: unknown): Promise<never> {
+    this.set('setting-up', LIVE_RESIZE_WORDS.back)
+    this.d.log(`winvm: live resize did not start (${words(cause)}): going back to ${point.name}`)
+    if (this.d.machine.running()) {
+      await this.d.guest.shutdown().catch(() => {})
+      if (!(await this.d.machine.stopped(this.t.shutdown))) await this.d.machine.forceStop?.()
+      if (!(await this.d.machine.stopped(10_000))) throw new Error(`Live resize did not start (${words(cause)}), and Windows did not stop.`)
+    }
+    await this.d.machine.keepTpm().catch((e) => this.d.log(`winvm: keeping the TPM failed: ${words(e)}`))
+    await this.d.points.restore(point.id)
+    throw new Error(`Live resize did not start (${words(cause)}). Windows is back as it was, from the restore point "${point.name}".`)
+  }
+
+  /** Step 6: the hardware pointer. A failure leaves the pointer in the picture and is tried again at the next wake. */
+  private async cursorOn(): Promise<void> {
+    try {
+      await this.d.guest.admin(CURSOR_SCRIPT, 120_000)
+      this.cursorChecked = true
+    } catch (e) {
+      this.d.log(`winvm: the hardware pointer did not turn on: ${words(e)}`)
+    }
+  }
+
+  /** On virtio, once a keeper: the pointer of a move whose service stopped before step 6. */
+  private async cursorOnce(): Promise<void> {
+    if (this.cursorChecked || this.d.display?.device() !== 'virtio') return
+    await this.cursorOn()
   }
 
   /** Every minute: hibernates an idle machine, and notices one that stopped by itself. */

@@ -40,3 +40,61 @@ describe("Office's first run in the guest", () => {
     expect(SETUP_STEPS).toContain('Office viewer mode')
   })
 })
+
+describe('Set up again on a disk that exists', () => {
+  it('keeps std VGA: machine.json is not written and no driver goes in', async () => {
+    const { Keeper } = await import('./keeper')
+    const files = { device: 'vga' as 'vga' | 'virtio', writes: 0 }
+    const m = { disk: true, up: false, ranOn: [] as string[] }
+    const scripts: string[] = []
+    const keeper = new Keeper({
+      machine: {
+        cannot: () => null,
+        hasDisk: () => m.disk,
+        running: () => m.up,
+        makeDisk: async () => {},
+        start: async () => void (m.ranOn.push(files.device), (m.up = true)),
+        stopped: async () => !m.up,
+        keepTpm: async () => {}
+      },
+      guest: {
+        ready: async () => {},
+        admin: async (s) => (scripts.push(s), 'setup done'),
+        hibernate: async () => void (m.up = false),
+        reboot: async () => {},
+        shutdown: async () => void (m.up = false),
+        serviceHash: async () => 'h',
+        installService: async () => '0.1.0',
+        startService: async () => {},
+        openDoor: async () => ({ close: () => {}, closed: new Promise<void>(() => {}) }),
+        knock: async () => true,
+        fetch: async () => {},
+        send: async () => {},
+        upload: async () => {}
+      },
+      serviceExe: () => '/box/tc-computer.exe',
+      hashFile: () => 'h',
+      token: { get: () => 't'.repeat(64), set: () => {} },
+      doorSocket: '/run/door.sock',
+      sleepAfter: () => '30m',
+      setSleepAfter: () => {},
+      points: { list: () => [], save: async () => {}, restore: async () => {}, remove: async () => {} },
+      push: () => {},
+      log: () => {},
+      timeouts: { knock: 0, knockEvery: 1 },
+      display: {
+        device: () => files.device,
+        setDevice: (d) => void ((files.device = d), files.writes++),
+        screen: () => null,
+        setScreen: () => {},
+        choice: () => ({ screen: 'fit', detail: 'sharp' }),
+        driver: async () => '/box/viogpudo',
+        cursor: () => '/app/resources/winvm/tc-ibeam.cur'
+      }
+    })
+    expect((await keeper.setup()).display).toMatchObject({ device: 'vga', canResize: false })
+    expect(files.writes).toBe(0)
+    expect(m.ranOn).toEqual(['vga'])
+    expect(scripts.some((s) => s.includes('pnputil'))).toBe(false)
+  })
+})

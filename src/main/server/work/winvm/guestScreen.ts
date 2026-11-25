@@ -35,6 +35,16 @@ export function readGuestScreen(run: string): VmWindow | null {
   }
 }
 
+/** Windows' scale in percent, where the size's writer kept it (live resize); null where it did not. */
+export function readGuestScale(run: string): number | null {
+  try {
+    const scale = (JSON.parse(readFileSync(guestScreenFile(run), 'utf8')) as { scale?: unknown }).scale
+    return typeof scale === 'number' && scale >= 100 && scale <= 500 ? scale : null
+  } catch {
+    return null
+  }
+}
+
 export function writeGuestScreen(run: string, size: VmWindow): void {
   mkdirSync(dirname(guestScreenFile(run)), { recursive: true })
   writeFileSync(guestScreenFile(run), JSON.stringify(size) + '\n')

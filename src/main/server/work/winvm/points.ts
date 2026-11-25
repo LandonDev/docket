@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { WinvmPoint } from '@shared/contract-work-winvm'
 import { daemonEnv } from './machine/config'
+import { VGA_DEFAULT } from './machine/qemu'
+import { readGuestScreen, readMachineDevice, writeGuestScreen, writeMachineDevice } from './guestScreen'
 
 const run = promisify(execFile)
 
@@ -14,7 +16,10 @@ const run = promisify(execFile)
  * changes after it), with the firmware variables and the TPM's state copied
  * beside it. A point holds all three, since a disk without the TPM it was
  * sealed with breaks TPM-bound sign-ins, and a hibernated guest's image is
- * on the disk.
+ * on the disk. It records the display device and size the run had (its
+ * machine.json and screen.json), and a restore writes both back: a Windows
+ * that slept on std VGA wakes on std VGA whatever the machine runs on now. A
+ * point from before live resize has neither and is std VGA at 1280×800.
  */
 export interface PointStore {
   list(): WinvmPoint[]
@@ -29,6 +34,8 @@ export interface PointFiles {
   tpm: string
   /** the folder the points' files live in: one folder per point */
   dir: string
+  /** the machine's run folder: its machine.json and screen.json */
+  run: string
 }
 
 const snapshotOf = (id: string) => `tc-point-${id}`
@@ -65,17 +72,22 @@ export class QcowPoints implements PointStore {
     copyFileSync(this.f.vars, join(part, 'OVMF_VARS.fd'))
     if (existsSync(this.f.tpm)) cpSync(this.f.tpm, join(part, 'tpm'), { recursive: true })
     await run('qemu-img', ['snapshot', '-q', '-c', snapshotOf(point.id), this.f.disk], { env: daemonEnv() })
-    writeFileSync(join(part, 'point.json'), JSON.stringify(point) + '\n')
+    const record: WinvmPoint = { ...point, device: readMachineDevice(this.f.run), screen: readGuestScreen(this.f.run) ?? { ...VGA_DEFAULT } }
+    writeFileSync(join(part, 'point.json'), JSON.stringify(record) + '\n')
     renameSync(part, dir)
   }
 
   async restore(id: string): Promise<void> {
     const dir = this.folder(id)
     if (!existsSync(join(dir, 'point.json'))) throw new Error('That restore point is gone.')
+    const point = JSON.parse(readFileSync(join(dir, 'point.json'), 'utf8')) as WinvmPoint
     await run('qemu-img', ['snapshot', '-q', '-a', snapshotOf(id), this.f.disk], { env: daemonEnv() })
     copyFileSync(join(dir, 'OVMF_VARS.fd'), this.f.vars)
     rmSync(this.f.tpm, { recursive: true, force: true })
     if (existsSync(join(dir, 'tpm'))) cpSync(join(dir, 'tpm'), this.f.tpm, { recursive: true })
+    // the device and size the guest slept on at the save, whatever runs now
+    writeMachineDevice(this.f.run, point.device === 'virtio' ? 'virtio' : 'vga')
+    writeGuestScreen(this.f.run, point.screen ?? { ...VGA_DEFAULT })
   }
 
   async remove(id: string): Promise<void> {

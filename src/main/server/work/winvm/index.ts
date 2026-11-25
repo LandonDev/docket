@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { WINVM_SCREENS, WINVM_SLEEP_AFTER, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
+import { WINVM_DETAILS, WINVM_SCREENS, WINVM_SLEEP_AFTER, type WinvmDetail, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkCtx, WorkModule } from '../modules'
 import { Keeper, type KeeperDeps } from './keeper'
@@ -22,6 +22,9 @@ import { TC_OFFICE_CS } from '../office/com/source'
 import { uploadsOwed } from './owed'
 import { stillRefusal, vmStill } from './still'
 import { personsDesktop } from '../../../headless'
+import { readGuestScale, readGuestScreen, readMachineDevice, writeGuestScreen, writeMachineDevice } from './guestScreen'
+import { VGA_DEFAULT } from './machine/qemu'
+import { ibeamCursor, virtioDriver } from './driver'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -29,7 +32,7 @@ import { personsDesktop } from '../../../headless'
  * The windows_* tools that drive it come with the service on the box (B5).
  */
 
-export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep, restarts it, changes its settings or its restore points'
+export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep, restarts it, changes its settings, its display or its restore points'
 
 /** The host setting that holds how long an idle machine stays awake. */
 export const SLEEP_AFTER_SETTING = 'work.winvm.sleepAfter'
@@ -48,24 +51,31 @@ export function setSleepAfter(db: DatabaseSync, v: WinvmSleepAfter): void {
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(SLEEP_AFTER_SETTING, v)
 }
 
-/** The host setting that holds the guest's screen size, taken at the next wake. */
+/** The host setting that holds the guest's screen: Fit to window until he picks a size. On std VGA a size is used by a new Set up. */
 export const SCREEN_SETTING = 'work.winvm.screen'
+/** The host setting that holds Sharp or Faster. */
+export const DETAIL_SETTING = 'work.winvm.detail'
 
-export function screenSetting(db: DatabaseSync): WinvmScreen {
+function setting<T extends string>(db: DatabaseSync, key: string, values: readonly T[], fallback: T): T {
   try {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(SCREEN_SETTING) as { value?: string } | undefined
-    return (WINVM_SCREENS as readonly string[]).includes(row?.value ?? '') ? (row!.value as WinvmScreen) : '1280x800'
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value?: string } | undefined
+    return (values as readonly string[]).includes(row?.value ?? '') ? (row!.value as T) : fallback
   } catch {
-    return '1280x800'
+    return fallback
   }
 }
-
-export function setScreen(db: DatabaseSync, v: WinvmScreen): void {
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(SCREEN_SETTING, v)
+const put = (db: DatabaseSync, key: string, v: string): void => {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(key, v)
 }
 
-/** A screen setting in the guest's pixels. */
+export const screenSetting = (db: DatabaseSync): WinvmScreen => setting(db, SCREEN_SETTING, WINVM_SCREENS, 'fit')
+export const setScreen = (db: DatabaseSync, v: WinvmScreen): void => put(db, SCREEN_SETTING, v)
+export const detailSetting = (db: DatabaseSync): WinvmDetail => setting(db, DETAIL_SETTING, WINVM_DETAILS, 'sharp')
+export const setDetail = (db: DatabaseSync, v: WinvmDetail): void => put(db, DETAIL_SETTING, v)
+
+/** A screen setting in the guest's pixels: Fit starts a new machine at the std VGA's own 1280×800, and live resize sizes it from there. */
 export const screenSize = (v: WinvmScreen): { width: number; height: number } => {
+  if (v === 'fit') return { ...VGA_DEFAULT }
   const [width, height] = v.split('x').map(Number) as [number, number]
   return { width, height }
 }
@@ -102,7 +112,21 @@ export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoi
     sleepAfter: () => sleepAfterSetting(ctx.db),
     setSleepAfter: (v) => setSleepAfter(ctx.db, v),
     points: machine.points(),
-    log: (line) => ctx.log(line)
+    log: (line) => ctx.log(line),
+    // the run's machine.json and screen.json (guestScreen.ts), his choice, and what live resize takes from the box
+    display: {
+      device: () => readMachineDevice(machine.p.run),
+      setDevice: (device) => writeMachineDevice(machine.p.run, device),
+      screen: () => {
+        const size = readGuestScreen(machine.p.run)
+        const scale = readGuestScale(machine.p.run)
+        return size && scale ? { ...size, scale } : size
+      },
+      setScreen: (size) => writeGuestScreen(machine.p.run, size),
+      choice: () => ({ screen: screenSetting(ctx.db), detail: detailSetting(ctx.db) }),
+      driver: (progress) => virtioDriver({ dataDir: ctx.dataDir }, progress),
+      cursor: () => ibeamCursor()
+    }
   }
 }
 
@@ -214,9 +238,24 @@ export const winvm: WorkModule = {
       }
       case 'work.winvm.settings': {
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
-        if (req.params.screen !== undefined) setScreen(ctx.db, req.params.screen)
-        const answer: WinvmSettings = { ...keeperOf(ctx).settings(req.params.sleepAfter), screen: screenSetting(ctx.db) }
+        const k = keeperOf(ctx)
+        const { screen, detail } = req.params
+        if (screen !== undefined) setScreen(ctx.db, screen)
+        if (detail !== undefined) setDetail(ctx.db, detail)
+        if (screen !== undefined || detail !== undefined) k.refresh()
+        const answer: WinvmSettings = { ...k.settings(req.params.sleepAfter), screen: screenSetting(ctx.db), detail: detailSetting(ctx.db) }
         return handled(answer)
+      }
+      case 'work.winvm.display.upgrade':
+      case 'work.winvm.display.downgrade': {
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        const k = keeperOf(ctx)
+        // a refusal is the press's answer; the steps take minutes and come as pushes, as setup's do
+        const no = k.liveResizeRefusal(vmHeld)
+        if (no) throw new Error(no)
+        const run = req.method === 'work.winvm.display.upgrade' ? k.upgrade(vmHeld) : k.downgrade(vmHeld)
+        run.catch((e) => ctx.log(`winvm: live resize: ${e instanceof Error ? e.message : String(e)}`))
+        return handled(k.state())
       }
       case 'work.winvm.points':
         return handled({ points: keeperOf(ctx).points() })

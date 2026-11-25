@@ -8,7 +8,7 @@ import { vmClipboardWired } from './drive'
 import { vmPasteWired } from './picture'
 import { HELD } from './keeper'
 import { configureVmStill, type VmStill } from './still'
-import { configureVmHeld, configureWinvmDesktop, configureWinvmKeeper, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
+import { configureVmHeld, configureWinvmDesktop, configureWinvmKeeper, detailSetting, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
 
 /**
  * The pillar on a real database through the Work router, over a fake
@@ -17,7 +17,7 @@ import { configureVmHeld, configureWinvmDesktop, configureWinvmKeeper, NOT_A_PER
  */
 
 let rig: Rig
-const machine = { disk: true, up: false }
+const machine = { disk: true, up: false, device: 'vga' as 'vga' | 'virtio' }
 let kept: WinvmPoint[] = []
 
 function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & object>[0]): Omit<KeeperDeps, 'push'> {
@@ -34,9 +34,10 @@ function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & o
     },
     guest: {
       ready: async () => {},
-      admin: async () => 'setup done',
+      admin: async (script) => (script.includes('Win32_VideoController') ? (machine.device === 'virtio' ? 'Red Hat VirtIO GPU DOD controller' : 'Microsoft Basic Display Adapter') : 'setup done'),
       hibernate: async () => void (machine.up = false),
       reboot: async () => {},
+      shutdown: async () => void (machine.up = false),
       serviceHash: async () => 'h',
       installService: async () => '0.1.0',
       startService: async () => {},
@@ -59,7 +60,17 @@ function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & o
       restore: async () => {},
       remove: async (id) => void (kept = kept.filter((p) => p.id !== id))
     },
-    log: () => {}
+    log: () => {},
+    display: {
+      device: () => machine.device,
+      setDevice: (d) => void (machine.device = d),
+      screen: () => null,
+      setScreen: () => {},
+      // the real host settings, as realKeeperDeps reads them
+      choice: () => ({ screen: screenSetting(ctx.db), detail: detailSetting(ctx.db) }),
+      driver: async () => '/box/viogpudo',
+      cursor: () => '/app/resources/winvm/tc-ibeam.cur'
+    }
   }
 }
 
@@ -70,6 +81,7 @@ const states = () => rig.pushes.filter((p) => p.push === 'work.winvm').map((p) =
 beforeEach(async () => {
   machine.disk = true
   machine.up = false
+  machine.device = 'vga'
   kept = []
   configureWinvmKeeper(fakeDeps)
   rig = await makeRig({ modules: [winvm] })
@@ -96,19 +108,51 @@ describe('the Windows VM pillar', () => {
   })
 
   it('keeps sleep-after in the host settings, 30 minutes until he sets it', async () => {
-    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', {})).toEqual({ sleepAfter: '30m', screen: '1280x800' })
-    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { sleepAfter: '2h' })).toEqual({ sleepAfter: '2h', screen: '1280x800' })
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', {})).toEqual({ sleepAfter: '30m', screen: 'fit', detail: 'sharp' })
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { sleepAfter: '2h' })).toEqual({ sleepAfter: '2h', screen: 'fit', detail: 'sharp' })
     expect(sleepAfterSetting(workCtx().db)).toBe('2h')
     expect((await rig.rpc<WinvmState>('work.winvm.state', {})).sleepAfter).toBe('2h')
   })
 
-  it('keeps the screen size in the host settings, the std VGA 1280×800 until he picks 1920×1200', async () => {
-    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { screen: '1920x1200' })).toEqual({ sleepAfter: '30m', screen: '1920x1200' })
+  it('keeps the screen and its detail in the host settings, Fit and Sharp until he picks, and the state says them', async () => {
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { screen: '1920x1200' })).toEqual({ sleepAfter: '30m', screen: '1920x1200', detail: 'sharp' })
     expect(screenSetting(workCtx().db)).toBe('1920x1200')
     expect(screenSize(screenSetting(workCtx().db))).toEqual({ width: 1920, height: 1200 })
-    // the wire offers the two sizes measured, no other
+    // Fit starts a new machine at the std VGA's own size
+    expect(screenSize('fit')).toEqual({ width: 1280, height: 800 })
+    expect(screenSize('2560x1600')).toEqual({ width: 2560, height: 1600 })
+    rig.pushes.length = 0
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { screen: 'fit', detail: 'faster' })).toMatchObject({ screen: 'fit', detail: 'faster' })
+    expect(detailSetting(workCtx().db)).toBe('faster')
+    const pushed = rig.pushes.filter((p) => p.push === 'work.winvm').map((p) => (p as { state: WinvmState }).state.display)
+    expect(pushed.at(-1)).toMatchObject({ device: 'vga', fit: true, detail: 'faster', canResize: false })
+    // the wire offers Fit and the three sizes, Sharp and Faster, no other
     const settings = WinvmRequestSchemas.find((r) => r.shape.method.value === 'work.winvm.settings')!
-    expect(settings.safeParse({ id: '1', method: 'work.winvm.settings', params: { screen: '2560x1600' } }).success).toBe(false)
+    const parses = (params: object) => settings.safeParse({ id: '1', method: 'work.winvm.settings', params }).success
+    expect(parses({ screen: '2560x1600', detail: 'sharp' })).toBe(true)
+    expect(parses({ screen: '3840x2400' })).toBe(false)
+    expect(parses({ detail: 'blurry' })).toBe(false)
+  })
+
+  it('turns live resize on and off for a person: the answer at once, the steps as pushes; refused for a thread and while one holds it', async () => {
+    await rig.rpc('work.winvm.wake', {})
+    rig.pushes.length = 0
+    await rig.rpc<WinvmState>('work.winvm.display.upgrade', {})
+    await new Promise((r) => setTimeout(r, 20))
+    const pushed = rig.pushes.filter((p) => p.push === 'work.winvm').map((p) => (p as { state: WinvmState }).state)
+    expect(pushed[0]).toMatchObject({ state: 'setting-up', step: 'Getting the display driver' })
+    expect(pushed.at(-1)).toMatchObject({ state: 'awake', display: { device: 'virtio', canResize: true } })
+    expect(machine.device).toBe('virtio')
+    await rig.rpc('work.winvm.display.downgrade', {})
+    await new Promise((r) => setTimeout(r, 20))
+    expect(machine.device).toBe('vga')
+    configureVmHeld(() => true)
+    await expect(rig.rpc('work.winvm.display.upgrade', {})).rejects.toThrow(HELD)
+    configureVmHeld(null)
+    for (const m of ['work.winvm.display.upgrade', 'work.winvm.display.downgrade']) {
+      await expect(winvm.handle!({ id: '1', method: m, params: {} } as never, workCtx(), model)).rejects.toThrow(NOT_A_PERSON)
+      expect(METHOD_CAPABILITY[m as 'work.winvm.display.upgrade']).toBe('admin')
+    }
   })
 
   it('a model caller may wake it but not set it up, put it to sleep or change its settings', async () => {
