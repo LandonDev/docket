@@ -28,6 +28,11 @@ export interface CanvasKindDef<S = unknown> {
   phone: "web" | "native";
   /** A guest link can be made for it: documents and sheets only. */
   guestable: boolean;
+  /**
+   * False where the kind's code has no `Bar` and no History: the pane holds no bone in the bar while that code loads, so
+   * no bar comes for a moment and goes, taking the body up 32px with it.
+   */
+  bar?: false;
   /** The pane draws History in the kind's bar, which opens the item's versions as a `history` item beside it. Absent for a kind with no versions, and for one whose own bar draws its History. */
   history?: boolean;
   /** The kind's code, loaded when an item of the kind is first shown. `Body` fills the pane under the bars; `Bar` is the kind's own tools in the bar; `TabEnd` sits in the tab row before More (the switch to the real Excel or PowerPoint). */

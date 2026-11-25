@@ -16,5 +16,7 @@ export const fileCanvas: CanvasKindDef = defineCanvasKind<undefined>({
   opens: { ext: extsOfCanvas("file") },
   phone: "native",
   guestable: false,
+  // Text, a sound, a zip or facts: nothing in the bar, so none is held while the code loads.
+  bar: false,
   chunk: defineChunk("work-files-canvas", () => import("./FileKind")),
 });

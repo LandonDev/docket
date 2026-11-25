@@ -167,6 +167,9 @@ export function OfflineLine({ words }: { words: { word: string; detail: string }
 
 type Opened = { host: DocHost; open: DocOpen } | { error: string } | null;
 
+/** The format row's place is kept while the document opens and once it opens for him to edit; a view he may only read has none. */
+export const rowKept = (opened: Opened): boolean => opened === null || ("open" in opened && opened.open.role === "edit");
+
 /** Opens the document on the host the item lives on, or on the host that serves it when that is another. */
 /** `itemId`: the item that shows a mail's attachment, which the host finds the document by (host.ts `namedBy`). */
 export function useOpened(env: string, source: CanvasSource, attempt: number, itemId?: string): Opened {
@@ -481,7 +484,8 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
       <div ref={root} className="relative flex h-full flex-col">
         <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
         {/* Its keys are the editor's own while focus is in it (⌘B in the size field is bold, not the sidebar). */}
-        <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={previewing ? "invisible flex-none" : "flex-none"} inert={previewing ? true : undefined} />
+        {/* Its 36px are kept from the first paint for a document he may edit (and while that is not known yet), so the text does not drop when the editor draws its row. */}
+        <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={`${rowKept(opened) ? "min-h-9" : ""} ${previewing ? "invisible flex-none" : "flex-none"}`} inert={previewing ? true : undefined} />
         <div className={`group/doc-body ${OFFLINE_ROOM} ${previewing ? "invisible relative min-h-0 flex-1" : "relative min-h-0 flex-1"}`} inert={previewing ? true : undefined}>
           {/* Where the offline line is laid: over the scroller's top padding, out of the text's flow. */}
           <div ref={setLineSlot} className="pointer-events-none absolute inset-x-0 top-0 z-10" />

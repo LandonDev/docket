@@ -335,7 +335,14 @@ What a kind should know:
   as on a form's Responses), when it is not lit.
 - While a kind's code loads, the bar holds a 12px bone in its tools slot
   (`data-bar-bone`), the document's own, so the body does not drop 32px
-  when the code lands.
+  when the code lands. A kind whose code has no `Bar` and no History says
+  so (`bar: false` on its definition: the file kind), and holds none, so no
+  bar comes for a moment and goes, taking the body up 32px. The tools that
+  replace the bone (24px buttons for its 12px) stand in the same 32px bar:
+  nothing under it moves. A document he may edit keeps its format row's 36px
+  from the first paint (`rowKept`, DocumentCanvas.tsx), and a sheet keeps its
+  row's bone until its view names its controls (SheetBody.tsx), so neither
+  body drops when the editor draws its row.
   A load that failed holds no bone (nothing is loading): the body says
   "Couldn't open this document" with Retry, and Retry loads the code again
   (`useKindLoad`, `loadAgain` in CanvasPane.tsx). Only once it lands are

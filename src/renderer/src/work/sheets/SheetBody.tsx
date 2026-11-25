@@ -234,7 +234,8 @@ export function Body(props: Props) {
     return state.failed ? sync.open() : undefined;
   };
   if (failed) return <OpenFailed kind="sheet" why={failed} onRetry={retry} />;
-  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} row={controls.length > 0} />;
+  // Until the view names its controls the row is kept: a sheet is his to edit far more often than not.
+  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} row={view ? controls.length > 0 : true} />;
   const Canvas = grid.Canvas;
   return (
     <div

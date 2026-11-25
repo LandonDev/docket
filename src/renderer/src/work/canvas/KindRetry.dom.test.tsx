@@ -78,3 +78,24 @@ describe("a kind whose code did not load", () => {
   });
 });
 
+
+describe("a kind that draws nothing in the bar", () => {
+  it("holds no bar while its code loads, so none comes and goes over the body; a kind with tools holds its bone", async () => {
+    const waits = defineChunk<CanvasKindModule>("test-kind-barless", () => new Promise(() => undefined));
+    const barless = { ...CANVAS, document: { ...CANVAS.document, history: false, bar: false as const, chunk: waits } };
+    const view = render(<CanvasPane item={canvasItem("doc")} environmentId="local" feeds={NO_FEEDS} shell={shell} onAsk={() => undefined} kinds={barless} />);
+    await act(async () => undefined);
+    expect(document.querySelector("[data-canvas-bar]")).toBeNull();
+    view.unmount();
+    const tooled = { ...CANVAS, document: { ...CANVAS.document, history: false, chunk: defineChunk<CanvasKindModule>("test-kind-tooled", () => new Promise(() => undefined)) } };
+    render(<CanvasPane item={canvasItem("doc")} environmentId="local" feeds={NO_FEEDS} shell={shell} onAsk={() => undefined} kinds={tooled} />);
+    await act(async () => undefined);
+    expect(document.querySelector("[data-canvas-bar] [data-bar-bone]")).not.toBeNull();
+  });
+
+  it("is the file kind: its code has no Bar and its pane no History", async () => {
+    expect(CANVAS.file.bar).toBe(false);
+    expect(CANVAS.file.history).toBeUndefined();
+    expect("Bar" in (await import("../files/FileKind"))).toBe(false);
+  });
+});

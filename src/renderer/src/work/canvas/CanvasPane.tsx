@@ -206,7 +206,7 @@ export function CanvasPane({
   // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
   const fetched = useItemFetch(environmentId, item);
   const waiting = fetched && fetched.fetch.phase !== "ready" ? fetched.fetch : null;
-  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
+  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed || def.bar === false ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
   return (
     <div
       data-canvas-pane

@@ -81,7 +81,7 @@ vi.mock("../formats/PreviewFrame", () => ({
   },
 }));
 
-const { Body, Bar, OfflineLine, OFFLINE_ROOM, openingView, openingZoom, pagesSettled, PAGES_FROM, TRUE_SIZE_FROM } = await import("./DocumentCanvas");
+const { Body, Bar, OfflineLine, OFFLINE_ROOM, rowKept, openingView, openingZoom, pagesSettled, PAGES_FROM, TRUE_SIZE_FROM } = await import("./DocumentCanvas");
 
 // The canvas's width, as the pane measures it.
 beforeAll(() => Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => canvas.width }));
@@ -205,6 +205,15 @@ describe("the pane around the sheets", () => {
     const column = document.querySelector<HTMLElement>("[data-editor-keys='document'].group\\/doc")!;
     expect(column.className).toContain("has-[.te-pages-stage]:max-w-none");
     expect(document.querySelector("[data-fake-editor]")!.parentElement!.className).toContain("group-has-[.te-pages-stage]/doc:px-0");
+  });
+
+  it("keeps the format row's 36px from the first paint for a document he may edit, none for one he may only read", async () => {
+    await mount();
+    expect(document.querySelector<HTMLElement>("[data-doc-row]")!.className.split(" ")).toContain("min-h-9");
+    expect(rowKept(null)).toBe(true);
+    expect(rowKept({ error: "No." })).toBe(false);
+    expect(rowKept({ open: { role: "view" } } as never)).toBe(false);
+    expect(rowKept({ open: { role: "edit" } } as never)).toBe(true);
   });
 
   it("lays the offline line on the stage's ground in Pages, with room over the first sheet; in Flow on the page's, over the text's own 32px", async () => {

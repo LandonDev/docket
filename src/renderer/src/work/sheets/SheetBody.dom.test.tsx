@@ -148,6 +148,8 @@ describe("the sheet kind", () => {
       </CanvasSeat>,
     );
     expect(await screen.findByLabelText("Loading")).toBeTruthy();
+    // Before the view names its controls the format row's 36px are held: the grid does not drop when the row lands.
+    expect(screen.getByLabelText("Loading").firstElementChild!.hasAttribute("data-format-row-bone")).toBe(true);
     cleanup();
     resetSheetSyncs();
     open(sheetView({ rev: 3 }));
