@@ -541,7 +541,7 @@ async function vmVersioned(path: string, into: Staging, signal?: AbortSignal, pr
     const end = offset <= PIECE ? first : (last ?? (await guestVersion(path, signal)))
     // The helper may answer the end's version from the hash it made for the first piece (kept a minute while the size and
     // change time hold), so the bytes themselves are held to it: the version's SHA-256 must be the one hashed as they came in.
-    if (first !== null && end === first && sameBytes(first, into)) return first
+    if (first !== null && end === first && (typeof first !== 'string' || sameBytes(first, into))) return first
     if (tries) throw new Error(`${entry.name} changed while it was read. Try again.`)
   }
 }
