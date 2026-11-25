@@ -40,6 +40,23 @@ app.whenReady().then(async () => {
     result.attached = (result.attached as number) + 1
     g.once('dom-ready', () => void probe(g))
   })
+  // A made-up address at Microsoft's sign-in (no account, never a password): its next page must come, not a spinner.
+  const signIn = async (g: WebContents): Promise<Record<string, unknown>> => {
+    const read = (): Promise<{ field: boolean; text: string; password: boolean; url: string }> =>
+      g.executeJavaScript(`({ field: !!document.querySelector('input[name=loginfmt]'), text: document.body.innerText.slice(0, 400), password: !!document.querySelector('input[type=password]:not([aria-hidden=true])'), url: location.host + location.pathname })`)
+    for (let i = 0; i < 30 && !(await read()).field; i++) await new Promise((r) => setTimeout(r, 500))
+    await g.executeJavaScript(`document.querySelector('input[name=loginfmt]').focus()`)
+    await g.insertText('tc-proof@purdue.edu')
+    await g.executeJavaScript(`document.querySelector('#idSIButton9, input[type=submit]').click()`)
+    let seen = await read()
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 500))
+      seen = await read()
+      if (/incorrect|password|Authenticator|Other ways|Sign-in options/i.test(seen.text) && !/passkey/i.test(seen.text)) break
+    }
+    writeFileSync(process.env.PROOF_SHOT!, (await g.capturePage()).toPNG())
+    return { ...seen, answered: /incorrect|password|Authenticator|Other ways/i.test(seen.text) && !/passkey/i.test(seen.text) }
+  }
   const probe = async (g: WebContents): Promise<void> => {
     await new Promise((r) => setTimeout(r, 3000))
     result.guestUrl = g.getURL()
@@ -53,8 +70,16 @@ app.whenReady().then(async () => {
       const trySocket = (u) => new Promise((res) => { try { const ws = new WebSocket(u); ws.onopen = () => res('open'); ws.onerror = () => res('failed') } catch (e) { res('threw') } setTimeout(() => res('no answer'), 5000) })
       r.ws = await trySocket('ws://127.0.0.1:${port}/ws')
       r.wss = await trySocket('wss://127.0.0.1:${port}/ws')
+      // No passkey: the interface is gone and an ask refuses at once instead of waiting on a sheet that never comes.
+      r.publicKeyCredential = typeof window.PublicKeyCredential
+      const ask = async (fn) => { try { await Promise.race([fn(), new Promise((_, j) => setTimeout(() => j(new Error('still waiting')), 5000))]); return 'settled' } catch (e) { return e.name === 'Error' ? e.message : e.name } }
+      const at = performance.now()
+      r.passkeyGet = await ask(() => navigator.credentials.get({ publicKey: { challenge: new Uint8Array(16), timeout: 60000 } }))
+      r.passkeyMs = Math.round(performance.now() - at)
+      r.passkeyCreate = await ask(() => navigator.credentials.create({ publicKey: { challenge: new Uint8Array(16), rp: { name: 'x' }, user: { id: new Uint8Array(8), name: 'x', displayName: 'x' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }] } }))
       return r
     })()`)
+    result.signIn = await signIn(g)
     // The outer page (a page of no app origin) tries the server: the Origin rule refuses it.
     result.outerSocket = await win.webContents.executeJavaScript(`new Promise((res) => { const ws = new WebSocket('ws://127.0.0.1:${port}/ws'); ws.onopen = () => res('open'); ws.onerror = () => res('refused'); setTimeout(() => res('no answer'), 5000) })`)
     result.page = await win.webContents.executeJavaScript('window.__proof')

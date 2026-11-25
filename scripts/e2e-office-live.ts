@@ -300,9 +300,11 @@ async function run(): Promise<void> {
   for (const [entry, outName, target] of [
     ['live-main.ts', 'main.js', 'node'],
     ['live-preload.ts', 'preload.js', 'node'],
+    // The live sessions' passkey refusal, where the fence looks for it: bun bakes this checkout in as __dirname.
+    ['../../src/preload/livePasskey.ts', join(REPO, 'out/preload/livePasskey.js'), 'node'],
     ['live-harness.ts', 'harness.js', 'browser']
   ] as const) {
-    const b = spawnSync('bun', ['build', join(REPO, 'scripts/proof-office-live', entry), `--target=${target}`, ...(target === 'node' ? ['--format=cjs', '--external', 'electron'] : ['--define', 'process.env.NODE_ENV="production"']), '--outfile', join(dir, outName)], { stdio: 'inherit', cwd: REPO })
+    const b = spawnSync('bun', ['build', join(REPO, 'scripts/proof-office-live', entry), `--target=${target}`, ...(target === 'node' ? ['--format=cjs', '--external', 'electron'] : ['--define', 'process.env.NODE_ENV="production"']), '--outfile', resolve(dir, outName)], { stdio: 'inherit', cwd: REPO })
     if (b.status !== 0) throw new Error(`bundle ${entry} failed`)
   }
   const out = join(dir, 'result.json')

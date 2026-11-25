@@ -20,6 +20,7 @@ class FakeSession extends EventEmitter {
     })
   setPermissionCheckHandler = (fn: (wc: unknown, p: string) => boolean): void => void (this.check = (p) => fn(null, p))
   setDevicePermissionHandler = vi.fn()
+  registerPreloadScript = vi.fn()
   webRequest = {
     onBeforeRequest: (fn: (d: { url: string }, done: (r: { cancel: boolean }) => void) => void): void =>
       void (this.before = (url) => {
@@ -286,6 +287,28 @@ describe('the fence on a window', () => {
     expect(first.prefs).not.toHaveProperty('preload')
     expect(first.params).toEqual({ src: FILE, partition: PARTITION, allowpopups: 'true' })
     expect(attach(win, { src: FILE, partition: PARTITION }).refused).toBe(true)
+  })
+
+  it('runs the guest with WebAuthn off, whatever the tag or the page asked', async () => {
+    await ticket(FILE)
+    const { prefs, params } = attach(win, { src: FILE, partition: PARTITION, blinkfeatures: 'WebAuth', disableblinkfeatures: '' }, { enableBlinkFeatures: 'WebAuth', disableBlinkFeatures: '' })
+    expect(prefs.disableBlinkFeatures).toBe('WebAuth')
+    expect(prefs).not.toHaveProperty('enableBlinkFeatures')
+    expect(params).not.toHaveProperty('blinkfeatures')
+    expect(params).not.toHaveProperty('disableblinkfeatures')
+  })
+
+  it('gives the passkey refusal to the live sessions alone, once each', async () => {
+    attach(win, { src: FILE, partition: 'persist:microsoft' })
+    expect(liveSessions.get('persist:microsoft')).toBeUndefined()
+    await ticket(FILE)
+    attach(win, { src: FILE, partition: PARTITION })
+    await ticket(FILE)
+    attach(win, { src: FILE, partition: PARTITION })
+    const ses = liveSessions.get(PARTITION)!
+    expect(ses.registerPreloadScript).toHaveBeenCalledTimes(1)
+    expect(ses.registerPreloadScript).toHaveBeenCalledWith({ type: 'frame', id: 'office-live-passkey', filePath: expect.stringMatching(/out\/preload\/livePasskey\.js$/) })
+    expect([...liveSessions.keys()].every((p) => p.startsWith('persist:office-live-'))).toBe(true)
   })
 
   it('attaches a form\'s guest once on its ticket, at the address main made, hardened as a file\'s', async () => {

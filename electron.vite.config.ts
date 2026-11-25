@@ -243,7 +243,8 @@ export default buildHeapHold(() => buildHosted()) ?? defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin()],
     // capture.js is the capture window's own bridge (src/main/capture.ts), nothing of the main window's.
-    build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), capture: resolve('src/preload/capture.ts') } } }
+    // livePasskey.js is a live Office guest's session preload (src/main/officeLive.ts): no bridge, a passkey ask refused.
+    build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), capture: resolve('src/preload/capture.ts'), livePasskey: resolve('src/preload/livePasskey.ts') } } }
   },
   renderer: {
     resolve: {

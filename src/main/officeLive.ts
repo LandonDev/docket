@@ -1,6 +1,7 @@
 import { app, ipcMain, session, shell, type BrowserWindow, type Session, type WebContents } from 'electron'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { appRoot } from './server/appRoot'
 import { isMicrosoftUrl, plainChromeUa } from './server/work/office/addin/web'
 import type { FormsLiveAsk } from '../shared/work/officeLive'
 import { builderOf, isFormId, isFormsUrl, isFormTenant, respondOf } from '../shared/work/msforms'
@@ -12,10 +13,13 @@ import { builderOf, isFormId, isFormsUrl, isFormTenant, respondOf } from '../sha
  *
  * - A guest attaches only on a ticket the window's own top frame asked for: good once, for 10 s, for one exact `src`
  *   and partition. An iframe (an agent's page, the add-in pane) can hold none, so it cannot make a guest.
- * - At attach every preload goes and the guest is sandboxed, isolated, with no Node and no popups.
- * - Each Microsoft tenant has its own session (`persist:office-live-<tenant>`), plain Chrome's agent so passkeys show,
- *   every permission refused but the sanitized clipboard write, and no request that is not https (or wss) or that
- *   names this machine, a private network or a TempCode scheme.
+ * - At attach every preload the page named goes and the guest is sandboxed, isolated, with no Node and no popups.
+ * - Each Microsoft tenant has its own session (`persist:office-live-<tenant>`), plain Chrome's agent, every
+ *   permission refused but the sanitized clipboard write, and no request that is not https (or wss) or that names
+ *   this machine, a private network or a TempCode scheme.
+ * - No passkey: Electron draws no passkey sheet, so a WebAuthn ask would never settle and Microsoft's sign-in would
+ *   spin. The guest runs with Blink's `WebAuth` off and the session's one preload refuses a passkey ask at once
+ *   (src/shared/work/livePasskey.ts), so Microsoft offers Authenticator or the password.
  * - A Microsoft form has a ticket of its own: the window names a tenant, a form's id and a page (the builder or the
  *   response page), and main makes the address itself; no address the window writes opens one (`formsTicketOf`).
  * - The first page is a Microsoft file or form; after that the guest may go anywhere over https (a school's sign-in passes
@@ -23,6 +27,8 @@ import { builderOf, isFormId, isFormsUrl, isFormTenant, respondOf } from '../sha
  */
 
 export const LIVE_PARTITION_PREFIX = 'persist:office-live-'
+/** Blink's features a live guest runs without: WebAuthn, which has no sheet in Electron (`PublicKeyCredential` goes). */
+export const LIVE_BLINK_OFF = 'WebAuth'
 export const TICKET_MS = 10_000
 
 /** `purdue0` from `purdue0-my.sharepoint.com` or `purdue0.sharepoint.com`; null when the address is not SharePoint's. */
@@ -152,6 +158,8 @@ export function hardenAttach(prefs: Record<string, unknown>, params: Record<stri
   prefs.webSecurity = true
   prefs.allowRunningInsecureContent = false
   prefs.webviewTag = false
+  delete prefs.enableBlinkFeatures
+  prefs.disableBlinkFeatures = LIVE_BLINK_OFF
   prefs.partition = ticket.partition
   // New windows stay on, so each one reaches the window-open handler, which denies it and routes its address.
   params.allowpopups = 'true'
@@ -161,6 +169,8 @@ export function hardenAttach(prefs: Record<string, unknown>, params: Record<stri
   delete params.nodeintegrationinsubframes
   delete params.disablewebsecurity
   delete params.webpreferences
+  delete params.blinkfeatures
+  delete params.disableblinkfeatures
   params.src = ticket.src
   params.partition = ticket.partition
 }
@@ -303,12 +313,16 @@ interface Guest {
 }
 const guests = new Map<number, Guest>()
 
-/** A tenant's session, made ready once: its agent, permissions, the request block and downloads by his save dialog. */
+/** The session preload that refuses a passkey ask (src/preload/livePasskey.ts), beside the main window's. */
+export const livePasskeyPreload = (): string => join(appRoot(), 'out', 'preload', 'livePasskey.js')
+
+/** A tenant's session, made ready once: its agent, the passkey refusal, permissions, the request block and downloads by his save dialog. */
 export function liveSession(partition: string): Session {
   const ses = liveSessionOf(partition)
   if (sessions.has(ses)) return ses
   sessions.add(ses)
   ses.setUserAgent(plainChromeUa(ses.getUserAgent()))
+  ses.registerPreloadScript({ type: 'frame', id: 'office-live-passkey', filePath: livePasskeyPreload() })
   ses.setPermissionRequestHandler((_wc, permission, done) => done(livePermission(permission)))
   ses.setPermissionCheckHandler((_wc, permission) => livePermission(permission))
   ses.setDevicePermissionHandler(() => false)

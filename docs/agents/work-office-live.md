@@ -22,12 +22,20 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
 
 - **Attach by ticket only.** The main window has `webviewTag: true`, and `will-attach-webview` refuses every attach
   without a ticket. The page's top frame asks `office-live:ticket` (`senderFrame` checked); a ticket names the exact
-  `src` and partition, is good once and for 10 s. At attach every preload goes and the guest is sandboxed, isolated,
+  `src` and partition, is good once and for 10 s. At attach every preload the page named goes and the guest is sandboxed, isolated,
   without Node or popups. A pop-out child window holds no ticket, so it attaches none; a guest cannot make a guest.
 - **A session per tenant**: `persist:office-live-<tenant>` (`purdue0` from `purdue0-my.sharepoint.com`). Plain
-  Chrome's agent (passkeys show), every permission refused but `clipboard-sanitized-write`, and `webRequest`
+  Chrome's agent, every permission refused but `clipboard-sanitized-write`, and `webRequest`
   cancels anything not https or wss, or naming this machine, a private, link-local or carrier-NAT network, a single
   label, `*.local`, or a `file:`/`tempcode-*` scheme. Downloads go through his save dialog.
+- **No passkey.** Electron draws no passkey sheet, so a WebAuthn ask in a guest never settled and Microsoft's
+  "passkey unlock" spun for good. A guest runs with Blink's `WebAuth` off (`LIVE_BLINK_OFF`, set at attach; the tag's
+  `blinkfeatures` and `disableblinkfeatures` are dropped), so `PublicKeyCredential` is gone, and each live session
+  has one session preload of ours, `out/preload/livePasskey.js` (src/preload/livePasskey.ts), that runs
+  `refusePasskeys` (src/shared/work/livePasskey.ts) in the page's world before its scripts: `navigator.credentials`
+  `get` and `create` with `publicKey` refuse at once with NotAllowedError, any other ask is the browser's. It
+  exposes nothing and holds no IPC. Microsoft then offers Authenticator or the password. Only the live sessions get
+  it; TempCode's own pages and every other webview keep WebAuthn as they were.
 - **A form's ticket**, kept apart from a file's. The page asks `office-live:ticket` with
   `{forms: {tenant, formId, page: 'design' | 'respond'}}` (`FormsLiveAsk`, src/shared/work/officeLive.ts; the
   preload's `tcLive.ticket` takes it as well as a file's address). Main makes the address itself, the builder's
@@ -53,7 +61,9 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
   his sign-in. `Partitions/office-live-*` is left out of the Mac
   backup (`scripts/mac/backup.sh`).
 - Proof: `heavy bun scripts/proof-office-live-fence.ts` (real Chromium on the box: the ticketed guest loads, the bare
-  one never attaches, no bridge or Node in it, no loopback by fetch or WebSocket, the server refuses another origin).
+  one never attaches, no bridge or Node in it, no loopback by fetch or WebSocket, the server refuses another origin,
+  no `PublicKeyCredential` and a passkey ask refused within a second, and a made-up address,
+  `tc-proof@purdue.edu`, answered rather than spinning; `--shot <png>` keeps that picture).
 
 ## The address of a file (`src/main/server/work/office/live/address.ts`)
 
