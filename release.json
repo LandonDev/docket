@@ -1,5 +1,5 @@
 {
-  "n": 383,
-  "notes": "Work polish finished (14 review rounds): LifeOS documents open from Files' Home, Go to and search; Recent and Starred follow LifeOS's state; every screen says plainly when LifeOS is down or connecting, naming the computer, and Retry keeps its line; Outbox 2 review fixes (every surface 8 or more); performance work so far (views paint from what they hold, Files keeps listings, editors reopen from what they hold, Ask's first send in one request, bounded caches, lazy menus).",
-  "ts": 1795585043663
+  "n": 384,
+  "notes": "Work made fast: launch to a usable Work window 1.13 s to 0.54 s; switching workspace 350 ms to 39 ms; views open from what they hold (Mail 327 ms to 20 ms, half its code); Files back and listings at once, VM folders answer without waking it; documents, workbooks, decks and PDFs open with fewer trips and reopen from what they hold; Ask's box at once and its first send in one request; search paints at once; bounded caches; work-kit pin moved. Fixes: toasts no longer repeat a refusal, a PDF warning toast has its title, a PDF form read no longer throws after its tab closes.",
+  "ts": 1795587178899
 }
