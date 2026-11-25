@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
 import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, undatedWords, type LedgerRow, type OwedRow } from "@shared/work/money";
@@ -11,6 +11,7 @@ import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { tableRowCount, useKeptRows, WindowedTableRows, type TableRowPlace } from "../windowed";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { Facts, splitFacts } from "../../surfaces/settings/hosts/Facts";
@@ -686,46 +687,65 @@ function EntriesHead() {
   );
 }
 
-function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: string; read: MoneyRead; rows: LedgerRow[] }) {
-  const open = (row: LedgerRow) => set({ dialog: { kind: "row", row } });
+export function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: string; read: MoneyRead; rows: LedgerRow[] }) {
+  // Each read answers every row again: a row that holds what it held stays the same object, so its memoised row does
+  // not draw (the perf pass's M12). The receipt press reads the newest read through one function for the list's life.
+  const kept = useKeptRows(rows, keyOfRow)!;
+  const latest = useRef({ env, workspaceId, read });
+  useLayoutEffect(() => {
+    latest.current = { env, workspaceId, read };
+  });
+  const onReceipt = useCallback((receipt: NonNullable<LedgerRow["receipt"]>) => {
+    const now = latest.current;
+    withToast(() => openReceipt(now.env, now.workspaceId, now.read, receipt));
+  }, []);
   return (
-    <Table className={ENTRIES_TABLE}>
+    <Table className={ENTRIES_TABLE} {...tableRowCount(kept.length)}>
       <EntriesHead />
       <TableBody>
-        {rows.map((row) => (
-          <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
-            <TableCell className="first:pl-2">
-              <Button
-                variant="link"
-                aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
-                onClick={() => open(row)}
-                className="static h-auto p-0 font-normal text-muted-foreground tabular-nums hover:no-underline after:absolute after:inset-0 after:content-['']"
-              >
-                {row.date ? formatDay(row.date, false) : ""}
-              </Button>
-            </TableCell>
-            <TableCell className="max-w-0">
-              <span className="block truncate">{row.who}</span>
-              {row.category ? <span className={cn("truncate text-xs leading-4 text-muted-foreground", NARROW_ONLY)}>{row.category}</span> : null}
-            </TableCell>
-            <TableCell className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>{row.category}</TableCell>
-            <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>
-              {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00", on two lines where it must. */}
-              {rowMoney(row)}
-            </TableCell>
-            <TableCell className="last:pr-2 text-end">
-              {row.receipt ? (
-                <Button variant="ghost" size="icon-xs" aria-label="Open receipt" className="relative z-10 text-muted-foreground" onClick={() => withToast(() => openReceipt(env, workspaceId, read, row.receipt))}>
-                  <Paperclip />
-                </Button>
-              ) : null}
-            </TableCell>
-          </TableRow>
-        ))}
+        {/* Past 80 entries only the rows near the screen are mounted (work/windowed.tsx). */}
+        <WindowedTableRows count={kept.length} rowHeight={36} getKey={(index) => keyOfRow(kept[index]!)} render={(index, place) => <EntryRow key={keyOfRow(kept[index]!)} row={kept[index]!} place={place} onReceipt={onReceipt} />} />
       </TableBody>
     </Table>
   );
 }
+
+const keyOfRow = (row: LedgerRow): string => `${row.row}:${sigOf(row)}`;
+const openRow = (row: LedgerRow): void => set({ dialog: { kind: "row", row } });
+
+/** One entry, drawn again only when its row changed. */
+const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: LedgerRow; place: TableRowPlace; onReceipt: (receipt: NonNullable<LedgerRow["receipt"]>) => void }) {
+  return (
+    <TableRow {...place} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
+      <TableCell className="first:pl-2">
+        <Button
+          variant="link"
+          aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
+          onClick={() => openRow(row)}
+          className="static h-auto p-0 font-normal text-muted-foreground tabular-nums hover:no-underline after:absolute after:inset-0 after:content-['']"
+        >
+          {row.date ? formatDay(row.date, false) : ""}
+        </Button>
+      </TableCell>
+      <TableCell className="max-w-0">
+        <span className="block truncate">{row.who}</span>
+        {row.category ? <span className={cn("truncate text-xs leading-4 text-muted-foreground", NARROW_ONLY)}>{row.category}</span> : null}
+      </TableCell>
+      <TableCell className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>{row.category}</TableCell>
+      <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>
+        {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00", on two lines where it must. */}
+        {rowMoney(row)}
+      </TableCell>
+      <TableCell className="last:pr-2 text-end">
+        {row.receipt ? (
+          <Button variant="ghost" size="icon-xs" aria-label="Open receipt" className="relative z-10 text-muted-foreground" onClick={() => onReceipt(row.receipt!)}>
+            <Paperclip />
+          </Button>
+        ) : null}
+      </TableCell>
+    </TableRow>
+  );
+});
 
 // ── states ───────────────────────────────────────────────────────────
 

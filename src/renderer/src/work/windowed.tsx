@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { VirtualRows } from "../chrome/railVirtualRows";
 
 /**
@@ -77,6 +78,79 @@ export function WindowedRows({
     </div>
   );
 }
+
+/** What a windowed table row carries: its place among the table's rows, and the ref that measures it. */
+export type TableRowPlace = { "aria-rowindex"?: number; "data-index"?: number; ref?: (node: HTMLTableRowElement | null) => void };
+
+const NO_ROW_PLACE: TableRowPlace = {};
+
+/** A row's height from the ResizeObserver alone, as the rail's list measures (chrome/railVirtualRows.tsx): a row that
+ *  mounts keeps its estimate until the observer reports, rather than reading a rect and forcing a layout. */
+const measureTableRow: VirtualizerOptions<HTMLElement, HTMLTableRowElement>["measureElement"] = (node, entry, instance) => {
+  if (entry) return measureElement(node, entry, instance);
+  const index = instance.indexFromElement(node);
+  return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
+};
+
+/**
+ * A table's body rows, windowed past PLAIN_MOST as `WindowedRows` windows a list, for a table that must stay a table:
+ * the rows near the screen between two spacer rows (hidden from a screen reader, absent at zero height), each row
+ * saying its place (`aria-rowindex`, the header row being 1; the table says `aria-rowcount`, `tableRowCount`).
+ */
+export function WindowedTableRows({
+  count,
+  rowHeight,
+  getKey,
+  render,
+}: {
+  count: number;
+  rowHeight: number;
+  getKey: (index: number) => string;
+  /** One `<tr>`; `place` goes on it while the table is windowed (its ref measures the row's true height). */
+  render: (index: number, place: TableRowPlace) => ReactNode;
+}) {
+  const windowed = count > PLAIN_MOST;
+  const [anchor, setAnchor] = useState<HTMLTableRowElement | null>(null);
+  const [frame, setFrame] = useState<{ scroller: HTMLElement; margin: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const scroller = scrollParentOf(anchor);
+    if (!scroller) return;
+    setFrame({ scroller, margin: anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop });
+  }, [anchor]);
+  const virtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
+    count: windowed ? count : 0,
+    getScrollElement: () => frame?.scroller ?? null,
+    scrollMargin: frame?.margin ?? 0,
+    estimateSize: () => rowHeight,
+    getItemKey: getKey,
+    overscan: 4,
+    measureElement: measureTableRow,
+  });
+  // One place object a row for as long as the count stands: a memoised row is handed the same one each render.
+  const measure = virtualizer.measureElement;
+  const places = useMemo(() => new Map<number, TableRowPlace>(), [count, measure]);
+  const placeOf = (index: number): TableRowPlace => {
+    let place = places.get(index);
+    if (!place) places.set(index, (place = { "aria-rowindex": index + 2, "data-index": index, ref: measure }));
+    return place;
+  };
+  if (!windowed) return <>{Array.from({ length: count }, (_, index) => render(index, NO_ROW_PLACE))}</>;
+  const items = frame ? virtualizer.getVirtualItems() : [];
+  const margin = frame?.margin ?? 0;
+  const top = items.length ? items[0]!.start - margin : 0;
+  const bottom = items.length ? virtualizer.getTotalSize() - (items[items.length - 1]!.end - margin) : count * rowHeight;
+  return (
+    <>
+      <tr ref={setAnchor} aria-hidden style={{ height: top }} />
+      {items.map((item) => render(item.index, placeOf(item.index)))}
+      {bottom > 0 ? <tr aria-hidden style={{ height: bottom }} /> : null}
+    </>
+  );
+}
+
+/** The table's `aria-rowcount` while its body is windowed (the header row counts), else nothing. */
+export const tableRowCount = (count: number): { "aria-rowcount"?: number } => (count > PLAIN_MOST ? { "aria-rowcount": count + 1 } : {});
 
 /**
  * A list's rows, each the same object as before while it holds what it held (its JSON): a push that answers the whole
