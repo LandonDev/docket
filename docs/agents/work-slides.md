@@ -1804,7 +1804,11 @@ notes as they are now, the other save kept in the deck's versions. While
 his notes wait or travel past 600 ms the save line says saving. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
 "Drafts survive a crash"), so a crash in the pause offers them, with
-Restore, the next time the deck opens; each draft is let go only by its own
+Restore, the next time the deck opens. Notes as long as the outline carries
+(20,000 characters, the deck tool's `TEXT_CAP`, `NOTES_SHOWN_MAX`) may be cut,
+so they are words he cannot type in, with one muted "Too long to edit here"
+(`notesCut`), and the deck tool refuses a `notes` edit over notes longer than
+that, so a key never saves them cut; each draft is let go only by its own
 send's answer, so an earlier send landing never drops the words of a later
 one still waiting or on its way. A slide an agent's
 suggestion changes, and a deck he cannot edit, draw the notes as words (a

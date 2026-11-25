@@ -3,6 +3,11 @@ import type { DeckSlide } from "@shared/contract-work-slides";
 import { Textarea } from "../../../components/ui/textarea";
 import type { HandSession } from "./session";
 
+/** The most of a slide's notes the deck's outline carries (the deck tool's `TEXT_CAP`): notes this long may be cut. */
+export const NOTES_SHOWN_MAX = 20_000;
+/** Notes the outline may have cut: words he cannot type in, so a key never saves them cut (the host refuses it too). */
+export const notesCut = (slide: Pick<DeckSlide, "notes">): boolean => slide.notes.length >= NOTES_SHOWN_MAX;
+
 /**
  * The slide's speaker notes as a field he types in (docs/DESIGN.md "The slide editor"), where he can edit the deck
  * by hand: plain words under a 12px "Notes", in the notes' own 14/22, kept as the box's words are (a 2 s pause,

@@ -238,6 +238,15 @@ describe("notes he types", () => {
     expect(document.activeElement).toBe(layer);
   });
 
+  it("too long for the outline to carry whole are words he cannot type in, said once, so a key never saves them cut", async () => {
+    const long = "x".repeat(20_000);
+    await t.stage(handView({ slides: [slide(3, { number: 1, page: 1, notes: long, shapes: [TITLE] }), slide(5, { number: 2, page: 2 })] }));
+    await t.found("[data-slides-stage]");
+    expect(document.querySelector("[data-slide-notes-field]")).toBeNull();
+    expect(document.querySelector("[data-slide-notes] p")!.textContent).toBe(long);
+    expect(document.querySelector("[data-slide-notes]")!.textContent).toContain("Too long to edit here");
+  });
+
   it("are read only where his hand cannot change the slide: a deck he cannot edit draws them as words, and none when there are none", async () => {
     await t.stage(handView({ hand: undefined, slides: [slide(3, { number: 1, page: 1, notes: "Say hello", shapes: [TITLE] }), slide(5, { number: 2, page: 2 })] }));
     expect(document.querySelector("[data-slide-notes-field]")).toBeNull();

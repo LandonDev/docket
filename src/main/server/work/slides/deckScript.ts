@@ -992,6 +992,9 @@ def op_notes(prs, op):
     tf = slide.notes_slide.notes_text_frame
     if tf is None:
         raise Fail('the notes page of slide %d has no place for words' % op['slide'])
+    # Notes longer than the outline carries were read cut (text_of): words sent over them would drop their tail.
+    if len('\n'.join(p.text for p in tf.paragraphs)) > TEXT_CAP:
+        raise Fail('the notes of slide %d are longer than %d characters: change them in PowerPoint' % (op['slide'], TEXT_CAP))
     keep_paragraphs(tf, op['text'].split('\n'))
 
 

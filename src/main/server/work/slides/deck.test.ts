@@ -282,6 +282,15 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
     expect(xml).toMatch(/<a:p><a:pPr lvl="1"><a:buChar char="•"\/><\/a:pPr><a:r><a:rPr lang="en-US" i="1" dirty="0"\/><a:t>Thank them all<\/a:t><\/a:r><\/a:p>/)
   })
 
+  it('notes: refuses an edit of notes longer than the outline carries, so their cut tail is never written over', async () => {
+    const pptx = new PptxGenJS()
+    pptx.addSlide().addNotes('x'.repeat(20_001))
+    const input = file((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
+    const [first] = (await inspect(input)).slides
+    expect(first.notes).toHaveLength(20_000)
+    await expect(apply(input, [{ op: 'notes', slide: first.id, text: `${first.notes.slice(0, -1)}y` }], true)).rejects.toThrow('longer than 20000 characters')
+  })
+
   it('inspects a 12-slide pptxgenjs deck: its slides, layouts, table and chart', async () => {
     const d = await inspect(file(await writeNewDeck({ title: 'Showcase', slides: TWELVE })))
     expect(d.slides).toHaveLength(12)
