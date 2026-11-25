@@ -132,6 +132,7 @@ time:
 | A diff's context steps back by ink, not opacity | `--diff-context-dim: 1`, `--diff-context-strong: var(--muted-foreground)` in `:root` |
 | The Inbox diff reads like the transcript's | `--pr-code-keyword: var(--foreground)`, `--pr-code-type: var(--muted-foreground)` in `:root` |
 | A slide sits on the stage ground | `--slide-stage: var(--stage)`, `--slide-stage-inset: 16px` in `:root` |
+| An enabled Undo reads apart from a disabled Redo in the format row | `--control-off: 0.3` in `:root` (work-kit's off step, Pin B), then drop it from light's block |
 | Mail's date picker shows the chosen day and today; its composer sheet has a shadow; work-kit's corners are rounded | move the `--calendar-*`, `--radius`, `--ring-duration` and `--sheet-shadow` values from light's block to `:root` |
 | Monaco's completion list: the muted row, badge letters at 4.5:1 | drop the `dark ?` arms for the suggest widget in `surfaces/monaco/theme.ts`; copy light's `--editor-symbol-*` values to `:root`; `--editor-keyword-name` to `#cf7b36` |
 | Monaco's line numbers and ghost text are `faint-foreground` | drop the `dark ?` arms for `faint` and `muted` in `surfaces/monaco/theme.ts` |

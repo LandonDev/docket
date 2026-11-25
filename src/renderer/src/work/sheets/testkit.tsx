@@ -249,6 +249,10 @@ export interface FakeGrid extends SheetGrid {
   dataChrome: boolean | undefined;
   /** what the canvas was last told a note's pop-over offers (`noteControls`) */
   noteControls: SheetCanvasProps["noteControls"];
+  /** whether the canvas was asked for its find (`find`, work-kit's from Pin B) */
+  findAsked: boolean | undefined;
+  /** each open of the grid's find (`withReplace`), on a grid made with `find: true` (a kit with Pin B) */
+  findOpened: boolean[];
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
   /** a cell still open in the cell editor: ending it (`commit`) makes it his edit, as the real grid's Return does */
@@ -374,7 +378,7 @@ function rulesOver(held: FakeRules, active: () => string, emit: (id: string, par
   };
 }
 
-export function fakeGrid(options: { selection?: string; rows?: number; columns?: number; commands?: boolean } = {}): FakeGrid {
+export function fakeGrid(options: { selection?: string; rows?: number; columns?: number; commands?: boolean; find?: boolean } = {}): FakeGrid {
   const commandListeners = new Set<(id: string) => void>();
   let live: Live | null = null;
   const listeners = new Set<(m: SheetMutationJson) => void>();
@@ -420,8 +424,10 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     };
   };
 
-  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas(props: SheetCanvasProps) {
+    const { snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection } = props;
     grid.noteControls = noteControls;
+    grid.findAsked = (props as { find?: boolean }).find;
     grid.objectsGiven = { objects, media, onObjects };
     grid.styleKeys = styleKeys;
     grid.filter = filter;
@@ -499,6 +505,8 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         },
         onMutation: (listener: (m: SheetMutationJson) => void) => (listeners.add(listener), () => listeners.delete(listener)),
         focus: () => undefined,
+        // A kit with Pin B hands its find on the handle; one before it has none.
+        ...(options.find ? { find: { available: true, open: (withReplace?: boolean) => void grid.findOpened.push(!!withReplace) } } : {}),
         objects: fakeObjects(objects, (change) => grid.objectsGiven?.onObjects?.(change)),
         // A grid with no tables: the format row's table menu reads it and listens for none.
         tables: { list: () => [], at: () => null, models: () => [], refusal: () => null, add: () => null, set: () => false, problem: () => null, remove: () => false, totals: () => false, nameProblem: () => null, onChange: () => () => undefined },
@@ -589,6 +597,8 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
 
   const grid: FakeGrid = {
     handle: null,
+    findAsked: undefined,
+    findOpened: [],
     applied: [],
     formats: [],
     command: (id) => {

@@ -294,6 +294,9 @@
   --pr-code-type: var(--warning);
   --slide-stage: transparent;
   --slide-stage-inset: 0px;
+  /* A format row's control with nothing to act on (Undo at the end of its history) is at half its ink here, as it was;
+     light takes work-kit's deeper step, where an enabled Undo reads apart from a disabled Redo (work-kit's `--control-off`). */
+  --control-off: 0.5;
   /* The presenter's Now and Next have no edge drawn over their pictures here, as before; in light a white slide on
      the white page takes the picture outline over its layers (show/pictures.tsx). */
   --slide-edge: transparent;
@@ -414,6 +417,7 @@ html.theme-light {
   --pr-code-type: var(--muted-foreground);
   --slide-stage: var(--stage);
   --slide-stage-inset: 16px;
+  --control-off: 0.3;
   --slide-edge: var(--image-outline);
   /* A document's sheet in light: the page itself, with a firmer rule. */
   --page: var(--background);

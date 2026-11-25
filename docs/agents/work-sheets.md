@@ -1624,6 +1624,14 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   A: on the branch `pin-a-formula-commit`, needs a signed release; until the pin moves, the cell editor alone), are
   ended into the queue before a close, quit or reload.
 
+- **Find and Replace in the grid** (work-kit's find bar, Pin B: branch `m9-kit`, needs a signed release). The body
+  asks the canvas for `find` and, where the pinned kit's handle has one (`handle.find`, `kitFind`), answers the `find`
+  work command, so Edit → Find… and ⌘F open the grid's own bar, on a sheet he can only read too; Replace is offered
+  only where he may edit, and writes as any typed edit (one `set-range-values` a cell, Replace all one step of Undo).
+  Before the pin moves the body answers no `find` and ⌘F stays the app's. The same pin brings the Name Box, pointing at
+  cells from the formula bar, and the canvas's `layout` (freeze panes, hide and unhide, tabs dragged into order),
+  which the body does not list yet ("Not built").
+
 - **A book comes in pieces at once, and is kept for a tab shown again**
   (perf M7, sync.ts). `work.sheets.open {first: true}` carries the book's
   first piece (`first`, as `work.sheets.load` answers it at the view's rev,
@@ -2024,6 +2032,13 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
+- Freeze panes, hiding rows and columns, and dragging the sheet tabs into order (work-kit's canvas `layout`, Pin B):
+  the grid makes each as a mutation (`set-frozen`, `set-row-hidden`/`set-col-hidden` and their `-visible`,
+  `set-worksheet-order`), and `writer.ts` already writes `freeze` and `hd` from a snapshot, but no store lists them:
+  the host must say per store what keeps them (a `SHEET_LAYOUT` beside `SHEET_ROW`, held by a matrix test: the service's
+  engine replays each, a cold load shows it, the export holds it), and the patch writer for an opened Excel file writes
+  none of the three yet (`sheetView`'s `pane`, a row's and a column's `hidden`, the workbook's `sheets` order). Until
+  then an opened file stops them as it stops any change it cannot keep.
 - For a copy of another format ("Other formats in"): the line does not say
   whether the copy holds edits not yet saved back; Files shows no count of
   suggestions waiting on such a file (they are kept by the copy's path);

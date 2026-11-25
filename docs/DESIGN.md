@@ -3513,6 +3513,12 @@ set by hand.
   merge that would empty cells asks first, in the app's own confirm. The
   row ends in Preview, as a document's does (the row's way out, its eye
   glyph and word), opening Preview on the format he last used.
+- **Find in the sheet** (work-kit's, with Pin B) is the document's find bar over the grid's top end, 8px down and
+  16px in from its right edge: the same 360px bar, words and keys, with Whole cell in Whole word's place. A match
+  is washed at `find-hit`'s weight on the cells; the one he steps to is selected. Replace is there only where he
+  may edit. The formula bar's first field is the **Name Box**: he types a place (B2:D9, Roster!A1, a name) and
+  Return goes there; one that is not there stays, ringed in `destructive`. While he types a formula in the bar, a
+  press or a drag on the grid puts the range's reference in at the caret.
 - **The sheet's Data** is one menu in the row's data group (232px): Sort
   (A to Z, Z to A on the selection's column, then "Custom sort…"), Filter
   with a check while the sheet has one (⇧⌘L), and under a rule Validation,

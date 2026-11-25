@@ -179,7 +179,9 @@ export function Body(props: Props) {
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row, showFolder);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
-  useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print"), ...(shareTargetOf(props.source, "sheet") ? { share: () => openShare(item.id) } : {}) } : {});
+  // Edit → Find… and ⌘F: the grid's own find bar, where the pinned work-kit has one (`handle.find`, Pin B); before, ⌘F stays the app's.
+  const finder = kitFind(handle);
+  useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print"), ...(shareTargetOf(props.source, "sheet") ? { share: () => openShare(item.id) } : {}), ...(finder ? { find: () => finder.open() } : {}) } : {});
   // What Preview draws: one source for as long as the item shows the same workbook.
   const previewStore = view?.store;
   const previewName = view?.name;
@@ -303,6 +305,8 @@ export function Body(props: Props) {
           onReady={setHandle}
           onSelection={onSelection}
           labels={LABELS}
+          // Find and Replace in the grid, a reader's too (Replace only where he may edit); a kit before Pin B has no such prop.
+          {...KIT_FIND}
           className="min-h-0 min-w-0 flex-1"
         />
         {siding ? (
@@ -333,6 +337,14 @@ const importAsk =
     if (act !== "again") await sync.written();
     return sync.host.imported(act);
   };
+
+/** The grid's find, where the pinned work-kit hands one (Pin B: `handle.find`); null before, or in a grid made without it. */
+function kitFind(handle: SheetHandle | null): { open(withReplace?: boolean): void } | null {
+  const find = (handle as (SheetHandle & { find?: { available: boolean; open(withReplace?: boolean): void } }) | null)?.find;
+  return find?.available ? find : null;
+}
+/** `find` on the canvas: a prop of work-kit's from Pin B; the kit before it takes none. */
+const KIT_FIND = { find: true } as unknown as Record<string, never>;
 
 const LABELS = { failed: "Couldn't draw this sheet." };
 const NO_OBJECTS = { charts: [], pictures: [], warnings: [] };

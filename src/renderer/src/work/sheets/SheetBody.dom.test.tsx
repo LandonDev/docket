@@ -96,7 +96,7 @@ function kinds(): Record<string, CanvasKindDef> {
   return { ...CANVAS, sheet: { ...CANVAS.sheet, chunk: defineChunk("test-sheet", () => module) } };
 }
 
-function open(view: SheetView, options: { selection?: string; item?: CanvasItem; commands?: boolean } = {}) {
+function open(view: SheetView, options: { selection?: string; item?: CanvasItem; commands?: boolean; find?: boolean } = {}) {
   sheetHost = fakeSheetHost(view, BOOK);
   grid = fakeGrid(options);
   host.current = fakeHost([options.item ?? ITEM], host as never);
@@ -1185,6 +1185,23 @@ describe("the sheet kind", () => {
     window.dispatchEvent(new CustomEvent("work:command", { detail: { id: "export" } }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Print…" })).toBeNull());
     expect(screen.getAllByRole("button", { name: "Export" }).length).toBeGreaterThan(0);
+  });
+
+  it("Edit → Find… and ⌘F open the grid's own find bar where the pinned work-kit has one (Pin B), on a sheet he can only read too", async () => {
+    open(sheetView({ store: "package", readOnly: "This file cannot be opened here: a password" }), { find: true });
+    await gridUp();
+    // The canvas is asked for its find, and the body answers find, so the app hands ⌘F and Edit → Find… to it.
+    expect(grid.findAsked).toBe(true);
+    await waitFor(() => expect(document.querySelector("[data-sheet-item]")?.getAttribute("data-editor-answers")?.split(" ")).toContain("find"));
+    window.dispatchEvent(new CustomEvent("work:command", { detail: { id: "find" } }));
+    expect(grid.findOpened).toEqual([false]);
+  });
+
+  it("a work-kit before Pin B has no find: the body does not answer it, so ⌘F stays the app's", async () => {
+    open(sheetView({ store: "package" }));
+    await gridUp();
+    await waitFor(() => expect(document.querySelector("[data-sheet-item]")?.getAttribute("data-editor-answers")?.split(" ")).toContain("print"));
+    expect(document.querySelector("[data-sheet-item]")?.getAttribute("data-editor-answers")?.split(" ")).not.toContain("find");
   });
 
   it("previews a sheet he can only read: the way out reads Back", async () => {
