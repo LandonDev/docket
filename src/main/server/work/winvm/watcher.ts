@@ -34,6 +34,12 @@ export interface WatcherSpec {
    * started on `config`, so a display started for the next run is never touched.
    */
   display?: { pid: number; config: string }
+  /**
+   * The record that the machine was awake when the service stopped (afterStop.ts `AWAKE_AT_STOP`): written first at
+   * the stop signal, before the hibernate, since the server may be gone by then. The keeper reads it once at the next
+   * start and wakes the machine by itself.
+   */
+  awakeRecord?: string
 }
 
 export const HIBERNATE_COMMAND = 'shutdown /h'
@@ -64,7 +70,8 @@ ${w.display ? `  grep -qF ${shq(w.display.config)} /proc/${w.display.pid}/cmdlin
 }
 on_stop() {
   trap '' TERM INT HUP
-  say "stop signal: asking Windows to hibernate"
+${w.awakeRecord ? `  date -u +%FT%TZ > ${shq(w.awakeRecord)} 2>/dev/null && say "noted it was awake at the stop"
+` : ''}  say "stop signal: asking Windows to hibernate"
   ${ssh} </dev/null >/dev/null 2>&1
   for _ in $(seq 1 ${ticks}); do alive || break; sleep 0.25; done
   if alive; then say "QEMU still runs; the stop will cut its power"; exit 1; fi

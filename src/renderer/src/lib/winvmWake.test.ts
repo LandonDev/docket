@@ -20,6 +20,8 @@ describe("the VM's plate in each state", () => {
     expect(plate(at("waking", { step: "Restarting Windows", wakeMs: 13_000, since: 1 }))).toMatchObject({ title: "Restarting Windows", detail: null, spin: true });
     expect(plate(at("waking", { step: "Copying TempCode's helper into Windows", wakeMs: 13_000, since: 14_000 }))).toMatchObject({ title: "Waking the Windows VM", detail: "6 s of about 13" });
     expect(plate(at("asleep", { step: "Going back to Clean" }))).toMatchObject({ title: "Going back to Clean", spin: true });
+    // the keeper's own wake after a restart of the box's service
+    expect(plate(at("waking", { step: "Waking after an update…", since: 14_000 }))).toMatchObject({ title: "Waking after an update…", spin: true });
     expect(plate(at("awake"))).toMatchObject({ title: "Connecting", spin: true });
     expect(wakeCount(undefined, 13_000, 1)).toBeNull();
   });

@@ -73,6 +73,8 @@ export const LIVE_RESIZE_WORDS = {
 
 /** What a call that wakes the machine waits with, and what the state says meanwhile. */
 export const WAKING_WORDS = 'Waking the Windows VM'
+/** The wake the keeper makes by itself after a restart of the box's service, when the machine was awake at the stop. */
+export const WAKING_AFTER_UPDATE_WORDS = 'Waking after an update…'
 
 export interface WinvmState {
   state: WinvmStateName

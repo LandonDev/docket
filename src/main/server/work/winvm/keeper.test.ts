@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
-import { LIVE_RESIZE_WORDS, WAKING_WORDS, type WinvmDetail, type WinvmDevice, type WinvmScreen, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { LIVE_RESIZE_WORDS, WAKING_AFTER_UPDATE_WORDS, WAKING_WORDS, type WinvmDetail, type WinvmDevice, type WinvmScreen, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import type { WinvmPoint } from '@shared/contract-work-winvm'
-import { BEFORE_LIVE_RESIZE, BEFORE_SETUP, DRIVES, HELD, Keeper, median, OWED, RESTARTING_WORDS, SHUTDOWN_REFUSED, WAKES_KEPT, NO_DOOR, NO_LIVE_RESIZE, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type KeeperDisplay, type VmGuest, type VmMachine } from './keeper'
+import { AFTER_STOP_WAKE_MS, BEFORE_LIVE_RESIZE, BEFORE_SETUP, DRIVES, HELD, Keeper, median, OWED, RESTARTING_WORDS, SHUTDOWN_REFUSED, WAKES_KEPT, NO_DOOR, NO_LIVE_RESIZE, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type KeeperDisplay, type VmGuest, type VmMachine } from './keeper'
 import { CURSOR_SCRIPT, IBEAM_PATH, VIRTIO_ADAPTER } from './liveResize'
 import type { PointStore } from './points'
 import { DISALLOWED, NO_RUN_FOLDERS, SETUP_STEPS, TERMINAL_DELEGATION } from './setup'
@@ -187,7 +187,7 @@ class FakeGuest implements VmGuest {
   }
 }
 
-function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean; beforeSleep?: () => Promise<void>; device?: WinvmDevice; liveResize?: boolean } = {}) {
+function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean; beforeSleep?: () => Promise<void>; device?: WinvmDevice; liveResize?: boolean; awakeAtStop?: boolean; held?: boolean } = {}) {
   let token: string | null = o.token === undefined ? 'T'.repeat(64) : o.token
   const machine = new FakeMachine()
   machine.disk = o.disk ?? true
@@ -201,6 +201,9 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
   const pushes: WinvmState[] = []
   let sleepAfter: WinvmSleepAfter = '30m'
   let now = 1_000_000
+  // the watcher's record and his Sleep's hold, as the files afterStop.ts keeps
+  const afterStop = { record: o.awakeAtStop ?? false, held: o.held ?? false, reads: 0 }
+  const logs: string[] = []
   const deps: KeeperDeps = {
     machine,
     guest,
@@ -214,9 +217,16 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     points,
     push: (s) => pushes.push(s),
     pushPoints: (p) => pointPushes.push(p),
-    log: () => {},
+    log: (line) => logs.push(line),
     now: () => now,
     timeouts: { knock: 0, knockEvery: 1 },
+    awakeAtStop: () => {
+      afterStop.reads++
+      const was = afterStop.record
+      afterStop.record = false
+      return was
+    },
+    held: { get: () => afterStop.held, set: (on) => (afterStop.held = on) },
     ...(o.owed ? { owed: o.owed } : {}),
     ...(o.beforeSleep ? { beforeSleep: o.beforeSleep } : {}),
     ...(o.liveResize !== false ? { display } : {})
@@ -233,7 +243,9 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     pointPushes,
     states: () => pushes.map((p) => p.state),
     advance: (ms: number) => (now += ms),
-    token: () => token
+    token: () => token,
+    afterStop,
+    logs
   }
 }
 
@@ -929,5 +941,123 @@ describe("the state's display", () => {
     expect(make().keeper.state().display).toEqual({ device: 'vga', width: 1280, height: 800, scale: 100, fit: true, detail: 'sharp', canResize: false })
     expect(make({ disk: false }).keeper.state().display).toBeUndefined()
     expect(make({ liveResize: false }).keeper.state().display).toBeUndefined()
+  })
+})
+
+describe('after a restart of the service', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('wakes a machine that was awake at the stop, once, 25 s after the start, saying so; the record is read once', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const r = make({ awakeAtStop: true })
+    expect(r.keeper.state().state).toBe('asleep')
+    const done = r.keeper.wakeAfterStop()
+    expect(r.afterStop.record).toBe(false)
+    await vi.advanceTimersByTimeAsync(AFTER_STOP_WAKE_MS - 1)
+    expect(r.machine.starts).toBe(0)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await done).toMatchObject({ state: 'awake', error: null })
+    expect(r.machine.starts).toBe(1)
+    // the usual wake, under its own words throughout: the service copied in after an update says no other step
+    expect(r.guest.log).toEqual(['ready', 'install', 'start-service', 'open-door'])
+    expect(r.pushes.filter((p) => p.state === 'waking').map((p) => p.step)).toEqual([WAKING_AFTER_UPDATE_WORDS])
+    expect(WAKING_AFTER_UPDATE_WORDS).toBe('Waking after an update…')
+    // a second start of Work finds no record
+    expect(await r.keeper.wakeAfterStop(0)).toBeNull()
+    expect(r.afterStop.reads).toBe(2)
+  })
+
+  it('leaves it asleep with no record: a machine asleep at the stop stays asleep', async () => {
+    const r = make()
+    expect(await r.keeper.wakeAfterStop(0)).toBeNull()
+    expect(r.machine.starts).toBe(0)
+    expect(r.keeper.state().state).toBe('asleep')
+  })
+
+  it('his Sleep wins: a hold from before the restart keeps it asleep, and his Wake lifts the hold', async () => {
+    const r = make({ awakeAtStop: true, held: true })
+    expect(r.keeper.state()).toMatchObject({ state: 'asleep', heldAsleep: true })
+    expect(await r.keeper.wakeAfterStop(0)).toBeNull()
+    expect(r.machine.starts).toBe(0)
+    await r.keeper.wake()
+    expect(r.afterStop.held).toBe(false)
+  })
+
+  it('his Sleep is kept in the file that outlasts the service; the idle sleep is not', async () => {
+    const r = make()
+    await r.keeper.wake()
+    await r.keeper.sleep()
+    expect(r.afterStop.held).toBe(true)
+    await r.keeper.wake()
+    await r.keeper.sleep('idle')
+    expect(r.afterStop.held).toBe(false)
+  })
+
+  it('his Sleep asked before the timer, or a wake that already ran, leaves it as it is', async () => {
+    const a = make({ awakeAtStop: true })
+    const waiting = a.keeper.wakeAfterStop(0)
+    await a.keeper.sleep()
+    expect(await waiting).toBeNull()
+    expect(a.machine.starts).toBe(0)
+    expect(a.keeper.state().heldAsleep).toBe(true)
+
+    const b = make({ awakeAtStop: true })
+    const later = b.keeper.wakeAfterStop(0)
+    await b.keeper.wake()
+    expect(await later).toBeNull()
+    expect(b.machine.starts).toBe(1)
+  })
+
+  it('a hold left on a machine that runs is from before, and goes', () => {
+    const r = make({ up: true, held: true })
+    expect(r.keeper.state()).toMatchObject({ state: 'awake', heldAsleep: false })
+    expect(r.afterStop.held).toBe(false)
+  })
+
+  it('a failed wake says its cause in the state and is never tried again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const r = make({ awakeAtStop: true })
+    r.machine.start = async () => {
+      r.machine.starts++
+      throw new Error('QEMU did not stay up')
+    }
+    const done = r.keeper.wakeAfterStop()
+    await vi.advanceTimersByTimeAsync(AFTER_STOP_WAKE_MS)
+    expect(await done).toMatchObject({ state: 'asleep', error: 'QEMU did not stay up' })
+    await vi.advanceTimersByTimeAsync(10 * AFTER_STOP_WAKE_MS)
+    expect(r.machine.starts).toBe(1)
+    expect(r.logs.some((l) => l.includes('the wake after the restart failed: QEMU did not stay up'))).toBe(true)
+  })
+
+  it('the idle timer still applies to the machine it woke, and never is never', async () => {
+    const r = make({ awakeAtStop: true })
+    await r.keeper.wakeAfterStop(0)
+    r.advance(29 * 60_000)
+    r.keeper.tick()
+    expect(r.guest.log).not.toContain('hibernate')
+    r.advance(60_000)
+    r.keeper.tick()
+    await r.keeper.sleep('idle')
+    expect(r.guest.log.filter((l) => l === 'hibernate')).toHaveLength(1)
+    expect(r.keeper.state()).toMatchObject({ state: 'asleep', heldAsleep: false })
+
+    const n = make({ awakeAtStop: true })
+    n.keeper.settings('never')
+    await n.keeper.wakeAfterStop(0)
+    n.advance(30 * 3600_000)
+    n.keeper.tick()
+    for (let i = 0; i < 20; i++) await new Promise((done) => setTimeout(done, 0))
+    expect(n.guest.log).not.toContain('hibernate')
+    expect(n.keeper.state().state).toBe('awake')
+  })
+
+  it('Work turned off before the timer: no wake', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const r = make({ awakeAtStop: true })
+    const done = r.keeper.wakeAfterStop()
+    r.keeper.close()
+    expect(await done).toBeNull()
+    await vi.advanceTimersByTimeAsync(AFTER_STOP_WAKE_MS)
+    expect(r.machine.starts).toBe(0)
   })
 })

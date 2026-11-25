@@ -66,6 +66,8 @@ describe("the Windows VM in Settings → Work", () => {
   it("says its state in a few words with the one press that fits", () => {
     expect(winvmRow(at({ state: "none" }))).toEqual({ words: "Not set up", press: "setup", busy: false });
     expect(winvmRow(at({ state: "asleep" }))).toMatchObject({ words: "Asleep", press: "wake" });
+    // the keeper's own wake after a restart of the box's service says so
+    expect(winvmRow(at({ state: "waking", step: "Waking after an update…" }))).toEqual({ words: "Waking after an update…", press: null, busy: true });
     // an answer that is no state or no list of points is a failed read, never drawn (a test's link answered LifeOS's status)
     expect(() => stateOf({ lifeos: { state: "signed-out" }, keys: [] })).toThrow("not the Windows VM's state");
     expect(() => pointsOf({ lifeos: {} })).toThrow("not a list of restore points");

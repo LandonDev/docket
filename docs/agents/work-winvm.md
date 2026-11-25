@@ -20,15 +20,15 @@ The wire is `src/shared/contract-work-winvm.ts`.
 |---|---|
 | `none` | no standing disk, or this host cannot have one (`cannot` says why: not the box, no base image) |
 | `setting-up` | setup runs; `step` names the part ("Making the disk", "Setting Windows up", "Restarting Windows", …) |
-| `asleep` | QEMU is not running: the guest is hibernated, or shut down |
-| `waking` | QEMU starts or resumes, the service is checked and the door knocked; `step` is "Waking the Windows VM" |
+| `asleep` | QEMU is not running: the guest is hibernated, or shut down; `heldAsleep` while his own Sleep holds it, through a restart of the service too |
+| `waking` | QEMU starts or resumes, the service is checked and the door knocked; `step` is "Waking the Windows VM", or "Waking after an update…" for the keeper's own wake after a restart of the service ("After a restart") |
 | `awake` | QEMU runs and the keeper holds the SSH forward to the door |
 | `going-to-sleep` | Windows was asked to hibernate; the keeper waits for QEMU to exit |
 
 One change runs at a time, in the order asked: a wake asked while the machine goes to sleep waits for the
 sleep, then wakes it; two wakes at once start it once. A failure leaves the state that is true (`awake` if
-QEMU still runs, else `asleep` or `none`) with `error` in words. After a box restart the machine is `asleep`
-until its next use. A keeper that starts beside a running QEMU (Work turned off and on) takes it as `awake`
+QEMU still runs, else `asleep` or `none`) with `error` in words. After a restart of the box's service the machine
+is `asleep`, and wakes by itself when it was awake at the stop ("After a restart"). A keeper that starts beside a running QEMU (Work turned off and on) takes it as `awake`
 and opens the door at the next call.
 
 ## Methods and the push
@@ -130,7 +130,7 @@ of tcuser's (`SshGuest.onDesktop`).
 
 ## Wake
 
-At a thread's first call (B5) or his Wake press. The call waits with "Waking the Windows VM".
+At a thread's first call (B5), his Wake press, or by itself after a restart of the service ("After a restart"). The call waits with "Waking the Windows VM".
 
 1. QEMU and swtpm start (`StandingMachine.start`), resuming the hibernated guest, through the rig's own code
    (`machine/`): the clean environment `daemonEnv` gives and `sg kvm`, so the process guard's orphan sweep
@@ -368,7 +368,7 @@ right after it. It happens:
 
 - after the sleep-after setting with no thread's call, no viewer and him not driving (checked every minute);
 - on `work.winvm.sleep`;
-- at a stop of the box's service, by the watcher.
+- at a stop of the box's service, by the watcher; a machine awake then wakes again after the restart ("After a restart").
 
 A machine that stopped by itself (he shut Windows down in a Take over) is noticed within a minute and reads
 `asleep`.
@@ -404,6 +404,31 @@ group (QEMU, swtpm, the watcher and a stand-in for the main process) with SIGTER
 is left 30 s later, as systemd does; QEMU must exit before that, and the guest must come back with the same
 Notepad process, its text and the same boot time. `scripts/e2e-winvm-keeper.ts` on the standing instance
 runs setup, the policies' checks, sleep and wake.
+
+## After a restart
+
+A deploy or a restart of the box's service hibernates the machine (the watcher, above). Before 2026-11-25 it then
+slept until a thread or his press woke it, so after every deploy the VM he had left awake was asleep. Now:
+
+1. **The record.** The watcher writes `run/awake-at-stop` (the time) first thing at the stop signal, before it asks
+   Windows to hibernate: the server may be gone by then, and the watcher runs only while QEMU does, so the file
+   means "awake at the stop". QEMU exiting on its own (the keeper's sleep, a shutdown) writes nothing.
+2. **His Sleep.** A person's Sleep is kept as `<userData>/winvm/held-asleep` (afterStop.ts `heldMark`), written as
+   his Sleep begins and gone at the next wake or an idle sleep, so it outlasts the restart: a keeper that starts on a
+   held machine reads `heldAsleep` and never wakes it. A hold found beside a running machine is from before and goes.
+3. **The wake.** Work's start reads the record once and removes it (`takeAwakeAtStop`), and when it said awake and
+   the machine sleeps and is not held, `Keeper.wakeAfterStop` waits 25 s (`AFTER_STOP_WAKE_MS`, so the service's
+   first answers come first), then makes the usual wake, as a thread's would, under QEMU's lowered priority (the
+   `vm` kind, childPriority.ts). Its step is "Waking after an update…" throughout, which the Computers page's plate,
+   Settings → Work and the phone show as they show every step. A Sleep or a wake asked meanwhile, or Work turned off,
+   leaves the machine as that left it.
+4. **A failure** reads as any wake's does: the state that is true with `error` in words. It is not tried again; the
+   next thread's call or his press wakes it as before.
+
+The idle sleep applies from the moment it is awake, so with Sleeps after at 30 minutes and nothing using it, it goes
+back to sleep then; at Never it stays awake. Nothing of the disk, firmware or TPM changes beyond the hibernate and
+resume every wake makes; no restore point is taken or used. keeper.test.ts "after a restart of the service" holds the
+rules over the fakes; watcher.test.ts runs the real watcher under bash and reads its record with `takeAwakeAtStop`.
 
 ## The service on the box
 

@@ -2418,7 +2418,8 @@ for the box:
   inside the 30 s `TimeoutStopSec`; it then keeps the TPM's state. Proven
   on the rig instance by `scripts/e2e-winvm-stop.ts`. No `ExecStop` and no
   stage 85 change is needed for it. A crash still cuts the VM's power.
-- **After a restart** the machine sleeps until its next use.
+- **After a restart** the machine wakes by itself 25 s after the start when it was awake at the stop and his
+  Sleep does not hold it (work-winvm.md "After a restart"); otherwise it sleeps until its next use.
 - **The service it copies in** is the box build's own `tc-computer.exe`
   ("What box-update does with it" below).
 

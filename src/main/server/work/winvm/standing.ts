@@ -7,6 +7,7 @@ import { ADMIN_USER, daemonEnv, rigConfig, rigPaths, scratchMachineRefusal, type
 import { keepLiveTpm, qemuPid, saveTpm, startQemu, startTpm, stopTpm } from './machine/daemons'
 import { qmp, quit, screendump, sendKey } from './machine/qmp'
 import { startWatcher } from './watcher'
+import { AWAKE_AT_STOP } from './afterStop'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
 import type { VmScreen } from './window'
@@ -102,6 +103,7 @@ export class StandingMachine implements VmMachine {
       tpmPidFile: this.p.tpmPid,
       tpmState: this.p.tpmState,
       runTpm: this.p.runTpm,
+      awakeRecord: join(this.p.run, AWAKE_AT_STOP),
       ...(this.screen?.pid ? { display: { pid: this.screen.pid, config: this.screen.config } } : {})
     })
     writeFileSync(join(this.p.run, 'watcher.pid'), `${watcher ?? ''}\n`)

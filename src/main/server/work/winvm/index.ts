@@ -25,6 +25,7 @@ import { personsDesktop } from '../../../headless'
 import { readGuestScale, readGuestScreen, readMachineDevice, writeGuestScreen, writeMachineDevice } from './guestScreen'
 import { VGA_DEFAULT } from './machine/qemu'
 import { ibeamCursor, virtioDriver } from './driver'
+import { heldMark, takeAwakeAtStop } from './afterStop'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -116,6 +117,9 @@ export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoi
     setSleepAfter: (v) => setSleepAfter(ctx.db, v),
     points: machine.points(),
     log: (line) => ctx.log(line),
+    // the watcher's record of a machine awake at the stop, in its run folder; his Sleep's hold beside the token
+    awakeAtStop: () => takeAwakeAtStop(machine.p.run),
+    held: heldMark(join(ctx.dataDir, 'winvm')),
     // the run's machine.json and screen.json (guestScreen.ts), his choice, and what live resize takes from the box
     display: {
       device: () => readMachineDevice(machine.p.run),
@@ -292,6 +296,8 @@ export const winvm: WorkModule = {
     configureVmCopy(vmCopied)
     // a keeper started beside a running machine takes it as awake, and says so to nobody else
     told(k.state())
+    // awake when the service stopped (a deploy, a restart): woken once by itself, a little after the start
+    void k.wakeAfterStop()
     return () => {
       configureVmClipboard(null)
       configureVmPaste(null)

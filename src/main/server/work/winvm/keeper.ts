@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
-import { LIVE_RESIZE_WORDS, WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmDetail, type WinvmDevice, type WinvmDisplay, type WinvmPoint, type WinvmScreen, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
+import { LIVE_RESIZE_WORDS, WAKING_AFTER_UPDATE_WORDS, WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmDetail, type WinvmDevice, type WinvmDisplay, type WinvmPoint, type WinvmScreen, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
 import type { PointStore } from './points'
 import { psQuote } from './machine/guest'
 import { VGA_DEFAULT } from './machine/qemu'
@@ -106,6 +106,10 @@ export interface KeeperDeps {
   timeouts?: Partial<Timeouts>
   /** live resize (liveResize.ts); a keeper without it offers none */
   display?: KeeperDisplay
+  /** the watcher's record that the machine was awake when the service stopped (afterStop.ts): true once, then gone */
+  awakeAtStop?(): boolean
+  /** his Sleep's hold, kept across a restart of the service (afterStop.ts `heldMark`) */
+  held?: { get(): boolean; set(on: boolean): void }
 }
 
 /** The guest's display, as the box keeps it beside the run (guestScreen.ts), and what live resize needs of the box. */
@@ -157,6 +161,8 @@ export const SHUTDOWN_REFUSED = 'An app in Windows kept it from restarting. Save
 export const BEFORE_LIVE_RESIZE = 'Before live resize'
 /** How many wakes the usual wake is the median of. */
 export const WAKES_KEPT = 5
+/** How long after the service's start its own wake waits: its first answers come first. */
+export const AFTER_STOP_WAKE_MS = 25_000
 /** The longest a sleep waits for its picture. */
 const STILL_WAIT_MS = 3000
 
@@ -189,6 +195,8 @@ export class Keeper {
   private heldAsleep = false
   /** on virtio, whether this keeper has seen the hardware pointer on: a service stopped before step 6 is finished at the next wake */
   private cursorChecked = false
+  /** the wake after a restart, until it begins */
+  private afterStop: { timer: ReturnType<typeof setTimeout>; done: (state: null) => void } | null = null
   private readonly t: Timeouts
 
   constructor(private readonly d: KeeperDeps) {
@@ -197,6 +205,16 @@ export class Keeper {
     this.lastUse = this.now()
     // after a box restart the machine sleeps until its next use; a keeper started beside a running one takes it as awake
     this.name = d.machine.cannot() || !d.machine.hasDisk() ? 'none' : d.machine.running() ? 'awake' : 'asleep'
+    // his Sleep holds it across a restart of the service; a hold on a machine that is not asleep is from before
+    this.heldAsleep = this.name === 'asleep' && (d.held?.get() ?? false)
+    if (!this.heldAsleep) d.held?.set(false)
+  }
+
+  /** His Sleep's hold, here and in the file that outlasts the service. */
+  private hold(on: boolean): void {
+    if (this.heldAsleep === on) return
+    this.heldAsleep = on
+    this.d.held?.set(on)
   }
 
   private now(): number {
@@ -309,19 +327,53 @@ export class Keeper {
 
   /** Wakes the machine (a thread's first call, his Wake press) and opens the door. Resolves once it is awake. */
   wake(): Promise<WinvmState> {
+    return this.wakeAs(WAKING_WORDS)
+  }
+
+  /**
+   * After a restart of the box's service: when the watcher's record says the machine was awake at the stop, it is
+   * woken once, `delayMs` after the start, through the usual wake and with its own words. His Sleep wins: a machine
+   * held asleep stays asleep, and so does one a person or a thread moved meanwhile. A failed wake says its cause in
+   * the state, as any wake's does, and is not tried again. Resolves with the state once it is done; null when there
+   * was nothing to wake.
+   */
+  wakeAfterStop(delayMs = AFTER_STOP_WAKE_MS): Promise<WinvmState | null> {
+    if (!this.d.awakeAtStop?.()) return Promise.resolve(null)
+    if (this.name !== 'asleep' || this.heldAsleep) {
+      this.d.log(`winvm: awake at the stop, but now ${this.heldAsleep ? 'held asleep by his Sleep' : this.name}: no wake`)
+      return Promise.resolve(null)
+    }
+    this.d.log(`winvm: awake at the stop; waking it in ${Math.round(delayMs / 1000)} s`)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.afterStop = null
+        if (this.closedDown || this.name !== 'asleep' || this.heldAsleep) return resolve(null)
+        this.wakeAs(WAKING_AFTER_UPDATE_WORDS, true).then(resolve, (e) => {
+          this.d.log(`winvm: the wake after the restart failed: ${words(e)}`)
+          resolve(this.state())
+        })
+      }, delayMs)
+      timer.unref?.()
+      this.afterStop = { timer, done: resolve }
+    })
+  }
+
+  /** `own`: the keeper's own wake, which yields to his Sleep asked before it ran. */
+  private wakeAs(says: string, own = false): Promise<WinvmState> {
     this.touch()
     if (this.name === 'awake' && this.link && this.pending === 0) return Promise.resolve(this.state())
     return this.serial(async () => {
       this.touch()
       if (this.name === 'awake' && this.link) return this.state()
+      if (own && (this.heldAsleep || this.closedDown)) return this.state()
       const cannot = this.d.machine.cannot()
       if (cannot) throw new Error(cannot)
       if (!this.d.machine.hasDisk()) throw new Error(NOT_SET_UP)
-      this.heldAsleep = false
+      this.hold(false)
       const began = this.now()
       // only a wake from sleep is a wake to count: a door opened again on a running machine says nothing of one
       const cold = !this.d.machine.running()
-      this.set('waking', WAKING_WORDS, null)
+      this.set('waking', says, null)
       try {
         if (cold) await this.d.machine.start()
         await this.d.guest.ready(this.t.ready)
@@ -350,7 +402,7 @@ export class Keeper {
   /** Hibernates the guest. Resolves once QEMU has exited and the TPM is kept. `by`: a person's press holds it asleep until his Wake; the idle sleep does not. */
   sleep(by: 'person' | 'idle' = 'person'): Promise<WinvmState> {
     return this.serial(async () => {
-      this.heldAsleep = by === 'person'
+      this.hold(by === 'person')
       return this.hibernate()
     })
   }
@@ -717,6 +769,11 @@ export class Keeper {
   /** Work turned off or the host closes: the forward goes; the machine is left as it is (the watcher covers a stop). */
   close(): void {
     this.closedDown = true
+    if (this.afterStop) {
+      clearTimeout(this.afterStop.timer)
+      this.afterStop.done(null)
+    }
+    this.afterStop = null
     this.closeLink()
   }
 
@@ -756,7 +813,8 @@ export class Keeper {
     if (!exe) throw new Error(NO_SERVICE)
     const want = this.d.hashFile(exe)
     if ((await this.d.guest.serviceHash()) !== want) {
-      if (this.name === 'waking') this.set('waking', "Copying TempCode's helper into Windows")
+      // the wake after an update keeps its own words throughout
+      if (this.name === 'waking' && this.step === WAKING_WORDS) this.set('waking', "Copying TempCode's helper into Windows")
       this.d.log(`winvm: copied the service in (version ${await this.d.guest.installService(exe)})`)
     }
     await this.d.guest.startService()
