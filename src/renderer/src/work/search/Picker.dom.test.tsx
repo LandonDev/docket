@@ -360,7 +360,7 @@ describe("Work search", () => {
       act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
       await mount();
       await type("budget");
-      await land(asks.length - 1, answer([group("mail", "Mail", [hit("lifeos:mailThreads:m1", "mail")]), group("thread", "Threads", [hit("thread:t1", "thread")])]));
+      await land(asks.length - 1, answer([group("mail", "Mail", [hit("lifeos:mailThreads:m1", "mail")], { more: true }), group("thread", "Threads", [hit("thread:t1", "thread")])]));
       const foot = () => document.querySelector("[data-work-search-causes]")?.textContent ?? null;
       const row = (key: string) => list().querySelector<HTMLElement>(`[data-row="hit:${key}"]`)!;
       expect(foot()).toBeNull();
@@ -370,6 +370,8 @@ describe("Work search", () => {
       expect(document.querySelector("[data-work-search-causes] button")).toBeNull();
       // The mail stays in its place, held: never lit, never taken; the highlight goes to the first row that opens.
       expect(row("lifeos:mailThreads:m1").getAttribute("aria-disabled")).toBe("true");
+      // All of a kind LifeOS alone feeds is held with them.
+      expect(list().querySelector('[data-row="all:mail"]')!.getAttribute("aria-disabled")).toBe("true");
       expect(selected()).toBe("hit:thread:t1");
       fireEvent.click(row("lifeos:mailThreads:m1"));
       expect(opened.hits).toEqual([]);

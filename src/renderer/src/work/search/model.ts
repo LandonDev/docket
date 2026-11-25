@@ -192,7 +192,7 @@ export const fromLifeos = (hit: SearchHit): boolean => hit.key.startsWith("lifeo
  * LifeOS as its host's live status says it now (Picker.tsx, `useLiveDown`): `words` in the place of the line the
  * search was answered with, or one line of its own when the search reached LifeOS and the host has lost it since; none
  * while the search is asked again. While `words` stand, every row only LifeOS opens is held: drawn, never taken. The
- * same model when nothing changes.
+ * same model when nothing changes. "All mail for …" of a kind only LifeOS feeds is held with them.
  */
 export function withLifeosLine(model: SearchModel, words: string | null): SearchModel {
   const at = model.quiet.findIndex((q) => q.lifeos || q.key === "lifeos");
@@ -281,7 +281,8 @@ export type Row =
   /** `held`: a row only LifeOS opens while the host asked for it has lost it, drawn and never taken */
   | { type: "hit"; id: string; hit: SearchHit; host: string; held?: true }
   /** "All mail for …": Return narrows the picker to the kind */
-  | { type: "all"; id: string; kind: string; label: string }
+  /** `held`: all of a kind only LifeOS feeds while the host asked for it has lost it */
+  | { type: "all"; id: string; kind: string; label: string; held?: true }
   /** "Search all jobs", under nothing found in one job */
   | { type: "widen"; id: string; label: string }
   /** `cause`: what could not be searched, said at the list's foot outside its scroller, so a long list never hides it */
@@ -289,7 +290,7 @@ export type Row =
 
 /** A row Return can take. */
 export type Option = Extract<Row, { type: "hit" | "all" | "widen" }>;
-export const isOption = (row: Row): row is Option => (row.type === "hit" && !row.held) || row.type === "all" || row.type === "widen";
+export const isOption = (row: Row): row is Option => ((row.type === "hit" || row.type === "all") && !row.held) || row.type === "widen";
 
 /** One kind's rows, every one a source holds, in the order they stand. */
 interface Group {
@@ -397,7 +398,7 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean; /** the job a 
     if (!model.kind || kind === RECENT_KIND) rows.push({ type: "heading", id: `heading:${kind}`, label: group.label });
     for (const { hit, host } of shownHits) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host, ...(model.lifeosHeld && fromLifeos(hit) ? { held: true as const } : {}) });
     hits += shownHits.length;
-    if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, group.label)} for “${model.text}”` });
+    if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, group.label)} for “${model.text}”`, ...(model.lifeosHeld && LIFEOS_KINDS.has(kind) ? { held: true as const } : {}) });
   }
   // "Nothing for …" is true only of a search that ran: every source asked (none is, under two characters), and at least one answering.
   if (hits === 0 && asksNetwork(model.text) && !busy(model) && model.searched) {

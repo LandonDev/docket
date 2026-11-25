@@ -580,7 +580,7 @@ export function Results({
             const highlighted = row.id === active;
             const option = options.indexOf(row);
             // A row only LifeOS opens while its host has lost it: drawn as a menu's disabled row, never lit or taken; the foot says why.
-            const held = row.type === "hit" && !!row.held;
+            const held = (row.type === "hit" || row.type === "all") && !!row.held;
             const common = {
               ref: highlighted ? activeRef : undefined,
               id: optionId(row.id),
@@ -593,7 +593,7 @@ export function Results({
             if (row.type !== "hit") {
               return (
                 // A quiet row at rest; the one Return will take reads as any highlighted row does.
-                <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, !highlighted && "text-muted-foreground")}>
+                <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, !highlighted && "text-muted-foreground", held && "pointer-events-none opacity-50")}>
                   {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
                   {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
                   <span className="min-w-0 truncate">{row.label}</span>
