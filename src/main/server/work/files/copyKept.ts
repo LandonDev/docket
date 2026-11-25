@@ -62,30 +62,46 @@ export function copyFolderTaken(db: DatabaseSync, workspaceId: string, dir: stri
 
 /**
  * Whether a copy holds changes that have not reached its file: its computer did not answer, a send is under way or
- * was refused, the file changed there, its tab closed before it was sent, or its bytes are not what the file holds.
+ * was refused, the file changed there, its tab closed before it was sent, a write counted is not yet held there, or
+ * its bytes are not what the file holds. A copy that is there and cannot be read waits: only a copy that is gone
+ * (ENOENT) has nothing to keep.
  */
-export function copyWaits(r: { state: string; closed: number; copy: string; sent: string }): boolean {
-  if (r.state !== 'ok' || r.closed) return true
+export function copyWaits(r: { state: string; closed: number; copy: string; sent: string; held?: number; writes?: number }): boolean {
+  if (r.state !== 'ok' || r.closed || (r.held ?? 0) < (r.writes ?? 0)) return true
   try {
     return createHash('sha256').update(readFileSync(r.copy)).digest('hex') !== r.sent
-  } catch {
-    return false
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ENOENT'
   }
 }
 
+type CopyCheck = { id: string; state: string; closed: number; copy: string; sent: string; dir: string; held: number; writes: number }
+
 /**
- * Copy Teams files turned off, or the workspace gone: every copy record of it with nothing waiting goes. One whose
- * changes have not reached their file stays with its copy, and is sent and let go as any other: only his Discard
- * drops it. Answers the folders kept.
+ * Copy Teams files turned off: every copy record of the workspace with nothing waiting goes. Each is judged under
+ * `settled` (the copy's writer lock once its editor's work has ended: office/files/handle.ts), from its row as it is
+ * then, so a write under way as the setting went off lands first and keeps it. One whose changes have not reached
+ * their file stays with its copy, and is sent and let go as any other: only his Discard drops it. Answers the folders
+ * kept.
  */
-export function dropCopyRecords(db: DatabaseSync, workspaceId: string): Set<string> {
+export async function dropCopyRecords(db: DatabaseSync, workspaceId: string, settled: (copy: string, judge: () => void) => Promise<void> = async (_copy, judge) => judge()): Promise<Set<string>> {
   const kept = new Set<string>()
+  const SELECT = `SELECT id, state, closed, copy, sent, dir, held, writes FROM work_files_copies`
+  let rows: CopyCheck[]
   try {
-    const rows = db.prepare(`SELECT id, state, closed, copy, sent, dir FROM work_files_copies WHERE workspace_id = ?`).all(workspaceId) as unknown as { id: string; state: string; closed: number; copy: string; sent: string; dir: string }[]
-    for (const r of rows) {
+    rows = db.prepare(`${SELECT} WHERE workspace_id = ?`).all(workspaceId) as unknown as CopyCheck[]
+  } catch {
+    return kept
+  }
+  for (const was of rows) {
+    await settled(was.copy, () => {
+      const r = db.prepare(`${SELECT} WHERE id = ?`).get(was.id) as CopyCheck | undefined
+      if (!r) return
       if (copyWaits(r)) kept.add(r.dir)
       else db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
-    }
+    })
+  }
+  try {
     // A copy that saves nowhere stays while it holds his edits (copyStays.ts); one with none goes.
     for (const r of db.prepare(`SELECT * FROM work_files_stays WHERE workspace_id = ?`).all(workspaceId) as unknown as StayRow[]) {
       if (stayEdited(r)) kept.add(r.dir)

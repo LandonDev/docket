@@ -2391,7 +2391,11 @@ over a file that changed there.
     computer answers (`settleCopies`, `retryWaiting`).
   - Turning Copy Teams files off drops every copy with nothing waiting; a copy whose changes have not reached their
     file stays with its record and is sent and let go as any other (`dropCopyRecords` answers the folders kept,
-    `dropCopies` leaves them).
+    `dropCopies` leaves them). Each copy is judged under its writer lock (`withFileLocks` on its own key, the lock
+    every save of it takes) once its editor's work has ended (`workDone`), from its row as it is then: a write under
+    way as the switch went off lands first and keeps it. Waiting includes a write counted and not yet held there
+    (`held < writes`), and a copy that is there and cannot be read (any failure but ENOENT): a failed read is never
+    clean. Edits still only in the window, not yet written to the copy, are not seen from here.
   - Home's Waiting on you lists a closed tab's copy whose changes its file refused, or that changed or went there
     (`unsentCopies`, files/waiting.ts; the row's `unsent`, "Not saved"), to a caller that presses for him alone
     (`pressesFor`). Its press opens the file as any row does, which opens the kept copy again (`copyWaits`) with its

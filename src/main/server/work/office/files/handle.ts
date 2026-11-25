@@ -3,6 +3,7 @@ import { createHash, randomUUID, type Hash } from 'node:crypto'
 import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
+import { refKey } from '@shared/work/files'
 import { FILES_PIECE_MAX, teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasSource, type Handled } from '@shared/work'
 import type { ClientRequest } from '@shared/contract'
@@ -13,7 +14,8 @@ import type { Caller, WorkCtx } from '../../modules'
 import { copyKeptIn, dropCopyRecords } from '../../files/copyKept'
 import { importFolderOf } from '../../files/imports'
 import { workspaceHere } from '../../files/policy'
-import { readPiece, readWhole } from '../../files/save'
+import { readPiece, readWhole, workDone } from '../../files/save'
+import { withFileLocks } from '../../files/write'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
 import { driveOf } from './reach'
@@ -669,8 +671,16 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.office.filesCopySet':
       setCopyAllowed(ctx.db, p.workspaceId as string, p.on as boolean)
       // Turned off, the copies its threads hold go too, and with the Files tabs' copies what Files kept of them; a Files
-      // tab's copy whose changes have not reached its file stays until they do: only his Discard drops one.
-      if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string }, dropCopyRecords(ctx.db, p.workspaceId as string))
+      // tab's copy whose changes have not reached its file stays until they do: only his Discard drops one. Each is
+      // judged under its writer lock once its editor's work has ended, so a write under way lands first and is seen.
+      if (!p.on) {
+        const settled = (copy: string, judge: () => void): Promise<void> =>
+          withFileLocks([refKey({ at: 'file', host: ctx.host, path: copy })], async () => {
+            await workDone(copy)
+            judge()
+          })
+        dropCopies(ctx, { workspaceId: p.workspaceId as string }, await dropCopyRecords(ctx.db, p.workspaceId as string, settled))
+      }
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesThreads':
       return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource, (path) => by.kind !== 'remote' || !!by.peer || ctx.reaches(by, path)) })

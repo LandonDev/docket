@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { shiftMtime } from '../mtime.testkit'
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -803,6 +803,41 @@ describe('a copy with changes that have not reached its file', () => {
     macUp = true
     await sendBack(box.ctx, copyRecord(box.ctx, WS, MAC, waiting.path)!.id)
     expect(readFileSync(waiting.path, 'utf8')).toBe('his edit')
+  })
+
+  it('keeps a copy whose write was under way as Copy Teams files went off: judged under its writer lock once the write landed', async () => {
+    const { path, copy } = await openFar('Roster.xlsx', 'one')
+    macUp = false
+    let land!: () => void
+    // An editor's save of the copy holds its lock; the setting goes off meanwhile.
+    const writing = withFileLocks([refKey({ at: 'file', host: HOST, path: copy })], () =>
+      new Promise<void>((r) => (land = r)).then(() => {
+        writeFileSync(copy, 'his last edit')
+        copySaved(box.ctx, copy)
+      })
+    )
+    const off = officeHandle({ id: '1', method: 'work.office.filesCopySet', params: { workspaceId: WS, on: false } } as never, box.ctx, window, () => null)
+    await new Promise((r) => setTimeout(r, 5))
+    expect(copyRecord(box.ctx, WS, MAC, path)).not.toBeNull()
+    land()
+    await writing
+    await off
+    expect(readFileSync(copy, 'utf8')).toBe('his last edit')
+    expect(copyRecord(box.ctx, WS, MAC, path)).not.toBeNull()
+    macUp = true
+    await sendBack(box.ctx, copyRecord(box.ctx, WS, MAC, path)!.id)
+    expect(readFileSync(path, 'utf8')).toBe('his last edit')
+  })
+
+  it('keeps a copy that is there and cannot be read as Copy Teams files goes off: a failed read is never clean', async () => {
+    const { path, copy } = await openFar('Notes.txt', 'notes')
+    const aside = `${copy}.aside`
+    renameSync(copy, aside)
+    // a read that fails with something other than "not there" (EISDIR here; EIO on a sick disk)
+    mkdirSync(copy)
+    await officeHandle({ id: '1', method: 'work.office.filesCopySet', params: { workspaceId: WS, on: false } } as never, box.ctx, window, () => null)
+    expect(copyRecord(box.ctx, WS, MAC, path)).not.toBeNull()
+    expect(existsSync(aside)).toBe(true)
   })
 })
 
