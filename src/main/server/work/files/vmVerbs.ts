@@ -140,12 +140,40 @@ async function makerBytes(ctx: WorkCtx, kind: Exclude<FileMakeKind, 'folder' | '
 }
 
 /** Rename in the VM: the same folder, his whole new name, never over anything; what hangs on the file follows it. */
-export async function vmRename(ctx: WorkCtx, workspaceId: string, w: VmWhere, name: string, op: string): Promise<FileDone> {
+/**
+ * A held act's thing (or his Undo's), as the act named it: the version it must be (`size:modified:`, a folder's size 0)
+ * and the sentence for one that is not. The box's own look just before the helper's change cannot hold the guest
+ * still, so the version goes with the change (`expect`, which a helper that checks it inside its operation refuses
+ * on), and the helper's answer is proved by it: a thing moved that was not that version (replaced in the seconds
+ * between) is moved back where it was, and the change refused. The press never moves another file.
+ */
+export interface VmBound {
+  version: (i: number) => string | undefined
+  says: (name: string) => string
+}
+
+const guestVersion = (e: GuestEntry): string => `${e.dir ? 0 : e.size}:${e.modified}:`
+
+/** The helper moved `e` from `was` as bound, or it goes back there and the change is refused. */
+async function provedOrBack(ctx: WorkCtx, e: GuestEntry, was: string, expect: string | undefined, says: string, op: string): Promise<void> {
+  if (expect === undefined || guestVersion(e) === expect) return
+  try {
+    if (!sameGuest(e.path, was)) await guestChange('files.move', { path: e.path, dir: dirOf(was), op })
+    if (baseOf(e.path) !== baseOf(was)) await guestChange('files.rename', { path: inDir(dirOf(was), baseOf(e.path)), name: baseOf(was), op: `${op}:name` })
+  } catch (err) {
+    ctx.log(`files: ${baseOf(was)} was not as held and could not be moved back from ${e.path}: ${message(err)}`)
+  }
+  throw new Error(says)
+}
+
+export async function vmRename(ctx: WorkCtx, workspaceId: string, w: VmWhere, name: string, op: string, bound?: VmBound): Promise<FileDone> {
   const dir = dirOf(w.path)
   const to = inDir(dir, name)
   const key = libraryKey(w.library, to)
+  const expect = bound?.version(0)
   const moved = await withFileLocks([w.key, key], async () => {
-    const e = (await guestChange<{ entry: GuestEntry }>('files.rename', { path: w.path, name, op: guestOp(op) })).entry
+    const e = (await guestChange<{ entry: GuestEntry }>('files.rename', { path: w.path, name, op: guestOp(op), ...(expect ? { expect } : {}) })).entry
+    await provedOrBack(ctx, e, w.path, expect, bound?.says(baseOf(w.path)) ?? '', guestOp(`${op}:back`))
     carry(ctx, w, e, key)
     return e
   })
@@ -164,7 +192,7 @@ function carry(ctx: WorkCtx, w: VmWhere, e: GuestEntry, key: string): void {
 }
 
 /** Move inside one place of the VM: each thing one move into the folder; a taken name is that thing's refused row, and the rest still move. */
-export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly VmWhere[], to: VmWhere, op: string, check?: (i: number) => Promise<void>): Promise<FileDone> {
+export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly VmWhere[], to: VmWhere, op: string, check?: (i: number) => Promise<void>, bound?: VmBound): Promise<FileDone> {
   const done: GuestEntry[] = []
   const refused: FileDone['refused'] = []
   const changed = new Set<string>([to.path])
@@ -178,7 +206,9 @@ export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly Vm
         await withFileLocks([w.key, key], async () => {
           // A held act's thing, as the guest finds it now, under its lock: the one before it took its time to move.
           await check?.(i)
-          const e = (await guestChange<{ entry: GuestEntry }>('files.move', { path: w.path, dir: to.path, op: guestOp(op, i) })).entry
+          const expect = bound?.version(i)
+          const e = (await guestChange<{ entry: GuestEntry }>('files.move', { path: w.path, dir: to.path, op: guestOp(op, i), ...(expect ? { expect } : {}) })).entry
+          await provedOrBack(ctx, e, w.path, expect, bound?.says(name) ?? '', guestOp(`${op}:back`, i))
           carry(ctx, w, e, key)
           return e
         })

@@ -296,6 +296,38 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(changes().filter((c) => c.verb === 'files.move')).toHaveLength(1)
     })
 
+    it("never moves or renames a file put in the held one's place between the box's look and the helper's change: it goes back, and the press is refused", async () => {
+      const file = `${GENERAL}\\Plan.txt`
+      const [entry] = (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: [at(file)] })).entries
+      const asHeld = `${entry!.size ?? 0}:${entry!.changed ?? 0}:`
+      const origin = { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: entry!.key, version: asHeld }] }
+      // OneDrive puts another file at that name after the box looked, before the helper's change.
+      let swap = true
+      setVmCall(async (verb, args) => {
+        const a = (args ?? {}) as Record<string, unknown>
+        if (swap && (verb === 'files.move' || verb === 'files.rename') && a.path === file) {
+          swap = false
+          disk.get(file.toLowerCase())!.modified = 7000
+        }
+        return guest(verb, a)
+      })
+      await expect(call('work.files.move', { refs: [at(file)], to: at(`${GENERAL}\\Budgets`), op: op(), asked: true, origin })).resolves.toMatchObject({ entries: [], refused: [{ name: 'Plan.txt', text: 'Plan.txt is not as it was when this was held, so nothing was done.' }] })
+      expect(disk.get(file.toLowerCase())).toMatchObject({ modified: 7000 })
+      expect(disk.has(`${GENERAL}\\Budgets\\Plan.txt`.toLowerCase())).toBe(false)
+      // The held version goes with the change, for a helper that checks it inside its own operation.
+      expect(changes().find((c) => c.verb === 'files.move')?.args).toMatchObject({ expect: asHeld })
+      // A rename the same way: the file swapped after the box's look goes back to its own name.
+      const [now] = (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: [at(file)] })).entries
+      setVmCall(async (verb, args) => {
+        const a = (args ?? {}) as Record<string, unknown>
+        if (verb === 'files.rename' && a.path === file) disk.get(file.toLowerCase())!.modified = 8000
+        return guest(verb, a)
+      })
+      await expect(call('work.files.rename', { ref: at(file), name: 'Plan v2.txt', op: op(), origin: { ...origin, things: [{ key: now!.key, version: `${now!.size ?? 0}:${now!.changed ?? 0}:` }] } })).rejects.toThrow('Plan.txt is not as it was when this was held')
+      expect(disk.get(file.toLowerCase())).toMatchObject({ modified: 8000 })
+      expect(disk.has(`${GENERAL}\\Plan v2.txt`.toLowerCase())).toBe(false)
+    })
+
     it("makes a Word file from Files' own blank where no maker writes one (New → Document in a Teams library in the VM)", async () => {
       const made = await call<FileDone>('work.files.make', { at: at(GENERAL), kind: 'document', name: 'Minutes', op: op() })
       const blank = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64')

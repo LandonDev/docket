@@ -13,7 +13,7 @@ import { folderEntry } from './places/folder'
 import { trashAfterMove as trashSource } from './trash'
 import { libraryEntry, libraryKey, teamsPlaces, type LibraryPlace } from './places/teams'
 import { admitCaller, ASK_FIRST, locate, NO_WORKSPACE, workspaceHere, type DoorPlace, type WorkspaceRow } from './policy'
-import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmWhere } from './vmVerbs'
+import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmBound, type VmWhere } from './vmVerbs'
 import { vmStat } from '../office/vm/files'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
@@ -174,6 +174,9 @@ async function boundGuest(p: { origin?: FileOrigin }, i: number, w: Where): Prom
   if (now !== t.version) throw new Error(notAsNamed(p.origin, guestName(w.path)))
 }
 const guestName = (path: string): string => path.slice(path.lastIndexOf('\\') + 1)
+/** What a held act (or his Undo) bound each thing to, for the helper's change and the proof of its answer (vmVerbs.ts `VmBound`). */
+const guestBound = (p: { origin?: FileOrigin }): VmBound | undefined =>
+  p.origin?.things ? { version: (i) => p.origin!.things![i]?.version, says: (name) => notAsNamed(p.origin, name) } : undefined
 /** The folder a held act's move or copy was held to go to, by its key, as this host finds it at the write. */
 function boundInto(p: { origin?: FileOrigin }, to: Where): void {
   if (p.origin?.from === 'act' && p.origin.into !== undefined && p.origin.into !== to.key) throw new Error(HELD_MOVED(basename(to.path)))
@@ -344,7 +347,7 @@ export async function renameVerb(ctx: WorkCtx, by: Caller, p: RenameAsk, method:
   if (w.vm ? isTop(vmOf(w)) : w.path === w.top || w.path === w.root) throw new Error(PLACE_ITSELF)
   checkName(p.name)
   if (fileLocked(w.key)) throw new Error(WRITING)
-  if (w.vm) return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, async () => (await boundGuest(p, 0, w), vmRename(ctx, p.workspaceId, vmOf(w), p.name, p.op)))
+  if (w.vm) return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, async () => (await boundGuest(p, 0, w), vmRename(ctx, p.workspaceId, vmOf(w), p.name, p.op, guestBound(p))))
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'rename', refs: journalled('rename', p) }, async () => {
     const dir = dirname(w.path)
     const to = join(dir, p.name)
@@ -372,7 +375,7 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
       // Every thing as held before any moves, and each again just before its own move: one replaced while the ones
       // before it moved is refused, never moved in its place.
       for (const [i, w] of all.entries()) await boundGuest(p, i, w)
-      return vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op, (i) => boundGuest(p, i, all[i]!))
+      return vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op, (i) => boundGuest(p, i, all[i]!), guestBound(p))
     })
   }
   asFolder(to)

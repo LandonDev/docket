@@ -1353,9 +1353,16 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   is. The VM's verbs ask the guest for each thing's size and change time just
   before it changes (`boundGuest`): a Rename's thing, every thing of a Move
   before any moves and each again under its own lock just before its own move,
-  so one replaced while the ones before it moved is refused alone (the guest's
-  move takes a path, not a version, so the moment between its stat and its
-  move stays open). A Drive's verbs read each thing from Drive just before the
+  so one replaced while the ones before it moved is refused alone. The guest's
+  move takes a path, so the version goes with it (`expect` on `files.move` and
+  `files.rename`, for a helper that checks it inside its own operation; today's
+  ignores it) and the helper's answer is proved by it (vmVerbs.ts `VmBound`,
+  `provedOrBack`): a thing moved or renamed that was not that version, put at
+  its name in the moment between the stat and the change, is moved back where
+  it was and refused, so the press never moves another file. A destination
+  folder replaced in that moment by one of the same name is not seen from the
+  box: the helper names no folder identity yet (the helper's change waits for
+  the VM; `.temp-code/plans/files-pass/build/m3-c.md`). A Drive's verbs read each thing from Drive just before the
   call that changes it and hold it to the card's key, version and sharing
   (`boundDrive`, driveVerbs.ts; `origin.things[].shared`): an edit, a move or
   a share since the press's check is refused. The version word a card binds
@@ -1366,7 +1373,11 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   held Drive move also reads the folder it goes to before each thing moves and
   holds it to the card's audience (`boundTo`, `origin.intoShared`): one shared
   after the first thing moved takes none of the rest. Drive's call takes no
-  version, so the seconds between that read and the call stay open. Stale
+  version, so the folder is read again once Drive has moved the thing: shared
+  in the seconds between the read and the call, the thing is moved back where
+  it was and the press is stale, so it never lands with a new audience (it lay
+  there for those seconds). A Drive thing cannot be replaced under its id; an
+  edit in those seconds goes with it, to the audience the card named. Stale
   does nothing. First of all, on this host, the act's own operation id is
   looked up (`replayed`; for a delete its journal row, `trashReceipt`, since a
   delete's things are in Trash, not where they were): a press whose answer was

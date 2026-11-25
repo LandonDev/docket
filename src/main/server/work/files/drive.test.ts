@@ -304,7 +304,7 @@ describe("a held Drive change at the write", () => {
     expect(fake.files.get('dBrief')!.name).toBe('Brief')
   })
 
-  it('moves each thing only while the folder it goes to is as private as the card said: shared after the first, the rest stay', async () => {
+  it('moves each thing only while the folder it goes to is as private as the card said: shared as the first moved, none stay', async () => {
     let afterMove: (() => void) | null = () => fake.share('fEvents')
     setGoogleDeps({
       fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -323,8 +323,14 @@ describe("a held Drive change at the write", () => {
     fake.addItem(ME, 'dTwo', 'Two', GOOGLE_MIME.doc)
     const things = [(await held('dOne')).things[0]!, (await held('dTwo')).things[0]!]
     const done = await call<FileDone>('work.files.move', { refs: [doc('dOne'), doc('dTwo')], to: folder('fEvents'), op: op(), asked: true, origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64), things, intoShared: false } })
-    expect(done.entries.map((e) => e.name)).toEqual(['One'])
-    expect(done.refused).toEqual([{ name: 'Two', text: 'Events is not as it was when this was held, so nothing was done.' }])
+    // Shared at the first one's own call, which Drive cannot hold to the card: the read after it sees the share, and
+    // the first goes back where it was; the rest never move.
+    expect(done.entries).toEqual([])
+    expect(done.refused).toEqual([
+      { name: 'One', text: 'Events is not as it was when this was held, so nothing was done.' },
+      { name: 'Two', text: 'Events is not as it was when this was held, so nothing was done.' }
+    ])
+    expect(fake.files.get('dOne')!.parents).not.toContain('fEvents')
     expect(fake.files.get('dTwo')!.parents).not.toContain('fEvents')
   })
 
@@ -511,6 +517,25 @@ describe("a thread's change", () => {
     const ran = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], name: 'Budget 2' })
     expect(ran.isError).toBeFalsy()
     expect(fake.files.get('sBudget')!.name).toBe('Budget 2')
+  })
+
+  it("never moves a held thing to a folder shared between the host's look and Drive's own call: it goes back, and the press does nothing", async () => {
+    const held = await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], to: { place: PLACE_ID, path: 'Events' } })
+    expect(held.text).toMatch(/^Held as item 1: /)
+    // Events is shared in the seconds between the last look and the move's own call.
+    resetGoogle()
+    setGoogleDeps({
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if ((init?.method ?? 'GET').toUpperCase() === 'PATCH' && url.includes('/files/dOpen') && url.includes('addParents=fEvents')) fake.share('fEvents')
+        return fake.fetch(input as never, init)
+      }) as typeof fetch,
+      tokenUrl: FAKE_TOKEN_URL,
+      blocksOf: async () => []
+    })
+    const [row] = outbox.store.list({})
+    expect(await outbox.send({ at: 'host', id: row!.id })).toMatchObject({ state: 'stale' })
+    expect(fake.files.get('dOpen')!.parents).toEqual([FAKE_ROOT])
   })
 
   it('held, goes stale when the file changed in Drive before his press', async () => {

@@ -216,7 +216,21 @@ export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
           entries.push(driveEntry(at.account, item, item.shared || intoShared))
           continue
         }
-        const moved = await withFileLocks([key], () => driveOf(ctx, at.account).move(at.id, item.parents, target))
+        const moved = await withFileLocks([key], async () => {
+          const got = await driveOf(ctx, at.account).move(at.id, item.parents, target)
+          // Drive's call takes no version or sharing to hold it to: the folder it went to is read again now, and one
+          // whose sharing is not what the card said (shared, or moved under a shared folder, in the seconds between)
+          // takes nothing. The thing goes back where it was, and the press is refused: it never moves it to a new audience.
+          try {
+            await boundTo(ctx, p.origin, to, intoName)
+          } catch (err) {
+            await driveOf(ctx, at.account)
+              .move(at.id, got.parents, item.parents[0] ?? 'root')
+              .catch((back) => ctx.log(`files: ${item.name} went to a folder shared since it was held, and could not be moved back: ${message(back)}`))
+            throw err
+          }
+          return got
+        })
         before.push({ key, name: item.name, parents: item.parents })
         for (const parent of item.parents) changed.add(parent)
         entries.push(driveEntry(at.account, moved, moved.shared || intoShared))
