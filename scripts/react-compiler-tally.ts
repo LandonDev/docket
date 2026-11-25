@@ -15,8 +15,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { relative, resolve } from 'path'
 
 const ROOT = resolve(import.meta.dir, '..')
-const SRC = resolve(ROOT, 'src/renderer/src')
+/** `--only <dir>` tallies one folder of the renderer (`--only work`); `--check` compares its errors with the ratchet. */
+const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null
+const check = process.argv.includes('--check')
+const SRC = resolve(ROOT, 'src/renderer/src', only ?? '')
 const OUT = resolve(ROOT, 'scripts/.out/react-compiler/tally.md')
+/**
+ * The ratchet (the Work performance pass, M12): functions under src/renderer/src/work the compiler refuses, at most
+ * this many. A function it refuses is not memoised, so it renders whenever its parent does. Fix one and lower the
+ * number; never raise it.
+ */
+export const WORK_COMPILE_ERRORS_AT_MOST = Number(JSON.parse(readFileSync(resolve(ROOT, 'scripts/react-compiler-ratchet.json'), 'utf8')).work)
 
 type Fn = { file: string; name: string; line: number }
 type Skip = Fn & { reason: string }
@@ -178,3 +187,13 @@ console.log(
   `files ${files.length} · compiled ${ok.length} · skipped ${skipped.length} · errored ${failed.length} · pipeline ${pipeline.length} · files with a refusal ${refused.length}`
 )
 console.log(`wrote ${relative(ROOT, OUT)}`)
+
+if (check) {
+  const errors = failed.length
+  if (errors > WORK_COMPILE_ERRORS_AT_MOST) {
+    console.error(`react-compiler: ${errors} functions under ${only} are refused, more than the ratchet's ${WORK_COMPILE_ERRORS_AT_MOST}. See ${relative(ROOT, OUT)}.`)
+    process.exit(1)
+  }
+  if (errors < WORK_COMPILE_ERRORS_AT_MOST) console.log(`react-compiler: ${errors} refused under ${only}; lower scripts/react-compiler-ratchet.json to ${errors}.`)
+}
+
