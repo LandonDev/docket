@@ -843,6 +843,9 @@ export default function App() {
   );
 
   const onNew = useCallback(() => {
+    // A new thread is his latest choice, and its draft takes the pane: no Work view stays over it.
+    choose();
+    openWorkView(null);
     shell.closeViews();
     return openProjectDraft({}, { placement: "tab", focus: true }).id;
   }, [openProjectDraft]);
@@ -850,6 +853,8 @@ export default function App() {
   /** Sidebar: a chat in the given project (null = loose chat in this workspace). */
   const onNewChat = useCallback(
     (projectId: string | null) => {
+      choose();
+      openWorkView(null);
       shell.closeViews();
       project.selectProject(projectId);
       openProjectDraft({ projectId }, { placement: "tab", focus: true });
@@ -1691,6 +1696,9 @@ export default function App() {
       // A tab may have landed during the await (a background open racing an
       // explicit ask for the same thread): show that one, never a second.
       if (focusOpenSession(sessionId)) return;
+      // The thread takes the pane: a Work view over it (Tasks, Projects) leaves, as it does for a thread already open
+      // (activateTab), so a press on a thread whose tab was closed never opens it under the view.
+      openWorkView(null);
       selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
@@ -2086,6 +2094,8 @@ export default function App() {
 
   const onSelectProject = useCallback(
     (path: string) => {
+      // Entering a job is his latest choice: an older door's wait no longer takes the window.
+      choose();
       shell.closeViews();
       const normalized = normalizeProjectPath(path);
       if (!looksLikeProject(normalized)) return;
