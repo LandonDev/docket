@@ -551,9 +551,27 @@ the document’s preview source.
 - **Check in Word** is offered on Word when the app is ready or this host's
   Windows VM can wake on his press. The Word picture has a rev of its own.
   If Word is out of reach after he presses, the LibreOffice picture stays.
-  A file others can open (a library's, the cloud folder's) is never offered
-  it: the Office renderer may be another computer than the file's own, and
-  which one it is is the office pillar's to say.
+- **A Teams Word file** (a library's, his OneDrive's) is checked in Word only
+  on the computer that holds it, and only on his press (decision 17 of the
+  files pass, 2026-11-25; until then a file others can open was never
+  offered it). `formats/wordHolder.ts` finds the holder: a document kept for
+  a Word file of another computer reads its record (`work_files_word`: the
+  host and whether it lies in that host's Windows VM), a `.docx` here is its
+  own. Word may draw it only when the holder is this host and its renderer
+  is the holder (`renderPlaceHere`: the VM on the box, the Mac's or the PC's
+  own Word there; the box and its VM are two computers, so a file the box
+  holds never goes to the VM), the file lies in a library the holder lists
+  with a known tenant, and the holder syncs his own OneDrive of that tenant
+  (signed in there). `previewOffice` offers it on that check, with the
+  runner's readiness for a job kept on this host (`shared`: never carried
+  to a linked host); his press makes the same check again at dispatch,
+  against the libraries as they stand then, and a refusal answers
+  `notInReach: 'none'` with its reason in the log. Where no renderer is
+  ready (`RENDER_PROVEN` lists only the VM today, so a file of his Mac's
+  OneDrive is not offered it), Preview stays as drawn here: LibreOffice's
+  picture, with no Check in Word. Proven with stand-ins
+  (`wordHolder.test.ts`, preview.test.ts "Check in Word on a Teams Word
+  file"); the live proof in the VM waits for `VM YES`.
 - A LifeOS document another host serves is drawn, read and exported on that
   host (`servedBy`), as it is opened there; that host is told the source and
   never this host's item, and keeps the render with no item (swept after a

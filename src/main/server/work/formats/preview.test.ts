@@ -27,6 +27,8 @@ import { NEEDS_ITEM, NOT_THIS_ITEM, previewsRoot, sourceKey, sweepPreviews, word
 import * as jobRunner from './jobs'
 import { convertersOf, JobRunner, pressed, type ConvertJob, type Converter } from './jobs'
 import { setPrinter } from './print'
+import * as wordHolder from './wordHolder'
+import { ensureFilesTables } from '../files/tables'
 import { Toolchain } from './tools'
 import { closeFormatRig, post, TEST_SECRET as SECRET } from './testkit'
 
@@ -269,6 +271,91 @@ describe('Check in Word through the formats pillar', () => {
     expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'none' })
     expect(await r.ask('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' })).toEqual({ notInReach: 'none' })
     expect(calls).toEqual([])
+  })
+})
+
+describe('Check in Word on a Teams Word file (decision 17)', () => {
+  const GUEST = 'C:\\Users\\tcuser\\Purdue University\\RecWell - Documents\\Plan.docx'
+  const lib = (over: Record<string, unknown>) => ({ id: 'l', host: 'env_box', path: 'C:\\Users\\tcuser\\Purdue University\\RecWell - Documents', team: 'RecWell', library: null, tenant: 'Purdue University', kind: 'channels', channels: [], web: null, found: true, vm: true, ...over })
+  const signedIn = [lib({}), lib({ path: 'C:\\Users\\tcuser\\OneDrive - Purdue University', kind: 'mine' })]
+
+  /** A document kept for a Word file in a library of the box's Windows VM, and a converter for Word that sees every job. */
+  const vmFile = async (state: Readiness) => {
+    const r = await rig()
+    const mine = await r.doc()
+    const path = join(importFolderOf(r.data, { host: 'env_box', path: GUEST }), 'Plan.tcdoc')
+    mkdirSync(dirname(path), { recursive: true })
+    copyFileSync((mine as { path: string }).path, path)
+    ensureFilesTables(r.ctx.db)
+    r.ctx.db.prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, at) VALUES ('w1', 'env_box', ?, 1, 'Plan.docx', 'v1', ?, 1)`).run(GUEST, path)
+    const jobs: ConvertJob[] = []
+    const calls: string[] = []
+    const used: boolean[] = []
+    const converter: Converter = {
+      from: 'docx', to: 'pdf+word',
+      ready: () => state,
+      async run(job) {
+        used.push(pressed(job))
+        writeFileSync(job.output, await pdfOf(1))
+        return {}
+      }
+    }
+    const runner = new JobRunner({
+      host: 'env_box', dataDir: r.data, converters: convertersOf([{ ...formats, convert: [converter] }], () => {}),
+      links: () => [{ id: 'env_mac', request: async (method) => { calls.push(method); throw new Error('no linked converter') } }],
+      log: () => {}
+    })
+    vi.spyOn(jobRunner, 'runnerOf').mockReturnValue(Promise.resolve(runner))
+    // LibreOffice stays the rig's own; Word is the runner's.
+    const plain = r.ctx.convert.bind(r.ctx)
+    r.ctx.convert = (job: ConvertJob) => (jobs.push(job), job.to === 'pdf+word' ? runner.convert(job) : plain(job))
+    const libs = vi.spyOn(libraries, 'vmLibrariesHere').mockReturnValue(signedIn as never)
+    const place = vi.spyOn(wordHolder, 'renderPlaceHere').mockReturnValue('vm')
+    return { r, source: { at: 'file', host: 'env_box', path } as CanvasSource, jobs, calls, used, libs, place }
+  }
+
+  it('is offered, and drawn on his press by the VM that holds it, kept on this host', async () => {
+    const { r, source, jobs, calls, used } = await vmFile('asleep')
+    expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'asleep' })
+    const answer = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' })
+    expect(answer).toMatchObject({ drawnBy: 'word', pages: 1 })
+    expect(used).toEqual([true])
+    const word = jobs.filter((j) => j.to === 'pdf+word')
+    expect(word).toHaveLength(1)
+    expect(word[0]!.shared).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  it('only on his own press: a thread or another host is refused before anything draws', async () => {
+    const { r, source, used } = await vmFile('ready')
+    for (const by of [{ kind: 'model', sessionId: 't1' }, { kind: 'remote', peer: 'env_mac', caps: ['admin'] }] as unknown as Caller[]) {
+      await expect(r.ask('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' }, by)).rejects.toThrow('needs your own press')
+    }
+    expect(used).toEqual([])
+  })
+
+  it('checks the holder and his tenant at dispatch: a sign-in gone, or a renderer that is not the holder, stays as drawn here', async () => {
+    const { r, source, used, libs, place } = await vmFile('ready')
+    expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'ready' })
+    // Between the offer and his press the VM's OneDrive signed out of Purdue.
+    libs.mockReturnValue([signedIn[0], lib({ path: 'C:\\Users\\tcuser\\OneDrive - Hypixel', kind: 'mine', tenant: 'Hypixel' })] as never)
+    expect(await r.ask('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' })).toEqual({ notInReach: 'none' })
+    expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'none' })
+    libs.mockReturnValue(signedIn as never)
+    // On a Mac the renderer is the Mac's Word, never the holder of a VM library's file.
+    place.mockReturnValue('mac')
+    expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'none' })
+    expect(await r.ask('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' })).toEqual({ notInReach: 'none' })
+    expect(used).toEqual([])
+  })
+
+  it('where the holder has no Word proven (RENDER_PROVEN), it stays as drawn here', async () => {
+    const { r, source, used } = await vmFile('none')
+    expect(await r.ask('work.formats.previewOffice', { source, itemId: 'i0' })).toEqual({ app: 'word', state: 'none' })
+    expect(await r.ask('work.formats.preview', { source, itemId: 'i0', format: 'docx', by: 'word' })).toEqual({ notInReach: 'none' })
+    const drawn = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'docx' })
+    expect(drawn.drawnBy).toBe('libreoffice')
+    expect(used).toEqual([])
   })
 })
 

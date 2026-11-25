@@ -11,6 +11,7 @@ import { madeFromShared, serviceExport } from './exporter'
 import { droppedWords, safeName, scratchDir } from './importer'
 import { printToPdf } from './print'
 import { NoConverterError, NotReadyError, pressOf, runnerOf, type Press } from './jobs'
+import { renderPlaceHere, wordCheckHere } from './wordHolder'
 
 /**
  * A document drawn as the file a format makes of it, for the Preview frame
@@ -175,9 +176,13 @@ export async function previewOffice(ctx: WorkCtx, by: Caller, params: OfficePara
   if (params.itemId !== undefined) folderOf(ctx, t, params.itemId, params.source)
   if (t.at === 'lifeos') await ctx.service.internal('/internal/formats/previewOffice', serviceTarget(t, false))
   const runner = await runnerOf(ctx)
-  // A file others can open is never handed to Word from here: the Office renderer may be another computer than
-  // the file's own (the box's Windows VM), and which one it is is the office pillar's to say, not this one's.
-  if (sharedSource(ctx, t, params.source)) return { app: 'word', state: 'none' }
+  // A file others can open goes to Word only on the computer that holds it, in a tenant it is signed in to
+  // (wordHolder.ts), and never to another host: else it stays as drawn here.
+  if (sharedSource(ctx, t, params.source)) {
+    const refused = wordCheckHere(ctx, [t.source, params.source], renderPlaceHere())
+    if (refused) return { app: 'word', state: 'none' }
+    return { app: 'word', state: (await runner?.readiness('docx', 'pdf+word', true)) ?? 'none' }
+  }
   return { app: 'word', state: await runner?.readiness('docx', 'pdf+word', false) ?? 'none' }
 }
 
@@ -232,8 +237,14 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
   const kept = keptRender(dir, key, rev)
   if (kept) return held(kept)
   const shared = sharedSource(ctx, t, params.source)
-  // Word never draws a file others can open from here (see previewOffice).
-  if (press && shared) return { notInReach: 'none' }
+  // The holder and its tenant are checked again at dispatch, as they stand now (see previewOffice).
+  if (press && shared) {
+    const refused = wordCheckHere(ctx, [t.source, params.source], renderPlaceHere())
+    if (refused) {
+      ctx.log(`[formats] Check in Word refused: ${refused}`)
+      return { notInReach: 'none' }
+    }
+  }
   const name = `${safeName(got.title)}.${format}`
   try {
     const loose = params.itemId && !shared && !press && format === 'docx' ? findWordPdf(ctx, t, rev, false) : null

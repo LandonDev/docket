@@ -468,7 +468,8 @@ to `NotInReach` as DOC1.1 says:
 The runner's own refusals before a run (DOC1.1) keep its words: "the machine that converts docx to pdf+word is
 asleep, and only his own press wakes it", "… is not open on <host>". A job for a shared library's file runs
 only where the file is, and a result over 64 MiB that would cross hosts fails in words, both by the runner's
-rules.
+rules. Check in Word on a Teams Word file goes to Word only when this host's renderer is the computer that holds
+the file, signed in to its tenant (work-docs.md "Check in Word", formats/wordHolder.ts).
 
 ## Presenting in PowerPoint
 
