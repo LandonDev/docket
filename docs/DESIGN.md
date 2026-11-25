@@ -1378,9 +1378,9 @@ thread; nothing answers inside the canvas.
   line ("Offline." and "Edits stay here until the box is back.", naming
   the computer) is laid over the text's 32px top padding, never above it,
   so the text does not move when the link blinks; it shows after 1.5 s. In
-  Pages it lies on the stage's own ground, and the stage keeps 32px over the
-  first sheet while it shows, so it covers neither the sheet nor paints a band
-  of page colour across the grey.
+  Pages it lies on the stage's own ground, and the stage always keeps 32px
+  over the first sheet, so it covers neither the sheet nor paints a band of
+  page colour across the grey, and the sheets never move when it comes or goes.
 - **The selection bar** floats over any selection in any kind, on the
   transcript's selection menu recipe (surfaces/TranscriptSelectionMenu.tsx):
   the popover fill at its 12px radius, a 4px inset and 24px ghost buttons
@@ -4113,9 +4113,9 @@ Flow.
   what the width gave them. Under 640px a guest's document is always Flow
   and the row has no switch: a sheet fitted to a phone sets 11 pt text near
   7px. For a finger the switch's track is 44px tall.
-- **The stage** is the scroller itself, edge to edge on `stage`, padded 16px
-  over the first sheet and 24px at the sides and under the last (12px all
-  round under 640px of stage). The column's 672px measure, its 52px gutter
+- **The stage** is the scroller itself, edge to edge on `stage`, padded 32px
+  over the first sheet (room for the offline line, kept whether it shows or not) and 24px at the sides and under the last (12px
+  under 640px of stage, and 28px over the first sheet). The column's 672px measure, its 52px gutter
   and the title over the text are not drawn: the sheets are the document.
   Comments open at their words, not in a margin. The format row stays the
   body's first, unscrolled row.

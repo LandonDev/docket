@@ -219,9 +219,11 @@ describe("the pane around the sheets", () => {
   it("lays the offline line on the stage's ground in Pages, with room over the first sheet; in Flow on the page's, over the text's own 32px", async () => {
     await mount();
     const scroller = document.querySelector<HTMLElement>("[data-doc-scroller]")!;
-    // The scroller's frame keeps 16px over the stage's 16px while the line shows, only where it holds the stage.
+    // The scroller's frame keeps 16px over the stage's 16px whether the line shows or not, only where it holds the
+    // stage: the sheets never move when the link drops and comes back.
     expect(scroller.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["group/doc-body", OFFLINE_ROOM]));
-    expect(OFFLINE_ROOM).toBe("[&:has([data-doc-offline])>[data-doc-scroller]:has(.te-pages-stage)]:pt-4");
+    expect(OFFLINE_ROOM).toBe("[&>[data-doc-scroller]:has(.te-pages-stage)]:pt-4");
+    expect(OFFLINE_ROOM).not.toContain("data-doc-offline");
     render(<OfflineLine words={{ word: "Offline.", detail: "Edits stay here until the box is back." }} />);
     expect(document.querySelector<HTMLElement>("[data-doc-offline]")!.className.split(" ")).toEqual(expect.arrayContaining(["bg-background", "group-has-[.te-pages-stage]/doc-body:bg-(--stage)"]));
   });

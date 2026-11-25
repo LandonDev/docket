@@ -151,11 +151,11 @@ export function offlineWords(status: DocumentStatus | null, host: string): { wor
 /**
  * The offline line, in the 32px over the text the scroller keeps as its top padding (`pt-8`): on the page's own ground
  * so text scrolled under it is covered, never pushed. In Pages it lies on the stage's ground, over the stage's 16px top
- * and 16px more the scroller keeps while it shows (`OFFLINE_ROOM`), so the first sheet's top is never under it. The
- * quiet line's look (docs/DESIGN.md "The state line").
+ * and the 16px more the scroller always keeps over it (`OFFLINE_ROOM`), so the first sheet's top is never under it and
+ * never moves when the line comes or goes. The quiet line's look (docs/DESIGN.md "The state line").
  */
-/** While the offline line shows, the scroller keeps 16px over the Pages stage's own 16px: the line's 32px, as in Flow. */
-export const OFFLINE_ROOM = "[&:has([data-doc-offline])>[data-doc-scroller]:has(.te-pages-stage)]:pt-4";
+/** The scroller always keeps 16px over the Pages stage's own 16px: the offline line's 32px, as in Flow, whether it shows or not. */
+export const OFFLINE_ROOM = "[&>[data-doc-scroller]:has(.te-pages-stage)]:pt-4";
 
 export function OfflineLine({ words }: { words: { word: string; detail: string } }) {
   return (
