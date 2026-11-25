@@ -8,7 +8,7 @@
  */
 
 /** What the Files place does with a chord the app would otherwise take. */
-export type FilesCommand = "new-tab" | "close-tab" | "next-tab" | "prev-tab" | "back" | "forward" | "go-to" | "search" | "reopen-tab";
+export type FilesCommand = "new-tab" | "close-tab" | "next-tab" | "prev-tab" | "back" | "forward" | "go-to" | "search" | "reopen-tab" | "new-folder";
 
 /**
  * What the Files view brings with its chunk: whether focus is its own (inside the view, and not in a dialog or a

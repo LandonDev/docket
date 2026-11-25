@@ -406,6 +406,14 @@ describe("the Files place keeps its own tab chords", () => {
     expect(resolve(within(key("T", { meta: true, shift: true }), FILES), ctx)).toEqual({ id: "files_command", files: "reopen-tab" });
   });
 
+  it("⌘⇧N inside a mounted Files view makes a folder, and is New Window elsewhere and from the menu outside it", () => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(key("n", { meta: true, shift: true }), FILES), ctx)).toEqual({ id: "files_command", files: "new-folder" });
+    expect(resolve(key("n", { meta: true, shift: true }), ctx)).toEqual({ id: "new_window" });
+    expect(filesOverlay("new_window", true)).toEqual({ id: "files_command", files: "new-folder" });
+    expect(filesOverlay("new_window", false)).toEqual({ id: "new_window" });
+  });
+
   it("⌘F inside a mounted Files view is its Search; elsewhere this resolver leaves the key to whoever holds it", () => {
     filesPort.set(() => {}, FILES_KEYS);
     expect(resolve(within(key("f", { meta: true }), FILES), ctx)).toEqual({ id: "files_command", files: "search" });

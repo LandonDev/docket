@@ -15,6 +15,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { clockTime, dayTime } from "../../lib/duration";
 import { chordKey, modOrCtrl } from "../../lib/keys";
+import { IS_MAC } from "../../lib/platform";
 import { shortcutFor } from "../../lib/settings";
 import { claimFileDrop } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -678,7 +679,7 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
         ? [{ kind: "item", id: `form:${forms[0]}`, label: "Form", icon: ListChecks }]
         : [];
   const rows: MenuRow[] = [
-    ...makes.map((kind): MenuRow => ({ kind: "item", id: `make:${kind}`, label: MAKE_WORDS[kind], icon: MAKE_GLYPH[kind] })),
+    ...makes.map((kind): MenuRow => ({ kind: "item", id: `make:${kind}`, label: MAKE_WORDS[kind], icon: MAKE_GLYPH[kind], ...(kind === "folder" ? { shortcut: shortcutFor("Files (Work)", "New Folder") } : {}) })),
     ...formRow,
     ...(acts.fromTemplate || acts.addFromDrive || upload ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(acts.fromTemplate ? ([{ kind: "item", id: "template", label: "From a Template…", icon: Layers }] satisfies MenuRow[]) : []),
@@ -785,6 +786,9 @@ function UploadLine({ progress, onCancel }: { progress: UploadProgress; onCancel
   );
 }
 
+/** The shown page's answer to the Files commands that act on a folder (⌘⇧N, New Folder), held while it is drawn. */
+export type PageCommands = { current: ((command: "new-folder") => void) | null };
+
 export function PageView({
   page,
   panelId,
@@ -795,6 +799,7 @@ export function PageView({
   canBack,
   canForward,
   busy,
+  commands,
   note,
   fixes,
   acts = null,
@@ -824,6 +829,8 @@ export function PageView({
   canBack: boolean;
   canForward: boolean;
   busy: Busy;
+  /** where this page answers the Files commands that act on its folder; absent, it answers none */
+  commands?: PageCommands;
   /** in the list's place, when there is no place to list (no Teams files, and why) */
   note?: FilesNote | null;
   fixes: NoteFixes;
@@ -1022,23 +1029,38 @@ export function PageView({
     return list.flatMap((row): MenuRow[] => [
       ...(row.act === "delete" ? add : []),
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
-      { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}), ...(row.act === "rename" ? { shortcut: shortcutFor("Files (Work)", "Rename") } : {}) },
+      { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}), ...(row.act === "rename" ? { shortcut: shortcutFor("Files (Work)", "Rename") } : row.act === "delete" && IS_MAC ? { shortcut: shortcutFor("Files (Work)", "Delete") } : {}) },
     ]);
   };
+  // ⌘⇧N makes a folder here where New would offer one, named in place as New's are (decision 2 of the files pass).
+  const makesFolder = !!acts && !inTrash && (acts.place.makes ?? []).includes("folder") && !(listing?.error && !listed.length);
+  useEffect(() => {
+    if (!commands) return;
+    commands.current = (command) => {
+      if (command === "new-folder" && makesFolder) void acts!.make("folder").then((made) => made && setFresh(made.key));
+    };
+    return () => {
+      commands.current = null;
+    };
+  });
   // The keys for what is selected, heard from anywhere in the page but a field he is typing in.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return;
     const can = (act: EntryAct): boolean => verbs.some((row) => row.act === act && !row.refused);
     if (event.key === "a" && modOrCtrl(event) && !event.shiftKey && !event.altKey && acts && order.length) return void (event.preventDefault(), setPicked(pickAll(order)));
+    // ⌘⌫ moves the selection to Trash, as in Finder (in Trash, deletes it for good, asked first); a bare ⌫ does
+    // nothing, so a stray press while he thinks a field has focus moves no file. A PC's bare Delete does as Explorer's.
+    const deleteKey = event.key === "Backspace" || event.key === "Delete";
+    if (deleteKey && chosen.length && !event.altKey && !event.shiftKey && (modOrCtrl(event) || (!IS_MAC && event.key === "Delete" && !chordKey(event)))) {
+      if (can("delete")) return void (event.preventDefault(), run("delete"));
+      if (can("purge")) return void (event.preventDefault(), run("purge"));
+      return;
+    }
     if (chordKey(event)) return;
     if (event.key === "/" && find) return void (event.preventDefault(), find.setMode("search"));
     // Space is Quick Look for the row the arrows rest on, from the folder itself (a button keeps its own Space).
     if (event.key === " " && cursor && !inTrash && renaming === null && (event.target as HTMLElement).closest("[data-files-body]") && !(event.target as HTMLElement).closest("button, a, video, audio")) return void (event.preventDefault(), setQuick(!quick));
     if (event.key === "F2" && can("rename")) return void (event.preventDefault(), run("rename"));
-    if ((event.key === "Backspace" || event.key === "Delete") && chosen.length) {
-      if (can("delete")) return void (event.preventDefault(), run("delete"));
-      if (can("purge") && event.key === "Delete") return void (event.preventDefault(), run("purge"));
-    }
   };
 
   const drag = useRowDrag(acts && !inTrash ? acts : null, entries, picked, page);

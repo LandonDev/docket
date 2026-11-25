@@ -344,9 +344,10 @@ describe("New", () => {
     await mount();
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     const menu = await screen.findByRole("menu");
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Document", "Sheet", "Deck", "Text File", "Folder", "Form", "Upload Files…"]);
+    // Folder shows its key, ⌘⇧N (Ctrl+Shift+N on a PC).
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.replace(/⇧⌘N|⌘⇧N|Ctrl\+Shift\+N/, ""))).toEqual(["Document", "Sheet", "Deck", "Text File", "Folder", "Form", "Upload Files…"]);
     expect(menu.textContent).toContain("Kept in Dummy Esports");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Folder" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /^Folder/ }));
     await waitFor(() => expect(calls("work.files.make")).toHaveLength(1));
     expect(calls("work.files.make")[0]).toMatchObject({ workspaceId: "w1", kind: "folder", at: { at: "place", id: "folder" } });
     // The new thing is selected, its name a field with the part before its extension selected.
@@ -360,13 +361,26 @@ describe("New", () => {
     expect(picked()).toEqual(["Spring LAN"]);
   });
 
+  it("makes a folder on ⌘⇧N and names it in place, as New → Folder does", async () => {
+    await mount();
+    await act(async () => void filesPort.run("new-folder"));
+    await waitFor(() => expect(calls("work.files.make")).toHaveLength(1));
+    expect(calls("work.files.make")[0]).toMatchObject({ kind: "folder", at: { at: "place", id: "folder" } });
+    expect(((await screen.findByRole("textbox", { name: "Rename Untitled folder" })) as HTMLInputElement).value).toBe("Untitled folder");
+    // In Trash nothing is made.
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New" })).toBeNull());
+    await act(async () => void filesPort.run("new-folder"));
+    expect(calls("work.files.make")).toHaveLength(1);
+  });
+
   it("offers only what a library takes, and no New in Trash", async () => {
     await mount();
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
     await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     // A library of a host with no box browser offers our form alone, as the one Form row.
-    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Text File", "Folder", "Form"]);
+    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent?.replace(/⇧⌘N|⌘⇧N|Ctrl\+Shift\+N/, ""))).toEqual(["Text File", "Folder", "Form"]);
     fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Form" }));
     await waitFor(() => expect(calls("work.forms.make")).toHaveLength(1));
   });
@@ -505,7 +519,10 @@ describe("the keys for what is selected", () => {
     expect(calls("work.files.rename")).toHaveLength(1);
     fireEvent.click(row("Budget.xlsx"));
     fireEvent.click(row("Plan.docx"), { ctrlKey: true });
+    // A bare ⌫ moves nothing (a stray press while he thinks a field has focus); ⌘⌫ moves the selection to Trash, as in Finder.
     fireEvent.keyDown(list(), { key: "Backspace" });
+    expect(calls("work.files.trash")).toEqual([]);
+    fireEvent.keyDown(list(), { key: "Backspace", metaKey: true });
     await waitFor(() => expect(calls("work.files.trash")).toHaveLength(1));
     expect((calls("work.files.trash")[0]!.refs as unknown[]).length).toBe(2);
     await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ title: "Deleted 2 things" }));
@@ -650,7 +667,7 @@ describe("Trash", () => {
     await mount();
     for (const name of ["notes.txt", "Plan.docx"]) {
       fireEvent.click(row(name));
-      fireEvent.keyDown(list(), { key: "Delete" });
+      fireEvent.keyDown(list(), { key: "Backspace", metaKey: true });
       await waitFor(() => expect(rows()).not.toContain(name));
     }
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
@@ -675,7 +692,7 @@ describe("Trash", () => {
   it("offers Put Back and Delete for Good as this window's key may: a key that may operate but not approve puts back alone", async () => {
     await mount();
     fireEvent.click(row("notes.txt"));
-    fireEvent.keyDown(list(), { key: "Delete" });
+    fireEvent.keyDown(list(), { key: "Backspace", metaKey: true });
     await waitFor(() => expect(rows()).not.toContain("notes.txt"));
     testKey.current = { caps: ["read", "operate"], key: { id: "operator" } };
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
@@ -698,7 +715,7 @@ describe("Trash", () => {
   it("empties nothing when he says no", async () => {
     await mount();
     fireEvent.click(row("notes.txt"));
-    fireEvent.keyDown(list(), { key: "Delete" });
+    fireEvent.keyDown(list(), { key: "Backspace", metaKey: true });
     await waitFor(() => expect(rows()).not.toContain("notes.txt"));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
     await waitFor(() => expect(rows()).toEqual(["notes.txt"]));

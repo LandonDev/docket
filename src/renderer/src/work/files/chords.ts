@@ -8,7 +8,7 @@ import type { FilesCommand, FilesKeys } from "../../lib/filesKeys";
  * new tab, mod+W close, mod+[ and mod+] back and forward, Ctrl+Tab and
  * Ctrl+Shift+Tab (and mod+Shift+] and mod+Shift+[, the menu's Next and Previous
  * Tab) the next and previous tab; mod+Shift+T opens the tab last closed again; mod+P is Go to and mod+F
- * Search, in the Files place's own bar.
+ * Search, in the Files place's own bar; mod+Shift+N makes a folder, as in Finder (the app's New Window elsewhere).
  * mod+1–9, mod+N, mod+K and the rest stay the app's.
  */
 export function filesChord(e: KeyboardEvent): FilesCommand | null {
@@ -19,6 +19,7 @@ export function filesChord(e: KeyboardEvent): FilesCommand | null {
     if (e.key === "]" || e.key === "}") return "next-tab";
     if (e.key === "[" || e.key === "{") return "prev-tab";
     if (e.key.toLowerCase() === "t") return "reopen-tab";
+    if (e.key.toLowerCase() === "n") return "new-folder";
     return null;
   }
   const key = e.key.toLowerCase();
@@ -78,6 +79,7 @@ export const FILES_MENU: Partial<Record<AppCommandId, FilesCommand>> = {
   show_hierarchy: "new-tab",
   go_to_file: "go-to",
   find: "search",
+  new_window: "new-folder",
 };
 
 /** What the view gives the port while it is mounted (lib/filesKeys.ts). */

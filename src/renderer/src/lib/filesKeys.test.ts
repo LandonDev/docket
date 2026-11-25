@@ -71,6 +71,9 @@ describe.each([
     expect(filesChord(key("t", { mod: true, shift: true }))).toBe("reopen-tab");
     expect(filesChord(key("p", { mod: true }))).toBe("go-to");
     expect(filesChord(key("f", { mod: true }))).toBe("search");
+    // ⌘⇧N makes a folder, as in Finder; ⌘N stays the app's.
+    expect(filesChord(key("n", { mod: true, shift: true }))).toBe("new-folder");
+    expect(filesChord(key("N", { mod: true, shift: true }))).toBe("new-folder");
   });
 
   it("leaves near misses and the app's other chords alone", () => {

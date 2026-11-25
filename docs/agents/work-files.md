@@ -508,12 +508,17 @@ it closes that file alone, as its × does: chords.ts `closeOf`; after any
 close the focus lands on what is left, the tab's own file, else the chat
 over it, else the tab shown, `landFocus`), with Shift and T (the tab last closed),
 with [ and ] (Back and Forward in the tab), with P (Go to) and F (Search),
+with Shift and N (a new folder in the folder shown, named in place as New's
+are: the page answers through `PageCommands`, Page.tsx; the app's New Window
+everywhere else, and its menu row does the same while focus is in Files),
 and Ctrl+Tab and Ctrl+Shift+Tab (the next and previous tab) to Files, as
 one app command, `files_command`, that carries the Files command
 (`close-tab`); the menu's rows for the same commands go the same way
 (`filesOverlay`). In
 a folder the arrows walk, Return opens, Space is Quick Look, F2 renames,
-Delete deletes, the mod key with A selects all and with Up goes to the
+⌘⌫ moves the selection to Trash as in Finder (in Trash it deletes for good,
+asked first; on a PC the Delete key alone, as in Explorer), a bare ⌫ moves
+nothing (decision 2 of the files pass), the mod key with A selects all and with Up goes to the
 parent folder, `/` is Search, Escape lets go of the selection. Settings →
 Keybindings lists them under "Files (Work)". Only the port is in the first
 paint: the rule for whose focus it is, the chords, the menu map and the key table

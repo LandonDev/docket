@@ -2028,7 +2028,8 @@ Around the canvas:
   **New** is the bar's one primary button: a menu of what the place
   makes (Document, Sheet, Deck, Text File, Folder), Upload Files…, and a
   last muted line on the rows' leading edge that says where it is kept. The new thing is selected
-  with its name ready to type. A name is typed in place (F2, a slow
+  with its name ready to type; ⌘⇧N makes a folder the same way, as in
+  Finder (the menu's Folder row shows it). A name is typed in place (F2, a slow
   second press on the selected name, Rename in the menu): the field
   stands where the name was with the part before the extension selected.
   **A row's menu** (a right-click, the same for one or many) is the
@@ -2043,6 +2044,7 @@ Around the canvas:
   more as the list nears its end), and the place's own sentence stands
   beside the verb where it refuses. A move inside one place says what
   went in one toast with Undo, back to the folder it came from. Delete
+  (⌘⌫, as in Finder; a bare ⌫ moves nothing; on a PC the Delete key)
   goes to Trash and says so in one toast with Undo;
   Trash is a lens whose rows have Put Back and Delete for Good, with
   Empty Trash in its bar, a ghost in muted ink that turns red under the

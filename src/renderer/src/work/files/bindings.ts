@@ -1,4 +1,5 @@
 import { keyCaps } from "../../lib/keys";
+import { IS_MAC } from "../../lib/platform";
 import { addKeybindingGroup } from "../../lib/settings";
 
 /**
@@ -25,8 +26,10 @@ addKeybindingGroup({
     { name: "Open", keys: [[RET]] },
     { name: "Quick Look", keys: [["Space"]] },
     { name: "Parent Folder", keys: [[CMD, "↑"]] },
+    { name: "New Folder", keys: [[CMD, SHF, "N"]] },
     { name: "Rename", keys: [["F2"]] },
-    { name: "Delete", keys: [[DEL]] },
+    // ⌘⌫ on a Mac, as in Finder; a PC's Delete alone, as in Explorer.
+    { name: "Delete", keys: [IS_MAC ? [CMD, DEL] : [DEL]] },
     { name: "Select All", keys: [[CMD, "A"]] },
     { name: "Leave Full Window", keys: [["Esc"]] },
   ],

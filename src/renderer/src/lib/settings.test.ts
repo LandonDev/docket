@@ -140,7 +140,7 @@ describe("keybindings", () => {
     expect(titles(true)).toContain("Files (Work)");
     expect(titles(true)).toContain("Files");
     const files = KEYBINDING_GROUPS.find((group) => group.title === "Files (Work)");
-    expect(files?.bindings.map((binding) => binding.name)).toEqual(["New Tab", "Close Tab", "Reopen Closed Tab", "Next Tab", "Previous Tab", "Back", "Forward", "Go to", "Search", "Open", "Quick Look", "Parent Folder", "Rename", "Delete", "Select All", "Leave Full Window"]);
+    expect(files?.bindings.map((binding) => binding.name)).toEqual(["New Tab", "Close Tab", "Reopen Closed Tab", "Next Tab", "Previous Tab", "Back", "Forward", "Go to", "Search", "Open", "Quick Look", "Parent Folder", "New Folder", "Rename", "Delete", "Select All", "Leave Full Window"]);
   });
 });
 

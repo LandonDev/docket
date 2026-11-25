@@ -43,7 +43,7 @@ import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { marked, type Busy, type MarkBusy } from "./busy";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp } from "./open";
-import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
+import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageCommands, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, loadTabs, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
@@ -478,11 +478,13 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
 
   // The app's own tab chords act on these tabs while focus is in the place (lib/filesKeys.ts).
   const act = useRef<(command: FilesCommand) => void>(() => undefined);
+  const pageCommands: PageCommands = useRef(null);
   act.current = (command) => {
     const ids = view.tabs.map((t) => t.id);
     const at = tab ? ids.indexOf(tab.id) : -1;
     if (command === "new-tab") return newTab();
     if (command === "reopen-tab") return reopen();
+    if (command === "new-folder") return pageCommands.current?.("new-folder");
     if (command === "go-to" || command === "search") {
       if (!canFind) return;
       const mode = command === "go-to" ? "goto" : "search";
@@ -676,6 +678,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     uploading,
     cancelUpload: () => stopUpload.current?.abort(),
     newTab,
+    page: pageCommands,
     // Ask about a selection: a new chat of the workspace whose first message holds the files. It is a thread only once he sends.
     ask: (entries, copy) => {
       const got = chipsOf(entries, copy.place);
@@ -817,6 +820,8 @@ interface Verbs {
   /** Open to the Side, where a file tab he was last in can take a file at its side; `sideOf` is that tab */
   openSide?(entry: FileEntry, copy: PlaceCopy): void;
   sideOf?: string;
+  /** the shown page's answer to a Files command it acts on (New Folder), set while it is drawn */
+  page: PageCommands;
 }
 
 /** A host a release behind still lists its files; one quiet line says what it cannot do until it is updated. */
@@ -946,6 +951,7 @@ function FolderPage({
         canBack={canBack}
         canForward={canForward}
         busy={busy}
+        commands={verbs.page}
         note={noTeams ? (reach.note ?? { title: "No Teams files" }) : lost ? { title: `${page.name} is not here any more`, line: "Its place is not listed now.", fix: { kind: "retry" } } : null}
         fixes={fixes}
         onBack={onBack}
