@@ -84,6 +84,20 @@ describe("Go to's states", () => {
   });
 });
 
+describe("Go to's rows", () => {
+  it("name a TempCode document or sheet as every row does, without its own ending", async () => {
+    host.answer = () => Promise.resolve({ entries: [entry("TempCode proof agenda.tcdoc"), entry("Budget.tcsheet"), entry("Plan.docx")] });
+    draw();
+    fireEvent.change(field(), { target: { value: "a" } });
+    await settle();
+    await settle();
+    const rows = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    expect(rows.join("|")).toContain("TempCode proof agenda");
+    expect(rows.join("|")).not.toMatch(/\.tcdoc|\.tcsheet/);
+    expect(rows.join("|")).toContain("Plan.docx");
+  });
+});
+
 describe("Go to by keyboard", () => {
   it("stays open while Tab takes the focus from the field to Retry, and Retry gives it back to the field", async () => {
     const onClose = vi.fn();

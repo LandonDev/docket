@@ -2081,7 +2081,7 @@ Around the canvas:
   host (not the Windows VM), and a
   last muted line on the rows' leading edge that says where it is kept.
   TempCode's own endings (".tcsheet", ".tcdoc") are never shown as words:
-  a row, a tab, a header and a rename field show the name before them, and
+  a row, a tab, a header, a Go to row and a rename field show the name before them, and
   a rename keeps the ending. The new thing is selected
   with its name ready to type; ⌘⇧N makes a folder the same way, as in
   Finder (the menu's Folder row shows it), only where the page shown makes

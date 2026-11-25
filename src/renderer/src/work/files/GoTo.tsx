@@ -8,7 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
 import { KindGlyph } from "./KindGlyph";
-import { whereWords } from "./model";
+import { shownName, whereWords } from "./model";
 
 /**
  * Go to (docs/DESIGN.md "The Files place"): the trail turns into a field, and a panel under it lists as he
@@ -123,9 +123,10 @@ export function GoToField({
     if (event.key === "Escape") return void (event.preventDefault(), onClose());
   };
   const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: string } => {
-    if (row.is === "tab") return { glyph: <KindGlyph kind={row.tab.kind === "page" ? "folder" : "other"} tinted={row.tab.kind === "page"} />, name: row.tab.name, fact: "Open tab" };
+    // A name as every row shows it: TempCode's own ending (".tcdoc", ".tcsheet") is no word.
+    if (row.is === "tab") return { glyph: <KindGlyph kind={row.tab.kind === "page" ? "folder" : "other"} tinted={row.tab.kind === "page"} />, name: shownName(row.tab.name), fact: "Open tab" };
     if (row.is === "new") return { glyph: <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />, name: row.name ? `New ${MAKE_WORDS[row.what].toLowerCase()} called ${row.name}` : `New ${MAKE_WORDS[row.what].toLowerCase()}`, fact: "" };
-    return { glyph: <KindGlyph kind={row.entry.kind} />, name: row.entry.name, fact: row.entry.where ? whereWords(row.entry.where) : "" };
+    return { glyph: <KindGlyph kind={row.entry.kind} />, name: shownName(row.entry.name), fact: row.entry.where ? whereWords(row.entry.where) : "" };
   };
   return (
     // Go to closes when the focus leaves the field and its panel together: Tab from the field to Retry keeps it open.
