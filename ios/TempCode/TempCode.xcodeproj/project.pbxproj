@@ -72,6 +72,7 @@
 		3F55B406D1444F914CD71435 /* HomeRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C87A95828B07727E81E7F3 /* HomeRows.swift */; };
 		40F866E114FA5D0D457BDD77 /* TranscriptStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F85B138E361FDF48F26370 /* TranscriptStyles.swift */; };
 		452DC3B974ED0A1084C80341 /* HostExtrasStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15334BEE796AF48CB8B4CE01 /* HostExtrasStyles.swift */; };
+		4715C884E86A212947C18743 /* TodayProjectOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA24CF81F1C988D67EC03030 /* TodayProjectOpen.swift */; };
 		471EF9AA7980D6181DD421D3 /* ReviewSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 308145EA8F1EBB9DA67DBA90 /* ReviewSettings.swift */; };
 		472EF8CACD35C3F3303BACF1 /* WorkListCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032623550E27FCD84400DE13 /* WorkListCheck.swift */; };
 		47631002F88A4DC19C515CA7 /* ClashScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48E96625D57035969C1576BA /* ClashScreen.swift */; };
@@ -570,6 +571,7 @@
 		F8AA18212F92E05107C5A0F6 /* HouseRulesScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseRulesScreen.swift; sourceTree = "<group>"; };
 		F960E9F3E4083280E5BFC5EF /* AwayReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AwayReview.swift; sourceTree = "<group>"; };
 		FA1270A60F27A9022E8B2360 /* ClickerFake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickerFake.swift; sourceTree = "<group>"; };
+		FA24CF81F1C988D67EC03030 /* TodayProjectOpen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayProjectOpen.swift; sourceTree = "<group>"; };
 		FAD80CF3ECFDAAC8176A3D56 /* MasterRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterRows.swift; sourceTree = "<group>"; };
 		FDA46DA4DA2674032B09E9D9 /* ThreadScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadScreen.swift; sourceTree = "<group>"; };
 		FE0ADC4A40975A30050410B1 /* TodayScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayScreen.swift; sourceTree = "<group>"; };
@@ -660,6 +662,7 @@
 			children = (
 				635C89799241EE00370DCC49 /* TodayFeed.swift */,
 				D99A17E5D92CB2B19B44BA51 /* TodayLife.swift */,
+				FA24CF81F1C988D67EC03030 /* TodayProjectOpen.swift */,
 				FE0ADC4A40975A30050410B1 /* TodayScreen.swift */,
 			);
 			path = Today;
@@ -1596,6 +1599,7 @@
 				2CF7260579E0E9F974005DBD /* TickLedger.swift in Sources */,
 				930A301B5CAE1B3902645E87 /* TodayFeed.swift in Sources */,
 				21C8719F56FA5F72AC8AFB49 /* TodayLife.swift in Sources */,
+				4715C884E86A212947C18743 /* TodayProjectOpen.swift in Sources */,
 				F5FE26BB547E2E4F5E5DA641 /* TodayScreen.swift in Sources */,
 				F57B9A272D9C4641C74A0BF6 /* Tokens.swift in Sources */,
 				D8CC0C159C613991B9F1A144 /* ToolChip.swift in Sources */,
@@ -2041,7 +2045,7 @@
 			repositoryURL = "https://github.com/LandonDev/work-kit";
 			requirement = {
 				kind = revision;
-				revision = 8e6af85d9bfe2b8acb167400246432e114bf3275;
+				revision = 159f2553f3b7dbd597970e28382e90623a4be87e;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
