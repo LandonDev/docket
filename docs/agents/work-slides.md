@@ -1800,8 +1800,10 @@ line, "Not saved." and why, with Retry (`notesFailure`, `retryNotes`),
 until he types in the field again or they go in. His words stay in the field
 (`notesPending`), the field drawn again on the slide starts from them
 (`pendingNotes`), never from the deck's older notes, and Retry, his next keep or the close writes them over the
-notes as they are now, the other save kept in the deck's versions. While
-his notes wait or travel past 600 ms the save line says saving. From his first key they
+notes as they are now, the other save kept in the deck's versions. Inside
+the 2 s pause his notes are an edit waiting (`notesEditedAt`, canvas/calm.ts),
+not a send, so the line keeps its Saved; it says saving once a send has been
+out 600 ms, as the box's does. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
 "Drafts survive a crash"), so a crash in the pause offers them, with
 Restore, the next time the deck opens. Notes as long as the outline carries

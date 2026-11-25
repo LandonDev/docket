@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeckStore } from "../deck";
 import { deckView, fakeDeckHost, slide } from "../testkit";
-import { HandSession, TYPING_SAVE_MS } from "./session";
+import { savingNow } from "../../canvas/calm";
+import { HandSession, TYPING_SAVE_MS, unsavedOf } from "./session";
 
 vi.mock("../../canvas/frame", () => ({ sayError: () => undefined }));
 
@@ -35,6 +36,21 @@ describe("notes he types", () => {
     await vi.waitFor(() => expect(line()).toBe("saved"));
     expect(store.get().view!.slides[0].notes).toBe("Say hello, then the plan");
     expect(session.notesPending(3)).toBe(false);
+  });
+
+  it("inside the 2 s pause keep the last Saved line: nothing is on its way until the pause sends them", async () => {
+    const { session, edits } = setUp();
+    const saving = () => savingNow(unsavedOf(session.get()), Date.now()).saving;
+    session.typeNotes(3, "Say hello,", "Say hello");
+    await vi.advanceTimersByTimeAsync(1500);
+    session.typeNotes(3, "Say hello, then", "Say hello");
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(edits()).toEqual([]);
+    expect(unsavedOf(session.get()).sent).toBeNull();
+    expect(saving()).toBe(false);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(edits()).toHaveLength(1);
+    await vi.waitFor(() => expect(unsavedOf(session.get())).toMatchObject({ edited: null, sent: null }));
   });
 
   it("leaving the field sends them at once; the next keep is written over what the last one wrote; nothing typed sends nothing", async () => {

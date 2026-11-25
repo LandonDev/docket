@@ -122,6 +122,8 @@ export interface HandState {
   failure: Failure | null;
   /** why the host refused his notes, said in the save line with Retry until he types in them again or they go in */
   notesFailure?: string | null;
+  /** when his last key in the notes field was, while those notes wait for the pause; nothing is on its way for them yet */
+  notesEditedAt?: number | null;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
   shapeLook: { shapeId: number; set: RunLook & ParaLook } | null;
   /** a shape's carried picture, or the ground over a deleted one, until the new picture lands */
@@ -151,7 +153,7 @@ const boxWaits = ({ box }: HandState): boolean => box?.phase === "typing" && !bo
 
 /** The save line's facts for canvas/calm.ts, from the session's state: the box's words not sent yet, and the edits on their way. */
 export function unsavedOf(state: HandState): Unsaved {
-  return { edited: boxWaits(state) ? (state.editedAt ?? Date.now()) : null, pause: TYPING_SAVE_MS, sent: state.busy > 0 ? (state.busySince ?? Date.now()) : null };
+  return { edited: boxWaits(state) ? (state.editedAt ?? Date.now()) : (state.notesEditedAt ?? null), pause: TYPING_SAVE_MS, sent: state.busy > 0 ? (state.busySince ?? Date.now()) : null };
 }
 
 /** The box's words as one `runs` edit, on its cell where it types in a table's. */
@@ -752,7 +754,8 @@ export class HandSession {
     if (waiting && waiting.slide !== slide) void this.keepNotes();
     this.notesRefused = null;
     if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
-    this.set({ busy: this.state.busy + (this.notesWaiting ? 0 : 1), notesFailure: null });
+    // Waiting for the pause, nothing is on its way: the line keeps its Saved until the pause ends or they are sent.
+    this.set({ notesEditedAt: Date.now(), notesFailure: null });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
     this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
@@ -766,13 +769,14 @@ export class HandSession {
     this.notesWaiting = null;
     const was = this.notesHeld.get(waiting.slide) ?? waiting.began;
     if (waiting.text === was) {
-      this.set({ busy: this.state.busy - 1 });
+      this.set({ notesEditedAt: null });
       // (a send on its way holds the same words: its answer lets the draft go)
       if (!this.notesSending) this.notesJournal?.clear();
       return (await this.notesSending?.done) ?? true;
     }
-    // The wait's count goes on as the send's, so the line never says saved between the two.
+    // The send counts itself on its way as the wait ends, so the line never says saved between the two.
     this.notesHeld.set(waiting.slide, waiting.text);
+    this.set({ busy: this.state.busy + 1, notesEditedAt: null });
     const sending: { slide: number; text: string; done: Promise<boolean> } = {
       slide: waiting.slide,
       text: waiting.text,
@@ -889,6 +893,6 @@ export class HandSession {
 
   /** With no clock asked: anything not written yet. */
   private busyOrTyped(): boolean {
-    return this.state.busy > 0 || boxWaits(this.state);
+    return this.state.busy > 0 || boxWaits(this.state) || this.notesWaiting !== null;
   }
 }
