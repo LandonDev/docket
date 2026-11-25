@@ -128,6 +128,45 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
   }
   const back = async (tabId: string): Promise<CopyBack | undefined> => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)?.back
 
+  it('reads a file of several pieces with the version asked twice (the first piece and the last), and says how far it has got', async () => {
+    const MB = 1024 * 1024
+    const file = Buffer.alloc(13 * MB, 7)
+    const reads: { offset: number; version: boolean }[] = []
+    setVmCall(async (verb, args = {}) => {
+      if (verb === 'files.stat') return { name: 'Roster.xlsx', path: ROSTER, dir: false, size: file.length, modified: 1000, local: true, link: false }
+      if (verb !== 'files.read') return guest(verb, args as Record<string, unknown>)
+      const { offset, length, version } = args as { offset: number; length: number; version?: boolean }
+      reads.push({ offset, version: !!version })
+      const data = file.subarray(offset, offset + length)
+      return { data: data.toString('base64'), size: file.length, eof: offset + data.length >= file.length, ...(version ? { version: `${file.length}:1000:hfile` } : {}) }
+    })
+    const { copy } = await open()
+    expect(readFileSync(copy).equals(file)).toBe(true)
+    // Four pieces, the helper's whole-file hash asked with two of them.
+    expect(reads.map((r) => r.offset)).toEqual([0, 4 * MB, 8 * MB, 12 * MB])
+    expect(reads.filter((r) => r.version).map((r) => r.offset)).toEqual([0, 12 * MB])
+    // Each piece said, as a far drive's copy says it ("Opening… 3.0 of 20 MB" in the row).
+    const said = rig.pushes.flatMap((x) => ((x.p as { opening?: { done: number; total: number } }).opening ? [(x.p as { opening: { done: number } }).opening.done] : []))
+    expect(said).toEqual([4 * MB, 8 * MB, 12 * MB, 13 * MB])
+  })
+
+  it('reads a file that changed between its first piece and its last once more, then refuses it, leaving no copy behind', async () => {
+    const MB = 1024 * 1024
+    const file = Buffer.alloc(9 * MB, 3)
+    let edits = 0
+    setVmCall(async (verb, args = {}) => {
+      if (verb === 'files.stat') return { name: 'Roster.xlsx', path: ROSTER, dir: false, size: file.length, modified: 1000, local: true, link: false }
+      if (verb !== 'files.read') return guest(verb, args as Record<string, unknown>)
+      const { offset, length, version } = args as { offset: number; length: number; version?: boolean }
+      const data = file.subarray(offset, offset + length)
+      // Someone saves it in Teams while each read is under way: the last piece's version is another.
+      if (version && offset > 0) edits++
+      return { data: data.toString('base64'), size: file.length, eof: offset + data.length >= file.length, ...(version ? { version: `${file.length}:${1000 + (offset > 0 ? edits : 0)}:h` } : {}) }
+    })
+    await expect(open()).rejects.toThrow('changed while it was read')
+    expect(edits).toBe(2)
+  })
+
   it("is read with the helper's version, and a save goes back by it: the guest's file changes", async () => {
     const { copy, tabId } = await open()
     expect(readFileSync(copy, 'utf8')).toBe('vm workbook')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FAR_FIRST, FAR_PIECE, farBytes, type FarPiece } from './handle'
+import { bytesSink, FAR_FIRST, FAR_PIECE, farBytes, type FarPiece } from './handle'
 
 /** Another host's file copied here a piece at a time (handle.ts `farBytes`): once over the link, its progress said. */
 
@@ -28,9 +28,10 @@ describe('a copy of another computer’s file', () => {
     const file = fileOf(10 * MB + 5)
     const h = host(file)
     const said: number[] = []
-    const got = await farBytes(h.ask, (done, total) => (expect(total).toBe(file.length), said.push(done)))
-    expect(got.bytes.equals(file)).toBe(true)
-    expect(got.version).toBe('9:1:')
+    const sink = bytesSink()
+    const version = await farBytes(h.ask, sink, (done, total) => (expect(total).toBe(file.length), said.push(done)))
+    expect(sink.bytes().equals(file)).toBe(true)
+    expect(version).toBe('9:1:')
     // A small first piece, so the row says how far it has got after one round trip.
     expect(h.asked).toEqual([0, FAR_FIRST, FAR_FIRST + FAR_PIECE, FAR_FIRST + 2 * FAR_PIECE])
     expect(h.most()).toBeLessThanOrEqual(2)
@@ -41,21 +42,24 @@ describe('a copy of another computer’s file', () => {
     const file = fileOf(9 * MB)
     // The second answer is of another version: the read starts over and then holds.
     const once = host(file, (n) => (n === 2 ? '9:2:' : '9:1:'))
-    expect((await farBytes(once.ask)).bytes.equals(file)).toBe(true)
+    const sink = bytesSink()
+    await farBytes(once.ask, sink)
+    // What came in before the change went: the sink holds the file once, as it is.
+    expect(sink.bytes().equals(file)).toBe(true)
     expect(once.asked[0]).toBe(0)
     expect(once.asked.filter((o) => o === 0)).toHaveLength(2)
     const always = host(file, (n) => `9:${n}:`)
-    await expect(farBytes(always.ask)).rejects.toThrow('Deck.pptx changed while it was read')
+    await expect(farBytes(always.ask, bytesSink())).rejects.toThrow('Deck.pptx changed while it was read')
   })
 
   it('takes the whole file from a host a build behind, which answers no size', async () => {
     const file = fileOf(3 * MB)
-    const got = await farBytes(async () => ({ name: 'Big.docx', data: file.toString('base64'), version: '3:1:abc' }))
-    expect(got.bytes.equals(file)).toBe(true)
-    expect(got.version).toBe('3:1:abc')
+    const sink = bytesSink()
+    expect(await farBytes(async () => ({ name: 'Big.docx', data: file.toString('base64'), version: '3:1:abc' }), sink)).toBe('3:1:abc')
+    expect(sink.bytes().equals(file)).toBe(true)
   })
 
   it("says a piece's failure", async () => {
-    await expect(farBytes(async ({ offset }) => (offset ? Promise.reject(new Error('TC-WIN11 is not reachable now.')) : { name: 'x', data: fileOf(FAR_FIRST).toString('base64'), size: 3 * FAR_PIECE, version: 'v' }))).rejects.toThrow('not reachable')
+    await expect(farBytes(async ({ offset }) => (offset ? Promise.reject(new Error('TC-WIN11 is not reachable now.')) : { name: 'x', data: fileOf(FAR_FIRST).toString('base64'), size: 3 * FAR_PIECE, version: 'v' }), bytesSink())).rejects.toThrow('not reachable')
   })
 })

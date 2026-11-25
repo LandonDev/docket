@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID, type Hash } from 'node:crypto'
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import { FILES_PIECE_MAX, teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
@@ -308,32 +308,85 @@ const vmSetUp = (): boolean => {
   return !!s && !s.cannot && s.state !== 'none'
 }
 
+/** What the copies did, for the tests to count: each commit, and each copy read back from the disk after it was written. */
+export const copyCounts = { commits: 0, staged: 0, readBack: 0 }
+
 /**
- * Writes a copy into its folder, never through a link: the owner's folder and the source's folder must be folders,
- * and the file itself is opened without following one, so a link put there by anything else never carries the
- * bytes out of the copies.
+ * A copy being written into its folder, never through a link: the owner's folder and the source's folder must be
+ * folders, and the bytes go into a staging file of the copy's folder made new (never one already there, never through
+ * a link), hashed as they go in, then put in the copy's place in one rename once every piece is in and its version
+ * held. A copy that fails, is cancelled or meets a file that changed leaves nothing behind, and the copy that was there
+ * before (a tab's earlier copy) stays as it was until the new one is whole.
  */
-function writeCopy(dataDir: string, sessionId: string, dir: string, path: string, bytes: Buffer): void {
-  for (const folder of [copyDirOf(dataDir, sessionId), dir]) if (!lstatSync(folder).isDirectory()) throw new Error('The copy\'s folder is not a folder: nothing was copied.')
-  let fd: number
-  try {
-    fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600)
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ELOOP') throw new Error('The copy\'s place is a link: nothing was copied.')
-    throw err
+class Staging {
+  private fd: number
+  private hash: Hash = createHash('sha256')
+  private readonly tmp: string
+  /** the bytes as they went in: the body hash reads them, never the disk */
+  parts: Buffer[] = []
+  size = 0
+  constructor(dataDir: string, sessionId: string, dir: string, readonly path: string) {
+    for (const folder of [copyDirOf(dataDir, sessionId), dir]) if (!lstatSync(folder).isDirectory()) throw new Error("The copy's folder is not a folder: nothing was copied.")
+    // A link where the copy would land is refused, as it always was: nothing is read for it.
+    let there: ReturnType<typeof lstatSync> | null = null
+    try {
+      there = lstatSync(path)
+    } catch {
+      there = null
+    }
+    if (there?.isSymbolicLink()) throw new Error("The copy's place is a link: nothing was copied.")
+    this.tmp = `${path}.part-${randomUUID().slice(0, 8)}`
+    try {
+      this.fd = openSync(this.tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ELOOP' || (err as NodeJS.ErrnoException).code === 'EEXIST') throw new Error("The copy's place is a link: nothing was copied.")
+      throw err
+    }
+    copyCounts.staged++
   }
-  try {
-    writeFileSync(fd, bytes)
-  } finally {
-    closeSync(fd)
+  write(buf: Buffer): void {
+    let at = 0
+    while (at < buf.length) at += writeSync(this.fd, buf, at, buf.length - at, this.size + at)
+    this.hash.update(buf)
+    this.parts.push(buf)
+    this.size += buf.length
+  }
+  /** The file changed while it was read: what came in goes, and the read starts again from its first byte. */
+  restart(): void {
+    closeSync(this.fd)
+    this.fd = openSync(this.tmp, constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW)
+    this.hash = createHash('sha256')
+    this.parts = []
+    this.size = 0
+  }
+  /** Every piece is in: the copy takes its place, and its SHA-256 is the one hashed on the way in. */
+  commit(): { sha256: string; bytes: Buffer } {
+    closeSync(this.fd)
+    this.fd = -1
+    // A rename puts the staging file in the path's place, a link there included: the link is replaced, never followed.
+    renameSync(this.tmp, this.path)
+    copyCounts.commits++
+    return { sha256: this.hash.digest('hex'), bytes: Buffer.concat(this.parts, this.size) }
+  }
+  abort(): void {
+    if (this.fd >= 0) closeSync(this.fd)
+    this.fd = -1
+    try {
+      unlinkSync(this.tmp)
+    } catch {
+      // already gone
+    }
   }
 }
 
 /**
  * Copies a file from another host, or out of this host's Windows VM, into the owner's attachments here, when its
  * workspace allows it. The owner is a Work thread, or the Files pane of a Work workspace here (a file opened in a tab).
+ * One pass: each piece streams into the copy's staging file and its hash as it lands, the file's version is read with
+ * the first piece and held to the last, and the copy is handed out with its SHA-256 and the bytes in hand, so nothing
+ * reads it back.
  */
-export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string }> {
+export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string; sha256: string; bytes: Buffer }> {
   const pane = filesPaneWorkspace(sessionId)
   const scope = pane === null ? ctx.scopeOf(sessionId) : null
   if (pane === null && !scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
@@ -341,26 +394,38 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   const workspaceId = pane ?? scope!.workspaceId
   if (!workspaceId || !copyAllowed(ctx.db, workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   if (source.at !== 'file') throw new Error('A copy comes from a file on another host.')
-  // The file's version comes from the same look as its bytes, so a copy that saves back names exactly what it read.
-  let got: { name: string; bytes: Buffer; version?: string }
+  // One folder per source file, so two files of one name in one owner's copies never share a folder.
+  const dir = copyFolderOf(ctx.dataDir, sessionId, source)
+  let name: string
+  let read: (into: Staging) => Promise<string | undefined>
   if (source.host === ctx.host) {
     // A file in this host's Windows VM comes out of the guest the same way: a snapshot in the thread's own folder.
     if (!isGuestPath(source.path)) throw new Error('A copy comes from a file on another host.')
     if (scope ? !vmAllowed(ctx, scope) : !vmSetUp()) throw new Error(NOT_VM)
     const inVm = vmLibraryOf(vmLibraries(ctx.db, ctx.host), source.path)
     if (!inVm) throw new Error(NOT_TEAMS)
-    const name = inVm.path.slice(inVm.path.lastIndexOf('\\') + 1)
-    got = pane === null ? { name, bytes: await vmBytes(inVm.path, BYTES_MAX, signal) } : { name, ...(await vmVersioned(inVm.path, signal)) }
+    name = inVm.path.slice(inVm.path.lastIndexOf('\\') + 1)
+    // A thread's copy is a snapshot with no version (it never saves back); a tab's names the version it read.
+    read = pane === null ? async (into) => void into.write(await vmBytes(inVm.path, BYTES_MAX, signal)) : (into) => vmVersioned(inVm.path, into, signal, progress)
   } else {
     const far = await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host)
-    got = await farBytes((params) => far.call('office', 'filesRead', { source, as: 'bytes', ...params }) as Promise<FarPiece>, progress)
+    const ask = (params: { offset: number; length: number }) => far.call('office', 'filesRead', { source, as: 'bytes', ...params }) as Promise<FarPiece>
+    // The far host names the file: its first piece is asked before the staging file is made.
+    const head = await ask({ offset: 0, length: FAR_FIRST })
+    name = head.name
+    read = (into) => farBytes(ask, into, progress, head)
   }
-  // One folder per source file, so two files of one name in one owner's copies never share a folder.
-  const dir = copyFolderOf(ctx.dataDir, sessionId, source)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const path = join(dir, basename(got.name))
-  writeCopy(ctx.dataDir, sessionId, dir, path, got.bytes)
-  return { source: { at: 'file', host: ctx.host, path }, entry: entryOf('', path), ...(got.version ? { version: got.version } : {}) }
+  const staging = new Staging(ctx.dataDir, sessionId, dir, join(dir, basename(name)))
+  try {
+    const version = await read(staging)
+    if (signal?.aborted) throw new Error('cancelled')
+    const { sha256, bytes } = staging.commit()
+    return { source: { at: 'file', host: ctx.host, path: staging.path }, entry: entryOf('', staging.path), ...(version ? { version } : {}), sha256, bytes }
+  } catch (err) {
+    staging.abort()
+    throw err
+  }
 }
 
 /** A piece of another host's file as its `filesRead` answers it; a build before pieces answers the whole file, with no `size`. */
@@ -372,11 +437,12 @@ export const FAR_FIRST = 256 * 1024
 const FAR_AHEAD = 2
 
 /**
- * Another host's file read for a copy here, a piece at a time with two asked at once, so the bytes cross the link
- * once and the caller can say how far it has got (`progress`). Every piece names the version it was read at: a file
- * that changed while it was read is read once more, then refused. A host a build behind answers the whole file at once.
+ * Another host's file read for a copy here, a piece at a time with two asked at once, each written into the copy as
+ * it lands, so the bytes cross the link once and the caller can say how far it has got (`progress`). Every piece names
+ * the version it was read at: a file that changed while it was read is read once more, then refused. A host a build
+ * behind answers the whole file at once. Answers the version read.
  */
-export async function farBytes(ask: (params: { offset: number; length: number }) => Promise<FarPiece>, progress?: (done: number, total: number) => void): Promise<{ name: string; bytes: Buffer; version?: string }> {
+export async function farBytes(ask: (params: { offset: number; length: number }) => Promise<FarPiece>, into: { write(buf: Buffer): void; restart(): void }, progress?: (done: number, total: number) => void, first?: FarPiece): Promise<string | undefined> {
   // Each ask's failure is the caller's to see when it waits for it, never an unhandled one when a piece is let go.
   const piece = (offset: number, length = FAR_PIECE): Promise<FarPiece> => {
     const got = ask({ offset, length })
@@ -384,10 +450,11 @@ export async function farBytes(ask: (params: { offset: number; length: number })
     return got
   }
   for (let tries = 0; ; tries++) {
-    const head = await piece(0, FAR_FIRST)
-    if (typeof head.size !== 'number' || typeof head.version !== 'string') return { name: head.name, bytes: Buffer.from(head.data, 'base64'), ...(typeof head.version === 'string' ? { version: head.version } : {}) }
-    const parts = [Buffer.from(head.data, 'base64')]
-    let done = parts[0]!.length
+    const head = tries === 0 && first ? first : await piece(0, FAR_FIRST)
+    if (tries) into.restart()
+    into.write(Buffer.from(head.data, 'base64'))
+    if (typeof head.size !== 'number' || typeof head.version !== 'string') return typeof head.version === 'string' ? head.version : undefined
+    let done = Buffer.byteLength(head.data, 'base64')
     progress?.(done, head.size)
     const offsets: number[] = []
     for (let at = done; at < head.size; at += FAR_PIECE) offsets.push(at)
@@ -406,46 +473,59 @@ export async function farBytes(ask: (params: { offset: number; length: number })
         break
       }
       const bytes = Buffer.from(got.data, 'base64')
-      parts.push(bytes)
+      into.write(bytes)
       done += bytes.length
       progress?.(done, head.size)
     }
-    if (same && done === head.size) return { name: head.name, bytes: Buffer.concat(parts), version: head.version }
+    if (same && done === head.size) return head.version
     if (tries) throw new Error(`${head.name} changed while it was read. Try again.`)
   }
+}
+
+/** A place for a far file's pieces that holds them in memory (a reload's bytes, a test): what `farBytes` writes into. */
+export function bytesSink(): { write(buf: Buffer): void; restart(): void; bytes(): Buffer } {
+  let parts: Buffer[] = []
+  return { write: (buf) => void parts.push(buf), restart: () => void (parts = []), bytes: () => Buffer.concat(parts) }
 }
 
 /** One read of the guest's piece of a file, with the version the helper reads (`size:mtime:sha256`). */
 type GuestPiece = { data: string; size: number; eof: boolean; version: string }
 const PIECE = 4 * 1024 * 1024
 
+/** The guest's version of a file (`size:mtime:sha256`), read with one byte of it: the hash the helper makes for a version. */
+const guestVersion = async (path: string, signal?: AbortSignal): Promise<string> => ((await vmCall('files.read', { path, offset: 0, length: 1, version: true }, { signal })) as GuestPiece).version
+
 /**
- * A file in the VM read whole for a Files tab's copy, with its version: every piece is read with the helper's
- * version, and a piece of another version means the file changed while it was read (read once more, then refused).
+ * A file in the VM read whole for a Files tab's copy, with its version, each piece written into the copy as it lands
+ * and said as it goes (`progress`, as a far drive's copy says it). The helper hashes the whole file for a version, so
+ * the version is asked with the first piece and once more at the end, never with the pieces between: one that differs
+ * means the file changed while it was read (read once more, then refused). Answers the version read.
  */
-async function vmVersioned(path: string, signal?: AbortSignal): Promise<{ bytes: Buffer; version: string }> {
+async function vmVersioned(path: string, into: Staging, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<string> {
   for (let tries = 0; ; tries++) {
     const entry = (await vmCall('files.stat', { path }, { signal })) as { dir?: boolean; size: number; name: string }
     if (entry.dir) throw new Error('That is a folder.')
     if (entry.size > BYTES_MAX) throw new Error(`${entry.name} is over ${Math.round(BYTES_MAX / 1024 / 1024)} MB: open it in its app.`)
-    const parts: Buffer[] = []
-    let version: string | null = null
+    if (tries) into.restart()
+    let first: string | null = null
+    let last: string | null = null
     let offset = 0
-    let same = true
     for (;;) {
-      const got = (await vmCall('files.read', { path, offset, length: PIECE, version: true }, { signal })) as GuestPiece
-      if (version !== null && got.version !== version) {
-        same = false
-        break
-      }
-      version = got.version
+      // The first piece, and the one that should end the file, carry the version.
+      const versioned = offset === 0 || offset + PIECE >= entry.size
+      const got = (await vmCall('files.read', { path, offset, length: PIECE, ...(versioned ? { version: true } : {}) }, { signal })) as GuestPiece
+      if (offset === 0) first = got.version
+      else if (versioned) last = got.version
       const buf = Buffer.from(got.data, 'base64')
-      parts.push(buf)
+      into.write(buf)
       offset += buf.length
+      progress?.(offset, Math.max(entry.size, offset))
       if (got.eof || !buf.length) break
       if (offset > BYTES_MAX) throw new Error(`${entry.name} grew past ${Math.round(BYTES_MAX / 1024 / 1024)} MB while it was read.`)
     }
-    if (same && version !== null) return { bytes: Buffer.concat(parts), version }
+    // A file of one piece was versioned with it; one whose end came on a piece that was not asked for its version is asked once.
+    const end = offset <= PIECE ? first : (last ?? (await guestVersion(path, signal)))
+    if (first !== null && end === first) return first
     if (tries) throw new Error(`${entry.name} changed while it was read. Try again.`)
   }
 }

@@ -1,6 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { existsSync, realpathSync, statSync } from 'node:fs'
-import { readFile as readBytes } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ClientRequest } from '@shared/contract'
@@ -21,7 +20,7 @@ import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
 import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
-import { keepBody } from './body'
+import { bodyOfAsync, keepBodyHash } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
 import { chooseSeat, fileMakerFor, folderExtrasHooks, refSeatFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
@@ -486,12 +485,13 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal, progress)
   // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
   const path = (copy.source as { path: string }).path
-  // the body as read, for SharePoint's own rewrite of it to be told from an edit (body.ts)
-  if ((back || word) && copy.version) keepBody(ctx, { workspace_id: workspaceId, host: file.host, path: file.path }, await readBytes(path))
-  if (back && copy.version) recordCopy(ctx, { workspaceId, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
+  // the body as read, for SharePoint's own rewrite of it to be told from an edit (body.ts): made from the bytes the
+  // copy came in with, its parts inflated off the loop; the SHA is the one hashed as they came in. Nothing reads the copy back.
+  if ((back || word) && copy.version) keepBodyHash(ctx, { workspace_id: workspaceId, host: file.host, path: file.path }, await bodyOfAsync(copy.bytes))
+  if (back && copy.version) recordCopy(ctx, { workspaceId, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: copy.sha256 })
   else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
   // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
-  if (word && copy.version) recordWord(ctx, { workspaceId, host: file.host, path: file.path, vm, name, version: copy.version, sha: createHash('sha256').update(await readBytes(path)).digest('hex') })
+  if (word && copy.version) recordWord(ctx, { workspaceId, host: file.host, path: file.path, vm, name, version: copy.version, sha: copy.sha256 })
   return { kind, source: copy.source, copyOf }
 }
 

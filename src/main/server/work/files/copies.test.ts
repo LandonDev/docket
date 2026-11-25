@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { shiftMtime } from '../mtime.testkit'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
@@ -8,7 +9,7 @@ import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-fil
 import { canvasSourcePath, filesPaneOf } from '@shared/work'
 import { copySavesBack, refKey } from '@shared/work/files'
 import type { Caller } from '../modules'
-import { copyDirOf, dropItemCopies, filesHandle as officeHandle } from '../office/files/handle'
+import { copyCounts, copyDirOf, dropItemCopies, filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
 import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone } from './handle'
@@ -1359,3 +1360,71 @@ describe("saved is not uploaded: a Mac's OneDrive says when it has the file", ()
   })
 })
 
+
+describe('a far copy in one pass', () => {
+  const MB = 1024 * 1024
+  const big = (n: number, seed = 1): string => Array.from({ length: n }, (_, i) => String.fromCharCode(97 + ((i * seed) % 26))).join('')
+  const scratch = (): string[] => {
+    const out: string[] = []
+    const walk = (dir: string): void => {
+      if (!existsSync(dir)) return
+      for (const d of readdirSync(dir, { withFileTypes: true })) {
+        const at = join(dir, d.name)
+        if (d.isDirectory()) walk(at)
+        else if (/\.part-/.test(d.name)) out.push(at)
+      }
+    }
+    walk(copyDirOf(box.ctx.dataDir, filesPaneOf(WS)))
+    return out
+  }
+  const pieces = () => far.filter((c) => c.verb === 'filesRead').map((c) => c.args.offset)
+
+  it('asks each piece once, writes the copy once, and hashes it on the way in: the record names the bytes that came', async () => {
+    const before = { ...copyCounts }
+    const bytes = big(9 * MB)
+    const { copy, path } = await openFar('Roster.xlsx', bytes)
+    // 256 KB, then 4 MB pieces: each offset once.
+    const asked = pieces()
+    expect(asked).toEqual([...new Set(asked)])
+    expect(asked).toHaveLength(Math.ceil((9 * MB - 256 * 1024) / (4 * MB)) + 1)
+    expect(copyCounts.commits - before.commits).toBe(1)
+    expect(copyCounts.staged - before.staged).toBe(1)
+    expect(readFileSync(copy, 'utf8')).toBe(bytes)
+    expect(copyRecord(box.ctx, WS, MAC, path)!.sent).toBe(createHash('sha256').update(bytes).digest('hex'))
+    expect(scratch()).toEqual([])
+  })
+
+  it('leaves no tab and no scratch when the file changes under every read, its host refuses, or the open is cancelled after a piece', async () => {
+    const path = join(mac.team, 'General', 'Moving.xlsx')
+    writeFileSync(path, big(9 * MB))
+    const open = (signal?: AbortSignal) => filesHandle({ id: '1', method: 'work.files.open', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path }, name: 'Moving.xlsx' } } as never, box.ctx, window, signal)
+    const tabs = async () => (await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.name === 'Moving.xlsx')
+    // Changed while it was read, every time: refused after one more read.
+    let n = 0
+    readGate = async () => {
+      if (++n % 2 === 0) shiftMtime(path, n)
+    }
+    await expect(open()).rejects.toThrow('changed while it was read')
+    expect(scratch()).toEqual([])
+    expect(await tabs()).toEqual([])
+    // Its host stops answering after the first piece (a revoke, a move away).
+    n = 0
+    readGate = async () => {
+      if (++n === 2) refuse = 'That file is not in a library this host syncs.'
+    }
+    await expect(open()).rejects.toThrow('not in a library')
+    refuse = null
+    expect(scratch()).toEqual([])
+    expect(await tabs()).toEqual([])
+    // He let it go after its first piece.
+    const stop = new AbortController()
+    n = 0
+    readGate = async () => {
+      if (++n === 2) stop.abort()
+    }
+    await expect(open(stop.signal)).rejects.toThrow()
+    readGate = null
+    expect(scratch()).toEqual([])
+    expect(await tabs()).toEqual([])
+  })
+})
