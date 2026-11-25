@@ -642,7 +642,7 @@ import TempCodeContract
     }
 
     @Test func onlyHeldLiveSendingAndFailedWait() {
-        #expect([OutboxItem.State.held, .live, .sending, .failed].allSatisfy(OutboxModel.waits))
+        #expect([OutboxItem.State.held, .live, .sending, .failed, .scheduled].allSatisfy(OutboxModel.waits))
         #expect(![OutboxItem.State.sent, .discarded, .stale].contains(where: OutboxModel.waits))
         #expect(OutboxModel.editable(.mailSend))
         #expect(!OutboxModel.editable(.computerAct))

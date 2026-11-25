@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { CAPABILITIES } from '../src/shared/capabilities'
-import { ACT_KINDS } from '../src/shared/work/acts'
+import { ACT_KINDS, HELD_STATES } from '../src/shared/work/acts'
 import { CHIP_KINDS } from '../src/shared/work/canvas'
 import { PILLAR_IDS } from '../src/shared/work/ids'
 
@@ -34,7 +34,9 @@ const SETS: { name: string; cases: string[] }[] = [
   { name: 'capabilities (Capability, Generated/Enums.swift)', cases: generatedCases('Capability') },
   { name: 'act kinds (ACT_KINDS, src/shared/work/acts.ts)', cases: ACT_KINDS.map(swiftCase) },
   { name: 'chip kinds (CHIP_KINDS, src/shared/work/canvas.ts)', cases: CHIP_KINDS.map(swiftCase) },
-  { name: 'pillar ids (PILLAR_IDS, src/shared/work/ids.ts)', cases: PILLAR_IDS.map(swiftCase) }
+  { name: 'pillar ids (PILLAR_IDS, src/shared/work/ids.ts)', cases: PILLAR_IDS.map(swiftCase) },
+  // 1.0.381's ios-client row failed when `scheduled` joined the held states and OutboxModel.waits had no branch for it.
+  { name: 'held states (HELD_STATES, src/shared/work/acts.ts)', cases: HELD_STATES.map(swiftCase) }
 ]
 
 function swiftFiles(dir: string): string[] {
@@ -70,7 +72,7 @@ export function switchesOf(source: string): { line: number; cases: string[]; def
 }
 
 describe('the phone switches over the contract stay whole', () => {
-  it('names every capability, act kind, chip kind and pillar id in each Swift switch over them that has no default', () => {
+  it('names every capability, act kind, chip kind, pillar id and held state in each Swift switch over them that has no default', () => {
     const missing: string[] = []
     for (const file of swiftFiles(IOS)) {
       const source = readFileSync(file, 'utf8')

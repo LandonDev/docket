@@ -8,10 +8,10 @@ public enum OutboxModel {
     /// Work Chats' grant scope and held rows' workspace (`WORK_HOME`).
     public nonisolated static let workChatsKey = "~work"
 
-    /// The states the Outbox lists as waiting: held, live, sending and failed.
+    /// The states the Outbox lists as waiting: held, live, sending, failed and scheduled (Send later, until it goes).
     public nonisolated static func waits(_ state: OutboxItem.State) -> Bool {
         switch state {
-        case .held, .live, .sending, .failed: true
+        case .held, .live, .sending, .failed, .scheduled: true
         case .sent, .discarded, .stale, .unknown: false
         }
     }
