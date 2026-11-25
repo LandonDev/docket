@@ -214,6 +214,47 @@ describe("a deck's open box", () => {
     expect((await before.kept()).map((d) => d.body)).toEqual([{ kind: "notes", slideId: 3, text: "Thank the sponsors", was: "" }]);
   });
 
+  it("of two slides' notes are each offered in turn, and his new words never go over one he was not shown", async () => {
+    // Council r5 (Sol 1): after Restore of one, the other slide's draft was never offered, and his typing there wrote over it.
+    const before = store();
+    const view = deckView({ slides: [slide(3), slide(5)], hand: { undo: false, redo: false } });
+    const first = fakeDeckHost(view);
+    // Neither send answers before the app goes.
+    first.edit = () => new Promise(() => undefined);
+    const firstDecks = new DeckStore();
+    firstDecks.view(view);
+    const session = new HandSession(first, firstDecks);
+    session.journalTo(before.journal);
+    session.typeNotes(3, "Thank the sponsors", "");
+    session.typeNotes(5, "Doors at six", "");
+    await before.s.settled();
+    expect((await before.kept()).map((d) => d.body.kind)).toEqual(["notes", "notes"]);
+    const after = store(before.dir, 2);
+    const host = fakeDeckHost(view);
+    const decks = new DeckStore();
+    decks.view(view);
+    const again = new HandSession(host, decks);
+    again.journalTo(after.journal);
+    await vi.waitFor(() => expect(again.get().offer).toBeTruthy());
+    const texts = ["Thank the sponsors", "Doors at six"];
+    const shown = again.get().offer!.text;
+    const other = texts.find((t) => t !== shown)!;
+    const otherSlide = other === "Doors at six" ? 5 : 3;
+    await again.restoreDraft();
+    // The other slide's draft is offered next.
+    expect(again.get().offer).toEqual({ at: AT, same: true, text: other });
+    // He types in that slide's notes before he answers: the draft he has not answered stays kept, never written over.
+    again.typeNotes(otherSlide, "New words", "");
+    expect(await again.keepNotes()).toBe(true);
+    await after.s.settled();
+    expect((await after.kept()).map((d) => d.body)).toEqual([{ kind: "notes", slideId: otherSlide, text: other, was: "" }]);
+    expect(again.get().offer).toMatchObject({ text: other });
+    again.discardDraft();
+    expect(again.get().offer).toBeNull();
+    await after.s.settled();
+    expect(await after.kept()).toEqual([]);
+  });
+
   it("of notes the host took is let go", async () => {
     const before = store();
     const { host, decks } = deck();

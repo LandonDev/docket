@@ -1833,7 +1833,9 @@ not a send, so the line keeps its Saved; it says saving once a send has been
 out 600 ms, as the box's does. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
 "Drafts survive a crash"), so a crash in the pause offers them, with
-Restore, the next time the deck opens. Notes as long as the outline carries
+Restore, the next time the deck opens; two slides' drafts are offered one
+after the other, and his new words, in this session's own slot, never go
+over a draft he has not answered. Notes as long as the outline carries
 (20,000 characters, the deck tool's `TEXT_CAP`, `NOTES_SHOWN_MAX`) may be cut,
 so they are words he cannot type in, with one muted "Too long to edit here"
 (`notesCut`), and the deck tool refuses a `notes` edit over notes longer than

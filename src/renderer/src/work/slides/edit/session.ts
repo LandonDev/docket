@@ -211,7 +211,14 @@ export class HandSession {
   /** what was last kept, as its JSON: the same box said again is not written again */
   private keptJson = "";
   private offered: Draft | null = null;
+  /** The drafts kept from before still to offer, in turn, once he answers the one shown (`offered`). */
+  private offers: Draft[] = [];
   private looked = false;
+  /**
+   * This session's own slot for each slide's notes on this computer: a draft kept from before, offered or still to
+   * be, is never written over by his new words, even ones typed before the offers are read.
+   */
+  private readonly notesSlot = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
   constructor(
     private host: DeckHost,
@@ -250,25 +257,33 @@ export class HandSession {
     void this.lookForDrafts();
   }
 
-  /** Once, as the deck is read: the newest draft no live window holds is offered, and no box opens until he answers. */
+  /**
+   * Once, as the deck is read: every draft no live window holds is offered, one at a time, newest first, and no box
+   * opens until he answers. A box's words first, then notes he typed.
+   */
   async lookForDrafts(): Promise<void> {
-    const view = this.store.get().view;
-    if (this.looked || !this.journal || !view) return;
+    if (this.looked || !this.journal || !this.store.get().view) return;
     this.looked = true;
-    // A box's words first; else notes he typed: the slide's notes must still be what they were typed over.
-    const draft = (await this.journal.offered("deck"))[0] ?? (await this.journal.offered("notes"))[0];
-    if (draft?.body.kind === "notes") {
+    this.offers = [...(await this.journal.offered("deck")), ...(await this.journal.offered("notes"))];
+    this.offerNext();
+  }
+
+  /** The next kept draft offered, read against the deck as it is now: a slide's notes must still be what they were typed over. */
+  private offerNext(): void {
+    const view = this.store.get().view;
+    const draft = this.offers.shift() ?? null;
+    this.offered = draft;
+    if (!draft || !view) return this.set({ offer: null });
+    if (draft.body.kind === "notes") {
       const { slideId, text, was } = draft.body;
       const now = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.notes;
-      this.offered = draft;
       this.set({ offer: { at: draft.at, same: now === was, text } });
       return;
     }
-    if (!draft || draft.body.kind !== "deck") return;
+    if (draft.body.kind !== "deck") return this.offerNext();
     const { slideId, shapeId, cell, words, model } = draft.body;
     const found = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
     const shape = found && cell ? cellShape(found, cell) : found;
-    this.offered = draft;
     this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model) } });
   }
 
@@ -283,8 +298,8 @@ export class HandSession {
         body.kind === "notes" ? { op: "notes", slide: body.slideId, text: body.text, was: body.was } : { ...runsOp(body.model as Model, body.slideId, body.shapeId, body.words), ...body.cell };
       this.store.view(await this.host.edit([op]));
       this.journal?.drop(draft);
-      this.offered = null;
-      this.set({ busy: this.state.busy - 1, savedAt: Date.now(), offer: null });
+      this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
+      this.offerNext();
     } catch (error) {
       const said = message(error, "The host did not answer");
       if (MOVED.test(said)) this.set({ busy: this.state.busy - 1, offer: { ...this.state.offer!, same: false } });
@@ -299,8 +314,7 @@ export class HandSession {
   discardDraft(): void {
     if (!this.offered) return;
     this.journal?.drop(this.offered);
-    this.offered = null;
-    this.set({ offer: null });
+    this.offerNext();
   }
   private setBox(patch: Partial<BoxState>): void {
     if (this.state.box) this.set({ box: { ...this.state.box, ...patch } });
@@ -765,7 +779,7 @@ export class HandSession {
       // In conflict with a save made elsewhere: his words stay his, kept on this computer, and nothing is sent until
       // he presses Replace or Reload.
       this.notesRefused.set(slide, { ...refused, text });
-      this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
+      this.notesJournal(slide)?.keep(`notes:${slide}:${this.notesSlot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
       return;
     }
     const waiting = this.notesWaiting;
@@ -777,7 +791,7 @@ export class HandSession {
     this.set({ notesEditedAt: Date.now(), ...this.refusedLine() });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
-    this.notesJournal(slide)?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
+    this.notesJournal(slide)?.keep(`notes:${slide}:${this.notesSlot}`, { kind: "notes", slideId: slide, text, was: this.notesBase(slide, began) });
   }
 
   /**

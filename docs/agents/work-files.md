@@ -2508,10 +2508,12 @@ over a file that changed there.
   "The slide changed since" with Copy Words and Discard, nothing sent. No box opens while the offer stands. A box on
   a table's cell keeps its `cell` too, and Restore sends to that cell.
 - **A deck's notes** (`DraftBody` kind `notes`): a slide's speaker notes he typed and the notes they were typed over
-  (`was`), kept from his first key under `notes:<slide>` by a second journal of the file (`DraftJournal.twin`), so a
-  crash in the 2 s pause loses nothing, and dropped once the host has them (refused, they stay). Offered as the deck
-  opens when no box's draft is: Restore sends one `notes` edit with `was` as its check; notes changed since read
-  "The slide changed since", with Copy Words and Discard.
+  (`was`), kept from his first key under `notes:<slide>:<session>` by a second journal of the file
+  (`DraftJournal.twin`), so a crash in the 2 s pause loses nothing, and dropped once the host has them (refused, they
+  stay). Each session keeps its own slot, so his new words never go over a draft kept from before. As the deck opens
+  every kept draft is offered in turn, the box's first, the next once he answers the one shown (`offerNext`): Restore
+  sends one `notes` edit with `was` as its check; notes changed since read "The slide changed since", with Copy Words
+  and Discard.
 - **A document's draft** (`DraftBody` kind `document`): the sync updates its socket sent that the service has not
   answered applied (`asUpdate` frames, base64, in host.ts's relay socket), under a base of the open's own so an earlier
   draft is never written over while he edits; all of it dropped once every update is applied. As the document opens
