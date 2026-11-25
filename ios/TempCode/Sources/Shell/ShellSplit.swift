@@ -37,12 +37,12 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         let _ = navigator.splitAnswer
         NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: compactColumn) {
             NavigationStack(path: $navigator.sidebarPath) {
+                // The shell's own sidebar button on every page of the column, the root and each page pushed over it,
+                // where the system's toggle stood (`SidebarButtonItem`): his press is its action, never guessed from
+                // the binding's timing (`ShellNavigator.pressSidebar`).
                 sidebar()
-                    .navigationDestination(for: Route.self, destination: destination)
-                    // The shell's own sidebar button, so his press is recorded by its action, never guessed from the
-                    // binding's timing (`ShellNavigator.pressSidebar`); the system's toggle would write the binding.
-                    .toolbar(removing: .sidebarToggle)
-                    .toolbar { if sidebarButtonInSidebar { ToolbarItem(placement: .topBarLeading) { sidebarButton } } }
+                    .modifier(SidebarButtonItem(navigator: navigator, column: .sidebar))
+                    .navigationDestination(for: Route.self) { destination($0).modifier(SidebarButtonItem(navigator: navigator, column: .sidebar)) }
             }
             .navigationSplitViewColumnWidth(min: sidebarColumn.min, ideal: sidebarColumn.ideal, max: sidebarColumn.max)
             #if DEBUG
@@ -60,11 +60,13 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                 // A new root is a new screen; the same root through a fold is the same one, and a
                 // project's shell is one screen whichever thread it shows.
                 .id(ShellPaths.identity(of: navigator.detailRoot))
-                .toolbar { if sidebarButtonInDetail { ToolbarItem(placement: .topBarLeading) { sidebarButton } } }
-                .navigationDestination(for: Route.self, destination: destination)
+                .modifier(SidebarButtonItem(navigator: navigator, column: .detail))
+                .navigationDestination(for: Route.self) { destination($0).modifier(SidebarButtonItem(navigator: navigator, column: .detail)) }
                 // At the stack's root, not on Hosts: a push made while Hosts itself was still
                 // arriving (the proof's hook) found no destination and drew the warning glyph.
-                .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
+                .navigationDestination(for: HostDetailRoute.self) {
+                    HostDetailView(environmentId: $0.environmentId).modifier(SidebarButtonItem(navigator: navigator, column: .detail))
+                }
             }
         }
         // A LifeOS screen's mail thread is pushed onto the split's stack, hoisted out of LifeKitUI's own.
@@ -102,16 +104,6 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     private var chosenWord: String { navigator.sidebarShown ? "shown" : "hidden" }
     #endif
 
-    /// The sidebar button, where the system's toggle would sit: in the sidebar's bar while it shows, else in the
-    /// detail's (the overlay pose keeps it there under the overlay too). Never in a stack.
-    private var sidebarButtonInSidebar: Bool { navigator.pose.isSplit && navigator.splitShown }
-    private var sidebarButtonInDetail: Bool { navigator.pose.isSplit && (!navigator.splitShown || navigator.pose.isOverlay) }
-
-    private var sidebarButton: some View {
-        Button(navigator.splitShown ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.leading") { navigator.pressSidebar() }
-            .accessibilityIdentifier("shell-sidebar-button")
-    }
-
     #if DEBUG
     /// `TC_TEST_ACTION=sidebar-tap`: the button's own action pressed as soon as Work's split stands in a split pose,
     /// inside the startup writes' half second (the m0 part's check).
@@ -121,10 +113,17 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
             try? await Task.sleep(for: .seconds(ShellPose.echoTurn / 2))
         }
         guard navigator.pose.isSplit else { return }
+        // The button stands where he would press it (the Outbox's list, pushed in the sidebar): drawn in the bar of the
+        // column the toggle sits in, before the action runs.
+        let column: SidebarButtonItem.Column = navigator.splitShown ? .sidebar : .detail
+        for _ in 0..<ShellPose.settleTries * 10 where SidebarButtonProbe.count(navigator.tab, column) == 0 {
+            try? await Task.sleep(for: .seconds(ShellPose.echoTurn / 2))
+        }
         let before = navigator.sidebarShown ? "shown" : "hidden"
         let at = Int((navigator.sinceShown * 1000).rounded())
+        let drawn = "sidebar \(SidebarButtonProbe.count(navigator.tab, .sidebar)) detail \(SidebarButtonProbe.count(navigator.tab, .detail))"
         navigator.pressSidebar()
-        LayoutProbe.note("sidebar.press", "\(before) -> \(navigator.sidebarShown ? "shown" : "hidden") at \(at) ms")
+        LayoutProbe.note("sidebar.press", "\(before) -> \(navigator.sidebarShown ? "shown" : "hidden") at \(at) ms with \(drawn)")
     }
     #endif
 
@@ -162,6 +161,53 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         )
     }
 }
+
+/// The shell's sidebar button on one page of a column, in place of the system's toggle, on the side the toggle used:
+/// the sidebar's bar at its trailing edge while the sidebar shows, the detail's at its leading edge while it does not
+/// (the overlay pose keeps it there under the overlay too). Never in a stack. Every page of each column wears it, the
+/// root and each page pushed over it, so the system's toggle never comes back on a pushed page.
+struct SidebarButtonItem: ViewModifier {
+    typealias Column = SidebarButtonPlace.Column
+
+    let navigator: ShellNavigator
+    let column: Column
+
+    private var shows: Bool { SidebarButtonPlace.shows(in: column, pose: navigator.pose, sidebarShown: navigator.splitShown) }
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar(removing: .sidebarToggle)
+            .toolbar {
+                if shows {
+                    ToolbarItem(placement: SidebarButtonPlace.edge(of: column) == .trailing ? .topBarTrailing : .topBarLeading) {
+                        Button(navigator.splitShown ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.leading") { navigator.pressSidebar() }
+                            .accessibilityIdentifier("shell-sidebar-button")
+                            #if DEBUG
+                            .onAppear { SidebarButtonProbe.moved(navigator, column, by: 1) }
+                            .onDisappear { SidebarButtonProbe.moved(navigator, column, by: -1) }
+                            #endif
+                    }
+                }
+            }
+    }
+}
+
+#if DEBUG
+/// The proofs' count of the shell's sidebar buttons in each column's bar, per tab (`sidebar.buttons.<column>`): a
+/// toolbar item appears only while its page is the top one of a column that shows.
+@MainActor
+enum SidebarButtonProbe {
+    private static var drawn: [String: Int] = [:]
+
+    static func count(_ tab: AppTab, _ column: SidebarButtonItem.Column) -> Int { drawn["\(tab).\(column.rawValue)"] ?? 0 }
+
+    static func moved(_ navigator: ShellNavigator, _ column: SidebarButtonItem.Column, by delta: Int) {
+        let key = "\(navigator.tab).\(column.rawValue)"
+        drawn[key] = max(0, (drawn[key] ?? 0) + delta)
+        if navigator.focused { LayoutProbe.note("sidebar.buttons.\(column.rawValue)", String(drawn[key] ?? 0)) }
+    }
+}
+#endif
 
 /// The fold's division (iOS 27.1): while the hinge is partially open the
 /// two panels are a tabletop and the sidebar takes the left one, so the

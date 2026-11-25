@@ -227,6 +227,8 @@ public struct GroupOutcome: Sendable, Hashable {
         case failed(String)
         /// The host tried and could not confirm (`outcomeUnknown`): it may have gone, never "not sent".
         case mayHaveGone
+        /// Its host's answer was lost: the row says Checking… from the press record until it is read back.
+        case checking
     }
 
     public let did: GroupPress.Act
@@ -259,6 +261,14 @@ public struct GroupOutcome: Sendable, Hashable {
         }
     }
 
+    /// A host whose answer was lost (`PressLedger.Unknown`): its items count as checking in the sum, so a two-host
+    /// press never reads "Sent 1" as if it were the whole.
+    public mutating func lost(host: String, of press: GroupPress) {
+        for entry in press.entries where entry.environmentId == host && results[entry.id] == nil {
+            results[entry.id] = .checking
+        }
+    }
+
     /// The reason an item did not go, by entry id ("May have gone" for one the host could not confirm); nil for one
     /// that went.
     public func reason(_ id: String) -> String? {
@@ -275,11 +285,12 @@ public struct GroupOutcome: Sendable, Hashable {
         let done = results.values.compactMap { if case .done(let w) = $0 { w } else { nil } }
         let failed = results.values.count(where: { if case .failed = $0 { true } else { false } })
         let unknown = results.values.count(where: { $0 == .mayHaveGone })
+        let checking = results.values.count(where: { $0 == .checking })
         let discard = if case .discard = did { true } else { false }
         let queued = discard ? 0 : done.count(where: { $0 == "Queued in LifeOS" })
         let went = done.count - queued
         let (yes, no) = discard ? ("Discarded", "not discarded") : ("Sent", "not sent")
-        let line = [went > 0 ? "\(yes) \(went)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, unknown > 0 ? "\(unknown) may have gone" : nil, failed > 0 ? "\(failed) \(no)" : nil]
+        let line = [went > 0 ? "\(yes) \(went)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, unknown > 0 ? "\(unknown) may have gone" : nil, failed > 0 ? "\(failed) \(no)" : nil, checking > 0 ? "checking \(checking)" : nil]
             .compactMap { $0 }.joined(separator: ", ")
         return line.prefix(1).uppercased() + line.dropFirst()
     }

@@ -239,22 +239,44 @@ public final class TodayStore {
     private func purge(_ host: String, _ reason: WorkCacheDrop) {
         epoch[host, default: 0] += 1
         cache.drop(reason)
-        written = written.filter { $0.key.host != host }
+        // The disk's drop rewrote other hosts' keys and refused every Today write queued before it: each linked host is
+        // written again, not only this one.
+        written = reason.supplier == nil ? written.filter { $0.key.host != host } : [:]
         chats.forget(host)
         owed.forget(host)
         forms.forget(host)
         prep.forget(host)
         review.forget(host)
         clashes.forget(host)
+        // Its rows wherever they are, and the LifeOS rows its session supplied under any host's key: a refused,
+        // removed, off or re-keyed host's reads are facts this key may no longer see (`WorkCacheDrop.supplier`).
         for (source, answer) in whole {
             var kept = answer
-            kept.rows = answer.rows?.filter { WorkCache.hostOf($0) != host }
+            kept.rows = answer.rows.map { rows in WorkCache.withoutLifeos(rows.filter { WorkCache.hostOf($0) != host }, suppliedBy: host) }
             whole[source] = kept
         }
-        disk = disk.mapValues { $0.filter { WorkCache.hostOf($0) != host } }
+        disk = disk.mapValues { WorkCache.withoutLifeos($0.filter { WorkCache.hostOf($0) != host }, suppliedBy: host) }
+        forgetInput(of: host)
         ranAt = ranAt.filter { !$0.key.contains("|\(host)|") }
         openBefore.remove(host)
         digestAsked.remove(host)
+    }
+
+    /// What a host's LifeOS session gave the held input goes with the host: its whole session's input, or the sectors
+    /// its narrowed session read. The app's next input reads through a host that still may.
+    private func forgetInput(of host: String) {
+        guard var next = life else { return }
+        if next.host == host {
+            life = nil
+            return
+        }
+        guard let sectors = next.narrowed[host], !sectors.isEmpty else { return }
+        let gone = Set(sectors)
+        next.events = next.events?.filter { !gone.contains($0.sector) }
+        next.tasks = next.tasks?.filter { !gone.contains($0.sector) }
+        next.waits = next.waits?.filter { !gone.contains($0.sector ?? $0.ownSector ?? "") }
+        next.narrowed[host] = nil
+        life = next
     }
 
     /// LifeOS's lists as the app read them through LifeKit.

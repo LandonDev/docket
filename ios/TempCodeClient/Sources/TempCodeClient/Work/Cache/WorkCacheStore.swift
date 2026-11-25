@@ -168,12 +168,20 @@ public final class WorkCacheStore: Sendable {
     private func drop(_ reason: WorkCacheDrop, retried: Bool) -> Bool {
         let done: Bool
         switch reason {
+        // Each loss of a host's access takes the rows its session supplied from every host's Today rows first
+        // (`dropSupplied`, which also refuses every Today write queued before it), then the host's own keys. A
+        // failure of either keeps the whole reason for the retry, which finds the same rows.
         case .lifeosSignedOut(let host):
-            done = dropLifeos(suppliedBy: host, movesFences: !retried)
+            done = dropSupplied(by: host, movesFences: !retried)
         case .keyReplaced(let host, let generation):
-            done = run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
+            // Every launch names its key's generation: only a key of another generation kept here is a real change.
+            guard let real = exists("SELECT 1 FROM kept WHERE host = ? AND generation != ? LIMIT 1", [.text(host), .int(generation)]) else {
+                done = false
+                break
+            }
+            done = (!real || dropSupplied(by: host, movesFences: !retried)) && run("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
         case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host):
-            done = run("DELETE FROM kept WHERE host = ?", [.text(host)])
+            done = dropSupplied(by: host, movesFences: !retried) && run("DELETE FROM kept WHERE host = ?", [.text(host)])
         case .signedOut(let account):
             done = run("DELETE FROM kept WHERE account = ?", [.text(account)])
         }
@@ -184,6 +192,15 @@ public final class WorkCacheStore: Sendable {
         return done
     }
 
+    /// Whether the statement finds a row; nil when SQLite refused it.
+    private func exists(_ sql: String, _ binds: [Database.Value]) -> Bool? {
+        db.withLock { db -> Bool? in
+            var found = false
+            do { try db.query(sql, binds) { _ in found = true } } catch { return nil }
+            return found
+        }
+    }
+
     private func run(_ sql: String, _ binds: [Database.Value]) -> Bool {
         db.withLock { db in
             do { try db.run(sql, binds) } catch { return false }
@@ -191,12 +208,13 @@ public final class WorkCacheStore: Sendable {
         }
     }
 
-    /// A host's LifeOS signed out: the rows its session read go out of every host's Today rows (a row is kept under
-    /// the host its press opens on, which need not be the reader), and LifeOS rows with no known supplier with them.
+    /// A host lost its access (`WorkCacheDrop.supplier`): the rows its session read go out of every host's Today rows
+    /// (a row is kept under the host its press opens on, which need not be the reader), and LifeOS rows with no known
+    /// supplier with them.
     /// Today's own fence moves first, under the same lock, so every Today write queued before this is refused,
     /// whichever host's key it names and whether or not that key holds any of the rows yet; each host rewritten has
     /// its fence moved too.
-    private func dropLifeos(suppliedBy host: String, movesFences: Bool) -> Bool {
+    private func dropSupplied(by host: String, movesFences: Bool) -> Bool {
         db.withLock { db -> Bool in
             if movesFences { todayEpoch.add(1, ordering: .sequentiallyConsistent) }
             var rewrites: [(binds: [Database.Value], json: Data, host: String)] = []

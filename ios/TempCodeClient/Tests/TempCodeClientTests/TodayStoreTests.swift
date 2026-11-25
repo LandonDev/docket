@@ -740,6 +740,30 @@ struct TodayStoreTests {
         #expect(rows.first { $0.key == "event:e2" }?.suppliedBy == "mac")
     }
 
+    // MARK: - fix round 16
+
+    @Test func `a refused reader's rows go from memory wherever they were kept, and the input it gave with them`() async {
+        let cache = TodayBookCache()
+        let store = store(cache, by: ["box": HostReads(), "mac": HostReads()])
+        var mac = Self.on("mac")
+        mac.workspaces = [WorkspaceMeta(id: "ws-ref", name: "Refereeing", path: "/w/ref", git: false, kind: .work, sector: "ref", createdAt: 1)]
+        store.update(hosts: [Self.on("box"), mac])
+        var life = Self.emptyLife
+        // Box's whole session read a task for the Mac's Refereeing job: shown, and kept under the Mac's key.
+        life.tasks = [TodaySources.Task(id: "t1", title: "File the game report", sector: "ref", dueAt: Self.now + 3_600_000)]
+        store.update(life: life)
+        await settle()
+        #expect(TodayStore.rows(store.page).contains { $0.key == "task:t1" && $0.suppliedBy == "box" })
+        let day = TodayWords.localDay(Self.now, Self.cal)
+        #expect(cache.book.today([mac.key], day: day).contains { $0.key == "task:t1" })
+        // Box refuses the phone's key.
+        store.update(hosts: [Self.on("box", revoked: true), mac])
+        await settle()
+        #expect(!TodayStore.rows(store.page).contains { $0.key == "task:t1" })
+        // Nothing of it stays on disk under the Mac's key for a cold launch either.
+        #expect(!cache.book.today([mac.key], day: day).contains { $0.key == "task:t1" })
+    }
+
     // MARK: - fix round 14
 
     @Test func `a row names the session that read it, scope and all, and an Undo's row keeps it when the reads change`() async {

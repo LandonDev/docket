@@ -1683,28 +1683,37 @@ work_m0() {
 }
 
 # His press on the sidebar button inside the half second after Work appears, when the split's own startup writes
-# are dropped (council 11, Sol 3): TC_ACTION=sidebar-tap runs the shell's button action (ShellNavigator.pressSidebar)
-# as soon as Work's split stands in a split pose, and the report after the settle must show his choice, as chosen and
-# as shown, both ways. The simulator has no finger: the action is the button's own, its hit target is not tapped.
+# are dropped (council 11, Sol 3), over the Outbox's list pushed in the sidebar (council 12, Opus 2.1): the shell's
+# button must stand there, once, in the bar of the column his toggle sits in (SidebarButtonProbe's
+# sidebar.buttons.<column>), before TC_ACTION=sidebar-tap runs its action (ShellNavigator.pressSidebar); after the
+# settle the report must show his choice, as chosen and as shown, both ways, and the button once more where the toggle
+# now sits. The simulator has no finger: the action is the button's own, its hit target is not tapped.
 work_sidebar_tap() {
   local name
   for name in m0-work-sidebar-tap-1-light m0-work-sidebar-tap-2-light; do
-    TC_ACTION=sidebar-tap shot "$name" work
+    TC_ACTION=sidebar-tap shot "$name" outbox
     python3 - "$OUT/layout/$POSE/$name.json" "$name" <<'PY' || return 1
 import json, re, sys
 path, name = sys.argv[1:3]
 notes = json.load(open(path)).get('notes') or {}
-press = re.match(r'(shown|hidden) -> (shown|hidden) at (\d+) ms$', notes.get('sidebar.press', ''))
+press = re.match(r'(shown|hidden) -> (shown|hidden) at (\d+) ms with sidebar (\d+) detail (\d+)$', notes.get('sidebar.press', ''))
 problems = []
 if not press:
     problems.append(f"the press never ran (sidebar.press {notes.get('sidebar.press')!r})")
 else:
     before, want, at = press.group(1), press.group(2), int(press.group(3))
+    drawn = {'sidebar': int(press.group(4)), 'detail': int(press.group(5))}
+    # Before the press, the button stood once in the bar of the column his toggle sat in: the sidebar's while it showed.
+    where = 'sidebar' if before == 'shown' else 'detail'
+    if drawn[where] != 1: problems.append(f"{drawn[where]} sidebar buttons in the {where}'s bar over the Outbox before the press, want 1")
     if want == before: problems.append(f'the press left the choice {before}')
     if at >= 500: problems.append(f'the press came {at} ms after Work appeared, past the startup half second it must survive')
     if notes.get('sidebar.chosen') != want: problems.append(f"chosen {notes.get('sidebar.chosen')} after the settle, want {want}")
     allowed = ('visible', 'overlay') if want == 'shown' else ('hidden',)
     if notes.get('sidebar') not in allowed: problems.append(f"shown {notes.get('sidebar')} after the settle, want {' or '.join(allowed)}")
+    # After it, once more where the toggle now sits.
+    now = 'sidebar' if want == 'shown' else 'detail'
+    if notes.get(f'sidebar.buttons.{now}') != '1': problems.append(f"sidebar.buttons.{now} {notes.get(f'sidebar.buttons.{now}')!r} after the settle, want '1'")
 if problems:
     print(f"ios-sim-proof: sidebar tap FAIL ({name}): {'; '.join(problems)}", file=sys.stderr); sys.exit(1)
 print(f"ios-sim-proof: sidebar tap PASS ({name}): {notes['sidebar.press']}, kept through the settle")

@@ -182,4 +182,23 @@ import Testing
         late.settle()
         #expect(late.answer(shows: true))
     }
+
+    // MARK: - where the shell's sidebar button stands (council 12, Opus 2.1)
+
+    @Test(arguments: duoPoses.map(\.name))
+    func `the sidebar button stands in one column's bar, on the side the system's toggle used`(_ name: String) throws {
+        let pose = try #require(Self.duoPoses.first { $0.name == name }).pose
+        let shownSidebar = SidebarButtonPlace.shows(in: .sidebar, pose: pose, sidebarShown: true)
+        let shownDetail = SidebarButtonPlace.shows(in: .detail, pose: pose, sidebarShown: true)
+        let hiddenSidebar = SidebarButtonPlace.shows(in: .sidebar, pose: pose, sidebarShown: false)
+        let hiddenDetail = SidebarButtonPlace.shows(in: .detail, pose: pose, sidebarShown: false)
+        // A stack has no sidebar button; a split has it in the sidebar's bar while it shows, the detail's while not
+        // (the overlay keeps the detail's too, under the overlay).
+        #expect(shownSidebar == pose.isSplit)
+        #expect(shownDetail == pose.isOverlay)
+        #expect(!hiddenSidebar)
+        #expect(hiddenDetail == pose.isSplit)
+        #expect(SidebarButtonPlace.edge(of: .sidebar) == .trailing)
+        #expect(SidebarButtonPlace.edge(of: .detail) == .leading)
+    }
 }

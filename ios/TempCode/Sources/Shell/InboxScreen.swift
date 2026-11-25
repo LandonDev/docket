@@ -47,10 +47,11 @@ struct InboxScreen: View {
     private var stack: some View {
         NavigationStack(path: $path) {
             InboxView(path: $path, split: false)
-                .fleetToastInset()
-                .outboxUndoFallback()
                 .navigationDestination(for: InboxRoute.self) { destination($0) }
         }
+        // Outside the stack, as Home's, Work's and Search's: a pushed item or diff shows them too.
+        .fleetToastInset()
+        .outboxUndoFallback()
     }
 
     private var split: some View {

@@ -127,4 +127,10 @@ import Testing
         #expect(attempts.next(host: "box", refs: [a, b])?.kept.whose == "Sam’s link to Stage plan")
         #expect(GuestAttempts.Unseen(attempt: "p", address: "u").whose == "A guest link")
     }
+
+    @Test func `the sheet's footer names whose link it is, with no name or no item said plainly`() {
+        #expect(GuestAttempts.Unseen.whose(name: "Christopher Montgomery", title: "Budget") == "Christopher Montgomery’s link to Budget")
+        #expect(GuestAttempts.Unseen.whose(name: "Dana Lee", title: "") == "Dana Lee’s link")
+        #expect(GuestAttempts.Unseen.whose(name: "", title: "Budget") == "A link to Budget")
+    }
 }

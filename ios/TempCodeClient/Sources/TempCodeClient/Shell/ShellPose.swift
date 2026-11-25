@@ -80,6 +80,26 @@ public enum ShellPose: Sendable, Hashable {
     }
 }
 
+/// Where the shell's sidebar button stands, in place of the system's toggle, on every page of the column it is in.
+public enum SidebarButtonPlace: Sendable, Hashable {
+    /// The column whose bar holds it.
+    public enum Column: String, Sendable, Hashable { case sidebar, detail }
+    /// The edge of that bar: the system's toggle sat at the sidebar bar's trailing edge and the detail bar's leading.
+    public enum Edge: Sendable, Hashable { case leading, trailing }
+
+    /// Whether the column's bar holds the button: the sidebar's while the sidebar shows, the detail's while it does not
+    /// (the overlay pose keeps it there under the overlay too); never in a stack.
+    public static func shows(in column: Column, pose: ShellPose, sidebarShown: Bool) -> Bool {
+        guard pose.isSplit else { return false }
+        switch column {
+        case .sidebar: return sidebarShown
+        case .detail: return !sidebarShown || pose.isOverlay
+        }
+    }
+
+    public static func edge(of column: Column) -> Edge { column == .sidebar ? .trailing : .leading }
+}
+
 /// Where a change of the split's sidebar came from: the shell's own sidebar button (his press, recorded by the
 /// button's action), or the split writing its visibility binding (a fold, a build, a swipe, a tap outside an overlay).
 public enum SidebarChange: Sendable, Hashable {

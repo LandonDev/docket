@@ -333,4 +333,15 @@ import TempCodeContract
         }
         #expect(ledger.pending.presses.isEmpty)
     }
+
+    @Test func `a host whose answer was lost counts as checking in the sum, never left out`() throws {
+        let a = item("a"), c = item("c")
+        let press = try #require(GroupPress([entry(a), entry(c, host: "box")], act: .send))
+        var outcome = GroupOutcome(did: press.act)
+        outcome.take(host: "mac", [DecisionResult(ref: a.ref, ok: true, item: item("a", state: .sent))], of: press)
+        outcome.lost(host: "box", of: press)
+        #expect(outcome.head == "Sent 1, checking 1")
+        // Its row's own line is the press record's Checking…, not a reason kept after the read-back.
+        #expect(outcome.reason("box:host:c") == nil)
+    }
 }

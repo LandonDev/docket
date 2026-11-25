@@ -89,7 +89,11 @@ public struct WorkCacheBook: Sendable, Hashable {
     /// Drops what `reason` names; answers the keys it dropped.
     @discardableResult
     public mutating func drop(_ reason: WorkCacheDrop) -> Set<WorkCache.Key> {
-        if case .lifeosSignedOut(let host) = reason {
+        let dropped = reason.drops(values.keys)
+        // The supplier's rows out of every host's Today rows; on a key replaced only when a key of another generation
+        // was kept (a real change), so an ordinary launch keeps them.
+        let real: Bool = if case .keyReplaced = reason { !dropped.isEmpty } else { true }
+        if let host = reason.supplier, real {
             for (key, value) in values where key.scope == .today {
                 switch value {
                 case .todayOn(let day, let rows): values[key] = .todayOn(day: day, rows: WorkCache.withoutLifeos(rows, suppliedBy: host))
@@ -97,9 +101,7 @@ public struct WorkCacheBook: Sendable, Hashable {
                 default: break
                 }
             }
-            return []
         }
-        let dropped = reason.drops(values.keys)
         for gone in dropped { values[gone] = nil }
         return dropped
     }

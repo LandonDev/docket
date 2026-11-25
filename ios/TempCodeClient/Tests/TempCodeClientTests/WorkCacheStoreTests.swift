@@ -185,5 +185,48 @@ struct WorkCacheStoreTests {
         #expect(store.get(macKey)?.todayShown(on: "d").map(\.key) == ["held:mac:1", "held:mac:2"])
         #expect(purges.list().isEmpty)
     }
+
+    // MARK: - a supplier's rows go wherever kept, on each loss of its access (council 12: Sol 4)
+
+    @Test(arguments: ["capabilityLost", "hostRemoved", "workOff", "keyReplaced"])
+    func `a host that lost its access takes its session's rows out of every host's keys, on disk and after a reopen`(_ how: String) throws {
+        let path = Self.path()
+        let box = "box-\(UUID().uuidString)", mac = "mac-\(UUID().uuidString)"
+        let macKey = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .today)
+        let boxKey = WorkCache.Key(host: box, account: "k", keyGeneration: 1, scope: .today)
+        do {
+            let store = try WorkCacheStore(path: path, protect: { _ in })
+            // Box's whole session read a wait and a task for the Mac's job: kept under the Mac's key, where they open.
+            try store.put(.todayRows([Self.row("mail:1", "waiting", by: box), Self.row("task:1", "due", by: box), Self.row("task:2", "due", by: mac), Self.row("held:mac:1", "held", by: nil)], day: "d"), at: macKey)
+            try store.put(.todayRows([Self.row("held:box:1", "held", by: nil)], day: "d"), at: boxKey)
+            let today = store.todayStamp()
+            let reason: WorkCacheDrop = switch how {
+            case "capabilityLost": .capabilityLost(host: box)
+            case "hostRemoved": .hostRemoved(host: box)
+            case "workOff": .workOff(host: box)
+            default: .keyReplaced(host: box, generation: 2)
+            }
+            #expect(store.drop(reason))
+            // A Today write queued before the drop, under the Mac's key, is refused too.
+            try store.put(.todayRows([Self.row("mail:1", "waiting", by: box)], day: "d"), at: macKey, stamp: WorkCacheFence.stamp(mac), todayStamp: today)
+        }
+        // Opened again, as the next cold launch reads it: the Mac's key keeps its own and nothing of Box's session.
+        let reopened = try WorkCacheStore(path: path, protect: { _ in })
+        #expect(reopened.get(macKey)?.todayShown(on: "d").map(\.key) == ["task:2", "held:mac:1"])
+        #expect(reopened.get(boxKey) == nil)
+    }
+
+    @Test func `an ordinary launch, the key's generation unchanged, keeps what its session supplied`() throws {
+        let store = try WorkCacheStore.inMemory()
+        let box = "box-\(UUID().uuidString)", mac = "mac-\(UUID().uuidString)"
+        let macKey = WorkCache.Key(host: mac, account: "k", keyGeneration: 1, scope: .today)
+        try store.put(.todayRows([Self.row("mail:1", "waiting", by: box)], day: "d"), at: macKey)
+        try store.put(.todayRows([], day: "d"), at: WorkCache.Key(host: box, account: "k", keyGeneration: 3, scope: .today))
+        let today = store.todayStamp()
+        // Every launch names its key's generation; the same one is no change.
+        #expect(store.drop(.keyReplaced(host: box, generation: 3)))
+        #expect(store.get(macKey)?.todayShown(on: "d").map(\.key) == ["mail:1"])
+        #expect(store.todayStamp() == today)
+    }
 }
 #endif

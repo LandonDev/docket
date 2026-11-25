@@ -1088,7 +1088,10 @@
   by its Get at a link or its push (`heardLifeos`), drops the LifeOS rows its sessions gave from
   every host's Today keys (`.lifeosSignedOut`): each meetings, due and waiting row carries the host
   that supplied it (`TodayRow.suppliedBy`), the drop rewrites each kept Today value without that
-  host's rows (and without older rows that name no supplier) and moves each rewritten host's fence
+  host's rows (and without older rows that name no supplier); the same supplier drop runs when the
+  host's key is refused, the host is removed, its Work goes off, or its key is really replaced (a
+  key of another generation was kept; a launch naming the same generation keeps everything), on
+  disk, in the book and in Today's memory with the LifeOS input it gave (`WorkCacheDrop.supplier`) and moves each rewritten host's fence
   and the store's own Today epoch (`todayStamp`, under the same lock), so a Today write queued before
   it is refused whichever host's key it names; the disk drop runs before Today's hook, whose fresh
   writes then pass. A drop the file refuses (SQLite turning a read or write away, as under complete
@@ -1779,8 +1782,13 @@ The rules every press below keeps (fix round 2):
   on its way. If he then leaves for another tab or page while it counts, the
   tab he is on shows the same capsule at its root (`outboxUndoFallback`, on
   Home's, Work's, Search's and the Inbox's), drawn only while neither the
-  list nor an item's page shows it (`OutboxPresses.surfaces`); a group's
-  refusal is said there too. At accessibility sizes the capsule's line wraps
+  list nor an item's page shows it (`OutboxPresses.surfaces`; the compact
+  Inbox carries it outside its stack, so a pushed item or diff shows it); a
+  group's refusal is said there too. A press on many's result is kept until a
+  capsule in front, with no countdown over it, has shown it for a toast's
+  time; a countdown hides it without spending it, and a later result waits
+  behind it (`OutboxNotices`). A host whose answer was lost counts as
+  "checking N" in the sum. At accessibility sizes the capsule's line wraps
   and Undo sits under it.
 - **A locked launch keeps the file.** `work-presses.json` holds ids, refs
   and times, under protection until the first unlock. A file that is there

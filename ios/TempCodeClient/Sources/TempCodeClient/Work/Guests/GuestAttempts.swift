@@ -44,7 +44,9 @@ public final class GuestAttempts {
         }
 
         /// "Dana Lee’s link to Budget": the line a screen that shows it later leads with.
-        public var whose: String {
+        public var whose: String { Self.whose(name: name, title: title) }
+
+        public static func whose(name: String, title: String) -> String {
             switch (name.isEmpty, title.isEmpty) {
             case (false, false): "\(name)’s link to \(title)"
             case (false, true): "\(name)’s link"

@@ -207,6 +207,17 @@ public enum WorkCacheDrop: Hashable, Sendable, Codable {
         }
     }
 
+    /// The host whose LifeOS session's rows go from every host's Today rows, wherever they were kept (a row is kept
+    /// under the host its press opens on, not the one whose session read it): its LifeOS signed out, its key refused,
+    /// it was removed, its Work went off, or its key was really replaced (a key of another generation was kept). The
+    /// rows its session read are facts that key may no longer see.
+    public var supplier: String? {
+        switch self {
+        case .keyReplaced(let host, _), .capabilityLost(let host), .workOff(let host), .hostRemoved(let host), .lifeosSignedOut(let host): host
+        case .signedOut: nil
+        }
+    }
+
     /// The keys to drop of those kept.
     public func drops(_ keys: some Sequence<WorkCache.Key>) -> Set<WorkCache.Key> {
         Set(keys.filter { key in

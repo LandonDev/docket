@@ -348,8 +348,8 @@ struct TodayScreen: View {
             do {
                 guard let life = TodayLife.store(for: row, model.registry.ordered) else {
                     // The session the act went through has gone: Undo tries no other, and says why.
-                    let host = TodaySources.sessionOf(row).map { hostName($0.environmentId) } ?? "this phone"
-                    undo = TodayUndo(line: "Couldn’t undo: LifeOS on \(host) is not connected", action: nil)
+                    let on = TodaySources.sessionOf(row).map { " on \(hostName($0.environmentId))" } ?? ""
+                    undo = TodayUndo(line: "Couldn’t undo: LifeOS\(on) is not connected", action: nil)
                     return
                 }
                 _ = try await life.mutate(write, args)
@@ -414,8 +414,9 @@ struct TodayScreen: View {
     /// the line says why instead of trying another session.
     private func stopped(_ row: TodayRow) {
         comeBack(row)
-        let host = TodaySources.sessionOf(row).map { hostName($0.environmentId) } ?? "this phone"
-        undo = TodayUndo(line: "LifeOS on \(host) is not connected, so nothing changed", action: nil)
+        // The host the session belongs to; a row with no supplier names none, since LifeOS never runs on the phone.
+        let on = TodaySources.sessionOf(row).map { " on \(hostName($0.environmentId))" } ?? ""
+        undo = TodayUndo(line: "LifeOS\(on) is not connected, so nothing changed", action: nil)
     }
 
     private func hostName(_ environmentId: String) -> String {

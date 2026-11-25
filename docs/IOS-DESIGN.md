@@ -2668,8 +2668,9 @@ milestone 46 built, where it lives now:
 - **Settings → Work**: a tool with no rule reads "Not set" until he picks.
   On the host that serves LifeOS's documents, **Guest links**: who and
   what, the role and when it ends ("open now" while the guest is on it),
-  each with New Address (shown once, with Copy, in a sheet titled by the
-  guest's name, "Dana Lee’s New Address", with the item in its footer; shown
+  each with New Address (shown once, with Copy, in a sheet titled "New
+  Address" whose footer leads with whose link it is, "Dana Lee’s link to
+  Budget.", so a long name is never cut; shown
   on return if he went Back while it was made, one sheet for each address,
   each holding its own; a cancelled check says so on the link's row)
   and Revoke; ended ones
@@ -4538,13 +4539,17 @@ holds (a typed draft, a rename, the segment) are the same values before and
 after. `columnVisibility` always carries the expanded preference, so the
 sidebar arrives with the expansion and never flickers in. The sidebar button
 is the shell's own (`sidebar.leading`, Show Sidebar and Hide Sidebar, where
-the system's toggle sits: the sidebar's bar while it shows, else the
-detail's), not the system's: its action is his toggle at once
+the system's toggle sat: at the trailing edge of the sidebar's bar while it
+shows, else at the leading edge of the detail's), on every page of each
+column, the root and each page pushed over it (`SidebarButtonItem`, which
+also removes the system's toggle there), not the system's: its action is his toggle at once
 (`ShellNavigator.pressSidebar`, `ShellPose.isHisToggle(.button, …)`), even in
 the half second after a tab appears, while the split's own writes to the
 binding are still sorted by their timing. The m0 part's
-`work_sidebar_tap` presses it right after Work appears in each split pose
-and checks his choice after the settle. The sidebar is
+`work_sidebar_tap` opens the Outbox's list in the sidebar, checks the button
+stands once in the bar of the column his toggle sits in
+(`sidebar.buttons.<column>`), presses it right after Work appears in each
+split pose, and checks his choice and the button's place after the settle. The sidebar is
 Home's two levels; at the workspace level its title is a menu of the
 workspaces. The detail holds a project's shell, a bare thread or Settings,
 and reads "No Thread Selected" when nothing is open; collapsed, a card's

@@ -25,8 +25,9 @@ final class OutboxPresses {
     static let shared = OutboxPresses()
 
     private(set) var wait = Wait()
-    /// A press refused before its wait (no link, the check cancelled): the capsule's line, as a notice is.
-    private(set) var refusal: String?
+    /// The capsule's lines when nothing counts: a refusal before its wait (no link, the check cancelled), and each
+    /// press on many's result, kept until a capsule on screen has shown it its whole time (`OutboxNotices`).
+    private(set) var notices = OutboxNotices()
     /// Why an item of a press on many did not go, by entry id, in its row until his next press on it.
     private(set) var reasons: [String: String] = [:]
     @ObservationIgnored private var timer: Task<Void, Never>?
@@ -66,7 +67,7 @@ final class OutboxPresses {
     @discardableResult
     func send(_ entry: OutboxModel.Entry, act: HeldPress.Act = .send, grant: HeldPress.Grant? = nil, quiet: Bool = false) async -> String? {
         guard let line = await refused(entry, act: act, grant: grant) else { return nil }
-        if !quiet { refusal = line }
+        if !quiet { notices.refuse(line) }
         return line
     }
 
@@ -81,7 +82,7 @@ final class OutboxPresses {
         let gates = PressGates.shared
         let gatePress = PressGates.press(client, HeldPress(entry: entry, act: act).method, ref: ref, rev: String(entry.item.updatedAt))
         guard await gates.allow(gatePress, reason: entry.item.summary) else { return gates.line }
-        refusal = nil
+        notices.refuse(nil)
         reasons[entry.id] = nil
         let payload = OutboxPress.one(HeldPress(entry: entry, act: act, grant: grant))
         start(Wait.Press(
@@ -150,7 +151,7 @@ final class OutboxPresses {
         }
         guard !press.entries.contains(where: hides) else { return nil }
         guard await gate(press, clients: hosts) else { return PressGates.shared.line }
-        refusal = nil
+        notices.refuse(nil)
         for entry in press.entries { reasons[entry.id] = nil }
         let names = hosts.map(\.environment.name)
         start(Wait.Press(
@@ -179,7 +180,7 @@ final class OutboxPresses {
         let keys = Dictionary(hosts.map { ($0.environment.id, PressGates.key($0.environment, revoked: $0.work.keyRevoked)) }, uniquingKeysWith: { first, _ in first })
         guard await gate(press, clients: hosts) else { return PressGates.shared.line }
         let outcome = await decide(press, on: hosts, keys: keys)
-        if !outcome.head.isEmpty { refusal = outcome.head }
+        notices.result(outcome.head)
         return nil
     }
 
@@ -200,7 +201,8 @@ final class OutboxPresses {
                 let results = try await client.work.decide(press.decisions(host: host), discard: discard, key: keys[host])
                 outcome.take(host: host, results, of: press)
             } catch is PressLedger.Unknown {
-                // Lost on its way: each row says Checking… until the host is read back.
+                // Lost on its way: each row says Checking… until the host is read back, and the sum counts them.
+                outcome.lost(host: host, of: press)
                 continue
             } catch {
                 outcome.fail(host: host, Self.line(error, prefix: discard ? "Not discarded" : "Not sent") ?? "", of: press)
@@ -269,7 +271,7 @@ final class OutboxPresses {
 
     /// A line in the capsule, from a press the list made (a Discard).
     func say(_ line: String) {
-        refusal = line
+        notices.refuse(line)
     }
 
     func undo() {
@@ -283,13 +285,17 @@ final class OutboxPresses {
         schedule()
     }
 
-    func clearNotice() {
-        wait.clearNotice()
-        refusal = nil
+    /// The line with this id was shown its whole time: it goes, and the next waiting one shows.
+    func clearNotice(_ id: String) {
+        if !notices.seen(id), id == shownNotice?.id { wait.clearNotice() }
     }
 
-    /// What the capsule says when nothing counts: the last refusal or cancel.
-    var noticeLine: String? { refusal ?? wait.notice?.line }
+    /// What the capsule says when nothing counts: a refusal, an unseen result, or the wait's last cancel.
+    var shownNotice: OutboxNotices.Line? {
+        notices.shown(wait: wait.notice.map { .init(id: "wait:" + $0.presses.map(\.id).joined(separator: ","), text: $0.line) })
+    }
+
+    var noticeLine: String? { shownNotice?.text }
 
     /// How many of the capsule's own surfaces are on screen (the Outbox's list, a held item's page). With none, the
     /// tab he is on shows it (`outboxUndoFallback`), so Undo and a group's refusal stay in view through the seconds.
@@ -397,7 +403,7 @@ final class OutboxPresses {
         let frozen = Dictionary(zip(group.hosts, (press.key ?? "").split(separator: ";", omittingEmptySubsequences: false).map(String.init)), uniquingKeysWith: { first, _ in first })
         Task {
             let outcome = await decide(group, on: hosts, keys: frozen)
-            if !outcome.head.isEmpty { refusal = outcome.head }
+            notices.result(outcome.head)
             wait.landed(press.id, now: Self.now)
             schedule()
             watchLinks()
@@ -491,12 +497,15 @@ struct OutboxUndoInset: ViewModifier {
             }
             .animation(Motion.base, value: presses.pending)
             .animation(Motion.base, value: notice)
-            // Seen once the app is back on screen for a toast's time; a new press clears it sooner.
-            .task(id: notice.map { "\($0)-\(scenePhase == .active)" }) {
-                guard enabled, notice != nil, scenePhase == .active else { return }
+            // Seen once it has shown for a toast's time, in front, with no countdown over it: a countdown hides it and
+            // the clock starts again when it is back. Only that line goes (by its id); the next waiting one shows.
+            // Keyed by `enabled` too: a copy that starts drawing when the capsule moves to another tab (the list's count
+            // drops a turn later) starts its own clock, so a line carried there never stays for good.
+            .task(id: presses.shownNotice.map { "\($0.id)-\(scenePhase == .active)-\(presses.pending == nil)-\(enabled)" }) {
+                guard enabled, let shown = presses.shownNotice, presses.pending == nil, scenePhase == .active else { return }
                 try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
                 guard !Task.isCancelled else { return }
-                presses.clearNotice()
+                presses.clearNotice(shown.id)
             }
     }
 }

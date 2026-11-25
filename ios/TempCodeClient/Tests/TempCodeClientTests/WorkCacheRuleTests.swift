@@ -130,6 +130,30 @@ struct WorkCacheRuleTests {
         #expect(book.today([boxKey], day: "d").map(\.key) == ["held:box:host:1"])
     }
 
+    @Test func `a refused, removed, off or re-keyed host takes its session's rows out of every key, and a launch keeps them`() {
+        func row(_ key: String, by: String?) -> TodayRow {
+            var r = TodayRow(key: key, section: "waiting", sector: "purdue", title: key)
+            r.suppliedBy = by
+            return r
+        }
+        let macKey = WorkCache.Key(host: "mac", account: "k", keyGeneration: 1, scope: .today)
+        let boxKey = WorkCache.Key(host: "box", account: "k", keyGeneration: 1, scope: .today)
+        for reason in [WorkCacheDrop.capabilityLost(host: "box"), .hostRemoved(host: "box"), .workOff(host: "box"), .keyReplaced(host: "box", generation: 2)] {
+            var book = WorkCacheBook()
+            book.put(.todayRows([row("mail:1", by: "box"), row("mail:2", by: "mac")], day: "d"), at: macKey)
+            book.put(.todayRows([], day: "d"), at: boxKey)
+            _ = book.drop(reason)
+            #expect(book.today([macKey], day: "d").map(\.key) == ["mail:2"], "\(reason)")
+        }
+        // The same generation again (a launch): nothing of Box's went.
+        var book = WorkCacheBook()
+        book.put(.todayRows([row("mail:1", by: "box")], day: "d"), at: macKey)
+        book.put(.todayRows([], day: "d"), at: boxKey)
+        _ = book.drop(.keyReplaced(host: "box", generation: 1))
+        #expect(book.today([macKey], day: "d").map(\.key) == ["mail:1"])
+        #expect(WorkCacheDrop.signedOut(account: "k").supplier == nil)
+    }
+
     @Test func `rows are kept under the host they came from`() {
         var held = TodayRow(key: "held:box:host:1", section: "held", sector: nil, title: "H")
         held.open = .held(environmentId: "box", ref: .host(.init(id: "1")))

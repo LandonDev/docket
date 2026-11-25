@@ -387,16 +387,17 @@ struct GuestAddressSection: View {
 struct NewAddressSheet: View {
     @Environment(\.dismiss) private var dismiss
     let address: String
-    /// Whose link it opens ("Dana Lee’s New Address") and to what (the footer), when kept with it.
+    /// Whose link it opens and to what, when kept with it: the footer leads with them ("Dana Lee’s link to Budget."),
+    /// as Share's kept address does; the title stays "New Address", so a long name is never cut.
     var name = ""
     var title = ""
 
     var body: some View {
         NavigationStack {
             Form {
-                GuestAddressSection(address: address, footer: "\(title.isEmpty ? "" : "For \(title). ")This address shows once. The one before opens nothing now.")
+                GuestAddressSection(address: address, footer: "\(name.isEmpty && title.isEmpty ? "" : "\(GuestAttempts.Unseen.whose(name: name, title: title)). ")This address shows once. The one before opens nothing now.")
             }
-            .navigationTitle(name.isEmpty ? "New Address" : "\(name)’s New Address")
+            .navigationTitle("New Address")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
