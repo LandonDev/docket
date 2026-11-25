@@ -839,6 +839,35 @@ describe("the sidebar", () => {
     expect(screen.getByRole("navigation", { name: "Places" })).toBeTruthy();
   });
 
+  it("narrow, lays the sidebar over the list under the tab row, so the toggle that showed it hides it", async () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-files-view") ? 400 : 0;
+    });
+    try {
+      await mount();
+      expect(screen.queryByRole("navigation", { name: "Places" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show Sidebar" }));
+      const over = document.querySelector("[data-files-sidebar-over]")!;
+      expect(within(over as HTMLElement).getByRole("navigation", { name: "Places" })).toBeTruthy();
+      // It starts at the tab row's 36px foot, never at the top, and the toggle is not under it.
+      expect(over.className).toContain("top-9");
+      expect(over.className).not.toContain("inset-y-0");
+      const hide = screen.getByRole("button", { name: "Hide Sidebar" });
+      expect(over.contains(hide)).toBe(false);
+      expect(document.querySelector("[data-files-tabrow]")!.contains(hide)).toBe(true);
+      fireEvent.click(hide);
+      expect(screen.queryByRole("navigation", { name: "Places" })).toBeNull();
+    } finally {
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("opens a place in a new tab on a middle click", async () => {
     await mount();
     fireEvent(await placeRow("Starred"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));

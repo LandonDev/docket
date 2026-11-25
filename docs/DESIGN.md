@@ -1885,7 +1885,7 @@ Around the canvas:
   listed there is one greyed row, Teams files, whose page says the one
   cause with its one press. The sidebar folds with the toggle that starts
   the tab row, and by itself under 640px of view, where the toggle lays it
-  over the list.
+  over the list from under the tab row down, so the same toggle hides it.
   The **tab row** is the canvas tab row's own: 36px on `sidebar`, 28px
   chips at radius 6, 2px apart, a 14px kind glyph in `muted-foreground`
   (never tinted: no tab row's is), the name, the selected tab

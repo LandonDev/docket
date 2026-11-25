@@ -1,5 +1,5 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
-// #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
+// #FilesNarrowSidebar, #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
 // #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
@@ -14,7 +14,7 @@ import { cloudLine, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { wordLine } from "./wordSave";
 import { FileHeader } from "./FileTabView";
 import { FileTextEditor } from "./FileTextEditor";
-import { SidebarView } from "./FilesView";
+import { SIDEBAR_OVER, SidebarView } from "./FilesView";
 import { SeatBar } from "./Looks";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import { ChevronLeft } from "../../chrome/icons";
@@ -101,10 +101,11 @@ const tabs: FileTab[] = [
 const eventsCopy = sidebar.rows.find((r) => r.name === "Events")!.copies[0]!;
 const trail = [{ name: "Esports Staff", at: { at: "place" as const, id: "team:Esports Staff" } }, { name: "Events", at: { at: "file" as const, host: "env_box", path: "/cloud/Esports Staff/Events" } }];
 
-function Window({ width, height = 560, children, sidebarOpen = true, model = sidebar, job = workspace }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean; model?: Sidebar; job?: WorkspaceMeta }) {
+function Window({ width, height = 560, children, sidebarOpen = true, over = false, model = sidebar, job = workspace }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean; over?: boolean; model?: Sidebar; job?: WorkspaceMeta }) {
+  const side = sidebarOpen ? <SidebarView model={model} workspace={job} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null;
   return (
-    <div data-files-view style={{ maxWidth: width, height }} className="@container/files flex w-full overflow-hidden rounded-lg border border-border bg-background">
-      {sidebarOpen ? <SidebarView model={model} workspace={job} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null}
+    <div data-files-view style={{ maxWidth: width, height }} className="@container/files relative flex w-full overflow-hidden rounded-lg border border-border bg-background">
+      {side && over ? <div className={SIDEBAR_OVER}>{side}</div> : side}
       <div className="flex min-w-0 flex-1 flex-col">
         <TabRow tabs={tabs} selected="t1" sidebarOpen={sidebarOpen} onSidebar={noop} onSelect={noop} onClose={noop} onReorder={noop} onNew={noop} />
         {children}
@@ -145,6 +146,17 @@ export function FilesBrowse() {
         <PageView {...common} listing={listing()} />
       </Window>
       <Window width={420} sidebarOpen={false} height={380}>
+        <PageView {...common} listing={listing()} />
+      </Window>
+    </div>
+  );
+}
+
+/** Narrow, the sidebar shown by its toggle: it lies over the list under the tab row, the toggle still there to hide it. */
+export function FilesNarrowSidebar() {
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={420} over height={420}>
         <PageView {...common} listing={listing()} />
       </Window>
     </div>

@@ -66,6 +66,8 @@ const TEAMS_PAGE: FilePage = { at: { at: "place", id: "teams" }, name: "Teams fi
 
 /** Under this much room the sidebar folds itself away; its toggle brings it back over the list. */
 export const SIDEBAR_FOLD_AT = 640;
+/** The narrow sidebar lies over the list from under the 36px tab row down, so the toggle that opened it stays in reach to close it. */
+export const SIDEBAR_OVER = "absolute top-9 bottom-0 left-0 z-20 flex";
 
 const SIDE_ROW = `h-7 w-full min-w-0 flex-nowrap gap-2 rounded-md px-2 py-0 text-[13px] ${ROW_PRESS}`;
 
@@ -699,7 +701,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   return (
     <div ref={root} data-files-view className="@container/files relative flex h-full min-h-0 bg-background">
       {sidebarOpen ? (
-        <div className={narrow ? "absolute inset-y-0 left-0 z-20 flex" : "flex"}>
+        <div data-files-sidebar-over={narrow ? "" : undefined} className={narrow ? SIDEBAR_OVER : "flex"}>
           <SidebarView model={reach.sidebar} workspace={workspace} at={page?.at ?? null} note={reach.note} searches={searches} tree={tree} drop={sideDrop} onGo={go} onNewTab={newTab} />
         </div>
       ) : null}
