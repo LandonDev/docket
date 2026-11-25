@@ -402,8 +402,10 @@ describe('a .csv in the canvas, and the model writer', () => {
     // a sheet read from a .csv keeps cell contents only: the host lists no format control for it
     expect(view.row).toBeUndefined()
     await call('work.sheets.edit', { itemId: id, baseRev: 0, mutations: [{ id: SET_RANGE_VALUES, params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 2: { 0: { v: 'Grace' }, 1: { v: 45 } } } } }] })
-    const back = await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'csv' })
+    const back = await call<{ path: string; folder?: string }>('work.sheets.export', { itemId: id, format: 'csv' })
     expect(back.path).toBe(csv)
+    // the folder it landed in, for the toast to name and Show
+    expect(back.folder).toBe(dir)
     expect(readFileSync(csv, 'utf8')).toBe('name,age\r\nAda,36\r\nGrace,45\r\n')
     const x = await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'xlsx' })
     expect(x.path).toBe(join(dir, 'People.xlsx'))
@@ -412,9 +414,22 @@ describe('a .csv in the canvas, and the model writer', () => {
     expect((await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'xlsx' })).path).toBe(join(dir, 'People (2).xlsx'))
   })
 
+  it('names no folder for a sheet written among the item\'s own files, which no place shows', async () => {
+    await serve()
+    const { TcsheetBackend } = await import('./host/backends')
+    const path = join(dir, 'Plan.tcsheet')
+    TcsheetBackend.create(path, 'Plan')
+    const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(path), title: 'Plan' }).id
+    await call<SheetView>('work.sheets.open', { itemId: id })
+    const out = await call<{ path: string; folder?: string }>('work.sheets.export', { itemId: id, format: 'xlsx' })
+    expect(out.path.endsWith('Plan.xlsx')).toBe(true)
+    expect(out.folder).toBeUndefined()
+  })
+
   it('writes one sheet of an opened package as .csv beside it, and refuses to write it as .xlsx', async () => {
-    const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv', sheet: 'Data' })
+    const out = await call<{ path: string; folder?: string }>('work.sheets.export', { itemId, format: 'csv', sheet: 'Data' })
     expect(out.path).toBe(join(dir, 'Budget.csv'))
+    expect(out.folder).toBe(dir)
     expect(readFileSync(out.path, 'utf8').split('\r\n')[1]).toMatch(/^1,/)
     await expect(call('work.sheets.export', { itemId, format: 'xlsx' })).rejects.toThrow(/Excel file already/)
   })

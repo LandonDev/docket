@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SheetImported } from "@shared/work/sheetFormats";
 
-const toasts = vi.hoisted(() => ({ said: [] as { kind: string; title: string; description?: string }[] }));
+type Said = { kind: string; title: string; description?: string; action?: { label: string; onClick(): void } };
+const toasts = vi.hoisted(() => ({ said: [] as Said[] }));
 vi.mock("../../components/ui/toaster", () => ({
   loadToast: async () => ({
-    success: (title: string, o?: { description?: string }) => void toasts.said.push({ kind: "success", title, ...(o?.description ? { description: o.description } : {}) }),
+    success: (title: string, o?: { description?: string; action?: Said["action"] }) => void toasts.said.push({ kind: "success", title, ...(o?.description ? { description: o.description } : {}), ...(o?.action ? { action: o.action } : {}) }),
     error: (title: string, o?: { description?: string }) => void toasts.said.push({ kind: "error", title, ...(o?.description ? { description: o.description } : {}) }),
   }),
 }));
-const { importDone, importNotice, importRows, runImport } = await import("./imported");
+const { importDone, importNotice, importRows, runImport, savedTo } = await import("./imported");
 
 const xls: SheetImported = { format: "xls", name: "Ledger.xls" };
 afterEach(() => void (toasts.said.length = 0));
@@ -58,13 +59,14 @@ describe("the copy's rows of More", () => {
 });
 
 describe("what a press answers", () => {
-  it("names the file saved, and under it what the format left behind of this workbook", () => {
+  it("names the file saved and its folder, and under it what the format left behind of this workbook", () => {
     expect(importDone(xls, "back", { path: "/w/Ledger.xls", drops: ["2 tables become plain ranges", "1 colour scale stays behind"] })).toEqual({
-      title: "Saved Ledger.xls",
+      title: "Saved Ledger.xls to w",
+      folder: "/w",
       description: "2 tables become plain ranges. 1 colour scale stays behind.",
     });
-    expect(importDone(xls, "back", { path: "/w/Ledger.xls" })).toEqual({ title: "Saved Ledger.xls" });
-    expect(importDone(xls, "xlsx", { path: "C:\\w\\Ledger 2.xlsx", itemId: "i2" })).toEqual({ title: "Saved Ledger 2.xlsx" });
+    expect(importDone(xls, "back", { path: "/Spring LAN/Ledger.xls" })).toEqual({ title: "Saved Ledger.xls to Spring LAN", folder: "/Spring LAN" });
+    expect(importDone(xls, "xlsx", { path: "C:\\w\\Ledger 2.xlsx", itemId: "i2" })).toEqual({ title: "Saved Ledger 2.xlsx to w", folder: "C:\\w" });
     expect(importDone(xls, "again", {})).toEqual({ title: "Read Ledger.xls again" });
   });
 
@@ -74,9 +76,25 @@ describe("what a press answers", () => {
     await runImport(async () => Promise.reject(new Error("")), xls, "xlsx");
     await new Promise((r) => setTimeout(r, 0));
     expect(toasts.said).toEqual([
-      { kind: "success", title: "Saved Ledger.xls" },
+      { kind: "success", title: "Saved Ledger.xls to w" },
       { kind: "error", title: "Couldn't save back", description: "Ledger.xls changed since this copy was made. Save as Excel to keep your edits." },
       { kind: "error", title: "Couldn't save as Excel" },
     ]);
+  });
+
+  it("offers Show on the folder it saved to, where the window can show one", async () => {
+    const shown: string[] = [];
+    await runImport(async () => ({ path: "/Users/me/Spring LAN/Ledger.xlsx", itemId: "i2" }), xls, "xlsx", (folder) => void shown.push(folder));
+    expect(toasts.said).toMatchObject([{ kind: "success", title: "Saved Ledger.xlsx to Spring LAN", action: { label: "Show" } }]);
+    toasts.said[0]!.action!.onClick();
+    expect(shown).toEqual(["/Users/me/Spring LAN"]);
+  });
+});
+
+describe("where a file he wrote out went", () => {
+  it("names the folder where the host gave one, and only the file where it landed in no folder of his", () => {
+    expect(savedTo("/Users/me/Spring LAN/Budget.csv", "/Users/me/Spring LAN")).toEqual({ title: "Saved Budget.csv to Spring LAN", folder: "/Users/me/Spring LAN" });
+    expect(savedTo("C:\\Jobs\\Budget.csv", "C:\\Jobs")).toEqual({ title: "Saved Budget.csv to Jobs", folder: "C:\\Jobs" });
+    expect(savedTo("/data/canvas/i1/Budget.xlsx")).toEqual({ title: "Saved Budget.xlsx" });
   });
 });

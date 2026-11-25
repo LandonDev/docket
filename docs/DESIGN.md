@@ -3911,7 +3911,9 @@ opening puts the focus on Edit.
   sheet's page set-up.
 - **After Export** the system's own save dialog is the answer and nothing
   more is said. When a kind saved the file somewhere itself, one toast says
-  where: "Saved Budget.xlsx to Spring LAN".
+  where: "Saved Budget.xlsx to Spring LAN", with Show opening that folder in
+  Files, as the Files place's toasts do. A sheet's Save as CSV, Save back and
+  Save as Excel say it the same way.
 - **Motion.** The menus, the popover and the toast are the app's. The
   format's pill glides on the layout spring. The paper dims over `--dur-base`
   on `--ease-out` while the real app draws, and not under reduced motion. A

@@ -615,7 +615,8 @@ the file's own name.
   grid says where his edits go and what saving back as the format drops,
   with Save back; where the copy cannot go back it says why and the press
   is Save as Excel. More names both ways out, and Discard edits and read
-  again when the file moved on. A press answers in one toast.
+  again when the file moved on. A press answers in one toast, naming the
+  file and its folder, with Show ("Saved Ledger.xlsx to Spring LAN").
 
 ## Structural edits
 
@@ -863,6 +864,12 @@ it and exports beside it; a package gives a .csv of one sheet beside itself
 (it is its own .xlsx); anything else lands in the item's own folder. The
 canvas no longer offers these two in More (Preview, below, is the way out);
 a sheet read from a .csv keeps Save as CSV there, back over its file.
+The answer names the folder it landed in (`folder`) where that is one of
+his (beside the file, or his workspace's folder), none among the item's own
+files; the toast says "Saved Budget.csv to Spring LAN" with Show, which
+opens that folder in a Files tab of the sheet's workspace (`savedTo` in
+imported.ts, `useShowFolder` in SheetBody.tsx). Save back and Save as
+Excel of a copy say their folder the same way.
 
 ## Preview and export
 

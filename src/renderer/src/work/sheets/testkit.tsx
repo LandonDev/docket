@@ -160,7 +160,7 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workboo
     },
     async exportAs(format: "xlsx" | "csv", sheet?: string) {
       host.calls.push(["export", { format, sheet }]);
-      return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, ...(host.exportLeft ? { left: host.exportLeft } : {}) };
+      return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, folder: "/host/files", ...(host.exportLeft ? { left: host.exportLeft } : {}) };
     },
     async imported(act) {
       host.calls.push(["imported", { act }]);

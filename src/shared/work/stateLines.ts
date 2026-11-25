@@ -192,13 +192,11 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/rules/RuleLine.tsx`]: [
     ["Added to", "read"],
   ],
-  [`${R}/sheets/SheetBody.tsx`]: [
-    ["`Saved ${name} without ${left.join(\" and \")}`", "answer"],
-    ["`Saved ${name}`", "answer"],
-  ],
   [`${R}/sheets/imported.ts`]: [
     ["Edits stay in this tab's Excel copy until you save back", "local"],
-    ["`Saved ${done.path ? nameOf(done.path) : imported.name}`", "answer"],
+    ["`Saved ${name} to ${where}`", "answer"],
+    ["`Saved ${name}`", "answer"],
+    ["`Saved ${imported.name}`", "answer"],
   ],
   [`${R}/shell/ProjectSettings.tsx`]: [
     ["Done", "local"],

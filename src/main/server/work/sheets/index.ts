@@ -540,9 +540,16 @@ export async function workbookOf(ctx: WorkCtx, ref: SheetRef, at?: number): Prom
  * Writes a sheet out (the model writer, writer.ts): a held sheet to a new .xlsx, or one of its sheets
  * to .csv. A sheet read from a .csv saves back over it as .csv, and as .xlsx beside it; a package
  * gives .csv beside itself; anything else lands among the item's own files. `left`: the lists of rules
- * the .xlsx could not hold, in words.
+ * the .xlsx could not hold, in words. `folder`: the folder it landed in, where that is one of his (the toast
+ * names it, with Show); none among the item's own files, which no place shows.
  */
-export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string, by?: Caller): Promise<{ path: string; left?: string[] }> {
+export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string, by?: Caller): Promise<{ path: string; folder?: string; left?: string[] }> {
+  const out = await writeSheetOut(s, item, format, sheet, by)
+  const folder = dirname(out.path)
+  return folder === canvasItemDir(s.ctx.dataDir, item.sessionId, item.id) ? out : { ...out, folder }
+}
+
+async function writeSheetOut(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string, by?: Caller): Promise<{ path: string; left?: string[] }> {
   const held = heldOf(item, s.ctx.dataDir)
   const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv|xls|ods|tsv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
   // What he writes out of a sheet others can open is a copy he takes: it lands in his own workspace's folder, never

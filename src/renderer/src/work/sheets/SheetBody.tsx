@@ -24,7 +24,7 @@ import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
-import { importRows, runImport } from "./imported";
+import { importRows, nameOf, runImport, savedTo } from "./imported";
 import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
 import { EDIT_WAIT, SheetSync, syncOf, useSheetSync, type SheetSyncState } from "./sync";
 import { useSaving } from "../canvas/useCalm";
@@ -34,6 +34,7 @@ import { whenWords } from "../files/fileText";
 import { shareTargetOf } from "../guests/api";
 import { openShare } from "../guests/sharePort";
 import { useWorkspaceOf } from "../files/workspaceOf";
+import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { sheetPreviewSource } from "./preview";
@@ -168,7 +169,8 @@ export function Body(props: Props) {
   // Save to Google Sheets: offered on the host's word, once the workbook has opened; a file that reads only here, or moved, is not sent.
   const written = useCallback(() => sync.written(), [sync]);
   const google = useSaveToGoogle({ env: props.env, itemId: item.id, offered: ready && !locked && view?.canUpload === true, written });
-  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row);
+  const showFolder = useShowFolder(props.env, item.workspaceId);
+  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row, showFolder);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
   useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print"), ...(shareTargetOf(props.source, "sheet") ? { share: () => openShare(item.id) } : {}) } : {});
@@ -263,7 +265,7 @@ export function Body(props: Props) {
         <FormatRowBone />
       ) : null}
       {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
-      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act)} /> : null}
+      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act, showFolder)} /> : null}
       {handle && controls.includes("picture") ? <PictureInput ref={pictureInput} handle={handle} /> : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       {google.dialog}
@@ -589,6 +591,7 @@ function useSelectionFeed(
   frame: { current: HTMLDivElement | null },
   showPreview: (on: "last") => void,
   googleRow: MoreEntry | null,
+  showFolder: ShowFolder | undefined,
 ): void {
   const range = selection?.range;
   const many = !!range && (range.endRow > range.startRow || range.endColumn > range.startColumn);
@@ -648,14 +651,14 @@ function useSelectionFeed(
       // Every way out is in Preview: each format drawn as it will be, with what it drops. A sheet read from a .csv still
       // saves back over it.
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
-      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync, env, "csv", activeName()) }] : []),
+      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync, env, "csv", activeName(), showFolder) }] : []),
       ...(googleRow ? [googleRow] : []),
       // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
-      ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act) : Promise.resolve())),
+      ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act, showFolder) : Promise.resolve())),
       ...(shareGone ? [{ id: "share", label: "Share…", icon: Share, run: () => openShare(item.id) }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, env, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow]);
+  }, [shell, sync, env, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow, showFolder]);
 }
 
 const letters = (column: number): string => {
@@ -862,17 +865,36 @@ export function TabEnd(props: Props) {
   );
 }
 
-/** Writes the sheet out on the host and says where, by the file's name: the folder is the host's. */
-/** Writes the sheet out once his last edit is in it (`written`): an edit that did not save stops it, in words. */
-async function saveAs(sync: SheetSync, env: string, format: "xlsx" | "csv", sheet?: string): Promise<void> {
+/** Show on the toast of a file he wrote out: the folder it landed in, as a Files tab of the sheet's workspace. */
+type ShowFolder = (folder: string) => void;
+
+/** None outside a Work workspace, which has no Files place to show it in. A refusal (a place the workspace may not use) is one toast. */
+function useShowFolder(env: string, workspaceId: string | null | undefined): ShowFolder | undefined {
+  const workspace = useWorkspaceOf(env, workspaceId);
+  return useMemo(() => (workspace ? (folder: string) => showFolderIn(workspace, env, folder) : undefined), [workspace, env]);
+}
+
+/** Opens a folder in a Files tab of the workspace; the Files place rides its own chunk. */
+function showFolderIn(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, env: string, folder: string): void {
+  void import("../files/openFrom")
+    .then(({ openInFiles }) => openInFiles(workspace, { page: { at: { at: "file", host: env, path: folder }, name: nameOf(folder) } }))
+    .catch((error: unknown) => sayError(error, "Couldn't show the folder", env));
+}
+
+/**
+ * Writes the sheet out once his last edit is in it (`written`): an edit that did not save stops it, in words. Says where it
+ * went, by the file's name and its folder's, with Show where the folder is one of his (the host names it).
+ */
+export async function saveAs(sync: Pick<SheetSync, "written" | "host">, env: string, format: "xlsx" | "csv", sheet?: string, show?: ShowFolder): Promise<void> {
   try {
     await sync.written();
-    const { path, left } = await sync.host.exportAs(format, sheet);
+    const { path, folder, left } = await sync.host.exportAs(format, sheet);
     const toast = await loadToast();
-    const name = path.split(/[\\/]/).pop();
+    const saved = savedTo(path, folder);
+    const options = saved.folder && show ? { action: { label: "Show", onClick: () => show(saved.folder!) } } : undefined;
     // What the file could not hold is said with the save, not after it.
-    if (left?.length) toast.message(`Saved ${name} without ${left.join(" and ")}`);
-    else toast.success(`Saved ${name}`);
+    if (left?.length) toast.message(`${saved.title} without ${left.join(" and ")}`, options);
+    else toast.success(saved.title, options);
   } catch (error) {
     sayError(error, "Couldn't save the sheet", env);
   }

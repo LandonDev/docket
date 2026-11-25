@@ -42,23 +42,34 @@ export function importRows(imported: SheetImported | undefined, run: (act: Sheet
   ];
 }
 
-const nameOf = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+/** The last name in a path, a file's or a folder's, on any host. */
+export const nameOf = (path: string): string => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+const folderOf = (path: string): string => path.replace(/[\\/][^\\/]*$/, "");
 
-/** What a press that went through says: the file by its name, and under it what the format left behind of this workbook. */
-export function importDone(imported: SheetImported, act: SheetImportAct, done: SheetImportDone): { title: string; description?: string } {
+/** What a file he wrote out says in its toast: "Saved Budget.csv to Spring LAN" with the folder to Show, or only its name where it landed in no folder of his. */
+export function savedTo(path: string, folder?: string): { title: string; folder?: string } {
+  const name = nameOf(path);
+  const where = folder ? nameOf(folder) : "";
+  return folder && where ? { title: `Saved ${name} to ${where}`, folder } : { title: `Saved ${name}` };
+}
+
+/** What a press that went through says: the file by its name and folder, and under it what the format left behind of this workbook. */
+export function importDone(imported: SheetImported, act: SheetImportAct, done: SheetImportDone): { title: string; description?: string; folder?: string } {
   if (act === "again") return { title: `Read ${imported.name} again` };
-  const title = `Saved ${done.path ? nameOf(done.path) : imported.name}`;
-  return done.drops?.length ? { title, description: `${done.drops.join(". ")}.` } : { title };
+  // Saved back over his file, or as Excel beside it or in his workspace's folder: always a folder of his.
+  const saved = done.path ? savedTo(done.path, folderOf(done.path)) : { title: `Saved ${imported.name}` };
+  return done.drops?.length ? { ...saved, description: `${done.drops.join(". ")}.` } : saved;
 }
 
 const FAILED: Record<SheetImportAct, string> = { back: "Couldn't save back", xlsx: "Couldn't save as Excel", again: "Couldn't read the file again" };
 
-/** One press: asked of the host, then said in one toast, whichever way it went. It never rejects. */
-export async function runImport(ask: (act: SheetImportAct) => Promise<SheetImportDone>, imported: SheetImported, act: SheetImportAct): Promise<void> {
+/** One press: asked of the host, then said in one toast, whichever way it went, with Show on the folder it saved to where `show` is given. It never rejects. */
+export async function runImport(ask: (act: SheetImportAct) => Promise<SheetImportDone>, imported: SheetImported, act: SheetImportAct, show?: (folder: string) => void): Promise<void> {
   try {
-    const { title, description } = importDone(imported, act, await ask(act));
+    const { title, description, folder } = importDone(imported, act, await ask(act));
     const toast = await loadToast();
-    toast.success(title, description ? { description } : undefined);
+    const options = { ...(description ? { description } : {}), ...(folder && show ? { action: { label: "Show", onClick: () => show(folder) } } : {}) };
+    toast.success(title, Object.keys(options).length ? options : undefined);
   } catch (error) {
     sayError(error, FAILED[act]);
   }

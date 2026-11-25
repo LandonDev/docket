@@ -55,7 +55,7 @@ export interface SheetHost {
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
   /** Writes the sheet out on the host (`work.sheets.export`); answers where it went, and what the file could not hold. */
-  exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; left?: string[] }>;
+  exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; folder?: string; left?: string[] }>;
   /** What he does with the Excel copy of an .xls, .ods or .tsv (`work.sheets.imported`): save it back, save it out as .xlsx, or read the file again. */
   imported(act: SheetImportAct): Promise<SheetImportDone>;
   /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. The full editor answers its page, opened in the browser. */

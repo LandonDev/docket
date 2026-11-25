@@ -26,9 +26,12 @@ const host = vi.hoisted(() => ({
   opens: new Set<() => void>(),
 }));
 /** What the body said in a toast, a title and the words under it as "title / words" (sonner rides its own chunk; the body speaks through `loadToast`). */
-const toasts = vi.hoisted(() => ({ said: [] as string[] }));
+const toasts = vi.hoisted(() => ({ said: [] as string[], actions: [] as { label: string; onClick(): void }[] }));
 vi.mock("../../components/ui/toaster", async (original) => {
-  const say = (text: string, o?: { description?: string }) => void toasts.said.push(o?.description ? `${text} / ${o.description}` : text);
+  const say = (text: string, o?: { description?: string; action?: { label: string; onClick(): void } }) => {
+    toasts.said.push(o?.description ? `${text} / ${o.description}` : text);
+    if (o?.action) toasts.actions.push(o.action);
+  };
   return { ...(await original<typeof import("../../components/ui/toaster")>()), loadToast: async () => Object.assign(say, { message: say, success: say, error: say }) };
 });
 vi.mock("../../lib/connection", async (original) => {
@@ -58,6 +61,7 @@ import { CanvasSeat } from "../canvas/CanvasSeat";
 import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import { resetCanvasStore } from "../canvas/store";
 import { CloseRefused, flushedItem, flushItem } from "../canvas/flush";
+import { saveAs } from "./SheetBody";
 
 const ITEM: CanvasItem = canvasItem("s1", { kind: "sheet", title: "Nationals travel budget.xlsx", source: { at: "file", host: "local", path: "/work/budget.xlsx" } });
 const BOOK = workbookOf([
@@ -124,6 +128,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   toasts.said.length = 0;
+  toasts.actions.length = 0;
 });
 
 describe("the sheet kind", () => {
@@ -1057,6 +1062,22 @@ describe("the sheet kind", () => {
     expect(screen.queryByRole("menuitem", { name: "Preview…" })).toBeTruthy();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "export").at(-1)?.[1]).toMatchObject({ format: "csv" }));
+    // the toast names the folder it went to, as Preview's does
+    await waitFor(() => expect(toasts.said).toContain("Saved Nationals travel budget.csv to files"));
+  });
+
+  it("offers Show on a sheet written out to a folder of his, and names only the file where the host gives no folder", async () => {
+    const shown: string[] = [];
+    const show = (folder: string): void => void shown.push(folder);
+    const sync = (answer: { path: string; folder?: string; left?: string[] }) => ({ written: async () => undefined, host: { exportAs: async () => answer } }) as unknown as Parameters<typeof saveAs>[0];
+    await saveAs(sync({ path: "/Users/me/Spring LAN/Budget.csv", folder: "/Users/me/Spring LAN" }), "local", "csv", undefined, show);
+    await saveAs(sync({ path: "/data/canvas/i1/Budget.xlsx" }), "local", "xlsx", undefined, show);
+    await saveAs(sync({ path: "/Users/me/Spring LAN/Budget.xlsx", folder: "/Users/me/Spring LAN", left: ["the names"] }), "local", "xlsx");
+    expect(toasts.said).toEqual(["Saved Budget.csv to Spring LAN", "Saved Budget.xlsx", "Saved Budget.xlsx to Spring LAN without the names"]);
+    // one Show, on the save that landed in a folder he can open, and it opens that folder
+    expect(toasts.actions.map((a) => a.label)).toEqual(["Show"]);
+    toasts.actions[0]!.onClick();
+    expect(shown).toEqual(["/Users/me/Spring LAN"]);
   });
 
   it("writes a .csv and saves to Google only once his last edit is in, and neither when it did not save", async () => {
@@ -1094,7 +1115,7 @@ describe("the sheet kind", () => {
     expect(line.compareDocumentPosition(document.querySelector("[data-fake-grid]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "imported").at(-1)?.[1]).toEqual({ act: "back" }));
-    await waitFor(() => expect(toasts.said).toContain("Saved Ledger.xls / 2 tables become plain ranges."));
+    await waitFor(() => expect(toasts.said).toContain("Saved Ledger.xls to files / 2 tables become plain ranges."));
     // an ordinary Excel file has no such line
     cleanup();
     resetSheetSyncs();
