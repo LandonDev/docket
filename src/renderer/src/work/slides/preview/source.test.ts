@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckFacts, DeckOut, DeckReach } from "@shared/contract-work-slides";
-import { NotInReach } from "../../formats/preview";
+import { NotInReach, PictureMoved } from "../../formats/preview";
 import { previewProblems } from "../../formats/previewContract";
 import { defaultOptions } from "./DeckPreview";
 import { askOf, deckDrops, deckPreviewSource, formatsFor, type DeckOptions } from "./source";
@@ -104,6 +104,35 @@ describe("the deck's PreviewSource", () => {
     expect(host.asks.filter((a) => a.office)).toEqual([{ itemId: "item1", format: "pptx", office: true }]);
     // The contract holds with PowerPoint out of reach too.
     expect(await previewProblems(sourceOn(fakeHost({ pdf: "none", video: "none" })))).toEqual([]);
+  });
+
+  it("prints only the deck Preview drew: one changed since, or never drawn, prints nothing", async () => {
+    // Council r4 (Opus 3): Print made the PDF from the deck as it was at the press, pages he never saw.
+    const host = fakeHost();
+    // The host's rev names the deck's revision (out.ts `outRev`): an edit makes another.
+    let deck = "a";
+    const revs = new Map<string, string>();
+    const printed: string[] = [];
+    const source = sourceOn(host, defaultOptions("en-US"), {
+      print: async (name) => void printed.push(name),
+      request: async <T,>(env: string, method: string, params: unknown): Promise<T> => {
+        const p = params as Record<string, unknown>;
+        if (method === "work.slides.previewRead") return host.request<T>(env, method, { ...p, rev: revs.get(p.rev as string) });
+        const out = await host.request<DeckOut>(env, method, params);
+        const rev = `${deck}${out.file.rev}`.slice(0, 32);
+        revs.set(rev, out.file.rev);
+        return { ...out, file: { ...out.file, rev }, ...(out.pdf ? { pdf: { ...out.pdf, rev } } : {}) } as T;
+      },
+    });
+    await expect(source.export("print")).rejects.toBeInstanceOf(PictureMoved);
+    expect(printed).toEqual([]);
+    await source.draw("print", { signal: new AbortController().signal });
+    deck = "b";
+    await expect(source.export("print")).rejects.toBeInstanceOf(PictureMoved);
+    expect(printed).toEqual([]);
+    await source.draw("print", { signal: new AbortController().signal });
+    expect(await source.export("print")).toEqual({ name: "Talk" });
+    expect(printed).toEqual(["Talk"]);
   });
 
   it("offers PowerPoint's picture for the file alone, and draws pictures and the video as files", async () => {

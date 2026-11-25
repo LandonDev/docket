@@ -315,12 +315,30 @@ describe("the frame", () => {
   it("a print is not the format Export… opens on next: that stays the last file he made", async () => {
     const f = fake({ formats: [...FORMATS, { id: "print", label: "Print", paged: true, verb: "Print…" }] });
     await show(f, { initial: "print" });
+    await f.answer({ picture: paged("r1"), drops: [] });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Print…" })));
     expect(f.exported).toEqual(["print"]);
     expect(localStorage.getItem("work.preview.format.document")).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
     expect(localStorage.getItem("work.preview.format.document")).toBe("pdf");
+  });
+
+  it("Print… waits for the pages: it cannot be pressed while they draw or once their draw failed, and Export can", async () => {
+    // Council r4 (Sol 4): a press during the first draw printed the workbook unchecked.
+    const f = fake({ formats: [...FORMATS, { id: "print", label: "Print", paged: true, verb: "Print…" }] });
+    await show(f, { initial: "print" });
+    const print = (): HTMLButtonElement => screen.getByRole("button", { name: "Print…" }) as HTMLButtonElement;
+    expect(print().disabled).toBe(true);
+    await act(async () => fireEvent.click(print()));
+    expect(f.exported).toEqual([]);
+    await f.answer({ picture: paged("r1"), drops: [] });
+    expect(print().disabled).toBe(false);
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
+    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "Print" })));
+    await f.fail("LibreOffice stopped");
+    expect(print().disabled).toBe(true);
   });
 
   it("a print of pages that changed since they were drawn draws them again and asks for Print once more, printing nothing", async () => {

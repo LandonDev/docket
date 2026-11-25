@@ -1,7 +1,7 @@
 import type { DeckFacts, DeckOut, DeckOutAsk, DeckReach } from "@shared/contract-work-slides";
 import { registry } from "../../../lib/connection";
 import { fromBase64, saveFile } from "../../formats/model";
-import { NotInReach, type CommonSetup, type DeckSetup, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../../formats/preview";
+import { NotInReach, PictureMoved, type CommonSetup, type DeckSetup, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../../formats/preview";
 
 /**
  * The deck's side of Preview (docs/agents/work-slides.md "Preview and export"): each way a deck goes out, drawn as
@@ -16,7 +16,7 @@ import { NotInReach, type CommonSetup, type DeckSetup, type Drawn, type PreviewB
  *
  * What a format leaves out is counted from the deck (`deckDrops`). Export writes the deck as it stands when he
  * presses: the host makes the file from the deck's bytes now, and answers the one it already made when they did
- * not change.
+ * not change. Print sends only the pages Preview drew: a deck changed since is drawn again first.
  */
 
 export type DeckFormat = DeckOutAsk["format"];
@@ -123,6 +123,9 @@ export function deckPreviewSource(deps: DeckPreviewDeps): PreviewSource {
       await printPdf(name, bytes);
     });
   const opts = deps.options;
+  // The rev of the print file Preview last drew (`work.slides.preview` names the deck's revision in it); null while a
+  // draw is out or after one failed.
+  let printed: string | null = null;
 
   const ask = (format: DeckFormat, office = false): Promise<DeckOut> =>
     request<DeckOut>(deps.env, "work.slides.preview", { itemId: deps.itemId, ...askOf(format, opts), ...(office ? { office: true } : {}) }, { timeoutMs: 30 * 60_000 });
@@ -182,14 +185,21 @@ export function deckPreviewSource(deps: DeckPreviewDeps): PreviewSource {
         const { state } = await office(f);
         if (state !== "ready" && state !== "asleep") throw new NotInReach("PowerPoint", state);
       }
+      if (f === "print") printed = null;
       const out = await ask(f, by === "office");
       if (signal.aborted) throw cancelled();
-      return drawn(f, out);
+      const picture = drawn(f, out);
+      if (f === "print") printed = out.file.rev;
+      return picture;
     },
     async export(format) {
       const f = format as DeckFormat;
-      // Made from the deck as it is now: the host answers the file it already made when the deck did not change.
+      // Made from the deck as it is now: the host answers the file it already made when the deck did not change. Print
+      // goes to paper only from the deck Preview drew: its rev names the deck's revision, so a deck changed since, or
+      // pages not drawn yet, print nothing and Preview draws again.
+      if (f === "print" && !printed) throw new PictureMoved();
       const out = await ask(f);
+      if (f === "print" && out.file.rev !== printed) throw new PictureMoved();
       const bytes = await whole(bytesOf(out.file));
       if (f === "print") {
         const name = out.file.name.replace(/\.pdf$/i, "");

@@ -221,8 +221,10 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     );
   };
 
+  // Print sends only the pages he checked: none while they draw or once their draw failed.
+  const printWaits = current?.verb === "Print…" && draw.status !== "drawn";
   const runExport = async (): Promise<void> => {
-    if (!formatId || exporting) return;
+    if (!formatId || exporting || printWaits) return;
     setExporting(true);
     try {
       const made = await source.export(formatId);
@@ -515,7 +517,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
               {settings}
             </LazyPopover>
           ) : null}
-          <Button size="sm" className="ms-1.5" disabled={!formatId} onClick={() => void runExport()}>
+          <Button size="sm" className="ms-1.5" disabled={!formatId || printWaits} onClick={() => void runExport()}>
             <BusyLabel busy={exporting} label={verb} />
           </Button>
         </div>

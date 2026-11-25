@@ -130,7 +130,9 @@ describe("the sheet's PreviewSource", () => {
 
   it("prints the whole PDF through this computer's viewer, never a save", async () => {
     const h = host();
-    expect(await sourceOf(h).export("print")).toEqual({ name: "Budget.pdf" });
+    const source = sourceOf(h);
+    await source.draw("print", { signal: new AbortController().signal });
+    expect(await source.export("print")).toEqual({ name: "Budget.pdf" });
     expect(h.calls.find((c) => c.method === "work.sheets.previewExport")?.params).toEqual({ itemId: "item1", format: "pdf" });
     expect(h.printed).toEqual([{ name: "Budget.pdf", size: PDF.length }]);
     expect(h.saved).toEqual([]);
@@ -161,6 +163,38 @@ describe("the sheet's PreviewSource", () => {
     await source.draw("print", { signal: new AbortController().signal });
     await source.export("print");
     expect(h.printed).toHaveLength(2);
+  });
+
+  it("prints nothing before Preview has drawn the pages, nor after their draw failed; a host that names no workbook prints once drawn", async () => {
+    // Council r4 (Sol 4): Print pressed while the first draw was out sent no drawn workbook, and went to paper unchecked.
+    const h = host();
+    const source = sourceOf(h);
+    await expect(source.export("print")).rejects.toBeInstanceOf(PictureMoved);
+    expect(h.calls.some((c) => c.method === "work.sheets.previewExport")).toBe(false);
+    // The stand-in names no workbook, as a host a release behind: drawn, it prints as before.
+    await source.draw("print", { signal: new AbortController().signal });
+    expect(await source.export("print")).toEqual({ name: "Budget.pdf" });
+    expect(h.printed).toHaveLength(1);
+    // A draw that fails leaves no pages he checked.
+    let fail = true;
+    const failing = sheetPreviewSource({
+      env: "local",
+      itemId: "item1",
+      store: "package",
+      name: "Budget.xlsx",
+      request: async <T,>(env: string, method: string, params: unknown): Promise<T> => {
+        if (fail && method === "work.sheets.preview") throw new Error("LibreOffice stopped");
+        const got = await h.request<T>(env, method, params);
+        return (method === "work.sheets.preview" ? { ...(got as object), book: "c".repeat(32) } : got) as T;
+      },
+      print: async (n, bytes) => void h.printed.push({ name: n, size: bytes.length }),
+    });
+    fail = false;
+    await failing.draw("print", { signal: new AbortController().signal });
+    fail = true;
+    await expect(failing.draw("print", { signal: new AbortController().signal })).rejects.toThrow("LibreOffice stopped");
+    await expect(failing.export("print")).rejects.toBeInstanceOf(PictureMoved);
+    expect(h.printed).toHaveLength(1);
   });
 
   it("draws and exports only once his last edit is in the file, and not at all when it is not", async () => {
@@ -206,6 +240,7 @@ describe("the sheet's PreviewSource", () => {
       print: async () => void order.push("print"),
       warn: (words) => void order.push(`warn: ${words}`),
     });
+    await source.draw("print", { signal: new AbortController().signal });
     await source.export("print");
     await source.export("pdf");
     expect(order).toEqual([`warn: ${KEPT_VALUES}`, "print", `warn: ${KEPT_VALUES}`, "save"]);

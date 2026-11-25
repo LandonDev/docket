@@ -1019,6 +1019,11 @@ host's side is `slides/out.ts` (`deckOut`).
   picked (`planOf`, `outRev`): asked again for an unchanged deck it answers
   at once, so Export writes the file as it stands and costs nothing when he
   only looked. Six are kept; two asks of one rev at once share one making.
+  Print alone goes out only as drawn: the source keeps the rev of the print
+  file Preview drew, and a Print whose answer has another rev (the deck
+  changed since), or that comes before a draw finished, prints nothing and
+  rejects with `PictureMoved`: Preview draws the pages again and he prints
+  again.
 - **Slides, notes pages and handouts.** A PDF of the slides is the deck's own
   render with its hidden slides taken out unless he asks for them
   (`keepPages`, pdf-lib). Notes pages and handouts are laid out here

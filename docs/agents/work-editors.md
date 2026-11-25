@@ -212,13 +212,17 @@ only by case resolve to one on the Mac's disk, where the release is built.
 - `export` may answer `where` when it saved the file somewhere itself; the
   frame then toasts "Saved <name> to <where>". Without it the system's own
   dialog was the answer. **`export` writes the file as it stands when he
-  presses**: the primary button is live while a picture is still being drawn,
+  presses**: the primary button is live while a picture is still being drawn
+  (Print… alone waits: it cannot be pressed until the pages are drawn, nor
+  after their draw failed),
   and he may have edited since the last one, so never save bytes kept from an
   earlier draw unless the host confirms they are still the file. The one
   exception is the document's PDF and Print: they send the pages Preview
   shows, the pages he checked, and nothing when those are gone
   (work-docs.md "Preview"); a sheet's Print is made afresh only from the
-  workbook Preview drew, and otherwise rejects with `PictureMoved`, which the
+  workbook Preview drew, and a deck's only when the host's print file has the
+  rev Preview drew (`outRev` names the deck's revision); either source refuses
+  a Print with no finished draw, and otherwise rejects with `PictureMoved`, which the
   frame answers by drawing the pages again and a toast asking him to print
   again (work-sheets.md "Preview and export").
 - The Page section draws `setup.common` itself (Paper, Orientation, Margins,

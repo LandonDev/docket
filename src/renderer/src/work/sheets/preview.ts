@@ -104,8 +104,9 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
   const call = <T>(method: string, params: Record<string, unknown>, timeoutMs = DRAW_MS): Promise<T> => request<T>(deps.env, method, { itemId: deps.itemId, ...params }, { timeoutMs });
   // The sheet a CSV or TSV was last drawn for: what its export holds.
   const sheetOf = new Map<SheetPreviewFormat, string>();
-  // The workbook each format's picture was last drawn from (`book`): Print sends that one or nothing.
-  const bookOf = new Map<SheetFormat, string>();
+  // The workbook each paged format's picture was last drawn from (`book`; null from a host a release behind, which
+  // names none): Print sends that one. None while a draw is out or after one failed: Print waits for the pages.
+  const bookOf = new Map<SheetFormat, string | null>();
 
   const bytesOf = (rev: string, size: number): PreviewBytes => ({
     rev,
@@ -151,12 +152,12 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       }
       const id = host(format as SheetFormat);
       const sheet = opts.sheet ?? sheetOf.get(id);
+      bookOf.delete(format as SheetFormat);
       const got = await call<SheetPreviewAnswer>("work.sheets.preview", { format: id, ...(opts.pages ? { pages: opts.pages } : {}), ...(sheet ? { sheet } : {}) });
       if (opts.signal.aborted) throw cancelled();
       let drawn: Drawn;
       if (got.kind === "paged") {
-        if (got.book) bookOf.set(format as SheetFormat, got.book);
-        else bookOf.delete(format as SheetFormat);
+        bookOf.set(format as SheetFormat, got.book ?? null);
         // A whole nobody has counted says no number ("Page 3 of 50+"), and what is no loss is said over the first sheet.
         const shown = got.shown ? (got.uncounted ? { from: got.shown.from, to: got.shown.to } : got.shown) : undefined;
         const notes = got.notes ?? [];
@@ -173,8 +174,10 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       const id = host(format as SheetFormat);
       // The workbook as it stands now: the host makes the file afresh, or answers the one it made of these same bytes.
       const sheet = sheetOf.get(id);
-      // Print goes to paper only from the workbook Preview drew (a host a release behind names none, and prints as it stands).
-      const drawn = format === "print" ? bookOf.get("print") : undefined;
+      // Print goes to paper only from the workbook Preview drew (a host a release behind names none, and prints as it
+      // stands), and only once its pages are drawn.
+      if (format === "print" && !bookOf.has("print")) throw new PictureMoved();
+      const drawn = format === "print" ? (bookOf.get("print") ?? undefined) : undefined;
       const made = await call<SheetExportAnswer>("work.sheets.previewExport", { format: id, ...(sheet ? { sheet } : {}), ...(drawn ? { drawn } : {}) });
       if (made.moved) throw new PictureMoved();
       const bytes = await whole(bytesOf(made.rev, made.size));
