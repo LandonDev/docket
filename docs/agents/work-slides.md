@@ -181,7 +181,9 @@ drops it. Agents suggest; the owner accepts.
   not by LibreOffice's page number.
 - **One slide's own picture** (`slidePath`, `work.slides.slide`). A client
   that wants one slide reads that slide's one-page PDF by range, named by
-  its id in the file or the proposed deck. `DeckSlide.pic` carries its `rev`
+  its id in the file or the proposed deck. The phone reads its deck's first
+  slide this way before the whole render (its view's slides carry `id` and
+  `pic`; work-phone-files.md "The first page before the whole file"). `DeckSlide.pic` carries its `rev`
   (the first 16 characters of the page's name) and size, so a client keeps the
   picture of a slide an edit did not touch and reads only the one that
   changed. A page not kept yet is split from the deck's PDF.

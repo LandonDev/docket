@@ -82,14 +82,30 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkPdfOpen.self, .init(itemId: itemId))
     }
 
-    /// The PDF's bytes as the view named them, read in frames. `progress` hears the share read after each frame.
+    /// The PDF's bytes as the view named them, read in frames two at a time, every one of the view's `rev`.
+    /// `progress` hears the share read after each frame.
     public func pdfData(_ view: PdfPhoneView, progress: ((Double) -> Void)? = nil) async throws -> Data {
         let size = Int(view.size)
-        return try await ChunkedRead.all(size: size) { offset, length in
-            let frame = try await self.socket.request(Methods.WorkPdfRead.self, .init(itemId: view.itemId, which: .file, rev: view.rev, offset: offset, length: length))
-            progress?(ChunkedRead.share(read: offset + length, of: size))
-            return frame
-        }
+        let socket = socket
+        let itemId = view.itemId, rev = view.rev
+        return try await ChunkedRead.pinned(size: size, rev: rev, read: { offset, length in
+            try await socket.request(Methods.WorkPdfRead.self, .init(itemId: itemId, which: .file, rev: rev, offset: offset, length: length))
+        }, landed: { progress?(ChunkedRead.share(read: $0, of: size)) })
+    }
+
+    /// The PDF's first page as one picture of the view's `rev`, drawn `width` pixels wide by the host; nil from a
+    /// host that has none to give (an older one, a picture too large), when the open reads the file alone.
+    public func pdfFirst(_ view: PdfPhoneView, width: Int) async -> FirstPicture? {
+        guard let page = try? await socket.request(Methods.WorkPdfFirst.self, .init(itemId: view.itemId, rev: view.rev, width: width)) else { return nil }
+        return FirstPicture.of(page, rev: view.rev)
+    }
+
+    /// A deck's first slide as its own one-page PDF, in one ask, of the picture's rev the view named beside the
+    /// render's `rev`.
+    public func slideFirst(_ deck: DeckPhoneView, proposed: Bool, rev: String) async -> FirstPicture? {
+        guard let first = FirstPicture.firstSlide(of: deck, proposed: proposed),
+              let frame = try? await socket.request(Methods.WorkSlidesSlide.self, .init(itemId: deck.itemId, which: proposed ? .proposed : .file, slide: first.id, offset: 0, length: Int(first.pic.size))) else { return nil }
+        return FirstPicture.of(frame, pic: first.pic.rev, render: rev)
     }
 
     /// One frame of a PDF at a `rev`.
@@ -109,11 +125,10 @@ public final class WorkCanvas {
     /// One of a deck's renders (a PDF): `proposed` while changes wait. `rev` is the render's rev as the view advertised
     /// it: a frame of any other render (the changes moved on meanwhile) fails the read, never shows in its place.
     public func deckData(_ itemId: String, proposed: Bool, size: Int, rev: String, progress: ((Double) -> Void)? = nil) async throws -> Data {
-        try await ChunkedRead.all(size: size, expecting: rev) { offset, length in
-            let frame = try await self.socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: proposed ? .proposed : .file, offset: offset, length: length))
-            progress?(ChunkedRead.share(read: offset + length, of: size))
-            return frame
-        }
+        let socket = socket
+        return try await ChunkedRead.pinned(size: size, rev: rev, read: { offset, length in
+            try await socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: proposed ? .proposed : .file, offset: offset, length: length))
+        }, landed: { progress?(ChunkedRead.share(read: $0, of: size)) })
     }
 
     /// Accept or reject every waiting change, bound to the proposed render he saw (`rev`): the host refuses the press

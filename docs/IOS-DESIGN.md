@@ -2843,7 +2843,9 @@ puts them.
   passes it. A file of one page has no stamp. A double tap still zooms, a tap on a link still follows it. The
   status bar stays.
 - **Loading** is the paper's shape at once (a letter page, or a slide) with a
-  120 pt determinate bar that follows the bytes read. A file opened again in
+  120 pt determinate bar that follows the bytes read. Once the file's first
+  page or slide is here it fills that shape, and the bar moves to the
+  paper's foot, 12 pt in. A file opened again in
   the same run paints from memory at once. A failure is the system's
   unavailable view with the host's reason and Try Again.
 - **The place he stopped** (the page, the slide) is kept per file and

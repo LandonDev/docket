@@ -12,6 +12,7 @@ struct PdfItemView: View {
     let item: CanvasItem
     let ask: ((ContextChip) -> Void)?
     @State private var progress = ReadProgress()
+    @Environment(\.displayScale) private var scale
 
     private struct Loaded {
         var rev: String
@@ -25,7 +26,7 @@ struct PdfItemView: View {
     var body: some View {
         ItemLoad(
             initial: ReaderCache.shared.latest(cacheKey).map { Loaded(rev: $0.rev, data: $0.data) },
-            loading: { AnyView(ReaderLoading(progress: progress.share)) },
+            loading: { AnyView(ReaderLoading(progress: progress.share, picture: progress.picture)) },
             read: { try await load() }
         ) { loaded, _ in
             PdfPages(
@@ -43,12 +44,20 @@ struct PdfItemView: View {
 
     private func load() async throws -> Loaded {
         let view = try await client.work.canvas.pdf(item.id)
+        // A picture from a read before (another version, Try Again) never stands for this one.
+        progress.picture = nil
         if let data = ReaderCache.shared.data(cacheKey, rev: view.rev) { return Loaded(rev: view.rev, data: data) }
-        let data = try await client.work.canvas.pdfData(view) { progress.share = $0 }
-        // Only bytes PDFKit opens with a page reach the viewer; anything else is the item's failure with Try Again,
-        // never a blank viewer saying "1 of 1" (as the deck does, `DeckRender.opens`).
-        guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw PdfUnreadable() }
-        ReaderCache.shared.keep(data, for: cacheKey, rev: view.rev)
+        let canvas = client.work.canvas, key = cacheKey, progress = self.progress
+        let width = FirstPicture.width(points: ReaderMetrics.measure, scale: scale)
+        // One read of this version however many views open it; its first page drawn while the rest reads (M17).
+        let data = try await ReaderOpens.shared.open(key, rev: view.rev, show: { progress.show($0) }, first: { await canvas.pdfFirst(view, width: width) }) {
+            let data = try await canvas.pdfData(view) { progress.share = $0 }
+            // Only bytes PDFKit opens with a page reach the viewer; anything else is the item's failure with Try Again,
+            // never a blank viewer saying "1 of 1" (as the deck does, `DeckRender.opens`).
+            guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw PdfUnreadable() }
+            ReaderCache.shared.keep(data, for: key, rev: view.rev)
+            return data
+        }
         return Loaded(rev: view.rev, data: data)
     }
 }
@@ -87,6 +96,12 @@ struct SlidesItemView: View {
         var key: String { "\(rev):\(render == .proposed ? "proposed" : "file")" }
     }
 
+    /// A render read whole, with the pages PDFKit opened.
+    private struct DeckRead: Sendable {
+        var data: Data
+        var pages: Int
+    }
+
     /// What the cache keeps beside a render's bytes: the slides it draws, which render it is and its page count.
     private struct Kept: Sendable {
         var deck: DeckPhoneView
@@ -109,7 +124,7 @@ struct SlidesItemView: View {
         ItemLoad(
             dropsOnReload: true,
             initial: remembered,
-            loading: { AnyView(ReaderLoading(aspect: ReaderMetrics.slideAspect, progress: progress.share)) },
+            loading: { AnyView(ReaderLoading(aspect: ReaderMetrics.slideAspect, progress: progress.share, picture: progress.picture)) },
             read: { try await load() }
         ) { loaded, reload in
             VStack(spacing: 0) {
@@ -144,6 +159,8 @@ struct SlidesItemView: View {
 
     private func load() async throws -> Loaded {
         let deck = try await client.work.canvas.deck(item.id)
+        // A picture from a read before (the render before a decision, Try Again) never stands for this one.
+        progress.picture = nil
         let waiting = !deck.changes.isEmpty
         // While changes wait only their proposed render shows; a missing one is the Try Again state, never the
         // file's render under live Reject and Accept. The two renders are distinct generated types; only the size is read.
@@ -157,13 +174,18 @@ struct SlidesItemView: View {
             ReaderCache.shared.keep(data, for: cacheKey, rev: rev, note: Kept(deck: deck, render: render, pages: pages))
             return Loaded(deck: deck, data: data, render: render, rev: rev, pages: pages)
         }
-        // The bytes must be the render the view named: a read that meets another (the changes moved on) fails, for Try Again.
-        let data = try await client.work.canvas.deckData(item.id, proposed: render == .proposed, size: Int(size), rev: rev) { progress.share = $0 }
-        // The verdicts come only once PDFKit opens the bytes as a document with a page; a decode failure is Try Again.
-        let pages = PDFDocument(data: data)?.pageCount
-        guard DeckRender.opens(pageCount: pages), let pages else { throw DeckError.notRendered(DeckRender.unreadable) }
-        ReaderCache.shared.keep(data, for: cacheKey, rev: rev, note: Kept(deck: deck, render: render, pages: pages))
-        return Loaded(deck: deck, data: data, render: render, rev: rev, pages: pages)
+        let canvas = client.work.canvas, key = cacheKey, progress = self.progress, itemId = item.id, proposed = render == .proposed
+        // One read of this render however many views open it; its first slide drawn while the rest reads (M17).
+        let read = try await ReaderOpens.shared.open(key, rev: rev, show: { progress.show($0) }, first: { await canvas.slideFirst(deck, proposed: proposed, rev: rev) }) {
+            // The bytes must be the render the view named: a read that meets another (the changes moved on) fails, for Try Again.
+            let data = try await canvas.deckData(itemId, proposed: proposed, size: Int(size), rev: rev) { progress.share = $0 }
+            // The verdicts come only once PDFKit opens the bytes as a document with a page; a decode failure is Try Again.
+            let pages = PDFDocument(data: data)?.pageCount
+            guard DeckRender.opens(pageCount: pages), let pages else { throw DeckError.notRendered(DeckRender.unreadable) }
+            ReaderCache.shared.keep(data, for: key, rev: rev, note: Kept(deck: deck, render: render, pages: pages))
+            return DeckRead(data: data, pages: pages)
+        }
+        return Loaded(deck: deck, data: read.data, render: render, rev: rev, pages: read.pages)
     }
 
     /// Bound to the render he saw: the host refuses the press when the changes moved on since. Either way the deck

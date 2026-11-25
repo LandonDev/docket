@@ -1,3 +1,4 @@
+import PDFKit
 import SwiftUI
 import TempCodeClient
 import TempCodeContract
@@ -69,20 +70,29 @@ struct ReaderMoreRows: View {
     }
 }
 
-/// A file on its way: the paper's shape at once, with a bar that follows the bytes read.
+/// A file on its way: the paper's shape at once, with a bar that follows the bytes read. Once the file's first
+/// page or slide is here (`FirstPicture`, M17) it fills the same shape, and the bar moves to the paper's foot.
 struct ReaderLoading: View {
     var aspect: CGFloat = ReaderMetrics.paperAspect
     /// 0 to 1 once the host has said the size; nil before that.
     let progress: Double?
     /// "Drawing 5 pages", when the host says what it is doing.
     var words: String?
+    /// The first page, drawn while the rest reads.
+    var picture: UIImage?
 
     var body: some View {
         RoundedRectangle.inlineCorner
             .fill(Surface.raised)
+            .overlay {
+                if let picture {
+                    Image(uiImage: picture).resizable().scaledToFit()
+                }
+            }
+            .clipShape(RoundedRectangle.inlineCorner)
             .hairlineBorder(RoundedRectangle.inlineCorner)
             .aspectRatio(aspect, contentMode: .fit)
-            .overlay {
+            .overlay(alignment: picture == nil ? .center : .bottom) {
                 VStack(spacing: 8) {
                     ProgressView(value: progress ?? 0)
                         .progressViewStyle(.linear)
@@ -91,6 +101,7 @@ struct ReaderLoading: View {
                         Text(words).textStep(.meta).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
+                .padding(.bottom, picture == nil ? 0 : ReaderMetrics.stampInset)
             }
             .frame(maxWidth: ReaderMetrics.measure)
             .padding(Layout.textEdge)
@@ -103,10 +114,24 @@ struct ReaderLoading: View {
     }
 }
 
-/// The bytes a file's read has brought so far, for its loading bar.
+/// The bytes a file's read has brought so far, for its loading bar, and its first page once that is here.
 @MainActor @Observable
 final class ReadProgress {
     var share: Double?
+    var picture: UIImage?
+
+    /// Draws the first picture once, as it lands: a PNG as it is, a slide's one-page PDF at the reader's width.
+    func show(_ first: FirstPicture) {
+        switch first.kind {
+        case .png:
+            picture = UIImage(data: first.data)
+        case .pdf:
+            guard let page = PDFDocument(data: first.data)?.page(at: 0) else { return }
+            let box = page.bounds(for: .cropBox)
+            let width = CGFloat(FirstPicture.widthMax) / 2
+            picture = page.thumbnail(of: CGSize(width: width, height: width * box.height / max(1, box.width)), for: .cropBox)
+        }
+    }
 }
 
 /// "4 of 12" on glass at a page's foot.

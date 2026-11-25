@@ -1338,6 +1338,8 @@ export const DeckPhoneViewSchema = z.object({
       key: z.string(),
       /** the slide's id, by which one slide's own picture is read first (`work.slides.slide`) */
       id: z.number().int().optional(),
+      /** its own picture's rev and size: the first slide is read alone, pinned to that rev, before the whole render */
+      pic: z.object({ rev: z.string(), size: z.number() }).optional(),
       number: z.number().int().nullable(),
       title: z.string(),
       /** the speaker notes, under the slide in the phone's reader */

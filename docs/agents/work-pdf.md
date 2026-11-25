@@ -177,6 +177,7 @@ and never taken off by a thread.
 |---|---|---|
 | `work.pdf.open` | read | `PdfView` |
 | `work.pdf.read` | read | bytes by range, of the file (the version `rev` names) or (`which: 'export'`) of the last copy |
+| `work.pdf.first` | read | `PdfFirstPage`: the first page as one PNG of the version `rev` names, `width` held to 1600 px and the bytes to 3 MB; drawn once a version and width and kept in the item's `first/` folder, one version at a time |
 | `work.pdf.review` | operate | `PdfView`: accept or reject suggestions, by key or all |
 | `work.pdf.setField` | operate | `PdfView`: his own value; null gives the file's back |
 | `work.pdf.mark`, `work.pdf.unmark` | operate | `PdfView` |

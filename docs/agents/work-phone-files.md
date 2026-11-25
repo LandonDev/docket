@@ -67,8 +67,10 @@ The native clicker is built and has no way in yet: "The clicker" below.
   for the viewer to have a size, since PDFKit's first layout undoes an
   earlier go-to.
 - **Renders in memory**: `ReaderCache` keeps the last three by file and
-  `rev`, so a second open in the same run paints at once and then asks the
-  host; bytes of another `rev` are swapped in. A render painted from memory
+  `rev`, and no more than 64 MB together (`ReaderCache.byteCap`: the oldest
+  go, and a file larger than that is not kept), so a second open in the same
+  run paints at once and then asks the host; bytes of another `rev` are
+  swapped in. A render painted from memory
   shows no review row until the host has answered, and a deck's proposed
   render is never painted from memory (`DeckRender.paintsFromMemory`): an
   agent's slides with no row over them would read as the file. Everything is dropped on
@@ -86,6 +88,22 @@ The native clicker is built and has no way in yet: "The clicker" below.
 - **Loading** draws the paper's shape with a bar that follows the bytes read
   (`ChunkedRead.share`); a failure is one line with the host's reason and
   Try Again.
+- **The first page before the whole file** (M17). While a PDF or a deck
+  reads, its first page fills the paper's shape and the bar moves to its
+  foot. A PDF's is one PNG the host draws from the version the view named
+  (`work.pdf.first`, `WorkCanvas.pdfFirst`); a deck's is its render's first
+  slide as its own one-page PDF (`work.slides.slide`, `slideFirst`), read
+  in one ask only when the view's `pic` says it is 3 MB or less and only
+  when the frame's `rev` is that `pic.rev`. Either is kept in `ReaderCache`
+  by the render's `rev` under the same byte cap, and goes once the whole
+  file is kept, so a second open at that `rev` draws nothing on the host.
+  `ReaderOpens` gives one file and `rev` one seat: a second view that opens
+  it while it reads joins that read and is handed the same picture, and the
+  read stops once every view left. The rest is read two frames at a time
+  (`ChunkedRead.pinned`, `inFlight` 2), each frame of the view's `rev` and as
+  long as asked, put together in order: a frame of another `rev` fails the
+  read (Try Again), never a mix. A host with no first picture (an older
+  one, a PDF in a place others can open) leaves the open to the rest.
 - `HostCan` (on `WorkHost`) remembers a method an older host refused as
   unknown (`bad request` with zod's "No matching discriminator") until the
   socket opens again. `WorkComments` and `WorkReview` ask through it: a host

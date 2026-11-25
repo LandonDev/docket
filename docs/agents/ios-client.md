@@ -928,7 +928,9 @@
   for a PDF, slides, media, meeting, browser, form, dashboard, history and
   a held mail, and a sentence for a file document or sheet (those open on
   the computer that has them). `ChunkedRead` reads a PDF or a deck's render
-  in frames of one `rev`; `MediaPick` plays the fMP4 HLS proxy (its
+  in frames of one `rev`, two at a time (`pinned`), its first page shown
+  before (`FirstPicture`, `ReaderOpens`; work-phone-files.md "The first page
+  before the whole file"); `MediaPick` plays the fMP4 HLS proxy (its
   segments fetched and written to one file) or draws a picture from its
   tiles (`TileGrid`). The host cuts HLS only past ten minutes and tiles
   only past 40 megapixels, so with a key that has admin the phone also
@@ -1134,8 +1136,9 @@
   kind's view, and `ReaderFile` holds the file's `WorkComments` and
   `WorkReview`.
 - **The client's Work/Reader**: `ReaderPlaces` (the place he stopped, the
-  last 200 files), `ReaderCache` (three renders in memory by `rev`, nothing
-  on disk), `HostCan` (a method an older host does not know), `DeckPager`
+  last 200 files), `ReaderCache` (three renders and their first pictures in
+  memory by `rev`, 64 MB at most, nothing on disk), `ReaderOpens` (one read a
+  file and `rev`), `FirstPicture`, `HostCan` (a method an older host does not know), `DeckPager`
   (a deck's pages, notes and the slide's share of the height),
   `HostedTickets` (the hosted editor's ticket asked early, used once),
   `PagePreviewSource` (print pages read at one `rev`), `ReviewGroup`.
