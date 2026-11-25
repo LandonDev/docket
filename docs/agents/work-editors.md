@@ -29,7 +29,7 @@ In this order:
 
    | Mark | The editor owns |
    |---|---|
-   | `data-editor-keys` (any value but `read`) | ⌘B and ⌘K (bold, link) |
+   | `data-editor-keys` (any value but `read` and `text`) | ⌘B and ⌘K (bold, link) |
    | any, `read` included | ⌘P once that editor answers Print…, ⌘F once it answers find |
    | `data-editor-keys="document"` | also ⌥⌘0 to ⌥⌘3 (Normal text, Heading 1 to 3) |
 
@@ -39,7 +39,10 @@ In this order:
    that does not leaves ⌘P as Go to File… while the caret is in the document.
 
    A body he can only read is marked `read`: ⌘B stays Sidebar and ⌘K Search
-   there, since there is nothing to make bold.
+   there, since there is nothing to make bold. A text file's editor
+   (`file` kind, FileTextEditor.tsx) is marked `text` for the same reason
+   and answers find: ⌘F opens its find bar (the code editor's, `editorSearch`),
+   never the Files place's search.
 2. **The menu**, as before, everywhere else. Go to File… keeps ⌘P and Find… ⌘F
    outside an editor, and inside one until an editor answers them. In the
    Files place ⌘P is the place's Go to (the list, the sidebar, the bar, and

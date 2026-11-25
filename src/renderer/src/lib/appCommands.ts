@@ -26,7 +26,8 @@
  *      `data-editor-keys`, docs/agents/work-editors.md "Who hears a key")
  *      owns ⌘B and ⌘K, and ⌘P (Print) and ⌘F (its find) once that editor
  *      answers them (`data-editor-answers`); a read-only one
- *      (`data-editor-keys="read"`) owns only the last two, and a document
+ *      (`data-editor-keys="read"`) and a plain text file's (`="text"`, which
+ *      has no bold and no link) own only the last two, and a document
  *      (`="document"`) also ⌥⌘0 to ⌥⌘3.
  *   7. Focus inside a mounted Files view (lib/filesKeys.ts): its tab chords
  *      (⌘T ⌘W ⌘[ ⌘] ⌃Tab ⌃⇧Tab ⌘⇧[ ⌘⇧]) become `files_command` with the
@@ -182,7 +183,7 @@ export const workCommands = {
   },
 };
 
-/** The Work editor a key or the caret is in: `""` one he can edit, `"document"` a document, `"read"` one he can only read; null outside any. */
+/** The Work editor a key or the caret is in: `""` one he can edit, `"document"` a document, `"text"` a plain text file, `"read"` one he can only read; null outside any. */
 export function editorKeys(target: unknown): string | null {
   const el = target as { closest?: (selector: string) => { getAttribute(name: string): string | null } | null } | null;
   const root = typeof el?.closest === "function" ? el.closest("[data-editor-keys]") : null;
@@ -201,12 +202,15 @@ export function editorAnswers(target: unknown, id: WorkCommandId): boolean {
   return !!root && (root.getAttribute("data-editor-answers") ?? "").split(" ").includes(id);
 }
 
+/** Whether an editor's ⌘B and ⌘K are its own (bold, a link): not a read-only one's, nor a plain text file's. */
+const styles = (editor: string): boolean => editor !== "read" && editor !== "text";
+
 /** The menu rows whose keys the editor holding `target` owns now (`MenuState.editing`). */
 export function editorHeld(target: unknown): string[] {
   const editor = editorKeys(target);
   if (editor === null) return [];
   return [
-    ...(editor === "read" ? [] : ["toggle_sidebar", "open_search"]),
+    ...(styles(editor) ? ["toggle_sidebar", "open_search"] : []),
     ...(editorAnswers(target, "print") ? ["go_to_file"] : []),
     ...(editorAnswers(target, "find") ? ["find"] : []),
   ];
@@ -350,7 +354,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (e.altKey) {
         if (editor === "document" && /^Digit[0-3]$/.test(e.code)) return null;
       } else {
-        if (editor !== "read" && (k === "b" || k === "k")) return null;
+        if (styles(editor) && (k === "b" || k === "k")) return null;
         if (k === "p" && editorAnswers(target, "print")) return { id: "print" };
         if (k === "f" && editorAnswers(target, "find")) return { id: "find" };
       }

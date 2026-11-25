@@ -25,6 +25,7 @@ export class EditorState {
   facet(): undefined {
     return undefined
   }
+  static readOnly = define()
 }
 
 export class EditorView {
@@ -45,6 +46,8 @@ export class EditorView {
   static editable = define()
   static domEventHandlers = (): object => ({})
   static decorations = define()
+  static contentAttributes = define()
+  static cspNonce = define()
 }
 
 export const StateEffect = { define }

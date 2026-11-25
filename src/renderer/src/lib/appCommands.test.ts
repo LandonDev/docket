@@ -270,6 +270,9 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(resolve(inEditor("k", null), ctx)).toEqual({ id: "open_search" });
     expect(resolve(inEditor("b", "read"), ctx)).toEqual({ id: "toggle_sidebar" });
     expect(resolve(inEditor("k", "read"), ctx)).toEqual({ id: "open_search" });
+    // A plain text file has no bold and no link: they stay the app's there.
+    expect(resolve(inEditor("b", "text"), ctx)).toEqual({ id: "toggle_sidebar" });
+    expect(resolve(inEditor("k", "text"), ctx)).toEqual({ id: "open_search" });
   });
 
   it("⌘⇧K reaches Work search from inside a Work editor of every kind: no editor holds a shifted chord", () => {
@@ -283,7 +286,7 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
     expect(resolve(inEditor("f", "document"), ctx)).toBeNull();
     answers = "export find print";
-    for (const mark of ["", "document", "read"]) {
+    for (const mark of ["", "document", "read", "text"]) {
       expect(resolve(inEditor("p", mark), ctx)).toEqual({ id: "print" });
       expect(resolve(inEditor("f", mark), ctx)).toEqual({ id: "find" });
     }
@@ -346,6 +349,7 @@ describe("a Work editor holding the caret owns its keys", () => {
     answers = "find print";
     expect(editorHeld(target("document"))).toEqual(["toggle_sidebar", "open_search", "go_to_file", "find"]);
     expect(editorHeld(target("read"))).toEqual(["go_to_file", "find"]);
+    expect(editorHeld(target("text"))).toEqual(["go_to_file", "find"]);
     expect(editorHeld(target(null))).toEqual([]);
     answers = null;
   });

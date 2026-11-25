@@ -232,7 +232,7 @@ box (a PC only the box links to: `work.files.across` carries no open), and is
 a Mac or a Windows PC, or the Windows VM. A Linux machine's own library has no
 app to open it in. A computer whose platform the window does not know yet keeps
 the verb, and its host's refusal stands.
-| a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
+| a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types (Find and Replace on ⌘F and ⌥⌘F; a text replaced from the host, a Reload, opens at his scroll and caret, `textPlace.ts`), a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
 | a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
 | a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the thread's copy is a file of its own, with marks of its own; the tab's marks are the original's ("Marks kept by the file") |
 | a Google deck a thread already holds | in that thread, folded (`held`): a Google deck is no file of this disk, so its state is kept by item. The only open the host answers with `held` |
@@ -2463,7 +2463,9 @@ over a file that changed there.
   `drafts:list` answered) that main takes only from the app's own windows (`isAppWindow`, src/main/windows.ts), never
   a guest page or a webview; no wire method reads it, so no thread, remote key or other host can, and it never sits
   in a folder OneDrive or Teams syncs. A browser (`/ui`) has no store (`drafts: undefined`, lib/nativeWeb.ts).
-  `FileSession` (work/files/fileSession.ts) puts the newest text on each edit, moves it to the new base when a save
+  `FileSession` (work/files/fileSession.ts) puts the newest text on each edit (a text over 100,000 characters at once,
+  then at most every 250 ms while he types, its last edit kept, `JOURNAL_EACH_EDIT_CHARS`: the editor hands each edit
+  over unread, `TextReader`, so a key never copies a big log or CSV whole), moves it to the new base when a save
   is answered with text still waiting, and drops it once the host has it, on Reload and on Keep Both. A draft a live
   window is editing is claimed by it and offered nowhere; main lets it go when its editor goes unsent (`release`), or
   the window reloads, crashes or closes; a fresh start claims nothing. On the next open the file is read, then its

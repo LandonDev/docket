@@ -2200,7 +2200,8 @@ Around the canvas:
   the app's window with the file, its way back in the header and on
   Escape. Under the header the kind's own bar and body, exactly as beside
   a thread; the `file` kind shows a text or code file in an editor that
-  saves as he types, a sound with Play, a zip as its facts over the list
+  saves as he types (⌘F finds and ⌥⌘F replaces in the code editor's find
+  bar, as in a document; a Reload opens it where he was), a sound with Play, a zip as its facts over the list
   of what it holds (each entry by its last name, 16px a level under its
   folder, so a folder is named once), and anything else as its facts (one comma sentence;
   the header already names it) with Download and Open in its app; a Drive

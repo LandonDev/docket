@@ -13,6 +13,7 @@ import { ItemSkeleton } from "../canvas/ItemBones";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { FileSession } from "./fileSession";
+import type { TextPlace } from "./textPlace";
 import { bytesOfBase64, whenWords } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
 import { ArchiveList, factsLine, MediaPlay } from "./Preview";
@@ -70,6 +71,8 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => session?.follow(source), [session, sourceKey]);
   const view = useSyncExternalStore(session?.subscribe ?? noSubscribe, session?.getSnapshot ?? loadingView);
+  // Where he was in the text: a text replaced from the host (a Reload) mounts a new editor, which opens there.
+  const place = useRef<TextPlace | null>(null);
 
   useEffect(() => {
     if (!session || !workspaceId) return;
@@ -137,7 +140,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
   if (view.is === "facts") return <Facts name={item.title} entry={view.entry} why={view.why} env={env} workspaceId={workspaceId} itemId={item.id} source={source} />;
   return (
     <Suspense fallback={<ItemSkeleton />}>
-      <TextEditor key={view.rev} name={item.title} path={canvasSourcePath(source) ?? item.title} text={view.text} readOnly={view.locked !== null || view.offer === true} onChange={(text) => session.edit(text)} />
+      <TextEditor key={view.rev} name={item.title} path={canvasSourcePath(source) ?? item.title} text={view.text} readOnly={view.locked !== null || view.offer === true} onChange={(read) => session.edit(read)} place={place} />
     </Suspense>
   );
 }

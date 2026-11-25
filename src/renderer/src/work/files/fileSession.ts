@@ -21,6 +21,18 @@ import { bytesOfBase64, decodeText, encodeText, linkDropped, notSavedWords, trie
  */
 
 export const SAVE_AFTER_MS = 700;
+/**
+ * A text up to this many characters is journaled on each edit. A longer one (a big log or CSV), whose copy and send to
+ * the store would lag each key, is journaled at once, then at most every `JOURNAL_MS` while he types, its last edit kept.
+ */
+export const JOURNAL_EACH_EDIT_CHARS = 100_000;
+export const JOURNAL_MS = 250;
+
+/** The editor's text, unread: its length is known without copying it. */
+export interface TextReader {
+  length: number;
+  read(): string;
+}
 
 export type FileView =
   | { is: "loading" }
@@ -73,8 +85,26 @@ export class FileSession {
   /** the sha256 of saves sent on that version whose answer never came (the link dropped): the next save names them, so the host knows his own words there */
   private tried: string[] = [];
   private changed = 0;
-  /** the editor's text now, when it differs from what the host holds */
-  private draft: string | null = null;
+  /**
+   * The editor's text now, when it differs from what the host holds. An edit hands a reader, not the text: a key never
+   * copies the whole file, and the text is read once when something needs it (the journal, a save), then kept until
+   * the next edit.
+   */
+  private kept: string | null = null;
+  private reader: TextReader | null = null;
+  private get draft(): string | null {
+    if (this.reader) {
+      this.kept = this.reader.read();
+      this.reader = null;
+    }
+    return this.kept;
+  }
+  private set draft(text: string | null) {
+    this.reader = null;
+    this.kept = text;
+  }
+  private journalTimer: unknown = null;
+  private journalOwed = false;
   /** edits since the last save */
   private pending = 0;
   private timer: unknown = null;
@@ -105,7 +135,7 @@ export class FileSession {
   getSnapshot = (): FileView => this.view;
   /** There is text here the host does not hold yet. */
   get dirty(): boolean {
-    return this.draft !== null;
+    return this.reader !== null || this.kept !== null;
   }
 
   private set(view: FileView): void {
@@ -220,7 +250,7 @@ export class FileSession {
       });
     }
     if (this.conflicted) {
-      const actions = [...(this.gone ? [] : [{ id: "reload", label: "Reload", run: () => this.reload() }]), ...(this.draft !== null ? [{ id: "keep", label: "Keep Both", run: () => this.keepMine() }] : [])];
+      const actions = [...(this.gone ? [] : [{ id: "reload", label: "Reload", run: () => this.reload() }]), ...(this.dirty ? [{ id: "keep", label: "Keep Both", run: () => this.keepMine() }] : [])];
       return this.host.saved({ state: "conflict", detail: this.gone ? "This file was moved or deleted" : `This file changed at ${whenWords(this.changed, this.now())}`, actions });
     }
     // A copy says nothing of its own: the frame names the computer the file is on.
@@ -232,7 +262,7 @@ export class FileSession {
     }
     // Saved names the last save the host answered; Saving… only once a send has been out a while, or his edits waited
     // past the pause with nothing sent (calm.ts). Inside that, the last Saved line stays.
-    const { saving, again } = savingNow({ edited: this.draft !== null && !this.saving ? this.editedAt : null, pause: SAVE_AFTER_MS, sent: this.saving ? this.sentAt : null }, this.now());
+    const { saving, again } = savingNow({ edited: this.dirty && !this.saving ? this.editedAt : null, pause: SAVE_AFTER_MS, sent: this.saving ? this.sentAt : null }, this.now());
     this.later(again);
     if (saving) return this.host.saved({ state: "saving" });
     this.host.saved({ state: "saved", at: this.changed });
@@ -247,13 +277,14 @@ export class FileSession {
     this.lineTimer = this.host.setTimeout ? this.host.setTimeout(again, ms + 1) : setTimeout(again, ms + 1);
   }
 
-  /** The editor's text changed by his hand. */
-  edit(text: string): void {
+  /** The editor's text changed by his hand: the text, or a reader of it (the editor's, so a key copies nothing). */
+  edit(text: string | TextReader): void {
     if (this.view.is !== "text" || this.view.locked !== null || this.view.offer) return;
-    this.draft = text;
+    if (typeof text === "string") this.draft = text;
+    else this.reader = text;
     this.pending += 1;
     this.editedAt = this.now();
-    this.journal();
+    this.journalSoon(text.length);
     if (this.conflicted) return this.line();
     this.line();
     this.host.clearTimeout ? this.host.clearTimeout(this.timer) : clearTimeout(this.timer as ReturnType<typeof setTimeout>);
@@ -261,11 +292,35 @@ export class FileSession {
     this.timer = this.host.setTimeout ? this.host.setTimeout(later, SAVE_AFTER_MS) : setTimeout(later, SAVE_AFTER_MS);
   }
 
+  /** The newest text journaled now; a long one only where it is the first edit in a while, else once `JOURNAL_MS` is up. */
+  private journalSoon(length: number): void {
+    if (!this.host.drafts) return;
+    if (length <= JOURNAL_EACH_EDIT_CHARS) {
+      this.journalOwed = false;
+      return this.journal();
+    }
+    if (this.journalTimer !== null) return void (this.journalOwed = true);
+    this.journal();
+    const due = (): void => {
+      this.journalTimer = null;
+      this.journalDue();
+    };
+    this.journalTimer = this.host.setTimeout ? this.host.setTimeout(due, JOURNAL_MS) : setTimeout(due, JOURNAL_MS);
+  }
+  /** An edit not yet journaled is journaled now. */
+  private journalDue(): void {
+    if (!this.journalOwed) return;
+    this.journalOwed = false;
+    this.journal();
+  }
+
   /** Sends what waits, now. One save at a time: text typed while one is under way goes in the next. */
   flush(): Promise<void> {
     this.host.clearTimeout ? this.host.clearTimeout(this.timer) : clearTimeout(this.timer as ReturnType<typeof setTimeout>);
     this.timer = null;
-    if (this.saving) return this.saving.then(() => (this.draft !== null && !this.conflicted ? this.flush() : undefined));
+    // A send may fail or not answer: what it sends is in the journal first.
+    this.journalDue();
+    if (this.saving) return this.saving.then(() => (this.dirty && !this.conflicted ? this.flush() : undefined));
     if (this.draft === null || this.conflicted || this.view.is !== "text") return Promise.resolve();
     const text = this.draft;
     const sent = this.pending;
@@ -309,7 +364,7 @@ export class FileSession {
 
   /** The link to the host opened again: what waited for it is sent, by the version it read, as a save always is. */
   reopened(): Promise<void> {
-    return this.draft !== null && !this.conflicted && !this.disposed ? this.flush() : Promise.resolve();
+    return this.dirty && !this.conflicted && !this.disposed ? this.flush() : Promise.resolve();
   }
 
   /** The file as it is on the host now, in place of what is here. */
@@ -344,7 +399,7 @@ export class FileSession {
     if (!got || this.disposed || this.saving || this.view.is !== "text") return;
     const entry = got.entries[0] ?? null;
     if (entry && entry.changed === this.changed) return;
-    if (entry && this.draft === null) return void (await this.load());
+    if (entry && !this.dirty) return void (await this.load());
     this.conflicted = true;
     this.gone = entry === null;
     if (entry?.changed) this.changed = entry.changed;
@@ -362,7 +417,7 @@ export class FileSession {
     if (!this.conflicted || !this.gone) return;
     this.conflicted = false;
     this.gone = false;
-    if (this.draft !== null) void this.flush();
+    if (this.dirty) void this.flush();
     else this.line();
   }
 
@@ -412,8 +467,13 @@ export class FileSession {
     this.disposed = true;
     this.listeners.clear();
     this.later(null);
+    if (this.journalTimer !== null) {
+      this.host.clearTimeout ? this.host.clearTimeout(this.journalTimer) : clearTimeout(this.journalTimer as ReturnType<typeof setTimeout>);
+      this.journalTimer = null;
+    }
     void this.flush().finally(() => {
-      if (this.draft !== null && this.journaled) this.host.drafts?.release(this.journaled);
+      this.journalDue();
+      if (this.dirty && this.journaled) this.host.drafts?.release(this.journaled);
     });
   }
 }

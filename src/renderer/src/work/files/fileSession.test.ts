@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FileSaved } from "@shared/contract-work-files";
 import type { SavedLine } from "../canvas/kind";
 import { DraftStore } from "../../../../main/drafts";
-import { FileSession, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
+import { FileSession, JOURNAL_EACH_EDIT_CHARS, JOURNAL_MS, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
 import { decodeText, encodeText, savedWords, triedAsText, whenWords } from "./fileText";
 
 /** The file kind's session (fileSession.ts) against a stand-in host that keeps one file, and the words of the save line. */
@@ -511,5 +511,43 @@ describe("drafts survive a crash, a close and a link drop", () => {
     const again = standIn("", { drafts: d.port, file: h.file });
     await again.session.load();
     expect(again.words()).toBe("Edits from 2:30 PM were not saved");
+  });
+});
+
+describe("a key copies nothing", () => {
+  const reader = (text: string) => {
+    const counted = { reads: 0, length: text.length, read: () => (counted.reads++, text) };
+    return counted;
+  };
+
+  it("with no draft store, the text an edit hands over is read only when it is sent", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const keys = ["first\na", "first\nab", "first\nabc"].map(reader);
+    for (const k of keys) h.session.edit(k);
+    expect(keys.map((k) => k.reads)).toEqual([0, 0, 0]);
+    await h.fire();
+    expect(keys.map((k) => k.reads)).toEqual([0, 0, 1]);
+    expect(h.file.text).toBe("first\nabc");
+  });
+
+  it("a short text is journaled at each edit; a long one at once, then at most every 250 ms, its last edit kept", async () => {
+    const d = draftsAt();
+    const h = standIn("first\n", { drafts: d.port });
+    await h.session.load();
+    h.setDown(true);
+    const short = reader("first\nshort\n");
+    h.session.edit(short);
+    expect(short.reads).toBe(1);
+    const long = (n: number) => reader(`${"x".repeat(JOURNAL_EACH_EDIT_CHARS)}${n}`);
+    const keys = [long(1), long(2), long(3)];
+    for (const k of keys) h.session.edit(k);
+    expect(keys.map((k) => k.reads)).toEqual([1, 0, 0]);
+    await d.store.settled();
+    expect((await d.kept()).map((x) => x.body.text.slice(-1))).toEqual(["1"]);
+    h.tick(JOURNAL_MS);
+    expect(keys.map((k) => k.reads)).toEqual([1, 0, 1]);
+    await d.store.settled();
+    expect((await d.kept()).map((x) => x.body.text.slice(-1))).toEqual(["3"]);
   });
 });
