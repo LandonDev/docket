@@ -16,16 +16,20 @@ export const RESIZE_SIZES: Size[] = [
   { width: 3456, height: 2234 }
 ]
 
-/** A Fit ask (room in points and the window's scale, Sharp) whose guest mode is `size`: at 2× where half of it is room enough, else at 1×. */
-export function fitAsk(size: Size): { width: number; height: number; scale: number } {
+/**
+ * A Fit ask (room in points and the window's scale) whose guest mode is `size`. Sharp: at 2× where half of it is room
+ * enough, else at 1×. Faster: the size itself as points, at 100%.
+ */
+export function fitAsk(size: Size, detail: 'sharp' | 'faster' = 'sharp'): { width: number; height: number; scale: number } {
+  if (detail === 'faster') return { ...size, scale: 1 }
   const half = { width: size.width / 2, height: size.height / 2 }
   return half.width >= GUEST_MIN_POINTS.width && half.height >= GUEST_MIN_POINTS.height ? { ...half, scale: 2 } : { ...size, scale: 1 }
 }
 
 /** Whether `fitAsk` means the size it was made for, by the rule both ends share. */
-export const fitMeans = (size: Size): boolean => {
-  const a = fitAsk(size)
-  const m = guestSizeFor({ width: a.width, height: a.height }, a.scale, 'sharp')
+export const fitMeans = (size: Size, detail: 'sharp' | 'faster' = 'sharp'): boolean => {
+  const a = fitAsk(size, detail)
+  const m = guestSizeFor({ width: a.width, height: a.height }, a.scale, detail)
   return m.width === size.width && m.height === size.height
 }
 

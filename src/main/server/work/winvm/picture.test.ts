@@ -3,12 +3,12 @@ import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush, ComputerFramePush, ComputerPreviewPush } from '@shared/contract-computer'
 import type { WinvmState } from '@shared/contract-work-winvm'
-import type { DisplayMode } from '@shared/computer/protocol'
 import { guestSizeFor } from '@shared/video/guestSize'
 import type { StreamInfo } from '../../video/relay'
 import type { EngineLease } from '../browser/box/engine'
 import { VideoRelay, type ViewerSocket } from '../../video/relay'
 import { VideoRpc } from '../../video/rpc'
+import type { GuestModeAsk } from './door'
 import { joinRows } from './host'
 import { configureVmCopy, configureVmPaste, NO_VM_PASTE, VM_COMPUTER, VmPicture, type VmPictureDeps } from './picture'
 
@@ -64,13 +64,13 @@ function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: 
       ? {}
       : {
           display: {
-            set: async (mode) => (asked.push(mode), mode),
+            set: async (mode) => (asked.push(mode), { ...mode, adapter: 'Red Hat VirtIO GPU DOD controller', taken: true }),
             lease: async () => (leasedThroughDisplay++, deps.screen.engines.lease())
           },
           device: () => o.device ?? 'vga'
         })
   }
-  const asked: DisplayMode[] = []
+  const asked: GuestModeAsk[] = []
   let leasedThroughDisplay = 0
   const picture = new VmPicture(deps)
   const set = (s: WinvmState | null): void => {

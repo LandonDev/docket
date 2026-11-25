@@ -9,7 +9,7 @@
  *
  * Until the door's `display.set` is in the guest's tc-computer.exe (M3c), Windows' side is `viogpures.exe` from
  * the driver folder (`GUEST_DRIVER_DIR`), copied to Program Files so tcuser may run it on his desktop; it sets the
- * size and not the scale, so the scale stays Windows' own.
+ * size and not the scale, so the script asks Faster (Windows at 100%, the scale it keeps) while it stands in.
  *
  * Scratch only (`scratchMachineRefusal`), and only with the master's yes for a VM:
  *   WINVM_DIR=/dev/shm/vm-screen-rig-r WINVM_TPM_DIR=/tmp/win-vm-tpm-vmscreen-r WINVM_SSH_PORT=22243 \
@@ -38,6 +38,8 @@ const DRIVER = arg('driver', '')
 const DATA = arg('data', process.env.TEMP_CODE_USER_DATA ?? '/srv/agents/temp-code-data')
 const OUT = arg('out', '')
 const SIZES: Size[] = process.argv.includes('--sizes') ? parseSizes(arg('sizes', '')).map(([width, height]) => ({ width, height })) : RESIZE_SIZES
+/** Faster while viogpudo's own tool stands in for the door's verb: it sets no scale. */
+const DETAIL = 'faster' as const
 /** The longest a reopened stream is watched for a frame at the new size. */
 const FRAME_WAIT_MS = 10_000
 if (!DRIVER) throw new Error('--driver <the unpacked viogpudo folder>')
@@ -68,16 +70,18 @@ async function main(s: Scratch): Promise<ResizeRow[]> {
   await up(s)
   await s.guest.admin([`New-Item -ItemType Directory -Force ${psQuote(STAND_IN_DIR)} | Out-Null`, `Copy-Item -Force ${psQuote(`${GUEST_DRIVER_DIR}\\viogpures.exe`)} ${psQuote(STAND_IN)}`].join('\n'))
 
-  // Windows' side of the door, until its own verb lands: the size set on tcuser's desktop, and read back
+  // Windows' side of the door, until its own verb is in the guest's tc-computer.exe: the size set on tcuser's
+  // desktop and read back; the scale is Windows' own, so an ask at another scale reads `taken: false`
   const guest: GuestDisplay = {
     get: async () => {
       const size = parseGuestScreen(await s.guest.admin(GUEST_SCREEN_SCRIPT))
       if (!size) throw new Error('the guest named no mode')
-      return { ...size, scale: 100 }
+      return { ...size, scale: 100, adapter: 'viogpures.exe stand-in' }
     },
-    set: async (mode) => {
-      await s.guest.onDesktop([STAND_IN, String(mode.width), String(mode.height)], true, 60)
-      return guest.get()
+    set: async (ask) => {
+      await s.guest.onDesktop([STAND_IN, String(ask.width), String(ask.height)], true, 60)
+      const now = await guest.get()
+      return { ...now, taken: now.width === ask.width && now.height === ask.height && now.scale === ask.scale }
     }
   }
   const relay = new VideoRelay()
@@ -115,7 +119,7 @@ async function main(s: Scratch): Promise<ResizeRow[]> {
   for (const size of SIZES) {
     const askUs = nowUs()
     const took = await rpc
-      .size({ stream: now.stream, mode: 'fit', ...fitAsk(size), detail: 'sharp' }, caller)
+      .size({ stream: now.stream, mode: 'fit', ...fitAsk(size, DETAIL), detail: DETAIL }, caller)
       .then((a) => (a.ok ? `${a.width}x${a.height} at ${a.scale}%` : a.reason), (e: Error) => `error: ${e.message}`)
     const closed = now.viewer.closedWith
     // the viewer opens a resized stream again at once

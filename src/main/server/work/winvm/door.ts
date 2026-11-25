@@ -4,6 +4,8 @@ import { mkdirSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { dirname, join, win32 } from 'node:path'
 import { PassThrough } from 'node:stream'
+import type { ComputerParams, ComputerResult } from '@shared/computer/protocol'
+import type { ComputerService } from '../../computer/service'
 
 /**
  * The VM's `ComputerService` spawn (docs/agents/work-winvm.md "The service on
@@ -233,4 +235,25 @@ export async function homePictures(line: string, guestDir: string, hostDir: stri
   walk(frame)
   await Promise.all(jobs)
   return JSON.stringify(frame)
+}
+
+/** The guest's display mode as `display.get` answers it: its pixels, Windows' scale in percent, and the adapter. */
+export type GuestMode = ComputerResult<'display.get'>
+/** What `display.set` asks for: even pixels within GUEST_DISPLAY, a scale of DISPLAY_SCALE_STEPS. */
+export type GuestModeAsk = ComputerParams<'display.set'>
+/** `display.set`'s answer: the mode Windows reads back, and whether the ask took (false: the driver refused, and this is the mode that is true). */
+export type GuestModeSet = ComputerResult<'display.set'>
+
+/** The guest's display mode through the door (§29.9): what VmDisplay (display.ts) sets and reads. */
+export interface GuestDisplay {
+  get(): Promise<GuestMode>
+  set(ask: GuestModeAsk): Promise<GuestModeSet>
+}
+
+/** `display.get` and `display.set` on the VM's service, as its clipboard's verbs are called (clipboard.ts). */
+export function guestDisplay(service: () => Pick<ComputerService, 'request'>): GuestDisplay {
+  return {
+    get: () => service().request('display.get', {}),
+    set: (ask) => service().request('display.set', ask)
+  }
 }

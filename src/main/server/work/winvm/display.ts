@@ -1,9 +1,8 @@
-import type { DisplayMode } from '@shared/computer/protocol'
 import type { VideoSizeParams } from '@shared/contract-video'
 import { GUEST_CAPS, GUEST_MIN_POINTS, GUEST_SCALES, guestSizeFor, type GuestCaps } from '@shared/video/guestSize'
 import type { StreamInfo, VideoRelay } from '../../video/relay'
 import type { EngineLease } from '../browser/box/engine'
-import type { GuestDisplay } from './door'
+import type { GuestDisplay, GuestModeAsk, GuestModeSet } from './door'
 import { writeGuestScreen } from './guestScreen'
 import type { VmWindow } from './machine/qemu'
 
@@ -55,19 +54,22 @@ export class VmDisplay {
   /** leases asked before a change began: step 4 waits for them, so none hands out an engine of the old size after it */
   private readonly leasing = new Set<Promise<unknown>>()
   /** the mode the guest last answered */
-  private mode: DisplayMode | null = null
+  private mode: GuestModeSet | null = null
   /** counts the engine stops of step 4: a lease that spans one gives its engine back and asks again */
   private generation = 0
 
   constructor(private readonly d: VmDisplayDeps) {}
 
-  /** The guest at `ask`, then the box after it. Answers the mode the guest took; throws with why when a step failed. */
-  set(ask: DisplayMode): Promise<DisplayMode> {
+  /**
+   * The guest at `ask`, then the box after it. Answers the mode the guest took; throws with why when a step failed,
+   * and when the guest did not take the ask (`taken: false`), once the box follows the mode that is true.
+   */
+  set(ask: GuestModeAsk): Promise<GuestModeSet> {
     return this.serial(async () => {
-      if (this.mode && this.mode.width === ask.width && this.mode.height === ask.height && this.mode.scale === ask.scale && same(this.d.screen.size, ask)) return this.mode
+      if (this.mode?.taken && this.mode.width === ask.width && this.mode.height === ask.height && this.mode.scale === ask.scale && same(this.d.screen.size, ask)) return this.mode
       const took = await this.change(ask, async () => {
         const took = await this.d.guest().set(ask)
-        // the file says the guest's size before anything else can fail: a stop of the service from here leaves it true
+        // the file says the guest's size before anything else can fail, taken or not: a stop of the service from here leaves it true
         writeGuestScreen(this.d.run, { width: took.width, height: took.height })
         this.mode = took
         return took
@@ -117,7 +119,7 @@ export class VmDisplay {
   }
 
   /** The five steps; `guest` is step 2, or null when the guest has the size already. */
-  private async change(target: VmWindow, guest: (() => Promise<DisplayMode>) | null): Promise<DisplayMode | null> {
+  private async change(target: VmWindow & { scale?: number }, guest: (() => Promise<GuestModeSet>) | null): Promise<GuestModeSet | null> {
     const { screen } = this.d
     const before = screen.size
     if (!before) throw new Error('the Windows VM has no window')
@@ -132,7 +134,8 @@ export class VmDisplay {
       }
     }
     // 2
-    let took: DisplayMode | null = null
+    let took: GuestModeSet | null = null
+    let why: string | null = null
     if (guest) {
       try {
         took = await guest()
@@ -140,13 +143,21 @@ export class VmDisplay {
         if (!same(before, grown)) await screen.resize(before).catch((e2) => this.d.log?.(`winvm: the display did not shrink back: ${words(e2)}`))
         throw new Error(`Windows did not take ${target.width}×${target.height}: ${words(e)}`)
       }
-      // viogpudo may keep another size than the ask: the box follows what it took
+      if (!took.taken) {
+        why = `Windows did not take ${target.width}×${target.height} at ${target.scale}%: it is ${took.width}×${took.height} at ${took.scale}%`
+        // the size it kept is the size the box has: nothing more to follow
+        if (same(before, took)) {
+          if (!same(before, grown)) await screen.resize(before).catch((e2) => this.d.log?.(`winvm: the display did not shrink back: ${words(e2)}`))
+          this.d.log?.(`winvm: ${why}`)
+          throw new Error(why)
+        }
+      }
+      // the box follows the size the guest has, taken or not
       if (!same(grown, room(took))) await screen.resize(room(took)).catch(() => {})
     }
     const size: VmWindow = took ? { width: took.width, height: took.height } : target
-    let why: string | null = null
     // 3
-    if (took && !(await this.windowAt(size))) why = `QEMU's window did not reach ${size.width}×${size.height}`
+    if (took && !(await this.windowAt(size))) why ??= `QEMU's window did not reach ${size.width}×${size.height}`
     // 4
     this.generation++
     await Promise.allSettled([...this.leasing])
@@ -179,7 +190,7 @@ export class VmDisplay {
  * The mode a size ask means (`video.size`): Fit by `guestSizeFor` with the host's caps; a fixed size at the largest
  * scale that keeps 1024×640 points (Sharp), or 100% (Faster).
  */
-export function askedMode(ask: VideoSizeParams, caps: GuestCaps = GUEST_CAPS): DisplayMode {
+export function askedMode(ask: VideoSizeParams, caps: GuestCaps = GUEST_CAPS): GuestModeAsk {
   if (ask.mode === 'fit') return guestSizeFor({ width: ask.width, height: ask.height }, ask.scale, ask.detail, caps)
   const scale = ask.detail === 'faster' ? 100 : (GUEST_SCALES.find((s) => (ask.width * 100) / s >= GUEST_MIN_POINTS.width && (ask.height * 100) / s >= GUEST_MIN_POINTS.height) ?? 100)
   return { width: ask.width, height: ask.height, scale }

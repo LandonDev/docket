@@ -3,7 +3,8 @@ import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { doorSpawn, GUEST_DATA_DIR, guestInit, homePictures } from './door'
+import { COMPUTER_METHODS } from '@shared/computer/protocol'
+import { doorSpawn, GUEST_DATA_DIR, guestDisplay, guestInit, homePictures } from './door'
 
 /**
  * The VM's spawn over a stand-in door on a unix socket: the knock comes
@@ -152,5 +153,27 @@ describe('the frames', () => {
     const out = await homePictures(JSON.stringify({ a: { path: 'C:\\Windows\\win.ini' }, b: { path: `${GUEST_DATA_DIR}\\..\\..\\x.png` } }), GUEST_DATA_DIR, dir, fetch)
     expect(fetched).toEqual([])
     expect(JSON.parse(out).a.path).toBe('C:\\Windows\\win.ini')
+  })
+})
+
+describe("the guest's display through the door", () => {
+  it('reads and sets the mode by display.get and display.set, answering what the guest read back', async () => {
+    const calls: { method: string; params: unknown }[] = []
+    const adapter = 'Red Hat VirtIO GPU DOD controller'
+    const service = {
+      async request(method: string, params: unknown) {
+        calls.push({ method, params })
+        // a size the driver refused: the answer is the mode that is true, and says so
+        return method === 'display.set' ? { width: 1280, height: 800, scale: 100, adapter, taken: false } : { width: 1280, height: 800, scale: 100, adapter }
+      }
+    }
+    const display = guestDisplay(() => service as never)
+    expect(await display.get()).toEqual({ width: 1280, height: 800, scale: 100, adapter })
+    expect(await display.set({ width: 4096, height: 2400, scale: 200 })).toEqual({ width: 1280, height: 800, scale: 100, adapter, taken: false })
+    expect(calls).toEqual([
+      { method: 'display.get', params: {} },
+      { method: 'display.set', params: { width: 4096, height: 2400, scale: 200 } }
+    ])
+    expect(COMPUTER_METHODS['display.set'].params.safeParse(calls[1]!.params).success).toBe(true)
   })
 })

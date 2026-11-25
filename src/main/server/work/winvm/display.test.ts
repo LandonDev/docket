@@ -2,10 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { DisplayMode } from '@shared/computer/protocol'
+import { COMPUTER_METHODS } from '@shared/computer/protocol'
 import { guestSizeFor } from '@shared/video/guestSize'
 import type { StreamInfo } from '../../video/relay'
 import { askedMode, VmDisplay } from './display'
+import type { GuestModeAsk, GuestModeSet } from './door'
 import { readGuestScreen } from './guestScreen'
 import type { VmWindow } from './machine/qemu'
 
@@ -15,6 +16,7 @@ let run: string
 beforeEach(() => (run = mkdtempSync(join(tmpdir(), 'vm-display-'))))
 afterEach(() => rmSync(run, { recursive: true, force: true }))
 
+const ADAPTER = 'Red Hat VirtIO GPU DOD controller'
 const at = (s: VmWindow): string => `${s.width}x${s.height}`
 const deferred = <T = void>() => {
   let resolve!: (v: T) => void
@@ -23,7 +25,7 @@ const deferred = <T = void>() => {
 }
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function rig(o: { size?: VmWindow; fail?: Partial<Record<'grow' | 'set' | 'shrink', boolean>>; window?: 'follows' | 'stuck'; leaseMs?: number; set?: (m: DisplayMode) => Promise<DisplayMode> } = {}) {
+function rig(o: { size?: VmWindow; fail?: Partial<Record<'grow' | 'set' | 'shrink', boolean>>; window?: 'follows' | 'stuck'; leaseMs?: number; set?: (m: GuestModeAsk) => Promise<Omit<GuestModeSet, 'adapter'>> } = {}) {
   const log: string[] = []
   let screen: VmWindow | null = o.size ?? { width: 1280, height: 800 }
   let window: VmWindow = { ...screen }
@@ -35,14 +37,14 @@ function rig(o: { size?: VmWindow; fail?: Partial<Record<'grow' | 'set' | 'shrin
   const fake = {
     run,
     guest: () => ({
-      get: async () => ({ ...window, scale: 100 }),
-      set: async (mode: DisplayMode): Promise<DisplayMode> => {
+      get: async () => ({ ...window, scale: 100, adapter: ADAPTER }),
+      set: async (mode: GuestModeAsk): Promise<GuestModeSet> => {
         most = Math.max(most, ++setting)
         try {
           log.push(`set ${at(mode)}`)
           await tick()
           if (o.fail?.set) throw new Error('the escape was refused')
-          const took = o.set ? await o.set(mode) : mode
+          const took = { ...(o.set ? await o.set(mode) : { ...mode, taken: true }), adapter: ADAPTER }
           if (o.window !== 'stuck') window = { width: took.width, height: took.height }
           return took
         } finally {
@@ -87,7 +89,7 @@ function rig(o: { size?: VmWindow; fail?: Partial<Record<'grow' | 'set' | 'shrin
 describe('a size change', () => {
   it('grows the screen, sets the guest, waits for the window, ends the streams resized, stops every engine', async () => {
     const r = rig()
-    expect(await r.display.set({ width: 3456, height: 2234, scale: 200 })).toEqual({ width: 3456, height: 2234, scale: 200 })
+    expect(await r.display.set({ width: 3456, height: 2234, scale: 200 })).toEqual({ width: 3456, height: 2234, scale: 200, adapter: ADAPTER, taken: true })
     expect(r.log).toEqual(['x 3456x2234', 'set 3456x2234', 'end resized', 'stop engines'])
     expect(readGuestScreen(run)).toEqual({ width: 3456, height: 2234 })
   })
@@ -105,12 +107,6 @@ describe('a size change', () => {
     expect(r.screen()).toEqual({ width: 3840, height: 1080 })
   })
 
-  it('follows the size the guest took when it keeps another than the ask', async () => {
-    const r = rig({ set: async () => ({ width: 4096, height: 2400, scale: 200 }) })
-    expect(await r.display.set({ width: 5120, height: 2880, scale: 200 })).toEqual({ width: 4096, height: 2400, scale: 200 })
-    expect(r.screen()).toEqual({ width: 4096, height: 2400 })
-    expect(readGuestScreen(run)).toEqual({ width: 4096, height: 2400 })
-  })
 
   it('asks nothing again for the mode it has', async () => {
     const r = rig()
@@ -145,6 +141,25 @@ describe('a failure leaves the size that is true and says why', () => {
     expect(readGuestScreen(run)).toBeNull()
   })
 
+  it('a size the driver refused (taken: false) is a failure of step 2: the box keeps the size that is true, and says why', async () => {
+    const r = rig({ set: async () => ({ width: 1280, height: 800, scale: 100, taken: false }) })
+    await expect(r.display.set({ width: 3456, height: 2234, scale: 200 })).rejects.toThrow('Windows did not take 3456×2234 at 200%: it is 1280×800 at 100%')
+    // grown for it, shrunk back; no stream ended, no engine stopped
+    expect(r.log).toEqual(['x 3456x2234', 'set 3456x2234', 'x 1280x800'])
+    expect(r.screen()).toEqual({ width: 1280, height: 800 })
+    expect(readGuestScreen(run)).toEqual({ width: 1280, height: 800 })
+    // asked again, it is asked again: a refusal is never kept as the mode it has
+    await expect(r.display.set({ width: 3456, height: 2234, scale: 200 })).rejects.toThrow('did not take')
+  })
+
+  it('a size that took at a scale Windows refused: the box follows the new size, then says the scale did not take', async () => {
+    const r = rig({ set: async (m) => ({ ...m, scale: 150, taken: false }) })
+    await expect(r.display.set({ width: 2560, height: 1600, scale: 200 })).rejects.toThrow('Windows did not take 2560×1600 at 200%: it is 2560×1600 at 150%')
+    expect(r.log).toEqual(['x 2560x1600', 'set 2560x1600', 'end resized', 'stop engines'])
+    expect(r.screen()).toEqual({ width: 2560, height: 1600 })
+    expect(readGuestScreen(run)).toEqual({ width: 2560, height: 1600 })
+  })
+
   it("at QEMU's window: the guest's size is kept, the engines restart at it, and it says so", async () => {
     const r = rig({ size: { width: 2560, height: 1600 }, window: 'stuck' })
     await expect(r.display.set({ width: 1920, height: 1200, scale: 175 })).rejects.toThrow("QEMU's window did not reach 1920×1200")
@@ -162,11 +177,11 @@ describe('a failure leaves the size that is true and says why', () => {
 
   it("a stop of the service after display.set answered leaves screen.json saying the guest's size", async () => {
     const r = rig()
-    const answered = deferred<DisplayMode>()
+    const answered = deferred<GuestModeAsk>()
     const seen: (VmWindow | null)[] = []
     const display = new VmDisplay({
       run,
-      guest: () => ({ get: async () => ({ width: 1280, height: 800, scale: 100 }), set: async (m) => (answered.resolve(m), m) }),
+      guest: () => ({ get: async () => ({ width: 1280, height: 800, scale: 100, adapter: ADAPTER }), set: async (m) => (answered.resolve(m), { ...m, adapter: ADAPTER, taken: true }) }),
       // the service is stopped while the box waits for QEMU's window: what the file says then is what the next start reads
       screen: { size: { width: 1280, height: 800 }, resize: async () => {}, windowSize: () => (seen.push(readGuestScreen(run)), new Promise(() => {})), engines: { lease: async () => null, stopAll: async () => {} } },
       relay: { endWhere: () => 0 },
@@ -192,7 +207,7 @@ describe('one change at a time', () => {
 
   it('a lease asked during a change waits for its end, and gets an engine of the new size', async () => {
     const gate = deferred()
-    const r = rig({ set: async (m) => (await gate.promise, m) })
+    const r = rig({ set: async (m) => (await gate.promise, { ...m, taken: true }) })
     const change = r.display.set({ width: 2560, height: 1600, scale: 200 })
     await tick()
     let leased: string | null = null
@@ -231,6 +246,18 @@ describe('the mode an ask means', () => {
   it('Fit is guestSizeFor with the caps', () => {
     expect(askedMode({ stream: 's', mode: 'fit', width: 1728, height: 1117, scale: 2, detail: 'sharp' })).toEqual(guestSizeFor({ width: 1728, height: 1117 }, 2, 'sharp'))
     expect(askedMode({ stream: 's', mode: 'fit', width: 1728, height: 1117, scale: 2, detail: 'sharp' }, { maxPixels: 4_096_000, maxWidth: 4096, maxHeight: 2400 }).scale).toBeLessThan(200)
+  })
+
+  it("is always within what display.set takes: even pixels in GUEST_DISPLAY's bounds, a Windows DPI step", () => {
+    const params = COMPUTER_METHODS['display.set'].params
+    for (const [width, height] of [[640, 400], [1024, 640], [1728, 1117], [3200, 1800], [3840, 1620], [5000, 600], [600, 1400]])
+      for (const scale of [1, 1.5, 2, 3])
+        for (const detail of ['sharp', 'faster'] as const) {
+          const m = askedMode({ stream: 's', mode: 'fit', width, height, scale, detail })
+          expect(params.safeParse(m).success, `${width}x${height} @${scale} ${detail}: ${JSON.stringify(m)}`).toBe(true)
+        }
+    for (const s of [{ width: 1280, height: 800 }, { width: 1920, height: 1200 }, { width: 2560, height: 1600 }])
+      for (const detail of ['sharp', 'faster'] as const) expect(params.safeParse(askedMode({ stream: 's', mode: 'fixed', ...s, detail })).success).toBe(true)
   })
 
   it('a fixed size is Sharp at the largest scale that keeps 1024×640 points, or 100% Faster', () => {

@@ -3,7 +3,8 @@ import { fitAsk, fitMeans, RESIZE_SIZES, resizeRow } from './winvmResize'
 
 describe("the resize proof's asks", () => {
   it('asks each size by a Fit room that means it', () => {
-    for (const size of RESIZE_SIZES) expect(fitMeans(size), `${size.width}x${size.height}`).toBe(true)
+    for (const size of RESIZE_SIZES) for (const detail of ['sharp', 'faster'] as const) expect(fitMeans(size, detail), `${size.width}x${size.height} ${detail}`).toBe(true)
+    expect(fitAsk({ width: 3456, height: 2234 }, 'faster')).toEqual({ width: 3456, height: 2234, scale: 1 })
     expect(fitAsk({ width: 3456, height: 2234 })).toEqual({ width: 1728, height: 1117, scale: 2 })
     // half of 1920×1200 is under the 1024×640 floor: asked at 1×
     expect(fitAsk({ width: 1920, height: 1200 })).toEqual({ width: 1920, height: 1200, scale: 1 })

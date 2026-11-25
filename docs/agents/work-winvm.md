@@ -235,9 +235,12 @@ no window. `VmDisplay` (display.ts) then makes the change, one at a time:
 
 1. The X screen grows by RandR where the new size is larger (`VmScreen.resize`, box/randr.ts).
 2. `display.set { width, height, scale }` through the door (`guestDisplay`, door.ts; docs/computer-protocol.md
-   §29.9). As soon as it answers, `run/screen.json` says the size the guest took, so a stop of the service from
-   here leaves it true. viogpudo may keep another size than the ask (it refuses 5120×2880): the box follows what
-   it took.
+   §29.9). As soon as it answers, `run/screen.json` says the size Windows reads back, so a stop of the service
+   from here leaves it true. An answer with `taken: false` (the driver refused the size, or Windows the scale) is
+   step 2 failing: the box follows the mode the answer says is true, and the ask fails naming both ("Windows did
+   not take 3456×2234 at 200%: it is 1280×800 at 100%"). A refused size leaves the box as it was (a grown screen
+   shrinks back, no stream ends); a size that took at another scale goes on through steps 3 to 5 first. A
+   refusal is never kept as the mode the guest has, so the same ask is asked again.
 3. QEMU's window is waited for at that size, 5 s at most (`VmScreen.windowSize`: the display's largest window).
 4. The VM's streams end `resized` (4108) and every VM engine stops, the warm ones too: an engine fixes its size
    at its start. No lease is given until step 5 is done (`VmDisplay.lease`; a lease that was starting as the
@@ -246,8 +249,10 @@ no window. `VmDisplay` (display.ts) then makes the change, one at a time:
 
 A failure leaves the size that is true and says why: before step 2 nothing changed (a grown screen shrinks back);
 after it the guest's size is the file's, the engines restart at it, and the error names the step that failed.
-The door's verb is the Windows service's (M3c of the VM screen plan); until it lands the guest answers `-32601`
-and `scripts/e2e-winvm-resize.ts` stands in with `viogpures.exe`. That proof is written and not yet run.
+`askedMode` always asks inside `display.set`'s bounds (`GUEST_DISPLAY`, a `DISPLAY_SCALE_STEPS` step).
+`scripts/e2e-winvm-resize.ts` proves the whole change on a scratch machine; until the guest it boots carries a
+tc-computer.exe with the verb, it stands in with `viogpures.exe` and asks Faster (it sets no scale). That proof is
+written and not yet run.
 
 Where the `qemu-window` tool (scripts/work-tools/winvm.json) and `screen-relay` are both installed, a wake starts a
 private X display of the VM's own at the guest's 1280×800 first (`VmScreen`, window.ts: the box browser's
