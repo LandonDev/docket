@@ -36,9 +36,12 @@ export function DialogFooter({
   closeOnConfirm,
   note,
   start,
+  fill,
   children,
 }: {
   note?: ReactNode;
+  /** The start takes the free room and its note is cut there: the verbs never drop to a second line (Save As's long outcome). */
+  fill?: boolean;
   /** An action of the dialog's own at the footer's start. */
   start?: ReactNode;
   /** Verbs between Cancel and the confirm (Commit & switch). */
@@ -64,7 +67,7 @@ export function DialogFooter({
   return (
     <div data-slot="dialog-footer" className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
       {start || note ? (
-        <div data-footer-start className="me-auto flex min-w-0 items-center gap-2">
+        <div data-footer-start className={`flex min-w-0 items-center gap-2 ${fill ? "flex-1 basis-0" : "me-auto"}`}>
           {start}
           {note ? (
             <span data-footer-note className="min-w-0 truncate text-xs text-muted-foreground">

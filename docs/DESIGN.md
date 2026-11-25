@@ -4011,11 +4011,14 @@ of bar, Save As… is in More alone and Share stays in the bar.
   wide on `paper` with the image outline, centred on `stage` at the 8px
   radius with 16px inside; "Page 1 of 4" under it in 12px muted, nothing for a
   one-page file. While it is drawn, a skeleton in the paper's shape; no page
-  for Markdown, its kind glyph at 32px in its place. Under 620px the column
+  for Markdown, its kind glyph at 32px in its place, and the same glyph (the
+  document's, or PDF's) where the host could not draw the page: the picture
+  is a glance, never a sentence. Under 620px the column
   goes and the form takes the width.
 - **The footer** is the dialog's: Just a copy (a checkbox and its 13px word)
-  at the start, then one 12px muted line of what Save does, truncating
-  before the buttons: "Saves Plan.docx in General, kept up to date", "Saves
+  at the start, then one 12px muted line of what Save does, taking the free
+  room and truncating there, so Cancel and Save never drop under it
+  (`DialogFooter fill`): "Saves Plan.docx in General, kept up to date", "Saves
   a copy of Plan.docx in General", "Pick a folder" while none is; Cancel and
   Save (primary, "Saving…" with the spinner while the host works). Enter in
   the name is Save. Save is off with no folder or no name.

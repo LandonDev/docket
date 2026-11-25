@@ -191,6 +191,8 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
       </div>
       <DialogFooter
         onCancel={close}
+        // Where it lands is a long line: cut beside Cancel and Save, never pushing them under it.
+        fill
         confirmLabel="Save"
         busyLabel="Saving…"
         pending={pending}
@@ -225,7 +227,8 @@ function FirstPage({ workspace, source, format }: { workspace: WorkspaceMeta; so
         ) : page.is === "loading" ? (
           <Skeleton className="aspect-[8.5/11] w-[168px] rounded-none" />
         ) : (
-          <p className="text-center text-xs text-muted-foreground">{page.why}</p>
+          // A page that could not be drawn is the format's glyph: the picture is a glance, not a state to read.
+          <KindGlyph kind={format === "pdf" ? "pdf" : "document"} className="size-8 shrink-0" />
         )}
       </div>
       <p className="h-4 text-center text-xs leading-4 text-muted-foreground">{paged && page.is === "page" && page.pages > 1 ? `Page 1 of ${page.pages}` : ""}</p>

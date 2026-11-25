@@ -162,6 +162,11 @@ describe("the Save As… sheet", () => {
     await waitFor(() => expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "General"]));
     expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).getByText("Pick a folder")).toBeTruthy();
+    // The page the host could not draw is the format's glyph, never the host's sentence alone in the pane.
+    await waitFor(() => expect(dialog.querySelector('.size-8[data-kind-glyph="document"]')).not.toBeNull());
+    expect(within(dialog).queryByText("There is no preview here.")).toBeNull();
+    // The line of where it lands takes the free room beside Cancel and Save, and is cut there: the verbs stay on one line.
+    expect(dialog.querySelector<HTMLElement>("[data-footer-start]")!.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "basis-0", "min-w-0"]));
   });
 
   it("saves and links the document in the folder he walked into, and says so in one line before he presses", async () => {
