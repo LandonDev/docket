@@ -1965,7 +1965,12 @@ Around the canvas:
   (semibold while a thread made it and he has not opened it), then one
   state at most, 4px after the name on its baseline (a 12px cloud mark, an
   amber count of suggestions, "Dana is in it", a spinner while a thread
-  writes; a glyph keeps the centre line), then who last changed it
+  writes; a glyph keeps the centre line; while his own act changes a row,
+  the list's spinner and its verb until the host answers, each row its
+  own: "Opening… 1.2 of 3.4 MB", "Renaming…" with the name he typed in
+  the name's place, "Moving…", "Copying…", "Deleting…", "Downloading…
+  2.1 of 8.4 MB"; a row that went keeps its word until the list is read
+  again, so it never shows its old self between), then who last changed it
   (160px) and when (128px, right aligned, tabular), both 12px muted. The
   head keeps the room the list's scroll bar takes, so Changed ends on its
   dates' edge; a

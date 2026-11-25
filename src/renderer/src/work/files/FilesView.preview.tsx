@@ -8,6 +8,7 @@ import type { FileEntry, FilePlace } from "@shared/work/files";
 import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { SavedLine } from "../canvas/kind";
+import type { Busy } from "./busy";
 import { Facts } from "./FileKind";
 import { answerAs, OverFrame, usePress, useTyped } from "../kit.preview";
 import { cloudLine, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
@@ -163,16 +164,25 @@ export function FilesNarrowSidebar() {
   );
 }
 
-/** A file opened from another computer, its row saying how far it has got: wide, then narrow with the sidebar open. */
+/**
+ * Rows his acts are changing while the host works, each its own: a file opened from another computer saying how far it
+ * has got, a rename showing the name he typed, a move, a delete and a download. Wide, then narrow with the sidebar open.
+ */
 export function FilesOpening() {
-  const file = entries.find((e) => e.kind !== "folder")!;
-  const busy = { key: file.key, word: "Opening… 8.0 of 20 MB" };
+  const at = (name: string): string => entries.find((e) => e.name === name)!.key;
+  const busy: Busy = new Map([
+    [at("Sponsor deck.pptx"), { word: "Opening… 8.0 of 20 MB" }],
+    [at("Sponsor list 2026.xlsx"), { word: "Renaming…", name: "Sponsor list 2027.xlsx" }],
+    [at("Ballroom contract.pdf"), { word: "Moving…" }],
+    [at("Stage plot.pdf"), { word: "Deleting…" }],
+    [at("Vendor contacts.xlsx"), { word: "Downloading… 2.1 of 8.4 MB" }],
+  ]);
   return (
     <div className="flex flex-col gap-8 p-6">
-      <Window width={800} height={300}>
+      <Window width={800} height={440}>
         <PageView {...common} busy={busy} listing={listing()} />
       </Window>
-      <Window width={400} height={300}>
+      <Window width={400} height={440}>
         <PageView {...common} busy={busy} listing={listing()} />
       </Window>
     </div>
@@ -329,10 +339,10 @@ export function FilesHomeNarrow() {
   return (
     <div className="flex gap-6 p-6">
       <Window width={420} height={520}>
-        <HomePage panelId="p" home={home} error={null} busy={{ key: opening.key, word: "Opening… 8.0 of 20 MB" }} onRetry={noop} onOpen={noop} bar={null} />
+        <HomePage panelId="p" home={home} error={null} busy={new Map([[opening.key, { word: "Opening… 8.0 of 20 MB" }]])} onRetry={noop} onOpen={noop} bar={null} />
       </Window>
       <Window width={260} height={520} sidebarOpen={false}>
-        <HomePage panelId="p" home={home} error={null} busy={{ key: opening.key, word: "Opening… 8.0 of 20 MB" }} onRetry={noop} onOpen={noop} bar={null} />
+        <HomePage panelId="p" home={home} error={null} busy={new Map([[opening.key, { word: "Opening… 8.0 of 20 MB" }]])} onRetry={noop} onOpen={noop} bar={null} />
       </Window>
     </div>
   );

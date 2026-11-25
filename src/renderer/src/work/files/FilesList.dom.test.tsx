@@ -174,7 +174,7 @@ describe("a row being opened", () => {
   /** Council round 6 (Sol P2): the progress beside the name took its whole width in a narrow list and pushed the name out. */
   it("gives way to the name: its words cut at the By column's width and gone from sight under 360px of list, still read out", () => {
     const key = "file:env_box:/w/Events/Budget.xlsx";
-    draw({ busy: { key, word: "Opening… 8.0 of 20 MB" } });
+    draw({ busy: new Map([[key, { word: "Opening… 8.0 of 20 MB" }]]) });
     const busy = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy]")!;
     expect(busy.className).toContain("shrink-[999]");
     expect(busy.className).not.toContain("shrink-0");
@@ -184,6 +184,24 @@ describe("a row being opened", () => {
     // Under 360px of list no width at all, the words still in the row for a reader; above it the By column's width.
     expect(words.className.split(" ")).toContain("max-w-0");
     expect(words.className).toContain("@[360px]/files-list:max-w-40");
+  });
+});
+
+describe("rows his acts are changing", () => {
+  it("each keep their own spinner and word, and a rename shows the name he typed until the answer", () => {
+    const at = (name: string): string => `file:env_box:/w/Events/${name}`;
+    draw({
+      busy: new Map([
+        [at("Budget.xlsx"), { word: "Renaming…", name: "Budget 2027.xlsx" }],
+        [at("Roster.xlsx"), { word: "Downloading… 2.1 of 8.4 MB" }],
+      ]),
+    });
+    const renamed = document.querySelector<HTMLElement>(`[data-files-row="${at("Budget.xlsx")}"]`)!;
+    expect(renamed.querySelector("[data-files-name]")!.textContent).toBe("Budget 2027.xlsx");
+    expect(renamed.querySelector("[data-files-busy]")!.textContent).toContain("Renaming…");
+    expect(renamed.querySelector('[data-files-busy] [data-slot="spinner"]')).not.toBeNull();
+    // A second act at once does not take the first one's words.
+    expect(row("Roster.xlsx").querySelector("[data-files-busy]")!.textContent).toContain("Downloading… 2.1 of 8.4 MB");
   });
 });
 
@@ -305,7 +323,7 @@ describe("Home", () => {
     const held = { ...file("Sponsor list.xlsx"), held: { id: "h1", verb: "rename" as const } };
     const starred = { ...file("Ballroom contract.pdf"), kind: "pdf" as const };
     const home = { waiting: [held], starred: [starred, file("Sponsor list.xlsx")], recent: [file("Sponsor list.xlsx"), file("Ballroom contract.pdf"), file("Budget.xlsx")] };
-    render(<HomePage panelId="p1" home={home} error={null} busy={{ key: file("Budget.xlsx").key, word: "Opening…" }} bar={null} onRetry={() => undefined} onOpen={() => undefined} />);
+    render(<HomePage panelId="p1" home={home} error={null} busy={new Map([[file("Budget.xlsx").key, { word: "Opening…" }]])} bar={null} onRetry={() => undefined} onOpen={() => undefined} />);
     const names = (list: string): string[] => [...screen.getByRole("region", { name: list }).querySelectorAll("[data-files-home-row]")].map((r) => r.querySelector("span.truncate")!.textContent ?? "");
     expect(names("Waiting on you")).toEqual(["Sponsor list.xlsx"]);
     expect(names("Starred")).toEqual(["Ballroom contract.pdf"]);

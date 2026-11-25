@@ -16,7 +16,7 @@ import type { HostLive } from "../shell/lifeosLive";
 import { KindGlyph } from "./KindGlyph";
 import { readsSession } from "./lifeosPlace";
 import { homeLists, type Sidebar } from "./model";
-import type { Busy } from "./open";
+import { busyOf, type Busy } from "./busy";
 import { RowState, RowWords, WhereWords } from "./rowParts";
 
 /**
@@ -37,19 +37,19 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
       {/* On the rows' title edge: the row's 8px inset, its 16px glyph and 8px gap. */}
       <h2 className="ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground">{title}</h2>
       {entries.map((entry) => {
-        const opening = busy?.key === entry.key;
+        const opening = busyOf(busy, entry.key);
         // Every row's date goes under 360px of Home, as Changed does in the folder's list; a row that says a state
         // gives it up first, under 400px, so the name keeps its room.
-        const stated = opening || !!entry.held || !!entry.unsent || !!entry.state;
+        const stated = !!opening || !!entry.held || !!entry.unsent || !!entry.state;
         return (
-          <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
+          <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={!!opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
             {/* Its own width as its basis (`flex-auto`), so a state beside it gives way first (`RowWords`). */}
             <span className="min-w-0 flex-auto truncate text-start text-foreground">{entry.name}</span>
             {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
             {/* A state gives way before the name, cut, whole on hover (`RowWords`), as in the folder's list. */}
             {opening ? (
-              <RowWords data-files-busy="" busy words={busy!.word} cut={CUT} />
+              <RowWords data-files-busy="" busy words={opening.word} cut={CUT} />
             ) : entry.held ? (
               <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} cut={CUT} />
             ) : entry.unsent ? (

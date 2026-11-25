@@ -12,6 +12,7 @@ import { openItem, setFolded } from "../canvas/store";
 import { CANVAS } from "../canvas/registry";
 import { importAhead } from "../formats/importOnce";
 import { appOpens, openWay, type PlaceCopy } from "./model";
+import { openingWords, type MarkBusy } from "./busy";
 import { openFileTab } from "./store";
 
 /**
@@ -21,8 +22,6 @@ import { openFileTab } from "./store";
  * it lies, and no thread is made for it.
  */
 
-/** What a row says while its file is on its way: the one word beside its spinner. */
-export type Busy = { key: string; word: string } | null;
 
 export interface OpenFrom {
   workspace: Pick<WorkspaceMeta, "id" | "environmentId" | "path">;
@@ -32,7 +31,7 @@ export interface OpenFrom {
   copy: boolean;
   /** the tab the file is opened from */
   opener?: string;
-  busy(next: Busy): void;
+  busy: MarkBusy;
   /** the copy switch was just turned on for this open */
   allowed?(): void;
 }
@@ -68,19 +67,19 @@ export async function openInApp(entry: Pick<FileEntry, "name" | "key" | "ref">, 
   if (!entry.ref) return;
   if (copy.place.kind !== "teams" && copy.place.kind !== "onedrive") return void loadToast().then((toast) => toast.message(`${entry.name} has no viewer here yet`));
   try {
-    from.busy({ key: entry.key, word: "Opening…" });
+    from.busy([entry.key], { word: "Opening…" });
     await registry.linkOf(copy.link).request("work.office.filesOpen", { source: entry.ref }, readMs(copy, 120_000));
   } catch (err) {
     failed(`${entry.name} did not open`, err);
   } finally {
-    from.busy(null);
+    from.busy([entry.key], null);
   }
 }
 
 /** The file as it is once its bytes are here: its place downloads one it keeps in the cloud, on its own host. */
 async function fetched(entry: FileEntry, copy: PlaceCopy, from: OpenFrom): Promise<void> {
   if (entry.local !== false || !entry.ref) return;
-  from.busy({ key: entry.key, word: "Downloading…" });
+  from.busy([entry.key], { word: "Downloading…" });
   if (copy.wire === "files") await registry.linkOf(copy.link).request("work.files.fetch", { workspaceId: from.workspace.id, ref: entry.ref }, readMs(copy, 660_000));
   else await registry.linkOf(copy.link).request("work.office.filesFetch", { source: entry.ref }, readMs(copy, 660_000));
 }
@@ -134,15 +133,15 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
   try {
     if (here) {
       await fetched(entry, copy, from);
-      from.busy({ key: entry.key, word: "Opening…" });
-    } else from.busy({ key: entry.key, word: entry.local === false ? "Downloading…" : "Opening…" });
+      from.busy([entry.key], { word: "Opening…" });
+    } else from.busy([entry.key], { word: entry.local === false ? "Downloading…" : "Opening…" });
     const ref = entry.ref;
     // A file of another computer is copied to the workspace's host a piece at a time: the row says how far it has got.
     const tag = openingTag(entry.key);
     stopHearing = here
       ? null
       : registry.linkOf(workspaceLink).onPush((push) => {
-          if (push.push === "work.files" && push.workspaceId === from.workspace.id && push.opening?.of === tag) from.busy({ key: entry.key, word: openingWords(push.opening.done, push.opening.total) });
+          if (push.push === "work.files" && push.workspaceId === from.workspace.id && push.opening?.of === tag) from.busy([entry.key], { word: openingWords(push.opening.done, push.opening.total) });
         });
     const answer: FilesOpened = await openFileTab(workspaceLink, from.workspace.id, { ref, name: entry.name, key: entry.key }, from.opener, {
       ...(here ? {} : { timeoutMs: 660_000 }),
@@ -162,7 +161,7 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     return null;
   } finally {
     stopHearing?.();
-    from.busy(null);
+    from.busy([entry.key], null);
   }
 }
 
@@ -172,11 +171,6 @@ export function preloadKind(name: string): void {
   if (kind && Object.hasOwn(CANVAS, kind)) CANVAS[kind].chunk.load().catch(() => undefined);
 }
 
-/** How far a copy from another computer has got, in the words of the row that opened it. */
-export function openingWords(done: number, total: number): string {
-  const mb = (n: number): string => (n < 10 * 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) : String(Math.round(n / 1024 / 1024)));
-  return `Opening… ${mb(done)} of ${mb(total)} MB`;
-}
 
 /** The file a tab shows, as its place names it: the item's own source, or for a copy the file it was made of. */
 export function fileOf(tab: Pick<FileTab, "copyOf">, item: Pick<CanvasItem, "source">): CanvasSource | null {
@@ -185,3 +179,5 @@ export function fileOf(tab: Pick<FileTab, "copyOf">, item: Pick<CanvasItem, "sou
   if (path === null) return item.source.at === "thread" ? null : item.source;
   return { at: "file", host: (item.source as { host: string }).host, path };
 }
+
+export { openingWords };

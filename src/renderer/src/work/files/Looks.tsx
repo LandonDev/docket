@@ -17,6 +17,7 @@ import { CanvasPane } from "../canvas/CanvasPane";
 import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { SavedAction } from "../canvas/kind";
+import { busyOf } from "./busy";
 import { KindGlyph } from "./KindGlyph";
 import { answersWords, factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
@@ -427,12 +428,18 @@ export function FileBeside({
   const row = (index: number): ReactNode => {
     const entry = entries[index]!;
     const on = picked.keys.has(entry.key);
-    const mine = busy?.key === entry.key;
+    const mine = busyOf(busy, entry.key);
     const over = drag?.over === entry.key;
     // Under the name: the one state in words, else who changed it; a row with neither is one line, centred.
     const who = entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by);
     const second: ReactNode = mine ? (
-      busy!.word
+      // His act on it, as a thread's writing is said: the spinner and its word.
+      <>
+        <Spinner className="size-3 shrink-0" />
+        <span data-files-busy="" className="truncate">
+          {mine.word}
+        </span>
+      </>
     ) : entry.state?.is === "writing" ? (
       <>
         <Spinner className="size-3 shrink-0" />
@@ -473,7 +480,7 @@ export function FileBeside({
               <NameField name={entry.name} className="h-5" onDone={(next) => onRenamed(entry, next)} />
             ) : (
               <span data-files-name className={`min-w-0 flex-1 truncate leading-4 text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-                {entry.name}
+                {mine?.name ?? entry.name}
               </span>
             )}
             {entry.changed ? <span className="shrink-0 text-xs leading-4 text-muted-foreground tabular-nums">{dayTime(entry.changed)}</span> : null}

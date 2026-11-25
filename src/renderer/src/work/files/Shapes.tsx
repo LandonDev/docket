@@ -10,7 +10,7 @@ import { dayTime } from "../../lib/duration";
 import { chordKey, modOrCtrl } from "../../lib/keys";
 import { KindGlyph } from "./KindGlyph";
 import { factOf, gridStep, samePage, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
-import type { Busy } from "./open";
+import { busyOf, type Busy } from "./busy";
 import { dragProps, heldRow, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
 import { DetailsPane, Thumb } from "./Looks";
 import { useNear, type PictureFrom } from "./previews";
@@ -64,9 +64,9 @@ function Tile({
   onOpen(entry: FileEntry): void;
   onRenamed(entry: FileEntry, name: string | null): void;
 }) {
-  const mine = busy?.key === entry.key;
+  const mine = busyOf(busy, entry.key);
   const over = drag?.over === entry.key;
-  const fact = mine ? busy!.word : factOf(entry, dayTime);
+  const fact = mine ? mine.word : factOf(entry, dayTime);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const near = useNear(box, root);
   return (
@@ -97,7 +97,7 @@ function Tile({
           </span>
         ) : (
           <span data-files-name className={`line-clamp-2 text-center text-[13px] leading-[18px] break-words text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-            {entry.name}
+            {mine?.name ?? entry.name}
           </span>
         )}
         <span className={`truncate text-center text-xs leading-4 tabular-nums ${entry.state?.is === "suggestions" ? "text-warning" : "text-muted-foreground"}`}>{fact || " "}</span>

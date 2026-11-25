@@ -10,6 +10,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { flushItem } from "../canvas/flush";
 import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
 import { filesLink } from "./farLink";
+import { openingWords, type MarkBusy, type RowBusy } from "./busy";
 import { closeTab, tabsNow } from "./store";
 
 /**
@@ -17,7 +18,8 @@ import { closeTab, tabsNow } from "./store";
  * "Trash", "Upload"). Each asks the file's own host, under an operation id of its own so a retry does nothing
  * twice; a change others will see is asked first, in the grammar's own question (`questionFor`); what a place
  * refuses is said in its one sentence, and a bulk act says what it could not do, file by file. A delete, and a
- * move inside one place, say what went, with Undo.
+ * move inside one place, say what went, with Undo. While the host works, each row the act changes shows the list's
+ * spinner and its verb (`ActsOf.busy`; a rename shows the name he typed), until the answer.
  */
 
 const opId = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -37,6 +39,28 @@ export interface ActsOf {
   workspaceId: string;
   /** the link of the workspace's own host, which keeps his marks and Trash */
   home: string;
+  /** marks the rows an act is changing, and lets them go; absent, nothing is marked */
+  busy?: MarkBusy;
+}
+
+/**
+ * How long rows an act changed keep their word once the host said it went: the folder is read again on the host's
+ * push first, so a renamed, moved or deleted row never shows its old self between the answer and the new list.
+ */
+export const SETTLE_MS = 2000;
+
+/** The rows marked while `work` runs; let go at its end, or a little after where `went` says it changed them. */
+async function marking<T>(of: ActsOf, keys: readonly string[], busy: RowBusy, work: () => Promise<T>, went: (out: T) => boolean = () => false): Promise<T> {
+  of.busy?.(keys, busy);
+  let changed = false;
+  try {
+    const out = await work();
+    changed = went(out);
+    return out;
+  } finally {
+    if (changed) setTimeout(() => of.busy?.(keys, null), SETTLE_MS);
+    else of.busy?.(keys, null);
+  }
 }
 
 /** New: a thing of `kind` in the folder. Answers the entry made, to select and name; null when it was refused (said in one toast). */
@@ -54,17 +78,26 @@ export async function makeIn(of: ActsOf, copy: PlaceCopy, at: FolderRef, kind: M
 export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, name: string): Promise<FileEntry | null> {
   const next = name.trim();
   if (!next || next === entry.name) return null;
-  // What an open tab on it holds goes in first; words still waiting follow the file to its new name.
-  await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
-  try {
-    const done = await filesLink(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
-    const made = done.entries[0];
-    if (made) await copiesFollow(of, copy, [[entry, made]]);
-    return made ?? null;
-  } catch (err) {
-    failed(`${entry.name} was not renamed`, err);
-    return null;
-  }
+  // The row shows the name he typed from his Return until the host answers.
+  return marking(
+    of,
+    [entry.key],
+    { word: "Renaming…", name: next },
+    async () => {
+      // What an open tab on it holds goes in first; words still waiting follow the file to its new name.
+      await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
+      try {
+        const done = await filesLink(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
+        const made = done.entries[0];
+        if (made) await copiesFollow(of, copy, [[entry, made]]);
+        return made ?? null;
+      } catch (err) {
+        failed(`${entry.name} was not renamed`, err);
+        return null;
+      }
+    },
+    (made) => made !== null,
+  );
 }
 
 /**
@@ -126,8 +159,14 @@ export async function carryTo(
   if (question && !(await confirmAction({ title: question.split("? ")[0]! + "?", body: question.split("? ").slice(1).join("? ") || undefined, action: verb === "move" ? "Move" : "Copy" }))) return false;
   if (verb === "move") await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
   try {
-    const done = await filesLink(from.link)
-      .request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from));
+    const done = await marking(
+      of,
+      entries.map((e) => e.key),
+      { word: verb === "move" ? "Moving…" : "Copying…" },
+      () => filesLink(from.link).request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from)),
+      // A copy leaves its rows where they were: only a move's rows leave the list.
+      (out) => verb === "move" && out.entries.length > 0,
+    );
     if (verb === "move") await copiesFollow(of, from, movedPairs(entries, done));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
     const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
@@ -199,7 +238,13 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
   } else if (unsaved && !(await confirmAction({ title: `Changes to ${unsaved} are not saved.`, body: "Delete it anyway? They will be lost.", action: "Delete Anyway", danger: true }))) return false;
   try {
     // A desktop the window cannot reach is asked through the workspace's host (farLink.ts), which sends it there.
-    const done = await filesLink(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}), ...(forGood ? { forGood: true } : {}) }, longWait(copy));
+    const done = await marking(
+      of,
+      entries.map((e) => e.key),
+      { word: "Deleting…" },
+      () => filesLink(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}), ...(forGood ? { forGood: true } : {}) }, longWait(copy)),
+      (out) => out.refused.length < entries.length,
+    );
     const ids = done.trashed ?? [];
     const gone = entries.length - done.refused.length;
     if (gone > 0) {
@@ -363,6 +408,9 @@ export function downloadOf<T>(file: { copy: boolean; shared: boolean; there: boo
  */
 export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<void> {
   if (!entry.ref) return;
+  // The row says how far the bytes have come where its size is known.
+  const far = (got: number): RowBusy => ({ word: entry.size ? openingWords(got, entry.size, "Downloading…") : "Downloading…" });
+  of.busy?.([entry.key], far(0));
   try {
     const link = registry.linkOf(copy.link);
     const parts: BlobPart[] = [];
@@ -376,6 +424,7 @@ export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, it
       version = got.version;
       offset += bytes.length;
       if (got.end || bytes.length === 0) break;
+      of.busy?.([entry.key], far(offset));
     }
     const url = URL.createObjectURL(new Blob(parts));
     const a = document.createElement("a");
@@ -385,5 +434,7 @@ export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, it
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   } catch (err) {
     failed(`${entry.name} did not download`, err);
+  } finally {
+    of.busy?.([entry.key], null);
   }
 }

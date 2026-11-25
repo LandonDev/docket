@@ -2827,7 +2827,12 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   (still read out), the spinner staying, the whole of it in a tip. Every state a row says in words beside its
   name takes the same part (`RowWords`, files/rowParts.tsx): "3 suggestions", "Sam Ortiz is in it", and on
   Home the opening progress and a held change's "Move waits for you" give way before the name, cut, whole in
-  a tip. A computer a build behind answers the whole
+  a tip. Opening is one of his acts that mark rows (files/busy.ts: a map by row key, so two at once keep their own
+  words; `ActsOf.busy` and `OpenFrom.busy`): a rename says "Renaming…" and draws the name he typed until the
+  answer, a move "Moving…", a copy "Copying…", a delete "Deleting…", a download "Downloading… 2.1 of 8.4 MB"
+  where the file's size is known. A rename, a move or a delete that went keeps its rows' words `SETTLE_MS`
+  (2 s) after the answer, while the host's push has the folder read again (acts.ts `marking`); a refusal or a
+  copy lets them go at once. Beside draws the word under the name with its spinner; Grid in the tile. A computer a build behind answers the whole
   file at once, as before. The bound is the link's own rate: 5 MB at 8 Mbit/s is about 5 s, 20 MB about
   21 s. A mapped drive's file is never read whole ahead of that read (no cloud there: `fetchFile` skips
   it), and a mapped drive's rows always count as here, so the window never downloads one first.
@@ -2974,6 +2979,9 @@ memory while it runs; resolved paths 30 s; nothing of a file's content past the 
   from another screen, a refusal, and every way into the Docs view
   (`filesOfDocs`, `openDocInFiles`); `work/shell/WorkViewPage.dom.test.tsx`
   takes a kept `view: 'docs'` to Files.
+- `src/renderer/src/work/files/actsBusy.test.ts`: a rename, a move, a copy, a delete and a download each mark
+  their rows with their verb (a rename with the name he typed) and let them go; `FilesList.dom.test.tsx` "rows
+  his acts are changing": two rows busy at once, each its own words.
 - `src/renderer/src/work/files/FilesView.dom.test.tsx`: the window against
   stand-in hosts: the first tab, a folder in the same tab with its trail and
   Back, the arrows and Return, sorting, a file in a tab of its own and never

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
 import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FolderRef } from "@shared/work/files";
@@ -41,7 +41,8 @@ import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
-import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
+import { marked, type Busy, type MarkBusy } from "./busy";
+import { fetchHere, fileOf, openEntry, openInApp, opensInApp } from "./open";
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
@@ -374,7 +375,9 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   const view = useTabs(link, workspace.id, reach.tabs, first);
   const [folded, setFolded] = useSidebarFolded(workspace.id);
   const [width, setWidth] = useState(0);
+  // The rows his acts are changing, each with its own words (busy.ts).
   const [busy, setBusy] = useState<Busy>(null);
+  const markBusy = useCallback<MarkBusy>((keys, next) => setBusy((now) => marked(now, keys, next)), []);
   const [copyOn, setCopyOn] = useState(reach.copy);
   useEffect(() => setCopyOn(reach.copy), [reach.copy]);
   const root = useRef<HTMLDivElement>(null);
@@ -524,7 +527,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
 
   const open = (entry: FileEntry, copy: PlaceCopy): void =>
     // "Open copies here" turns the workspace's copy on, the host's admin rule: a key that may not is never offered it.
-    void openEntry(entry, copy, { workspace, tabs: reach.tabs && !view.local, copy: copyOn, opener: tab?.id, busy: setBusy, ...(linkMay(workspace.environmentId, "work.office.filesCopySet") ? { allowed: () => setCopyOn(true) } : {}) });
+    void openEntry(entry, copy, { workspace, tabs: reach.tabs && !view.local, copy: copyOn, opener: tab?.id, busy: markBusy, ...(linkMay(workspace.environmentId, "work.office.filesCopySet") ? { allowed: () => setCopyOn(true) } : {}) });
   // Open to the Side: a file goes at the side of the file tab he was last in, in that tab. Where he has been in none, it is not offered.
   const [lastFile, setLastFile] = useState<string | null>(null);
   const shownFile = tab?.kind === "file" ? tab.id : null;
@@ -540,7 +543,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
 
   // What changes files here: each asks the file's own host (acts.ts). The dialog and an upload are the view's own.
-  const of: ActsOf = { workspaceId: workspace.id, home: link };
+  const of: ActsOf = { workspaceId: workspace.id, home: link, busy: markBusy };
   const [carrying, setCarrying] = useState<Carrying | null>(null);
   const [uploading, setUploading] = useState<UploadProgress | null>(null);
   const stopUpload = useRef<AbortController | null>(null);
@@ -679,7 +682,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
       if ("refused" in got) return say(got.refused);
       startThread(got.chips, { cwd: workspace.path, projectId: null });
     },
-    openApp: (entry, copy) => void openInApp(entry, copy, { busy: setBusy }),
+    openApp: (entry, copy) => void openInApp(entry, copy, { busy: markBusy }),
     ...(sideTab ? { openSide: (entry: FileEntry, copy: PlaceCopy) => (entry.ref && copy.link === link && !copy.place.vm ? toSide({ ref: entry.ref, name: entry.name }, sideTab) : open(entry, copy)), sideOf: sideTab.id } : {}),
   };
 

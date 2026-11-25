@@ -7,7 +7,7 @@ import { modOrCtrl } from "../../lib/keys";
 import { Cloud } from "../icons";
 import { MiddleCut } from "../canvas/TabName";
 import { stemEnd, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
-import type { Busy } from "./open";
+import type { Busy } from "./busy";
 
 /**
  * What every shape of a folder shares for its rows (docs/DESIGN.md "The Files place"): how a press picks, a

@@ -62,7 +62,7 @@ import {
   type PickHow,
   type PlaceCopy,
 } from "./model";
-import type { Busy } from "./open";
+import { busyOf, type Busy, type RowBusy } from "./busy";
 import { dragging, dragProps, dropVerb, heldRow, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, WhereWords, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
@@ -298,7 +298,7 @@ const FileRow = memo(function FileRow({
   on,
   over,
   height,
-  busyWord,
+  busy,
   renaming,
   head,
   drag,
@@ -311,7 +311,8 @@ const FileRow = memo(function FileRow({
   on: boolean;
   over: boolean;
   height: number;
-  busyWord: string | null;
+  /** his act on this row while the host works: its word, and the name a rename typed */
+  busy: RowBusy | null;
   /** only a LifeOS session that is down opens it (`heldRow`) */
   shut: boolean;
   renaming: boolean;
@@ -346,17 +347,17 @@ const FileRow = memo(function FileRow({
         {renaming ? (
           <NameField name={entry.name} onDone={(next) => live.current.onRenamed(entry, next)} />
         ) : (
-          <TruncateTip text={entry.name}>
+          <TruncateTip text={busy?.name ?? entry.name}>
             <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-              {entry.name}
+              {busy?.name ?? entry.name}
             </span>
           </TruncateTip>
         )}
-        {busyWord !== null ? (
+        {busy !== null ? (
           // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
           // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
           // The whole of it on hover.
-          <RowWords data-files-busy="" busy words={busyWord} cut="max-w-0 @[360px]/files-list:max-w-40" />
+          <RowWords data-files-busy="" busy words={busy.word} cut="max-w-0 @[360px]/files-list:max-w-40" />
         ) : (
           <RowState entry={entry} />
         )}
@@ -465,7 +466,7 @@ export function FileList({
         on={picked.keys.has(entry.key)}
         over={drag?.over === entry.key}
         height={height}
-        busyWord={busy?.key === entry.key ? busy.word : null}
+        busy={busyOf(busy, entry.key)}
         renaming={renaming === entry.key}
         head={heads?.get(index)}
         drag={drag ? liveDrag : undefined}
