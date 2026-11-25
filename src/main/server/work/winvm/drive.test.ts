@@ -10,7 +10,7 @@ import { VM_COMPUTER } from './picture'
 
 const row = (threadId: string): ComputerSessionRow => ({ threadId, since: 1, lastCallAt: 1, apps: [], running: null, tier: null, computer: VM_COMPUTER })
 
-function setup(o: { state?: WinvmState['state']; windowless?: boolean; keeper?: boolean } = {}) {
+function setup(o: { state?: WinvmState['state']; windowless?: boolean; keeper?: boolean; wake?: () => Promise<void> } = {}) {
   const log: string[] = []
   let driving = false
   const picture = {
@@ -30,6 +30,7 @@ function setup(o: { state?: WinvmState['state']; windowless?: boolean; keeper?: 
     wake: async () => {
       log.push('wake')
       if (state === 'none') throw new Error('The Windows VM is not set up.')
+      await o.wake?.()
       state = 'awake'
       return { state } as WinvmState
     }
@@ -48,6 +49,14 @@ function setup(o: { state?: WinvmState['state']; windowless?: boolean; keeper?: 
   })
   configureComputerDrive('vm', vmWheel({ picture, lease, keeper: () => (o.keeper === false ? null : keeper), sessions: () => sessions, log: (l) => log.push(l) }))
   return { picture, lease, log, stopped, woken, take: () => driveComputer('vm:windows', 'owner', () => {}), back: () => driveComputer('vm:windows', 'agent', () => {}) }
+}
+
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+function later(): { promise: Promise<void>; resolve: () => void; reject: (err: Error) => void } {
+  let resolve!: () => void
+  let reject!: (err: Error) => void
+  const promise = new Promise<void>((res, rej) => ((resolve = res), (reject = rej)))
+  return { promise, resolve, reject }
 }
 
 afterEach(() => {
@@ -90,11 +99,43 @@ describe("his Take over of the Windows VM", () => {
     expect(t.log.at(-1)).toMatch(/clipboard was not kept: no door/)
   })
 
-  it('wakes a sleeping machine first, then takes over: one press whatever its state', async () => {
+  it('wakes a sleeping machine, then takes over: one press whatever its state', async () => {
     const t = setup({ state: 'asleep' })
     expect(await t.take()).toEqual({ computer: VM_COMPUTER, driver: 'owner' })
-    expect(t.log).toEqual(['wake', 'keeper true', 'picture true'])
+    await tick()
+    expect(t.log).toEqual(['keeper true', 'wake', 'picture true'])
     await expect(setup({ state: 'none' }).take()).rejects.toThrow(/not set up/)
+  })
+
+  it("answers at once and gives him the picture when the wake ends, however long it takes: no caller's deadline decides", async () => {
+    const woke = later()
+    const t = setup({ state: 'asleep', wake: () => woke.promise })
+    expect(await t.take()).toEqual({ computer: VM_COMPUTER, driver: 'owner' })
+    // he holds the wheel from the press: no thread takes the machine as it wakes, and its sessions are stopped
+    expect(t.lease.owns()).toBe(true)
+    expect(t.stopped.sort()).toEqual(['t1', 't2'])
+    expect(t.picture.driving()).toBe(false)
+    woke.resolve()
+    await tick()
+    expect(t.picture.driving()).toBe(true)
+  })
+
+  it('lets the wheel go when the wake fails, and gives no picture to a Hand back made while it woke', async () => {
+    const failed = later()
+    const t = setup({ state: 'asleep', wake: () => failed.promise })
+    await t.take()
+    failed.reject(new Error('Windows did not start'))
+    await tick()
+    expect(t.lease.owns()).toBe(false)
+    expect(t.log).toContain('winvm: Take over after the wake failed: Windows did not start')
+    const woke = later()
+    const u = setup({ state: 'asleep', wake: () => woke.promise })
+    await u.take()
+    await u.back()
+    woke.resolve()
+    await tick()
+    expect(u.picture.driving()).toBe(false)
+    expect(u.lease.owns()).toBe(false)
   })
 
   it('wakes the thread he took it from when he hands back', async () => {

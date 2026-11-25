@@ -36,7 +36,7 @@ and opens the door at the next call.
 | Method | Capability | |
 |---|---|---|
 | `work.winvm.state` | read | the state |
-| `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold) |
+| `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold, 42 s under a load of 20) |
 | `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited; a person's Sleep holds it asleep (`heldAsleep`) until his Wake |
 | `work.winvm.restart` | operate | restarts Windows cleanly (`shutdown /r /t 0` as the admin, never `/f`), then opens the door again; the state says "Restarting Windows" meanwhile. Refused while a thread holds the machine (the lease) |
 | `work.winvm.still` | read | `{ still }`: the picture it last went to sleep on ("The still"), to whoever may watch the VM (`mayWatch`: a client key with approve; never a thread or the box's own socket) |
@@ -343,7 +343,11 @@ Applying a size to a running Windows is the VM display's own work (`VmDisplay`, 
 `computer.drive { computer: 'vm:windows', driver }` reaches the `vm` hook (`vmWheel`, drive.ts), registered at the
 host's wiring (host.ts `wireVmDrive`). A machine asleep, going to sleep or waking is woken first, so Take over is one
 press whatever its state (until 2026-11-22 it was refused with "Wake it first"); it is refused with no window, not
-set up, or Work off. Take over: the lease is his (`ownerDrives`: every thread's call refused, the turned-away threads
+set up, or Work off. On a machine not awake the call answers at once: he holds the lease and the keeper from the
+press, the wake runs on, and his streams take his input once it is awake (a Hand back meanwhile lets it go; a failed
+wake frees both and says its cause in the state). A wake outlasts a caller's deadline: the owner's took 42 s under a
+load of 20 on 1.0.382, past the window's 30 s, and Take over failed with a bare timeout. The window's
+`work.winvm.wake` waits on the keeper's own bound (660 s, transport.ts `LONG_WRITES`), never the read's 30 s. Take over: the lease is his (`ownerDrives`: every thread's call refused, the turned-away threads
 noted, and the thread that held the machine noted with them, since its session is about to be stopped), the keeper
 holds the machine awake (`setDriving`), his streams take his input, then every thread's session on the VM is
 stopped. Hand back: his keys let go, the guest's clipboard put back (B9), the keeper and the lease freed, and the

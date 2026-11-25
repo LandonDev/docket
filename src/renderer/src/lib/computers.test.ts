@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
 import { canTakeOver, computerTiles, viewKey, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
 import { restingVm, restingVmTiles, type VmState } from "./winvmWake";
 import { registry } from "./connection/registry";
+import { Transport, type SocketLike } from "./connection/transport";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
 const row = (over: Partial<ComputerSessionRow> & { threadId: string }): ComputerSessionRow => ({
@@ -218,6 +219,52 @@ describe("the Windows VM", () => {
     await takeOver(restingVmTiles({ box: at("asleep") }, [], nameOf)[0]);
     expect(calls).toEqual(["work.winvm.wake", "computer.drive"]);
     vi.restoreAllMocks();
+  });
+
+  describe("over a real link, a wake longer than a read's deadline", () => {
+    // the transport's own deadlines over a fake socket: his wake in 1.0.382 took 42 s, and the press failed at 30
+    async function linked() {
+      const sent: { id: string; method: string }[] = [];
+      let socket!: SocketLike & { onmessage: ((e: { data: string }) => void) | null };
+      const t = new Transport("ws://box", "box", {
+        socket: () => (socket = { readyState: 1, onopen: null, onclose: null, onerror: null, onmessage: null, send: (d: string) => void sent.push(JSON.parse(d)), close: () => {} }),
+      });
+      const open = t.open();
+      socket.onmessage?.({ data: JSON.stringify({ push: "hello", environmentId: "box", contract: 3, caps: [] }) });
+      await open;
+      vi.spyOn(registry, "link").mockReturnValue({ request: (m: string, p: unknown) => t.request(m, p) } as never);
+      const answer = (method: string, frame: { ok: true; result: unknown } | { ok: false; error: string }) =>
+        socket.onmessage?.({ data: JSON.stringify({ id: sent.find((s) => s.method === method)!.id, ...frame }) });
+      return { sent: () => sent.map((s) => s.method), answer };
+    }
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it("waits out the wake, then takes the wheel: never a bare error at 30 s", async () => {
+      const box = await linked();
+      let done = false;
+      const press = takeOver(restingVmTiles({ box: at("asleep") }, [], nameOf)[0]).then(() => void (done = true));
+      await vi.advanceTimersByTimeAsync(41_000);
+      expect(box.sent()).toEqual(["work.winvm.wake"]);
+      box.answer("work.winvm.wake", { ok: true, result: { state: "awake" } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(box.sent()).toEqual(["work.winvm.wake", "computer.drive"]);
+      box.answer("computer.drive", { ok: true, result: { computer: "vm:windows", driver: "owner" } });
+      await press;
+      expect(done).toBe(true);
+    });
+
+    it("fails with the keeper's own cause, and asks for no wheel", async () => {
+      const box = await linked();
+      const press = takeOver(restingVmTiles({ box: at("asleep") }, [], nameOf)[0]).catch((err: Error) => err.message);
+      await vi.advanceTimersByTimeAsync(50_000);
+      box.answer("work.winvm.wake", { ok: false, error: "The service in the Windows VM did not answer." });
+      expect(await press).toBe("The service in the Windows VM did not answer.");
+      expect(box.sent()).toEqual(["work.winvm.wake"]);
+    });
   });
 });
 

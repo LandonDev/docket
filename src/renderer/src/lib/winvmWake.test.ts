@@ -10,7 +10,8 @@ describe("the VM's plate in each state", () => {
     expect(plate(at("asleep"))).toMatchObject({ title: "Asleep", spin: false, bare: false });
     expect(plate(at("asleep", { since: new Date(2026, 10, 24, 13, 14).getTime() }), { now: new Date(2026, 10, 24, 15, 0).getTime() }).detail).toMatch(/^Since 1:14/);
     expect(plate(at("asleep", { wakeMs: 13_000 }), { wakes: true, since: 14_000 })).toEqual({ title: "Waking the Windows VM", detail: "6 s of about 13", spin: true, bare: false, retry: false });
-    expect(plate(at("waking", { since: 14_000 }))).toMatchObject({ title: "Waking the Windows VM", detail: null, spin: true });
+    // the first wake after a box restart has no usual one to count against: its seconds alone
+    expect(plate(at("waking", { since: 14_000 }))).toMatchObject({ title: "Waking the Windows VM", detail: "6 s", spin: true });
     expect(plate(at("none"))).toMatchObject({ title: "The Windows VM is not set up", bare: true });
     expect(plate(at("asleep"), { failed: "no door" })).toMatchObject({ title: "Couldn't wake the Windows VM", detail: "no door", retry: true });
   });

@@ -158,11 +158,14 @@ export interface VmPlateWords {
   retry: boolean;
 }
 
-/** "6 s of about 13": the seconds this wake has taken, against the usual (the keeper's median of its last five). */
+/**
+ * "6 s of about 13": the seconds this wake has taken, against the usual (the keeper's median of its last five); "6 s"
+ * before the keeper has one (it keeps them in memory, so the first wake after a box restart has none).
+ */
 export function wakeCount(since: number | undefined, wakeMs: number | null | undefined, now: number): string | null {
   if (since === undefined) return null;
   const secs = Math.max(0, Math.floor((now - since) / 1000));
-  return wakeMs ? `${secs} s of about ${Math.round(wakeMs / 1000)}` : null;
+  return wakeMs ? `${secs} s of about ${Math.round(wakeMs / 1000)}` : `${secs} s`;
 }
 
 /**
@@ -194,7 +197,7 @@ export function vmPlate(vm: VmState, o: { wakes: boolean; now: number; failed?: 
   }
 }
 
-/** Wakes the host's VM; it answers once the VM is awake. */
+/** Wakes the host's VM; it answers once the VM is awake, or with the keeper's own cause (its deadline is the keeper's: transport.ts). */
 export async function wakeVm(host: string): Promise<void> {
   const link = registry.link(host);
   if (!link) throw new Error("the host is not connected");

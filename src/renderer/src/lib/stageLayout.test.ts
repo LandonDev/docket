@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, drawnPixelated, fitStage, pictureKind, stageLayout, stageOf } from "./stageLayout";
+import { STAGE_GAP, STAGE_INSET, STRIP_MAX, STRIP_MIN, drawnPixelated, fitStage, pictureKind, roomKnown, stageLayout, stageOf } from "./stageLayout";
 
 
 describe("the Computers page's stage", () => {
+  it("fits a picture only to a room that is measured: before that the picture takes the page's width, never a sliver", () => {
+    expect(roomKnown(stageLayout({ width: 0, height: 0 }, 1).room)).toBe(false);
+    expect(roomKnown(stageLayout({ width: 420, height: 0 }, 1).room)).toBe(false);
+    expect(roomKnown(stageLayout({ width: 420, height: 700 }, 1).room)).toBe(true);
+  });
+
   it("gives one computer the page less its inset, both ways: the header is its bar, so no caption takes a share", () => {
     expect(stageLayout({ width: 1200, height: 860 }, 1)).toEqual({ room: { width: 1200 - STAGE_INSET * 2, height: 860 - STAGE_INSET * 2 }, strip: "none", stripWidth: 0 });
     expect(stageLayout({ width: 1800, height: 860 }, 3).room.height).toBe(860 - STAGE_INSET * 2);

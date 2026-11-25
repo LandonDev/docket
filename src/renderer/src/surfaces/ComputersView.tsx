@@ -13,7 +13,7 @@ import { useDriveHold } from "../lib/driveHold";
 import { previewContext } from "../lib/computerSessions";
 import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow, type ScreenRect } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
-import { drawnPixelated, fitStage, pictureKind, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
+import { drawnPixelated, fitStage, pictureKind, roomKnown, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
@@ -46,11 +46,15 @@ const tileLabel = (tile: ComputerTile): string => {
   return app ? `Live view of ${app.window ? `${app.window} in ${app.name}` : app.name}` : "Live view";
 };
 
-/** An element's size, live. */
-function useSize(ref: RefObject<HTMLElement | null>): Size {
+/**
+ * An element's size, live, read from the element the callback ref is given: the page's body comes and goes with its
+ * tiles (the Windows VM's arrives after the first paint, from its state), and a ref object read once at mount never
+ * measured the body that came later, so its stage had no room and its picture was a sliver (1.0.382).
+ */
+function useSize(): [Size, (el: HTMLElement | null) => void, HTMLElement | null] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   useLayoutEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const read = (): void => setSize((was) => (was.width === el.clientWidth && was.height === el.clientHeight ? was : { width: el.clientWidth, height: el.clientHeight }));
     read();
@@ -58,8 +62,8 @@ function useSize(ref: RefObject<HTMLElement | null>): Size {
     const ro = new ResizeObserver(read);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
-  return size;
+  }, [el]);
+  return [size, setEl, el];
 }
 
 /** Where a tile is: on the stage with the room its picture may fill, or in the strip. */
@@ -123,7 +127,7 @@ function LivePicture({ tile, place, focusOnDrive, readStage, onReading }: { tile
     return <PlatePicture place={place} frame={frame} kind={kind} label={label} plate={{ ...lost, still: still?.src, action: lost.retry ? <RetryButton onRetry={() => registry.retry(tile.entry.host)} /> : undefined }} />;
   }
   const dpr = pixelRatioOf(measure.current);
-  const fit = place.stage ? fitStage(place.room, frame, dpr, kind) : null;
+  const fit = place.stage && roomKnown(place.room) ? fitStage(place.room, frame, dpr, kind) : null;
   const face = over ? null : liveFace(stream, place.stage ? (from) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label, from: screenRectOf(from) }) : undefined);
   const drawn = state.status === "live" && state.drawn;
   // the last picture, washed back, until the first frame: then it fades out over it
@@ -182,7 +186,7 @@ function RetryButton({ onRetry }: { onRetry: () => void }) {
 
 /** A picture's box with nothing live in it: its plate, at the picture's size, so nothing moves when the picture comes. */
 function PlatePicture({ place, frame, kind, label, plate }: { place: Place; frame: Size | null; kind: PictureKind; label: string; plate: PlateProps }) {
-  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(null), kind) : null;
+  const fit = place.stage && roomKnown(place.room) ? fitStage(place.room, frame, pixelRatioOf(null), kind) : null;
   return (
     <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
       <Viewport fill face={{ kind: "plate", plate }} label={label} size={frame} />
@@ -330,8 +334,7 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
 
 /** The page: its header (the stage's bar, or its name when nothing is driven), the stage and the strip, or the one empty state. */
 export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, frame, vms, reading }: ComputersPageProps) {
-  const page = useRef<HTMLDivElement>(null);
-  const measured = useSize(page);
+  const [measured, pageRef, page] = useSize();
   const size = measured.width > 0 || !given ? measured : given;
   const [pick, setPick] = useState<string | null>(null);
   const [kept, setKept] = useState<string | null>(null);
@@ -369,7 +372,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
   const pictures = new Map(keyed.map(({ tile, key }) => [key, picture(tile, key === front ? { stage: true, room: layout.room } : { stage: false })]));
   // where the stage's picture is on his screen: full screen grows it from there
   const pictureRect = (): ScreenRect | undefined => {
-    const room = page.current?.querySelector("[data-stage] [data-slot=computer-picture-room]");
+    const room = page?.querySelector("[data-stage] [data-slot=computer-picture-room]");
     return room ? screenRectOf(room.getBoundingClientRect()) : undefined;
   };
   const bar = staged ? (
@@ -410,7 +413,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
   return (
     <>
       {header}
-      <div ref={page} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
+      <div ref={pageRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div data-slot="computer-tiles" data-strip={layout.strip} className="grid items-start gap-4 p-4" style={grid}>
           {[...keyed]
             .sort((a, b) => a.key.localeCompare(b.key))

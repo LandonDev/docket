@@ -1178,7 +1178,9 @@ Every computer being driven now, on every connected host, in one place
   Viewport.tsx), or over the bare box where there is no picture to keep.
   Asleep: the desk the VM slept on, "Asleep", "Since 1:14 PM". Waking:
   "Waking the Windows VM", "6 s of about 13", counted against the keeper's
-  median of its last five wakes. Connecting: the last picture under a
+  median of its last five wakes ("6 s" before it has one). The stage's
+  picture fits the page's measured room; before it is measured the picture
+  takes the page's width, never a fit to nothing. Connecting: the last picture under a
   lighter wash, which fades out over `--dur-base` once the first frame is
   on the canvas; nothing moves. Lost (the host's link down): "Reconnecting
   to The box", "Try 2 of 5", then "The picture stopped" with Retry; no

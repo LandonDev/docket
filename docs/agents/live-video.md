@@ -853,8 +853,11 @@ phone's full screen ("The phone" below), and from then on:
   of every key he held; the picture is a picture again.
 - **The VM's wheel** (work/winvm/drive.ts `vmWheel`, the `vm` kind's hook):
   a VM that is not awake is woken first, so Take over is one press; refused
-  with no window (`pictureOnly`), not set up, or Work off. The app wakes it
-  first too (`takeOver`, lib/computers.ts), for a host from before this.
+  with no window (`pictureOnly`), not set up, or Work off. There the call
+  answers at once and the picture is his when the wake ends, since a wake
+  outlasts a caller's deadline. The app wakes it first too (`takeOver`,
+  lib/computers.ts), for a host from before this, with the keeper's own
+  bound on `work.winvm.wake` rather than a read's 30 s.
   Take over hands him the lease (every thread's `windows_*` call is refused
   with "He is driving the Windows VM", and the thread is woken when he hands
   back), holds the keeper awake, and marks his streams (`setDriving`); then

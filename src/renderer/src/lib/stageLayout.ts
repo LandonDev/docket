@@ -41,6 +41,9 @@ export function stageLayout(page: Size, count: number): StageLayout {
   return { room: { width: Math.max(0, inner.width - stripWidth - STAGE_GAP), height: inner.height }, strip: "side", stripWidth };
 }
 
+/** A room with no width or height is not measured yet: the stage's picture takes the page's width, never a fit to nothing. */
+export const roomKnown = (room: Size): boolean => room.width > 0 && room.height > 0;
+
 /**
  * What a picture shows: a whole computer's screen (the Windows VM, a `vm:`
  * source) or one window (a Mac's, a PC's, the box's browser page).

@@ -79,6 +79,9 @@ const LONG_WRITES: Readonly<Record<string, number>> = {
   "work.office.filesSearch": LONG_TIMEOUT_MS,
   // A capture copies its files and may start a thread before it answers.
   "work.capture.file": LONG_TIMEOUT_MS,
+  // A wake answers once Windows is up (42 s on the owner's box in 1.0.382, past the read's 30 s): the keeper bounds it
+  // (a sleep to wait out, then 5 min for Windows), so its answer is the wake's own, success or its true cause.
+  "work.winvm.wake": 660_000,
 };
 
 /** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */

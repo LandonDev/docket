@@ -9,7 +9,9 @@ import { VM_COMPUTER, type VmPicture } from './picture'
  * work-winvm.md "Take over"): `computer.drive { computer: 'vm:windows' }`
  * through computer/drive.ts, which stops every thread's session on the VM
  * once he has the wheel. A machine asleep is woken first: Take over is one press
- * whatever its state. While he drives, the keeper keeps the machine awake,
+ * whatever its state, and it answers at once, since a wake outlasts a caller's
+ * deadline (42 s on his box, past a window's 30): he holds the wheel from the
+ * press, and the picture is his once Windows is up. While he drives, the keeper keeps the machine awake,
  * the lease refuses every thread's call, and his pointer and keys go down his
  * drive streams: the engine types them on the VM's X display, QEMU's window
  * hands them to the guest as a real keyboard and tablet. Hand back lets every
@@ -59,7 +61,10 @@ export function vmWheel(d: VmWheelDeps): ComputerDriveHook<VmDriveAnswer> {
       d.log?.(`winvm: the guest's clipboard was not ${what === 'save' ? 'kept' : 'put back'}: ${(err as Error).message}`)
     }
   }
+  /** he asked for the wheel and has not handed it back: a wake that ends gives it to him only then */
+  let wanted = false
   const handBack = async (): Promise<VmDriveAnswer> => {
+    wanted = false
     if (d.picture.driving()) {
       // every key and button he holds goes first, then the clipboard he may have filled
       d.picture.setDriving(false)
@@ -69,6 +74,21 @@ export function vmWheel(d: VmWheelDeps): ComputerDriveHook<VmDriveAnswer> {
     d.lease.ownerDrives(false)
     return { computer: VM_COMPUTER, driver: 'agent' }
   }
+  const hold = (keeper: Pick<Keeper, 'setDriving'>): void => {
+    if (wanted) return
+    wanted = true
+    d.lease.ownerDrives(true)
+    keeper.setDriving(true)
+  }
+  /** The picture his, on a machine awake. */
+  const takeAwake = async (keeper: Pick<Keeper, 'setDriving'>): Promise<VmDriveAnswer> => {
+    if (d.picture.windowless()) throw new Error(VM_NO_WINDOW)
+    if (d.picture.driving()) return { computer: VM_COMPUTER, driver: 'owner' }
+    hold(keeper)
+    d.picture.setDriving(true, () => void handBack().catch((err) => d.log?.(`winvm: hand back failed: ${String(err)}`)))
+    await keep('save')
+    return { computer: VM_COMPUTER, driver: 'owner' }
+  }
   return {
     // every thread's session on the VM: there is one machine, and he takes all of it
     holds: () => (threadId) => d.sessions().some((r) => r.threadId === threadId),
@@ -77,14 +97,21 @@ export function vmWheel(d: VmWheelDeps): ComputerDriveHook<VmDriveAnswer> {
       if (driver === 'agent') return handBack()
       const keeper = d.keeper()
       if (!keeper) throw new Error(WORK_OFF)
-      // asleep, going to sleep or waking: his one press wakes it, then takes over (a VM not set up says so)
-      if (keeper.state().state !== 'awake') await keeper.wake()
-      if (d.picture.windowless()) throw new Error(VM_NO_WINDOW)
-      if (d.picture.driving()) return { computer: VM_COMPUTER, driver: 'owner' }
-      d.lease.ownerDrives(true)
-      keeper.setDriving(true)
-      d.picture.setDriving(true, () => void handBack().catch((err) => d.log?.(`winvm: hand back failed: ${String(err)}`)))
-      await keep('save')
+      const state = keeper.state().state
+      // not set up: the keeper says so at once
+      if (state === 'none') await keeper.wake()
+      if (state === 'awake') return takeAwake(keeper)
+      // asleep, going to sleep or waking: he holds the wheel now, so no thread takes the machine as it wakes, and the
+      // picture is his once it is awake (a Hand back meanwhile lets it go); a failed wake says its cause in the state
+      hold(keeper)
+      void keeper
+        .wake()
+        .then(() => (wanted ? takeAwake(keeper) : undefined))
+        .catch(async (err) => {
+          d.log?.(`winvm: Take over after the wake failed: ${(err as Error).message}`)
+          await handBack()
+        })
+        .catch((err) => d.log?.(`winvm: hand back failed: ${String(err)}`))
       return { computer: VM_COMPUTER, driver: 'owner' }
     }
   }

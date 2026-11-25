@@ -9,6 +9,7 @@ import { ComputersPage, ComputersView, LOST_TRIES, lostPlate, pictureFrame, Rest
 import fixtures from "./ComputersView.fixtures";
 import type { BarReading } from "./threads/computer/ComputerBar";
 import { tile } from "./threads/computer/FullWindow.fixtures";
+import { restingVmTiles } from "../lib/winvmWake";
 
 const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[], ended: null as string | null, retried: 0, readings: {} as Record<string, BarReading> }));
 vi.mock("../lib/computers", async (original) => ({ ...(await original<typeof import("../lib/computers")>()), useComputers: () => h.tiles }));
@@ -294,6 +295,19 @@ describe("the Computers page", () => {
 });
 
 describe("the Windows VM in every state", () => {
+  it("lays its stage out in the page's measured room when its tile comes after the first paint (1.0.382's sliver)", async () => {
+    // the body measures 1200 by 800; its VM tile arrives from the keeper's state, after the empty page painted
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+    vi.spyOn(registry, "link").mockReturnValue({ request: () => new Promise(() => undefined) } as never);
+    const page = (tiles: ComputerTile[]) => <ComputersPage tiles={tiles} onOpenSession={() => undefined} />;
+    const view = render(page([]));
+    view.rerender(page(restingVmTiles({ box: { state: "asleep", cannot: null, error: null } }, [], () => "The box")));
+    await act(async () => {});
+    // 16px in on every side, in the VM's 16:10: 1168 wide, never 0
+    expect(document.querySelector<HTMLElement>('[data-stage] [data-slot="computer-picture-room"]')!.style.width).toBe("1168px");
+  });
+
   const view = (): React.ReactElement => <ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />;
   const state = (s: string, cannot: string | null = null) => ({ state: s, step: null, error: null, cannot, sleepAfter: "30m", since: 1 });
   function host(answer: () => unknown) {

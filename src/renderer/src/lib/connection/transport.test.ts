@@ -216,6 +216,8 @@ describe("Transport", () => {
     expect(requestTimeoutMs("providers.update")).toBe(660_000);
     expect(requestTimeoutMs("session.move")).toBe(600_000);
     expect(requestTimeoutMs("project.mergeInto")).toBe(120_000);
+    // a wake of the Windows VM is the keeper's to bound: his took 42 s
+    expect(requestTimeoutMs("work.winvm.wake")).toBe(660_000);
     const { t } = await opened();
     const p = t.request("git.log").catch((e: unknown) => e);
     vi.advanceTimersByTime(119_999);
