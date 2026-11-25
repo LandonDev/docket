@@ -595,6 +595,23 @@ describe("LifeOS left out, the host saying why", () => {
     expect(lines(container)[0]!.querySelector("button")).toBeNull();
   });
 
+  /** Council round 11 (the walk): back on connected, the line said its old state until the week was read again. */
+  it("draws a bone in the line's place while that computer's week is read again, never the old state", async () => {
+    names();
+    setLifeosStatus("env-box", { lifeos: { state: "signed-out" }, keys: [] });
+    let done!: () => void;
+    const onRetryHost = vi.fn(() => new Promise<void>((resolve) => (done = resolve)));
+    const { container } = draw("lifeos-signed-out", { onRetryHost });
+    expect(text(lines(container)[0]!)).toContain("Not signed in to LifeOS on the box");
+    act(() => setLifeosStatus("env-box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] }));
+    expect(onRetryHost).toHaveBeenCalledWith("env-box");
+    expect(lines(container).map((l) => l.getAttribute("data-review-lifeos"))).toEqual(["again"]);
+    expect(container.textContent).not.toContain("Not signed in to LifeOS");
+    await act(async () => done());
+    // The page's week, not changed in this test, says the state it holds again.
+    expect(lines(container)[0]!.getAttribute("data-review-lifeos")).toBe("signed-out");
+  });
+
   /** Council round 10 (Sol rest 3): an older host's stateless reply hid the current host's named line. */
   it("keeps a current host's named line beside an older host's plain line, which says the consequence", () => {
     names();
