@@ -3023,7 +3023,8 @@ Around the canvas:
     over the work takes the focus and the work under it is inert;
     a press on the work it covers shuts it, Enter on it opens the task,
     and the page's keys wait until it shuts;
-    shut, the focus goes back to its row. Its
+    shut, the focus goes back to its row, but New task and Rename in the
+    header shut it first and take the focus to their field. Its
     sub-tasks are flat rows, their key
     in hand, "1 of 3" in muted numbers on a task with sub-tasks and the
     thread marks at their end, as on the tree's rows. A task's page names its project once, in the way
