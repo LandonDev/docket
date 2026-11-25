@@ -17,7 +17,7 @@ import { configureVmCopy, configureVmPaste } from './picture'
 import { vmScreen } from './window'
 import { ensurePuts } from './files'
 import { HELPER_PORT, HelperDoor } from './helperDoor'
-import { rigConfig, rigPaths } from './machine/config'
+import { rigConfig, rigPaths, throwawayHost } from './machine/config'
 import { TC_OFFICE_CS } from '../office/com/source'
 import { uploadsOwed } from './owed'
 import { stillRefusal, vmStill } from './still'
@@ -99,7 +99,10 @@ export const hashFile = (path: string): string => createHash('sha256').update(re
 export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoints'> {
   // QEMU's window on a display of its own, where its tools are installed (window.ts)
   const screen = vmScreen(ctx.dataDir, (line) => ctx.log(line), () => screenSize(screenSetting(ctx.db)))
-  const machine = new StandingMachine('standing', process.env, screen, (line) => ctx.log(line))
+  // an isolated proof instance's machine may be a throwaway (config.ts); his never is
+  const scratch = throwawayHost()
+  if (scratch.refused) ctx.log(`winvm: WINVM_THROWAWAY refused: ${scratch.refused}`)
+  const machine = new StandingMachine('standing', process.env, screen, (line) => ctx.log(line), scratch.throwaway ? { throwaway: true } : {})
   return {
     machine,
     guest: new SshGuest(machine.c, machine.p),

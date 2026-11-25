@@ -28,6 +28,7 @@ import { pictureToolsAt, vmEngineTune, VmScreen } from '../../src/main/server/wo
 import type { EngineTune } from '../../src/main/server/work/browser/box/engine'
 import type { VmWindow } from '../../src/main/server/work/winvm/machine/qemu'
 import { liveAppTrouble, WATCH_MS, watchTick, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
+import { liveAppReading } from './liveApp'
 
 /** The owner's machines' folder: the base image and the keys are read from it, never written. */
 const SHARED = '/srv/agents/win-vm'
@@ -85,14 +86,7 @@ export class BenchViewer implements ViewerSocket {
   }
 }
 
-/** One reading of the live app (`tc-local admission.get`, in ms; null when it did not answer) and the disk's pressure. */
-export function liveAppReading(): LiveReading {
-  const t0 = performance.now()
-  const r = Bun.spawnSync(['tc-local', 'admission.get', '{}'], { stdout: 'ignore', stderr: 'ignore', timeout: 5000 })
-  const ms = performance.now() - t0
-  const some = /^some avg10=([\d.]+)/m.exec(readFileSync('/proc/pressure/io', 'utf8'))
-  return { appMs: r.exitCode === 0 ? ms : null, ioSome: some ? Number(some[1]) : 0 }
-}
+export { liveAppReading }
 
 export interface Scratch {
   machine: StandingMachine

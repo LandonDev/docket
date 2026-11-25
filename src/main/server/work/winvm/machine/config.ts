@@ -197,6 +197,17 @@ export function scratchMachineRefusal(env: NodeJS.ProcessEnv = process.env, uid 
   return null
 }
 
+/**
+ * `WINVM_THROWAWAY=1`: an isolated instance's keeper runs its standing machine as a throwaway (qemu.ts), for a
+ * proof the live app must never feel (scripts/e2e-vm-screen-mac.ts). Granted only on a scratch machine whose root
+ * is in memory, under /dev/shm; anywhere else the switch is refused and the machine is the plain one.
+ */
+export function throwawayHost(env: NodeJS.ProcessEnv = process.env, uid = process.getuid?.() ?? 0, real: (path: string) => string = realOrSelf): { throwaway: boolean; refused: string | null } {
+  if (env.WINVM_THROWAWAY !== '1') return { throwaway: false, refused: null }
+  const why = scratchMachineRefusal(env, uid, real) ?? (real(resolve(env.WINVM_DIR!)).startsWith('/dev/shm/') ? null : `WINVM_DIR ${env.WINVM_DIR} is not under /dev/shm`)
+  return why ? { throwaway: false, refused: why } : { throwaway: true, refused: null }
+}
+
 function realOrSelf(path: string): string {
   try {
     return realpathSync(path)

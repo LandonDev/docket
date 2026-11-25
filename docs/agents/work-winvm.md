@@ -550,7 +550,24 @@ kept the NVMe 84% busy at 1.6 MB/s and the server's loop stopped for 82 s. A
 throwaway rig takes `WINVM_DISK_CACHE=unsafe` (guest flushes dropped; refused
 unless the root, TPM folder and port are scratch, `diskCacheOf` in
 machine/config.ts). The standing machine keeps the default: it holds his
-sign-ins. Its wakes still cost the box 1 to 2 s hitches for a quarter hour;
+sign-ins. An isolated proof instance's keeper may run its standing machine as
+a throwaway (qemu.ts `throwaway`: `cache=unsafe`, QEMU under `ionice -c 3 nice
+-n 19`) with `WINVM_THROWAWAY=1`, which the host grants only when
+`scratchMachineRefusal` passes and the root is under /dev/shm (`throwawayHost`
+in machine/config.ts, read in index.ts `realKeeperDeps`); anywhere else it logs
+the refusal and runs the plain machine.
+
+`scripts/e2e-vm-screen-mac.ts` is M8's box side: one headless instance of the
+built tree on such a machine (its own /tmp userData and loopback listener
+port), the keeper's own Set up of a fresh disk (virtio, `HWCursor=1`), one
+pairing code for a desktop key printed as one JSON line for a Mac's `ssh -L`,
+then a hold until `/tmp/vm-screen-mac/DONE` or 30 minutes. A watch times
+`tc-local admission.get` and reads /proc/pressure/io every 5 s (`watchTick`)
+and pulls everything down past the lines; the end deletes the disk, the TPM
+folder and the userData. It refuses to start over 38 GiB of `anon` in
+agents.slice or beside another scratch machine. The driver comes from the
+box's tools or a cache installed once ahead (`--data /tmp/vm-screen-mac-tools
+--only virtio-win`), so no run downloads its image. Its wakes still cost the box 1 to 2 s hitches for a quarter hour;
 the recommended `cache=none,aio=native`, with a restore point before its first
 start, is written in .temp-code/plans/landed/F-box-slow/root-change-disk.md and
 not made.
