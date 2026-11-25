@@ -10,16 +10,17 @@ import type { LiveState } from "./layer";
  * - to Edit here: the guest unloads first (Word may hold it while saving: the layer waits, then asks), and the host
  *   is told how much he typed, so it waits for OneDrive to bring Word's edits down before it opens the file. When
  *   nothing proves they came down the host keeps the tab live, and the guest comes back. Switch Anyway (Word let go
- *   mid-save) counts as typing and says `forced`: the host takes only a save of his, or keeps the seat.
+ *   mid-save) counts as typing and says `forced`: the host takes only a save of his, or keeps the seat. A save
+ *   under another name asks "Is Dana Lee you?": That’s Me tells the host the name is his (`mine`), and it takes it.
  * The line says each wait from the press: "Opening in Word…" (or "Sending your changes first…") to Live; "Leaving
  * Word…", then "Opening it here…" to Edit here.
  */
 
 export type LiveMode = "here" | "live";
-export type LiveSetAnswer = { is: "done" } | { is: "ask"; why: "changed" | "gone" | "away" | "refused" | "word"; words: string };
+export type LiveSetAnswer = { is: "done" } | { is: "ask"; why: "changed" | "gone" | "away" | "refused" | "word"; words: string } | { is: "ask"; why: "other"; name: string; words: string };
 
 export interface SwitchDeps {
-  set(params: { mode: LiveMode; typed?: number; quiet?: number; forced?: true; choice?: "keep-both" }): Promise<LiveSetAnswer>;
+  set(params: { mode: LiveMode; typed?: number; quiet?: number; forced?: true; mine?: string; choice?: "keep-both" }): Promise<LiveSetAnswer>;
   /** What the tab's kind still holds reaches the host (canvas/flush.ts `flushedItem`); false when its send did not land. */
   flush(): Promise<boolean>;
   /** The guest unloads; false when he chose to stay (Word still saving), "forced" when he let Word go mid-save. */
@@ -65,7 +66,12 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
       const told = forced ? Math.max(typed, 1) : typed;
       let done = false;
       try {
-        done = (await deps.set({ mode: "here", typed: told, ...(quiet !== null ? { quiet: quiet + (Date.now() - asked) } : {}), ...(forced ? { forced: true as const } : {}) })).is === "done";
+        const params = { mode: "here" as const, typed: told, ...(quiet !== null ? { quiet: quiet + (Date.now() - asked) } : {}), ...(forced ? { forced: true as const } : {}) };
+        let answer = await deps.set(params);
+        // A save after his last key under another name: it may be his, under the name Office keeps for him.
+        if (answer.is === "ask" && answer.why === "other" && (await deps.confirm({ title: `Is ${answer.name} you?`, body: answer.words, action: "That’s Me" })))
+          answer = await deps.set({ ...params, mine: answer.name });
+        done = answer.is === "done";
       } finally {
         if (!done) deps.back();
       }

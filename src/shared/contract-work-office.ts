@@ -230,8 +230,10 @@ export interface OfficeLiveOf {
  * holds changes that have not reached its file (files/copies.ts); asked again with `choice: 'keep-both'`, Keep Both
  * runs first (over `away` there is nothing to keep beside: the copy waits and is sent when its computer answers).
  * `word`: the document a Word file became holds edits the Word file has not; Save to Teams as Word, then ask again.
+ * `other`: Edit here after typing found a save after his last key that the file names as `name`'s; the tab stays live.
+ * If that name is his, asked again with `mine: name` (That's Me): the host keeps it as his and takes that save.
  */
-export type OfficeLiveSet = { is: 'done' } | { is: 'ask'; why: 'changed' | 'gone' | 'away' | 'refused' | 'word'; words: string }
+export type OfficeLiveSet = { is: 'done' } | { is: 'ask'; why: 'changed' | 'gone' | 'away' | 'refused' | 'word'; words: string } | { is: 'ask'; why: 'other'; name: string; words: string }
 /** A shared Office file's web address and the app it opens in, for the phone's Open in Word; both null for any other file. */
 export interface OfficeLiveAddress {
   address: string | null
@@ -296,7 +298,7 @@ export const OfficeRequestSchemas = [
    * it proves nothing; only his own does. To Live waits for OneDrive to upload a send of ours first. His press
    * alone: a thread is refused.
    */
-  request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), quiet: z.number().int().min(0).max(1e10).optional(), forced: z.literal(true).optional(), choice: z.literal('keep-both').optional() })),
+  request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), quiet: z.number().int().min(0).max(1e10).optional(), forced: z.literal(true).optional(), mine: z.string().max(200).optional(), choice: z.literal('keep-both').optional() })),
   /** A Files entry's web address (`ref` its `{at: 'file'}` source), without a tab: the phone's Open in Word. → OfficeLiveAddress */
   request('work.office.live.address', z.object({ workspaceId: z.string().max(200), ref: CanvasSourceSchema })),
   request('work.office.live.libraryDefault', LiveLibrary),

@@ -513,7 +513,7 @@ describe('Live → Edit here', () => {
     // Dana saved after his last key, before Word had sent his typing up: only her edit is in it.
     writeFileSync(path, savedBy('Dana Lee', 'her edit'))
     shiftMtime(path, -500)
-    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx after your last key, and nothing shows your typing in that save, so it stays live.')
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toEqual({ is: 'ask', why: 'other', name: 'Dana Lee', words: 'Dana Lee saved Plan.docx after your last key, and nothing shows your typing in that save, so it stays live until a save of yours comes down.' })
     expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
   })
 
@@ -562,22 +562,20 @@ describe('Live → Edit here', () => {
     Object.assign(liveTiming, { version: 60, look: 5 })
     writeFileSync(path, savedBy('Dana Lee', 'her edit'))
     shiftMtime(path, -500)
-    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx')
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
     await new Promise((settle) => setTimeout(settle, 20))
-    await expect(set(tabId, { mode: 'here' })).rejects.toThrow('Dana Lee saved Plan.docx')
+    expect(await set(tabId, { mode: 'here' })).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
   })
 
   it("after Switch Anyway, never takes a coauthor's save made after the press: Word did not let go with his words saved", async () => {
     const { path, tabId } = await liveHere()
     hisName('Landon')
     Object.assign(liveTiming, { version: 150, look: 5 })
-    let failed: unknown = null
-    const switching = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true }).catch((err: unknown) => (failed = err))
+    const switching = set(tabId, { mode: 'here', typed: 1, quiet: 1000, forced: true })
     await new Promise((settle) => setTimeout(settle, 30))
     writeFileSync(path, savedBy('Dana Lee', 'her edit'))
     shiftMtime(path, 1000)
-    await switching
-    expect(String(failed)).toContain('Dana Lee saved Plan.docx')
+    expect(await switching).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
     expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
   })
 
@@ -599,7 +597,7 @@ describe('Live → Edit here', () => {
     Object.assign(liveTiming, { version: 80, look: 5 })
     writeFileSync(path, savedBy('Dana Lee', 'her edit'))
     shiftMtime(path, -500)
-    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx after your last key')
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
   })
 
   /** A dummy Word file that names only who made it, and no one who saved it since. */
@@ -636,6 +634,37 @@ describe('Live → Edit here', () => {
     expect(sameName('landon johnson', 'Johnson, Landon')).toBe(true)
     expect(sameName('Landon', 'Landonia Smith')).toBe(false)
     expect(sameName('Dana Lee', 'Landon')).toBe(false)
+    // His first name and his last name or its initial.
+    expect(sameName('Landon Hale', 'Landon H.')).toBe(true)
+    expect(sameName('L. Hale', 'Landon Hale')).toBe(false)
+    expect(sameName('Landon Hale', 'Lana H.')).toBe(false)
+    expect(sameName('Landon Hale', 'Landon K.')).toBe(false)
+  })
+
+  it("after typing, takes a save under a name he says is his, then and from then on", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon Hale')
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    writeFileSync(path, savedBy('lhale', 'his typing'))
+    shiftMtime(path, -500)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toMatchObject({ is: 'ask', why: 'other', name: 'lhale' })
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    // That's Me: the same press again, naming the save as his.
+    expect(await set(tabId, { mode: 'here', mine: 'lhale' })).toEqual({ is: 'done' })
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    writeFileSync(path, savedBy('lhale', 'his typing, and more'))
+    shiftMtime(path, -500)
+    expect(await set(tabId, { mode: 'here', typed: 3, quiet: 1000 })).toEqual({ is: 'done' })
+  })
+
+  it('takes a name as his only from his press', async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon Hale')
+    Object.assign(liveTiming, { version: 60, look: 5 })
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -500)
+    await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000, mine: 'Dana Lee' }, thread())).rejects.toThrow()
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
   })
 
   it('opens a far file as its copy again', async () => {

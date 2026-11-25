@@ -155,6 +155,19 @@ describe("switching to Edit here", () => {
     expect(done.d.back).not.toHaveBeenCalled();
   });
 
+  it("asks whether a save under another name is his, and on That’s Me has the host take it", async () => {
+    const other = { is: "ask" as const, why: "other" as const, name: "lhale", words: "lhale saved Plan.docx after your last key." };
+    const { d } = deps([other, { is: "done" }], { typed: vi.fn(async () => 4) });
+    expect(await switchTo("here", FROM, d)).toBe(true);
+    expect(d.confirm).toHaveBeenCalledWith({ title: "Is lhale you?", body: other.words, action: "That’s Me" });
+    expect(d.set).toHaveBeenLastCalledWith({ mode: "here", typed: 4, mine: "lhale" });
+    expect(d.back).not.toHaveBeenCalled();
+    const no = deps([other], { typed: vi.fn(async () => 4), confirm: vi.fn(async () => false) });
+    expect(await switchTo("here", FROM, no.d)).toBe(false);
+    expect(no.d.set).toHaveBeenCalledTimes(1);
+    expect(no.d.back).toHaveBeenCalledTimes(1);
+  });
+
   it("stays live when he keeps Word open while it saves", async () => {
     const { d } = deps([], { leave: vi.fn(async () => false) });
     expect(await switchTo("here", FROM, d)).toBe(false);

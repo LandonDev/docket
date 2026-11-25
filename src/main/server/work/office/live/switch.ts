@@ -229,10 +229,12 @@ async function versionMoved(
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
   const after = keys.length ? Math.max(...keys) : !told && ownClock ? since : null
   const owner = told && after !== null ? ownerName(ctx) : null
+  // The names Office saved under that he said were his (That's Me), beside his name in Work.
+  const mine = owner ? myNames(ctx.db) : []
   let other: string | undefined
   /** Whether the save is his, or came after the press of an unload Word allowed; a coauthor's else is kept as the answer's word. */
   const his = (v: { changed: number; by?: string }): boolean => {
-    if (!owner || !v.by || sameName(v.by, owner) || (!o.forced && v.changed >= first!.now!)) return true
+    if (!owner || !v.by || sameName(v.by, owner) || mine.includes(v.by.trim().toLowerCase()) || (!o.forced && v.changed >= first!.now!)) return true
     other = v.by
     return false
   }
@@ -255,13 +257,37 @@ async function versionMoved(
 const refused = new Map<string, { last: number | null; forced: boolean }>()
 const refusedKey = (workspaceId: string, key: string): string => `${workspaceId}\t${key}`
 
-/** One person by two names: Work's for him and the one Office saved under ("Landon" and "Landon Johnson"), by whole words. */
+/**
+ * One person by two names: Work's for him and the one Office saved under, by whole words ("Landon" and "Landon
+ * Johnson"), or by the first name and the last name or its initial ("Landon Hale" and "Landon H.").
+ */
 export function sameName(a: string, b: string): boolean {
   const words = (n: string): string[] => n.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
   const [x, y] = [words(a), words(b)]
   if (!x.length || !y.length) return false
   const [short, long] = x.length <= y.length ? [x, y] : [y, x]
-  return short.every((w) => long.includes(w))
+  if (short.every((w) => long.includes(w))) return true
+  const [xl, yl] = [x[x.length - 1]!, y[y.length - 1]!]
+  return x.length > 1 && y.length > 1 && x[0]!.length > 1 && x[0] === y[0] && (xl === yl || (xl.length === 1 && yl.startsWith(xl)) || (yl.length === 1 && xl.startsWith(yl)))
+}
+
+const MINE = 'mine'
+/** The names Office saved under that he said were his, lower case (`work_office_files`, beside the library defaults). */
+function myNames(db: WorkCtx['db']): string[] {
+  try {
+    const row = db.prepare('SELECT value FROM work_office_files WHERE key = ?').get(MINE) as { value?: string } | undefined
+    const names: unknown = JSON.parse(row?.value ?? '[]')
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : []
+  } catch {
+    return []
+  }
+}
+/** His press on That's Me: a name Office saved under is his, for this and every later Edit here. The newest 20 are kept. */
+function addMyName(db: WorkCtx['db'], name: string): void {
+  const named = name.trim().toLowerCase()
+  if (!named) return
+  const names = [named, ...myNames(db).filter((n) => n !== named)].slice(0, 20)
+  db.prepare('INSERT OR REPLACE INTO work_office_files (key, value) VALUES (?, ?)').run(MINE, JSON.stringify(names))
 }
 
 /**
@@ -279,25 +305,26 @@ async function uploaded(workspaceId: string, ref: { host: string; path: string }
 }
 
 /** `work.office.live.set`: his press on the tab's mode. */
-export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; quiet?: number; forced?: boolean; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
+export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; quiet?: number; forced?: boolean; mine?: string; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
   if (by.kind === 'model') throw new Error('A Files tab is switched from his window.')
   const { tab, item, ref } = tabFile(ctx, by, p.workspaceId, p.tabId)
   if (tab.kind !== 'file' || !item || !ref || !appOf(ref.path)) throw new Error('That tab shows no shared Office file.')
   const live = isLiveSource(item.source)
   const kept = refusedKey(p.workspaceId, tab.key ?? '')
   if (p.mode === 'here') {
+    if (p.mine) addMyName(ctx.db, p.mine)
     if (live) {
       const before = refused.get(kept)
       const forced = !!p.forced || !!before?.forced
       const asks = { ...(p.quiet !== undefined ? { quiet: p.quiet } : {}), ...(before ? { last: before.last } : {}), forced }
       const moved = p.typed || before ? await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, asks, signal) : null
-      if (moved && !moved.moved) refused.set(kept, { last: moved.last, forced })
-      if (moved && !moved.moved)
-        throw new Error(
-          moved.other
-            ? `${moved.other} saved ${nameOf(ref.path)} after your last key, and nothing shows your typing in that save, so it stays live. Try again in a moment.`
-            : `What you typed in ${nameOf(ref.path)} has not come down from OneDrive yet, so it stays live. Try again in a moment.`
-        )
+      if (moved && !moved.moved) {
+        refused.set(kept, { last: moved.last, forced })
+        // Someone else's save by its name: asked, as it may be his under a name Office keeps for him (That's Me, `mine`).
+        if (moved.other)
+          return { is: 'ask', why: 'other', name: moved.other, words: `${moved.other} saved ${nameOf(ref.path)} after your last key, and nothing shows your typing in that save, so it stays live until a save of yours comes down.` }
+        throw new Error(`What you typed in ${nameOf(ref.path)} has not come down from OneDrive yet, so it stays live. Try again in a moment.`)
+      }
       await reseat(ctx, p.workspaceId, tab.id, by, signal)
       refused.delete(kept)
     }
