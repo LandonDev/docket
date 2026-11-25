@@ -3749,7 +3749,7 @@ the room sees, and the presenter's view. One state moves both.
   | Black, and back | B or a full stop; a next or previous press also brings the slide back, and does nothing more |
   | End the show | Escape (which closes an open picker first), End show, End on the bar, closing either window |
   | Notes larger, smaller | + and − |
-  | Start, from the deck | ⇧⌘↩ from the start, ⌘↩ from this slide, ⌥⌘↩ presenter view, F5 from the start (⇧F5 from this slide) |
+  | Start, from the deck | ⇧⌘↩ from the start, ⌘↩ from this slide, ⌥⌘↩ presenter view, F5 from the start (⇧F5 from this slide); never while the keyboard is in a field (the notes, the typing box, a sheet's field) |
 
   A key held with ⌘, Ctrl or Alt is the window's own.
 - **Builds, transitions and the clock.** A press that shows a build fades

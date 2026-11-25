@@ -509,6 +509,15 @@ describe("the slides kind", () => {
     }
     // Return alone is the deck's, not a show's.
     expect(fireEvent.keyDown(stage, { key: "Enter" })).toBe(true);
+    // A field's keys are its own: F5 or ⌘↩ typed in a field in the deck (the notes, a sheet's field) start nothing.
+    for (const tag of ["textarea", "input"]) {
+      const field = stage.appendChild(document.createElement(tag));
+      expect(fireEvent.keyDown(field, { key: "F5" })).toBe(true);
+      expect(fireEvent.keyDown(field, { key: "Enter", metaKey: true })).toBe(true);
+      field.remove();
+    }
+    await new Promise((done) => setTimeout(done, 20));
+    expect(shows.asks).toHaveLength(keys.length);
     expect(shows.asks.map((a) => [a.from, a.mode])).toEqual([
       [2, "full"],
       ["start", "full"],

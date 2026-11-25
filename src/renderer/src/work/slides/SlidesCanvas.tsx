@@ -382,13 +382,15 @@ export function SlidesBody({
       onKeyDown={(event) => {
         // The keys that start a show, while the keyboard is in the deck (PowerPoint's own, and a clicker's F5); in the
         // typing box ⌘↩ is the box's, and a show started from it takes his words first.
-        const ask = canPresent(view) ? presentKey(event) : null;
+        // A field's keys are its own: F5 or ⌘↩ typed in the notes, a box or a sheet's field never starts the show.
+        const inField = !!(event.target as Element).closest?.("input, textarea, [contenteditable=true], [data-slide-typing]");
+        const ask = canPresent(view) && !inField ? presentKey(event) : null;
         if (ask) {
           event.preventDefault();
           presentFrom(ask);
           return;
         }
-        if (!view.hand || (event.target as Element).closest?.("input, textarea, [contenteditable=true], [data-slide-typing]")) return;
+        if (!view.hand || inField) return;
         // His own edits to the file: the platform's undo and redo keys.
         const z = event.key.toLowerCase() === "z";
         if (modKey(event) && !event.altKey && (z || (!IS_MAC && event.key.toLowerCase() === "y" && !event.shiftKey))) {
