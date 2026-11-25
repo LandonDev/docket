@@ -832,6 +832,13 @@ function Main({
             onPointerDown={(event) => {
               if (event.target === event.currentTarget) manip.current?.down(event);
             }}
+            // The pointer says what a press would do: move over a shape he can move, the way of a handle, grab on the
+            // turn handle (grabbing while it turns). Set on the element itself: it changes many times a second.
+            onPointerMove={(event) => {
+              const el = event.currentTarget;
+              const cursor = event.target === el ? (manip.current?.cursor(event) ?? "") : "";
+              if (el.style.cursor !== cursor) el.style.cursor = cursor;
+            }}
             // A press picks the topmost shape under it, by its own corners (a turned shape's box is wider than it
             // is); a press on the bare slide lets the selection go. The press that ends a drag, or lands on a handle, does neither.
             onClick={(event) => {

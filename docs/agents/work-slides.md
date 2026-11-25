@@ -1464,7 +1464,13 @@ once as a toast; `saving` and `saved` on the save line follow it.
   another revision (`Landing`, as the typing box waits), or goes at once
   when the edit fails. Nudges gather for 400ms into one edit. A delete lays
   the slide's colour from just outside the shape's edges (`groundAt` with a
-  negative inset) over its place until the new picture lands.
+  negative inset) over its place until the new picture lands. The layer's
+  cursor answers what a press there would do (`ManipulateHandle.cursor`,
+  the same aim as `down`): `move`, a handle's way (`resizeCursor`: the
+  handle's own direction laid on the shape's drawn axes, to the nearest
+  eighth of a turn, so it turns and mirrors with the shape), `grab` on the
+  turn handle and `grabbing` while a turn is live. It is set on the element
+  on each pointer move, never through React.
 - **The row** (`edit/DeckRow.tsx`) adds the layout select (`LayoutSelect`:
   `layoutsFor` offers the slide's own layout and each whose placeholders
   hold every one of its layout's by `idx` and `kind`, the host's own test,

@@ -3,12 +3,13 @@
  * His hand on the stage, in the real canvas pane (docs/agents/work-slides.md
  * "Typing on a slide"): an empty placeholder's prompt and the press that types
  * in it, a double-click that opens the box, and the box drawn at the shape's
- * own size.
+ * own size, and the pointer's cue for moving, sizing and turning a shape.
  */
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
 import { openMenus } from "../../chrome/menuRows";
+import { resizeCursor } from "./edit/Manipulate";
 import { harness, handView, TITLE } from "./stage.testkit";
 import { slide, textShape } from "./testkit";
 
@@ -120,5 +121,54 @@ describe("the typing box's size", () => {
     const growing = (await t.found("[data-slide-typing]")) as HTMLElement;
     await waitFor(() => expect(growing.style.minHeight).not.toBe(""));
     expect(growing.style.height).toBe("");
+  });
+});
+
+describe("the pointer's cue", () => {
+  it("names each handle's way, turned and mirrored with the shape", () => {
+    const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((i) => resizeCursor(square, i))).toEqual(["nwse-resize", "ns-resize", "nesw-resize", "ew-resize", "nwse-resize", "ns-resize", "nesw-resize", "ew-resize"]);
+    // A wide shape's corner still points along its diagonal's way in its own axes.
+    const wide = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 10 }, { x: 0, y: 10 }];
+    expect(resizeCursor(wide, 4)).toBe("nwse-resize");
+    // Turned a quarter: its top edge stands upright, so the top handle sizes across.
+    const turned = [{ x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }];
+    expect(resizeCursor(turned, 1)).toBe("ew-resize");
+    // Turned an eighth: the side handles take the corners' cursors.
+    const r = Math.SQRT1_2 * 10;
+    const eighth = [{ x: 0, y: 0 }, { x: r, y: r }, { x: 0, y: 2 * r }, { x: -r, y: r }];
+    expect(resizeCursor(eighth, 3)).toBe("nwse-resize");
+    // Mirrored across: its own top-left handle is drawn at the top right, and points that way.
+    const mirrored = [{ x: 10, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 10 }];
+    expect(resizeCursor(mirrored, 0)).toBe("nesw-resize");
+    expect(resizeCursor(mirrored, 2)).toBe("nwse-resize");
+  });
+
+  it("is move over a shape he can move, a handle's way on a handle, grab on the turn handle and grabbing while it turns", async () => {
+    const { layer, press, drawn } = await t.stage();
+    const at = (x: number, y: number): string => {
+      fireEvent.pointerMove(layer, { pointerId: 1, clientX: x, clientY: y });
+      return layer.style.cursor;
+    };
+    // The box (0.5 to 0.7 of the slide) can be moved before it is picked; the bare slide has no cue.
+    expect(at(600, 300)).toBe("move");
+    expect(at(950, 450)).toBe("");
+    press(0.6, 0.6);
+    expect(at(700, 350)).toBe("nwse-resize");
+    expect(at(600, 250)).toBe("ns-resize");
+    expect(at(500, 300)).toBe("ew-resize");
+    const up = 22 * (500 / drawn().h);
+    expect(at(600, 250 - up)).toBe("grab");
+    fireEvent.pointerDown(layer, { button: 0, pointerId: 1, clientX: 600, clientY: 250 - up });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 700, clientY: 200 });
+    expect(at(700, 200)).toBe("grabbing");
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 700, clientY: 200 });
+    expect(at(600, 300)).toBe("move");
+  });
+
+  it("gives no cue where his hand cannot move a shape: a deck he cannot edit", async () => {
+    const { layer } = await t.stage(handView({ hand: undefined }));
+    fireEvent.pointerMove(layer, { pointerId: 1, clientX: 600, clientY: 300 });
+    expect(layer.style.cursor).toBe("");
   });
 });

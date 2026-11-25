@@ -69,6 +69,28 @@ export interface ManipulateHandle {
   dragged(): boolean;
   /** Whether a drag or a run of nudges is live: Escape is its own then. */
   live(): boolean;
+  /** The pointer's cue at a point of the layer: what a press there would do, or what the drag under way does. */
+  cursor(event: { clientX: number; clientY: number; currentTarget: EventTarget }): string;
+}
+
+/** A resize cursor for each way, from across to down-left: a handle's way as drawn, to the nearest eighth of a turn. */
+const RESIZE = ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const;
+
+/**
+ * The resize cursor for a handle (clockwise from the top-left) of a shape drawn on `corners`: the way the handle
+ * points from the shape's middle in its own axes, laid on its drawn axes, so a turned or mirrored shape turns its
+ * cursors with it.
+ */
+export function resizeCursor(corners: readonly Pt[], handle: number): string {
+  const [sx, sy] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]][handle] ?? [0, 0];
+  const unit = (a: Pt, b: Pt): Pt => {
+    const n = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.x - a.x) / n, y: (b.y - a.y) / n };
+  };
+  const across = unit(corners[0], corners[1]);
+  const down = unit(corners[0], corners[3]);
+  const angle = (Math.atan2(sx * across.y + sy * down.y, sx * across.x + sy * down.x) * 180) / Math.PI;
+  return RESIZE[((Math.round(angle / 45) % 4) + 4) % 4];
 }
 
 /** The affine that lays a box `w0` by `h0` (its own top-left at 0, 0) on a quad's corners, in stage pixels: a CSS matrix. */
@@ -230,7 +252,32 @@ export function Manipulate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** What a press at a client point would do: on the picked shape its turn handle, a handle, or its body; else the shape under it, moved. */
+  const aim = (rect: DOMRect, event: { clientX: number; clientY: number }): { mode: Mode | null; shape: DeckShape | undefined } => {
+    const at = { x: ((event.clientX - rect.left) / rect.width) * w, y: ((event.clientY - rect.top) / rect.height) * h };
+    if (picked && canMove(picked)) {
+      const sel = selectionOf(picked.quad, w, h);
+      const near = (p: Pt, r: number): boolean => Math.hypot(p.x - at.x, p.y - at.y) <= r;
+      if (turnable(picked) && near(sel.rotate, ROTATE_HANDLE / 2 + 4)) return { mode: { kind: "turn" }, shape: picked };
+      const handle = sel.handles.findIndex((p) => near(p, Math.max(HANDLE_HIT, HANDLE)));
+      if (handle >= 0) return { mode: { kind: "resize", handle }, shape: picked };
+      if (inQuad(picked.quad, at.x / w, at.y / h)) return { mode: { kind: "move" }, shape: picked };
+    }
+    const shape = hit(shapes, at.x / w, at.y / h) ?? undefined;
+    return { mode: shape ? { kind: "move" } : null, shape };
+  };
+  const cursorOf = (mode: Mode, shape: Movable, dragging: boolean): string =>
+    mode.kind === "turn" ? (dragging ? "grabbing" : "grab") : mode.kind === "resize" ? resizeCursor(selectionOf(shape.quad, w, h).corners, mode.handle) : mode.kind === "move" ? "move" : "";
+
   useImperativeHandle(ref, () => ({
+    cursor(event) {
+      const now = liveRef.current;
+      if (now) return cursorOf(now.mode, now.shape, true);
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || session.get().box) return "";
+      const { mode, shape } = aim(rect, event);
+      return mode && shape && canMove(shape) ? cursorOf(mode, shape, false) : "";
+    },
     dragged: () => {
       const was = swallow.current;
       swallow.current = false;
@@ -268,27 +315,9 @@ export function Manipulate({
       const layer = event.currentTarget as HTMLElement;
       const rect = layer.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      const at = { x: ((event.clientX - rect.left) / rect.width) * w, y: ((event.clientY - rect.top) / rect.height) * h };
-      // On the picked shape: its turn handle, a handle, or its body; else the shape under the press, picked as it moves.
-      let mode: Mode | null = null;
-      let shape: DeckShape | undefined;
-      if (picked && canMove(picked)) {
-        const sel = selectionOf(picked.quad, w, h);
-        const near = (p: Pt, r: number): boolean => Math.hypot(p.x - at.x, p.y - at.y) <= r;
-        if (turnable(picked) && near(sel.rotate, ROTATE_HANDLE / 2 + 4)) mode = { kind: "turn" };
-        else {
-          const handle = sel.handles.findIndex((p) => near(p, Math.max(HANDLE_HIT, HANDLE)));
-          if (handle >= 0) mode = { kind: "resize", handle };
-          else if (inQuad(picked.quad, at.x / w, at.y / h)) mode = { kind: "move" };
-        }
-        if (mode) shape = picked;
-        // A press on a handle is never a press on the slide: it does not let the shape go.
-        if (mode && mode.kind !== "move") swallow.current = true;
-      }
-      if (!mode) {
-        shape = hit(shapes, at.x / w, at.y / h) ?? undefined;
-        if (shape) mode = { kind: "move" };
-      }
+      const { mode, shape } = aim(rect, event);
+      // A press on a handle is never a press on the slide: it does not let the shape go.
+      if (mode && mode.kind !== "move" && shape === picked) swallow.current = true;
       if (!mode || !shape || !canMove(shape)) return;
       const target: Movable = shape;
       const press = { x: event.clientX, y: event.clientY };

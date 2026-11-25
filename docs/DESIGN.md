@@ -4216,7 +4216,10 @@ other picked shape is the outline alone.
   height, so a turned shape stays turned and the side or corner across from
   the handle stays put (Shift keeps its proportions, an edge handle growing
   the other way about the middle); the turn handle turns it about its
-  centre (Shift: 15 degree steps). The handle stays under the pointer. While
+  centre (Shift: 15 degree steps). The pointer says what a press will do:
+  `move` over a shape he can move, the resize cursor of a handle's own way
+  turned with the shape, `grab` on the turn handle and `grabbing` while it
+  turns; nothing where his hand cannot move it. The handle stays under the pointer. While
   he drags, the handles step aside: the shape's own picture, cut from the
   stage along its corners, rides at 80% opacity under a 1px outline in
   `sel-line-dark-pic`, over the picture as it was; a guide, a 1px line of
