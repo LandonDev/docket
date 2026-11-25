@@ -83,6 +83,10 @@ export const NAME_TAKEN = (name: string): string => `Something named ${name} is 
 export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
 /** A held act's thing, or the folder it goes to, is not as the act was held for, found so by the host that writes (round 3). */
 export const HELD_MOVED = (name: string): string => `${name} is not as it was when this was held, so nothing was done.`
+/** His Undo's thing found otherwise than the change left it (a file put at its name since): it stays. */
+export const CHANGED_SINCE = (name: string): string => `${name} changed since, so it was left as it is.`
+/** The sentence for a thing not as its act named it: a held act's, or his Undo's. */
+export const notAsNamed = (origin: { from: string } | undefined, name: string): string => (origin?.from === 'act' ? HELD_MOVED(name) : CHANGED_SINCE(name))
 export const isHeldMoved = (text: string): boolean => / is not as it was when this was held, so nothing was done\.$/.test(text)
 
 /** Throws FileRefused('name') with nameProblem's sentence when `name` is not one path component a place takes. */

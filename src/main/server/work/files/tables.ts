@@ -51,6 +51,8 @@ export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_ops_by_time ON work_files_ops (at)`)
   // The thread whose files_* tool ran an op: files_undo undoes only the caller's own. Added to an older table.
   if (!(db.prepare(`SELECT name FROM pragma_table_info('work_files_ops')`).all() as { name: string }[]).some((c) => c.name === 'session_id')) db.exec(`ALTER TABLE work_files_ops ADD COLUMN session_id TEXT`)
+  // What a thread's change left, by each thing's key (tools.ts `sealOf`): its Undo finds each the same or leaves it.
+  if (!(db.prepare(`SELECT name FROM pragma_table_info('work_files_ops')`).all() as { name: string }[]).some((c) => c.name === 'seal')) db.exec(`ALTER TABLE work_files_ops ADD COLUMN seal TEXT`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_names (
     workspace_id TEXT NOT NULL, ref_key TEXT NOT NULL, ref TEXT NOT NULL, name TEXT NOT NULL,
     place TEXT NOT NULL, kind TEXT NOT NULL, changed INTEGER,

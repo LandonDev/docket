@@ -5,7 +5,7 @@ import { DRIVE_ROOT, driveOf, type DriveItem, type DriveMakeKind } from '../goog
 import { accountOfPlace, DRIVE_NEW, driveChanged, driveEntry, driveFacts, drivePlace, driveTop, folderShared, itemShared, kindOfItem } from './places/drive'
 import { admitWrite, changeDigest, locate, type Located, type WorkspaceRow } from './policy'
 import { trashInDrive } from './trash'
-import { checkName, fileLocked, HELD_MOVED, NAME_TAKEN, runOp, withFileLocks } from './write'
+import { checkName, fileLocked, HELD_MOVED, NAME_TAKEN, notAsNamed, runOp, withFileLocks } from './write'
 
 /**
  * New, rename, move and delete in a Google Drive (docs/agents/work-files.md "Google Drive"), each one Drive call
@@ -71,14 +71,15 @@ export interface DriveThing {
  * (Drive's own call takes no version to hold it to, so the seconds between this read and that call stay open.)
  */
 async function boundDrive(ctx: WorkCtx, origin: FileOrigin | undefined, i: number, at: DriveAt, item: DriveItem): Promise<void> {
-  if (origin?.from !== 'act' || !origin.things) return
+  // A held act's things, or his Undo's (`from: 'window'`, which names no sharing): each as it was named.
+  if (!origin?.things) return
   const t = origin.things[i]
   if (!t) return
   // The card's version word (tools.ts `versionOfEntry`): its size, its time and Drive's revision counter.
   const e = driveEntry(at.account, item)
-  if (keyOfItem(at.account, item) !== t.key || `${e.size ?? 0}:${e.changed ?? 0}:${e.revision ?? ''}` !== t.version) throw new Error(HELD_MOVED(item.name))
+  if (keyOfItem(at.account, item) !== t.key || `${e.size ?? 0}:${e.changed ?? 0}:${e.revision ?? ''}` !== t.version) throw new Error(notAsNamed(origin, item.name))
   // Who can open it, its folders read from Drive now, never from what was kept a few seconds.
-  if (t.shared !== undefined && (await itemShared(ctx, at.account, item, { fresh: true })) !== t.shared) throw new Error(HELD_MOVED(item.name))
+  if ('shared' in t && t.shared !== undefined && (await itemShared(ctx, at.account, item, { fresh: true })) !== t.shared) throw new Error(notAsNamed(origin, item.name))
 }
 
 /**

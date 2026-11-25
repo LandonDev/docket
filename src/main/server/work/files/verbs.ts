@@ -17,7 +17,7 @@ import { isTop, vmMake, vmMove, vmRename, VM_NO_TEMPLATE, type VmWhere } from '.
 import { vmStat } from '../office/vm/files'
 import { accountOfPlace } from './places/drive'
 import { DRIVE_APART } from './driveVerbs'
-import { checkName, HELD_MOVED, isHeldMoved, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
+import { checkName, HELD_MOVED, isHeldMoved, notAsNamed, isNameTaken, NAME_TAKEN, copyNoReplace, fileLocked, makeFile, makeFolder, moveNoReplace, runOp, withFileLocks, type WriteFence } from './write'
 
 /**
  * New, rename, move and copy (docs/agents/work-files.md "New, rename, move and copy"), for the workspace's folder
@@ -138,10 +138,11 @@ function exactIn(dir: string, name: string): string {
  * this, under the thing's own lock, is what holds through any gap between that check and the write.
  */
 function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { version: boolean }): void {
-  if (p.origin?.from !== 'act' || !p.origin.things) return
+  // A held act's things, or his Undo's (`from: 'window'`): each as it was named, or nothing moves it.
+  if (!p.origin?.things) return
   const t = p.origin.things[i]
   if (!t) return
-  if (t.key !== w.key) throw new Error(HELD_MOVED(basename(w.path)))
+  if (t.key !== w.key) throw new Error(notAsNamed(p.origin, basename(w.path)))
   // A thing in the Windows VM is a guest path, no path of this disk: its key is checked here, and the guest's own
   // helper answers whether it is there when the verb reaches it (vmVerbs.ts).
   if (w.vm) return
@@ -152,17 +153,17 @@ function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { versio
   } catch {
     now = null
   }
-  if (now === null || (o.version && now !== t.version)) throw new Error(HELD_MOVED(basename(w.path)))
+  if (now === null || (o.version && now !== t.version)) throw new Error(notAsNamed(p.origin, basename(w.path)))
 }
 /**
  * A held act's thing in the Windows VM, as the guest's own helper finds it just before the verb goes to it (round 4):
  * its key, and its version as the guest states it (`size:modified:`, as the listing says it). No path of this disk.
  */
 async function boundGuest(p: { origin?: FileOrigin }, i: number, w: Where): Promise<void> {
-  if (p.origin?.from !== 'act' || !p.origin.things) return
+  if (!p.origin?.things) return
   const t = p.origin.things[i]
   if (!t) return
-  if (t.key !== w.key) throw new Error(HELD_MOVED(guestName(w.path)))
+  if (t.key !== w.key) throw new Error(notAsNamed(p.origin, guestName(w.path)))
   let now: string | null
   try {
     const e = await vmStat(w.library!.library.id, w.path)
@@ -170,7 +171,7 @@ async function boundGuest(p: { origin?: FileOrigin }, i: number, w: Where): Prom
   } catch {
     now = null
   }
-  if (now !== t.version) throw new Error(HELD_MOVED(guestName(w.path)))
+  if (now !== t.version) throw new Error(notAsNamed(p.origin, guestName(w.path)))
 }
 const guestName = (path: string): string => path.slice(path.lastIndexOf('\\') + 1)
 /** The folder a held act's move or copy was held to go to, by its key, as this host finds it at the write. */

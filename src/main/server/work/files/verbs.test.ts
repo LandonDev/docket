@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
@@ -253,6 +253,46 @@ describe('move', () => {
     expect(names(await call('work.files.move', { refs: [at(join(rig.team, 'General', 'Plan.docx'))], to: at(join(rig.team, 'General', 'Budgets')), origin: { from: 'window' } }, peer))).toEqual(['Plan.docx'])
     await expect(call('work.files.move', { refs: [at(inFolder('Budget.xlsx'))], to: at(inFolder('Events')) }, thread('t1'))).rejects.toThrow(THREADS_BY_TOOLS)
     await expect(call('work.files.move', { refs: [at(join(rig.outside, 'secret.txt'))], to: at(inFolder('Events')) }, phone)).rejects.toThrow()
+  })
+})
+
+describe("his Undo of a move", () => {
+  /** What a move left, as his window names it for the way back (acts.ts `boundBack`). */
+  const left = (d: FileDone) => ({ from: 'window', things: d.entries.map((e) => ({ key: e.key, version: `${e.kind === 'folder' ? 0 : (e.size ?? 0)}:${e.changed ?? 0}:${e.revision ?? ''}` })) })
+  const undo = (d: FileDone) => call('work.files.move', { refs: d.entries.map((e) => e.ref ?? e.folder), to: at(rig.folder), origin: left(d) })
+
+  it('moves back what the move left', async () => {
+    writeFileSync(inFolder('A.txt'), 'A')
+    const went = await call('work.files.move', { refs: [at(inFolder('A.txt'))], to: at(inFolder('Events')) })
+    expect(names(await undo(went))).toEqual(['A.txt'])
+    expect(readFileSync(inFolder('A.txt'), 'utf8')).toBe('A')
+  })
+
+  it('leaves a file put at the new name since: B stays, and A is not brought back in its place', async () => {
+    writeFileSync(inFolder('A.txt'), 'A')
+    const went = await call('work.files.move', { refs: [at(inFolder('A.txt'))], to: at(inFolder('Events')) })
+    rmSync(inFolder('Events', 'A.txt'))
+    writeFileSync(inFolder('Events', 'A.txt'), 'B, made since')
+    const back = await undo(went)
+    expect(back.entries).toEqual([])
+    expect(back.refused).toEqual([{ name: 'A.txt', text: 'A.txt changed since, so it was left as it is.' }])
+    expect(readFileSync(inFolder('Events', 'A.txt'), 'utf8')).toBe('B, made since')
+    expect(existsSync(inFolder('A.txt'))).toBe(false)
+  })
+
+  it('leaves a folder filled since, and a folder of the same name put in its place', async () => {
+    mkdirSync(inFolder('Old'))
+    const went = await call('work.files.move', { refs: [at(inFolder('Old'))], to: at(inFolder('Events')) })
+    const moved = inFolder('Events', 'Old')
+    writeFileSync(join(moved, 'new.txt'), 'added since')
+    utimesSync(moved, new Date(), new Date(Date.now() + 5000))
+    expect((await undo(went)).entries).toEqual([])
+    expect(existsSync(join(moved, 'new.txt'))).toBe(true)
+    renameSync(moved, inFolder('Elsewhere'))
+    mkdirSync(moved)
+    utimesSync(moved, new Date(), new Date(Date.now() + 9000))
+    expect((await undo(went)).entries).toEqual([])
+    expect(existsSync(moved)).toBe(true)
   })
 })
 

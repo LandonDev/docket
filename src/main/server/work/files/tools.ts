@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { lstatSync, readdirSync, type Stats } from 'node:fs'
 import { heldChange } from '../outbox/words'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
 import { FILE_MAKE_KINDS, FileActSchema, type FileAct, type FileActVerb, type FileDone, type FileRef, type FileMakeKind, type FilesListing, type FilesPlaces } from '@shared/contract-work-files'
@@ -15,7 +16,7 @@ import { changeDigest, locate, workspaceHere } from './policy'
 import { restoreRows, trashFiles } from './trash'
 import { copyVerb, isHeldMoved, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed, type MoveDone } from './verbs'
 import { admitDrive, driveMake, driveMove, driveRename, driveTrash, type DriveDone } from './driveVerbs'
-import { googleSeated, googleSeatOf } from '../google/drive'
+import { DRIVE_ROOT, googleSeated, googleSeatOf } from '../google/drive'
 import { driveFacts } from './places/drive'
 
 /**
@@ -397,7 +398,7 @@ async function change(ctx: ToolCtx, workspaceId: string, a: Asked): Promise<Work
   }
   const op = `tool:${randomUUID()}`
   const done = await runHere(ctx, me, workspaceId, a, op, method)
-  ctx.db.prepare(`UPDATE work_files_ops SET session_id = ? WHERE id = ?`).run(ctx.sessionId, op)
+  ctx.db.prepare(`UPDATE work_files_ops SET session_id = ?, seal = ? WHERE id = ?`).run(ctx.sessionId, JSON.stringify(sealsOf(ctx.host, done.entries)), op)
   if (a.verb === 'make') markMade(ctx, workspaceId, ctx.sessionId, done.entries)
   const what = done.entries.map((e) => (pathOf(e) !== null ? wordsIn(place.id === a.into?.named.place.id || !a.into ? place : a.into.named.place, pathOf(e)!) : [a.into ? a.into.words : a.verb === 'make' ? a.paths[0] : dirOfWords(a.paths[0] ?? ''), e.name].filter(Boolean).join('/')))
   const left = done.refused.map((r) => `${r.name}: ${r.text}`)
@@ -475,16 +476,59 @@ const dirOfWords = (words: string): string => words.split('/').slice(0, -1).join
 
 // ── undo ──────────────────────────────────────────────────────────────
 
+/** The most things under a folder its seal names one by one: a bigger one is not sealed, and the owner undoes it. */
+const SEAL_MOST = 10_000
+
+/**
+ * What a change left at `path` on this disk, as its Undo must find it: a file's inode, size and change time; a
+ * folder's inode and the same of everything in it, by its place under the folder. A file put at the name since, a
+ * folder of the same name made in its place, or one a file was added to or changed in, seals otherwise. Null when it
+ * cannot be read whole (gone, too big).
+ */
+export function sealOf(path: string): string | null {
+  try {
+    const top = lstatSync(path)
+    const one = (rel: string, st: Stats): string => `${rel}\0${st.ino}:${st.isDirectory() ? 'dir' : `${st.size}:${Math.round(st.mtimeMs)}`}`
+    if (!top.isDirectory()) return one('', top)
+    const parts = [one('', top)]
+    const queue = ['']
+    for (let i = 0; i < queue.length; i++) {
+      for (const name of readdirSync(join(path, queue[i]!))) {
+        const rel = queue[i] ? `${queue[i]}/${name}` : name
+        const st = lstatSync(join(path, rel))
+        parts.push(one(rel, st))
+        if (parts.length > SEAL_MOST) return null
+        if (st.isDirectory()) queue.push(rel)
+      }
+    }
+    return createHash('sha256').update(parts.sort().join('\n')).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+/** Each thing a change left on this host's own disk, sealed by its key (`sealOf`); a Drive's are checked by Drive itself. */
+function sealsOf(host: string, entries: readonly FileEntry[]): Record<string, string | null> {
+  const out: Record<string, string | null> = {}
+  for (const e of entries) {
+    const ref = e.ref ?? e.folder
+    if (ref?.at === 'file' && ref.host === host) out[e.key] = sealOf(ref.path)
+  }
+  return out
+}
+
 const UNDO_GONE = 'That change is not one this thread can undo: it is unknown here, or older than a week.'
 const UNDO_STALE = (name: string): string => `${name} changed since, so it was left as it is.`
 /** The door answered `hold`: the place became one others can open since the change, so an Undo would change it for them. */
 const UNDO_SHARED = 'Others can open it now, so the owner changes it back himself.'
+/** A change made before its things were sealed, or one too big to seal: what it left cannot be proved the same. */
+const UNDO_UNSEALED = (name: string): string => `What this change left in ${name} cannot be checked, so the owner changes it back himself.`
 
 /** The inverse of a change a `files_*` tool ran in his own place, refused for any file that is no longer the one the change left. */
 async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<WorkToolResult> {
   if (!op.startsWith('tool:')) return fail(UNDO_GONE)
   // A thread undoes its own change alone: another thread's op is as unknown to it as one never made.
-  const row = ctx.db.prepare(`SELECT verb, refs, state, result FROM work_files_ops WHERE id = ? AND workspace_id = ? AND session_id = ?`).get(op, workspaceId, ctx.sessionId) as { verb: string; refs: string; state: string; result: string | null } | undefined
+  const row = ctx.db.prepare(`SELECT verb, refs, state, result, seal FROM work_files_ops WHERE id = ? AND workspace_id = ? AND session_id = ?`).get(op, workspaceId, ctx.sessionId) as { verb: string; refs: string; state: string; result: string | null; seal: string | null } | undefined
   if (!row || row.state !== 'done' || !row.result) return fail(UNDO_GONE)
   const done = JSON.parse(row.result) as FileDone
   const asked = JSON.parse(row.refs) as { ref?: FileRef; refs?: FileRef[] }
@@ -498,11 +542,15 @@ async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<Work
     const put = await restoreRows(ctx, me, workspace, done.trashed, back)
     return answerOf('Put back', put)
   }
-  if (done.entries.some(inDrive)) return undoDrive(ctx, workspaceId, row.verb, done, back)
-  // Each thing the change left must still be as it left it.
+  if (done.entries.some(inDrive)) return undoDrive(ctx, workspaceId, row.verb, done, back, (asked as { to?: FolderRef }).to)
+  // Each thing the change left must still be as it left it: by its listing, and by its seal (its inode, and a folder's
+  // every member), so a file or folder put at its name since, or a file added to a folder it made, is never taken.
   const left = done.entries.filter((e) => pathOf(e) !== null)
+  const seals = row.seal ? (JSON.parse(row.seal) as Record<string, string | null>) : null
+  const unsealed = left.find((e) => !seals?.[e.key])
+  if (unsealed) return fail(UNDO_UNSEALED(unsealed.name))
   const now = await ask<{ entries: (FileEntry | null)[] }>(ctx, ctx.host, 'stat', { workspaceId, refs: left.map(refOfEntry) })
-  const stale = left.filter((e, i) => !now.entries[i] || now.entries[i]!.key !== e.key || (e.kind !== 'folder' && versionOfEntry(now.entries[i]!) !== versionOfEntry(e)))
+  const stale = left.filter((e, i) => !now.entries[i] || now.entries[i]!.key !== e.key || (e.kind !== 'folder' && versionOfEntry(now.entries[i]!) !== versionOfEntry(e)) || sealOf(pathOf(e)!) !== seals![e.key])
   if (stale.length) return fail(stale.map((e) => UNDO_STALE(e.name)).join(' '))
   const method = 'work.files.undo'
   if (row.verb === 'make' || row.verb === 'copy') {
@@ -565,13 +613,28 @@ const inDrive = (e: Pick<FileEntry, 'ref' | 'folder'>): boolean => e.ref?.at ===
  * path). Each thing must still be as the change left it, and the way back passes the door again: one others can open
  * by now is refused, not held.
  */
-async function undoDrive(ctx: ToolCtx, workspaceId: string, verb: string, done: DriveDone, back: string): Promise<WorkToolResult> {
+async function undoDrive(ctx: ToolCtx, workspaceId: string, verb: string, done: DriveDone, back: string, movedTo?: FolderRef): Promise<WorkToolResult> {
   const me = threadOf(ctx.sessionId)
   const method = 'work.files.undo'
   const left = done.entries.filter(inDrive)
   const refs = left.map(refOfEntry)
   const now = await ask<{ entries: (FileEntry | null)[] }>(ctx, ctx.host, 'stat', { workspaceId, refs })
   const stale = left.filter((e, i) => !now.entries[i] || now.entries[i]!.key !== e.key || now.entries[i]!.name !== e.name || (e.kind !== 'folder' && versionOfEntry(now.entries[i]!) !== versionOfEntry(e)))
+  // A thing a move took must still lie in the folder it went to, and there alone: one a coauthor moved again since
+  // (a folder above all, whose version says nothing of where it is) is left where he put it.
+  if (verb === 'move' && movedTo?.at === 'drive') {
+    for (const e of left) {
+      if (stale.includes(e)) continue
+      const account = (e.ref?.at === 'google' ? e.ref.account : (e.folder as { account: string }).account)!
+      const id = e.ref?.at === 'google' ? e.ref.fileId : (e.folder as { folderId: string }).folderId
+      const target = movedTo.folderId === DRIVE_ROOT ? 'root' : movedTo.folderId
+      const item = await driveFacts(ctx, account, id).catch(() => null)
+      const parent = item?.parents.length === 1 ? item.parents[0]! : null
+      // My Drive's own top is no folder TempCode can see: there, a parent it cannot see is that top.
+      const there = parent !== null && (parent === target || (target === 'root' && !(await driveFacts(ctx, account, parent).catch(() => null))))
+      if (!there) stale.push(e)
+    }
+  }
   if (stale.length) return fail(stale.map((e) => UNDO_STALE(e.name)).join(' '))
   const ownOnly = async (v: FileVerb, p: { refs: FileRef[]; to?: FolderRef; name?: string }): Promise<void> => {
     if ((await admitDrive(ctx, me, v, { workspaceId, ...p }, method)).verdict === 'hold') throw new Error(UNDO_SHARED)

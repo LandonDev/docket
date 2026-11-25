@@ -60,7 +60,11 @@ export type FileSearchFilter = z.infer<typeof FileSearchFilterSchema>
  * change). A peer's change with no origin is refused; from any other caller the field is not read.
  */
 export const FileOriginSchema = z.discriminatedUnion('from', [
-  z.object({ from: z.literal('window') }),
+  z.object({
+    from: z.literal('window'),
+    /** his Undo of a move: each thing as the move left it (its key and version, by the order of the refs); the host that moves it back finds each the same or leaves it */
+    things: z.array(z.object({ key: z.string().max(5000), version: z.string().max(200) })).max(100).optional()
+  }),
   z.object({
     from: z.literal('act'),
     id: z.string().min(1).max(200),

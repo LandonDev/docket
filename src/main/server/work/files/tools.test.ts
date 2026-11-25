@@ -197,6 +197,30 @@ describe('in his own place a change runs at once, with Undo', () => {
     expect(await call('files_undo', { op: 'window-op-123' }, ctx)).toMatchObject({ isError: true })
   })
 
+  it("leaves a folder the thread made once a file was put in it, and a folder of the same name put in a moved one's place", async () => {
+    const ctx = toolCtx(workCtx())
+    const opOf = (r: WorkToolResult) => (r.structuredContent as { undo: { op: string } }).undo.op
+    const made = await call('files_make', { place: 'folder', kind: 'folder', name: 'Drafts' }, ctx)
+    writeFileSync(join(rig.folder, 'Drafts', 'his notes.txt'), 'his, added since')
+    expect(await call('files_undo', { op: opOf(made) }, ctx)).toMatchObject({ isError: true, text: 'Drafts changed since, so it was left as it is.' })
+    expect(readFileSync(join(rig.folder, 'Drafts', 'his notes.txt'), 'utf8')).toBe('his, added since')
+
+    const moved = await call('files_move', { place: 'folder', paths: ['Drafts'], to: { place: 'folder', path: 'Events' } }, ctx)
+    rmSync(join(rig.folder, 'Events', 'Drafts'), { recursive: true })
+    mkdirSync(join(rig.folder, 'Events', 'Drafts'))
+    expect(await call('files_undo', { op: opOf(moved) }, ctx)).toMatchObject({ isError: true, text: 'Drafts changed since, so it was left as it is.' })
+    expect(existsSync(join(rig.folder, 'Events', 'Drafts'))).toBe(true)
+  })
+
+  it("asks a fresh press of the owner for a change made before what it left was sealed", async () => {
+    const ctx = toolCtx(workCtx())
+    const moved = await call('files_move', { place: 'folder', paths: ['notes.txt'], to: { place: 'folder', path: 'Events' } }, ctx)
+    const op = (moved.structuredContent as { undo: { op: string } }).undo.op
+    rig.db.prepare(`UPDATE work_files_ops SET seal = NULL WHERE id = ?`).run(op)
+    expect(await call('files_undo', { op }, ctx)).toMatchObject({ isError: true, text: 'What this change left in notes.txt cannot be checked, so the owner changes it back himself.' })
+    expect(existsSync(join(rig.folder, 'Events', 'notes.txt'))).toBe(true)
+  })
+
   it('stops an Undo where the place became one others can open since the change, leaving it as it is', async () => {
     const ctx = toolCtx(workCtx())
     const made = await call('files_make', { place: 'folder', path: 'Events', kind: 'text', name: 'Run sheet' }, ctx)

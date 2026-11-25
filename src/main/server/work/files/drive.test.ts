@@ -435,6 +435,15 @@ describe("a thread's change", () => {
     expect(fake.files.get('dBrief')!.trashed).toBe(false)
   })
 
+  it("leaves a thing a coauthor moved again since the thread's move: its Undo never takes it from where he put it", async () => {
+    const opOf = (r: WorkToolResult) => (r.structuredContent as { undo: { op: string } }).undo.op
+    const moved = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Events' } })
+    expect(fake.files.get('sBudget')!.parents).toEqual(['fEvents'])
+    fake.files.get('sBudget')!.parents = [FAKE_ROOT]
+    expect(await tool('files_undo', { op: opOf(moved) })).toMatchObject({ isError: true, text: 'Budget changed since, so it was left as it is.' })
+    expect(fake.files.get('sBudget')!.parents).toEqual([FAKE_ROOT])
+  })
+
   it('to a file others can open, or into a folder they can, is held for his press, a delete there too, which his press sends to Drive\'s bin alone', async () => {
     const held = await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], name: 'Letter' })
     expect(held.text).toMatch(/^Held as item 1: a change to a file others can open\. /)

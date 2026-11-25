@@ -727,7 +727,15 @@ file. Try when it is done.").
 name is that thing's refused row, and the rest still move. The window's
 toast says what went with Undo (`carryTo`'s `back`), which moves the
 answered entries back to the one folder they were in through the same
-`move`; rows of a lens, which live in many folders, and a copy offer none. Across places,
+`move`, bound to each as the move left it: the request's origin is
+`{from: 'window', things}`, each thing's key and version (`size:changed:`, a
+folder's size 0; acts.ts `boundBack`), and the host checks each under its
+lock just before it moves it, as a held act's (`boundThing`, `boundGuest`,
+`boundDrive`). A file put at the new name since, a folder filled since (its
+change time moved) or one of the same name made in its place is refused,
+"x changed since, so it was left as it is.", and stays. A move whose answer
+names no change time for a thing offers no Undo. Rows of a lens, which live
+in many folders, and a copy offer none. Across places,
 which today means the workspace's folder into a library, it is a copy,
 checked whole, what hangs on the file carried to the copy, then the source
 to Trash through `trashAfterMove` (`setTrashHook`, Trash's build). A Trash
@@ -1257,9 +1265,17 @@ anything else. Then:
   folders go back each to its own; a row from before that, by its name, only
   where one thing of that name moved), a rename back, a made file or a copy to
   Trash, a file put in Trash back. Each thing the change left must still be
-  that thing (its key, and its size and change time); one that is not is
-  refused, "notes.txt changed since, so it was left as it is.", and left as it
-  is. An inverse stops where others can open what it would change now (the
+  that thing: its key, its size and change time, and its seal, written on the
+  op's row as the change lands (`work_files_ops.seal`, tools.ts `sealOf`: a
+  file's inode, size and time; a folder's inode and the same of everything
+  in it, at most 10,000 things). A file or folder of the same name put in its
+  place, or a file added to or changed in a folder the thread made or moved,
+  is refused, "notes.txt changed since, so it was left as it is.", and left
+  as it is. A change made before seals were kept, or a folder too big to
+  seal, is not undone by the thread: "What this change left in x cannot be
+  checked, so the owner changes it back himself." In a Drive, a moved thing
+  must still lie in the folder it went to, and there alone (a coauthor's
+  move since leaves it where he put it), checked from Drive at the Undo. An inverse stops where others can open what it would change now (the
   place became a library, or a Drive folder was shared, since the change): the
   door answers `hold` for a New, Copy, Rename or Move, and for a delete's Put
   back the rows are asked as Put back asks them (`restoresShared`, which

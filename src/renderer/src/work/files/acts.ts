@@ -146,6 +146,15 @@ export function movedPairs(entries: readonly FileEntry[], done: Pick<FileDone, "
   return entries.flatMap((e) => (once(asked, e.name) && once(went, e.name) && !refused.has(e.name) ? [[e, done.entries.find((d) => d.name === e.name)!] as [FileEntry, FileEntry]] : []));
 }
 
+/**
+ * Each thing an Undo moves back, as the move left it: its key and its version as the host states it (`size:changed:`,
+ * a folder's size 0), by the order of the refs. The host finds each the same just before it moves it, or leaves it
+ * (files/verbs.ts `boundThing`, driveVerbs.ts `boundDrive`, the VM's `boundGuest`).
+ */
+export function boundBack(entries: readonly FileEntry[]): { from: "window"; things: { key: string; version: string }[] } {
+  return { from: "window", things: entries.map((e) => ({ key: e.key, version: `${e.kind === "folder" ? 0 : (e.size ?? 0)}:${e.changed ?? 0}:${e.revision ?? ""}` })) };
+}
+
 /** The folder a move's rows came from, where its Undo puts them back. */
 export interface CameFrom {
   at: FolderRef;
@@ -166,6 +175,8 @@ export async function carryTo(
   back?: CameFrom,
   /** says why nothing went where he asked (Move to…'s own line); else a toast says it */
   fail?: (why: string) => void,
+  /** an Undo's way back: each thing must still be as the move left it (`boundBack`), or it stays */
+  bound?: boolean,
 ): Promise<boolean> {
   if (!entries.length) return false;
   const title = verb === "move" ? "Nothing was moved" : "Nothing was copied";
@@ -184,13 +195,16 @@ export async function carryTo(
       of,
       entries.map((e) => e.key),
       { word: verb === "move" ? "Moving…" : "Copying…" },
-      () => filesLink(from.link).request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from)),
+      () => filesLink(from.link).request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}), ...(bound ? { origin: boundBack(entries) } : {}) }, longWait(from)),
       // A copy leaves its rows where they were: only a move's rows leave the list.
       (out) => verb === "move" && out.entries.length > 0,
     );
     if (verb === "move") await copiesFollow(of, from, movedPairs(entries, done));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
-    const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
+    // Undo takes back only what the move left, as it left it: a file put at the new name since stays. A thing whose
+    // change time the answer does not name cannot be bound, so no Undo is offered.
+    const bindable = done.entries.every((e) => e.changed !== undefined);
+    const undo = verb === "move" && back && samePlace && bindable ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }, undefined, undefined, true) : undefined;
     if (!done.entries.length) return didNot(new Error(leftovers(done) ?? "The folder took nothing."));
     said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });
     return true;
