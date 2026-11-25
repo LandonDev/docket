@@ -68,8 +68,11 @@ export interface RemoteListenerOptions {
   version: string
   /** What this host runs (buildInfo.ts); answered with the version to a caller the host knows. */
   build?: BuildFacts
-  /** A socket for this host, or with `host` a relayed lane to that host (remote/relay.ts attachRelayed). */
-  attach: (ws: WebSocket, principal: Principal & { kind: 'remote' }, host?: string) => void
+  /**
+   * A socket for this host, or with `host` a relayed lane to that host (remote/relay.ts attachRelayed).
+   * Only origin-free ticket upgrades can carry main-process endpoint announcements.
+   */
+  attach: (ws: WebSocket, principal: Principal & { kind: 'remote' }, host?: string, peerSocket?: boolean) => void
   /** Whether `host` is registered with the relay offer right now; a `?host=` upgrade for one that is not answers 503. */
   relayOnline?: (envId: string) => boolean
   /** Live video's own sockets (video/sockets.ts): `/video/<stream>?ticket=…`, ahead of the `/ws` check. */
@@ -507,7 +510,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
           log(`socket closed: key ${keyId} (${principal.name})`)
         })
         log(`socket open: key ${keyId} (${principal.name}, ${principal.caps.join(',')}) from ${base.ip}${host ? ` to ${host}` : ''}`)
-        attach(ws, principal, host)
+        attach(ws, principal, host, Boolean(ticket && header(req, 'origin') === undefined))
       })
     })().catch((err) => {
       console.error('[remote] upgrade failed', err)

@@ -1,3 +1,4 @@
+import { BrowserEndpointsSchema } from './browserEndpoints'
 import { z } from 'zod'
 import { MacDecideRememberSchema, type MacRunRememberOffer } from './contract-macbridge-rules'
 import type { PublishCallParams } from './contract-publish'
@@ -627,7 +628,7 @@ const macRunCallRef = { callId: z.string().min(1).max(200).optional() }
 
 export const MacBridgeRequestSchemas = [
   // ── the Mac's main process → the box, over the peer link (admin) ──────
-  /** → { environmentId } of the box. */
+  /** → { environmentId } of the box, and its browser endpoints on a peer exchange. */
   request(
     'peer.register',
     z.object({
@@ -643,6 +644,7 @@ export const MacBridgeRequestSchemas = [
         .optional(),
       /** The host's screen and power state at register time (src/main/presence.ts). */
       presence: MacPresenceSchema.optional(),
+      browserEndpoints: BrowserEndpointsSchema.optional(),
       /** A given computer's proof (contract-devices.ts): its device key's signature over the box's devices.challenge nonce and `from`. */
       proof: z.string().max(200).optional()
     })

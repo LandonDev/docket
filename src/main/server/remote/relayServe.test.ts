@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { BrowserEndpoints } from '@shared/browserEndpoints'
 import type { Principal } from '@shared/capabilities'
 import type { MacBridgePush } from '@shared/contract-macbridge'
 import { CONTRACT_VERSION } from '@shared/capabilities'
@@ -159,7 +160,13 @@ describe('RelaySocket', () => {
 })
 
 describe('RelayServer', () => {
-  function make(opts: { deliversNotices?: boolean; heartbeatMs?: number; links?: string[] } = {}) {
+  function make(opts: {
+    deliversNotices?: boolean
+    heartbeatMs?: number
+    links?: string[]
+    browserEndpoints?: () => BrowserEndpoints
+    onBrowserEndpoints?: (id: string, endpoints: BrowserEndpoints) => void
+  } = {}) {
     const presence = new MacPresenceWatcher({ initial: { screen: 'unlocked' }, now: () => 500 })
     const requests: { to: string; method: string; params: unknown }[] = []
     const answers = new Map<string, (params: unknown) => unknown>()
@@ -196,6 +203,8 @@ describe('RelayServer', () => {
       build: { release: 300, version: '1.0.300', sha: 'abc', platform: 'darwin' },
       hostname: 'Studio',
       heartbeatMs: opts.heartbeatMs,
+      browserEndpoints: opts.browserEndpoints,
+      onBrowserEndpoints: opts.onBrowserEndpoints,
       retryMs: 0,
       log: () => {}
     })
@@ -305,6 +314,35 @@ describe('RelayServer', () => {
     server.close()
     await vi.advanceTimersByTimeAsync(5_000)
     expect(presenceFrames()).toHaveLength(5)
+  })
+
+  it('exchanges current browser endpoints on the peer heartbeat', async () => {
+    vi.useFakeTimers()
+    let localPort = 7677
+    const peer = { listenerPorts: [8765], lanAddresses: ['box.local'], remoteRoutes: [] }
+    const received = vi.fn()
+    const { server, requests, answers } = make({
+      heartbeatMs: 1_000,
+      browserEndpoints: () => ({ listenerPorts: [localPort], lanAddresses: ['studio.local'], remoteRoutes: [] }),
+      onBrowserEndpoints: received
+    })
+    answers.set('peer.presence', () => ({ ok: true, browserEndpoints: peer }))
+    expect(server.registration().browserEndpoints?.listenerPorts).toEqual([7677])
+    server.linkUp('env_box')
+    localPort = 7678
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(requests).toContainEqual({
+      to: 'env_box',
+      method: 'peer.presence',
+      params: {
+        from: 'env_mac',
+        presence: { screen: 'unlocked', power: 'awake', at: 500 },
+        browserEndpoints: { listenerPorts: [7678], lanAddresses: ['studio.local'], remoteRoutes: [] }
+      }
+    })
+    expect(received).toHaveBeenCalledWith('env_box', peer)
+    server.close()
   })
 
   it('relay.facade runs the tool as the box key and maps FacadeError and ZodError', async () => {

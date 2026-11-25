@@ -1,3 +1,4 @@
+import { browserEndpointsFromReply, type BrowserEndpoints } from '@shared/browserEndpoints'
 import { EventEmitter } from 'node:events'
 import { hostLabel } from '../../hostLabel'
 import { ZodError } from 'zod'
@@ -182,6 +183,8 @@ export interface RelayServerDeps {
   facade: () => Omit<FacadeContext, 'principal'>
   /** The host has its own delivery (APNs key or hub): notices stay here. */
   deliversNotices: () => boolean
+  browserEndpoints?: () => BrowserEndpoints
+  onBrowserEndpoints?: (id: string, endpoints: BrowserEndpoints) => void
   /** What this host runs (buildInfo.ts), for the box's host row. */
   build?: BuildFacts
   hostname?: string
@@ -192,6 +195,7 @@ export interface RelayServerDeps {
 }
 
 export interface RelayRegistration {
+  browserEndpoints?: BrowserEndpoints
   name: string
   presence: MacPresence
   build?: BuildFacts
@@ -214,7 +218,8 @@ export class RelayServer {
     return {
       name: this.deps.hostname ?? hostLabel(),
       presence: this.deps.presence.snapshot(),
-      ...(this.deps.build ? { build: this.deps.build } : {})
+      ...(this.deps.build ? { build: this.deps.build } : {}),
+      ...(this.deps.browserEndpoints ? { browserEndpoints: this.deps.browserEndpoints() } : {})
     }
   }
 
@@ -403,7 +408,13 @@ export class RelayServer {
     const request = this.deps.link(envId)
     if (!request) return
     try {
-      await request('peer.presence', { from: this.deps.environmentId, presence }, { timeoutMs: RELAY_CALL_MS })
+      const reply = await request(
+        'peer.presence',
+        { from: this.deps.environmentId, presence, ...(this.deps.browserEndpoints ? { browserEndpoints: this.deps.browserEndpoints() } : {}) },
+        { timeoutMs: RELAY_CALL_MS }
+      )
+      const endpoints = browserEndpointsFromReply(reply)
+      if (endpoints) this.deps.onBrowserEndpoints?.(envId, endpoints)
       this.warned.delete(envId)
     } catch (err) {
       if (this.warned.has(envId)) return

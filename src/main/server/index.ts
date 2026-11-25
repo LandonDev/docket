@@ -90,6 +90,7 @@ import { approverOf, assertMayAnswer } from '@shared/addons'
 import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
+import { PeerBrowserEndpoints } from './remote/peerBrowserEndpoints'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
 import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
@@ -152,7 +153,7 @@ import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isHeadless, personsDesktop } from '../headless'
 import type { SelfUpdateOutcome } from '../updateTrigger'
 import { RemoteAuth } from './remote/auth'
-import { readTempCodeOrigins } from './remote/tempcodeOrigins'
+import { readLocalTempCodeOrigins, readTempCodeOrigins } from './remote/tempcodeOrigins'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceDenied, fenceRequest, requestBases } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
@@ -577,7 +578,15 @@ export async function startServer(
     const n = Number(env)
     return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
   }
-  const tempCodeOrigins = () => readTempCodeOrigins(store, remotePortWanted(), remote?.port)
+  const peerBrowserEndpoints = new PeerBrowserEndpoints(store)
+  const localBrowserEndpoints = () => readLocalTempCodeOrigins(store, remotePortWanted(), remote?.port)
+  const tempCodeOrigins = () => ({
+    ...readTempCodeOrigins(store, remotePortWanted(), remote?.port),
+    ...peerBrowserEndpoints.snapshot(
+      listEnvironments(store).map((e) => e.id),
+      [...peerCalls.registeredIds(), ...hostRelay.hosts().map((e) => e.environmentId)].filter((id) => deviceBindings.mayRoute(id))
+    )
+  })
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
   // What this host runs, said in every hello; and master's number, so the
   // renderer can mark a host that is behind (src/shared/deployDrift.ts).
@@ -780,6 +789,8 @@ export async function startServer(
     presence,
     facade: () => ({ registry, origin: null, environmentId }),
     deliversNotices: () => apns !== null || hub !== null,
+    browserEndpoints: localBrowserEndpoints,
+    onBrowserEndpoints: (id, endpoints) => peerBrowserEndpoints.receive('outbound', id, endpoints),
     build
   })
   // Away from computer (away.ts): the person's state, mirrored with the peers
@@ -805,6 +816,7 @@ export async function startServer(
         linkOpened(id, true)
       },
       onClose: (id, code) => {
+        peerBrowserEndpoints.disconnect('outbound', id)
         relayServer.linkDown(id)
         macBridge.linkDown(id)
         macPorts.linkDown(id)
@@ -1132,6 +1144,7 @@ export async function startServer(
   })
   sessionMover.thawStale()
   const peerCalls = new PeerCalls(environmentId)
+  peerCalls.onDrop((id) => peerBrowserEndpoints.disconnect('inbound', id))
   // How another host's main process is reached, whichever way the socket runs
   // (remote/hostLinks.ts): a peer.call down a socket it registered here, or a
   // request on its listener over this host's own link to it.
@@ -1166,6 +1179,7 @@ export async function startServer(
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
     // The relay's host row on the carrier: this host's name, presence and build.
     registration: () => relayServer.registration(),
+    onBrowserEndpoints: (id, endpoints) => peerBrowserEndpoints.receive('outbound', id, endpoints),
     // A given computer's box link: peer.register carries the device key's proof (devices/given.ts).
     proof: (envId, request) => (given?.isBox(envId) ? given.proofFor(envId, request) : null),
     // Computer use for a box thread (remote/macComputer.ts): this Mac's host, built below.
@@ -2427,7 +2441,7 @@ export async function startServer(
         version: build.version,
         build,
         // `host` makes the socket a relayed lane to that host (remote/relay.ts).
-        attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
+        attach: (ws, principal, host, peerSocket) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal, undefined, peerSocket)),
         relayOnline: (id) => hostRelay.online(id),
         video: videoSockets,
         videoPublish: videoPublishing,
@@ -2495,7 +2509,7 @@ export async function startServer(
    * with the key it authenticated. Every request is gated on the
    * principal's capabilities before any handler runs.
    */
-  const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal })): void => {
+  const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal }), peerEndpointSocket = false): void => {
     const connection = ++connections
     const previewConnection = { connection }
     const unsubs = new Map<string, () => void>()
@@ -2813,11 +2827,21 @@ export async function startServer(
         // this socket and answers calls on it; then the bridge's own methods.
         if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk' || req.method === 'peer.progress') {
           if (req.method === 'peer.register' && principal.kind === 'remote') {
+            if (req.params.browserEndpoints && !peerEndpointSocket) throw new Error('forbidden: browser endpoints require a peer socket')
             const refused = deviceBindings.registerRefusal(connection, principal, req.params)
             if (refused) throw new Error(refused)
           }
           const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, keyName: principal.kind === 'remote' ? principal.name : null, remote: principal.kind === 'remote', send: sendFrame, buffered: () => ws.bufferedAmount }
-          return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
+          const newRegistration = req.method === 'peer.register' && peerCalls.connectionOf(req.params.from) !== connection
+          const result = handlePeerRequest(peerCalls, peerSocket, req)
+          if (req.method === 'peer.register') {
+            if (newRegistration) peerBrowserEndpoints.disconnect('inbound', req.params.from)
+            if (req.params.browserEndpoints) {
+              peerBrowserEndpoints.receive('inbound', req.params.from, req.params.browserEndpoints)
+              return sendFrame({ id: req.id, ok: true, result: { environmentId, browserEndpoints: localBrowserEndpoints() } })
+            }
+          }
+          return sendFrame({ id: req.id, ok: true, result })
         }
         // A Mac's side of a forwarded dev server (remote/portForward.ts), only from the socket it registered on.
         if (req.method === 'ports.bound' || req.method === 'ports.open' || req.method === 'ports.data' || req.method === 'ports.close') {
@@ -2848,9 +2872,14 @@ export async function startServer(
           if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
           if (peerCalls.connectionOf(req.params.from) !== connection) throw new Error(`forbidden: ${req.params.from} is not registered on this socket`)
           switch (req.method) {
-            case 'peer.presence':
+            case 'peer.presence': {
+              if (req.params.browserEndpoints && !peerEndpointSocket) throw new Error('forbidden: browser endpoints require a peer socket')
               peerCalls.touch(connection, req.params.presence)
-              return sendFrame({ id: req.id, ok: true, result: hostRelay.onPeerPresence(req.params.from, req.params.presence) })
+              const result = hostRelay.onPeerPresence(req.params.from, req.params.presence)
+              if (!req.params.browserEndpoints) return sendFrame({ id: req.id, ok: true, result })
+              peerBrowserEndpoints.receive('inbound', req.params.from, req.params.browserEndpoints)
+              return sendFrame({ id: req.id, ok: true, result: { ...result, browserEndpoints: localBrowserEndpoints() } })
+            }
             case 'relay.frames':
               peerCalls.touch(connection)
               return sendFrame({ id: req.id, ok: true, result: hostRelay.onFrames(req.params.from, req.params.socketId, req.params.frames) })

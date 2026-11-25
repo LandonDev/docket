@@ -176,11 +176,13 @@ why and the measured headline.
   cannot give the address, the call stops. This includes background tabs
   whose address the Mac cannot read before switching to them. If a step
   changes the address, further steps and the closing read stop. A fresh
-  call checks the new address. At a listener port the host checks all DNS
-  answers for the top-level address against its own, linked hosts' and
-  tunnel addresses. A failed lookup stops the call. The listener also
-  requires a known Host for the owner UI and its browser socket. The UI
-  refuses to load in a frame.
+  call checks the new address. Linked hosts share their listener ports,
+  LAN addresses and names, and tunnel names when they connect and on each
+  heartbeat. The host checks all DNS answers against those addresses and
+  its own. At a known listener port, a missing or stale peer list stops
+  the call. A failed lookup also stops the call. The listener requires a
+  known Host for the owner UI and its browser socket. The UI refuses to
+  load in a frame.
 - **The hold in a Work thread** (docs/computer-protocol.md §19.3 "The hold
   in a Work thread", [work-outbox.md](work-outbox.md)). The host classes
   each call from the screen, whatever the model flagged

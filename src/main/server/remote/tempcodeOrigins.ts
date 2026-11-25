@@ -1,17 +1,16 @@
+import type { BrowserEndpoints } from '@shared/browserEndpoints'
 import { lookup } from 'node:dns/promises'
 import { shortHostName } from '@shared/hostNames'
 import { isIP } from 'node:net'
 import { hostname, networkInterfaces } from 'node:os'
 import { kindOf, listEnvironments, type EnvironmentsStore } from './environments'
-import { readRemoteSettings } from './handlers'
+import { REMOTE_DEFAULT_PORT, readRemoteSettings } from './handlers'
 
 export const TEMPCODE_ORIGIN_REFUSAL = 'refused: TempCode pages are off limits to computer tools.'
 
-export interface TempCodeOrigins {
-  listenerPorts: readonly number[]
-  lanAddresses: readonly string[]
-  remoteRoutes: readonly string[]
-  tunnelHosts?: readonly string[]
+export interface TempCodeOrigins extends BrowserEndpoints {
+  linkedEndpoints?: readonly BrowserEndpoints[]
+  linkedEndpointsUnknown?: boolean
 }
 
 function address(host: string): string {
@@ -55,6 +54,10 @@ function endpoint(value: string): { host: string; port: number } | undefined {
 export function isTempCodeOrigin(url: string, origins: TempCodeOrigins): boolean {
   const target = endpoint(url)
   if (!target) return false
+  return matchesEndpoint(target, origins, true) || (origins.linkedEndpoints?.some((peer) => matchesEndpoint(target, peer, false)) ?? false)
+}
+
+function matchesEndpoint(target: { host: string; port: number }, origins: BrowserEndpoints, local: boolean): boolean {
   const { host, port } = target
   if (origins.tunnelHosts?.some((name) => address(name) === host)) return true
   const loopback =
@@ -64,9 +67,7 @@ export function isTempCodeOrigin(url: string, origins: TempCodeOrigins): boolean
     host === '::1'
   if (
     origins.listenerPorts.includes(port) &&
-    (loopback ||
-      host === '0.0.0.0' ||
-      host === '::' ||
+    ((local && (loopback || host === '0.0.0.0' || host === '::')) ||
       origins.lanAddresses.some((ip) => address(ip) === host))
   )
     return true
@@ -85,13 +86,22 @@ export async function resolvesToTempCodeOrigin(
   const target = endpoint(url)
   if (!target) return false
   const { host, port } = target
-  const listenerPort = origins.listenerPorts.includes(port)
-  const remoteHosts = origins.remoteRoutes.flatMap((route) => {
-    const configured = endpoint(route)
-    return configured && (listenerPort || configured.port === port) ? [configured.host] : []
-  })
-  // The public tunnel can accept either standard web port, even when the saved route names only HTTPS.
-  if (listenerPort || port === 80 || port === 443) remoteHosts.push(...(origins.tunnelHosts ?? []))
+  const sets = [origins, ...(origins.linkedEndpoints ?? [])]
+  const remoteHosts: string[] = []
+  let listenerPort = false
+  for (const set of sets) {
+    const listens = set.listenerPorts.includes(port)
+    listenerPort ||= listens
+    for (const route of set.remoteRoutes) {
+      const configured = endpoint(route)
+      if (configured && (listens || configured.port === port)) remoteHosts.push(configured.host)
+    }
+    // A tunnel can answer on either standard web port when its saved route names only HTTPS.
+    if (listens || port === 80 || port === 443) remoteHosts.push(...(set.tunnelHosts ?? []))
+  }
+  if (origins.linkedEndpointsUnknown && (listenerPort || remoteHosts.length || port === REMOTE_DEFAULT_PORT)) {
+    throw new Error('a linked host’s browser addresses are unknown')
+  }
   if (!listenerPort && !remoteHosts.length) return false
 
   const resolve = async (name: string): Promise<string[]> => {
@@ -129,22 +139,18 @@ export function readLocalTempCodeOrigins(
   const settings = readRemoteSettings(store)
   const name = hostname()
   const short = shortHostName(name)
-  const publicRoutes = [settings.publicOrigin, settings.learnedOrigin ?? '']
+  const publicRoutes = [settings.publicOrigin, settings.learnedOrigin ?? ''].filter((route) => endpoint(route))
   const tunnelHosts = publicRoutes.flatMap((route) => {
     const host = endpoint(route)?.host
     return host && host.includes('.') && !isIP(host) && kindOf(host) === 'tunnel' ? [host] : []
   })
   return {
-    listenerPorts: [
-      settings.port,
-      ...(listenerPort ? [listenerPort] : []),
-      ...(boundPort ? [boundPort] : [])
-    ],
+    listenerPorts: [...new Set([settings.port, listenerPort || settings.port, boundPort || settings.port])],
     lanAddresses: [
       name,
       short,
       `${short}.local`,
-      ...Object.values(networkInterfaces()).flatMap((rows) => rows?.map((row) => row.address) ?? [])
+      ...Object.values(networkInterfaces()).flatMap((rows) => rows?.filter((row) => !row.internal).map((row) => row.address) ?? [])
     ],
     tunnelHosts,
     remoteRoutes: publicRoutes

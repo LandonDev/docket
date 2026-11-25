@@ -936,6 +936,31 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
     expect(await upgradeStatus(`${wsBase()}/ws?ticket=${await ticketFor(token)}&host=${MAC}`)).toBe(403)
   })
 
+  it('exchanges browser endpoints at registration and heartbeat, only over a peer socket', async () => {
+    const from = 'env_browser_endpoints'
+    const presence = { screen: 'unlocked', power: 'awake', at: 1 }
+    const browserEndpoints = { listenerPorts: [8191], lanAddresses: ['192.168.40.9', 'peer.local'], remoteRoutes: ['https://peer.example'] }
+    const token = await adminKey()
+    const browser = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}`, { Origin: base })
+    const peer = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}`)
+    const registration = { from, offers: [], presence, browserEndpoints }
+    try {
+      expect((await browser.request('peer.register', registration)).error).toMatch(/browser endpoints require a peer socket/)
+      expect((await peer.request('peer.register', registration)).result).toMatchObject({
+        environmentId: server.environmentId,
+        browserEndpoints: { listenerPorts: expect.arrayContaining([server.remote!.port]) }
+      })
+      const updated = { ...browserEndpoints, listenerPorts: [8192] }
+      const renewed = await peer.request('peer.presence', { from, presence, browserEndpoints: updated })
+      expect(renewed.result).toMatchObject({ ok: true, browserEndpoints: { listenerPorts: expect.arrayContaining([server.remote!.port]) } })
+      expect(JSON.parse(server.store.getSetting(`remote.browserEndpoints.inbound.${from}`)!)).toEqual(updated)
+      expect((await browser.request('peer.presence', { from, presence, browserEndpoints })).error).toMatch(/not registered on this socket/)
+    } finally {
+      browser.ws.close()
+      peer.ws.close()
+    }
+  })
+
   it('carries a phone to a registered host: the hello under its id, frames both ways, presence, revoke and the drop', async () => {
     // The "Mac": an admin link that registers with the relay offer and serves relay.* peer calls.
     const mac = await open(`${wsBase()}/ws?ticket=${await ticketFor(await adminKey())}`)

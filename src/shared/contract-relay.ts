@@ -1,3 +1,4 @@
+import { BrowserEndpointsSchema } from './browserEndpoints'
 import { z } from 'zod'
 import { HeldRefSchema } from './work/acts'
 import { NoticeWorkSchema } from './work/tell'
@@ -373,8 +374,8 @@ export const RelayNoticeSchema = z.object({
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [
-  /** The host's presence changed, or its heartbeat. → { ok: true } */
-  request('peer.presence', z.object({ from, presence: MacPresenceSchema })),
+  /** The host's presence changed, or its heartbeat. The reply includes endpoints when the peer sent its own. */
+  request('peer.presence', z.object({ from, presence: MacPresenceSchema, browserEndpoints: BrowserEndpointsSchema.optional() })),
   /** Frames the host's attach() sent on a relayed lane, in order. → { ok: true }, or an error naming an unknown socket. */
   request('relay.frames', z.object({ from, socketId, frames: z.array(z.unknown()).min(1).max(500) })),
   /** The host closed its end of a lane. → { ok: true } */

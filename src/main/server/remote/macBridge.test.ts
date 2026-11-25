@@ -346,6 +346,9 @@ describe('MacBridge policy', () => {
     const sent: { method: string; params: unknown }[] = []
     const build = { release: 300, version: '1.0.300', sha: 'abc', platform: 'darwin' }
     const presence = { screen: 'locked' as const, power: 'awake' as const, at: 5 }
+    const browserEndpoints = { listenerPorts: [7677], lanAddresses: ['studio.local'], remoteRoutes: [] }
+    const peerEndpoints = { listenerPorts: [8765], lanAddresses: ['box.local'], remoteRoutes: [] }
+    const received: unknown[] = []
     const mb = new MacBridge({
       environmentId: 'env_mac',
       store: { getSetting: () => null, setSetting: () => {} },
@@ -353,17 +356,19 @@ describe('MacBridge policy', () => {
       environments: () => [{ id: 'env_box', name: 'box' }],
       link: () => async (method: string, params: unknown) => {
         sent.push({ method, params })
-        return { environmentId: 'env_box' }
+        return { environmentId: 'env_box', browserEndpoints: peerEndpoints }
       },
       home,
       offers: () => ['relay'],
-      registration: () => ({ name: 'Studio', presence, build }),
+      registration: () => ({ name: 'Studio', presence, build, browserEndpoints }),
+      onBrowserEndpoints: (id, endpoints) => received.push({ id, endpoints }),
       log: () => {}
     })
     await mb.linkUp('env_box')
     expect(sent).toEqual([
-      { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge', 'relay'], home, name: 'Studio', presence, build } }
+      { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge', 'relay'], home, name: 'Studio', presence, build, browserEndpoints } }
     ])
+    expect(received).toEqual([{ id: 'env_box', endpoints: peerEndpoints }])
   })
 
   it('a path that does not exist is decided before anything is read: off refuses, read asks, a denial never says ENOENT', async () => {

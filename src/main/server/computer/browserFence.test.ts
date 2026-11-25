@@ -1,6 +1,6 @@
 import { lookup } from 'node:dns/promises'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { TEMPCODE_ORIGIN_REFUSAL } from '../remote/tempcodeOrigins'
+import { TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
 import { BROWSER_ADDRESS_UNAVAILABLE } from './policy'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
@@ -12,7 +12,8 @@ const dns: Record<string, string[]> = {
   'tunnel-alias.test': ['2001:db8:abcd::8'],
   'tunnel.example': ['203.0.113.8', '2001:db8:abcd::8'],
   'peer.example': ['203.0.113.7'],
-  'peer-alias.test': ['203.0.113.7']
+  'peer-alias.test': ['203.0.113.7'],
+  'peer-lan-alias.test': ['2001:db8::abcd', '192.168.40.9']
 }
 beforeEach(() => {
   vi.mocked(lookup).mockImplementation((async (host: string, options: { all: boolean }) => {
@@ -33,8 +34,8 @@ const open: ComputerHarness[] = []
 afterEach(async () => {
   for (const harness of open.splice(0)) await harness.close()
 })
-function make(vm: boolean, url?: string): ComputerHarness {
-  const h = computerHarness({ vm, origins, env: { FAKE_BROWSER_URL: url ?? '' } })
+function make(vm: boolean, url?: string, readOrigins: () => TempCodeOrigins = origins): ComputerHarness {
+  const h = computerHarness({ vm, origins: readOrigins, env: { FAKE_BROWSER_URL: url ?? '' } })
   open.push(h)
   return h
 }
@@ -128,4 +129,34 @@ it.each([
   expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(
     false
   )
+})
+
+const linkedPeer = {
+  listenerPorts: [8191],
+  lanAddresses: ['192.168.40.9', 'peer.local'],
+  remoteRoutes: ['https://peer.example']
+}
+
+it.each(['192.168.40.9', 'peer.local', 'peer-lan-alias.test'])('blocks a tunnel-linked peer on its own LAN port at %s', async (host) => {
+  const h = make(false, `http://${host}:8191/ui`, () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
+  const target = { app: 'Webby' }
+  expect(await h.run('computer_observe', target)).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
+  expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
+})
+
+it.each(['https://ordinary.test/', 'http://ordinary.test:7677/', 'http://ordinary.test:8191/'])('fails closed on a known port while a peer set is missing at %s', async (url) => {
+  const h = make(false, url, () => ({ ...origins(), linkedEndpoints: [linkedPeer], linkedEndpointsUnknown: true }))
+  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+  expect(h.requests().some(({ method }) => method === 'state.get')).toBe(false)
+})
+
+it('keeps unrelated ports available while a peer set is missing', async () => {
+  const h = make(false, 'http://ordinary.test:8192/', () => ({ ...origins(), linkedEndpoints: [linkedPeer], linkedEndpointsUnknown: true }))
+  expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
+})
+
+it('allows an ordinary address on a peer port once all peer sets are fresh', async () => {
+  const h = make(false, 'http://192.0.2.30:8191/', () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
+  expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
 })

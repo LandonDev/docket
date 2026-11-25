@@ -244,8 +244,10 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
 ## TempCode pages
 
 Both modes of the box browser send web traffic through a local proxy. The
-proxy refuses the listener's loopback and LAN addresses, the tunnel address
-and saved routes to linked hosts. It checks the host and port before it
+proxy refuses the listener's loopback and LAN addresses, the tunnel address,
+and linked hosts' saved routes and shared browser addresses. Peers share
+their listener ports, LAN addresses and names, and tunnel names when they
+connect and on each heartbeat. The proxy checks the host and port before it
 connects, even on a redirect, frame, popup or WebSocket. The tools also
 refuse a tab already on one of these addresses. The profile drops any
 existing TempCode session cookie when Chromium starts, and Chrome exports

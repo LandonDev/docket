@@ -1,3 +1,4 @@
+import { browserEndpointsFromReply, type BrowserEndpoints } from '@shared/browserEndpoints'
 import { randomBytes } from 'node:crypto'
 import { leadDetail } from '@shared/statusWords'
 import { existsSync, statSync } from 'node:fs'
@@ -173,8 +174,9 @@ export interface MacBridgeDeps {
   liveThreads?: (envId: string) => number
   /** The person is away from the computer for threads of this kind (away.ts): a call from a box thread of that kind that would ask them is allowed at once, quiet and remembered nowhere, and its reply marked (`ctx.markAway`). */
   away?: (kind: AwayKind) => boolean
-  /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
-  registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
+  /** The host details sent with peer.register, from RelayServer.registration. */
+  registration?: () => import('./relayServe').RelayRegistration
+  onBrowserEndpoints?: (id: string, endpoints: BrowserEndpoints) => void
   /**
    * A device key's proof for peer.register (devices/given.ts proofFor): on a given computer's link to its box,
    * the nonce from devices.challenge signed by its device key; null on every other link.
@@ -654,7 +656,7 @@ export class MacBridge {
       // Null at once on every link but a given computer's to its box, so peer.register goes out as before there.
       const proving = this.deps.proof?.(envId, <T>(method: string, params?: unknown) => request(method, params) as Promise<T>) ?? null
       const proof = proving ? await proving : null
-      await request('peer.register', {
+      const reply = await request('peer.register', {
         ...(proof ? { proof } : {}),
         from: this.deps.environmentId,
         offers: [
@@ -665,6 +667,8 @@ export class MacBridge {
         home: this.home,
         ...(this.deps.registration?.() ?? {})
       })
+      const endpoints = browserEndpointsFromReply(reply)
+      if (endpoints) this.deps.onBrowserEndpoints?.(envId, endpoints)
       this.registered.add(envId)
     } catch (err) {
       // An older host has no peer.register: no bridge there, nothing else changes.
