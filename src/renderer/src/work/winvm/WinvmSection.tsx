@@ -52,7 +52,21 @@ export function winvmRow(state: WinvmState): { words: string; press: "setup" | "
       return { words: "Awake", press: "sleep", busy: false };
     case "going-to-sleep":
       return { words: "Going to sleep", press: null, busy: true };
+    default:
+      // a state this window does not know (a newer host, or an answer that is no state): its step, and no press
+      return { words: doing ?? "Not known", press: null, busy: false };
   }
+}
+
+/** An answer that is no state or no list of points is a failed read, never drawn: its fields would be missing. */
+export function stateOf(answer: unknown): WinvmState {
+  if (typeof (answer as WinvmState | null)?.state !== "string") throw new Error("its answer was not the Windows VM's state");
+  return answer as WinvmState;
+}
+export function pointsOf(answer: unknown): WinvmPoint[] {
+  const points = (answer as { points?: unknown } | null)?.points;
+  if (!Array.isArray(points)) throw new Error("its answer was not a list of restore points");
+  return points as WinvmPoint[];
 }
 
 const PRESS_WORDS = { setup: "Set up", wake: "Wake", sleep: "Sleep" } as const;
@@ -164,9 +178,9 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const operate = useLinkMay(env, "work.winvm.wake");
   // A failed read keeps its line until the answer replaces it: his Retry spins on it meanwhile, never a bone.
   const loadPoints = useCallback((): Promise<void> => {
-    return link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
+    return link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(pointsOf).then(
       (p) => {
-        setPoints(p.points);
+        setPoints(p);
         setPointsError(null);
       },
       (err: unknown) => {
@@ -176,7 +190,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
     );
   }, [link, env]);
   const load = useCallback((): Promise<void> => {
-    const read = link.request<WinvmState>("work.winvm.state", {}).then(
+    const read = link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(
       (s) => {
         setState(s);
         setError(null);
@@ -549,7 +563,7 @@ export function WinvmWorkspaceRow({ env, on, onChange }: { env: string; on: bool
   const [state, setState] = useState<WinvmState | null>(null);
   useEffect(() => {
     const link = registry.linkOf(env);
-    void link.request<WinvmState>("work.winvm.state", {}).then(setState, () => setState(null));
+    void link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(setState, () => setState(null));
     return link.onPush((push) => push.push === "work.winvm" && setState(push.state as WinvmState));
   }, [env]);
   if (!state || state.cannot || state.state === "none") return null;

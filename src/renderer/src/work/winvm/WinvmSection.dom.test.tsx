@@ -5,7 +5,7 @@ import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
 import type { VmOfficeStatus } from "@shared/contract-work-office";
 import { GIVEN_KEY, READ_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
-import { TURN_OFF, TURN_ON, WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, winvmRow } from "./WinvmSection";
+import { TURN_OFF, TURN_ON, WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, pointsOf, stateOf, winvmRow } from "./WinvmSection";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
@@ -66,6 +66,14 @@ describe("the Windows VM in Settings → Work", () => {
   it("says its state in a few words with the one press that fits", () => {
     expect(winvmRow(at({ state: "none" }))).toEqual({ words: "Not set up", press: "setup", busy: false });
     expect(winvmRow(at({ state: "asleep" }))).toMatchObject({ words: "Asleep", press: "wake" });
+    // an answer that is no state or no list of points is a failed read, never drawn (a test's link answered LifeOS's status)
+    expect(() => stateOf({ lifeos: { state: "signed-out" }, keys: [] })).toThrow("not the Windows VM's state");
+    expect(() => pointsOf({ lifeos: {} })).toThrow("not a list of restore points");
+    expect(stateOf(at({ state: "awake" })).state).toBe("awake");
+    expect(pointsOf({ points: [] })).toEqual([]);
+    // a state it does not know (a newer host, or an answer that is no state) has a row and no press, never a crash
+    expect(winvmRow(at({ state: "rebuilding" as never }))).toEqual({ words: "Not known", press: null, busy: false });
+    expect(winvmRow(at({ state: undefined as never, step: "Doing something new" }))).toMatchObject({ words: "Doing something new", press: null });
     expect(winvmRow(at({ state: "awake" }))).toMatchObject({ words: "Awake", press: "sleep" });
     expect(winvmRow(at({ state: "setting-up", step: "Copying TempCode's helper into Windows" }))).toEqual({ words: "Copying TempCode's helper into Windows", press: null, busy: true });
     expect(winvmRow(at({ state: "waking", step: "Waking the Windows VM" }))).toMatchObject({ press: null, busy: true });
