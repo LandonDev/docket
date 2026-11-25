@@ -165,3 +165,16 @@ expected_of() {
     console.log(version + " " + contract)
   ' "$1"
 }
+
+# vm_device_warning <build> [<machine.json>] → a WARN line on stderr when the
+# standing Windows VM runs with live resize (its run/machine.json says virtio,
+# docs/agents/work-winvm.md) and <build> does not read that file: such code
+# starts every machine on std VGA, so a Windows hibernated on virtio-gpu would
+# wake on other hardware. The way out is Turn off… in Settings → Work → Windows
+# VM before the deploy. Silent otherwise; it never fails the deploy.
+vm_device_warning() {
+  local build=$1 file=${2:-${WINVM_DIR:-/srv/agents/win-vm}/standing/run/machine.json}
+  [[ -f $file ]] && grep -Eq '"device"[[:space:]]*:[[:space:]]*"virtio"' "$file" || return 0
+  grep -rqsF 'machine.json' "$build/out/main" && return 0
+  echo "WARN: the Windows VM runs with live resize, and this build does not read its run/machine.json: it would wake Windows on std VGA. Turn off live resize first (Settings → Work → Windows VM → Live resize → Turn off…), then deploy." >&2
+}

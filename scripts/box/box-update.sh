@@ -197,6 +197,8 @@ else
 fi
 [[ -f $candidate/out/main/boot.js && -x $candidate/node_modules/electron/dist/electron ]] ||
   { echo 'ERROR: the candidate has no out/main/boot.js or no Electron binary' >&2; exit 1; }
+# A rollback past live resize: older code would wake a virtio Windows on std VGA (box-update-lib.sh).
+lib_as_agents vm_device_warning "$candidate" || true
 # The build's manifest: what it is and how it got here (the deploy-drift mark
 # and an operator read the release number and the path from it).
 read -r built_version built_contract < <(expected "$candidate")
