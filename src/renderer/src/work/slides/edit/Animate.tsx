@@ -214,6 +214,12 @@ function BuildList({ slide, order: theirs, fade: theirFade, session }: { slide: 
     rows.current.get(focusOn)?.focus();
     setFocusOn(null);
   }, [focusOn, order]);
+  // The row under his pointer or focus outlines its shape on the stage, so two pictures' rows can be told apart.
+  const point = (id: number | null): void => {
+    const quad = id === null ? undefined : slide.shapes.find((s) => s.id === id)?.quad;
+    session.mark(quad ? { slideKey: slide.key, quad, fill: false } : null);
+  };
+  useEffect(() => () => session.mark(null), [session]);
   const send = (next: number[]): void => {
     if (next.join(",") === order.join(",")) return;
     setHeld({ was: key, order: next, fade: fade.filter((id) => next.includes(id)) });
@@ -251,6 +257,10 @@ function BuildList({ slide, order: theirs, fade: theirFade, session }: { slide: 
                 aria-label={`${i + 1}. ${label}${fades ? ", Fade" : ""}`}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Delete"
                 onPointerDown={(e) => sortable.onItemPointerDown(String(id), e)}
+                onPointerEnter={() => point(id)}
+                onPointerLeave={() => point(null)}
+                onFocus={() => point(id)}
+                onBlur={() => point(null)}
                 onKeyDown={(e) => {
                   if ((e.key === "ArrowUp" || e.key === "ArrowDown") && altOnly(e)) {
                     e.preventDefault();

@@ -123,6 +123,23 @@ export function cellAt(table: DeckShape, x: number, y: number): Cell {
   return { row: find(rows, v), col: find(cols, u) };
 }
 
+/** A table's place between two shares of its box across (`u`) and down (`v`), on its corners. */
+function within(quad: NonNullable<DeckShape["quad"]>, [u0, u1]: [number, number], [v0, v1]: [number, number]): NonNullable<DeckShape["quad"]> {
+  const [tl, tr, , bl] = quad;
+  const at = (u: number, v: number): [number, number] => [tl[0] + (tr[0] - tl[0]) * u + (bl[0] - tl[0]) * v, tl[1] + (tr[1] - tl[1]) * u + (bl[1] - tl[1]) * v];
+  return [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
+}
+
+/** One whole row or column of a table, on the slide: what the Format sheet's Row and Column name. Null past its end. */
+export function bandOf(table: DeckShape, what: "row" | "col", at: number): NonNullable<DeckShape["quad"]> | null {
+  const quad = table.quad;
+  const [cols, rows] = cellLines(table);
+  const lines = what === "row" ? rows : cols;
+  if (!quad || at < 0 || at >= lines.length - 1) return null;
+  const band: [number, number] = [lines[at], lines[at + 1]];
+  return what === "row" ? within(quad, [0, 1], band) : within(quad, band, [0, 1]);
+}
+
 /**
  * One cell of a table as a text shape of its own, for the typing box: on the cell's corners (its share of the table's
  * box, turned with it), its words a paragraph a line of the cell, in no look of their own, so the box draws them in the
@@ -133,14 +150,11 @@ export function cellShape(table: DeckShape, { row, col }: Cell): (DeckShape & { 
   const quad = table.quad;
   if (words === undefined || !quad) return null;
   const [cols, rows] = cellLines(table);
-  const [tl, tr, , bl] = quad;
-  const at = (u: number, v: number): [number, number] => [tl[0] + (tr[0] - tl[0]) * u + (bl[0] - tl[0]) * v, tl[1] + (tr[1] - tl[1]) * u + (bl[1] - tl[1]) * v];
-  const [u0, u1, v0, v1] = [cols[col], cols[col + 1], rows[row], rows[row + 1]];
   return {
     ...table,
     kind: "text",
     label: `Row ${row + 1}, column ${col + 1}`,
-    quad: [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)],
+    quad: within(quad, [cols[col], cols[col + 1]], [rows[row], rows[row + 1]]),
     text: words,
     // A line break inside a paragraph is the outline's vertical tab and the box's \n.
     paragraphs: words.split("\n").map((line) => ({ level: 0, align: "left", list: "none", runs: line ? [{ text: line.replace(/\v/g, "\n") }] : [] })),

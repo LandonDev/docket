@@ -4381,7 +4381,9 @@ other picked shape is the outline alone.
   field), Outline (its colour picker, "No outline" first; Weight and Dash
   as 112px quiet selects, each row drawing its line), and for a table, a
   row and a column by their place with Insert above, Insert below (left,
-  right) and Delete. A field writes when he leaves it or presses Return,
+  right) and Delete; the row or column it names is filled on the stage
+  (`sel-bg` of the picture's tone, its 1px line) while the pointer or the
+  focus is on it, and each row of its menu as he goes down them. A field writes when he leaves it or presses Return,
   only if its words changed; Escape puts it back. With nothing picked:
   "Pick a shape on the slide"; with a shape picked on a slide a suggestion
   changes, the hand's refusal in its place ("Accept or reject the
@@ -4402,7 +4404,10 @@ other picked shape is the outline alone.
   after it on a shape that fades in (one that appears says nothing), and a
   24px remove at the end by the hover reveal; a drag shows the 2px `accent` line where
   it will land, and the row carries the `muted` fill. ⌥↑ and ⌥↓ move the
-  focused row, ↑↓ walk the rows, Delete takes one out. Under them "Appear
+  focused row, ↑↓ walk the rows, Delete takes one out. A row under the
+  pointer or focused outlines its shape on the stage (1px `sel-line-dark-pic`,
+  no handles, at once), so two "Picture" rows can be told apart; the pick
+  is unchanged. Under them "Appear
   on click", a ghost xs button with its plus, opening a 224px menu of the
   slide's shapes not in a group and not yet listed. A slide whose builds
   are more than that shows no list: "Edit in PowerPoint" 13/20, why under

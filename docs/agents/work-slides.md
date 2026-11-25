@@ -1508,7 +1508,8 @@ once as a toast; `saving` and `saved` on the save line follow it.
   W, H and Rotation fields (in his units, `parseLength` reading "2.5",
   "3 cm" or "1 in"), `line` for the outline (PowerPoint's own dashes read
   as solid, dash or dot: `dashOf`), `grid` for a table's rows and columns
-  (their count from the outline's cells). Shadow and crop are not offered:
+  (their count from the outline's cells; the one named is filled on the
+  stage while under his pointer or focus, `bandOf` and `HandSession.mark`). Shadow and crop are not offered:
   the host has no edit for them. Its two tabs are kept in the deck's store
   (`DeckState.sheetTab`), so the sheet opens on the tab he left.
 - **The Animate tab** (`edit/Animate.tsx`, the rules pure in
@@ -1526,7 +1527,9 @@ once as a toast; `saving` and `saved` on the save line follow it.
   outline gives `order` (or the slide has no builds), the shapes that come
   in on a press, in order, each by the label the stage reads to a screen
   reader (`shapeLabel`, geometry.ts), one that fades in saying "Fade"; drag
-  (`useSortable`), ⌥↑ and ⌥↓ on a focused row, Delete or its remove button,
+  (`useSortable`), ⌥↑ and ⌥↓ on a focused row, Delete or its remove button
+  (a row under the pointer or focused outlines its shape on the stage:
+  `HandSession.mark`, drawn by `MarkOn`, the pick left as it was),
   and "Appear on click" to add a shape of the slide in no group
   (`addable`), which comes by Appear; each change sends one `builds` with
   the whole new order and, in `fade`, the shapes still in it that fade

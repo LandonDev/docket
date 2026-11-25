@@ -129,6 +129,25 @@ describe("the Animate tab", () => {
     await waitFor(() => expect(t.host.calls).toContainEqual(["step", "undo"]));
   });
 
+  it("outlines a build's shape on the stage while its row is under the pointer or focused, and lets it go after", async () => {
+    await animate(withFirst({ builds: { steps: [{ shapes: [4, 5], paras: [] }, { shapes: [5], paras: [] }, none], changed: 0, order: [4, 5] } }));
+    const mark = (): SVGElement | null => document.querySelector("[data-slide-mark]");
+    const picture = within(sheet()).getByRole("listitem", { name: "1. Picture" });
+    expect(mark()).toBeNull();
+    fireEvent.pointerEnter(picture);
+    await waitFor(() => expect(mark()?.getAttribute("data-slide-mark")).toBe("shape"));
+    // On the picture's own corners: [0.1, 0.5] to [0.3, 0.9] of the stage.
+    const { w, h } = { w: Number.parseFloat(document.querySelector<HTMLElement>("[data-slides-stage]")!.style.width), h: t.stageHeight() };
+    expect(mark()!.querySelector("polygon")!.getAttribute("points")).toBe(`${0.1 * w},${0.5 * h} ${0.3 * w},${0.5 * h} ${0.3 * w},${0.9 * h} ${0.1 * w},${0.9 * h}`);
+    expect(mark()!.querySelector("polygon")!.getAttribute("fill")).toBe("none");
+    fireEvent.pointerLeave(picture);
+    await waitFor(() => expect(mark()).toBeNull());
+    act(() => within(sheet()).getByRole("listitem", { name: "2. Rectangle 4" }).focus());
+    await waitFor(() => expect(mark()).not.toBeNull());
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(mark()).toBeNull());
+  });
+
   it("moves a build by ⌥↑ and ⌥↓ from the keyboard, keeping the keyboard on it; Delete takes it out", async () => {
     await animate(withFirst({ builds: { steps: [{ shapes: [2, 4, 5], paras: [] }, { shapes: [4, 5], paras: [] }, { shapes: [4], paras: [] }, none], changed: 0, order: [2, 5, 4] } }));
     const row = within(sheet()).getByRole("listitem", { name: "2. Rectangle 4" });

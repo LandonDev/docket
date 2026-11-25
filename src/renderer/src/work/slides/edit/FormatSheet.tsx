@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DeckShape, DeckSlide, SlideChange, SlideOp } from "@shared/contract-work-slides";
 import { ColourPicker, FormatRowContext, FormatSelectButton, RowMenu, RowMenuRadioGroup, RowMenuRadioItem, type Colour, type OfficeTheme } from "work-kit/format";
 import { Square, X } from "../../../chrome/icons";
@@ -10,6 +10,7 @@ import type { SheetTab } from "../deck";
 import { Animate } from "./Animate";
 import { deckColour } from "./DeckRow";
 import { lengthText, normalAngle, parseLength, type Own, type Unit } from "./drag";
+import { bandOf } from "./model";
 import { turnable } from "./Manipulate";
 import type { HandSession } from "./session";
 import { NumberField, Row, Section } from "./sheetParts";
@@ -99,6 +100,12 @@ export function FormatSheet({
   const [col, setCol] = useState(0);
   // Each tab's body enters on opacity and an 8px slide from the sheet's edge (DESIGN.md's motion table).
   const body = `flex flex-col gap-5 px-3 pt-4 pb-6 transition-[opacity,translate] ${docked ? "" : "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"} duration-(--dur-base) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-opacity ${docked ? "starting:translate-y-2" : "starting:translate-x-2"} motion-reduce:starting:translate-x-0 motion-reduce:starting:translate-y-0`;
+  // A row or column the Table section names is filled on the stage while it is under his pointer or focus.
+  const markBand = (what: "row" | "col", at: number | null): void => {
+    const quad = at === null || !shape ? null : bandOf(shape, what, at);
+    session.mark(quad && slide ? { slideKey: slide.key, quad, fill: true } : null);
+  };
+  useEffect(() => () => session.mark(null), [session]);
   const gridEdit = (what: "row" | "col", act: "insert" | "delete", at: number): void => {
     if (shape && slide) edit({ op: "grid", slide: slide.id, shape: shape.id, what, act, at }, what === "row" ? "Couldn't change the rows" : "Couldn't change the columns");
   };
@@ -230,8 +237,8 @@ export function FormatSheet({
                 ) : null}
                 {grid ? (
                   <Section label="Table">
-                    <GridRow what="row" count={grid.rows} at={Math.min(row, grid.rows - 1)} onAt={setRow} onEdit={gridEdit} />
-                    <GridRow what="col" count={grid.cols} at={Math.min(col, grid.cols - 1)} onAt={setCol} onEdit={gridEdit} />
+                    <GridRow what="row" count={grid.rows} at={Math.min(row, grid.rows - 1)} onAt={setRow} onEdit={gridEdit} onMark={markBand} />
+                    <GridRow what="col" count={grid.cols} at={Math.min(col, grid.cols - 1)} onAt={setCol} onEdit={gridEdit} onMark={markBand} />
                   </Section>
                 ) : null}
               </>
@@ -243,11 +250,42 @@ export function FormatSheet({
   );
 }
 
-/** One of a table's rows or columns picked by its place, and a row or column put in before or after it, or it taken out. */
-function GridRow({ what, count, at, onAt, onEdit }: { what: "row" | "col"; count: number; at: number; onAt(at: number): void; onEdit(what: "row" | "col", act: "insert" | "delete", at: number): void }) {
+/**
+ * One of a table's rows or columns picked by its place, and a row or column put in before or after it, or it taken
+ * out. The one it names is marked on the stage while the pointer or the focus is on it (`onMark`), and so is each of
+ * the menu's rows as he goes down them.
+ */
+function GridRow({
+  what,
+  count,
+  at,
+  onAt,
+  onEdit,
+  onMark,
+}: {
+  what: "row" | "col";
+  count: number;
+  at: number;
+  onAt(at: number): void;
+  onEdit(what: "row" | "col", act: "insert" | "delete", at: number): void;
+  onMark(what: "row" | "col", at: number | null): void;
+}) {
   const name = what === "row" ? "Row" : "Column";
+  const markItem = (target: EventTarget): void => {
+    const band = (target as Element).closest?.('[role="menuitemradio"]')?.querySelector("[data-band]")?.getAttribute("data-band");
+    if (band != null) onMark(what, Number(band));
+  };
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      className="flex flex-col gap-1"
+      // React counts its menu's rows, drawn elsewhere, as inside it: only its own place marks the row it names.
+      onPointerEnter={(event) => event.currentTarget.contains(event.target as Node) && onMark(what, at)}
+      onPointerLeave={(event) => event.currentTarget.contains(event.target as Node) && onMark(what, null)}
+      onFocus={(event) => (event.currentTarget.contains(event.target) ? onMark(what, at) : markItem(event.target))}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onMark(what, null);
+      }}
+    >
       <Row label={name}>
         <RowMenu
           label={name}
@@ -258,13 +296,15 @@ function GridRow({ what, count, at, onAt, onEdit }: { what: "row" | "col"; count
             </FormatSelectButton>
           }
         >
-          <RowMenuRadioGroup value={String(at)} onValueChange={(v: string) => onAt(Number(v))}>
-            {Array.from({ length: count }, (_, i) => (
-              <RowMenuRadioItem key={i} value={String(i)}>
-                {`${name} ${i + 1}`}
-              </RowMenuRadioItem>
-            ))}
-          </RowMenuRadioGroup>
+          <div onPointerOver={(event) => markItem(event.target)} onFocus={(event) => markItem(event.target)}>
+            <RowMenuRadioGroup value={String(at)} onValueChange={(v: string) => onAt(Number(v))}>
+              {Array.from({ length: count }, (_, i) => (
+                <RowMenuRadioItem key={i} value={String(i)}>
+                  <span data-band={i}>{`${name} ${i + 1}`}</span>
+                </RowMenuRadioItem>
+              ))}
+            </RowMenuRadioGroup>
+          </div>
         </RowMenu>
       </Row>
       <div className="flex justify-end gap-0.5">

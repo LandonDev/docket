@@ -31,7 +31,7 @@ import { HistoryButton } from "./edit/History";
 import { cellAt, cellShape, modelOf, typesIn, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
-import { CONFLICT_WORD, HandSession, SHAPE_GONE, unsavedOf, type HandState, type Start } from "./edit/session";
+import { CONFLICT_WORD, HandSession, SHAPE_GONE, unsavedOf, type HandState, type Mark, type Start } from "./edit/session";
 import { Prompt, TypingBox } from "./edit/TypingBox";
 import { NotesField } from "./edit/NotesField";
 import { askAnchor, groundOf, HANDLE, inkOn, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
@@ -983,6 +983,7 @@ function Main({
             ) : null}
             {adding ? <Adding quad={adding.quad} width={w} height={h} /> : null}
             {selection && selected ? <Selection selection={selection} width={w} height={h} handles={canMove(selected)} turn={canMove(selected) && turnable(selected)} /> : null}
+            {hand.mark?.slideKey === slide.key ? <MarkOn mark={hand.mark} width={w} height={h} tone={tone} /> : null}
             <Manipulate
               ref={manip}
               slide={slide}
@@ -1042,6 +1043,20 @@ function Main({
  * and a rotate handle over its top edge, drawn at screen size whatever the slide's zoom and turned with the shape.
  * One look in both themes (`sel-line-dark-pic` on `paper`): it sits on the deck, not on the app.
  */
+/** What a row of the Format sheet names, marked on the stage while it is under his pointer or focus: a shape outlined, a table's row or column filled. */
+function MarkOn({ mark, width, height, tone }: { mark: Mark; width: number; height: number; tone: "dark" | "light" }) {
+  return (
+    <svg data-slide-mark={mark.fill ? "band" : "shape"} aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
+      <polygon
+        points={mark.quad.map(([x, y]) => `${x * width},${y * height}`).join(" ")}
+        fill={mark.fill ? (tone === "dark" ? "var(--sel-bg-dark-pic)" : "var(--sel-bg-paper)") : "none"}
+        stroke="var(--sel-line-dark-pic)"
+        strokeWidth={1}
+      />
+    </svg>
+  );
+}
+
 function Selection({ selection, width, height, handles: withHandles, turn: withTurn }: { selection: ReturnType<typeof selectionOf>; width: number; height: number; handles: boolean; turn: boolean }) {
   const { corners, rotate, stem } = selection;
   // Handles only where they do something: a shape he cannot move by hand is outlined alone.

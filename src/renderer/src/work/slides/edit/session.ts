@@ -99,8 +99,17 @@ export interface Landing {
   before: string | null;
 }
 
+/** A place the stage marks for him while a row of the sheet that names it is under his pointer or focus: an outline, or a filled band (a table's row or column). */
+export interface Mark {
+  slideKey: string;
+  quad: Quad;
+  fill: boolean;
+}
+
 export interface HandState {
   picked: { slideKey: string; shapeId: number } | null;
+  /** what a row of the Format sheet points at on the stage now */
+  mark?: Mark | null;
   box: BoxState | null;
   /** his edits on their way (the box's, the row's, an undo, a restore) */
   busy: number;
@@ -286,6 +295,13 @@ export class HandSession {
 
   pick(slideKey: string, shapeId: number | null): void {
     this.set({ picked: shapeId === null ? null : { slideKey, shapeId } });
+  }
+
+  /** The stage marks what a row of the sheet names, while it is under his pointer or focus; null lets it go. */
+  mark(mark: Mark | null): void {
+    const was = this.state.mark ?? null;
+    if (was === mark || (was && mark && was.slideKey === mark.slideKey && was.fill === mark.fill && JSON.stringify(was.quad) === JSON.stringify(mark.quad))) return;
+    this.set({ mark });
   }
 
   /** Why a shape cannot take his words now, or null when it can. */

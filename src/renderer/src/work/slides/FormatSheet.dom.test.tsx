@@ -128,6 +128,31 @@ describe("the Format sheet", () => {
     await waitFor(() => expect(t.edits()[1]).toEqual([{ op: "grid", slide: 3, shape: 7, what: "col", act: "delete", at: 0 }]));
   });
 
+  it("fills the row or column it names on the stage while it is under his pointer, and each of the menu's rows as he goes down them", async () => {
+    const table = { ...BOX, id: 7, kind: "table" as const, cells: [["a", "b"], ["c", "d"], ["e", "f"]] };
+    const view = handView();
+    const { press } = await t.stage({ ...view, slides: [{ ...view.slides[0], shapes: [table as never] }, view.slides[1]] });
+    press(0.6, 0.6);
+    fireEvent.click(toggle());
+    await waitFor(() => expect(sheet()).toBeTruthy());
+    const mark = (): SVGElement | null => document.querySelector('[data-slide-mark="band"]');
+    const ys = (): number[] => mark()!.querySelector("polygon")!.getAttribute("points")!.split(" ").map((p) => Number(p.split(",")[1]));
+    const h = t.stageHeight();
+    const trigger = within(sheet()).getByRole("button", { name: "Row" });
+    fireEvent.pointerEnter(trigger.closest("div.flex-col")!);
+    // The table's box is [0.5, 0.7] of the slide down: its first row a third of it.
+    await waitFor(() => expect(mark()).not.toBeNull());
+    expect(ys()).toEqual([0.5 * h, 0.5 * h, (0.5 + 0.2 / 3) * h, (0.5 + 0.2 / 3) * h].map((v) => expect.closeTo(v, 3)));
+    fireEvent.click(trigger);
+    const third = await screen.findByRole("menuitemradio", { name: "Row 3" });
+    fireEvent.pointerOver(third);
+    await waitFor(() => expect(ys()[0]).toBeCloseTo((0.5 + 0.4 / 3) * h, 3));
+    fireEvent.click(third);
+    fireEvent.pointerLeave(trigger.closest("div.flex-col")!);
+    fireEvent.blur(document.activeElement!);
+    await waitFor(() => expect(mark()).toBeNull());
+  });
+
   it("lies under the slide in the notes' place on a narrow canvas", async () => {
     const { press } = await t.stage(handView(), { width: 600, height: 700 });
     press(0.6, 0.6);
