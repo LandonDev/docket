@@ -375,6 +375,19 @@ Download in a file tab's More menu follows one rule (`downloadOf`, work/files/ac
 computer's; a file of the workspace's own host is read where it lies; a shared library's file with no copy here is
 offered no Download from another computer's window. Facts' Download reads by the item the same way.
 
+A row's Download (its menu, and the bulk bar for many) takes the same route, `work.files.read` of the file where it
+lies, and adds no method and no path a remote key may name. It is offered only where the host serves those bytes to
+this window (`placeDownloads`, work/files/model.ts, the renderer's copy of `bytesFence` in files/handle.ts): the
+workspace's folder and the libraries, never a lens, LifeOS, Drive or a computer reached through another host; a place
+others open (a library, a folder kept in OneDrive) and the VM only in the window of the computer that holds it; and
+only where the window's key may read (`work.files.read` is a read method, so a read-only key downloads too). A folder
+has no bytes, so none is offered with one selected, nor a file the VM keeps in the cloud. Each file goes in turn,
+its row saying "Downloading… 2.1 of 8.4 MB"; one toast says what came ("Downloaded Budget.xlsx", "Downloaded 3
+files"), and what did not, file by file (`downloadAll`). A tab's Download says it in the same toast. Quick Look is a
+row of the menu after Open, with Space at its end; that press plays its entrance (`pressed`), Space never does.
+fence.test.ts holds the route by caller: a read-only key reads the workspace's folder; no remote key and no thread
+reads a library's bytes.
+
 **Ask: a chat docked beside the file** (`Dock.tsx`, `dockThread.ts`). The
 owner's rule: a file opens chat only when he asks for it; by default it is
 the file alone, and a chat is kept only once he sends in it. So opening a

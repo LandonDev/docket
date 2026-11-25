@@ -31,13 +31,13 @@ import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
 import { openVm, signInOnVm } from "../winvm/signIn";
-import { addFromDrive, carryTo, download, downloadOf, makeIn, purge, renameTo, restore, star, trash, uploadTo, type ActsOf, type UploadProgress, keepMail, setProject } from "./acts";
+import { addFromDrive, carryTo, download, downloadAll, downloadOf, makeIn, purge, renameTo, restore, star, trash, uploadTo, type ActsOf, type UploadProgress, keepMail, setProject } from "./acts";
 import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { cutsMiddle, MiddleCut } from "../canvas/TabName";
-import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
@@ -958,6 +958,8 @@ function FolderPage({
               }
             : {}),
           ...(opensInApp(copy) ? { openApp: (entry: FileEntry) => verbs.openApp(entry, copy) } : {}),
+          // Download as a tab's own file is read: offered only where the host gives this window the bytes.
+          ...(placeDownloads(copy.place, { here: copy.link === LOCAL_ENVIRONMENT_ID, ...farOf(copy, workspace.environmentId) }) && may(copy.link, "work.files.read") ? { download: (entries: readonly FileEntry[]) => void downloadAll(of, copy, entries) } : {}),
           share: (entry: FileEntry) => entry.ref && setSharing(entry),
           ask: (entries) => verbs.ask(entries, copy),
           pickUpload: () => verbs.pickUpload(copy, page.at),

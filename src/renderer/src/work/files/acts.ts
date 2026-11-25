@@ -475,13 +475,45 @@ export function downloadOf<T>(file: { copy: boolean; shared: boolean; there: boo
 }
 
 /**
- * A file's bytes to this computer, read from where they lie in parts of one version. With `itemId` the bytes are a
- * Files tab's own copy (a file of another computer or the VM, open here): the workspace's host reads the copy it
- * holds, since the original's bytes go to no window but its own computer's.
+ * A file's bytes to this computer, read from where they lie in parts of one version, said in one toast once it is
+ * saved ("Downloaded Budget.xlsx"). With `itemId` the bytes are a Files tab's own copy (a file of another computer or
+ * the VM, open here): the workspace's host reads the copy it holds, since the original's bytes go to no window but its
+ * own computer's.
  */
-export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<void> {
-  if (!entry.ref) return;
-  // The row says how far the bytes have come where its size is known.
+export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<boolean> {
+  try {
+    if (!(await fetchOne(of, copy, entry, itemId))) return false;
+    said(`Downloaded ${entry.name}`);
+    return true;
+  } catch (err) {
+    failed(`${entry.name} did not download`, err);
+    return false;
+  }
+}
+
+/**
+ * Download from a row's menu or the bulk bar: each file in turn, by the same route as a tab's, its row saying how far it
+ * has come; then one toast for them all, with what did not come said file by file.
+ */
+export async function downloadAll(of: ActsOf, copy: PlaceCopy, entries: readonly FileEntry[]): Promise<number> {
+  if (entries.length === 1) return (await download(of, copy, entries[0]!)) ? 1 : 0;
+  const lost: { name: string; text: string }[] = [];
+  let got = 0;
+  for (const entry of entries) {
+    try {
+      if (await fetchOne(of, copy, entry)) got += 1;
+    } catch (err) {
+      lost.push({ name: entry.name, text: workErrorWords(err) || "It did not download." });
+    }
+  }
+  if (got) said(`Downloaded ${got} files`, { description: refusedWords(lost) ?? undefined });
+  else failed("Nothing was downloaded", new Error(refusedWords(lost) ?? ""));
+  return got;
+}
+
+/** One file read part by part into the system's downloads; its row shows how far, where its size is known. */
+async function fetchOne(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<boolean> {
+  if (!entry.ref) return false;
   const far = (got: number): RowBusy => ({ word: entry.size ? openingWords(got, entry.size, "Downloading…") : "Downloading…" });
   of.busy?.([entry.key], far(0));
   try {
@@ -505,8 +537,7 @@ export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, it
     a.download = entry.name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  } catch (err) {
-    failed(`${entry.name} did not download`, err);
+    return true;
   } finally {
     of.busy?.([entry.key], null);
   }

@@ -639,6 +639,8 @@ export interface PageActs {
   openSide?(entry: FileEntry): void;
   /** Open in its app: absent where the place's computer cannot open it for this window (`appOpens`) */
   openApp?(entry: FileEntry): void;
+  /** Download: the files' bytes to this computer, one after another, by the route a tab's own file takes; absent where this window cannot be given them (`placeDownloads`) */
+  download?(entries: readonly FileEntry[]): void;
   /** Share…: a document's or a sheet's Share sheet; absent where nothing of this place can be shared from this window */
   share?(entry: FileEntry): void;
   /** Add from Drive…: Google's Picker, for a Drive place; what he picks is what the place may list */
@@ -729,10 +731,12 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
 /** The verbs a row's LifeOS session runs: none is offered for a row that session shuts. */
 const SESSION_ACTS: ReadonlySet<EntryAct> = new Set<EntryAct>(["open", "open-form", "open-side", "open-app", "share"]);
 const BULK_WORDS: Partial<Record<EntryAct, string>> = { move: "Move", copy: "Copy" };
+/** The key a row's verb answers to, shown at its row's end (a PC's Delete key alone deletes, so it is not shown there). */
+const ROW_KEYS: Partial<Record<EntryAct, string>> = { "quick-look": "Quick Look", rename: "Rename", delete: "Delete" };
 
 /** With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. */
 function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: readonly ActRow[]; onAsk?(): void; onAct(act: EntryAct): void; onClear(): void }) {
-  const shown = rows.filter((row) => row.act === "move" || row.act === "copy" || row.act === "keep" || row.act === "delete" || row.act === "restore" || row.act === "purge");
+  const shown = rows.filter((row) => row.act === "download" || row.act === "move" || row.act === "copy" || row.act === "keep" || row.act === "delete" || row.act === "restore" || row.act === "purge");
   return (
     <div data-files-bulk role="toolbar" aria-label={`${count} selected`} className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
       <div className="pointer-events-auto flex h-10 max-w-full items-center gap-1 rounded-xl bg-popover px-2 shadow-overlay ring-1 ring-border">
@@ -915,6 +919,8 @@ export function PageView({
   const pics: PictureFrom | null = from ?? pictures;
   // Quick Look: Space on the row the arrows rest on; it follows the list until Space or Escape.
   const [quick, setQuick] = useState(drawn?.quick === true);
+  // Opened by a press (the row's Quick Look) it plays its entrance; by Space it appears at once.
+  const [lookPressed, setLookPressed] = useState(false);
   const cursor = picked.cursor ? (entries.find((e) => e.key === picked.cursor) ?? null) : null;
   const looked = quick && cursor && !inTrash ? cursor : null;
   if (quick && !cursor) setQuick(false);
@@ -998,11 +1004,16 @@ export function PageView({
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
   // A row shut by its LifeOS session offers no verb that session runs: it can still be starred, or shown in its folder.
   const unshut = (list: ActRow[], on: readonly FileEntry[]): ActRow[] => (on.some((e) => sessionHeld?.has(e.key)) ? list.filter((row) => !SESSION_ACTS.has(row.act)) : list);
-  const verbs = unshut(acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen), chosen);
+  const verbs = unshut(acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen), chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
     if (act === "open") return open(one);
+    if (act === "quick-look") {
+      setPicked({ keys: new Set([one.key]), cursor: one.key, anchor: one.key });
+      setLookPressed(true);
+      return setQuick(true);
+    }
     if (act === "open-form") return one.answersTo ? open(formEntryOf(one.answersTo)) : undefined;
     if (act === "reveal") return onReveal?.(one);
     if (!acts) return;
@@ -1012,6 +1023,7 @@ export function PageView({
     if (act === "project-out") return one.project ? acts.project?.(one, one.project, false) : undefined;
     if (act === "open-app") return acts.openApp?.(one);
     if (act === "share") return acts.share?.(one);
+    if (act === "download") return acts.download?.(on);
     if (act === "rename") return setRenaming(one.key);
     if (act === "move" || act === "copy") return acts.carry(act, on);
     if (act === "star" || act === "unstar") return acts.star(on, act === "star");
@@ -1021,7 +1033,7 @@ export function PageView({
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = unshut(acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(on), on);
+    const list = unshut(acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, look: !inTrash, download: !!acts.download, ...(acts.far ? { far: acts.far } : {}) }) : plain(on), on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
@@ -1030,7 +1042,7 @@ export function PageView({
     return list.flatMap((row): MenuRow[] => [
       ...(row.act === "delete" ? add : []),
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
-      { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}), ...(row.act === "rename" ? { shortcut: shortcutFor("Files (Work)", "Rename") } : row.act === "delete" && IS_MAC ? { shortcut: shortcutFor("Files (Work)", "Delete") } : {}) },
+      { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}), ...(ROW_KEYS[row.act] && (row.act !== "delete" || IS_MAC) ? { shortcut: shortcutFor("Files (Work)", ROW_KEYS[row.act]!) } : {}) },
     ]);
   };
   // ⌘⇧N makes a folder here where New would offer one, named in place as New's are (decision 2 of the files pass).
@@ -1060,7 +1072,7 @@ export function PageView({
     if (chordKey(event)) return;
     if (event.key === "/" && find) return void (event.preventDefault(), find.setMode("search"));
     // Space is Quick Look for the row the arrows rest on, from the folder itself (a button keeps its own Space).
-    if (event.key === " " && cursor && !inTrash && renaming === null && (event.target as HTMLElement).closest("[data-files-body]") && !(event.target as HTMLElement).closest("button, a, video, audio")) return void (event.preventDefault(), setQuick(!quick));
+    if (event.key === " " && cursor && !inTrash && renaming === null && (event.target as HTMLElement).closest("[data-files-body]") && !(event.target as HTMLElement).closest("button, a, video, audio")) return void (event.preventDefault(), setLookPressed(false), setQuick(!quick));
     if (event.key === "F2" && can("rename")) return void (event.preventDefault(), run("rename"));
   };
 
@@ -1334,6 +1346,7 @@ export function PageView({
             open(entry);
           }}
           onClose={() => setQuick(false)}
+          pressed={lookPressed}
           still={drawn?.quick === true}
           {...(onFetch ? { onFetch } : {})}
         />

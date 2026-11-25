@@ -83,7 +83,7 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
 }));
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
-const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
+const { GIVEN_KEY, READ_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { View } = await import("./FilesView");
 const { resetFilesStore } = await import("./store");
 const { applyCanvasPush, resetCanvasStore } = await import("../canvas/store");
@@ -276,6 +276,8 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
           const hits = [...disk.keys()].map(entry).filter((e) => words.every((w) => e.name.toLowerCase().includes(w)) && (!kinds?.length || kinds.includes(e.kind)));
           return { entries: hits.map((e) => ({ ...e, where: { place: "folder", name: pathOf(e.ref ?? e.folder).startsWith("/cloud") ? "General" : "Dummy Esports", trail: [] } })), place: "search" } satisfies FilesListing;
         }
+        case "work.files.read":
+          return { data: btoa(`bytes of ${name(pathOf(params.ref))}`), version: "v1", end: true };
         case "work.files.home":
           return { waiting: [], starred: [...stars].map(entry), recent: [entry("/w/Budget.xlsx")] };
         case "work.files.searches":
@@ -397,7 +399,7 @@ describe("the selection", () => {
     const bar = document.querySelector<HTMLElement>("[data-files-bulk]")!;
     expect(bar.textContent).toContain("3 selected");
     // The bar names its verbs as DESIGN.md does, and the list keeps its last row clear of the bar.
-    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Move", "Copy", "Delete", "Clear"]);
+    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete", "Clear"]);
     expect(list().className).toContain("pb-14");
     // Ask starts a chat of the workspace about the files selected: a chip each, with its place and path in words.
     fireEvent.click(within(bar).getByRole("button", { name: "Ask" }));
@@ -426,7 +428,7 @@ describe("a row's menu", () => {
     fireEvent.contextMenu(row("notes.txt"));
     const menu = await screen.findByRole("menu");
     expect(picked()).toEqual(["notes.txt"]);
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.replace("F2", ""))).toEqual(["Open", "Rename", "Move to…", "Copy to…", "Star", "Delete"]);
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.replace("F2", "").replace("Space", ""))).toEqual(["Open", "Quick Look", "Download", "Rename", "Move to…", "Copy to…", "Star", "Delete"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
     await waitFor(() => expect(calls("work.files.trash")).toHaveLength(1));
     expect(calls("work.files.trash")[0]).toMatchObject({ refs: [at("/w/notes.txt")] });
@@ -500,6 +502,74 @@ describe("a row's menu", () => {
     await waitFor(() => expect(rows()).toEqual(["Budget.xlsx"]));
     fireEvent.contextMenu(row("Budget.xlsx"));
     expect(await menuItem("Remove Star")).toBeTruthy();
+  });
+});
+
+describe("Download from a row", () => {
+  const saved: string[] = [];
+  beforeEach(() => {
+    saved.length = 0;
+    URL.createObjectURL = () => "blob:x";
+    URL.revokeObjectURL = () => undefined;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push(this.download);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("reads the file by the route a tab's Download takes and says it in one toast", async () => {
+    await mount();
+    fireEvent.contextMenu(row("Budget.xlsx"));
+    fireEvent.click(await menuItem("Download"));
+    await waitFor(() => expect(saved).toEqual(["Budget.xlsx"]));
+    expect(calls("work.files.read")).toEqual([{ workspaceId: "w1", ref: at("/w/Budget.xlsx"), offset: 0, length: 4 * 1024 * 1024 }]);
+    expect(world.toasts).toEqual([{ kind: "message", title: "Downloaded Budget.xlsx" }]);
+  });
+
+  it("downloads many from the bulk bar, one after another, and says them in one toast", async () => {
+    await mount();
+    fireEvent.click(row("Budget.xlsx"));
+    fireEvent.click(row("Plan.docx"), { shiftKey: true });
+    fireEvent.click(within(document.querySelector<HTMLElement>("[data-files-bulk]")!).getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(saved).toEqual(["Budget.xlsx", "notes.txt", "Plan.docx"]));
+    expect(world.toasts).toEqual([{ kind: "message", title: "Downloaded 3 files" }]);
+  });
+
+  it("is not offered for a folder, nor in a library others open from a window of another computer, where the host gives no bytes", async () => {
+    await mount();
+    fireEvent.contextMenu(row("Events"));
+    expect(within(await screen.findByRole("menu")).queryByRole("menuitem", { name: "Download" })).toBeNull();
+    fireEvent.keyDown(list(), { key: "Escape" });
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
+    await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
+    fireEvent.contextMenu(row("Agenda.docx"));
+    expect(within(await screen.findByRole("menu")).queryByRole("menuitem", { name: "Download" })).toBeNull();
+    expect(calls("work.files.read")).toEqual([]);
+  });
+
+  it("is offered to a read-only key, which may read, and asks nothing but the read", async () => {
+    testKey.current = READ_KEY;
+    await mount();
+    fireEvent.contextMenu(row("notes.txt"));
+    fireEvent.click(await menuItem("Download"));
+    await waitFor(() => expect(saved).toEqual(["notes.txt"]));
+    const asked = host.calls.map((c) => c.method).filter((m) => !/^work\.files\.(places|tabs|list|stat|home|searches|tabOpen)$|^work\.canvas\.list$|^work\.office\./.test(m));
+    expect(asked).toEqual(["work.files.read"]);
+  });
+});
+
+describe("Quick Look from a row", () => {
+  it("opens on its row's press with its entrance, and on Space at once", async () => {
+    await mount();
+    fireEvent.contextMenu(row("notes.txt"));
+    fireEvent.click(await menuItem(/^Quick Look/));
+    const layer = await screen.findByRole("dialog", { name: "Quick Look: notes.txt" });
+    expect(layer.className).toContain("starting:scale-[0.96]");
+    fireEvent.click(screen.getByRole("button", { name: "Close Quick Look" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Quick Look/ })).toBeNull());
+    fireEvent.click(row("notes.txt"));
+    fireEvent.keyDown(list(), { key: " " });
+    expect((await screen.findByRole("dialog", { name: "Quick Look: notes.txt" })).className).not.toContain("starting:scale");
   });
 });
 

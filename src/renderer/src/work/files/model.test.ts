@@ -42,6 +42,7 @@ import {
   groupHeads,
   tilesAcross,
   actsFor,
+  placeDownloads,
   farWhy,
   tabShrink,
   doneWords,
@@ -417,6 +418,36 @@ describe("the verbs for what is selected", () => {
     expect(labels(actsFor([dir], own, { tabs: true, share: true }))).not.toContain("Share…");
     expect(labels(actsFor([file("a.tcsheet"), file("b.tcsheet")], own, { tabs: true, share: true }))).not.toContain("Share…");
     expect(labels(actsFor([file("Budget.tcsheet")], own))).not.toContain("Share…");
+  });
+
+  it("offers Quick Look after Open on a page's row, and Download where the page's files may come to this window", () => {
+    expect(labels(actsFor([file("Budget.xlsx")], own, { tabs: true, look: true, download: true }))).toEqual(["Open", "Quick Look", "Download", "Rename", "Move to…", "Copy to…", "Star", "Delete"]);
+    expect(actsFor([file("Budget.xlsx")], own, { tabs: true, download: true }).find((r) => r.act === "download")?.rule).toBe(true);
+    // Download stands beside Share…, the ways a file leaves; for many it leads the verbs for them all.
+    expect(labels(actsFor([file("Budget.tcsheet")], own, { tabs: true, share: true, download: true })).slice(1, 3)).toEqual(["Share…", "Download"]);
+    expect(labels(actsFor([file("a.xlsx"), file("b.xlsx")], own, { tabs: true, download: true }))).toEqual(["Download", "Move to…", "Copy to…", "Star", "Delete"]);
+    // A folder has no bytes to give, so none is offered with one among the rows; nor a file the VM keeps in the cloud.
+    expect(labels(actsFor([dir], own, { tabs: true, download: true }))).not.toContain("Download");
+    expect(labels(actsFor([file("a.xlsx"), dir], own, { tabs: true, download: true }))).not.toContain("Download");
+    const vm = place({ id: "v1", kind: "teams", name: "General", vm: true, shared: true });
+    expect(labels(actsFor([file("a.xlsx", { local: false })], vm, { tabs: true, download: true }))).not.toContain("Download");
+  });
+
+  it("lets a page's files come to this window only by a route the host serves (placeDownloads)", () => {
+    const lib = place({ id: "b1", kind: "teams", name: "General", shared: true, root: { at: "file", host: "h", path: "/cloud/General" } });
+    const ownAt = { ...own, root: { at: "file" as const, host: "h", path: "/w" } };
+    // The workspace's own folder: any window that reaches its host; a library others open: only its own computer's window.
+    expect(placeDownloads(ownAt, { here: false })).toBe(true);
+    expect(placeDownloads(lib, { here: false })).toBe(false);
+    expect(placeDownloads(lib, { here: true })).toBe(true);
+    // A folder kept where others open it (OneDrive) is read as a library is; the VM's only by its own computer's window.
+    expect(placeDownloads({ ...ownAt, shared: true }, { here: false })).toBe(false);
+    expect(placeDownloads({ ...lib, vm: true, shared: false }, { here: false })).toBe(false);
+    // A computer reached through another host, a lens, LifeOS and Drive: none.
+    expect(placeDownloads(ownAt, { here: false, far: { computer: "Purdue PC", via: "the box" } })).toBe(false);
+    expect(placeDownloads(place({ id: "recent", kind: "recent", name: "Recent" }), { here: true })).toBe(false);
+    expect(placeDownloads(place({ id: "lifeos", kind: "lifeos", name: "LifeOS" }), { here: true })).toBe(false);
+    expect(placeDownloads(place({ id: "drive:a", kind: "drive", name: "Drive", root: { at: "drive", account: "a", folderId: "root" } }), { here: true })).toBe(false);
   });
 
   it("leaves out for many what only one thing takes", () => {

@@ -2039,10 +2039,18 @@ Around the canvas:
   stands where the name was with the part before the extension selected.
   **A row's menu** (a right-click, the same for one or many) is the
   verbs the place takes, each refused one greyed with its sentence as the
-  tooltip: Open, Open in New Tab, Rename, Move to…, Copy to…, Star,
-  Delete. With two or more selected one bar floats 12px over the list's
-  foot (40px, radius 12, the popover's depth): "3 selected", Move, Copy,
-  Delete, Clear; while it shows the list keeps 56px under its last row.
+  tooltip: Open, Quick Look (its key, Space, at the row's end; a press
+  plays Quick Look's entrance), Open in New Tab (a folder: a file's Open is
+  already a tab of its own), Share…, Download, Rename, Move to…, Copy to…,
+  Star, Delete. Download is offered only where the host gives this window
+  the bytes, by the route a tab's own Download takes: never a folder, a
+  lens, a Drive file, a computer reached through another host, nor a file
+  in a place others open (or the VM) from another computer's window; the
+  row says "Downloading… 2.1 of 8.4 MB" and one toast says it came
+  ("Downloaded Budget.xlsx", "Downloaded 3 files"). With two or more
+  selected one bar floats 12px over the list's foot (40px, radius 12, the
+  popover's depth): "3 selected", Download, Move, Copy, Delete, Clear;
+  while it shows the list keeps 56px under its last row.
   **Move to… and Copy to…** are one small dialog that drills down in one
   column: it opens in the folder the things are in, a trail over it leads
   back up and to Places, a press walks into a folder (folders alone,

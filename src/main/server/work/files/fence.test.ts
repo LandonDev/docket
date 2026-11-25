@@ -135,6 +135,20 @@ describe('a remote key', () => {
   })
 })
 
+describe("Download's one route, work.files.read (a row's Download, as a tab's)", () => {
+  const bytes = (out: { data: string }): string => Buffer.from(out.data, 'base64').toString()
+  it("gives a read-only key the workspace's folder, and no caller but his own window a library's bytes", async () => {
+    const own = at(join(rig.folder, 'notes.txt'))
+    const lib = at(join(rig.team, 'General', 'Plan.docx'))
+    expect(bytes(await call<{ data: string }>('work.files.read', { ref: own, offset: 0, length: 1024 }, reader))).not.toBe('')
+    expect(bytes(await call<{ data: string }>('work.files.read', { ref: lib, offset: 0, length: 1024 }))).not.toBe('')
+    // A remote key, read-only or not, and a thread: the library's bytes go to none of them.
+    await expect(call('work.files.read', { ref: lib, offset: 0, length: 1024 }, reader)).rejects.toThrow()
+    await expect(call('work.files.read', { ref: lib, offset: 0, length: 1024 }, phone)).rejects.toThrow()
+    await expect(call('work.files.read', { ref: lib, offset: 0, length: 1024 }, thread('t1'))).rejects.toThrow()
+  })
+})
+
 describe('a thread', () => {
   it("lists and stats its own workspace's places, and never the tabs, the marks or another workspace", async () => {
     expect(names(await call<FilesListing>('work.files.list', { at: { at: 'place', id: 'folder' } }, thread('t1')))).toContain('Budget.xlsx')

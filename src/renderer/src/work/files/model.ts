@@ -632,7 +632,7 @@ export function pickedAmong(now: Picked, order: readonly string[]): Picked {
 // ── a file's and a folder's menu ──────────────────────────────────────
 
 /** What a row's menu, the bulk bar and the keys can ask. */
-export type EntryAct = "open" | "open-form" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "share" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
+export type EntryAct = "open" | "quick-look" | "open-form" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "share" | "download" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
 
 export interface ActRow {
   act: EntryAct;
@@ -653,7 +653,7 @@ export interface ActRow {
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string }; /** Share… may be offered for a document or a sheet (its sheet says what to do where no link can be made) */ share?: boolean } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string }; /** Share… may be offered for a document or a sheet (its sheet says what to do where no link can be made) */ share?: boolean; /** Quick Look may be offered (a page's row, not a tab's ⋯) */ look?: boolean; /** the place's files may be downloaded to this window (`placeDownloads`) */ download?: boolean } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
@@ -674,8 +674,11 @@ export function actsFor(
   // A Microsoft form listed in its folder is no file: it opens, and nothing else is done to it here.
   if (entries.some((e) => e.kind === "form")) return one ? [{ act: "open", label: "Open" }] : [];
   const rows: ActRow[] = [];
+  // Download takes files alone, each read to this window by the route a tab's own file takes; a folder has none.
+  const downloads = !!o.download && entries.every((e) => fileDownloads(e, place));
   if (one) {
     rows.push({ act: "open", label: "Open" });
+    if (o.look) rows.push({ act: "quick-look", label: "Quick Look" });
     // A form's answers workbook opens the form too.
     if (one.answersTo) rows.push({ act: "open-form", label: "Open the Form" });
     if (one.folder && o.tabs) rows.push({ act: "open-tab", label: "Open in New Tab" });
@@ -686,9 +689,11 @@ export function actsFor(
     // A document's or a sheet's Share sheet: a link where one can be made, else the line that says how to share it.
     const shares = !!o.share && !one.folder && (one.kind === "document" || one.kind === "sheet");
     if (shares) rows.push({ act: "share", label: "Share…", rule: true });
-    rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: !shares });
+    if (downloads) rows.push({ act: "download", label: "Download", rule: !shares });
+    rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: !shares && !downloads });
   }
-  rows.push({ act: "move", label: "Move to…", refused: each("move"), rule: !one });
+  if (!one && downloads) rows.push({ act: "download", label: "Download" });
+  rows.push({ act: "move", label: "Move to…", refused: each("move"), rule: !one && !downloads });
   rows.push({ act: "copy", label: "Copy to…", refused: each("copy") });
   // His marks are kept where the workspace lives: a host a release behind keeps none.
   if (o.tabs) {
@@ -700,6 +705,24 @@ export function actsFor(
   rows.push({ act: "delete", label: "Delete", refused: each("trash"), danger: true, rule: true });
   return rows;
 }
+
+/** The places whose files a window may be given: a disk's folders and libraries, never a lens, LifeOS, Drive or a mail. */
+const READS_BYTES: readonly PlaceKind[] = ["folder", ...LIBRARY];
+
+/**
+ * Whether a page's files may be downloaded to this window, by the route a tab's own file takes (`work.files.read`;
+ * docs/agents/work-files.md "Download"): the host gives a file in a place others open, or in the VM, to the window of
+ * the computer that holds it alone (files/handle.ts `bytesFence`), and nothing to a computer reached through another
+ * host. A press that could only be refused is not offered.
+ */
+export function placeDownloads(place: FilePlace, o: { /** the place's host is this window's own computer */ here: boolean; far?: unknown }): boolean {
+  if (!READS_BYTES.includes(place.kind) || o.far || place.root.at !== "file") return false;
+  return o.here || (!place.shared && !place.vm);
+}
+
+/** A row Download takes, in a place `placeDownloads` lets: a file on its disk, not a form, nor one the VM keeps in the cloud (reading it would fetch it). */
+const fileDownloads = (entry: FileEntry, place: FilePlace | null): boolean =>
+  !entry.folder && entry.ref?.at === "file" && entry.kind !== "form" && !(place?.vm && (entry.local === false || entry.state?.is === "cloud"));
 
 /** How readily a tab gives up width past what fits: one rule for Files' row and the canvas tab row (canvas/tabShrink.ts). */
 export { tabEnds, tabShrink } from "../canvas/tabShrink";
