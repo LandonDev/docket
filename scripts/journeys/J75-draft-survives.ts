@@ -1,15 +1,27 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { replaceText, TEXT_EDITOR, waitForFocus } from './lib/edit'
-import { openRow } from './lib/files'
+import { editShape, replaceText, TEXT_EDITOR, waitForFocus } from './lib/edit'
+import { openRow, unzip } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
+import { a1Point, cellValue } from './lib/sheet'
 
 const NAME = 'TempCode proof draft.txt'
 const FIRST = 'First practice note'
 const TWO = FIRST + ' one' + ' two'
 const MINE = TWO + ' and mine'
 const THEIRS = 'Changed on the holder while win was gone'
+const DECK = 'TempCode proof draft.pptx'
+const TITLE = 'Kept through a crash'
+const SHEET = 'TempCode proof draft.xlsx'
+const CELL = '4242'
+
+/** His draft on win's own disk: a file of the store main writes (src/main/drafts.ts) that holds these words. */
+function draftOnDisk({ pair }: Context, words: string): boolean {
+  const root = join(pair.win.data, 'drafts')
+  if (!existsSync(root)) return false
+  return readdirSync(root, { recursive: true, encoding: 'utf8' }).some((f) => f.endsWith('.json') && readFileSync(join(root, f), 'utf8').includes(words))
+}
 
 /** Cuts win's link to box and waits until the window knows it. */
 async function cut({ pair }: Context): Promise<void> {
@@ -38,7 +50,7 @@ async function typeTwo({ pair }: Context, words: string[], end: string): Promise
 }
 
 /** Win killed with no word to it, the link opened again, and win started again on the same data. */
-async function crashAndBack(context: Context, between?: () => void): Promise<void> {
+async function crashAndBack(context: Context, between?: () => void, name = NAME): Promise<void> {
   const { pair } = context
   pair.later(async () => { if (!pair.abort.signal.aborted) await pair.restart(pair.win) })
   await pair.halt(pair.win, true)
@@ -55,7 +67,7 @@ async function crashAndBack(context: Context, between?: () => void): Promise<voi
     await showPlace(context)
   })
   // The file opened again from its row: its tab comes to the front, and the session reads it afresh.
-  await openRow(pair.page, NAME)
+  await openRow(pair.page, name)
 }
 
 async function offered(context: Context, words: RegExp, label: string): Promise<void> {
@@ -104,6 +116,45 @@ export default journey({
       await page.until('the copy’s line to say the file changed there', 40_000, async () => /changed on/i.test(await page.saveLine() ?? ''))
       await page.shot(join(context.folder, 'changed-there.png'))
       await page.press('button', 'Keep Both')
+    }),
+    step('A deck’s open box: type a title with the link cut, kill win, and Restore it', async (context) => {
+      const { page } = context.pair
+      copyFileSync(join(context.pair.repo, 'src/main/server/work/slides/fixtures/steps-talk.pptx'), fileAt(context, DECK))
+      await showPlace(context)
+      await openRow(page, DECK)
+      // The deck is drawn before the link goes: a box opens on a shape the window holds.
+      await page.until('the deck’s title shape', 60_000, () => page.eval(`!!document.querySelector('[data-shape][aria-label$=": Spring season"]')`))
+      await cut(context)
+      await editShape(page, '[data-shape][aria-label$=": Spring season"]')
+      await page.key('Control+a')
+      await page.typeKeys(TITLE)
+      await page.until('the box’s words in win’s draft store', 15_000, () => draftOnDisk(context, TITLE))
+      await crashAndBack(context, undefined, DECK)
+      // The relaunched window is another page.
+      const again = context.pair.page
+      await offered(context, /were not saved$/, 'deck-offered')
+      await again.press('button', 'Restore')
+      await again.until('the title in the holder’s first slide', 40_000, () =>
+        [...unzip(fileAt(context, DECK), 'ppt/slides/slide1.xml').matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).join('').includes(TITLE))
+    }),
+    step('A sheet’s cell: type it with the link cut, kill win, and Restore it', async (context) => {
+      const { page } = context.pair
+      copyFileSync(join(context.pair.repo, 'src/main/server/work/sheets/harness/corpus/formulas.xlsx'), fileAt(context, SHEET))
+      await showPlace(context)
+      await openRow(page, SHEET)
+      await page.until('the worksheet', 60_000, () => a1Point(page))
+      await cut(context)
+      await page.click((await a1Point(page))!)
+      await page.typeKeys(CELL)
+      await page.key('Enter')
+      await page.until('the cell in win’s draft store', 15_000, () => draftOnDisk(context, CELL))
+      await crashAndBack(context, undefined, SHEET)
+      const again = context.pair.page
+      await again.until('the reopened worksheet', 60_000, () => a1Point(again))
+      await offered(context, /were not saved$/, 'sheet-offered')
+      await again.press('button', 'Restore')
+      await again.until('the cell in the holder’s workbook', 40_000, () =>
+        cellValue(unzip(fileAt(context, SHEET), 'xl/worksheets/sheet1.xml'), unzip(fileAt(context, SHEET), 'xl/sharedStrings.xml'), 'A1') === CELL)
     }),
     step('end: the holder keeps the newer file and his draft beside it', async (context) => {
       const file = fileAt(context, NAME)
