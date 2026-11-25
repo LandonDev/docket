@@ -2,6 +2,7 @@ import React, { Profiler, Suspense, lazy, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
+import { installHeldKeys } from "./lib/heldKeys";
 import { installScrollActivity } from "./lib/scrollActivity";
 import App from "./App";
 import { ConfirmHost } from "./chrome/ConfirmDialog";
@@ -34,6 +35,8 @@ import { reportRendererError } from "./lib/rendererErrors";
 import { RootBoundary } from "./chrome/RootBoundary";
 import "./index.css";
 
+// Before every other key listener: a picture that holds the keyboard in full screen hears its keys alone.
+installHeldKeys();
 // Before App mounts its own window listener: the editor claims its chords first.
 installEditorKeys();
 installScrollActivity();

@@ -343,6 +343,38 @@ describe("the full-screen map", () => {
     expect(r.keys()).toEqual([`+${C}`]);
   });
 
+  it("lets go of a letter sent under ⌘ itself: a Mac gives no key-up for it", () => {
+    const r = full();
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    r.input.keyDown({ code: "KeyF", command: true });
+    // held, it repeats there; nothing more is sent
+    r.input.keyDown({ code: "KeyF", command: true, repeat: true });
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${C}`, `+${K.KeyF}`, `-${K.KeyF}`, `-${C}`]);
+    // two chords under one ⌘, and the same letter twice: each goes up before the next comes down
+    r.sent.length = 0;
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    for (const code of ["KeyW", "KeyT", "KeyT"]) r.input.keyDown({ code, command: true });
+    r.input.keyUp({ code: "MetaLeft" });
+    expect(r.keys()).toEqual([`+${C}`, `+${K.KeyW}`, `-${K.KeyW}`, `+${K.KeyT}`, `-${K.KeyT}`, `+${K.KeyT}`, `-${K.KeyT}`, `-${C}`]);
+    // ⌘Q after a letter: the letter goes up before Alt+F4
+    r.sent.length = 0;
+    r.input.keyDown({ code: "MetaLeft", command: true });
+    r.input.keyDown({ code: "KeyS", command: true });
+    r.input.closeWindow();
+    expect(r.keys().slice(0, 3)).toEqual([`+${C}`, `+${K.KeyS}`, `-${K.KeyS}`]);
+  });
+
+  it("sends no Windows key for a ⌘ whose chord something else took", () => {
+    for (const code of ["Tab", "Space", "KeyQ", "AudioVolumeUp", "IntlRo"]) {
+      const r = full();
+      r.input.keyDown({ code: "MetaLeft", command: true });
+      r.input.keyDown({ code, command: true });
+      r.input.keyUp({ code: "MetaLeft" });
+      expect(r.keys(), code).toEqual([]);
+    }
+  });
+
   it("sends no Windows key for a ⌘ held when focus is lost", () => {
     const r = full();
     r.input.keyDown({ code: "MetaLeft", command: true });

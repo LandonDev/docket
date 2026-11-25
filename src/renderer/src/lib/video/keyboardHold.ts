@@ -1,5 +1,6 @@
+import { holdKeys } from "../heldKeys";
 import { holdKeyboard, onHeldKey, onWindowFullScreen } from "../native";
-import type { VideoInput } from "./videoInput";
+import { sendKey, type VideoInput } from "./videoInput";
 
 /**
  * The keyboard in full screen, the page's half (main's keyboardHold.ts, docs/agents/live-video.md "Driving"): while
@@ -10,12 +11,22 @@ import type { VideoInput } from "./videoInput";
  */
 export function attachKeyboardHold(el: HTMLElement, input: VideoInput, leave: () => void): () => void {
   let asked = 0;
+  let unkeys: (() => void) | undefined;
+  // while main holds it, every key is the picture's before any other listener's (lib/heldKeys.ts)
+  const setFull = (on: boolean): void => {
+    input.fullScreen = on;
+    if (on) unkeys ??= holdKeys(el, (e) => sendKey(input, e));
+    else {
+      unkeys?.();
+      unkeys = undefined;
+    }
+  };
   const ask = (on: boolean): void => {
     const mine = ++asked;
-    if (!on) input.fullScreen = false;
+    if (!on) setFull(false);
     void holdKeyboard(on).then((held) => {
       // an answer to an older ask, or one the focus has moved past since, changes nothing
-      if (mine === asked) input.fullScreen = on && held && el.ownerDocument.activeElement === el;
+      if (mine === asked) setFull(on && held && el.ownerDocument.activeElement === el);
     });
   };
   const onFocus = (): void => ask(true);
@@ -23,7 +34,7 @@ export function attachKeyboardHold(el: HTMLElement, input: VideoInput, leave: ()
   const unheld = onHeldKey((key) => {
     if (key === "closeWindow") return input.closeWindow();
     asked++;
-    input.fullScreen = false;
+    setFull(false);
     leave();
   });
   // the window is full screen only a beat after the page asked (off a Mac, the system's transition): ask again then

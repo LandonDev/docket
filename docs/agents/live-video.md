@@ -820,15 +820,22 @@ phone's full screen ("The phone" below), and from then on:
   page, and the page uses the full-screen map (`VideoInput.fullScreen`,
   set only on main's yes): on a Mac ⌘ is Ctrl for every key (⌘S, ⌘F, ⌘T,
   ⌘W are Ctrl+S, Ctrl+F, Ctrl+T, Ctrl+W; Ctrl goes down at the first key
-  and up with ⌘), ⌘ pressed alone and let go is the Windows key (none once
-  any key, modifier or button came between, and none for a ⌘ held as the
-  focus went), ⌘V is still his paste and ⌘C still copies out of the VM,
+  and up with ⌘; a Mac's Chromium sends no key-up for a key pressed under
+  ⌘, so the viewer lets each go itself: when the next key comes down under
+  ⌘, else as ⌘ goes up, before Ctrl, which keeps a held one repeating
+  there), ⌘ pressed alone and let go is the Windows key (none once any key,
+  even one the picture does not take, a modifier or a button came between,
+  and none for a ⌘ held as the focus went), ⌘V is still his paste and ⌘C still copies out of the VM,
   and ⌘Tab and ⌘Space stay the Mac's. ⌘Q is Alt+F4 only while main holds
   the keyboard: main keeps it from the page and the menu and tells the
   page (`window:heldKey closeWindow`), which sends Alt+F4 to the Windows
   VM and nothing to the box's browser. Whenever main does not hold it, ⌘Q
   is the menu's Quit. The box's browser keeps its never-sent list here
-  too. The window's map is unchanged.
+  too. The window's map is unchanged. While main holds it, every key goes
+  to the picture before any other listener: lib/heldKeys.ts sits on window
+  capture ahead of the app's own (main.tsx installs it before App) and
+  stops each key it hands over, so no command, editor save or view key
+  takes one, ⌘S among them.
 - **The two ways out of full screen**, heard in main's
   `before-input-event` before the page and whatever the menu's state:
   ⌃⌥ pressed with nothing else and let go frees the keyboard (the picture

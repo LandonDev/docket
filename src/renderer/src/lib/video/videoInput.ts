@@ -123,6 +123,11 @@ export class VideoInput {
   private commandAlone = false;
   /** the Ctrl sent for a held ⌘ */
   private commandCtrl = false;
+  /**
+   * Keys sent down while ⌘ is held. A Mac's Chromium gives no key-up for a key pressed under ⌘, so each is let go here:
+   * when the next key comes down under ⌘, and at the latest as ⌘ goes up, before its Ctrl. Held, it repeats there.
+   */
+  private readonly commandKeys = new Set<number>();
   /** the second of Ctrl and Alt, held back while the two may be his way out: it goes once another key comes */
   private withheld: number | null = null;
 
@@ -189,8 +194,10 @@ export class VideoInput {
     const code = HID_KEYS[e.code];
     const leaving = this.leaving;
     this.leaving = false;
-    if (!code) return false;
     const full = this.fullScreen && this.opts.mac;
+    // any key between, even one the picture does not take, makes ⌘'s release no Windows key
+    if (full && !(code && isMeta(code))) this.commandAlone = false;
+    if (!code) return false;
     if (isMeta(code)) {
       if (!full) return !this.opts.mac;
       // ⌘ alone is only ⌘ with nothing else held
@@ -198,8 +205,8 @@ export class VideoInput {
       return true;
     }
     const command = this.opts.mac && !!e.command;
-    if (full) this.commandAlone = false;
     if (full && command && MAC_KEEPS.has(e.code)) return false;
+    if (full && !e.repeat) this.releaseCommandKeys();
     if (this.fullScreen && !e.repeat && !this.held.has(code)) this.sendWithheld();
     if (full && command && e.code !== "KeyV" && !this.commandCtrl && (this.modifiers & CONTROL_BITS) === 0) {
       // ⌘ is Ctrl from here until it is let go
@@ -236,6 +243,7 @@ export class VideoInput {
     }
     this.held.add(code);
     this.setModifier(code, true);
+    if (full && command && !isModifier(code)) this.commandKeys.add(code);
     this.leaving = isModifier(code) && this.chordAlone();
     // in full screen the way out never reaches the guest: the second of the two waits for another key
     if (this.fullScreen && this.leaving && isCtrlOrAlt(code)) this.withheld = code;
@@ -247,6 +255,14 @@ export class VideoInput {
     const code = this.withheld;
     this.withheld = null;
     if (code !== null) this.emit({ type: "keyDown", key: code });
+  }
+
+  /** The keys sent under ⌘ go up there: his keyboard will not say when. */
+  private releaseCommandKeys(): void {
+    for (const code of this.commandKeys) {
+      if (this.held.delete(code)) this.emit({ type: "keyUp", key: code });
+    }
+    this.commandKeys.clear();
   }
 
   /** The Ctrl sent for ⌘ is let go. */
@@ -265,6 +281,7 @@ export class VideoInput {
   closeWindow(): void {
     this.commandAlone = false;
     if (this.opts.screen !== "vm") return;
+    this.releaseCommandKeys();
     this.dropCommandCtrl();
     const alt = (this.modifiers & ALT_BITS) !== 0;
     if (!alt) {
@@ -284,6 +301,7 @@ export class VideoInput {
     const full = this.fullScreen && this.opts.mac;
     if (isMeta(code)) {
       if (!full) return !this.opts.mac;
+      this.releaseCommandKeys();
       this.dropCommandCtrl();
       if (this.commandAlone) {
         // ⌘ pressed and let go with nothing between: the Windows key
@@ -302,6 +320,7 @@ export class VideoInput {
       return true;
     }
     // a key that never went down there (a chord's letter, one never sent) has nothing to let go
+    this.commandKeys.delete(code);
     if (!this.held.delete(code)) return false;
     this.setModifier(code, false);
     if (this.withheld === code) this.withheld = null;
@@ -373,12 +392,20 @@ export class VideoInput {
     this.leaving = false;
     this.commandAlone = false;
     this.commandCtrl = false;
+    this.commandKeys.clear();
     this.withheld = null;
     this.buttons = 0;
     this.modifiers = 0;
     this.wheelRemainder[0] = this.wheelRemainder[1] = 0;
     if (had) this.send({ type: "releaseAll" });
   }
+}
+
+const keyOf = (e: KeyboardEvent): KeyLike => ({ code: e.code, repeat: e.repeat, command: macCommand(e), ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, capsLock: e.getModifierState?.("CapsLock") });
+
+/** A key event to the input; a key it takes does nothing else here. For the keyboard hold, which hears keys first (lib/heldKeys.ts). */
+export function sendKey(input: VideoInput, e: KeyboardEvent): void {
+  if (e.type === "keydown" ? input.keyDown(keyOf(e)) : input.keyUp(keyOf(e))) e.preventDefault();
 }
 
 /**
@@ -390,13 +417,12 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0 ? [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] : [0, 0];
   };
-  const key = (e: KeyboardEvent): KeyLike => ({ code: e.code, repeat: e.repeat, command: macCommand(e), ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, capsLock: e.getModifierState?.("CapsLock") });
   const stop = (e: Event): void => {
     e.preventDefault();
     e.stopPropagation();
   };
-  const onKeyDown = (e: KeyboardEvent): void => void (input.keyDown(key(e)) && stop(e));
-  const onKeyUp = (e: KeyboardEvent): void => void (input.keyUp(key(e)) && stop(e));
+  const onKeyDown = (e: KeyboardEvent): void => void (input.keyDown(keyOf(e)) && stop(e));
+  const onKeyUp = (e: KeyboardEvent): void => void (input.keyUp(keyOf(e)) && stop(e));
   const moveEvent = "onpointerrawupdate" in el ? "pointerrawupdate" : "pointermove";
   const onMove = (event: Event): void => {
     const e = event as PointerEvent;
