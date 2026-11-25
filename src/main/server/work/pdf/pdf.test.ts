@@ -800,6 +800,10 @@ describe('a Files tab and a thread on one file', () => {
     const { fileMoved } = await import('../files/moved')
     const { ensureFilesTables } = await import('../files/tables')
     ensureFilesTables(db)
+    // The slides module's rename hook is live once anything here has loaded it (it registers at load, on its own
+    // timing): its tables are laid as the app lays every module's at start, so the rename never meets a missing one.
+    const { ensureSlidesTables } = await import('../slides/store')
+    ensureSlidesTables(db)
     const path = put('fw9.pdf', W9)
     const thread = openItem(path)
     const tab = tabOf(path)
