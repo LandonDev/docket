@@ -307,6 +307,9 @@ export class Outbox {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
+      // Where LifeOS says it stands now, as well as where the row here says: a request's press admits both or neither.
+      const liveRefused = opts.admit?.({ workspaceId: live.workspaceId, sector: live.sector, sessionId: live.sessionId } as HeldRow)
+      if (liveRefused) throw new Error(liveRefused)
       if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
       // A reply that carries the mail it answers is read whole on its own page: the fresh read has the quote the list lacks.
       if (opts.many && quotesItsMail(live)) throw new Error(OPEN_TO_SEND)
@@ -357,6 +360,9 @@ export class Outbox {
     if (row?.state === 'scheduled') throw new Error(SCHEDULED_BY_HIM)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
+      // Where LifeOS says it stands now, as well as where the row here says: a request's press admits both or neither.
+      const liveRefused = opts.admit?.({ workspaceId: live.workspaceId, sector: live.sector, sessionId: live.sessionId } as HeldRow)
+      if (liveRefused) throw new Error(liveRefused)
       if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
       if (opts.rev !== undefined && live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
       // The log records what was discarded as LifeOS holds it now, not as an earlier decision left it.
@@ -490,6 +496,9 @@ export class Outbox {
         if (opts.rev === undefined) throw new Error(REV_NEEDED)
         if (!row || PRESSABLE.includes(row.state)) {
           const live = await this.readLifeos(ref)
+          // Where LifeOS says it stands now, as well as where the row here says: a request's press admits both or neither.
+          const liveRefused = opts.admit?.({ workspaceId: live.workspaceId, sector: live.sector, sessionId: live.sessionId } as HeldRow)
+          if (liveRefused) throw new Error(liveRefused)
           if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
           if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
           if (opts.many && quotesItsMail(live)) throw new Error(OPEN_TO_SEND)
@@ -615,6 +624,8 @@ export class Outbox {
   /** Every mail still marked to be taken back, asked of LifeOS again: on a steady beat, whatever LifeOS's watch says. */
   async drainCancels(): Promise<void> {
     try {
+      // A stop between a removal and its hook leaves a schedule unmarked whose thread or workspace is gone: found here.
+      for (const row of this.store.scheduledInLifeos()) if (!row.cancelWanted && row.sessionId && !this.deps.scopeKeyOf(row.sessionId)) this.store.markCancel(row.id)
       for (const row of this.store.cancelsWanted()) await this.cancelOne(row, 'The thread that made this was deleted.')
     } catch (err) {
       this.deps.ctx.log(`outbox: the cancels still wanted were not asked: ${errorText(err)}`)
@@ -633,9 +644,11 @@ export class Outbox {
         back = await this.lifeos?.cancelMail?.(ref.id)
       } catch (err) {
         this.deps.ctx.log(`outbox: LifeOS could not take back scheduled item ${row.n}; asking again later: ${errorText(err)}`)
+        this.store.touchCancel(row.id)
         return
       }
       if (back) this.store.putAwayScheduled(row.id, why)
+      else this.store.touchCancel(row.id)
     })
   }
 

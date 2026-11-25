@@ -217,6 +217,14 @@ describe('Send later for a mail LifeOS holds', () => {
     expect([store.byRef(a.ref)!.state, store.byRef(b.ref)!.state]).toEqual(['stale', 'stale'])
   })
 
+  it('a schedule whose thread is gone but was never marked (a stop before the hook) is found and taken back by the drain', async () => {
+    const item = await draft()
+    await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])
+    rig.sessions.delete('t-work')
+    await outboxHostOf(rig.work.ctx)!.outbox.drainCancels()
+    expect(outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
+  })
+
   it('a listing read before his Send later never puts the row back: only a fresh read does', async () => {
     const item = await draft()
     await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])

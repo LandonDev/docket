@@ -378,7 +378,10 @@ export class OutboxRequests {
    */
   retell(): void {
     try {
-      for (const r of this.open()) this.told(r, { push: false })
+      // The stored rows as they are: LifeOS's list may not have arrived yet, so nothing is judged decided here.
+      for (const row of this.db.prepare(`SELECT rowid AS n, * FROM ${REQUESTS_TABLE} WHERE state = 'open'`).all() as unknown as Row[]) this.told(this.view(row), { push: false })
+      // A request answered, declined or void whose notice outlived it (a stop before its `done`) leaves the ledger.
+      for (const row of this.db.prepare(`SELECT id FROM ${REQUESTS_TABLE} WHERE state != 'open'`).all() as { id: string }[]) this.deps.ctx.tell.done(requestKey(row.id))
     } catch (err) {
       this.deps.ctx.log(`outbox: open requests were not told again: ${errorText(err)}`)
     }
@@ -441,9 +444,9 @@ export class OutboxRequests {
   private decidedSince(root: string, workspaceId: string | null, at: number): number {
     const rows = this.db
       .prepare(
-        `SELECT session_id FROM work_held_acts WHERE ${workspaceId === null ? 'workspace_id IS NULL' : 'workspace_id = ?'} AND created_at <= ? AND ((decided_at IS NOT NULL AND decided_at > ?) OR (dismissed_at IS NOT NULL AND dismissed_at > ?))`
+        `SELECT session_id FROM work_held_acts WHERE ${workspaceId === null ? 'workspace_id IS NULL' : 'workspace_id = ?'} AND created_at <= ? AND ((decided_at IS NOT NULL AND decided_at > ?) OR (dismissed_at IS NOT NULL AND dismissed_at > ?) OR (state IN ('held', 'failed', 'scheduled', 'stale') AND updated_at > ?))`
       )
-      .all(...(workspaceId === null ? [] : [workspaceId]), at, at, at) as { session_id: string | null }[]
+      .all(...(workspaceId === null ? [] : [workspaceId]), at, at, at, at) as { session_id: string | null }[]
     return rows.filter((r) => !!r.session_id && this.deps.rootOf(r.session_id) === root).length
   }
 

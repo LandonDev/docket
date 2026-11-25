@@ -579,7 +579,18 @@ export class HeldStore {
 
   /** Scheduled LifeOS mail marked to be taken back, oldest time first: what the drain asks LifeOS about. */
   cancelsWanted(limit = 50): HeldRow[] {
-    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND cancel_wanted = 1 ORDER BY schedule_at ASC LIMIT ?`).all(limit) as unknown as Row[]).map(decode)
+    // Least lately asked first (`touchCancel` moves a failed one to the back), so one LifeOS keeps refusing starves no other.
+    return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND cancel_wanted = 1 ORDER BY updated_at ASC LIMIT ?`).all(limit) as unknown as Row[]).map(decode)
+  }
+
+  /** A cancel LifeOS did not answer: to the back of the drain's line. */
+  touchCancel(id: string): void {
+    this.db.prepare(`UPDATE ${HELD_TABLE} SET updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled' AND cancel_wanted = 1`).run(this.now(), id)
+  }
+
+  /** Mark one scheduled LifeOS mail to be taken back (its thread or workspace is gone, found at the drain). */
+  markCancel(id: string): void {
+    this.db.prepare(`UPDATE ${HELD_TABLE} SET cancel_wanted = 1 WHERE id = ? AND state = 'scheduled'`).run(id)
   }
 
   /**

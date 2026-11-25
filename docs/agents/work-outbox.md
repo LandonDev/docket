@@ -427,6 +427,11 @@ each refusal is words an agent can act on):
   or repeated at a clock change). A chip's lines run to the blank line
   before his words, so a label that ran onto a second line is the chip's,
   and the composer writes every label on one line.
+- **The act is the command he leads with**: "discard the draft titled Send
+  #12" asks for a discard, never a send. A 24-hour clock is a time too; two
+  days named are no day; "both" means exactly two; a fenced code block is
+  never his words; "all" is refused when any of the tree's items changed
+  after he wrote.
 - **A command.** His sentence must begin with the command, after the words
   people put before one ("ok, please send …", "can you post …"): a sentence
   that only mentions a send tells nobody. Any time words at all (a day, a
@@ -459,12 +464,23 @@ The push `work.outbox.request` goes to approve keys alone.
 
 **Where it stands** is checked when the request is stored (after any
 fresh read), before the claim, and again inside each item's own lock just
-before that item's claim (`decide`'s `admit`): the thread still here,
+before that item's claim (`decide`'s `admit`, on the row here and on
+LifeOS's fresh copy alike): the thread still here,
 unarchived and in the request's job, and each item's own thread too. What
 became of each item is kept as it settles, so a press cut off keeps what
 it reached, and an item it never reached reads "not started". At start the
-host tells each open request again in the notice's words of now, so a
-ledger row from before keeps no quote.
+host tells each open request again in the notice's words of now (from the
+stored rows, judging nothing decided before LifeOS's list arrives), and
+takes every closed request's notice out of the ledger, so no row from
+before keeps a quote.
+
+**Known gaps**, each listed by the hold's review and left by choice: the
+host reads his words from the flattened message, so a plain line shaped
+like a held chip can name an item (it never makes a command); LifeOS's
+`compose:discard` takes an id alone, so its delete is not bound to
+LifeOS's revision; a press cut off before its first result reads every
+chosen row as not started; a Work Chat's reach is capped before its tree
+is chosen.
 
 **His Send.** One check of the whole press (open, not run out, the
 generation, every receipt this request's and none twice, each the action
@@ -594,7 +610,10 @@ counted. A scheduled send earns no offered grant.
   (`markCancelFor`), each is taken back from LifeOS under its own lock and
   only then put away, and one LifeOS cannot reach stays scheduled and
   marked: the drain asks again every minute while Work is on
-  (`drainCancels`), whatever LifeOS's watch says.
+  (`drainCancels`), whatever LifeOS's watch says, least lately asked
+  first. The drain also marks any scheduled LifeOS mail whose thread or
+  workspace is gone but was never marked (a stop between the removal and
+  its hook).
 - **What LifeOS's timer did** is read under the item's own lock, fresh,
   and every write names the generation read then: a Send later, a move or a
   Cancel send under way finishes first, a listing read before his Send

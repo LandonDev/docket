@@ -96,7 +96,14 @@ export function ownWords(text: string): { words: string; held: string[] } {
   const kept: string[] = []
   const held: string[] = []
   let inChip = false
+  let inCode = false
   for (const line of text.split('\n')) {
+    // A fenced code block is pasted text, never his command.
+    if (/^\s*```/.test(line)) {
+      inCode = !inCode
+      continue
+    }
+    if (inCode) continue
     if (CHIP_HEAD.test(line)) {
       inChip = true
       const ref = /\(Work outbox (\S+)\)$/.exec(line)
@@ -166,15 +173,15 @@ function countsIn(clause: string): number[] {
 
 /** Words that put a send at a time: a day, a part of a day, a clock. */
 function timeWords(clause: string): boolean {
-  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause)
+  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause)
 }
 
 const FILLERS = /^(?:(?:please|ok|okay|yes|yeah|sure|now|then|and|so|just|alright|right|great|thanks|go ahead and|you can|feel free to|can you|could you|would you|will you)[\s,]+)*/
 
-/** Whether his sentence starts with a command verb, after the words people put before one. */
-function commandStart(clause: string): boolean {
+/** The command verb his sentence starts with, after the words people put before one; null when it starts with none. */
+function commandStart(clause: string): string | null {
   const rest = clause.replace(FILLERS, '')
-  return [...Object.keys(SEND_VERBS), ...DISCARD_VERBS].some((verb) => rest.startsWith(`${verb} `) || rest === verb || rest.startsWith(`${verb},`))
+  return [...Object.keys(SEND_VERBS), ...DISCARD_VERBS].sort((a, b) => b.length - a.length).find((verb) => rest.startsWith(`${verb} `) || rest === verb || rest.startsWith(`${verb},`)) ?? null
 }
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
@@ -206,6 +213,9 @@ function instantIn(y: number, m: number, d: number, h: number, min: number, zone
 export function laterTimeIn(clause: string, from: number, zone: string): number | null {
   const today = partsIn(from, zone)
   let addDays: number | null = null
+  // Two days named are no one day.
+  const days = ['tomorrow', 'today', 'tonight', ...WEEKDAYS].filter((d) => has(clause, d))
+  if (days.length > 1 && !(days.length === 2 && days.includes('today') && days.includes('tonight'))) return null
   if (has(clause, 'tomorrow')) addDays = 1
   else if (has(clause, 'today') || has(clause, 'tonight') || has(clause, 'this afternoon') || has(clause, 'this evening') || has(clause, 'this morning')) addDays = 0
   else {
@@ -270,7 +280,10 @@ export function judgeAsk(input: AskInput): AskVerdict {
   if (clause.endsWith('?') && !POLITE.test(clause)) return { ok: false, refusal: NOT_A_COMMAND }
   // A command begins his sentence: "send …", "please discard …", "can you post …". A sentence that mentions a send
   // somewhere in it ("Dana plans to send them") tells nobody to do anything.
-  if (!commandStart(clause)) return { ok: false, refusal: NOT_A_COMMAND }
+  const lead = commandStart(clause)
+  if (!lead) return { ok: false, refusal: NOT_A_COMMAND }
+  // The command he leads with is the act: "discard the draft titled Send #12" asks for a discard, never a send.
+  const leadClause = lead
   if (QUESTION_START.test(clause) || NEGATION.test(clause) || CONDITION.test(clause)) return { ok: false, refusal: NOT_A_COMMAND }
   const heldBy = source.at
   const all = ALL_WORDS.some((w) => has(clause, w))
@@ -283,7 +296,7 @@ export function judgeAsk(input: AskInput): AskVerdict {
   for (const a of input.asked) {
     const item = byRef.get(a.ref)
     if (!item) return { ok: false, refusal: NOT_NAMED(a.ref) }
-    if (!tellsAction(clause, a.do, item.kind, item.op)) return { ok: false, refusal: VERB_MISSING(a.do) }
+    if (!tellsAction(leadClause, a.do, item.kind, item.op)) return { ok: false, refusal: VERB_MISSING(a.do) }
     const timed = laterTimeIn(clause, source.at, input.zone)
     if (a.do === 'later' && (timed === null || a.at !== timed)) return { ok: false, refusal: NO_TIME }
     // Any time in his words, even one that reads as no single moment, makes it a later send: never a send now.
@@ -307,5 +320,6 @@ export function judgeAsk(input: AskInput): AskVerdict {
       if (left) return { ok: false, refusal: NOT_ALL(left) }
     }
   if (counts.length === 1 && counts[0] !== input.asked.length) return { ok: false, refusal: COUNT_OFF(counts[0]!, input.asked.length) }
+  if (has(clause, 'both') && input.asked.length !== 2) return { ok: false, refusal: COUNT_OFF(2, input.asked.length) }
   return { ok: true, source, clause }
 }

@@ -152,3 +152,26 @@ describe('the second review\'s cases', () => {
     expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })
+
+describe('the third review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('the command he leads with is the act', () => {
+    const words = 'discard the draft titled Send #1'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(VERB_MISSING('send'))
+  })
+  it('a 24-hour clock is a time: never a send now', () => {
+    const words = 'send #1 at 18:30'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(SAYS_LATER)
+  })
+  it('two days named are no one day', () => {
+    expect(laterTimeIn('send it tomorrow or friday at 9 am', AT, 'America/Chicago')).toBeNull()
+  })
+  it('"both" means exactly two', () => {
+    const words = 'send both roster mails'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: ROSTER.map((i) => ({ ref: i.ref, do: 'send' })) }))).toBe(COUNT_OFF(2, 3))
+  })
+  it('a fenced code block is never his command', () => {
+    const text = '```\nsend the reply to Coach 1\n```\nthat is the template'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
+  })
+})
