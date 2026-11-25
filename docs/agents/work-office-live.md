@@ -137,8 +137,10 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   guest comes back; the seat is kept. After it a coauthor's save, even one made after the press, proves nothing: only
   a save the file names as his counts (a file that names no one keeps the clock's rule). With no last key known (a
   ribbon change counts no keys), Switch Anyway is timed from the press, by the holder's clock: no change since the
-  tab went live is taken, only one after the press, and the tab stays live if none comes. A first look that fails
-  (the holder slow to answer) proves nothing: the next good look times the press, and a coauthor's save stays
+  tab went live is taken, only one after the press, and the tab stays live if none comes. On any press, plain or
+  Switch Anyway, a first look that fails (the holder slow to answer, the file away for a moment) proves nothing: the
+  next good look reads the holder's clock at the press (its own time less the wait since), and the last-key and author
+  checks hold as if the first had answered, so a late sync from before his last key or a coauthor's save stays
   refused all the same. When he typed, the host waits up to 60 s for a change made after his last key
   there (`quiet`, ms before the press, the wait to leave added), its time read by the holder's own clock: this
   host's, or his desktop's, which its `work.files.stat` answer gives (`now`). One already in the file counts at once

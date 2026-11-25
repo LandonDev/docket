@@ -723,6 +723,48 @@ describe('Live → Edit here', () => {
     expect(await again).toEqual({ is: 'done' })
   })
 
+  it('after typing, a press whose first look fails never takes a late sync of a save from before his last key', async () => {
+    // Council r7 (Opus 1, Sol 3): a plain press timed nothing when its first look failed, so any change passed.
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    rmSync(path)
+    const switching = set(tabId, { mode: 'here', typed: 12, quiet: 1000 })
+    await new Promise((settle) => setTimeout(settle, 30))
+    // A save from 4 s before his last key comes down late.
+    writeFileSync(path, 'word, with his first words')
+    shiftMtime(path, -5000)
+    await expect(switching).rejects.toThrow('has not come down from OneDrive yet')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
+  it("after typing, a press whose first look fails never takes a coauthor's save from between his last key and the press", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    rmSync(path)
+    const switching = set(tabId, { mode: 'here', typed: 12, quiet: 1000 })
+    await new Promise((settle) => setTimeout(settle, 30))
+    // Dana saved half a second before the press; her save comes down after the missed look.
+    writeFileSync(path, savedBy('Dana Lee', 'her edit'))
+    shiftMtime(path, -530)
+    expect(await switching).toMatchObject({ is: 'ask', why: 'other', name: 'Dana Lee' })
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
+  it('after Switch Anyway with no keys counted and a failed first look, takes his own save from before the next good look', async () => {
+    // The next good look reads the holder's clock at the press, never at its own later time.
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    rmSync(path)
+    const switching = set(tabId, { mode: 'here', typed: 1, forced: true })
+    await new Promise((settle) => setTimeout(settle, 60))
+    // His save lands just after the press, before any look sees the file again.
+    writeFileSync(path, savedBy('Landon Johnson', 'his words'))
+    shiftMtime(path, -40)
+    expect(await switching).toEqual({ is: 'done' })
+  })
+
   it("under a refusal that stands, takes a coauthor's save made long after his last key: Word had merged his typing into it", async () => {
     // Council r6 (Opus 1): a coworker's save hours after his last key asked "Is Dana Lee you?" on every press.
     const { path, tabId } = await liveHere()

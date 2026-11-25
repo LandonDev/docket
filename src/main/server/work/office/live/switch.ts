@@ -211,9 +211,9 @@ async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { h
  * view go with his words saved and Teams had them in every save since, or five minutes or more after his last key
  * (`liveTiming.merged`), by when Word had merged his typing into it. Before that, it is not taken, and the answer
  * names whose save it was. After Switch Anyway (`forced`) Word let go mid-save, so a coauthor's save after the press
- * proves nothing either: only his own does, and a first look that fails leaves the next good one to time the press,
- * never the author check dropped. A file that names no one, or no name of his to read it against, keeps the
- * clock's rule.
+ * proves nothing either: only his own does. On any press, a first look that fails proves nothing: the next good one
+ * reads the holder's clock at the press (its own time less the wait since), and the clock and author checks hold as
+ * if the first had answered. A file that names no one, or no name of his to read it against, keeps the clock's rule.
  */
 async function versionMoved(
   ctx: WorkCtx,
@@ -224,6 +224,7 @@ async function versionMoved(
   o: { quiet?: number; last?: number | null; forced?: boolean },
   signal?: AbortSignal
 ): Promise<{ moved: true } | { moved: false; other?: string; last: number | null }> {
+  const pressed = Date.now()
   const first = await versionNow(ctx, workspaceId, ref, signal)
   // Told of his last key: by the window now, or kept from a refused press. Switch Anyway always is: no change since the
   // base proves a save of his, so with no last key known it is timed from the press (the holder's clock now).
@@ -232,17 +233,17 @@ async function versionMoved(
   // His last key by the holder's clock; for a tab live from before its version was kept, the live view's opening by this host's.
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
   let after: number | null = !told && ownClock ? since : null
-  // The holder's clock at the press (`at`), read from the first look that answers it. Switch Anyway's first look failing
-  // proves nothing: the next good one times the press, and a coauthor's save stays refused all the same.
+  // The holder's clock at the press (`at`), read from the first look that answers it, less the time since the press. A
+  // first look that fails proves nothing: the next good one times the press, and every check holds all the same.
   let at: number | undefined
   let owner: string | null = null
   // The names Office saved under that he said were his (That's Me), beside his name in Work.
   let mine: string[] = []
   const timed = (v: { now?: number } | null): void => {
     if (at !== undefined || v?.now === undefined) return
-    at = v.now
-    const keys = [...(o.quiet !== undefined ? [v.now - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
-    if (o.forced && !keys.length) keys.push(v.now)
+    at = v.now - (Date.now() - pressed)
+    const keys = [...(o.quiet !== undefined ? [at - o.quiet] : []), ...(typeof o.last === 'number' ? [o.last] : [])]
+    if (o.forced && !keys.length) keys.push(at)
     if (keys.length) after = Math.max(...keys)
     owner = told && after !== null ? ownerName(ctx) : null
     mine = owner ? myNames(ctx.db) : []
@@ -266,7 +267,7 @@ async function versionMoved(
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
     const now = await versionNow(ctx, workspaceId, ref, signal)
-    if (o.forced) timed(now)
+    timed(now)
     if (now && now.word !== from && (!told || after === null || now.changed > after) && his(now)) return { moved: true }
   }
   return { moved: false, last: after, ...(other ? { other } : {}) }
