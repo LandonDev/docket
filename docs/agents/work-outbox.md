@@ -610,7 +610,8 @@ named, in the detail's notes (`useMailUnread`, outbox/MailUnread.tsx): the
 red note with Retry (the read again) for silence, else a muted note with Sign
 in, Show the code or Open Settings where this window may, else who can; "The
 mail did not load" with Retry for any other cause, the cause the host's live status's over the read's
-(`useLiveDown`), so a sign-in begun elsewhere is Show the code at once. LifeOS still connecting keeps the quote's bone. A fresh status of
+(`useLiveDown`), so a sign-in begun elsewhere is Show the code at once. LifeOS still connecting keeps the quote's bone beside a muted note with no press,
+"LifeOS is still connecting on the box". A fresh status of
 that host that says connected reads it again with no press.
 
 **Send later.** Send's menu offers a time on an item whose kind may wait
