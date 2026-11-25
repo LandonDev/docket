@@ -80,7 +80,7 @@ const sheet = async (format: "docx" | "pdf" | null = null) => {
 };
 /** Walks from the places into the team's General. */
 const intoGeneral = async (dialog: HTMLElement): Promise<void> => {
-  fireEvent.click(await within(dialog).findByRole("option", { name: "Esports Staff, General" }));
+  fireEvent.click(await within(dialog).findByRole("option", { name: "General" }));
   await within(dialog).findByRole("listbox", { name: "Folders in Esports Staff, General" });
 };
 /** Which document's sheet is asked for, as the document's body reads it. */
@@ -152,7 +152,7 @@ describe("the Save As… sheet", () => {
     const menu = await screen.findByRole("menu");
     expect(within(menu).getAllByRole("menuitemcheckbox").map((r) => r.textContent?.replace(/\.\w+$/, ""))).toEqual(SAVE_AS_FORMATS.map((f) => f.label));
     fireEvent.keyDown(menu, { key: "Escape" });
-    await waitFor(() => expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "Esports Staff, General"]));
+    await waitFor(() => expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "General"]));
     expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).getByText("Pick a folder")).toBeTruthy();
   });

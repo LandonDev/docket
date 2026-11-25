@@ -17,8 +17,8 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { makeIn } from "./acts";
 import { KindGlyph } from "./KindGlyph";
-import { placePage, readCopy, type Sidebar } from "./model";
-import { Folders, Places, ROW, type MoveTarget } from "./MoveDialog";
+import type { Sidebar } from "./model";
+import { Folders, keepRecentFolder, placeItems, Places, recentFolders, ROW, type MoveTarget } from "./MoveDialog";
 import { openInFiles } from "./openFrom";
 import { hostFrom, pageWidth, usePreviewPage } from "./previews";
 import { NameField } from "./rowParts";
@@ -37,24 +37,6 @@ const NO_PLACES: Sidebar = { home: null, marks: [], lenses: [], folder: null, li
 const opId = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 type Folder = MoveTarget & { where: string };
-const RECENT_KEPT = 3;
-const recentKey = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): string => `tc.saveAs.recent.${workspace.environmentId}:${workspace.id}`;
-function recentOf(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): Folder[] {
-  try {
-    const kept = JSON.parse(localStorage.getItem(recentKey(workspace)) ?? "[]") as unknown;
-    return Array.isArray(kept) ? (kept as Folder[]).slice(0, RECENT_KEPT) : [];
-  } catch {
-    return [];
-  }
-}
-function keepRecent(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, folder: Folder): void {
-  const same = (f: Folder): boolean => f.copy.link === folder.copy.link && JSON.stringify(f.at) === JSON.stringify(folder.at);
-  try {
-    localStorage.setItem(recentKey(workspace), JSON.stringify([folder, ...recentOf(workspace).filter((f) => !same(f))].slice(0, RECENT_KEPT)));
-  } catch {
-    // A window that keeps nothing starts on the places.
-  }
-}
 
 /** The document's stem as a file's name: its title with any extension of ours dropped. */
 const stemOf = (title: string): string => saveAsName(title || "Untitled", "docx").replace(/\.docx$/, "");
@@ -68,7 +50,9 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const own = origin ? formatForFile(origin.name) : null;
   const [format, setFormat] = useState<SaveAsFormat>(() => asked ?? own?.format ?? lastFormat() ?? "docx");
   const [copyOnly, setCopyOnly] = useState(false);
-  const recent = useMemo(() => recentOf(workspace), [workspace]);
+  const places = placeItems(sidebar, workspace.name);
+  // The folders he saved to last, as the places list them now (one no longer listed is left out).
+  const recent = useMemo(() => recentFolders("saveAs", workspace), [workspace]);
   // Where the sheet stands: a folder (the place Save writes to) under the place it was reached from; null is the places.
   const [at, setAt] = useState<{ folder: MoveTarget; where: string } | null>(() =>
     origin ? { folder: origin.folder, where: origin.folder.where } : recent[0] ? { folder: recent[0], where: recent[0].where } : null,
@@ -78,13 +62,6 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const press = useRef<{ said: string; op: string } | null>(null);
   const [naming, setNaming] = useState(false);
   const [pending, setPending] = useState(false);
-  const places: MoveTarget[] = [
-    ...(sidebar.folder ? [{ copy: sidebar.folder, at: placePage(sidebar.folder, workspace.name).at, name: workspace.name }] : []),
-    ...sidebar.rows.map((row) => {
-      const copy = readCopy(row);
-      return { copy, at: placePage(copy, row.name).at, name: row.group && row.group !== row.name ? `${row.group}, ${row.name}` : row.name };
-    }),
-  ];
   // Google Drive and LifeOS make no file in a folder that a link could write again by version: there, and off.
   const off = [...sidebar.drives, ...(sidebar.lifeos ? [sidebar.lifeos] : [])].map((copy) => ({ name: copy.place.name, why: "Save As… saves to a computer's folders: the workspace's, Teams and OneDrive." }));
   const name = saveAsName(stem || "Untitled", format);
@@ -109,7 +86,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
         if (choice) await save(choice === "action" ? "replace" : "keep", got.exists.version);
         return;
       }
-      keepRecent(workspace, { ...at.folder, where: at.where });
+      keepRecentFolder("saveAs", workspace, { ...at.folder, where: at.where });
       keepFormat(format);
       // A linked file is said by the header from now on; a copy made once is said here, with the way to it.
       if (!got.saved.linked) {
@@ -191,7 +168,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
                 }
               />
             ) : (
-              <Places places={places} recent={recent} off={off} waiting={!reach || reach.waiting} onInto={(folder) => setAt({ folder, where: "where" in folder ? (folder as Folder).where : folder.name })} />
+              <Places places={places} recent={reach ? recentFolders("saveAs", workspace, places) : recent} off={off} waiting={!reach || reach.waiting} onInto={(folder) => setAt({ folder, where: "where" in folder ? (folder as Folder).where : folder.name })} />
             )}
           </div>
         </div>

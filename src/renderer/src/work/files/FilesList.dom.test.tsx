@@ -247,7 +247,7 @@ describe("the list's columns", () => {
 });
 
 describe("Move to…", () => {
-  it("asks the host for folders alone, a page at a time, so a folder past the first page can be picked; a place of a team is named with a comma", async () => {
+  it("asks the host for folders alone, a page at a time, so a folder past the first page can be picked; a team stands over its channels, as in the sidebar", async () => {
     const { MoveDialog } = await import("./MoveDialog");
     const { listingSeams } = await import("./store");
     const asked: { folders: boolean; cursor?: string }[] = [];
@@ -258,12 +258,16 @@ describe("Move to…", () => {
     };
     try {
       const general = { ...COPY, place: { ...PLACE, id: "b1", kind: "teams", name: "General", root: at("/cloud/General") } };
-      const sidebar = { folder: COPY, rows: [{ name: "General", group: "Esports Staff", copies: [general] }] } as never;
+      const row = { key: "general", name: "General", group: "Esports Staff", kind: "teams", copies: [general] };
+      const sidebar = { folder: COPY, rows: [row], places: [{ is: "team", name: "Esports Staff", rows: [row] }] } as never;
       render(<MoveDialog verb="move" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={sidebar} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={async () => true} onClose={() => undefined} />);
       await waitFor(() => expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Archive", "Zed"]));
       expect(asked).toEqual([{ folders: true }, { folders: true, cursor: "c1" }]);
       fireEvent.click(screen.getByRole("button", { name: "Places" }));
-      expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "Esports Staff, General"]);
+      expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "General"]);
+      // The team is a heading row over its channel, one level in, with the sidebar's glyphs.
+      expect(screen.getByRole("presentation").textContent).toBe("Esports Staff");
+      expect(screen.getByRole("option", { name: "General" }).className).toContain("ps-6");
     } finally {
       delete listingSeams.fetch;
     }
@@ -285,7 +289,7 @@ describe("Move to…'s later page that did not load", () => {
     ];
     listingSeams.fetch = async () => pages.shift()!();
     try {
-      render(<MoveDialog verb="move" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={{ folder: COPY, rows: [] } as never} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={async () => true} onClose={() => undefined} />);
+      render(<MoveDialog verb="move" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={{ folder: COPY, rows: [], places: [] } as never} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={async () => true} onClose={() => undefined} />);
       await waitFor(() => expect(screen.getByText("The rest did not load.")).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       expect(screen.getByText("The rest did not load.")).toBeTruthy();
@@ -308,7 +312,8 @@ describe("Move to… across computers", () => {
     listingSeams.fetch = async () => ({ entries: [] });
     try {
       const mac = { place: { ...PLACE, id: "mac", name: "Documents", host: "MacBook", env: "env_mac", root: { at: "file" as const, host: "env_mac", path: "/Users/l/Documents" } }, link: "mac", host: "MacBook", wire: "files" as const };
-      const sidebar = { folder: COPY, rows: [{ name: "Documents", group: "", copies: [mac] }] } as never;
+      const row = { key: "docs", name: "Documents", group: "", kind: "onedrive", copies: [mac] };
+      const sidebar = { folder: COPY, rows: [row], places: [{ is: "place", row }] } as never;
       let fail!: (why: string) => void;
       const onPick = vi.fn(async (_to: unknown, said: (why: string) => void) => ((fail = said), false));
       render(<MoveDialog verb="copy" entries={[file("Budget.xlsx")]} from={COPY} start={{ at: at("/w"), name: "Dummy Esports" }} sidebar={sidebar} workspace={{ id: "w1", name: "Dummy Esports" }} onPick={onPick} onClose={() => undefined} />);

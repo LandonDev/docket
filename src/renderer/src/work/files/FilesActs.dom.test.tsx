@@ -759,10 +759,10 @@ describe("Move to…", () => {
     fireEvent.click(await menuItem("Move to…"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("Move Budget.xlsx");
-    // In its own folder there is nowhere to move it to yet: the verb is off, and says why.
+    // In its own folder there is nowhere to move it to yet: the verb is off, and no note refuses before he has done anything.
     await waitFor(() => expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Archive", "Events"]));
     expect((within(dialog).getByRole("button", { name: "Move Here" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(dialog.textContent).toContain("It is in this folder already.");
+    expect(dialog.textContent).not.toContain("It is in this folder already.");
     fireEvent.click(within(dialog).getByRole("option", { name: "Events" }));
     await waitFor(() => expect((within(dialog).getByRole("button", { name: "Move Here" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(within(dialog).getByRole("button", { name: "Move Here" }));
@@ -779,6 +779,30 @@ describe("Move to…", () => {
     expect(world.toasts.at(-1)).toMatchObject({ title: "Moved Budget.xlsx to Dummy Esports" });
     // The move back is no move to undo again.
     expect(world.toasts.at(-1)!.undo).toBeUndefined();
+  });
+
+  it("makes a folder with New Folder and stands in it, and keeps the folders moved to last under Recent", async () => {
+    await mount();
+    fireEvent.contextMenu(row("Budget.xlsx"));
+    fireEvent.click(await menuItem("Move to…"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByRole("button", { name: "New Folder" }));
+    const field = (await within(dialog).findByRole("textbox", { name: "Rename New Folder" })) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "Receipts" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(calls("work.files.make")).toEqual([expect.objectContaining({ kind: "folder", name: "Receipts", at: { at: "place", id: "folder" } })]));
+    // (The stand-in host names what it makes "Untitled folder" whatever is asked.)
+    await within(dialog).findByRole("listbox", { name: "Folders in Untitled folder" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move Here" }));
+    await waitFor(() => expect(calls("work.files.move")).toEqual([expect.objectContaining({ to: at("/w/Untitled folder") })]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // The next Move to… lists that folder under Recent, over the places.
+    fireEvent.contextMenu(row("notes.txt"));
+    fireEvent.click(await menuItem("Move to…"));
+    const again = await screen.findByRole("dialog");
+    fireEvent.click(within(again).getByRole("button", { name: "Places" }));
+    expect(within(again).getByText("Recent")).toBeTruthy();
+    expect(within(again).getAllByRole("option").map((o) => o.textContent)[0]).toBe("Untitled folderDummy Esports");
   });
 
   it("asks before a copy into a place others can open, and says the grammar's refusal for a move out of one", async () => {

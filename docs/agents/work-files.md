@@ -768,6 +768,17 @@ taken (model.ts `carryRefusal`: the grammar first, then `place.env`). A
 press that fails anyway says why on the dialog's own line
 (`workErrorWords`), and the dialog stays on that folder.
 
+**The dialog's walk** (MoveDialog.tsx). It opens in the folder the things are
+in with Move Here greyed and no note ("already here" is no refusal of the
+place's). New Folder stands at the trail's end where the place makes folders
+and the grammar lets it (`makeIn`, as New → Folder); the folder made is the
+one he then stands in. Its places are the sidebar's (`placeItems`: the
+workspace's folder, then each library under its team, with `placeIcon`'s
+glyphs), under Recent: the three folders he last moved or copied to
+(`recentFolders("move")`, the window's localStorage per workspace; Save As
+keeps its own under "saveAs"), each read again against the places listed now,
+so a place gone is left out and one still listed carries today's state.
+
 **What a rename or a move carries** (`files/moved.ts` `fileMoved`). The
 file moves on disk first; then one savepoint carries, for the file or each
 file under a moved folder:

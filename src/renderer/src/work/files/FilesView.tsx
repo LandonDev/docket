@@ -35,9 +35,9 @@ import { addFromDrive, carryTo, download, downloadAll, downloadOf, makeIn, purge
 import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
-import { MoveDialog, type MoveTarget } from "./MoveDialog";
+import { MoveDialog, placeIcon, type MoveTarget } from "./MoveDialog";
 import { cutsMiddle, MiddleCut } from "../canvas/TabName";
-import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
@@ -238,7 +238,6 @@ function SideFolders({ from, at, depth, current, tree, drop, onGo, onNewTab }: {
   );
 }
 
-const placeIcon = (row: Pick<PlaceRow, "kind">): ReactNode => (row.kind === "onedrive" ? <Cloud className="size-4" /> : <Users className="size-4" />);
 
 /** The places, in three quiet groups 16px apart: his marks; the places a file lives in; the lenses that arrive with their milestones. */
 export function SidebarView({

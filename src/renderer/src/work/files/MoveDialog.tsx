@@ -8,8 +8,12 @@ import { Tip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
+import { Folder, Users } from "../../chrome/icons";
+import { Cloud } from "../icons";
+import { makeIn } from "./acts";
 import { KindGlyph } from "./KindGlyph";
-import { carryRefusal, placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./model";
+import { carryRefusal, placePage, readCopy, samePage, type PlaceCopy, type PlaceRow, type Sidebar } from "./model";
+import { NameField } from "./rowParts";
 import { pressFor, useListing, type ListFrom } from "./store";
 
 /**
@@ -27,6 +31,55 @@ export interface MoveTarget {
 }
 
 const VERB = { move: "Move", copy: "Copy", word: "Save" } as const;
+
+/** A place's glyph, as the sidebar draws it: his OneDrive a cloud, a team's library its people. */
+export const placeIcon = (row: Pick<PlaceRow, "kind">): ReactNode => (row.kind === "onedrive" ? <Cloud className="size-4" /> : <Users className="size-4" />);
+
+/** A row of the places list: a place to walk into, or a team over its channels, one level in, as the sidebar has them. */
+export type PlaceItem = { target: MoveTarget; icon: ReactNode; /** a team's channel: drawn by its own name, one level in; its target names the team too */ inTeam?: string } | { team: string };
+
+/** The places a thing can go to, in the sidebar's order, glyphs and teams: the workspace's folder, then each team or library. */
+export function placeItems(sidebar: Sidebar, workspaceName: string): PlaceItem[] {
+  // A channel is named with its team where it stands alone (a trail, a line that says where a thing went).
+  const one = (row: PlaceRow, inTeam = false): PlaceItem => {
+    const copy = readCopy(row);
+    const name = row.group && row.group !== row.name ? `${row.group}, ${row.name}` : row.name;
+    return { target: { copy, at: placePage(copy, name).at, name }, icon: placeIcon(row), ...(inTeam ? { inTeam: row.name } : {}) };
+  };
+  return [
+    ...(sidebar.folder ? [{ target: { copy: sidebar.folder, at: placePage(sidebar.folder, workspaceName).at, name: workspaceName }, icon: <Folder className="size-4" /> }] : []),
+    ...(sidebar.places ?? []).flatMap((p): PlaceItem[] => (p.is === "team" ? [{ team: p.name }, ...p.rows.map((row) => one(row, true))] : [one(p.row)])),
+  ];
+}
+
+/** The folders he moved or saved to last, kept per workspace and verb, three at most; each read again against the places listed now. */
+type Recent = MoveTarget & { where: string };
+const RECENT_KEPT = 3;
+const recentKey = (kind: string, workspace: { id: string; environmentId?: string }): string => `tc.${kind}.recent.${workspace.environmentId ?? ""}:${workspace.id}`;
+export function recentFolders(kind: "move" | "saveAs", workspace: { id: string; environmentId?: string }, places?: readonly PlaceItem[]): Recent[] {
+  let kept: Recent[] = [];
+  try {
+    const got = JSON.parse(localStorage.getItem(recentKey(kind, workspace)) ?? "[]") as unknown;
+    kept = Array.isArray(got) ? (got as Recent[]).slice(0, RECENT_KEPT) : [];
+  } catch {
+    return [];
+  }
+  if (!places) return kept;
+  // A place no longer listed is left out; one still listed goes by its copy now, so its state and verbs are today's.
+  const now = places.flatMap((p) => ("target" in p ? [p.target.copy] : []));
+  return kept.flatMap((f) => {
+    const copy = now.find((c) => c.link === f.copy.link && c.place.id === f.copy.place.id);
+    return copy ? [{ ...f, copy }] : [];
+  });
+}
+export function keepRecentFolder(kind: "move" | "saveAs", workspace: { id: string; environmentId?: string }, folder: Recent): void {
+  const same = (f: Recent): boolean => f.copy.link === folder.copy.link && JSON.stringify(f.at) === JSON.stringify(folder.at);
+  try {
+    localStorage.setItem(recentKey(kind, workspace), JSON.stringify([folder, ...recentFolders(kind, workspace).filter((f) => !same(f))].slice(0, RECENT_KEPT)));
+  } catch {
+    // A window that keeps nothing starts on the places.
+  }
+}
 
 export const ROW = "flex h-8 w-full min-w-0 cursor-default items-center gap-2 rounded-md px-2 text-start text-[13px] select-none";
 
@@ -54,7 +107,7 @@ export function MoveDialog({
   /** the places are still being read: their rows are drawn as they come */
   waiting?: boolean;
   sidebar: Sidebar;
-  workspace: { id: string; name: string };
+  workspace: { id: string; name: string; environmentId?: string };
   /** he chose a folder: the caller carries the things there; the dialog waits for it, and says why through `fail` when nothing went */
   onPick(to: MoveTarget, fail: (why: string) => void): Promise<boolean>;
   onClose(): void;
@@ -70,36 +123,73 @@ export function MoveDialog({
   // Why the last press carried nothing, for the folder it was pressed in.
   const [failed, setFailed] = useState<{ at: MoveTarget; why: string } | null>(null);
   const what = named ?? (entries.length === 1 ? entries[0]!.name : `${entries.length} things`);
-  const places: MoveTarget[] = [
-    ...(sidebar.folder ? [{ copy: sidebar.folder, at: placePage(sidebar.folder, workspace.name).at, name: workspace.name }] : []),
-    ...sidebar.rows.map((row) => {
-      const copy = readCopy(row);
-      return { copy, at: placePage(copy, row.name).at, name: row.group && row.group !== row.name ? `${row.group}, ${row.name}` : row.name };
-    }),
-  ];
+  const places = placeItems(sidebar, workspace.name);
+  // Move and Copy keep the folders he carried things to last, as Save As keeps its own.
+  const kind = verb === "word" ? null : "move";
+  const recent = kind ? recentFolders(kind, workspace, places) : [];
   // The grammar's refusal for the folder shown, for any of the things; a Word file is a new thing made there.
   const no = !at ? null : verb === "word" || !from ? refusal(at.copy.place, "make") : (entries.map((entry) => carryRefusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
-  // A thing cannot go into itself or stay where it is.
-  const same = !!at && (start && samePage(at.at, start.at) && verb === "move" ? "It is in this folder already." : entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null);
-  const why = no?.text ?? same ?? null;
+  // A thing cannot go into itself; one moved where it already is: Move Here is greyed, and no note says so (it opens there).
+  const inside = !!at && entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null;
+  const stays = !!at && !!start && verb === "move" && samePage(at.at, start.at);
+  const why = no?.text ?? inside;
   const note = why ?? (failed?.at === at ? failed.why : null);
+  // New Folder at the trail's end, where the place makes folders; the folder made is the one he stands in.
+  const [naming, setNaming] = useState(false);
+  const makesFolder = !!at && !refusal(at.copy.place, "make") && (at.copy.place.makes ?? []).includes("folder");
+  const newFolder = async (typed: string | null): Promise<void> => {
+    setNaming(false);
+    if (!typed?.trim() || !at) return;
+    const made = await makeIn({ workspaceId: workspace.id, home: workspace.environmentId ?? at.copy.link }, at.copy, at.at, "folder", typed);
+    if (made?.folder) setAt({ copy: at.copy, at: made.folder, name: made.name });
+  };
   return (
     <Modal onClose={onClose} title={verb === "word" ? `Save ${what} as Word` : `${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-3">
-        {at ? <Folders key={`${at.copy.link}:${JSON.stringify(at.at)}`} workspaceId={workspace.id} target={at} entries={entries} onInto={into} onPlaces={() => setAt(null)} /> : <Places places={places} waiting={waiting} onInto={into} />}
+        {at ? (
+          <Folders
+            key={`${at.copy.link}:${JSON.stringify(at.at)}`}
+            workspaceId={workspace.id}
+            target={at}
+            entries={entries}
+            onInto={(to) => (setNaming(false), into(to))}
+            onPlaces={() => (setNaming(false), setAt(null))}
+            {...(makesFolder
+              ? {
+                  end: (
+                    <Button variant="ghost" size="xs" className="text-muted-foreground" disabled={naming} onClick={() => setNaming(true)}>
+                      New Folder
+                    </Button>
+                  ),
+                  first: naming ? (
+                    <div className={ROW}>
+                      <KindGlyph kind="folder" />
+                      <NameField name="New Folder" className="h-6 flex-1 text-[13px]" onDone={(typed) => void newFolder(typed)} />
+                    </div>
+                  ) : null,
+                }
+              : {})}
+          />
+        ) : (
+          <Places places={places} recent={recent} waiting={waiting} onInto={into} />
+        )}
       </div>
       <DialogFooter
         onCancel={onClose}
         confirmLabel={at ? `${VERB[verb]} Here` : VERB[verb]}
         pending={pending}
-        disabled={!at || why !== null}
+        disabled={!at || why !== null || stays}
         note={note ? <span className="text-xs text-muted-foreground">{note}</span> : undefined}
         onConfirm={() => {
           if (!at || pending) return;
           setPending(true);
           setFailed(null);
           void onPick(at, (said) => setFailed({ at, why: said }))
-            .then((went) => went && onClose())
+            .then((went) => {
+              if (!went) return;
+              if (kind) keepRecentFolder(kind, workspace, { ...at, where: at.copy.place.name });
+              onClose();
+            })
             .finally(() => setPending(false));
         }}
       />
@@ -108,7 +198,7 @@ export function MoveDialog({
 }
 
 /** The places a thing can go to; Save As… puts the folders he saved to last over them. */
-export function Places({ places, recent = [], off = [], waiting, onInto }: { places: readonly MoveTarget[]; recent?: readonly (MoveTarget & { where: string })[]; off?: readonly { name: string; why: string }[]; waiting: boolean; onInto(to: MoveTarget): void }) {
+export function Places({ places, recent = [], off = [], waiting, onInto }: { places: readonly PlaceItem[]; recent?: readonly (MoveTarget & { where: string })[]; off?: readonly { name: string; why: string }[]; waiting: boolean; onInto(to: MoveTarget): void }) {
   return (
     <div role="listbox" aria-label="Places" className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
       {recent.length ? (
@@ -127,13 +217,28 @@ export function Places({ places, recent = [], off = [], waiting, onInto }: { pla
         <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
       )}
       {waiting && !places.length ? <RowBones /> : null}
-      {places.map((place) => (
-        <Button key={`${place.copy.link}:${place.copy.place.id}`} variant="ghost" role="option" aria-selected={false} className={`${ROW} justify-start font-normal`} onClick={() => onInto(place)}>
-          <KindGlyph kind="folder" />
-          <span className="min-w-0 flex-1 truncate">{place.name}</span>
-          <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-        </Button>
-      ))}
+      {places.map((item) =>
+        "team" in item ? (
+          // A team is no folder: its name over its channels, which stand one level in.
+          <div key={`team:${item.team}`} role="presentation" className={`${ROW} text-muted-foreground`}>
+            <Users aria-hidden className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{item.team}</span>
+          </div>
+        ) : (
+          <Button
+            key={`${item.target.copy.link}:${item.target.copy.place.id}`}
+            variant="ghost"
+            role="option"
+            aria-selected={false}
+            className={`${ROW} justify-start font-normal ${item.inTeam ? "ps-6" : ""} [&>svg:first-child]:text-muted-foreground`}
+            onClick={() => onInto(item.target)}
+          >
+            {item.icon}
+            <span className="min-w-0 flex-1 truncate">{item.inTeam ?? item.target.name}</span>
+            <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          </Button>
+        ),
+      )}
       {/* A place the verb cannot reach yet, there and off, with its sentence on hover. */}
       {off.map((place) => (
         <Tip key={place.name} label={place.why} side="right">

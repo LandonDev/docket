@@ -2059,10 +2059,15 @@ Around the canvas:
   popover's depth): "3 selected", Download, Move, Copy, Delete, Clear;
   while it shows the list keeps 56px under its last row.
   **Move to… and Copy to…** are one small dialog that drills down in one
-  column: it opens in the folder the things are in, a trail over it leads
-  back up and to Places, a press walks into a folder (folders alone,
-  more as the list nears its end), and the place's own sentence stands
-  beside the verb where it refuses. A move inside one place says what
+  column: it opens in the folder the things are in (Move Here greyed there,
+  with no note: nothing has been refused yet), a trail over it leads
+  back up and to Places, with New Folder at its end where the place makes
+  folders (the name typed in a row over the folders; he then stands in
+  it), a press walks into a folder (folders alone, more as the list nears
+  its end), and the place's own sentence stands beside the verb where it
+  refuses. Places is the sidebar's list, its glyphs and teams (a team over
+  its channels, one level in), under Recent: the three folders he last
+  moved or copied to, as Save As keeps its own. A move inside one place says what
   went in one toast with Undo, back to the folder it came from. Delete
   (⌘⌫, as in Finder; a bare ⌫ moves nothing; on a PC the Delete key)
   goes to Trash and says so in one toast with Undo;
