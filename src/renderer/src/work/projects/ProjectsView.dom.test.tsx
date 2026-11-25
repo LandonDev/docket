@@ -3,9 +3,9 @@
  * A Work workspace's Projects: the shared project screens (work-kit/projects)
  * mounted on the workspace's LifeOS session with TempCode's kit. The store is
  * work-kit's fake; what is proven here is the host's side: the header's two
- * slots, the place kept a workspace, New project on the workspace's sector,
- * threads in the project's mirror with a chip, the thread mark, and what
- * Documents' rows and items do.
+ * slots, the tracker's rows, the place kept a workspace, the New project
+ * dialog on the workspace's sector, Share in the ⋯, threads in the project's
+ * mirror with a chip, the thread mark, and what Files' rows and items do.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -145,7 +145,7 @@ afterEach(() => {
 });
 
 describe("the Projects view", () => {
-  it("draws the sector's projects under the view's own header: its name, then List or Board and a quiet New project", () => {
+  it("draws the sector's projects under the view's own header: its name, then a quiet New project and the ⋯", () => {
     render(<Screen {...props()} />);
     expect(head().querySelector("[data-projects-title]")!.textContent).toBe("Projects");
     const controls = head().querySelector("[data-projects-controls]") as HTMLElement;
@@ -153,8 +153,27 @@ describe("the Projects view", () => {
     // The header's own buttons: quiet, 28px (docs/DESIGN.md), never the kit's primary.
     expect(verb.getAttribute("data-variant")).toBe("ghost");
     expect(verb.className.split(/\s+/)).toContain("h-7");
-    expect(within(controls).getByRole("tab", { name: "List" })).toBeTruthy();
-    for (const name of ["Spring LAN", "Varsity tryouts", "Arena lighting", "Budget FY27"]) expect(screen.getByText(name)).toBeTruthy();
+    // The board is one press away in the ⋯, the same 28px.
+    expect(within(controls).getByRole("button", { name: "Projects' actions" }).className.split(/\s+/)).toContain("size-7");
+    for (const name of ["Spring LAN", "Varsity tryouts"]) expect(screen.getByText(name)).toBeTruthy();
+  });
+
+  it("lists the active projects as the tracker's rows by target date, paused and backlog under one line, the finished under Show finished", () => {
+    render(<Screen {...props()} />);
+    const rows = () => [...document.querySelectorAll("[data-project]")].map((row) => row.getAttribute("data-project"));
+    // Tryouts' target comes before Spring LAN's; the rest wait behind their lines.
+    expect(rows()).toEqual(["p-tryouts", "p-lan"]);
+    const lan = document.querySelector("[data-project='p-lan']") as HTMLElement;
+    expect(within(lan).getByText("Sam Ortiz")).toBeTruthy();
+    expect(lan.querySelector("[data-part=done]")!.textContent).toBe("2 of 8");
+    expect(lan.querySelector("[data-part=next]")!.textContent).toContain("Stage and casters");
+    // No Threads column until the thread record fills it.
+    expect(document.querySelector("[data-part=track-head]")!.textContent).not.toContain("Threads");
+    fireEvent.click(screen.getByRole("button", { name: "1 paused, 1 in backlog" }));
+    expect(rows()).toEqual(["p-tryouts", "p-lan", "p-lights", "p-budget"]);
+    fireEvent.click(screen.getByRole("button", { name: "Show finished" }));
+    expect(rows()).toEqual(["p-tryouts", "p-lan", "p-lights", "p-budget", "p-fall", "p-merch"]);
+    expect(screen.getByRole("button", { name: "Hide finished" })).toBeTruthy();
   });
 
   it("is bones while the workspace's LifeOS session is on its way, and mounts nothing of the screens", () => {
@@ -170,12 +189,12 @@ describe("the Projects view", () => {
     const first = render(<Screen {...props()} />);
     fireEvent.click(screen.getByText("Spring LAN"));
     expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-lan" });
-    expect(screen.getByText("Network for 64 seats")).toBeTruthy();
+    expect(document.querySelector("[role=treeitem][data-key='PUR-2']")).toBeTruthy();
     const back = within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" });
     // Leaving the view and coming back lands on the project.
     first.unmount();
     render(<Screen {...props()} />);
-    expect(screen.getByText("Network for 64 seats")).toBeTruthy();
+    expect(document.querySelector("[role=treeitem][data-key='PUR-2']")).toBeTruthy();
     expect(back.isConnected).toBe(false);
     fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" }));
     expect(placeOf("ws").at).toBe("list");
@@ -191,17 +210,17 @@ describe("the Projects view", () => {
     fireEvent.click(await screen.findByText("Spring LAN"));
     expect(within(title()).getByRole("button", { name: "Back to Projects" })).toBeTruthy();
     expect(title().textContent).toBe("Projects");
-    // A task's own page: back, with the task's key beside it.
+    // A task's own page: back to the project, named; no key beside it.
     act(() => openWorkView({ workspaceId: "ws", view: "projects", task: "t-network" }));
     await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network" }));
-    await waitFor(() => expect(within(title()).getByRole("button", { name: "Back" })).toBeTruthy());
-    expect(title().textContent).toContain("PUR-2");
-    // New project: back to Projects, and what he is making.
-    fireEvent.click(within(title()).getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(within(title()).getByRole("button", { name: "Back to Spring LAN" })).toBeTruthy());
+    expect(title().textContent).toBe("Spring LAN");
+    // New project is a dialog over the list: the header stays the list's.
+    fireEvent.click(within(title()).getByRole("button", { name: "Back to Spring LAN" }));
     fireEvent.click(within(title()).getByRole("button", { name: "Back to Projects" }));
     fireEvent.click(within(head()).getByRole("button", { name: "New project" }));
-    expect(title().textContent).toBe("ProjectsNew project");
-    expect(within(title()).getByRole("button", { name: "Back to Projects" })).toBeTruthy();
+    expect(title().textContent).toBe("Projects");
+    expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
   });
 
   it("a project's menu reaches its settings: the mirror is made at the ask and the Work project's sheet opens on it", async () => {
@@ -241,17 +260,43 @@ describe("the Projects view", () => {
     expect(document.querySelector("[data-settings-for]")).toBeNull();
   });
 
-  it("makes a new project on the workspace's sector, from the header's New project", async () => {
+  it("makes a new project on the workspace's sector, from the header's New project, in a dialog of Name, State and Target", async () => {
     render(<Screen {...props()} />);
     fireEvent.click(within(head()).getByRole("button", { name: "New project" }));
     expect(placeOf("ws").at).toBe("new");
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Fall tryouts" } });
+    const dialog = screen.getByRole("dialog", { name: "New project" });
+    expect(within(dialog).getByLabelText("State").textContent).toContain("Active");
+    expect(within(dialog).getByLabelText("Target").textContent).toBe("No target");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Fall tryouts" } });
     await act(async () => {
-      fireEvent.click(within(head()).getByRole("button", { name: "Create" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     });
     await waitFor(() => expect(client.acts.some((a) => a.startsWith("createProject"))).toBe(true));
     expect(client.acts.find((a) => a.startsWith("createProject"))).toContain("Fall tryouts");
     await waitFor(() => expect(placeOf("ws").at).toBe("project"));
+  });
+
+  it("Cancel closes New project to the list and keeps nothing made", async () => {
+    render(<Screen {...props()} />);
+    fireEvent.click(within(head()).getByRole("button", { name: "New project" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "New project" })).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(placeOf("ws").at).toBe("list"));
+    expect(client.acts.some((a) => a.startsWith("createProject"))).toBe(false);
+  });
+
+  it("a project's ⋯ holds Share…, which opens the Share sheet on the LifeOS project", async () => {
+    render(<Screen {...props()} />);
+    fireEvent.click(await screen.findByText("Spring LAN"));
+    // Share is no longer a bar verb.
+    expect(within(head()).queryByRole("button", { name: "Share" })).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Spring LAN" }));
+    const labels = (await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim());
+    expect(labels.indexOf("Board")).toBeLessThan(labels.indexOf("Share…"));
+    expect(labels.indexOf("Share…")).toBeLessThan(labels.indexOf("Project settings…"));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Share…" }));
+    });
+    await waitFor(() => expect(hostCalls.some((c) => c.method.startsWith("work.guests"))).toBe(true));
   });
 
   it("a column card's Open project stands the view on that project, once", async () => {
@@ -285,8 +330,9 @@ describe("a sent chip", () => {
     void openerOf(chip("card", "LifeOS tasks t-network"), at)!();
     // The task's own page, and its Back goes to the project that holds it, which LifeOS names.
     await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network", from: "p-lan" }));
-    expect(screen.getByText("Network for 64 seats")).toBeTruthy();
-    fireEvent.click(within(head()).getByRole("button", { name: "Back" }));
+    expect((screen.getByLabelText("Title") as HTMLTextAreaElement).value).toBe("Network for 64 seats");
+    await waitFor(() => expect(within(head()).getByRole("button", { name: "Back to Spring LAN" })).toBeTruthy());
+    fireEvent.click(within(head()).getByRole("button", { name: "Back to Spring LAN" }));
     expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-lan" });
     void openerOf(chip("task", "LifeOS tasks t-network"), at)!();
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks" });
@@ -345,7 +391,7 @@ describe("threads", () => {
   });
 });
 
-describe("Documents", () => {
+describe("Files", () => {
   const mounted = () => {
     render(<Screen {...props()} />);
     fireEvent.click(screen.getByText("Spring LAN"));
@@ -366,7 +412,7 @@ describe("Documents", () => {
     const back = within(title).getByRole("button", { name: "Back to Spring LAN" });
     fireEvent.click(back);
     expect(document.querySelector("[data-document-frame]")).toBeNull();
-    expect(screen.getByText("Network for 64 seats")).toBeTruthy();
+    expect(document.querySelector("[role=treeitem][data-key='PUR-2']")).toBeTruthy();
   });
 
   it("New sheet makes a LifeOS sheet in the project on the workspace's own session", async () => {

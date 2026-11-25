@@ -33,8 +33,8 @@ const usePage = () => {
  * The screens' bar in the page's one 44px line: List or Board at its end.
  * The way back is drawn only from a task's own page; a project's page has
  * none, since the guest has no list of projects to go back to. A task's way
- * back takes the line's first place (`lead`), where a document's does, and
- * its key stays where the crumb was.
+ * back takes the line's first place (`lead`), where a document's does; the
+ * kit names no key beside it (a key shows on a row in hand alone).
  */
 function Bar({ crumb, back, here, children }: { crumb: ReactNode | null; back?: { label?: string | undefined; run: () => void } | null | undefined; here?: ReactNode | undefined; children: ReactNode }) {
   const { slot, lead, title, at } = usePage();

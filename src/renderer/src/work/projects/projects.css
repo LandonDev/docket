@@ -21,6 +21,9 @@
   --pk-title: 18px;
   --pk-title-lh: 26px;
   --pk-title-track: -0.01em;
+  /* A project's page reads at the document page's measure; the projects list is wider for its columns. */
+  --pk-page-column: 44rem;
+  --pk-list-column: 64rem;
 
   --pk-radius-row: 8px;
   --pk-radius-card: 6px;
@@ -63,7 +66,7 @@
 }
 @container tc-projects (min-width: 80rem) {
   .tc-projects .pk-peek-room > .pk-room {
-    padding-inline-end: calc(var(--pk-peek-w) + 12px);
+    padding-inline-end: var(--pk-peek-w);
   }
 }
 

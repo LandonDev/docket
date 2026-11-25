@@ -16,10 +16,9 @@ import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
-import { ProjectShare } from "../guests/Share";
 import { Face as PersonFace } from "../mail/face";
 import { openLifeosProject } from "../shell/actions";
-import { Doc, File, Link, Table } from "../icons";
+import { Doc, File, Link, Share, Table } from "../icons";
 import { useLinkedThread } from "../tasks/links";
 import type { WorkViewProps } from "../views/registry";
 import { Bar } from "./bar";
@@ -47,6 +46,8 @@ export interface ProjectsHost {
   newSheet(project: Project): Promise<void>;
   /** The Work project's settings sheet, on the project's mirror. */
   settings(mirror: ProjectMeta): void;
+  /** The Share sheet on the LifeOS project: its guest links, and New guest link… (view only). */
+  share(project: Project): void;
 }
 
 const hosts = new Map<string, ProjectsHost>();
@@ -123,7 +124,7 @@ async function settingsOf(workspaceId: string, project: Pick<Project, "id" | "na
   }
 }
 
-/** What a press on a thing in a project's Documents opens (docs/agents/work-projects.md "Documents"). */
+/** What a press on a thing in a project's Files opens (docs/agents/work-projects.md "Files"). */
 export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick<Project, "id" | "name">): void {
   const label = item.title.slice(0, 500);
   switch (item.kind) {
@@ -148,6 +149,7 @@ export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick
   }
 }
 
+/** The thread on a task: its state mark, a press opening it. One mark, the newest open link's, until the thread record (M7) names every one. */
 function ThreadMark({ task }: { task: ProjectTask }) {
   const thread = useLinkedThread(task.id);
   const status = useSessionMetaValue(thread, (meta) => meta.status);
@@ -174,7 +176,7 @@ async function newDocument(env: string, workspaceId: string, project: Project): 
 }
 
 /**
- * The rows TempCode adds to Documents' add menu, before the kit's own Add
+ * The rows TempCode adds to Files' add menu, before the kit's own Add
  * link: a new document or sheet in the project, a document or sheet LifeOS
  * already has, and a file or item the workspace lists. Each reads the view
  * at the press.
@@ -219,6 +221,7 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
     Bar,
     // The view header's own buttons (docs/DESIGN.md): quiet, 28px, as Tasks' New task and Docs' New are.
     verbs: { primary: "ghost", size: "sm" },
+    taskMark: ThreadMark,
     threads: {
       Mark: ThreadMark,
       newThread: (project) => void startIn(workspaceId, project, projectChip(project)),
@@ -226,10 +229,11 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
     },
     menuLead: (task) => [{ id: "code-thread", label: "Open a code thread…", run: () => hostOf(workspaceId).codeThread(task) }],
     addItems: (project) => addRows(env, workspaceId, project),
-    // A project's menu reaches its settings (name, state, rules, accounts, sharing) without leaving the page.
-    projectMenu: (project) => [{ id: "settings", label: "Project settings…", icon: Settings, run: () => void settingsOf(workspaceId, project) }],
-    // Share on a project's bar: its guest links, and New guest link… (view only).
-    share: ({ project }) => <ProjectShare env={env} project={project} />,
+    // A project's ⋯ holds Share… (its guest links, view only) and its settings (name, state, target, rules, accounts), beside Board and Delete.
+    projectMenu: (project) => [
+      { id: "share", label: "Share…", icon: Share, run: () => hostOf(workspaceId).share(project) },
+      { id: "settings", label: "Project settings…", icon: Settings, run: () => void settingsOf(workspaceId, project) },
+    ],
   };
   kits.set(key, kit);
   return kit;

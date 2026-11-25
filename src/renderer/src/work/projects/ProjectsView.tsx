@@ -1,6 +1,6 @@
 import { ConvexProvider } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { lifeosHostName, sessionWaits, sessionWords } from "../shell/lifeos";
 import { connectingWords } from "../shell/lifeosWords";
 import { useKeptOpen } from "../shell/lifeosDown";
@@ -23,6 +23,8 @@ import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
 
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
+// The Share sheet is its own chunk, loaded on the ⋯'s Share… press.
+const ShareSheet = lazy(() => import("../guests/ShareSheet"));
 
 const TASK_GET = makeFunctionReference<"query", { id: string }, { task: { projectId?: string } } | null>("tasks:get");
 
@@ -30,9 +32,9 @@ const TASK_GET = makeFunctionReference<"query", { id: string }, { task: { projec
  * A Work workspace's Projects (docs/agents/work-projects.md): the sector's
  * LifeOS projects on the shared project screens (work-kit/projects), read
  * and written through the workspace's own narrowed session. The list or
- * board of projects, a project's page with its tree, board, documents and
- * activity, a task's peek and page, and New project; the place is kept a
- * workspace. A project's threads live in its mirror: New thread and Start a
+ * board of projects (the tracker's rows), a project's page (brief, plan,
+ * files, log), a task's peek and page, and New project as a dialog; the place
+ * is kept a workspace. A project's threads live in its mirror: New thread and Start a
  * thread open a composer there with the project or the task as its chip.
  */
 
@@ -46,7 +48,7 @@ export function Title({ workspace, lifeos }: WorkViewProps) {
   return <BarTitle />;
 }
 
-/** The header's end: the screen's own controls (List or Board, New project, New thread, New task). */
+/** The header's end: the screen's own controls (New project, New thread, New task, and the ⋯ with Board, Share, settings and Delete). */
 export function Head(_props: WorkViewProps) {
   return <BarControls />;
 }
@@ -99,6 +101,7 @@ export function View(props: WorkViewProps) {
   }, [project, task, workspace.id, convex]);
   const [coding, setCoding] = useState<ProjectTask | null>(null);
   const [linking, setLinking] = useState<{ project: Project; kind: LinkKind } | null>(null);
+  const [sharing, setSharing] = useState<Project | null>(null);
   // What the kit reads at a press, set after each commit.
   useLayoutEffect(() => {
     setProjectsHost({
@@ -108,7 +111,8 @@ export function View(props: WorkViewProps) {
       codeThread: setCoding,
       link: (project, kind) => setLinking({ project, kind }),
       settings: (project) => settingsOpen.set(project),
-      // LifeOS makes the sheet in the project's own sector; it shows in Documents as the page's live read lands.
+      share: setSharing,
+      // LifeOS makes the sheet in the project's own sector; it shows in Files as the page's live read lands.
       newSheet: async (project) => {
         // A session with no client says its true state, the computer named (`sessionWords`), never a sign-out it is not.
         if (!convex) throw new Error(sessionWaits(lifeos) ? connectingWords(lifeosHostName(lifeos.environmentId)) : sessionWords(lifeos));
@@ -125,21 +129,30 @@ export function View(props: WorkViewProps) {
           <div className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
           {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
           {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
+          {sharing ? (
+            <Suspense fallback={null}>
+              <ShareSheet env={env} target={{ source: { at: "lifeos", table: "projects", id: sharing.id } }} title={sharing.name} onClose={() => setSharing(null)} />
+            </Suspense>
+          ) : null}
         </ProjectsClientProvider>
       </ProjectsKitProvider>
     </ConvexProvider>
   );
 }
 
-/** The list's shape while the session is on its way: a group head and its rows. */
+/** The list's shape while the session is on its way: the tracker's rows, a name, its next task and a date. */
 function Bones() {
   return (
-    <div aria-busy aria-label="Loading Projects" className="mx-auto flex w-full max-w-[52rem] flex-col gap-1 px-4 pt-6">
-      <Skeleton className="mb-2 h-3 w-20" />
+    <div aria-busy aria-label="Loading Projects" className="mx-auto flex w-full max-w-(--pk-list-column) flex-col gap-1 px-6 pt-12">
       {["w-2/5", "w-1/3", "w-1/2", "w-1/4"].map((w) => (
-        <div key={w} className="flex h-8 items-center gap-3">
-          <Skeleton className="size-3.5 rounded-full" />
-          <Skeleton className={`h-3 ${w}`} />
+        <div key={w} className="flex h-8 items-center gap-6">
+          <span className="flex flex-[1.3]">
+            <Skeleton className={`h-3 ${w}`} />
+          </span>
+          <span className="flex flex-[1.4]">
+            <Skeleton className="h-3 w-3/5" />
+          </span>
+          <Skeleton className="h-3 w-12" />
         </div>
       ))}
     </div>

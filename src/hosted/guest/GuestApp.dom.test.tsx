@@ -102,9 +102,10 @@ describe("a project's link on the guest's page", () => {
     fireEvent.click(await first("Book the ballroom"));
     fireEvent.click(await screen.findByRole("button", { name: "Open task" }));
     const back = await within(line()).findByRole("button", { name: "Back to Spring LAN" });
-    // First in the line, before the glyph and the project's name; the task's key stays after them.
+    // First in the line, before the glyph and the project's name; a task's key is no longer drawn beside them.
     expect(line().firstElementChild!.contains(back)).toBe(true);
-    expect(line().textContent).toMatch(/Spring LAN.*PUR-1/);
+    expect(line().textContent).toContain("Spring LAN");
+    expect(line().textContent).not.toContain("PUR-1");
     expect(within(line()).queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => expect(within(line()).queryByRole("button", { name: /Back/ })).toBeNull());

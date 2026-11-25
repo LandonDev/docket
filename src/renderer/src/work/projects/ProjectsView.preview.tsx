@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { fakeProjectsClient, Projects, ProjectsClientProvider, ProjectsKitProvider, type ProjectsKit, type ProjectsPlace } from "work-kit/projects";
+import { FIXTURE_NOW, fakeProjectsClient, Projects, ProjectsClientProvider, ProjectsKitProvider, type ProjectsKit, type ProjectsPlace } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "./projects.css";
-import { MessageSquare } from "../../chrome/icons";
+import { MessageSquare, Outbox } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { StatusMark } from "../../components/ui/status";
 import { Project } from "../icons";
 import { BarControls, BarTitle } from "./bar";
 import { projectsKitFor } from "./kit";
@@ -34,6 +35,12 @@ const base = projectsKitFor("preview", "preview");
 const kit: ProjectsKit = {
   ...base,
   Document: ({ lead }) => <p className="text-[13px] leading-5 text-foreground">{lead}</p>,
+  taskMark: ({ task }) =>
+    task.id === "t-network" ? (
+      <Button type="button" variant="ghost" size="icon-xs" aria-label="Open thread">
+        <MessageSquare />
+      </Button>
+    ) : null,
   threads: {
     ...base.threads!,
     Mark: ({ task }) =>
@@ -45,8 +52,56 @@ const kit: ProjectsKit = {
   },
 };
 
-export function ProjectsPreview({ screen = "list", width = 1120, height = 720 }: { screen?: keyof typeof PLACES; width?: number; height?: number }) {
-  const [client] = useState(() => fakeProjectsClient());
+const HOUR = 3_600_000;
+/**
+ * The kit with its thread slots filled as M7 fills them from the thread record: a Threads column on
+ * the list, a held thread in the Log, the files a thread made. Words and marks only, for the look.
+ */
+const filled: ProjectsKit = {
+  ...base,
+  Document: ({ lead }) => <p className="text-[13px] leading-5 text-foreground">{lead}</p>,
+  taskMark: ({ task }) =>
+    task.id === "t-switches" ? (
+      <Button type="button" variant="ghost" size="icon-xs" aria-label="Open the thread on Borrow two switches from ITaP">
+        <Outbox className="size-3.5 text-muted-foreground" />
+      </Button>
+    ) : null,
+  threads: { ...base.threads!, Mark: () => null },
+  threadFacts: () =>
+    new Map([
+      ["p-lan", { mark: <Outbox className="size-3.5 text-muted-foreground" />, words: "1 mail to send", open: () => {} }],
+      ["p-tryouts", { mark: <StatusMark state="working" word={false} />, words: "Working", open: () => {} }],
+    ]),
+  log: () => [
+    { id: "th-ask", at: FIXTURE_NOW - 2 * HOUR, mark: <Outbox className="size-3.5" />, title: "Ask ITaP for two switches", detail: "1 mail to send", open: () => {} },
+    { id: "th-seat", at: FIXTURE_NOW - 3 * HOUR, mark: <StatusMark state="done" word={false} />, title: "Seat map for 64", detail: "Made Seat map, changed Run of show", open: () => {} },
+  ],
+  files: () => [
+    { id: "f-seat", itemId: "i-seats", name: "Seat map", kind: "sheet", by: "Made by Seat map for 64", at: FIXTURE_NOW - 3 * HOUR, open: () => {} },
+    { id: "f-run", itemId: "i-run", name: "Run of show", kind: "doc", by: "Changed by Seat map for 64", at: FIXTURE_NOW - 3 * HOUR, open: () => {} },
+  ],
+};
+
+export function ProjectsPreview({
+  screen = "list",
+  width = 1120,
+  height = 720,
+  threads = false,
+  loading = false,
+}: {
+  screen?: keyof typeof PLACES;
+  width?: number;
+  height?: number;
+  /** The thread slots filled, as M7 fills them. */
+  threads?: boolean;
+  /** The reads held: the bones. */
+  loading?: boolean;
+}) {
+  const [client] = useState(() => {
+    const made = fakeProjectsClient({ now: FIXTURE_NOW });
+    if (loading) made.hold();
+    return made;
+  });
   const [place, setPlace] = useState<ProjectsPlace>(PLACES[screen]!);
   return (
     <div className="relative flex flex-col overflow-hidden rounded-lg border border-border bg-background" style={{ width, height }}>
@@ -57,7 +112,7 @@ export function ProjectsPreview({ screen = "list", width = 1120, height = 720 }:
         <BarControls />
       </div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <ProjectsKitProvider kit={kit}>
+        <ProjectsKitProvider kit={threads ? filled : kit}>
           <ProjectsClientProvider client={client}>
             <div className="tc-projects h-full min-h-0">
               <Projects sector="purdue" place={place} onPlace={setPlace} />

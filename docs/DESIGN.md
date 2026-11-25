@@ -2822,36 +2822,70 @@ Around the canvas:
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
-  back, then the controls at its end, all quiet 28px buttons (List or
-  Board, New project, New thread, Share, New task). No second bar is
-  drawn. The way back is one shape on every screen: a 24px ghost arrow,
-  then the name of where it goes in 13px medium ("Projects", or the
-  project a document was opened from), then what the screen adds beside
-  it in `muted-foreground` (a task's key, "New project"). A
-  row is 32px of 13px words on 20px a level, its bar the row radius
-  (8px), `foreground` at 5% in hand and at 9% selected or pressed, at
-  once. A project's name is the document title's recipe (18/26
-  semibold, -0.01em), edited in place. A card is `background` on a `card`
-  lane with a hairline (6px in a 12px lane), a stronger hairline in hand,
-  and no shadow; only a row or a card being dragged lifts. The peek is a
-  sheet (16px), 44% of the view's pane (560 to 960px); the work makes
-  room for it on a pane of 1280px or more, and under that it lies over
-  the work. A stage of work is a mark, never a word in its colour: a
-  state's 14px glyph and a meter's segment in `stage-doing`,
-  `stage-waiting` and `stage-done`, the rest of a meter a dotted line in
-  `chart-neutral-stale`. Work in hand takes no hue (`muted-foreground`),
-  as a working thread takes none: amber stays the one sign that he is
-  needed, so a list of active projects does not read as a list of asks; the meter is 4px, square, with no track, and
-  never moves. A count is said once: the list and the board say done of
-  all beside the meter, a project's page in its tabs. A task a thread
-  works on shows that thread's mark in its row, which opens the thread.
-  A project's menu holds Project settings…, which opens its sheet from
-  the page. A Work project's settings are a sheet with nothing of code: Name,
-  State and Target first (LifeOS's), Sharing as one row whose Share opens
-  the Share sheet (never a second list of links), then "Thread setup"
-  folded (rules and accounts, each saying what it does), and Delete project
-  at the foot's start in the destructive tone; what LifeOS cannot take now is shown as
-  words, never as disabled controls, and words he typed for it are kept.
+  back, then the controls at its end, all quiet 28px buttons (New
+  project; on a project New thread and New task) and a 28px ⋯. No second
+  bar is drawn. The way back is one shape on every screen: a 24px ghost
+  arrow, then the name of where it goes in 13px medium ("Projects", or
+  the project a task or document was opened from). A row is 32px of 13px
+  words on 20px a level, its bar the row radius (8px), `foreground` at 5%
+  in hand and at 9% selected or pressed, at once. A project's name is the
+  document title's recipe (18/26 semibold, -0.01em), edited in place.
+  No screen draws a meter: a project's work is "2 of 7", done of all,
+  in plain muted numbers, and a stage of work is a mark, never a word in
+  its colour (a state's 14px glyph in `stage-doing`, `stage-waiting`,
+  `stage-done`). Work in hand takes no hue (`muted-foreground`), as a
+  working thread takes none: amber stays the one sign that he is needed.
+  A task's key (PUR-41) shows only on the row in hand and in its menu
+  ("Copy PUR-41"). A field with no value draws nothing: no "Due" or
+  "Waiting on" slot.
+  - **The list** is the tracker's rows for one job, in a column of
+    64rem: one 32px row a project, with Next (its next task and when it
+    is due: late in `destructive` with how late, "2 days late"; due today
+    in `foreground`; later muted), Waiting on (the name in `foreground`,
+    its age muted, "Sam Ortiz 6 days"), Threads (the most pressing live
+    thread's mark and outcome, once the thread record fills it), Done
+    ("2 of 7") and Target. One 12px muted head row names the columns
+    once; the project column has no label. Rows sort by target date,
+    none last, so a row never moves because its work does. Paused and
+    backlog fold under one quiet line ("1 paused, 1 in backlog"), Done
+    and Dropped under "Show finished". One New project, in the header;
+    the ⋯ holds Board. Under 760px a row is two lines: the name and the
+    target, then the facts as one 12px comma sentence. Loading draws
+    bones in the rows' shape.
+  - **The board** (Board in the ⋯) keeps its lanes as open columns with
+    no fill, a plus each, so a card is the one surface: `background` with
+    a hairline (6px), a stronger hairline in hand, no shadow; it says its
+    name, done of all and its target. Only a card being dragged lifts.
+  - **New project** is the form dialog: Name, then State and Target side
+    by side, Cancel and Create (the one primary). A refusal stays in the
+    dialog with its words and Create reads Retry.
+  - **A project's page** is one reading column at the document page's
+    measure (44rem): the name; one 12px muted facts line (job, state,
+    "target Feb 14"), each a press that changes it; the brief (the
+    description, whole, as prose); Plan, with done of all beside it in
+    plain numbers and, at its end, the tabs (All, To do, Doing, Waiting,
+    each with a plain count; no chip) and Display, no rule above or
+    below; the tree (or the task board, which keeps the brief, Files and
+    Log around it); "2 done"; Files; Log. Sections stand 40px apart with
+    a 14/600 head, no boxes. Files lists the project's documents, sheets,
+    links and items and the files its threads made or changed, newest
+    first, a 32px row each: glyph, name, then "Made by Seat map for 64"
+    and the time muted at the end. Log is his notes, LifeOS's changes
+    ("You moved it from Backlog to Active") and the threads with their
+    outcome under their title ("1 mail to send"), newest first, a 16px
+    mark, the words and the time; Add note at the head's end opens the
+    form dialog. The ⋯ holds Rename, State, Target date…, Board, Share…,
+    Project settings… and Delete project…. A row in hand shows its key
+    and Start thread in its tail; waiting reads "Waiting on Sam Ortiz 6
+    days"; the threads on a task show their marks in its row at rest.
+  - **The peek** docks flat at the pane's edge with a hairline and no
+    shadow or corner, 44% of the view's pane (560 to 960px); the work
+    makes room for it on a pane of 1280px or more, and under that it lies
+    over the work. Its Open and Close float over its corner so its title
+    stands level with the page's; its sub-tasks are flat rows, their key
+    in hand. A Work project's settings are a sheet with its name, state,
+    target, rules, accounts and sharing and nothing of code; what LifeOS
+    cannot take now is shown as words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, the faces of who else is in the file and the
@@ -2882,11 +2916,10 @@ Around the canvas:
   project opens in place with a 24px back arrow first in the line and
   its own glyph and name after it; a document is drawn as text on the
   document page's measure, with no editor.
-- **Sharing a project.** Share is one of the project bar's quiet 28px
-  verbs and opens the same Share sheet as a document's, with no Can row: a
-  project's guest views, and a choice of one is not drawn. The project's
-  settings sheet lists the same links under Sharing; New guest link… there
-  opens the Share sheet.
+- **Sharing a project.** Share… is a row of the project's ⋯ and opens the
+  same Share sheet as a document's, with no Can row: a project's guest
+  views, and a choice of one is not drawn. The project's settings sheet
+  has one Sharing row whose Share opens the same sheet.
 
 #### Today
 
