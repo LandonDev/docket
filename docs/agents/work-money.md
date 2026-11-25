@@ -525,8 +525,15 @@ zone sets the default year and day for a thread's `money_read`.
 The row after People in a Work workspace's column (`view.ts`, order 2.75,
 `readsLifeos: false`, its own lazy chunk; its look is docs/DESIGN.md "The
 Money view"). One read paints it (`api.ts` `useMoney`), asked again when the
-view shows, when the window comes forward, after each act of its own and on
-the `work.money` push.
+view shows, after each act of its own, on the `work.money` push, when its link
+opens again (at the front of the host's reopen lane), and when the window comes
+forward only if the last read is a minute old (`FOCUS_AGAIN_MS`; the host
+pushes what waits to be confirmed, not a ledger edited elsewhere). The last
+read of each period is kept in the window's memory (`MONEY_KEPT`, 16, the
+least recently used dropped, a host's dropped when its Work is off): a return
+paints it in its first commit with `loading` on and the view frame's region
+`aria-busy` (`useKeptPaint`, work/shell/lifeos.ts) until the live read takes
+its place, with no fade. Nothing is written from a kept read.
 
 - `MoneyView.tsx`: the header's Month or Year, the stepper, Add (Receipt…,
   Entry…, Trip…, Invoice…, and Purchase request… in a Purdue job) and More

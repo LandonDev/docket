@@ -620,6 +620,15 @@ function keptScope(): KeptScope {
   };
 }
 
+/**
+ * A reader outside LifeOS (Money's kept read) tells the region around it that it paints a kept answer while its live
+ * one is out: the region reads `aria-busy` until it lands. Reported in a layout effect, so in the frame it first paints.
+ */
+export function useKeptPaint(keptPaint: boolean): void {
+  const scope = useContext(KeptScopeContext);
+  useLayoutEffect(() => (keptPaint && scope ? scope.add() : undefined), [keptPaint, scope]);
+}
+
 /** A region's scope for `KeptRegion`, and whether a reader inside it still paints kept rows (its `aria-busy`). */
 export function useKeptRegion(): { scope: KeptScope; busy: boolean } {
   const [scope] = useState(keptScope);

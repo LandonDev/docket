@@ -5,7 +5,8 @@ import type { CanvasSource } from "@shared/work/canvas";
 import type { Period, RowAt } from "@shared/work/money";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { openWorkView } from "../../lib/workSwitch";
+import { openWorkView, workSwitch } from "../../lib/workSwitch";
+import { useKeptPaint } from "../shell/lifeos";
 import { loadToast } from "../../components/ui/toaster";
 import { onWorkReopen } from "../reopenLane";
 
@@ -25,6 +26,40 @@ export interface MoneyLoad {
   error: string | null;
   /** a read is on its way */
   loading: boolean;
+  /** `read` is the last answer kept from before (a return to the view), shown while the live read is out */
+  kept?: boolean;
+}
+
+/**
+ * The last read of each period, in the window's memory alone, so a return to Money paints it in its first commit while
+ * the live read comes back (perf M15): `MONEY_KEPT` at most, the least recently used dropped, and a host's dropped when
+ * its Work is off. A read only: nothing is written from it, and every write names its row as the host's answer had it.
+ */
+export const MONEY_KEPT = 16;
+const keptReads = new Map<string, MoneyRead>();
+const keptKey = (env: string, workspaceId: string, period: Pick<Period, "from" | "to">): string => `${env}|${workspaceId}|${period.from}|${period.to}`;
+function keepRead(key: string, read: MoneyRead): void {
+  keptReads.delete(key);
+  keptReads.set(key, read);
+  while (keptReads.size > MONEY_KEPT) keptReads.delete(keptReads.keys().next().value!);
+}
+const keptRead = (key: string): MoneyRead | null => {
+  const read = keptReads.get(key);
+  if (!read) return null;
+  // (used again: it is the most recent now)
+  keptReads.delete(key);
+  keptReads.set(key, read);
+  return read;
+};
+// A host whose Work is off keeps nothing read from it.
+workSwitch.subscribe(() => {
+  const on = workSwitch.hosts();
+  for (const key of [...keptReads.keys()]) if (!on.has(key.slice(0, key.indexOf("|")))) keptReads.delete(key);
+});
+/** For tests: how many reads are kept, and none after. */
+export const moneyKeptCount = (): number => keptReads.size;
+export function resetMoneyKept(): void {
+  keptReads.clear();
 }
 
 const periodKey = (p: Period): string => `${p.from}|${p.to}`;
@@ -41,22 +76,33 @@ export const FOCUS_AGAIN_MS = 60_000;
 
 export function useMoney(env: string, workspaceId: string, period: Period): [MoneyLoad, () => Promise<void>] {
   const key = periodKey(period);
-  const [state, setState] = useState<{ key: string; read: MoneyRead | null; error: string | null; loading: boolean }>({ key, read: null, error: null, loading: true });
+  // A return to a period paints its kept read at once, busy until the live one lands.
+  const [state, setState] = useState<{ key: string; read: MoneyRead | null; error: string | null; loading: boolean; kept: boolean }>(() => {
+    const kept = keptRead(keptKey(env, workspaceId, period));
+    return { key, read: kept, error: null, loading: true, kept: kept !== null };
+  });
   const asked = useRef(0);
   const { from, to } = period;
   const fetch = useCallback(() => {
     const mine = ++asked.current;
     const of = `${from}|${to}`;
-    setState((s) => (s.key === of ? (s.loading ? s : { ...s, loading: true }) : { key: of, read: null, error: null, loading: true }));
+    const keepAs = keptKey(env, workspaceId, { from, to });
+    setState((s) => {
+      if (s.key === of) return s.loading ? s : { ...s, loading: true };
+      const kept = keptRead(keepAs);
+      return { key: of, read: kept, error: null, loading: true, kept: kept !== null };
+    });
     return registry
       .linkOf(env)
       .request<MoneyRead>("work.money.read", { workspaceId, from, to })
       .then(
         (read) => {
-          if (mine === asked.current) setState({ key: of, read, error: null, loading: false });
+          // (a host whose Work turned off meanwhile keeps nothing)
+          if (workSwitch.hosts().has(env)) keepRead(keepAs, read);
+          if (mine === asked.current) setState({ key: of, read, error: null, loading: false, kept: false });
         },
         (err: unknown) => {
-          if (mine === asked.current) setState((s) => ({ key: of, read: s.key === of ? s.read : null, error: workErrorWords(err) || "The host did not answer", loading: false }));
+          if (mine === asked.current) setState((s) => ({ key: of, read: s.key === of ? s.read : null, error: workErrorWords(err) || "The host did not answer", loading: false, kept: s.key === of && s.kept }));
         },
       );
   }, [env, workspaceId, from, to]);
@@ -92,7 +138,9 @@ export function useMoney(env: string, workspaceId: string, period: Period): [Mon
     };
   }, [env, workspaceId, fetch]);
   // Until the new period's own answer lands, the view has nothing of it to show.
-  const load: MoneyLoad = state.key === key ? { read: state.read, error: state.error, loading: state.loading } : { read: null, error: null, loading: true };
+  const load: MoneyLoad = state.key === key ? { read: state.read, error: state.error, loading: state.loading, ...(state.kept && state.read ? { kept: true } : {}) } : { read: null, error: null, loading: true };
+  // The view's region reads busy while a kept read is shown and the live one is out.
+  useKeptPaint(!!load.kept && load.loading);
   return [load, fetch];
 }
 

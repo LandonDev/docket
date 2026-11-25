@@ -29,7 +29,7 @@ vi.mock("../../lib/connection", () => ({
 const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t1") });
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => toast }));
 const opened = vi.fn();
-vi.mock("../../lib/workSwitch", () => ({ openWorkView: opened }));
+vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: opened }));
 // "ws" is a Work job on this host; "bare" a Work workspace with no sector (no Money view); "code" is a code workspace.
 vi.mock("../../lib/tcserver/workspaces", () => ({
   workspaceStore: { workspace: (id: string) => (id === "ws" ? { id, kind: "work", sector: "ref" } : id === "bare" ? { id, kind: "work", sector: null } : id === "code" ? { id, kind: "code" } : undefined) },

@@ -156,6 +156,8 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   for the front's answer, at most `REOPEN_FRONT_WAIT_MS` (2 s), then goes one at a time, each given at most
   `REOPEN_TURN_WAIT_MS` (10 s). Each ask still goes once per open. `work.get` (lib/workSwitch.ts) is first-paint
   code and asks at once, as before. The Outbox's reopen ask (work/outbox/store.ts) is not in the lane yet.
+- **Money paints its last read on a return** (perf M15, money/api.ts): kept per host, workspace and period, 16 at
+  most, dropped with Work off; busy until the live read lands.
 - **A focus asks little.** Money re-reads its period when its link reopens, and on a focus only when its last read
   is a minute old (`FOCUS_AGAIN_MS`: the host pushes what waits to be confirmed, not a ledger edited elsewhere). The
   Digest tells a host its zone on a focus only when the zone changed or 15 minutes passed (`HERE_AGAIN_MS`).
