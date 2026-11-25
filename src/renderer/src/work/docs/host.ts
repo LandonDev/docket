@@ -72,10 +72,11 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
     ...(named.itemId ? { itemId: named.itemId } : {}),
     open: async (ready) => {
       if (!ready) return call("work.docs.open");
-      const { ready: made, ...open } = await call<DocOpen & { ready?: DocReady }>("work.docs.open", { ready });
+      // (its frames pushed to this window, where the host can: perf M11)
+      const { ready: made, ...open } = await call<DocOpen & { ready?: DocReady }>("work.docs.open", { ready: { ...ready, push: true } });
       if (made) {
         minted = made.token;
-        handOver(socket, { socket: made.socket, schema: made.schema ?? 0 });
+        handOver(socket, { socket: made.socket, schema: made.schema ?? 0, ...(made.push ? { push: true } : {}) });
       }
       return open;
     },
@@ -160,7 +161,7 @@ type Relayed = {
   /** Told when the provider's next socket is made. */
   arrived: Set<() => void>;
   /** A socket the host made with the open (`work.docs.open {ready}`), for the class's next socket of that schema, once. */
-  premade: { socket: string; schema: number } | null;
+  premade: { socket: string; schema: number; push?: true } | null;
 };
 const relayedOf = new WeakMap<object, Relayed>();
 
@@ -168,7 +169,7 @@ const relayedOf = new WeakMap<object, Relayed>();
  * Hands the class a socket the host made with the open: its next socket for that schema takes it instead of asking
  * `work.docs.connect`. One it does not take (another schema) is closed on the host. Unused, the host closes it when idle.
  */
-export function handOver(socket: new (url: string) => WebSocket, made: { socket: string; schema: number }): void {
+export function handOver(socket: new (url: string) => WebSocket, made: { socket: string; schema: number; push?: true }): void {
   const relayed = relayedOf.get(socket);
   if (relayed) relayed.premade = made;
 }
@@ -263,13 +264,17 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
         relayed.premade = null;
         if (premade && premade.schema !== schema) void link().request("work.docs.close", { socket: premade.socket }).catch(() => undefined);
         // (awaited even when made: the provider listens to the socket only once its constructor has returned)
-        const { socket } = premade && premade.schema === schema ? await Promise.resolve(premade) : await link().request<{ socket: string }>("work.docs.connect", { ...namedBy(source, itemId), ...(schema > 0 ? { schema } : {}) });
+        // Its frames are asked to come as pushes (`work.docs.frames`); a host a release behind answers no `push`, and they come by `recv`.
+        const { socket, push } =
+          premade && premade.schema === schema ? await Promise.resolve(premade) : await link().request<{ socket: string; push?: true }>("work.docs.connect", { ...namedBy(source, itemId), ...(schema > 0 ? { schema } : {}), push: true });
         if (this.readyState !== READY.CONNECTING) return void link().request("work.docs.close", { socket }).catch(() => undefined);
         this.id = socket;
+        if (push) this.listen(socket);
         this.readyState = READY.OPEN;
         this.dispatchEvent(new Event("open"));
         this.settle();
         void this.flush();
+        if (push) return;
         while (this.readyState === READY.OPEN) {
           const got = await link().request<{ frames: string[]; closed?: { code: number; reason: string } }>("work.docs.recv", { socket }, { timeoutMs: 45_000 });
           for (const frame of got.frames) {
@@ -285,6 +290,43 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
         this.dispatchEvent(new Event("error"));
         this.finish(1006, err instanceof Error ? err.message : String(err));
       }
+    }
+
+    /** Lets go of the pushes and the link's close, once this socket is done. */
+    private unlisten: (() => void) | null = null;
+    /**
+     * The host's frames as pushes to this window, numbered from 1: each is taken in order, one seen already is dropped,
+     * and a gap (a push lost) closes the socket, as the link closing does, so the provider makes another and syncs
+     * again. Nothing is taken twice or out of order.
+     */
+    private listen(socket: string): void {
+      let next = 1;
+      const offPush = link().onPush((push) => {
+        if (push.push !== "work.docs.frames" || push.socket !== socket || this.readyState !== READY.OPEN) return;
+        if (push.seq < next) return;
+        if (push.seq > next) {
+          void link().request("work.docs.close", { socket }).catch(() => undefined);
+          this.dispatchEvent(new Event("error"));
+          return this.finish(1006, "Frames from the host were lost");
+        }
+        next++;
+        for (const frame of push.frames) {
+          if (this.readyState !== READY.OPEN) return;
+          const data = fromBase64(frame);
+          this.heard(new Uint8Array(data));
+          this.dispatchEvent(new MessageEvent("message", { data }));
+        }
+        if (push.closed) this.finish(push.closed.code, push.closed.reason);
+      });
+      const offClose = link().onClose(() => {
+        if (this.readyState === READY.CLOSED) return;
+        this.dispatchEvent(new Event("error"));
+        this.finish(1006, "The connection to the host closed");
+      });
+      this.unlisten = () => {
+        offPush();
+        offClose();
+      };
     }
 
     /** Sends what waits, in order; one send at a time, and what is added meanwhile goes in the same run. */
@@ -391,6 +433,8 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
     private finish(code: number, reason: string): void {
       if (this.readyState === READY.CLOSED) return;
       this.readyState = READY.CLOSED;
+      this.unlisten?.();
+      this.unlisten = null;
       open.delete(this);
       // Closed by the host or a failure with frames still waiting, or sent and never heard applied: they may not have
       // reached it from this socket. The provider's next socket sends the window's state again.

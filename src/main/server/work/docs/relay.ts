@@ -13,6 +13,11 @@ import WebSocket from 'ws'
  * nothing of one person's socket reaches another's link.
  *
  * A socket nobody has asked after for a minute is closed.
+ *
+ * A window that asks for them (`connect` with a sink: perf M11) has the
+ * service's frames pushed to its own socket at once, each push numbered in
+ * order (`seq`), with no `recv`; its socket closes when that window's goes.
+ * `recv` stays for a window a release behind.
  */
 
 export const RECV_WAIT_MS = 20_000
@@ -27,8 +32,26 @@ export interface RelayClosed {
   reason: string
 }
 
+/** What one push carries for a socket: its next frames (base64), numbered from 1, and how it closed once it has. */
+export interface RelayOut {
+  socket: string
+  seq: number
+  frames: string[]
+  closed?: RelayClosed
+}
+
+/** The asking window's own socket, which takes a relayed socket's frames as they come; `signal` aborts when it goes. */
+export interface RelaySink {
+  send(out: RelayOut): void
+  signal?: AbortSignal
+}
+
 interface Relayed {
   id: string
+  /** the window's socket its frames are pushed to; absent: they wait for `recv` */
+  sink: RelaySink | null
+  /** the last push's number */
+  seq: number
   doc: string
   ws: WebSocket
   frames: Buffer[]
@@ -41,7 +64,7 @@ interface Relayed {
 }
 
 export interface Relay {
-  connect(url: string, doc: string): string
+  connect(url: string, doc: string, sink?: RelaySink): string
   send(id: string, frames: readonly string[]): void
   /** Once every frame sent so far has left for the service (one sent before its socket opened waits for the open): the socket's document. */
   sent(id: string): Promise<string>
@@ -63,13 +86,19 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
     if (s.closed) return
     s.closed = closed
     s.waiter?.()
+    // A pushed socket says how it closed in its last push, and is done: no `recv` comes for it.
+    if (s.sink) {
+      s.sink.send({ socket: s.id, seq: ++s.seq, frames: [], closed })
+      sockets.delete(s.id)
+    }
     changed()
   }
 
   const sweep = setInterval(() => {
     const t = now()
     for (const s of sockets.values()) {
-      if (t - s.lastAsked < (opts.idleMs ?? IDLE_MS)) continue
+      // A pushed socket lives as long as its window's socket does (its signal), however quiet the document.
+      if (s.sink || t - s.lastAsked < (opts.idleMs ?? IDLE_MS)) continue
       sockets.delete(s.id)
       if (!s.closed) {
         s.ws.close(1000, 'idle')
@@ -87,12 +116,27 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
   }
 
   return {
-    connect(url, doc) {
+    connect(url, doc, sink) {
       if ([...sockets.values()].filter((x) => !x.closed).length >= SOCKETS_MAX) throw new Error('too many documents are open on this host; close one and try again')
       const id = randomBytes(18).toString('base64url')
       const ws = opts.socket ? opts.socket(url) : new WebSocket(url, { maxPayload: 4 * 1024 * 1024 })
-      const s: Relayed = { id, doc, ws, frames: [], bytes: 0, closed: null, waiter: null, lastAsked: now(), early: [] }
+      const s: Relayed = { id, doc, ws, sink: null, seq: 0, frames: [], bytes: 0, closed: null, waiter: null, lastAsked: now(), early: [] }
       sockets.set(id, s)
+      if (sink && !sink.signal?.aborted) {
+        s.sink = sink
+        // The window's socket went: nobody will read this one, and the window's editor makes another when it is back.
+        sink.signal?.addEventListener(
+          'abort',
+          () => {
+            if (s.closed) return
+            s.sink = null
+            sockets.delete(id)
+            ws.close(1000, 'the window went')
+            finish(s, { code: 1000, reason: 'the window went' })
+          },
+          { once: true }
+        )
+      }
       ws.binaryType = 'nodebuffer'
       ws.on('open', () => {
         for (const frame of s.early.splice(0)) ws.send(frame)
@@ -101,6 +145,8 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
         // Closed (stalled, or by its window): what still arrives has nobody to go to.
         if (s.closed) return
         const frame = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as Buffer)
+        // Pushed at once to the window that owns the socket, in order: nothing waits here for it.
+        if (s.sink) return s.sink.send({ socket: id, seq: ++s.seq, frames: [frame.toString('base64')] })
         s.bytes += frame.length
         if (s.bytes > QUEUE_MAX) {
           ws.close(4503, 'stalled')

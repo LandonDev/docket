@@ -209,6 +209,8 @@ export interface Caller {
   keyId?: string
   /** whom a remote key was made for: a client of his (`client`: the phone, a paired desktop) or an MCP client (`mcp`); only a client's press decides a held act (outbox/person.ts) */
   audience?: 'client' | 'mcp'
+  /** the asking socket's own pushes: what a request makes for that window alone (a document's relayed frames); absent where the call came another way */
+  reply?: { send(p: WorkPush): void; signal?: AbortSignal }
 }
 
 /**

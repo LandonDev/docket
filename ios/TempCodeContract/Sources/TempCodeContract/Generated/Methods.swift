@@ -4829,9 +4829,11 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public struct Ready: Codable, Hashable, Sendable {
                 public let schema: Int?
+                public let push: Bool?
 
-                public init(schema: Int? = nil) {
+                public init(schema: Int? = nil, push: Bool? = nil) {
                     self.schema = schema
+                    self.push = push
                 }
             }
 

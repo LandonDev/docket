@@ -65,8 +65,24 @@ left out when the host cannot make them now. The window's socket class
 takes that socket once, for the same schema (`handOver`; one for another
 schema is closed on the host), and the first ask for a token uses the
 minted one while it has 10 s to run; so the open is `work.docs.open`, then
-the editor's first `work.docs.send`, with the `recv` beside it. The relay's
-send and recv are as they were. The collaboration client itself is still
+the editor's first `work.docs.send`.
+
+The service's frames are pushed, not polled (perf M11). `work.docs.connect
+{push: true}` and the ready open's `ready.push` give the relayed socket a
+sink: the asking window's own socket (`Caller.reply`, from the request's
+socket in index.ts). Each frame from the service goes there at once as
+`work.docs.frames` (`socket`, `seq` from 1, `frames`, and `closed` in the
+last), never to another socket; the answer says `push: true`. The window
+takes them in order, drops one seen already, and closes the socket on a gap
+or when its link to the host closes, so the provider makes another and
+syncs again; a pushed socket on the host lives as long as the window's
+socket, and closes with it. `send` is unchanged. `recv` stays for a window a
+release behind, and for a call with no socket of its own (one with no
+`reply`): its answer then says no `push`, and the window reads by `recv`.
+Proofs: `pushed.test.ts` here and in the renderer (no `recv`, in order, a
+gap, the close), and the renderer's `pushedEnd.test.ts` end to end (the real
+service, the docs module and work-kit's client: two requests before synced, the save line waiting on the
+acks that now come as pushes, and both sides converging after a cut link). The collaboration client itself is still
 made and destroyed with the editor's body (work-kit's
 `useCollaborationSession`): keeping it across a tab switch needs work-kit.
 

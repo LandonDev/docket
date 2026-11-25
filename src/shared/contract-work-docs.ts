@@ -66,6 +66,8 @@ export interface DocReady {
   socket: string
   token: DocToken
   schema?: number
+  /** its frames come as `work.docs.frames` pushes (asked with `ready.push`) */
+  push?: true
 }
 
 /** A thread row as the shared editor reads it (work-kit `ThreadRow`); ids are the store's own. */
@@ -156,12 +158,13 @@ export const DocsRequestSchemas = [
    * `ready`: the answer also carries `ready` (`DocReady`), the editor's relayed socket and its first token, made as
    * `work.docs.connect` (with `ready.schema`) and `work.docs.token` make them, when the host can make them now.
    */
-  request('work.docs.open', z.object({ source: CanvasSourceSchema, itemId, ready: z.object({ schema: z.number().int().min(0).max(1000).optional() }).optional() })),
+  request('work.docs.open', z.object({ source: CanvasSourceSchema, itemId, ready: z.object({ schema: z.number().int().min(0).max(1000).optional(), push: z.literal(true).optional() }).optional() })),
   /** → DocToken: a collaboration token for the document, as this caller (edit, or view for a read-only key) */
   request('work.docs.token', z.object({ source: CanvasSourceSchema, itemId })),
-  /** → { socket }: a socket to the document on the host that serves it, relayed over this link */
+  /** → { socket, push? }: a socket to the document on the host that serves it, relayed over this link */
   /** `schema`: the highest document schema the window's editor knows; the host says it to the service for it */
-  request('work.docs.connect', z.object({ source: CanvasSourceSchema, itemId, schema: z.number().int().min(0).max(1000).optional() })),
+  /** `push`: the service's frames come as `work.docs.frames` pushes to this window's socket, with no `recv`; the answer says `push: true` when they do */
+  request('work.docs.connect', z.object({ source: CanvasSourceSchema, itemId, schema: z.number().int().min(0).max(1000).optional(), push: z.literal(true).optional() })),
   /**
    * → { ok: true }: frames for the relayed socket, in order. `stored`: answered once the service has applied every
    * frame the socket sent and stored the document (a tab's close awaits it before anything judges the file).
@@ -201,6 +204,12 @@ export const DocsRequestSchemas = [
 
 /** Something changed on a document a screen may hold: its threads, its pending suggestions, or the agent's last write. */
 export type DocsPush = { push: 'work.docs'; doc: string; threads?: true; branches?: true; written?: DocWritten | null; mode?: DocMode }
+/**
+ * A relayed socket's frames, pushed to the one window socket that asked for them (`push: true` on `work.docs.connect`
+ * or `work.docs.open`'s `ready`), at once and in order: `seq` counts from 1 per socket, and a window that sees a gap
+ * closes the socket so its editor makes another. `closed`: the socket is closed, and no push comes after it.
+ */
+export type DocsFramesPush = { push: 'work.docs.frames'; socket: string; seq: number; frames: string[]; closed?: { code: number; reason: string } }
 
 export const DOCS_CAPS = {
   'work.docs.open': 'read',

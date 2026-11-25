@@ -13,7 +13,7 @@ import { MAIL_CAPS, MAIL_RELAY, MailRequestSchemas, type MailPush } from './cont
 import { MESSAGES_CAPS, MESSAGES_RELAY, MessagesRequestSchemas, type MessagesPush } from './contract-work-messages'
 import { TASKS_CAPS, TASKS_RELAY, TasksRequestSchemas, type TasksPush } from './contract-work-tasks'
 import { AGENDA_CAPS, AGENDA_RELAY, AgendaRequestSchemas, type AgendaPush } from './contract-work-agenda'
-import { DOCS_CAPS, DOCS_RELAY, DocsRequestSchemas, type DocsPush } from './contract-work-docs'
+import { DOCS_CAPS, DOCS_RELAY, DocsRequestSchemas, type DocsFramesPush, type DocsPush } from './contract-work-docs'
 import { HISTORY_CAPS, HISTORY_RELAY, HistoryRequestSchemas, type HistoryPush } from './contract-work-history'
 import { FORMATS_CAPS, FORMATS_RELAY, FormatsRequestSchemas, type FormatsPush } from './contract-work-formats'
 import { SHEETS_CAPS, SHEETS_RELAY, SheetsRequestSchemas, type SheetsPush } from './contract-work-sheets'
@@ -158,6 +158,7 @@ export type WorkPush =
   | TasksPush
   | AgendaPush
   | DocsPush
+  | DocsFramesPush
   | HistoryPush
   | FormatsPush
   | SheetsPush

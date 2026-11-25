@@ -3134,7 +3134,7 @@ export async function startServer(
         }
         // Work: the switch, the bridge's tool methods and every pillar's own methods, through the one mount.
         if (isWorkMethod(req.method)) {
-          const worked = await work.handle(req, principal, workSocket)
+          const worked = await work.handle(req, principal, { signal: workSocket.signal, send: sendFrame })
           if (worked.handled) return sendFrame({ id: req.id, ok: true, result: worked.result })
         }
         const planned = handleProjectPlan(req, projectPlans)

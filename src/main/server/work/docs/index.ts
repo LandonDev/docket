@@ -12,6 +12,7 @@ import { docTools } from './tools'
 import { guestNameOf } from '../guests/store'
 import { fetchedItemOfPath } from '../canvas/fetch'
 import { NEEDS_PRESS, pressesFor } from '../files/policy'
+import type { RelaySink } from './relay'
 
 /**
  * The docs pillar's server module (docs/agents/work-docs.md): the document
@@ -84,6 +85,14 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
   }
 }
 
+/**
+ * The asking window's own socket as a relayed socket's sink (perf M11): its frames go there at once as
+ * `work.docs.frames`, never to another socket. None where the call did not come on a socket of its own (a host a release
+ * behind passes none): the window then reads by `recv`.
+ */
+const sinkOf = (by: Caller): RelaySink | undefined =>
+  by.reply ? { send: (out) => by.reply!.send({ push: 'work.docs.frames', ...out }), ...(by.reply.signal ? { signal: by.reply.signal } : {}) } : undefined
+
 /** The schema the window's editor knows, as the service's socket address says it (work-kit's schema gate); none for none. */
 const schemaQuery = (said: unknown): string => (typeof said === 'number' && Number.isInteger(said) && said > 0 && said <= 1000 ? `?${SCHEMA_PARAM}=${said}` : '')
 
@@ -119,7 +128,9 @@ export const docs: WorkModule = {
         // window's next request is its first frame. One that cannot be made now is left out: the window asks for it.
         try {
           const token = await tokenFor(ctx, by, t)
-          return handled({ ...open, ready: { socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.ready.schema)}`), t.doc), token, ...(req.params.ready.schema !== undefined ? { schema: req.params.ready.schema } : {}) } })
+          const sink = req.params.ready.push ? sinkOf(by) : undefined
+          const socket = s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.ready.schema)}`), t.doc, sink)
+          return handled({ ...open, ready: { socket, token, ...(req.params.ready.schema !== undefined ? { schema: req.params.ready.schema } : {}), ...(sink ? { push: true as const } : {}) } })
         } catch {
           return handled(open)
         }
@@ -131,7 +142,9 @@ export const docs: WorkModule = {
         // Asked first, so a document another host serves says so before a socket is made.
         await tokenFor(ctx, by, t)
         // The window's editor says what schema it knows; this socket says it for it (work-kit's schema gate).
-        return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.schema)}`), t.doc) })
+        const sink = req.params.push ? sinkOf(by) : undefined
+        const socket = s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${schemaQuery(req.params.schema)}`), t.doc, sink)
+        return handled(sink ? { socket, push: true as const } : { socket })
       }
       case 'work.docs.send': {
         s.relay.send(req.params.socket, req.params.frames)

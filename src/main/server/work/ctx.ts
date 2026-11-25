@@ -246,7 +246,8 @@ export interface Work extends WorkAdmission {
   ctx: WorkCtx
   settings: WorkSettingsStore
   /** One Work request: a method that is not Work's comes back unhandled; an unbuilt one throws `NotBuilt`. `socket.signal` aborts when the caller's socket goes; a module's handler and a bridge's tool call both hear it. */
-  handle(req: ClientRequest, principal: SocketPrincipal, socket?: { signal?: AbortSignal }): Promise<Handled>
+  /** `socket.send`: the asking socket's own pushes, for what one window's request makes for it alone (`Caller.reply`). */
+  handle(req: ClientRequest, principal: SocketPrincipal, socket?: { signal?: AbortSignal; send?(p: WorkPush): void }): Promise<Handled>
   /** One socket's pushes: every Work push, less the ones that name a capability its principal lacks. */
   pushes: { onPush(send: (p: WorkPush) => void, principal?: SocketPrincipal): () => void }
   tools: WorkToolMount
@@ -594,7 +595,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       // A pillar's bridge method is a thread's own call: the model's, and only with that thread's token.
       const by: Caller = req.method.startsWith('app.')
         ? { kind: 'model', caps: [], sessionId: bridgeSession((req as { params?: { sessionId?: unknown; token?: unknown } }).params).id }
-        : callerOf(principal)
+        : { ...callerOf(principal), ...(socket?.send ? { reply: { send: socket.send, ...(socket.signal ? { signal: socket.signal } : {}) } } : {}) }
       const module = byId.get(pillar)
       // The handler's signal: the caller's socket going, or Work turning off, whichever comes first.
       const signal = socket?.signal ? AbortSignal.any([socket.signal, period.signal]) : period.signal

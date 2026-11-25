@@ -141,11 +141,11 @@ describe("a mail's attachment read as a document", () => {
       ["work.docs.open", { source: MAIL, itemId: "a1" }],
       ["work.docs.token", { source: MAIL, itemId: "a1" }],
       ["work.docs.threads", { source: MAIL, itemId: "a1" }],
-      ["work.docs.connect", { source: MAIL, itemId: "a1" }],
+      ["work.docs.connect", { source: MAIL, itemId: "a1", push: true }],
       ["work.docs.open", { source: file }],
       ["work.docs.token", { source: file }],
       ["work.docs.threads", { source: file }],
-      ["work.docs.connect", { source: file }],
+      ["work.docs.connect", { source: file, push: true }],
     ]);
   });
 });

@@ -20,7 +20,7 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { NEEDS_PRESS } from '../files/policy'
 import { docs } from './index'
-import { createRelay, SOCKETS_MAX } from './relay'
+import { createRelay, SOCKETS_MAX, type RelayOut } from './relay'
 import { docsOf, stopDocs } from './state'
 import { fromLifeos } from './threads'
 import { changedParts, docTools, SHARED_COMMENT } from './tools'
@@ -729,6 +729,96 @@ describe('the relay', () => {
     expect((await heard).closed).toEqual({ code: 1001, reason: 'the host stopped' })
     wss.close()
   }, 15_000)
+})
+
+describe('a relayed socket whose frames are pushed', () => {
+  const echoServer = async () => {
+    const wss = new WebSocketServer({ port: 0 })
+    wss.on('connection', (ws) =>
+      ws.on('message', (data: Buffer) => {
+        if (data.toString() === 'bye') ws.close(4403, 'stop')
+        else for (const part of data.toString().split(',')) ws.send(Buffer.from(`echo ${part}`))
+      })
+    )
+    await new Promise((resolve) => wss.once('listening', resolve))
+    return { wss, url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}/x` }
+  }
+
+  it("pushes the service's frames to its window at once and in order, with no recv, and its close last", async () => {
+    const { wss, url } = await echoServer()
+    let now = 0
+    const relay = createRelay({ now: () => now, idleMs: 60_000 })
+    const outs: RelayOut[] = []
+    const window = new AbortController()
+    const id = relay.connect(url, 'd1', { send: (out) => void outs.push(out), signal: window.signal })
+    relay.send(id, [Buffer.from('a,b,c').toString('base64')])
+    await expect.poll(() => outs.length).toBe(3)
+    expect(outs.map((o) => [o.socket, o.seq, Buffer.from(o.frames[0]!, 'base64').toString()])).toEqual([
+      [id, 1, 'echo a'],
+      [id, 2, 'echo b'],
+      [id, 3, 'echo c'],
+    ])
+    // Quiet for longer than the idle line: a pushed socket lives as long as its window's.
+    now = 120_000
+    await new Promise((r) => setTimeout(r, 5_500))
+    expect(relay.docs().has('d1')).toBe(true)
+    relay.send(id, [Buffer.from('bye').toString('base64')])
+    await expect.poll(() => outs.at(-1)?.closed).toEqual({ code: 4403, reason: 'stop' })
+    expect(outs.at(-1)).toMatchObject({ seq: 4, frames: [] })
+    expect(() => relay.send(id, [])).toThrow(/closed/)
+    relay.stop()
+    wss.close()
+  }, 15_000)
+
+  it("closes when its window's socket goes, and the service's socket with it", async () => {
+    const { wss, url } = await echoServer()
+    const closedAtService = new Promise<void>((resolve) => wss.on('connection', (ws) => ws.on('close', () => resolve())))
+    const relay = createRelay()
+    const outs: RelayOut[] = []
+    const window = new AbortController()
+    const id = relay.connect(url, 'd1', { send: (out) => void outs.push(out), signal: window.signal })
+    relay.send(id, [Buffer.from('a').toString('base64')])
+    await expect.poll(() => outs.length).toBe(1)
+    window.abort()
+    await closedAtService
+    expect(relay.docs()).toEqual(new Set())
+    expect(() => relay.send(id, [])).toThrow(/closed/)
+    relay.stop()
+    wss.close()
+  })
+
+  it('a socket with no window to push to waits for recv, as a window a release behind reads it', async () => {
+    const { wss, url } = await echoServer()
+    const relay = createRelay({ waitMs: 2000 })
+    const id = relay.connect(url, 'd1')
+    relay.send(id, [Buffer.from('a').toString('base64')])
+    const got = await relay.recv(id)
+    expect(got.frames.map((f) => Buffer.from(f, 'base64').toString())).toEqual(['echo a'])
+    relay.stop()
+    wss.close()
+  })
+
+  it("the docs module pushes only to the asking window's socket, and says so; a call with no socket of its own reads by recv", async () => {
+    const r = await rig()
+    ;(r.ctx as unknown as { service: Record<string, unknown> }).service.token = async () => 'tok'
+    const pushed: unknown[] = []
+    const window = new AbortController()
+    const mine: Caller = { kind: 'local', caps: [], reply: { send: (p) => void pushed.push(p), signal: window.signal } }
+    const asked = await r.ask<{ socket: string; push?: true }>('work.docs.connect', { source: r.source, push: true }, mine)
+    expect(asked.push).toBe(true)
+    // A Hocuspocus auth message for a bad token: the service answers it, and the answer is pushed, not queued.
+    await r.ask('work.docs.send', { socket: asked.socket, frames: [Buffer.from([0]).toString('base64')] }, mine)
+    await expect.poll(() => pushed.length).toBeGreaterThan(0)
+    expect(pushed[0]).toMatchObject({ push: 'work.docs.frames', socket: asked.socket, seq: 1 })
+    const open = await r.ask<{ ready?: { socket: string; push?: true } }>('work.docs.open', { source: r.source, ready: { push: true } }, mine)
+    expect(open.ready?.push).toBe(true)
+    const plain = await r.ask<{ socket: string; push?: true }>('work.docs.connect', { source: r.source, push: true })
+    expect(plain.push).toBeUndefined()
+    window.abort()
+    await r.ask('work.docs.close', { socket: plain.socket })
+    // (the service hears the sockets close before the rig goes)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  })
 })
 
 describe('the relay\'s limits', () => {
