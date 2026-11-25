@@ -6,7 +6,8 @@
  *
  *   bun scripts/e2e-win-motion.ts
  *
- * Four cases, each a fresh thread opened in the window and one streamed reply sampled every 100 ms:
+ * Four cases, each a new thread started from the window's own New thread button, its prompt typed into the
+ * composer and sent with Enter, and the streamed reply sampled every 100 ms:
  *   Windows' animation effects off, Motion Follow this computer → reduced: marks of work move, no rise
  *   Windows' animation effects on, Follow this computer → full: the same, and a block born mid-stream rises
  *   Windows on, Motion Reduced → reduced, the marks still moving
@@ -29,7 +30,6 @@ const APP_DIR = `${GUEST_HOME}\\AppData\\Local\\Programs\\TempCode`
 const DATA_DIR = `${GUEST_HOME}\\AppData\\Local\\temp-code`
 const GUEST_CDP = 9333
 const CDP = 9342
-const SERVER_LOCAL = 9343
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -66,23 +66,6 @@ async function effects(on: boolean): Promise<string> {
   return r.out.trim().split('\n').pop() ?? ''
 }
 
-async function rpc<T = unknown>(method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
-  const ws = new WebSocket(`ws://127.0.0.1:${SERVER_LOCAL}/`)
-  return new Promise<T>((ok, fail) => {
-    const timer = setTimeout(() => (ws.close(), fail(new Error(`no answer to ${method}`))), timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'motion', method, params })))
-    ws.addEventListener('message', (ev) => {
-      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-      if (frame.id !== 'motion') return
-      clearTimeout(timer)
-      ws.close()
-      if (frame.ok) ok(frame.result as T)
-      else fail(new Error(frame.error))
-    })
-    ws.addEventListener('error', () => (clearTimeout(timer), fail(new Error(`socket error on ${method}`))))
-  })
-}
-
 const tunnels: ReturnType<typeof Bun.spawn>[] = []
 const openTunnel = (forward: string): void => {
   tunnels.push(
@@ -99,6 +82,19 @@ async function shot(name: string): Promise<void> {
   const r = await guest([vm('shot'), file], 30_000)
   log(r.code === 0 ? `screenshot ${file}` : `screenshot failed: ${r.out.slice(0, 200)}`)
 }
+
+/** Polls an expression in the page until it is true, for at most `ms`. */
+async function waitIn(page: Cdp, expression: string, ms: number): Promise<boolean> {
+  const until = Date.now() + ms
+  while (Date.now() < until) {
+    if (await page.eval<boolean>(expression).catch(() => false)) return true
+    await sleep(300)
+  }
+  return false
+}
+/** A page call that gives up after `ms`: a machine stopped mid-case must not hold the run. */
+const within = <T>(call: Promise<T>, ms: number): Promise<T | null> =>
+  Promise.race([call.catch(() => null), new Promise<null>((done) => setTimeout(() => done(null), ms))])
 
 /** What moved during one reply, sampled in the page every 100 ms for `ms`. */
 type Sample = {
@@ -138,25 +134,36 @@ async function oneCase(page: Cdp, label: string, windowsOn: boolean, choice: 'sy
   const said = await effects(windowsOn)
   await page.eval(`(() => { if (${JSON.stringify(choice)} === 'system') localStorage.removeItem('monocode.motion'); else localStorage.setItem('monocode.motion', ${JSON.stringify(choice)}); window.dispatchEvent(new Event('monocode:motionchange')) })()`)
   await sleep(1500)
-  const title = `Motion ${shotNo + 1}`
-  const meta = await rpc<{ id: string }>('session.create', { provider: 'claude', cwd: `${GUEST_HOME}\\tc-proof`, title, threadType: 'chat', permission: 'auto' })
-  await sleep(1500)
-  // Open the thread in the window: its row in the rail or the Chats list.
-  // The innermost element holding the title; the click bubbles to its row.
-  const opened = await page.eval<boolean>(`(() => {
-    const holders = [...document.querySelectorAll('body *')].filter((el) => el.children.length === 0 && el.textContent?.includes(${JSON.stringify(title)}))
-    holders[0]?.click()
-    return holders.length > 0
+  // As a person does: a new thread from the window's own button, the prompt typed into its composer and sent
+  // with Enter, so the window shows the thread from its first frame (a thread made through the server stays off
+  // screen, as the first run of this proof found).
+  const n = shotNo + 1
+  const pressed = await page.eval<boolean>(`(() => {
+    const button = [...document.querySelectorAll('[aria-label="New thread"]')].find((el) => el.getBoundingClientRect().width > 0)
+    button?.click()
+    return !!button
   })()`)
-  await sleep(1500)
-  const word = `DONE-${shotNo + 1}`
-  const sampling = page.eval<Sample>(SAMPLER(90_000, word))
-  await rpc('session.send', { sessionId: meta.id, text: `Write a numbered list of twelve plain sentences about rivers, one per line, then a short table of three rivers and their lengths, then the word ${word} alone on the last line.`, model: 'claude-sonnet-5-5', reasoning: 'low' })
-  await sleep(6000)
+  const field = await waitIn(page, `(() => {
+    const field = [...document.querySelectorAll('[data-composer-input]')].find((el) => el.getBoundingClientRect().width > 0)
+    if (!field) return false
+    field.focus()
+    return document.activeElement === field
+  })()`, 15_000)
+  // The finish word is spelled out, never written, so the prompt's own row cannot end the sampling.
+  const word = `DONE-${n}`
+  const prompt = `Write a numbered list of twelve plain sentences about rivers, one per line, then a short table of three rivers and their lengths, then on the last line the word DONE, a hyphen and the number ${n}, with no spaces.`
+  const sampling = within(page.eval<Sample>(SAMPLER(150_000, word)), 170_000)
+  await page.send('Input.insertText', { text: prompt })
+  await sleep(300)
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+  const opened = await waitIn(page, `document.body.innerText.includes('twelve plain sentences about rivers')`, 15_000)
+  check(`${label}: the thread opens in the window from its composer`, pressed && field && opened, `New thread ${pressed}, composer ${field}, own message shown ${opened}`)
+  await sleep(5000)
   void shot(label.replace(/\W+/g, '-').toLowerCase())
-  const s = await sampling
+  const s = (await sampling) ?? { motion: null, reduce: false, spinnersTurning: 0, markMoving: 0, shimmerMoving: 0, stepsFading: 0, steps: 0, rises: [], answered: false }
   log(`${label}: ${said}; ${JSON.stringify(s)}`)
-  check(`${label}: the window reads ${want} motion`, s.motion === want, `data-motion=${s.motion}, reduce query=${s.reduce}, opened=${opened}`)
+  check(`${label}: the window reads ${want} motion`, s.motion === want, `data-motion=${s.motion}, reduce query=${s.reduce}`)
   check(`${label}: the reply streamed to the end`, s.answered && s.steps > 0, `steps sampled ${s.steps}`)
   check(`${label}: the working mark or the shimmer moved while it worked`, s.markMoving + s.shimmerMoving > 0, `mark ${s.markMoving}, shimmer ${s.shimmerMoving}, spinners ${s.spinnersTurning}`)
   check(`${label}: streamed words faded in`, s.stepsFading > 0, `${s.stepsFading} fading of ${s.steps}`)
@@ -199,9 +206,6 @@ async function run(): Promise<void> {
   check('the lent account is saved in the app', captured?.ok !== false, JSON.stringify(captured).slice(0, 160))
   await ps('Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4')
   page = await start()
-  const port = await page.eval<number>('window.api.getServerPort()')
-  openTunnel(`${SERVER_LOCAL}:127.0.0.1:${port}`)
-  await sleep(3000)
 
   await oneCase(page, 'Windows animations off, Follow this computer', false, 'system', 'reduced')
   await oneCase(page, 'Windows animations on, Follow this computer', true, 'system', 'full')
