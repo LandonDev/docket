@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -56,22 +56,24 @@ export function Head({ env }: WorkViewProps) {
 
 type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
 
-function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, number, () => void] {
+function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, number, () => Promise<void>] {
   const [state, setState] = useState<Load<RoutineRow[]>>({ status: "loading" });
   const [tick, setTick] = useState(0);
-  const [attempt, setAttempt] = useState(0);
+  // The read the effect holds, for Retry: what is shown, a failure too, stays until it answers.
+  const read = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
     // Several pushes ask in a row: only the newest answer is shown.
     let asked = 0;
-    const fetch = () => {
+    const fetch = (): Promise<void> => {
       const mine = ++asked;
       return link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
-        (r) => live && mine === asked && setState({ status: "ready", value: r.routines }),
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "routines") }),
+        (r) => void (live && mine === asked && setState({ status: "ready", value: r.routines })),
+        (err: unknown) => void (live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "routines") })),
       );
     };
+    read.current = fetch;
     void fetch();
     const off = link.onPush((push) => {
       if (push.push === "work.routines" && push.workspaceId === workspaceId) {
@@ -83,41 +85,45 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
       live = false;
       off();
     };
-  }, [env, workspaceId, attempt]);
-  const retry = useCallback(() => {
-    setState({ status: "loading" });
-    setAttempt((n) => n + 1);
-  }, []);
+  }, [env, workspaceId]);
+  const retry = useCallback(() => read.current(), []);
   return [state, tick, retry];
 }
 
 /** A routine's runs: null while they load, or why they did not, kept apart from a routine that never ran. */
-function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | { error: string } | null, () => void] {
+function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | { error: string } | null, () => Promise<void>] {
   const [runs, setRuns] = useState<{ id: string; runs: RoutineRun[] | { error: string } } | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  // The read the effect holds, for Retry: the failure stays until it answers.
+  const read = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
     if (!id) return;
     let live = true;
-    registry
-      .linkOf(env)
-      .request<{ runs: RoutineRun[] }>("work.routines.runs", { id, limit: 30 })
-      .then(
-        (r) => live && setRuns({ id, runs: r.runs }),
-        (err: unknown) => live && setRuns({ id, runs: { error: loadFailure(env, err, "runs") } }),
-      );
+    const fetch = (): Promise<void> =>
+      registry
+        .linkOf(env)
+        .request<{ runs: RoutineRun[] }>("work.routines.runs", { id, limit: 30 })
+        .then(
+          (r) => void (live && setRuns({ id, runs: r.runs })),
+          (err: unknown) => void (live && setRuns({ id, runs: { error: loadFailure(env, err, "runs") } })),
+        );
+    read.current = fetch;
+    void fetch();
     return () => {
       live = false;
     };
-  }, [env, id, tick, attempt]);
-  const retry = useCallback(() => {
-    setRuns(null);
-    setAttempt((n) => n + 1);
-  }, []);
+  }, [env, id, tick]);
+  const retry = useCallback(() => read.current(), []);
   return [runs?.id === id ? runs.runs : null, retry];
 }
 
 export function View({ env, workspace }: WorkViewProps) {
   const [load, tick, retry] = useRoutines(env, workspace.id);
+  // His Retry spins in place, the failure kept, until the read answers.
+  const [retrying, setRetrying] = useState(false);
+  const again = (): void => {
+    setRetrying(true);
+    void retry().finally(() => setRetrying(false));
+  };
   const [plays] = usePlays(env, workspace.id);
   const playName = (id: string | null) => (id && plays.status === "ready" ? (plays.value.find((p) => p.id === id)?.name ?? null) : null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -132,7 +138,7 @@ export function View({ env, workspace }: WorkViewProps) {
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
 
   if (load.status === "loading") return <ListSkeleton />;
-  if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
+  if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
   // Narrow, the detail shows only once a routine is picked; wide, the first is shown until then.
   const narrowDetail = picked !== null && current?.id === picked;
   return (
@@ -181,6 +187,8 @@ function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boole
 
 function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: string; row: RoutineRow; play: string | null; tick: number; narrowShown: boolean; onBack: () => void; onEdit: () => void }) {
   const [runs, retryRuns] = useRuns(env, row.id, tick);
+  // Retry on the runs spins in place, the failure kept, until they answer.
+  const [runsAgain, setRunsAgain] = useState(false);
   const [busy, setBusy] = useState<"pause" | "run" | "drop" | null>(null);
   const hostName = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
   const maySave = useLinkMay(env, "work.routines.save");
@@ -318,8 +326,16 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
             ) : "error" in runs ? (
               <p className="flex items-baseline gap-2 text-xs">
                 <span className="min-w-0 text-destructive">{runs.error}</span>
-                <Button variant="ghost" size="xs" onClick={retryRuns}>
-                  Retry
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={runsAgain}
+                  onClick={() => {
+                    setRunsAgain(true);
+                    void retryRuns().finally(() => setRunsAgain(false));
+                  }}
+                >
+                  <BusyLabel busy={runsAgain} label="Retry" />
                 </Button>
               </p>
             ) : runs.length === 0 ? (

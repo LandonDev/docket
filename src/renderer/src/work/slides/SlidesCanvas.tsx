@@ -322,7 +322,7 @@ export function SlidesBody({
   // export first has nothing to try again.
   if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : retry} />;
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
-  if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => void openInPowerPoint(item.id, source, env)} />;
+  if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => openInPowerPoint(item.id, source, env, { again: true })} />;
 
   const revOf = (doc: PdfDoc): string | null => (filePictures.holds(doc) ? fileState.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];

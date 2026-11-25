@@ -136,8 +136,9 @@ export function forgetPowerPoint(): void {
 export const useOpening = (itemId: string): Opening | undefined => useSyncExternalStore(subscribe, () => opens.get(itemId));
 
 /** The switch's PowerPoint side: the deck opened in PowerPoint on its own computer. */
-export function openInPowerPoint(itemId: string, source: CanvasSource, env: string): Promise<void> {
-  sayOpening(itemId, { state: "opening" });
+export function openInPowerPoint(itemId: string, source: CanvasSource, env: string, o: { again?: boolean } = {}): Promise<void> {
+  // His Retry keeps the failure, its button spinning, until the switch answers; the first ask says it opens.
+  if (!o.again) sayOpening(itemId, { state: "opening" });
   const host = hostOf(source, env);
   return (host === null ? Promise.reject(new Error(NO_ANSWER)) : request<unknown>(host, "work.office.switch", { source })).then(
     () => sayOpening(itemId, { state: "open" }),
@@ -146,8 +147,9 @@ export function openInPowerPoint(itemId: string, source: CanvasSource, env: stri
 }
 
 /** The canvas while the deck is in PowerPoint: the bar says how many suggestions wait here, with Review. */
-export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): void }) {
+export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): void | Promise<void> }) {
   const opening = useOpening(itemId);
+  const [retrying, setRetrying] = useState(false);
   if (opening?.state === "opening")
     return (
       <div data-in-powerpoint="opening" className="grid size-full flex-1 place-items-center">
@@ -160,7 +162,15 @@ export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): v
   if (opening?.state === "failed")
     return (
       <div data-in-powerpoint="failed" className="flex size-full flex-1">
-        <EmptyState title="Couldn't open it in PowerPoint" {...(workErrorWords(opening.error) ? { line: workErrorWords(opening.error) } : {})} action={{ label: "Retry", onClick: onRetry }} />
+        <EmptyState title="Couldn't open it in PowerPoint" {...(workErrorWords(opening.error) ? { line: workErrorWords(opening.error) } : {})} action={{
+            label: "Retry",
+            busy: retrying,
+            onClick: () => {
+              setRetrying(true);
+              void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+            },
+          }}
+        />
       </div>
     );
   return (

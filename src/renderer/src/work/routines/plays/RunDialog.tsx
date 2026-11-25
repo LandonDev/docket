@@ -4,7 +4,7 @@ import type { ContextChip, MentionAnswer, MentionHit } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Field } from "../../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../../chrome/Modal";
-import { Button } from "../../../components/ui/button";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { ItemButton } from "../../../components/ui/item";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -52,6 +52,12 @@ export function RunDialog(props: Props) {
 function Pick({ env, workspaceId, chip, onClose, onPick, noun, pending, setPending }: Props & { noun: string; onPick: (p: PlayRow) => void; pending: boolean; setPending: (p: boolean) => void }) {
   const close = useModalClose();
   const [load, retry] = usePlays(env, workspaceId);
+  // His Retry spins in place, the failure kept, until the read answers.
+  const [retrying, setRetrying] = useState(false);
+  const again = (): void => {
+    setRetrying(true);
+    void retry().finally(() => setRetrying(false));
+  };
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const plays = load.status === "ready" ? playsFor(load.value, chip?.kind ?? "") : [];
@@ -86,8 +92,8 @@ function Pick({ env, workspaceId, chip, onClose, onPick, noun, pending, setPendi
         ) : load.status === "error" ? (
           <p className="flex items-baseline gap-2 text-[13px]">
             <span className="min-w-0 text-destructive">{load.error}</span>
-            <Button variant="ghost" size="xs" onClick={retry}>
-              Retry
+            <Button variant="ghost" size="xs" disabled={retrying} onClick={again}>
+              <BusyLabel busy={retrying} label="Retry" />
             </Button>
           </p>
         ) : plays.length === 0 ? (

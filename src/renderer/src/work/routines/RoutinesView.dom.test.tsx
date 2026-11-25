@@ -106,10 +106,15 @@ describe("the Routines view", () => {
     await settle();
     expect(screen.queryByText("None yet")).toBeNull();
     expect(screen.getByText("The host did not answer")).toBeTruthy();
-    host.runs = async () => ({ runs: [] });
+    // Council round 12 (the walk): Retry spins in place, the failure kept, until the runs answer; never a bone first.
+    let answer!: () => void;
+    host.runs = () => new Promise((r) => (answer = () => r({ runs: [] })));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(host.asked.filter((m) => m === "work.routines.runs")).toHaveLength(2);
+    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
     expect(screen.getByText("None yet")).toBeTruthy();
   });
 
@@ -140,9 +145,15 @@ describe("the Routines view", () => {
     render(<View {...props} />);
     await settle();
     expect(screen.getByText("Routines did not load")).toBeTruthy();
-    host.list = async () => ({ routines: [row()] });
+    // Council round 12 (the walk): Retry spins in place, the failure kept, until the list answers; never bones first.
+    let answer!: () => void;
+    host.list = () => new Promise((r) => (answer = () => r({ routines: [row()] })));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
+    expect(screen.getByText("Routines did not load")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Morning brief");
   });
 

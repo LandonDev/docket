@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayInputs, PlayRow } from "@shared/contract-work-routines";
 import { registry } from "../../../lib/connection";
 import { nameInLine } from "../../../lib/hostWords";
@@ -36,20 +36,21 @@ workSwitch.subscribe(() => {
 /** Tests: nothing kept. */
 export const forgetPlays = (): void => playsKept.clear();
 
-export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, () => void] {
+export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, () => Promise<void>] {
   const [state, setState] = useState<Load<PlayRow[]>>(() => {
     const kept = playsKept.get(`${env}|${workspaceId}`);
     return kept ? { status: "ready", value: kept } : { status: "loading" };
   });
-  const [attempt, setAttempt] = useState(0);
+  // The read the effect holds, for Retry: what is shown, a failure too, stays until it answers.
+  const read = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
     // Several pushes ask in a row: only the newest answer is shown.
     let asked = 0;
-    const fetch = () => {
+    const fetch = (): Promise<void> => {
       const mine = ++asked;
-      link.request<{ plays: PlayRow[] }>("work.routines.plays", { workspaceId }).then(
+      return link.request<{ plays: PlayRow[] }>("work.routines.plays", { workspaceId }).then(
         (r) => {
           const key = `${env}|${workspaceId}`;
           playsKept.delete(key);
@@ -57,22 +58,20 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
           while (playsKept.size > PLAYS_KEPT_MOST) playsKept.delete(playsKept.keys().next().value!);
           if (live && mine === asked) setState({ status: "ready", value: r.plays });
         },
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "plays") }),
+        (err: unknown) => void (live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "plays") })),
       );
     };
-    fetch();
+    read.current = fetch;
+    void fetch();
     const off = link.onPush((push) => {
-      if (push.push === "work.routines.plays" && push.workspaceId === workspaceId) fetch();
+      if (push.push === "work.routines.plays" && push.workspaceId === workspaceId) void fetch();
     });
     return () => {
       live = false;
       off();
     };
-  }, [env, workspaceId, attempt]);
-  const retry = useCallback(() => {
-    setState({ status: "loading" });
-    setAttempt((n) => n + 1);
-  }, []);
+  }, [env, workspaceId]);
+  const retry = useCallback(() => read.current(), []);
   return [state, retry];
 }
 

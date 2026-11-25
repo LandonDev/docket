@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayRow } from "@shared/contract-work-routines";
 import type { ContextChip } from "@shared/work";
 
-const host: { plays: PlayRow[]; asked: { method: string; params: unknown }[]; answer: (method: string, params: unknown) => unknown; mentions?: unknown } = { plays: [], asked: [], answer: () => null };
+const host: { plays: PlayRow[]; asked: { method: string; params: unknown }[]; answer: (method: string, params: unknown) => unknown; mentions?: unknown; read?: () => Promise<{ plays: PlayRow[] }> } = { plays: [], asked: [], answer: () => null };
 vi.mock("../../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
@@ -20,7 +20,7 @@ vi.mock("../../../lib/connection", async (original) => ({
       onPush: () => () => {},
       request: async (method: string, params: unknown) => {
         host.asked.push({ method, params });
-        if (method === "work.routines.plays") return { plays: host.plays };
+        if (method === "work.routines.plays") return host.read ? host.read() : { plays: host.plays };
         if (method === "work.canvas.mentions") return host.mentions ?? { hits: [], failed: [] };
         return host.answer(method, params);
       },
@@ -45,6 +45,7 @@ beforeEach(() => {
   forgetPlays();
   host.asked.length = 0;
   host.plays = [];
+  host.read = undefined;
   host.answer = (method) => (method === "work.routines.playStart" ? { sessionId: "t-new" } : null);
 });
 afterEach(() => {
@@ -158,6 +159,42 @@ describe("the Plays view for a key that may not save plays", () => {
     await settle();
     expect(screen.getByText("Weekly sweep")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Weekly sweep/ })).toBeNull();
+  });
+});
+
+/** Council round 12 (the walk): Retry dropped the failure to bones before the plays answered. */
+describe("Plays that did not load", () => {
+  /** A read that fails, then one held until `answer`: the Retry press's. */
+  const failThenHold = (): (() => void) => {
+    let answer: () => void = () => {};
+    let n = 0;
+    host.read = () => (++n === 1 ? Promise.reject(new Error("The box did not answer")) : new Promise((r) => (answer = () => r({ plays: [play({ id: "a", name: "Weekly sweep", takes: ["mail"] })] }))));
+    return () => answer();
+  };
+
+  it("the view keeps Plays did not load with Retry spinning until the plays answer", async () => {
+    const answer = failThenHold();
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByText("Plays did not load")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer());
+    expect(screen.queryByText("Plays did not load")).toBeNull();
+  });
+
+  it("Run a play… keeps its failure with Retry spinning until the plays answer", async () => {
+    const answer = failThenHold();
+    render(<RunDialog env="box" workspaceId="ws" chip={mail} onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.queryByLabelText("Loading plays")).toBeNull();
+    await act(async () => answer());
+    expect(screen.getByRole("list", { name: "Plays" })).toBeTruthy();
   });
 });
 

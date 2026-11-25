@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FolderRef } from "@shared/work/files";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
 import { Plus } from "../../chrome/icons";
@@ -34,10 +34,12 @@ const listeners = new Set<() => void>();
 /** Something changed the list (a make): every mounted list reads again. */
 const changed = (): void => listeners.forEach((l) => l());
 
-function useForms(env: string, workspaceId: string): [Load, () => void] {
+function useForms(env: string, workspaceId: string): [Load, () => void, () => Promise<void>] {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [tick, setTick] = useState(0);
   const again = useCallback(() => setTick((t) => t + 1), []);
+  // The read the effect holds, for Retry: the failure stays until it answers.
+  const read = useRef<() => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
     listeners.add(again);
     return () => void listeners.delete(again);
@@ -45,15 +47,19 @@ function useForms(env: string, workspaceId: string): [Load, () => void] {
   useEffect(() => {
     let on = true;
     const link = registry.linkOf(env);
-    const ours = link.request<FormListRow[]>("work.forms.list", { workspaceId }).catch(() => [] as FormListRow[]);
-    const theirs = link.request<{ forms: MsFormView[] }>("work.msforms.list", { workspaceId }).then(
-      (r) => r.forms,
-      () => [] as MsFormView[],
-    );
-    void Promise.all([ours, theirs]).then(
-      ([o, m]) => on && setLoad({ status: "ready", rows: mergeForms(o, m), ms: m }),
-      (err: unknown) => on && setLoad({ status: "error", error: err instanceof Error ? err.message : "The forms could not be read." }),
-    );
+    const fetch = (): Promise<void> => {
+      const ours = link.request<FormListRow[]>("work.forms.list", { workspaceId }).catch(() => [] as FormListRow[]);
+      const theirs = link.request<{ forms: MsFormView[] }>("work.msforms.list", { workspaceId }).then(
+        (r) => r.forms,
+        () => [] as MsFormView[],
+      );
+      return Promise.all([ours, theirs]).then(
+        ([o, m]) => void (on && setLoad({ status: "ready", rows: mergeForms(o, m), ms: m })),
+        (err: unknown) => void (on && setLoad({ status: "error", error: err instanceof Error ? err.message : "The forms could not be read." })),
+      );
+    };
+    read.current = fetch;
+    void fetch();
     // A form's own change (a count, a state) moves its row.
     const off = link.onPush((push) => {
       if (push.push === "work.msforms" && push.workspaceId === workspaceId) again();
@@ -63,7 +69,7 @@ function useForms(env: string, workspaceId: string): [Load, () => void] {
       off();
     };
   }, [env, workspaceId, tick, again]);
-  return [load, again];
+  return [load, again, useCallback(() => read.current(), [])];
 }
 
 export function Head({ env, workspace }: WorkViewProps) {
@@ -93,10 +99,26 @@ export function Head({ env, workspace }: WorkViewProps) {
 }
 
 export function View({ env, workspace }: WorkViewProps) {
-  const [load, retry] = useForms(env, workspace.id);
+  const [load, retry, readAgain] = useForms(env, workspace.id);
+  // His Retry spins in place, the failure kept, until the read answers.
+  const [retrying, setRetrying] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
   if (load.status === "loading") return <FormsSkeleton />;
-  if (load.status === "error") return <EmptyState title="Forms did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
+  if (load.status === "error")
+    return (
+      <EmptyState
+        title="Forms did not load"
+        line={load.error}
+        action={{
+          label: "Retry",
+          busy: retrying,
+          onClick: () => {
+            setRetrying(true);
+            void readAgain().finally(() => setRetrying(false));
+          },
+        }}
+      />
+    );
   if (!load.rows.length) return <EmptyState title="No forms yet" />;
 
   const open = (row: FormListRow): void => {

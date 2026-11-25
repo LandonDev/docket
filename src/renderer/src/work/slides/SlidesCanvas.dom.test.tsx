@@ -31,7 +31,7 @@ const host = vi.hoisted(() => ({
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
   /** The office pillar's answers: PowerPoint on the deck's computer, the switch, "In PowerPoint". */
-  office: { powerpoint: true, present: false, calls: [] as Array<{ method: string; params?: Record<string, unknown> }>, fail: null as string | null },
+  office: { powerpoint: true, present: false, calls: [] as Array<{ method: string; params?: Record<string, unknown> }>, fail: null as string | null, hold: null as Promise<void> | null },
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -42,6 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
       host.office.calls.push({ method, params });
       if (method === "work.office.status") return { carrier: "mac", apps: [{ app: "powerpoint", installed: host.office.powerpoint, running: false, allowed: "unknown" }], route: { accounts: [], beatAt: null, error: null } };
       if (method === "work.office.present") return params?.check ? { can: host.office.present } : { presented: true };
+      if (host.office.hold) await host.office.hold;
       if (host.office.fail) throw new Error(host.office.fail);
       return { opened: true };
     },
@@ -147,7 +148,7 @@ beforeEach(async () => {
   gate = null;
   moved = false;
   forgetPowerPoint();
-  host.office = { powerpoint: true, present: false, calls: [], fail: null };
+  host.office = { powerpoint: true, present: false, calls: [], fail: null, hold: null };
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(cleanup);
@@ -422,7 +423,15 @@ describe("the slides kind", () => {
     expect(await screen.findByText("Couldn't open it in PowerPoint")).toBeTruthy();
     expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
     host.office.fail = null;
+    // Council round 12 (the walk): Retry swapped the failure for "Opening in PowerPoint…". It stays, Retry spinning, until the answer.
+    let go!: () => void;
+    host.office.hold = new Promise((r) => (go = r));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2));
+    expect(screen.getByText("Couldn't open it in PowerPoint")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
+    host.office.hold = null;
+    await act(async () => go());
     expect(await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" })).toBeTruthy();
     expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2);
   });

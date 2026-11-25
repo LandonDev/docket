@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PlayRow, StarterPlay } from "@shared/contract-work-routines";
 import { Pencil, Plus } from "../../../chrome/icons";
-import { Button } from "../../../components/ui/button";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { Item, ItemButton } from "../../../components/ui/item";
 import { reveal } from "../../../components/ui/reveal";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -44,6 +44,12 @@ export function Head({ env }: WorkViewProps) {
 
 export function View({ env, workspace, sector }: WorkViewProps) {
   const [load, retry] = usePlays(env, workspace.id);
+  // His Retry spins in place, the failure kept, until the read answers.
+  const [retrying, setRetrying] = useState(false);
+  const again = (): void => {
+    setRetrying(true);
+    void retry().finally(() => setRetrying(false));
+  };
   const [dialog, setDialog] = useState<PlaySource | null>(null);
   const [run, setRun] = useState<PlayRow | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
@@ -53,7 +59,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
   newPlay.useAnswer(() => setDialog({ kind: "new" }));
 
   if (load.status === "loading") return <PlaysSkeleton />;
-  if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
+  if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
   const proposed = maySave ? load.value.filter((p) => p.proposed) : [];
   const plays = load.value.filter((p) => !p.proposed);
   const starters = maySave ? startersLeft(sector, load.value) : [];
