@@ -48,7 +48,10 @@ export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent'
 export const MIRROR_BUNDLES: readonly string[] = ['com.apple.ScreenContinuity', 'com.apple.iphonesimulator', 'com.apple.ScreenSharing', 'com.microsoft.rdc.macos', 'com.realvnc.vncviewer']
 export const MIRROR_EXES: readonly string[] = ['mstsc.exe', 'msrdc.exe', 'msrdcw.exe', 'windows365.exe', 'vncviewer.exe']
 const MIRROR_NAMES: readonly string[] = ['iphone mirroring', 'simulator', 'screen sharing', 'remote desktop connection', 'microsoft remote desktop', 'windows app', 'vnc viewer']
-const mirrors = (id: string): boolean => MIRROR_EXES.includes(id) || MIRROR_BUNDLES.some((b) => b.toLowerCase() === id)
+/** Other makers' viewers, by a word of their bundle id, exe or name (the hold's tenth review): a list of ids would miss one. */
+const MIRROR_WORDS =
+  /teamviewer|anydesk|rustdesk|p5sys\.jump|jump desktop|edovia\.screens|parsec|splashtop|nomachine|vnc|remotedesktop|remote desktop|remoting_host|com\.apple\.screensharing|screencontinuity/i
+const mirrors = (id: string): boolean => MIRROR_EXES.includes(id) || MIRROR_BUNDLES.some((b) => b.toLowerCase() === id) || MIRROR_WORDS.test(id)
 
 /** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§23.2). */
 export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
@@ -235,10 +238,10 @@ export class TargetResolver {
 }
 
 /** Why a call may not touch this app, or null. Reads are refused only for TempCode itself. */
-export function refusedTarget(app: { pid: number; bundleId: string | null }, use: 'read' | 'act', ownPid = process.pid, work = false): string | null {
+export function refusedTarget(app: { pid: number; bundleId: string | null; name?: string }, use: 'read' | 'act', ownPid = process.pid, work = false): string | null {
   const id = app.bundleId?.toLowerCase() ?? null
   if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || id === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
-  if (work && id && mirrors(id)) return hostErrorLine('refused_app', 'mirror')
+  if (work && ((id && mirrors(id)) || MIRROR_WORDS.test(app.name ?? ''))) return hostErrorLine('refused_app', 'mirror')
   if (use === 'act' && id && (WINDOWS_PROMPT_EXES.includes(id) || REFUSED_ACT_BUNDLES.some((b) => b.toLowerCase() === id))) return hostErrorLine('refused_app', promptsOf(id))
   return null
 }

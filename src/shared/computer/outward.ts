@@ -681,6 +681,14 @@ export function formsPageHost(screen: Screen | null): string | null {
   return url && isFormsHost(url.hostname) ? url.hostname.toLowerCase() : null
 }
 
+/** A web page that shows another machine (the hold's tenth review): a Work thread neither opens one nor acts on it. */
+const MIRROR_HOSTS: readonly string[] = ['remotedesktop.google.com']
+export const isMirrorUrl = (url: string): boolean => URL.canParse(url) && MIRROR_HOSTS.includes(new URL(url).hostname.toLowerCase())
+export function mirrorPage(screen: Screen | null): boolean {
+  const url = screen ? pageAddress(screen) : null
+  return !!url && MIRROR_HOSTS.includes(url.hostname.toLowerCase())
+}
+
 /** Whether an app is a browser, or a page installed as an app of its own: its page's host decides what a step does. */
 export const isBrowserApp = (app: Screen['app']): boolean => isBrowser(app)
 

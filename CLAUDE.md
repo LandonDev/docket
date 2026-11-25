@@ -332,9 +332,10 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   and loads no MCP server but the app's own on Claude Code, Codex and Muse
   ([work-scope.md](docs/agents/work-scope.md)). The hold: every act that sends,
   posts, shares, books or submits is a held kind made through
-  `ctx.held.create`, and so is an agent's own change to a file others can
-  open (`office.edit`, `google.edit`: nothing reaches the file before his press) and runs only on his press in the Outbox or a narrow grant
-  he made from a held item (or took when offered: five unedited presses in a row on one narrow matcher earn one offer, outbox/earned.ts); Away releases none; what it cannot catch (the
+  `ctx.held.create`, as is an agent's change to a file others can open
+  (`office.edit`, `google.edit`), and runs only on his press (`mustBePerson`; one `decide` for one item or many,
+  Send later) or a narrow grant he made or took (outbox/earned.ts); a thread asks his press with `outbox_request`
+  only on his own words; one count, `needsHim`; Away releases none; what it cannot catch (the
   shell, an unnamed control) is listed in the outbox's account below. The
   Work service is
   [work-service.md](docs/agents/work-service.md); whole jobs proven end to end,

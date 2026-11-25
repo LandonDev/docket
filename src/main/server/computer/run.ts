@@ -31,7 +31,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { RUN_BOX_EXES, clicksBlind, cutFields, formsPageHost, heldTargets, isBrowserApp, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { RUN_BOX_EXES, clicksBlind, cutFields, formsPageHost, heldTargets, isBrowserApp, isMirrorUrl, mirrorPage, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -591,6 +591,7 @@ async function runChecked(
     }
     // a Work thread opens no Forms page: only the msform tools reach Forms
     if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
+    if (work && openOf(args).some(isMirrorUrl)) return refusalOf(hostErrorLine('refused_app', 'mirror'))
   }
   // in the Windows VM the Windows key is his: Win+R and Win+X are ways to a command line
   if (host.vm) {
@@ -925,6 +926,7 @@ async function runChecked(
         const screen = read ? await wholeFields(read, obs?.epoch) : null
         // A page that has become a Forms page since he was shown it is no place to press
         if (formsPageHost(read)) return refusal(FORMS_STEP_REFUSED)
+        if (mirrorPage(read)) return refusalOf(hostErrorLine('refused_app', 'mirror'))
         const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen, t.pointer ?? null) : null
         if (!obs || !staged) return { ...refusal(HELD_STALE), stale: true } as ComputerToolOutcome
         remember(t, args.app!, obs)
@@ -955,6 +957,7 @@ async function runChecked(
         }
         // Forms is reached only through the msform tools: no step of a Work thread on its pages, held or run
         if (acting && formsPageHost(screen)) return refusal(FORMS_STEP_REFUSED)
+        if (acting && mirrorPage(screen)) return refusalOf(hostErrorLine('refused_app', 'mirror'))
         // A key or text to an element by a name the window does not hold once, as the service picks it: nobody can say where it goes.
         if (acting && screen && namedKeysUnplaced(steps, screen)) return refusal(HELD_UNPLACED)
         // a fresh read carries its window's title, which tells the Run box and Task Manager's "Create new task" from the rest of their apps (consoleRead)

@@ -494,7 +494,9 @@ cannot see it was once in the set; Mail's own scheduled controls
 Mail window act on the schedule as it stands; the browser fence checks a
 step's address once, as the step begins, so a page that moves focus to a
 `/ui` window during the step's own keys is not caught (Mac and PC alike: a
-per-key check needs the native services).
+per-key check needs the native services). It needs his `/ui` signed in, in
+a browser on a machine a Work thread drives: never sign `/ui` in there and
+it is closed.
 
 Each round of the hold's review also closed: a later send refused on a
 LifeOS draft whose thread is gone; every unmarked LifeOS schedule checked
@@ -511,8 +513,9 @@ loaded top-level in a browser with his `/ui` cookie its socket's Origin is
 null and refused (remote/ui.ts; a PDF keeps its viewer); a Work thread may
 not launch or touch a screen of another machine or a phone (iPhone
 Mirroring, Simulator, Screen Sharing, a remote desktop: `MIRROR_BUNDLES`,
-`MIRROR_EXES` in computer/policy.ts), where a TempCode client could take its
-clicks; and Accept of a thread's change to a published form, ours
+`MIRROR_EXES` and other makers' viewers by a word of their name,
+`MIRROR_WORDS`, in computer/policy.ts; Chrome Remote Desktop's page,
+`mirrorPage`), where a TempCode client could take its clicks; and Accept of a thread's change to a published form, ours
 (`work.forms.review`) or Microsoft's (`work.msforms.review`), and Messages'
 send presses take `mustBePerson`'s rule.
 
@@ -864,8 +867,8 @@ are not driven at all: a Work thread's step there is refused
 
 **What this cannot catch**, in the same class as the shell: a click by
 position on a control the screen reader gives no name (a canvas app, a
-picture of a button; a remote desktop or a mirrored phone a Work thread may
-not use at all); a control named off the list; an
+picture of a button, a remote screen past the listed ones; the listed
+remote screens and mirrored phones a Work thread may not use); a control named off the list; an
 act split so that no single call reads as outward; a web address whose page
 acts on being fetched. The editor rule needs a listed app or a readable
 address on a listed host. It judges the page before the call, so a batch

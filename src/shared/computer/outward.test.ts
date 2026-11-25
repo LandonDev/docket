@@ -13,6 +13,8 @@ import {
   cutFields,
   formsPageHost,
   heldTargets,
+  isMirrorUrl,
+  mirrorPage,
   landsByPosition,
   namedKeysUnplaced,
   needsFreshRead,
@@ -1631,5 +1633,13 @@ describe("a page's own outward controls: Microsoft Forms from SharePoint and Exc
     expect(formsPageHost(page('https://forms.office.com.example.com/', 'heading "x"', 'group', 'button "x"'))).toBeNull()
     expect(formsPageHost(page(RESULTS, 'heading "x"', 'group', 'button "x"', TEXTEDIT))).toBeNull()
     expect(formsPageHost(null)).toBeNull()
+  })
+
+  it("names Chrome Remote Desktop's page as a screen of another machine (the hold's tenth review)", () => {
+    expect(mirrorPage(page('https://remotedesktop.google.com/access/session/x', 'heading "x"', 'group', 'button "x"'))).toBe(true)
+    expect(mirrorPage(page(LIBRARY, 'heading "x"', 'group', 'button "x"'))).toBe(false)
+    expect(isMirrorUrl('https://RemoteDesktop.google.com/access')).toBe(true)
+    expect(isMirrorUrl('https://remotedesktop.google.com.example.com/')).toBe(false)
+    expect(isMirrorUrl('not a url')).toBe(false)
   })
 })

@@ -173,7 +173,8 @@ The service uses physical pixels for window geometry and input at every Windows 
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`); for a Work thread, so
   is a screen of another machine or a phone (iPhone Mirroring, Simulator,
-  Screen Sharing, a remote desktop: `MIRROR_BUNDLES`, `MIRROR_EXES`), which
+  Screen Sharing, the listed remote desktops and viewers: `MIRROR_BUNDLES`,
+  `MIRROR_EXES`, `MIRROR_WORDS`, Chrome Remote Desktop's page), which
   may show a TempCode client whose presses are his. Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
 - **TempCode pages.** Reads and acts in a browser on a TempCode address

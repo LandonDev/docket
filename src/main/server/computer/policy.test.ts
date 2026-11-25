@@ -158,6 +158,12 @@ describe('refusedTarget', () => {
     }
     for (const name of ['iPhone Mirroring', 'Simulator', 'Screen Sharing', 'C:\\Windows\\System32\\mstsc.exe', 'mstsc'])
       expect(refusedLaunch(name, false, true), name).toMatch(mirror)
+    // other makers' viewers, by a word of their id, exe or name (the hold's tenth review)
+    for (const bundleId of ['com.teamviewer.TeamViewer', 'com.philandro.anydesk', 'com.p5sys.jump.mac.viewer', 'com.apple.RemoteDesktop', 'tv.parsec.www', 'teamviewer.exe', 'anydesk.exe', 'rustdesk.exe'])
+      expect(refusedTarget({ pid: 9, bundleId }, 'act', 7, true), bundleId).toMatch(mirror)
+    expect(refusedTarget({ pid: 9, bundleId: 'com.google.Chrome.app.inomeogfingihgjfjlpeplalcfajhgai', name: 'Chrome Remote Desktop' }, 'act', 7, true)).toMatch(mirror)
+    expect(refusedLaunch('TeamViewer', false, true)).toMatch(mirror)
+    expect(refusedTarget({ pid: 9, bundleId: 'com.apple.TextEdit', name: 'TextEdit' }, 'act', 7, true)).toBeNull()
     expect(refusedLaunch('Simulator')).toBeNull()
     expect(refusedLaunchList('darwin', false, true)).toContain('com.apple.ScreenContinuity')
     expect(refusedLaunchList('win32', false, true)).toContain('mstsc.exe')
