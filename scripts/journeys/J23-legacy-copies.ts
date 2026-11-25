@@ -23,7 +23,7 @@ async function saveWordCopy(context: Context, stem: string, replace = false): Pr
   await page.key('Control+a')
   await page.typeKeys(stem)
   // The sheet opens in the original's own folder, where the copy goes; a build that opens on the places is walked there.
-  const place = context.shape === 'A' ? context.workspace.name : 'Journey Teams L1, General'
+  const place = context.shape === 'A' ? context.workspace.name : 'General'
   const onPlaces = !replace && await page.centre(dialog + ' [role="option"]', place)
   if (onPlaces) {
     await page.click(onPlaces)

@@ -25,7 +25,7 @@ async function saveAsHere(context: Context): Promise<{ toasts: string[]; retried
   await page.key('Control+a')
   await page.typeKeys(STEM)
   // The sheet opens in the file's own folder; a build that opens on the places is walked there.
-  const general = await page.centre(DIALOG + ' [role="option"]', 'Journey Teams L1, General')
+  const general = await page.centre(DIALOG + ' [role="option"]', 'General')
   if (general) {
     await page.click(general)
     await page.clickOn(DIALOG + ' [role="option"]', context.workspace.name)

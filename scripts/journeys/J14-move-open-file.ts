@@ -70,7 +70,8 @@ export default journey({
         await page.click(control)
         await page.clickOn(`${DIALOG} button`, 'Places')
         const select = `${DIALOG} [role="option"]`
-        const place = context.shape === 'A' ? 'Journey Teams L1, General' : context.workspace.name
+        // A channel is listed by its own name under its team, as the sidebar has it.
+        const place = context.shape === 'A' ? 'General' : context.workspace.name
         await page.clickOn(select, place)
         if (context.shape === 'A') await page.clickOn(select, context.workspace.name)
         await page.clickOn(select, COPY)
