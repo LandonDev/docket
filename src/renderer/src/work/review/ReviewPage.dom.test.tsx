@@ -552,7 +552,7 @@ describe("LifeOS left out, the host saying why", () => {
     names();
     const { container } = draw("lifeos-two");
     expect(lines(container).map(text)).toEqual([
-      "Not signed in to LifeOS on the box, so the calendar, tasks and mail are not counted. Sign in",
+      "Not signed in to LifeOS on the box. Sign in",
       "The LifeOS sign-in on Mac waits for your approval, so the calendar, tasks and mail are not counted. Show the code",
     ]);
   });
@@ -583,10 +583,34 @@ describe("LifeOS left out, the host saying why", () => {
     expect(onRetryHost).toHaveBeenCalledWith("env-box");
   });
 
+  /** Council round 10 (Sol rest 2): the line kept the week's saved reason while a sign-in begun elsewhere waited. */
+  it("follows the computer's live status: Show the code while its sign-in waits, a wait with no press while it connects", () => {
+    names();
+    setLifeosStatus("env-box", { lifeos: { state: "signed-out" }, keys: [] });
+    const { container } = draw("lifeos-signed-out");
+    act(() => setLifeosStatus("env-box", { lifeos: { state: "pairing", expiresAt: Date.now() + 600_000 }, keys: [] }));
+    expect(text(lines(container)[0]!)).toBe("The LifeOS sign-in on the box waits for your approval, so the calendar, tasks and mail are not counted. Show the code");
+    act(() => setLifeosStatus("env-box", { lifeos: { state: "connecting" }, keys: [] }));
+    expect(text(lines(container)[0]!)).toBe("LifeOS is still connecting on the box, so the calendar, tasks and mail are not counted.");
+    expect(lines(container)[0]!.querySelector("button")).toBeNull();
+  });
+
+  /** Council round 10 (Sol rest 3): an older host's stateless reply hid the current host's named line. */
+  it("keeps a current host's named line beside an older host's plain line, which says the consequence", () => {
+    names();
+    setLifeosStatus("env-box", { lifeos: { state: "signed-out" }, keys: [] });
+    const { view, now } = fixtureView("lifeos-signed-out");
+    const review = { ...view.review!, lifeosDown: [...view.review!.lifeosDown!, { environmentId: "env-old", state: null, kept: false, stale: false }] };
+    const { container } = draw("lifeos-signed-out", { now, view: { ...view, review } });
+    expect(lines(container).map(text)).toEqual(["Not signed in to LifeOS on the box. Sign in"]);
+    expect(container.textContent).toContain(LEFT.lifeos);
+  });
+
   it("words each state by the rule, a kept read and LifeOS on its way too", () => {
     expect(reviewLifeosWords("refused", "The box", false)).toBe("LifeOS refused the box's sign-in, so the calendar, tasks and mail are not counted.");
     expect(reviewLifeosWords("off", "Mac", true)).toBe("Work is off on Mac, so what it said when last read is shown.");
-    expect(reviewLifeosWords("connecting", "The box", false)).toBe("The box is still connecting to LifeOS, so the calendar, tasks and mail are not counted.");
+    expect(reviewLifeosWords("connecting", "The box", false)).toBe("LifeOS is still connecting on the box, so the calendar, tasks and mail are not counted.");
+    expect(reviewLifeosWords("signed-out", "The box", false, false)).toBe("Not signed in to LifeOS on the box.");
   });
 });
 
