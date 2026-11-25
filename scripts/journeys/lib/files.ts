@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Window } from './window'
+import { shown, type Window } from './window'
 
 export function dummyLibrary(home: string, site: string): string {
   const cloud = join(home, 'Library', 'CloudStorage')
@@ -65,7 +65,7 @@ export function gioStub(root: string): string {
 export function rowAt(page: Window, name: string): Promise<{ x: number; y: number } | null> {
   return page.eval(`(() => {
     for (const row of document.querySelectorAll('[data-files-row]')) {
-      if (![...row.querySelectorAll('*')].some((el) => !el.childElementCount && el.textContent.trim() === ${JSON.stringify(name)})) continue;
+      if (![...row.querySelectorAll('*')].some((el) => !el.childElementCount && el.textContent.trim() === ${JSON.stringify(shown(name))})) continue;
       const r = row.getBoundingClientRect();
       const x = r.x + Math.min(12, r.width / 2), y = r.y + r.height / 2;
       if (row.contains(document.elementFromPoint(x, y))) return { x, y };
@@ -81,7 +81,7 @@ export async function openRow(page: Window, name: string): Promise<void> {
 }
 
 export async function closeTab(page: Window, name: string): Promise<void> {
-  await page.clickOn(`[data-files-tab-close][aria-label=${JSON.stringify('Close ' + name)}]`)
+  await page.clickOn(`[data-files-tab-close][aria-label=${JSON.stringify('Close ' + shown(name))}]`)
 }
 
 export const unzip = (file: string, part: string): string => Bun.spawnSync(['unzip', '-p', file, part]).stdout.toString()

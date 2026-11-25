@@ -2,6 +2,9 @@ import { writeFileSync } from 'node:fs'
 import { attach, sleep, type Cdp } from '../../e2e-work-lib'
 import { AppOpenProof } from './appOpen'
 
+/** A file's name as Files shows it: TempCode's own endings (.tcdoc, .tcsheet) are never shown (shared/work/files.ts shownName). */
+export const shown = (name: string): string => name.replace(/\.(tcdoc|tcsheet)$/i, '')
+
 export async function until(label: string, ms: number, test: () => unknown | Promise<unknown>, signal?: AbortSignal): Promise<void> {
   const end = Date.now() + ms
   do {
@@ -148,7 +151,8 @@ export class Window {
   async press(role: string, exactText: string): Promise<void> {
     const selector = ROLES[role]
     if (!selector) throw new Error(`Unknown role ${role}`)
-    await this.clickOn(selector, exactText)
+    // A tab names its file as Files shows it.
+    await this.clickOn(selector, role === 'tab' ? shown(exactText) : exactText)
   }
 
   async steadyPoint(label: string, read: () => Promise<Point | null>, timeout = 20_000): Promise<Point> {
@@ -236,7 +240,7 @@ export class Window {
   }
 
   tabClosed(name: string): Promise<boolean> {
-    const selector = `[data-files-tab-close][aria-label=${JSON.stringify('Close ' + name)}]`
+    const selector = `[data-files-tab-close][aria-label=${JSON.stringify('Close ' + shown(name))}]`
     return this.eval(`!document.querySelector(${JSON.stringify(selector)})`)
   }
 
