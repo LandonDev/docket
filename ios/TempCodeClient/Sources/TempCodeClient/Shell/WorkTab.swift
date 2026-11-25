@@ -34,6 +34,13 @@ public enum WorkTab {
         return stamp != today || saved == nil
     }
 
+    /// What his own entry into the tab opens (`opensFirstPlace`): the day's first place, a place's list pushed over the
+    /// Work list in the sidebar column (`ShellPaths.column`), whose pick fills the empty detail on the tiled open Duo
+    /// (`ShellSelection.decide`); nil where he goes back to where he was.
+    public static func entryRoute(stamp: String?, today: String, saved: ColumnMemory?, draft: Bool) -> Route? {
+        opensFirstPlace(stamp: stamp, today: today, saved: saved, draft: draft) ? .place(firstPlace) : nil
+    }
+
     /// Whether the detail holds words he has not sent: a project's draft with text, or an open thread whose
     /// composer holds text, a chip or a photo (`UnsentThreads`). The day's first place never covers either.
     public static func holdsDraft(projectText: String?, threadUnsent: Bool) -> Bool {

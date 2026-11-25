@@ -319,9 +319,9 @@ struct RootView: View {
         if case .project(let key, nil, _)? = work.detailRoot { projectText = ProjectDraftStore.shared.draft(key)?.text }
         let thread = work.detailRoot.flatMap(ShellPaths.thread(of:))
         let draft = WorkTab.holdsDraft(projectText: projectText, threadUnsent: thread.map { UnsentThreads.shared.holds(environmentId: $0.environmentId, sessionId: $0.sessionId) } ?? false)
-        if WorkTab.opensFirstPlace(stamp: stamp, today: today, saved: workSaved ? work.memory : nil, draft: draft) {
+        if let first = WorkTab.entryRoute(stamp: stamp, today: today, saved: workSaved ? work.memory : nil, draft: draft) {
             work.popToRoot()
-            work.open(.place(WorkTab.firstPlace))
+            work.open(first)
         }
         workSaved = true
         if stamp != today { UserDefaults.standard.set(today, forKey: WorkTab.dayKey) }
@@ -504,14 +504,23 @@ struct RootView: View {
         guard let route = model.launchRoute, !routed, model.ready else { return }
         guard let client = model.registry.ordered.first else { return }
         // Work's routes, and the sheets the Work list owns, wait for the host's Work switch: a fresh device has none cached.
-        let workRoutes: Set<String> = ["work", "today", "computers", "digest", "outbox", "outbox-item", "house-rules", "work-view", "work-workspace", "place", "reader", "work-chats", "work-settings", "outbox-request", "request-notice"]
+        let workRoutes: Set<String> = ["work", "work-day", "today", "computers", "digest", "outbox", "outbox-item", "house-rules", "work-view", "work-workspace", "place", "reader", "work-chats", "work-settings", "outbox-request", "request-notice"]
         let workSheets: Set<String> = ["new-work", "voice-note", "receipt"]
         let inWork = workRoutes.contains(route) || workSheets.contains(TestHooks.sheet ?? "")
         if inWork {
             for _ in 0..<100 where !client.work.isOn {
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            show(.work)
+            if route == "work-day" {
+                // His own first entry of a day, as a launch on the tab makes it (the m1 part): no day stamped yet and no
+                // place saved, so entering the tab runs `enterWork` and opens the day's first place by the rule, not
+                // `show`, which is being brought to the tab and stamps the day itself.
+                UserDefaults.standard.removeObject(forKey: WorkTab.dayKey)
+                workSaved = false
+                if tab == .work { enterWork() } else { tab = .work }
+            } else {
+                show(.work)
+            }
         }
         if route == "home" || route == "hosts-status" { return }
         for _ in 0..<600 {
@@ -523,7 +532,7 @@ struct RootView: View {
         // Work's routes open in the Work tab, as a tap on its rows would.
         let home = inWork && tab == .work ? work : self.home
         switch route {
-        case "work":
+        case "work", "work-day":
             break
         case "inbox":
             tab = .inbox

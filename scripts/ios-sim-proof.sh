@@ -31,7 +31,8 @@
 #           show (c01 to c12, c20 under a pose); TC_WORK_ONLY=clicker shoots it alone.
 #           TC_WORK_ONLY=m1 shoots Today, its tick and undo, and the pick on the open Duo.
 #           TC_WORK_ONLY=access shoots Today, the Outbox, Messages and Settings → Diagnostics' Work Checks at the
-#           largest text size with Reduce Motion on.
+#           largest text size with Reduce Motion on, then Today, the Outbox and Messages with Increase Contrast
+#           on, and again with Reduce Transparency on.
 #           TC_WORK_ONLY=m2|m3|m4|m5 shoots one of the proof steps M2d, M3d, M4c, M5c of "All of Work on the
 #           iPhone" (work_m2 to work_m5): Mail, Messages and People; Files with the reader, Files, share and
 #           clicker parts; the composer's @, Search's Work scope and Capture; Review, Money and a job's small
@@ -1200,8 +1201,10 @@ work_set() {
 # Places that draw on LifeKit's own screen (Mail, Tasks, Agenda) write no ready file: those use `shot`.
 #   place_shot <name> <place> [open] [least] [failed] [settle]
 # TC_WORK_ONLY=access: the largest text size with Reduce Motion on, one shot each of Today, the Outbox, Messages and
-# Settings → Diagnostics with its Work Checks (the `diagnostics` route), on whatever device the run has; both settings
-# go back after.
+# Settings → Diagnostics with its Work Checks (the `diagnostics` route), on whatever device the run has. Then, at the
+# default size, Today, the Outbox and Messages with Increase Contrast on (`simctl ui … increase_contrast`), and again
+# with Reduce Transparency on (simctl has no switch for it: the Accessibility default, as Reduce Motion's, read by the
+# app at launch; if a shot shows no change, the setting is the device's to prove). Every setting goes back after.
 work_access() (
   export TC_TEST_LIFE_FIXTURES=1
   appearance light
@@ -1213,6 +1216,16 @@ work_access() (
   shot ax-04-work-checks-largest-reduce-motion diagnostics
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   reduce_motion false
+  increase_contrast enabled
+  shot ax-05-today-increase-contrast today "" "" "" 12
+  shot ax-06-outbox-increase-contrast outbox
+  place_shot ax-07-messages-increase-contrast messages "" 4
+  increase_contrast disabled
+  reduce_transparency true
+  shot ax-08-today-reduce-transparency today "" "" "" 12
+  shot ax-09-outbox-reduce-transparency outbox
+  place_shot ax-10-messages-reduce-transparency messages "" 4
+  reduce_transparency false
 )
 
 place_shot() {
@@ -1721,23 +1734,28 @@ PY
   done
 }
 
+# Today is the day's first place: each launch is his own first entry of a day (`work-day`: the day unstamped and no
+# place saved, then the tab entered as a launch on it enters it), so Today opens by the rule: its list over the Work list
+# in the sidebar column (the stack's one column folded), and on the tiled open Duo its first held row picked into the
+# detail. The plain `work` route is being brought to the tab, which stamps
+# the day and opens nothing: on it m1 shot the Work list on every device (iw12).
 work_m1() (
   export TC_TEST_LIFE_FIXTURES=1
   local start_pose=${POSE:-}
   appearance light
-  shot m1-today-light work
+  shot m1-today-light work-day
   appearance dark
-  shot m1-today-dark work
+  shot m1-today-dark work-day
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
-  shot m1-today-a11y work
+  shot m1-today-a11y work-day
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   appearance light
-  TC_ACTION=today-tick launch_app work
+  TC_ACTION=today-tick launch_app work-day
   sleep 6; snap m1-today-tick-light
   # The open Duo picks the first held row for the empty detail.
   if [ -n "$start_pose" ]; then
     fold unfolded
-    duo_shot m1-today-duo-open work
+    duo_shot m1-today-duo-open work-day
     [ "$start_pose" = unfolded ] || fold "$start_pose"
   fi
 )
@@ -2033,6 +2051,10 @@ duo_work_fold_run() {
 # (`defaults write com.apple.Accessibility ReduceMotionEnabled`), read back
 # from UIAccessibility in row-inits.json.
 reduce_motion() { xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.Accessibility ReduceMotionEnabled -bool "$1" >/dev/null 2>&1 || true; }
+# Increase Contrast: simctl's own switch (enabled|disabled).
+increase_contrast() { xcrun simctl ui "$TC_SIM_UDID" increase_contrast "$1" >/dev/null 2>&1 || true; }
+# Reduce Transparency: no simctl switch; the Accessibility default behind it, as Reduce Motion's.
+reduce_transparency() { xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.Accessibility EnhancedBackgroundContrastEnabled -bool "$1" >/dev/null 2>&1 || true; }
 transcript_set() {
   [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the transcript set needs TC_TEST_CONTROL_URL (bun scripts/ios-sim-proof-local.ts)" >&2; return 2; }
   local thread="Streaming on the phone" dir="$OUT/transcript" run container recorder bun

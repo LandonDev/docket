@@ -232,4 +232,30 @@ import TempCodeContract
         #expect(WorkTab.holdsDraft(projectText: " words ", threadUnsent: false))
         #expect(!WorkTab.holdsDraft(projectText: " \n ", threadUnsent: false))
     }
+
+    // MARK: - the day's first place in every pose (iw12: m1 shot the Work list, never Today)
+
+    static let poses: [(name: String, pose: ShellPose)] = [
+        ("folded", .stack(short: false)), ("folded-landscape", .stack(short: true)), ("unfolded", .split(sidebar: .tiled)),
+        ("half-open", .split(sidebar: .tiled)), ("unfolded-portrait", .split(sidebar: .overlay)), ("tabletop", .split(sidebar: .overlay)),
+    ]
+
+    @Test(arguments: poses.map(\.name))
+    func `his first entry of a day opens Today, and on the open Duo its first held row fills the detail`(_ name: String) throws {
+        let pose = try #require(Self.poses.first { $0.name == name }).pose
+        // No day stamped yet, no place saved: his own entry opens the day's first place, Today, whatever the pose.
+        let first = try #require(WorkTab.entryRoute(stamp: nil, today: "2026-11-25", saved: nil, draft: false))
+        #expect(first == .place(.today))
+        // Today is a place's list: the sidebar column's (pushed over the Work list), in the Work tab.
+        #expect(ShellPaths.column(of: first) == .sidebar)
+        #expect(ShellPaths.tab(of: first, isWork: { _ in false }) == .work)
+        // Beside it, the detail: on the tiled open Duo the list picks its first held row for the empty detail; the
+        // overlay pose and a stack leave the pick to him.
+        let pick = ShellSelection.decide(first: ["held:mac:host:1"], present: ["held:mac:host:1", "task:t1"], detail: .empty, pose: pose, onScreen: true)
+        #expect(pick == (pose == .split(sidebar: .tiled) ? .open("held:mac:host:1") : .keep))
+        // Being brought to the tab stamps the day first (a notice, a link, the proof's plain `work` route), so a later
+        // entry that day opens nothing over where he was; nor does any entry over a draft.
+        #expect(WorkTab.entryRoute(stamp: "2026-11-25", today: "2026-11-25", saved: ColumnMemory(), draft: false) == nil)
+        #expect(WorkTab.entryRoute(stamp: nil, today: "2026-11-25", saved: nil, draft: true) == nil)
+    }
 }
