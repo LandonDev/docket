@@ -764,6 +764,13 @@ describe("a file open in its tab", () => {
     fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Remove Star" }));
     await waitFor(() => expect(calls("work.files.star").at(-1)).toMatchObject({ on: false }));
     await waitFor(async () => expect(await more()).toContain("Star"));
+    // A star the host refused is no star: the ⋯ still offers Star, and the toast says why.
+    (world.host as { fail: Record<string, string> }).fail["work.files.star"] = "Starred could not be reached.";
+    fireEvent.click(screen.getByRole("button", { name: "More for Budget.xlsx" }));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Star" }));
+    await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ kind: "error", title: "Not starred" }));
+    expect(await more()).toContain("Star");
+    expect(await more()).not.toContain("Remove Star");
   });
 
   it("offers Open in its app in a library's tab only where its computer is a Mac or a PC", async () => {

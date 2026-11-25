@@ -1834,7 +1834,7 @@ file goes by more than one key (a library's file starred by its library and open
 a computer's path), so a row is the same file by its key, where it lies (`refKey`) or
 its place and folders by name. A file tab's ⋯ reads Star or Remove Star from the
 host's Starred lens (`useListing` on it, which follows each star), his own press
-standing until the lens says so; its end is `fileMenuEnd` (FileTabView.tsx). The
+standing until the lens says so once the host took it (a refused star changes nothing but its toast); its end is `fileMenuEnd` (FileTabView.tsx). The
 header's folder line goes back to the tab that shows that folder, the opener first
 (`tabShowing`), else opens one beside it. A mail's file is saved with Save to
 Workspace ("Saved Quote.pdf to Dummy Esports").

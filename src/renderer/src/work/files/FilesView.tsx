@@ -1216,7 +1216,8 @@ function OpenFile({
           run: (act) => {
             const at: FolderRef = { at: "file", host: file.host, path: file.path.replace(/[\\/]+[^\\/]*$/, "") };
             if (act === "move" || act === "copy") return verbs.carry({ verb: act, entries: [entry], from: place, start: { at, name: where ?? place.place.name } });
-            if (act === "star" || act === "unstar") return void star(of, [entry], act === "star").then(() => setStarred(act === "star"));
+            // What the ⋯ says follows the host's answer: a star it refused is no star.
+            if (act === "star" || act === "unstar") return void star(of, [entry], act === "star").then((took) => took && setStarred(act === "star"));
             if (act === "delete") return void trash(of, place, [entry]);
             if (act === "open-app") return verbs.openApp(entry, place);
           },

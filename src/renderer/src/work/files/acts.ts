@@ -352,12 +352,14 @@ export async function purge(of: ActsOf, link: string, o: { ids?: readonly string
   }
 }
 
-/** A star on, or off: his mark, kept where the workspace lives. */
-export async function star(of: ActsOf, entries: readonly FileEntry[], on: boolean): Promise<void> {
+/** A star on, or off: his mark, kept where the workspace lives. Answers whether the host took it (a refusal is one toast). */
+export async function star(of: ActsOf, entries: readonly FileEntry[], on: boolean): Promise<boolean> {
   try {
     for (const entry of entries) await registry.linkOf(of.home).request("work.files.star", { workspaceId: of.workspaceId, ref: refOf(entry), name: entry.name, on });
+    return true;
   } catch (err) {
     failed(on ? "Not starred" : "The star stayed", err);
+    return false;
   }
 }
 
