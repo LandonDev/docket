@@ -22,7 +22,7 @@ vi.mock("../winvm/signIn", () => ({ signInOnVm }));
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
-const { ConnectionsPage, ConnectionsView } = await import("./ConnectionsPage");
+const { ConnectionsPage, ConnectionsView, forgetReports } = await import("./ConnectionsPage");
 const { FirstCheckBones } = await import("./FirstCheckBones");
 const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
 const { Page } = await import("../../components/page");
@@ -30,6 +30,7 @@ const { Page } = await import("../../components/page");
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 
 afterEach(() => {
+  forgetReports();
   links.box = "open";
   cleanup();
   resetLifeos();
@@ -38,6 +39,31 @@ afterEach(() => {
 });
 
 describe("Connections", () => {
+  it("opens on each host's last report, every row still checking, and asks fresh on his Check again and after a fix", async () => {
+    forgetReports();
+    const request = vi.fn(async (): Promise<HealthReport> => ({
+      host: "env_box",
+      at: 1,
+      rows: [{ id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "working", line: "Signed in" }],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    const first = render(<ConnectionsPage />);
+    await settle();
+    // The page's open may be answered from the host's last few seconds.
+    expect(request.mock.calls.map((c) => (c as unknown[])[1])).toEqual([{}]);
+    first.unmount();
+    render(
+      <Page title="Connections">
+        <ConnectionsPage />
+      </Page>,
+    );
+    // Its first commit: the last report's rows, with no answer yet.
+    expect(screen.getByText("Signed in")).toBeTruthy();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect((request.mock.calls.at(-1) as unknown[])[1]).toEqual({ fresh: true });
+  });
+
   it("words a host's sync instant on the window's clock", async () => {
     const at = Date.UTC(2026, 10, 23, 20, 14);
     const now = at + 60_000;

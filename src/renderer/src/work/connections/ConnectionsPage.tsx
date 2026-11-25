@@ -13,7 +13,7 @@ import { managedElsewhere, signInElsewhere, useLinkMay } from "../../lib/linkMay
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openUrl } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { useWorkHosts } from "../../lib/workSwitch";
+import { useWorkHosts, workSwitch } from "../../lib/workSwitch";
 import { AddinRow } from "../office/AddinRow";
 import { SignInFor } from "../shell/DownSignIn";
 import { useLifeosStatusHeard } from "../shell/lifeos";
@@ -32,19 +32,37 @@ import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, typ
 /** A host's checks can take each pillar's 10 s at once, then the trip: past this the host is said not to answer. */
 const CHECK_DEADLINE_MS = 25_000;
 
+/**
+ * Each host's last report, in this window's memory: the page opens on it, every row still checking, rather than on
+ * bones for up to 25 s. Names and states of his connections only; dropped with Work off on every host.
+ */
+const lastReports = new Map<string, HealthReport>();
+workSwitch.subscribe(() => {
+  if (!workSwitch.anyOn()) lastReports.clear();
+});
+/** Tests: nothing kept. */
+export const forgetReports = (): void => lastReports.clear();
+
 export function ConnectionsPage() {
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const on = useWorkHosts();
   const hosts = environments.filter((e) => on.has(e.id));
-  const [views, setViews] = useState<Record<string, HostView>>({});
+  const [views, setViews] = useState<Record<string, HostView>>(() =>
+    Object.fromEntries(hosts.flatMap((h) => {
+      const report = lastReports.get(h.id);
+      return report ? [[h.id, { id: h.id, name: h.name, status: "checking", report } as HostView]] : [];
+    })),
+  );
 
-  const checkHost = useCallback(async (id: string, name: string): Promise<void> => {
+  /** `fresh`: his own Check again, which the host runs anew; the page's open may be answered from the host's last few seconds. */
+  const checkHost = useCallback(async (id: string, name: string, fresh = false): Promise<void> => {
     // A host whose check failed keeps its Hosts row while it is asked again: its Retry spins in place.
     setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}), ...failedOf(all[id]) } }));
     let next: HostView;
     try {
-      const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", {}), CHECK_DEADLINE_MS);
+      const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", fresh ? { fresh: true } : {}), CHECK_DEADLINE_MS);
+      lastReports.set(id, report);
       next = { id, name, status: "ready", report };
     } catch (err) {
       const { error, silent } = checkFailure(workErrorWords(err, { host: nameInLine(name) }));
@@ -58,7 +76,7 @@ export function ConnectionsPage() {
   const [round, setRound] = useState(true);
   const checkAll = (): void => {
     setRound(true);
-    for (const host of hosts) if (linked(host.id)) void checkHost(host.id, host.name);
+    for (const host of hosts) if (linked(host.id)) void checkHost(host.id, host.name, true);
   };
 
   // Once when the page opens, and again each time a host's link comes back: a host that went offline is forgotten, so its return is checked, never its old rows shown as now.
@@ -89,8 +107,8 @@ export function ConnectionsPage() {
           <BusyLabel busy={checking && round} label="Check again" />
         </Button>
       </PageActions>
-      <ConnectionsView hosts={shown} onRecheck={(id) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id)} />
-      {hosts.map((host) => (linked(host.id) ? <LifeosWatch key={host.id} environmentId={host.id} onChange={() => void checkHost(host.id, host.name)} /> : null))}
+      <ConnectionsView hosts={shown} onRecheck={(id) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id, true)} />
+      {hosts.map((host) => (linked(host.id) ? <LifeosWatch key={host.id} environmentId={host.id} onChange={() => void checkHost(host.id, host.name, true)} /> : null))}
     </>
   );
 }

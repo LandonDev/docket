@@ -31,6 +31,7 @@ vi.mock("../../../lib/connection", async (original) => ({
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, READ_KEY, resetTestKey, testKey } = await import("../../../lib/linkMay.testkit");
 const { Head, View } = await import("./PlaysView");
+const { forgetPlays } = await import("./data");
 const { RunDialog } = await import("./RunDialog");
 const { PlayDialog } = await import("./PlayDialog");
 
@@ -41,6 +42,7 @@ const settle = () => act(async () => void (await new Promise((r) => setTimeout(r
 const asked = (method: string) => host.asked.filter((a) => a.method === method).map((a) => a.params);
 
 beforeEach(() => {
+  forgetPlays();
   host.asked.length = 0;
   host.plays = [];
   host.answer = (method) => (method === "work.routines.playStart" ? { sessionId: "t-new" } : null);
@@ -51,6 +53,19 @@ afterEach(() => {
 });
 
 describe("the Plays view", () => {
+  it("opens again on the plays it last read, before the host answers, and draws the host's answer when it comes", async () => {
+    host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] })];
+    const first = render(<View {...props} />);
+    await settle();
+    first.unmount();
+    host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] }), play({ id: "b", name: "Monday report", takes: [] })];
+    render(<View {...props} />);
+    // The first commit: the kept list, no answer yet.
+    expect(within(screen.getByRole("region", { name: "Plays" })).getByRole("button", { name: /^Weekly sweep/ })).toBeTruthy();
+    await settle();
+    expect(within(screen.getByRole("region", { name: "Plays" })).getByRole("button", { name: /^Monday report/ })).toBeTruthy();
+  });
+
   it("lists his plays, then proposals, then the starters he has not added", async () => {
     host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] }), play({ id: "b", name: "From a thread", proposed: true, createdBy: "model" }), play({ id: "c", name: "Game assignment", starter: "ref.assignment" })];
     render(<View {...props} />);

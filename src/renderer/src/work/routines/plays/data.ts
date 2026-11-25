@@ -3,7 +3,7 @@ import type { PlayInputs, PlayRow } from "@shared/contract-work-routines";
 import { registry } from "../../../lib/connection";
 import { nameInLine } from "../../../lib/hostWords";
 import { workErrorWords } from "../../../lib/workErrorWords";
-import { workOpenPort } from "../../../lib/workSwitch";
+import { workOpenPort, workSwitch } from "../../../lib/workSwitch";
 
 /**
  * A workspace's plays from its host, kept live by the `work.routines.plays`
@@ -24,8 +24,23 @@ export function loadFailure(env: string, err: unknown, what: string): string {
 
 export type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
 
+/**
+ * Each workspace's plays as last read, in this window's memory: Plays opens on them while the host answers (their
+ * names and steps only; at most PLAYS_KEPT_MOST workspaces, dropped with Work off). The live answer replaces them.
+ */
+const playsKept = new Map<string, PlayRow[]>();
+const PLAYS_KEPT_MOST = 16;
+workSwitch.subscribe(() => {
+  if (!workSwitch.anyOn()) playsKept.clear();
+});
+/** Tests: nothing kept. */
+export const forgetPlays = (): void => playsKept.clear();
+
 export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, () => void] {
-  const [state, setState] = useState<Load<PlayRow[]>>({ status: "loading" });
+  const [state, setState] = useState<Load<PlayRow[]>>(() => {
+    const kept = playsKept.get(`${env}|${workspaceId}`);
+    return kept ? { status: "ready", value: kept } : { status: "loading" };
+  });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const link = registry.linkOf(env);
@@ -35,7 +50,13 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
     const fetch = () => {
       const mine = ++asked;
       link.request<{ plays: PlayRow[] }>("work.routines.plays", { workspaceId }).then(
-        (r) => live && mine === asked && setState({ status: "ready", value: r.plays }),
+        (r) => {
+          const key = `${env}|${workspaceId}`;
+          playsKept.delete(key);
+          playsKept.set(key, r.plays);
+          while (playsKept.size > PLAYS_KEPT_MOST) playsKept.delete(playsKept.keys().next().value!);
+          if (live && mine === asked) setState({ status: "ready", value: r.plays });
+        },
         (err: unknown) => live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "plays") }),
       );
     };

@@ -127,6 +127,10 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   the host's), and a week is told seen once a run, not on every open.
 - **People**: a person's page is asked of LifeOS once, with the guest links in hand, and the host's guest links are
   read once in `GUEST_LINKS_KEEP_MS` (30 s) a host, dropped with Work off.
+- **Connections** opens on each host's last report, every row still checking, rather than bones for up to 25 s;
+  the page's open may take the host's report of the last 10 s, his Check again, a row's Retry and a LifeOS change
+  ask `{fresh: true}`. **Plays** opens on the workspace's plays as last read (16 workspaces at most). Both kept in
+  the window's memory alone and dropped with Work off. Money's last answer is M10's (its read hook moves there).
 - Not done: Tasks' links in one query (needs a LifeOS function, `workLinks:byEntities`); Forms' list asked twice
   (the Forms thread's file, in its note `.temp-code/plans/perf/FOR-msforms.md`).
 
