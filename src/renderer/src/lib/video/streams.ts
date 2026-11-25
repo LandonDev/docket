@@ -1,7 +1,9 @@
 import type { ServerPush } from "@server/shared/contract";
 import type { InputEvent } from "@server/shared/video/nsl1";
-import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoCopyAnswer, type VideoOpenAnswer } from "@server/shared/contract-video";
+import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoCopyAnswer, type VideoOpenAnswer, type VideoSizeAnswer, type VideoSizeParams } from "@server/shared/contract-video";
+import { SIZE_REST_MS, sizeAskDue } from "@server/shared/video/guestSize";
 import { registry } from "../connection/registry";
+import type { GuestSizeAsk } from "../guestSize";
 import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
 import { REGROW, SHRINK, SHRINK_QUIET_MS } from "./support";
 
@@ -47,6 +49,8 @@ export interface StreamHandle {
   onClick(fn: (x: number, y: number) => void): () => void;
   /** one of his input events; it goes nowhere unless the host gave a stream he drives */
   input(event: InputEvent): void;
+  /** The room or fixed size from this place, while it drives. */
+  setGuestSize(ask: GuestSizeAsk | null): void;
   /** his clipboard's text into the page he drives, as a paste */
   paste(text: string): Promise<void>;
   /** the far clipboard's text after his copy in the page he drives (`video.copy`); null when it holds none */
@@ -89,7 +93,8 @@ interface Entry {
   wants: Map<object, StreamWant>;
   view: StreamView;
   /** the host's own id of the open stream, the edge it was asked at and the long edge it answered */
-  opened: { stream: string; edge: number; take: boolean; drive: boolean; long: number } | null;
+  opened: { stream: string; edge: number; take: boolean; drive: boolean; long: number; ready: boolean } | null;
+  size: SizeState;
   /** times it was opened again since a frame was last drawn */
   tries: number;
   /** moves with every open: an answer to an older one is dropped */
@@ -103,6 +108,23 @@ interface Entry {
   shrink: ReturnType<typeof setTimeout> | null;
   offs: (() => void)[];
 }
+
+interface SizeState {
+  places: Map<object, GuestSizeAsk>;
+  place?: object;
+  room: GuestSizeAsk | null;
+  since: number;
+  asked: GuestSizeAsk | null;
+  timer?: ReturnType<typeof setTimeout>;
+  pending?: true;
+  unsupported?: true;
+  inputs: number;
+  elsewhere?: true;
+  retryAt?: number;
+}
+
+const sameSetting = (a: GuestSizeAsk, b: GuestSizeAsk): boolean => a.mode === b.mode && a.detail === b.detail;
+const sameSize = (a: GuestSizeAsk, b: GuestSizeAsk): boolean => sameSetting(a, b) && a.width === b.width && a.height === b.height;
 
 const keyOf = (host: string, key: string): string => `${host}\n${key}`;
 
@@ -132,6 +154,7 @@ export class VideoStreams {
     if (!entry?.opened?.drive || entry.view.status !== "live" || !this.worker) return false;
     for (const k of keys) this.post({ t: "input", stream: entry.id, event: { type: "keyDown", key: k } });
     for (const k of [...keys].reverse()) this.post({ t: "input", stream: entry.id, event: { type: "keyUp", key: k } });
+    if (keys.length && entry.opened.ready) this.sizeInput(entry);
     return true;
   }
 
@@ -139,7 +162,7 @@ export class VideoStreams {
     const id = keyOf(host, key);
     let entry = this.entries.get(id);
     if (!entry) {
-      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, tries: 0, round: 0, listeners: new Set(), counts: new Set(), clicks: new Set(), timer: null, linger: null, shrink: null, offs: [] };
+      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, size: { places: new Map(), room: null, since: 0, asked: null, inputs: 0 }, tries: 0, round: 0, listeners: new Set(), counts: new Set(), clicks: new Set(), timer: null, linger: null, shrink: null, offs: [] };
       this.entries.set(id, entry);
       this.byId.set(entry.id, entry);
     }
@@ -150,6 +173,7 @@ export class VideoStreams {
     // new, or kept with nobody showing it and over since: a place that shows it now is a reason to ask again
     const fresh = mine.wants.size === 0 && (mine.round === 0 || mine.view.status === "over");
     mine.wants.set(token, want);
+    if (!want.drive && !this.want(mine).drive) this.resetSizeAsk(mine);
     if (fresh) {
       mine.tries = 0;
       this.open(mine);
@@ -162,7 +186,23 @@ export class VideoStreams {
       onCount: (fn) => (mine.counts.add(fn), () => void mine.counts.delete(fn)),
       onClick: (fn) => (mine.clicks.add(fn), () => void mine.clicks.delete(fn)),
       input: (event) => {
-        if (mine.opened?.drive && mine.view.status === "live" && this.worker) this.post({ t: "input", stream: mine.id, event });
+        if (!mine.opened?.drive || mine.view.status !== "live" || !this.worker) return;
+        this.post({ t: "input", stream: mine.id, event });
+        if (!want.drive || !mine.opened.ready || event.type === "releaseAll") return;
+        const place = mine.size.places.get(token);
+        if (place && token !== mine.size.place) {
+          // Several canvases can show the same stream. Input chooses which room sizes it.
+          mine.size.places.delete(token);
+          mine.size.places.set(token, place);
+          this.sizeRoom(mine);
+        }
+        this.sizeInput(mine);
+      },
+      setGuestSize: (ask) => {
+        if (released || !want.drive) return;
+        if (ask) mine.size.places.set(token, ask);
+        else if (!mine.size.places.delete(token)) return;
+        this.sizeRoom(mine);
       },
       paste: async (text) => {
         const stream = mine.opened;
@@ -189,11 +229,74 @@ export class VideoStreams {
           mine.opened.drive = false;
           this.post({ t: "watch", stream: mine.id });
         }
+        if (mine.size.places.delete(token)) this.sizeRoom(mine);
         if (mine.wants.size && this.entries.get(id) === mine) this.shrunk(mine);
         if (mine.wants.size || this.entries.get(id) !== mine) return;
         mine.linger = setTimeout(() => this.drop(mine), LINGER_MS);
       },
     };
+  }
+
+  /** Forget the last ask after handing back, so the next Take over asks for its starting room. */
+  private resetSizeAsk(entry: Entry): void {
+    entry.size.asked = null;
+    entry.size.elsewhere = entry.size.retryAt = undefined;
+  }
+
+  private sizeRoom(entry: Entry): void {
+    const size = entry.size;
+    const last = [...size.places].at(-1);
+    const room = last?.[1] ?? null;
+    const was = size.room;
+    size.place = last?.[0];
+    size.room = room;
+    if (was && room && sameSize(was, room)) return;
+    size.since = Date.now();
+    this.queueSize(entry);
+  }
+
+  private sizeInput(entry: Entry): void {
+    const size = entry.size;
+    size.inputs++;
+    if (size.elsewhere === undefined || size.retryAt !== undefined) return;
+    // Input travels through the worker on the video socket. Give it time to reach the host before the RPC.
+    size.retryAt = Date.now() + SIZE_REST_MS;
+    this.queueSize(entry);
+  }
+
+  private queueSize(entry: Entry): void {
+    const size = entry.size;
+    clearTimeout(size.timer);
+    size.timer = undefined;
+    const { room, asked, since, retryAt } = size;
+    const opened = entry.opened;
+    if (this.broken || !room || !opened?.drive || !opened.ready || size.pending || size.unsupported) return;
+    if (size.elsewhere !== undefined && retryAt === undefined) return;
+    const previous = retryAt === undefined && asked && sameSetting(asked, room) ? asked : null;
+    const rest = room.mode === "fit" ? SIZE_REST_MS : 0;
+    if (room.mode === "fit" ? !sizeAskDue(previous, room, rest) : previous && sameSize(previous, room)) return;
+    const at = Math.max(since + rest, retryAt ?? 0);
+    size.timer = setTimeout(() => {
+      size.timer = undefined;
+      const ask = size.room;
+      const link = this.deps.link(entry.host);
+      if (!ask || !link?.transport) return;
+      const sentAfter = size.inputs;
+      size.asked = ask;
+      size.elsewhere = size.retryAt = undefined;
+      size.pending = true;
+      void link.request<VideoSizeAnswer>("video.size", { stream: opened.stream, ...ask } satisfies VideoSizeParams).then((answer) => {
+        if (answer.ok) return;
+        if (answer.reason === "unsupported") size.unsupported = true;
+        if (answer.reason === "elsewhere" && size.asked === ask) {
+          size.elsewhere = true;
+          if (size.inputs > sentAfter) size.retryAt = Date.now() + SIZE_REST_MS;
+        }
+      }).catch(() => undefined).finally(() => {
+        size.pending = undefined;
+        this.queueSize(entry);
+      });
+    }, Math.max(0, at - Date.now()));
   }
 
   private want(entry: Entry): StreamWant {
@@ -250,6 +353,7 @@ export class VideoStreams {
     const round = ++entry.round;
     if (entry.timer) clearTimeout(entry.timer);
     if (entry.shrink) clearTimeout(entry.shrink);
+    clearTimeout(entry.size.timer);
     entry.timer = entry.shrink = null;
     const link = this.broken ? null : this.deps.link(entry.host);
     const rpcUrl = link?.transport?.url;
@@ -283,8 +387,10 @@ export class VideoStreams {
         }
         // every refusal gives way to the picture, which says what there is to say (Screen Recording off, no window)
         if (!answer.ok) return this.set(entry, { status: "over", face: "picture" });
-        const drive = !!want.drive && !!this.want(entry).drive;
-        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, drive, long: Math.max(answer.width, answer.height) };
+        const drives = this.want(entry).drive;
+        const drive = !!want.drive && !!drives;
+        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, drive, long: Math.max(answer.width, answer.height), ready: false };
+        if (!want.drive && drives) return this.open(entry);
         if (entry.view.status === "opening") this.set(entry, { status: "opening", width: answer.width, height: answer.height });
         this.post({ t: "open", stream: entry.id, url: streamUrl(rpcUrl, answer.stream, answer.ticket), ...(drive ? { drive: true } : {}) });
       })
@@ -301,6 +407,7 @@ export class VideoStreams {
     entry.round++;
     if (entry.timer) clearTimeout(entry.timer);
     if (entry.shrink) clearTimeout(entry.shrink);
+    clearTimeout(entry.size.timer);
     for (const off of entry.offs.splice(0)) off();
     for (const [surface, stream] of this.bound) if (stream === entry.id) this.bound.delete(surface);
     if (this.worker) this.post({ t: "close", stream: entry.id });
@@ -354,6 +461,7 @@ export class VideoStreams {
     for (const entry of this.entries.values()) {
       entry.round++;
       if (entry.timer) clearTimeout(entry.timer);
+      clearTimeout(entry.size.timer);
       this.set(entry, { status: "over", face: "picture" });
     }
   }
@@ -362,6 +470,10 @@ export class VideoStreams {
     const entry = this.byId.get(message.stream);
     if (!entry) return;
     if (message.t === "drawn") {
+      if (entry.opened && !entry.opened.ready) {
+        entry.opened.ready = true;
+        this.queueSize(entry);
+      }
       entry.tries = 0;
       return this.set(entry, { status: "live", width: message.width, height: message.height });
     }
@@ -370,13 +482,15 @@ export class VideoStreams {
       return;
     }
     if (message.fault === "unsupported") return this.fail();
+    if (entry.opened) entry.opened.ready = false;
+    clearTimeout(entry.size.timer);
     const next = afterClose(message.code, message.fault, entry.tries);
     if (next.then === "over") {
       entry.round++;
       return this.set(entry, { status: "over", face: next.face, ...(next.retry ? { retry: true as const } : {}) });
     }
     // the last frame stays on the canvases while the stream is opened again
-    entry.tries++;
+    if (!next.keepTries) entry.tries++;
     if (!next.delayMs && entry.wants.size) return this.open(entry);
     const round = ++entry.round;
     entry.timer = setTimeout(() => {

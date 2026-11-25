@@ -224,11 +224,11 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   // it is what he watches: it takes the box's display, and he may drive from it
-  const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure);
+  const room = useRoom(title.defaultView);
+  const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure, { room });
   useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
   useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
   const frame = streamSize(stream.state);
-  const room = useRoom(title.defaultView);
   const [full, setFull] = useState(false);
   useEffect(() => onWindowFullScreen(({ on, popOut }) => popOut && setFull(on)), []);
   useEffect(() => {

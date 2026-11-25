@@ -40,7 +40,7 @@ export const RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 4000] as const;
 
 export type AfterClose =
   /** open it again with a fresh ticket, after `delayMs` */
-  | { then: "again"; delayMs: number }
+  | { then: "again"; delayMs: number; keepTries?: true }
   /** the stream is over: what the viewer shows in its place */
   | { then: "over"; face: Exclude<VideoCloseFace, "again">; retry?: true };
 
@@ -55,6 +55,7 @@ export function afterClose(code: number, fault: PlayerFault | undefined, tries: 
   if (fault === "unsupported") return { then: "over", face: "picture" };
   const shows = fault ? { face: "again" as const } : videoCloseShows(code);
   if (shows.face !== "again") return { then: "over", face: shows.face, ...(shows.retry ? { retry: true as const } : {}) };
+  if (shows.atOnce) return { then: "again", delayMs: 0, keepTries: true };
   if (tries >= VIDEO_RETRIES) return { then: "over", face: "picture" };
   return { then: "again", delayMs: fault === "behind" ? 0 : RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)] };
 }

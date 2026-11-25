@@ -3,8 +3,10 @@ import { useRef } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
+import type { Room } from "@server/shared/video/guestSize";
 import { registry } from "../../../lib/connection/registry";
 import type { ComputerEntry } from "../../../lib/computerSessions";
+import type { GuestSizeAsk, GuestSizeSetting } from "../../../lib/guestSize";
 import type { StreamHandle, StreamView, StreamWant } from "../../../lib/video/streams";
 import { videoEdge } from "../../../lib/video/support";
 import type { DrivenScreen } from "../../../lib/video/videoInput";
@@ -27,6 +29,7 @@ interface FakeStream {
   retried: number;
   released: number;
   inputs: unknown[];
+  size: GuestSizeAsk | null;
   pasted: string[];
   copies: number;
   set(view: StreamView): void;
@@ -49,6 +52,7 @@ vi.mock("../../../lib/video/streams", () => ({
         retried: 0,
         released: 0,
         inputs: [],
+        size: null,
         pasted: [],
         copies: 0,
         set(view) {
@@ -64,6 +68,7 @@ vi.mock("../../../lib/video/streams", () => ({
         onCount: (fn) => (stream.counts.add(fn), () => void stream.counts.delete(fn)),
         onClick: (fn) => (stream.clicks.add(fn), () => void stream.clicks.delete(fn)),
         input: (event) => void stream.inputs.push(event),
+        setGuestSize: (size) => void (stream.size = size),
         paste: async (text) => void stream.pasted.push(text),
         copy: async () => (stream.copies++, "copied in the VM"),
         retry: () => void stream.retried++,
@@ -126,10 +131,10 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back, screen, chordShown }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen; chordShown?: boolean }) {
+function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back, screen, chordShown, room, guestSize }: MountProps & { entry: ComputerEntry; run: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(en, run, box, root, { inset, ...(take === undefined ? {} : { take }), ...(drive === undefined ? {} : { drive }) });
+  const stream = useLiveStream(en, run, box, root, { inset, take, drive, room, guestSize });
   useDrivingInput(stream, box, screen, { chordShown });
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
@@ -151,9 +156,9 @@ function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, ba
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen; chordShown?: boolean };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen; chordShown?: boolean; room?: Room; guestSize?: GuestSizeSetting };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} screen={p.screen ?? props.screen} chordShown={p.chordShown ?? props.chordShown} />;
+  const tree = (p: MountProps) => <Live {...p} entry={p.entry ?? entry()} run={p.run ?? true} onOpen={p.onOpen ?? props.onOpen} screen={p.screen ?? props.screen} chordShown={p.chordShown ?? props.chordShown} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -338,6 +343,21 @@ describe("the live viewport, as video", () => {
 
 describe("driving the page from the picture", () => {
   const owned = (): ComputerEntry => ({ ...entry(), row: { ...entry().row, driver: "owner" } });
+
+  it("passes the driving place's whole room and window scale, then updates the same stream as the room changes", async () => {
+    const room = { width: 1000, height: 700 };
+    const view = mount({ entry: owned(), room });
+    await flush();
+    const stream = h.acquired[0];
+    expect(stream.size).toEqual({ ...room, mode: "fit", detail: "sharp", scale: window.devicePixelRatio });
+    expect(stream.want.edge).toBe(videoEdge(304 - VIEWPORT_INSETS, window.devicePixelRatio));
+    view.again({ entry: owned(), room: { ...room, height: 820 }, guestSize: { mode: "fit", detail: "faster" } });
+    expect(h.acquired).toHaveLength(1);
+    expect(stream.size).toEqual({ ...room, height: 820, mode: "fit", detail: "faster", scale: window.devicePixelRatio });
+    view.again({ entry: owned(), room, drive: false });
+    await flush();
+    expect(h.acquired.at(-1)?.size).toBeNull();
+  });
 
   it("asks for a stream he drives only for a page he drives, and only from a place that drives", async () => {
     mount();

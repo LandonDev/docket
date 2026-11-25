@@ -2,9 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { PreviewOptions, PreviewState } from "./computerPreview";
 import type { ComputerEntry } from "./computerSessions";
 import type { InputEvent } from "@server/shared/video/nsl1";
+import type { Room } from "@server/shared/video/guestSize";
+import { guestSizeAsk, type GuestSizeAsk, type GuestSizeSetting } from "./guestSize";
 import type { StreamHandle, StreamView } from "./video/streams";
 import { REGROW_QUIET_MS, nextEdge, pixelRatioOf, videoEdge, videoSupported } from "./video/support";
 import { registry } from "./connection/registry";
+
+export type { GuestSizeSetting } from "./guestSize";
 
 /**
  * A computer session as live video (docs/agents/live-video.md "The viewer"):
@@ -24,6 +28,9 @@ export interface VideoOptions extends PreviewOptions {
   take: boolean;
   /** he drives this page from this place: the stream is asked for as one his pointer and keys go down */
   drive?: boolean;
+  /** the whole room its picture may fill; only the places that size the guest supply it */
+  room?: Room;
+  guestSize?: GuestSizeSetting;
 }
 
 /** His input into the page he drives, while a stream that takes it is live. */
@@ -63,6 +70,8 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
   const [edge, setEdge] = useState<number | null>(null);
   const onClick = useRef(opts.onClick);
   const handle = useRef<StreamHandle | null>(null);
+  const handleOwner = useRef("");
+  const size = useRef<{ owner: string; ask: GuestSizeAsk | null }>({ owner: "", ask: null });
   /** the canvas the stream is on now, and the undo */
   const shown = useRef<{ canvas: HTMLCanvasElement; off: () => void } | null>(null);
   const { canvas, box, take } = opts;
@@ -92,6 +101,9 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
   useLayoutEffect(() => {
     onClick.current = opts.onClick;
     names.current = { app, window: window_ };
+    const ask = drive && opts.room ? guestSizeAsk(opts.room, box?.current ?? null, opts.guestSize) : null;
+    size.current = { owner, ask };
+    if (handleOwner.current === owner) handle.current?.setGuestSize(ask);
   });
 
   // The edge follows the size shown, in the pixels of the window that shows it: larger past REGROW, smaller below SHRINK
@@ -127,6 +139,8 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
         if (!alive) return;
         const stream = videoStreams.acquire(host, key, { edge, take, drive });
         handle.current = stream;
+        handleOwner.current = owner;
+        if (size.current.owner === owner) stream.setGuestSize(size.current.ask);
         const read = (): void => {
           const next = videoState(stream.view(), names.current.app, names.current.window);
           if (next) setState(next);
@@ -156,7 +170,7 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
       handle.current = null;
       setState((prev) => (prev.status === "live" ? starting(prev) : prev));
     };
-  }, [attempt, box, drive, edge, host, key, run, sync, take]);
+  }, [attempt, box, drive, edge, host, key, owner, run, sync, take]);
 
   const driving = useMemo<VideoDrive>(
     () => ({ send: (event) => handle.current?.input(event), paste: async (text) => handle.current?.paste(text), copy: async () => (await handle.current?.copy()) ?? null }),

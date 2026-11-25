@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerPush } from "@server/shared/contract";
-import { VIDEO_CLOSE, VIDEO_RETRIES, type VideoOpenAnswer } from "@server/shared/contract-video";
+import { VIDEO_CLOSE, VIDEO_RETRIES, type VideoOpenAnswer, type VideoSizeAnswer } from "@server/shared/contract-video";
+import { SIZE_REST_MS } from "@server/shared/video/guestSize";
 import { afterClose, RETRY_DELAYS_MS, streamUrl, type FromWorker, type ToWorker } from "./messages";
 import { LINGER_MS, VideoStreams, type StreamLink, type WorkerLike } from "./streams";
 import { nextEdge, pixelRatioOf, SHRINK_QUIET_MS, videoEdge } from "./support";
@@ -12,7 +13,7 @@ const settle = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
-function rig(answers: (VideoOpenAnswer | Error)[] = []) {
+function rig(answers: (VideoOpenAnswer | Error)[] = [], sizeAnswers: (VideoSizeAnswer | Error | Promise<VideoSizeAnswer>)[] = []) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const pushers = new Set<(push: ServerPush) => void>();
   const openers = new Set<() => void>();
@@ -21,6 +22,11 @@ function rig(answers: (VideoOpenAnswer | Error)[] = []) {
     transport: { url: "wss://box.example/ws?ticket=old" },
     request: async <T,>(method: string, params?: unknown): Promise<T> => {
       calls.push({ method, params: params as Record<string, unknown> });
+      if (method === "video.size") {
+        const answer = sizeAnswers.shift() ?? { ok: true, width: 1280, height: 800, scale: 100 };
+        if (answer instanceof Error) throw answer;
+        return (await answer) as T;
+      }
       if (method !== "video.open") return null as T;
       n++;
       const answer = answers.length ? answers.shift()! : ({ ok: true, stream: `s${n}`, ticket: `t${n}`, width: 1280, height: 800, fps: 120 } satisfies VideoOpenAnswer);
@@ -43,10 +49,220 @@ function rig(answers: (VideoOpenAnswer | Error)[] = []) {
   });
   const say = (message: FromWorker): void => worker.onmessage?.({ data: message });
   const opens = () => calls.filter((c) => c.method === "video.open").map((c) => c.params);
+  const sizes = () => calls.filter((c) => c.method === "video.size").map((c) => c.params);
   const closes = () => calls.filter((c) => c.method === "video.close").map((c) => c.params.stream);
   const canvas = (): HTMLCanvasElement => ({}) as HTMLCanvasElement;
-  return { streams, calls, posted, say, opens, closes, canvas, state, pushers, openers, collected, workers: () => workers, worker };
+  return { streams, calls, posted, say, opens, sizes, closes, canvas, state, pushers, openers, collected, workers: () => workers, worker };
 }
+
+const fit = { mode: "fit", width: 960, height: 720, scale: 2, detail: "sharp" } as const;
+const drive = { edge: 1280, take: true, drive: true };
+const drawn = { t: "drawn", stream: 1, width: 1280, height: 800 } as const;
+const input = { type: "keyDown", key: 4 } as const;
+const tick = (ms = SIZE_REST_MS) => vi.advanceTimersByTimeAsync(ms);
+
+describe("asking for the guest's size", () => {
+  it("asks on taking the drive and never from the watch stream", async () => {
+    const r = rig();
+    const watch = r.streams.acquire("box", "vm:windows", { edge: 1280, take: false });
+    watch.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.sizes()).toEqual([]);
+    const driver = r.streams.acquire("box", "vm:windows", drive);
+    driver.setGuestSize(fit);
+    await tick();
+    expect(r.sizes()).toEqual([]);
+    r.say(drawn);
+    await tick(1);
+    expect(r.sizes()).toEqual([{ stream: "s2", ...fit }]);
+    driver.release();
+    r.streams.acquire("box", "vm:windows", { edge: 1280, take: true });
+    const again = r.streams.acquire("box", "vm:windows", drive);
+    again.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s2", ...fit }, { stream: "s3", ...fit }]);
+  });
+
+  it("gets a drive ticket if he takes over while the watch ticket is still on its way", async () => {
+    const r = rig();
+    r.streams.acquire("box", "vm:windows", { edge: 1280, take: false });
+    const driver = r.streams.acquire("box", "vm:windows", drive);
+    driver.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.opens().map((p) => p.drive)).toEqual([undefined, true]);
+    expect(r.sizes()).toEqual([{ stream: "s2", ...fit }]);
+  });
+
+  it("keeps the last ask when a place replaces its handle to change the stream edge", async () => {
+    const r = rig();
+    r.streams.acquire("box", "vm:windows", { edge: 640, take: false });
+    const driver = r.streams.acquire("box", "vm:windows", drive);
+    driver.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    driver.release();
+    const bigger = r.streams.acquire("box", "vm:windows", { ...drive, edge: 1920 });
+    bigger.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.opens().at(-1)?.maxEdge).toBe(1920);
+    expect(r.sizes()).toEqual([{ stream: "s2", ...fit }]);
+  });
+
+  it("asks once at the end of a drag at least 16 points from the last ask", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    h.setGuestSize({ ...fit, width: fit.width + 15 });
+    await tick();
+    expect(r.sizes()).toHaveLength(1);
+    for (const height of [736, 744, 768]) {
+      h.setGuestSize({ ...fit, height });
+      await tick(SIZE_REST_MS - 1);
+      expect(r.sizes()).toHaveLength(1);
+    }
+    // The same measurement can arrive again without restarting the wait.
+    h.setGuestSize({ ...fit, height: 768 });
+    await tick(1);
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }, { stream: "s1", ...fit, height: 768 }]);
+  });
+
+  it("lets two driving places share a stream, sizing for the latest one to send input", async () => {
+    const r = rig();
+    const stage = r.streams.acquire("box", "vm:windows", drive);
+    stage.setGuestSize(fit);
+    const pop = r.streams.acquire("box", "vm:windows", drive);
+    pop.setGuestSize({ ...fit, scale: 1, width: 800 });
+    await settle();
+    r.say(drawn);
+    await tick();
+    stage.setGuestSize({ ...fit, width: 1000 });
+    stage.input({ type: "releaseAll" });
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit, scale: 1, width: 800 }]);
+    stage.input(input);
+    await tick();
+    expect(r.sizes().at(-1)).toEqual({ stream: "s1", ...fit, width: 1000 });
+  });
+
+  it("asks for a fixed setting once, including through a resized reopen", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    const fixed = { mode: "fixed", width: 1920, height: 1200, detail: "faster" } as const;
+    h.setGuestSize(fixed);
+    await settle();
+    r.say(drawn);
+    await tick(1);
+    r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+    h.setGuestSize({ ...fixed });
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fixed }]);
+  });
+
+  it("stops asking quietly when sizing is unsupported", async () => {
+    const r = rig([], [{ ok: false, reason: "unsupported" }]);
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    h.setGuestSize({ ...fit, width: 1000 });
+    h.input(input);
+    r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }]);
+    expect(h.view().status).toBe("live");
+  });
+
+  it("waits for input after elsewhere, then asks for the current room even if it stays put", async () => {
+    const elsewhere = { ok: false, reason: "elsewhere" } as const;
+    const r = rig([], [elsewhere, elsewhere]);
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    const room = { ...fit, width: 1000 };
+    h.setGuestSize(room);
+    h.input({ type: "releaseAll" });
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }]);
+    h.input(input);
+    expect(r.posted.at(-1)).toMatchObject({ t: "input", event: input });
+    await tick();
+    expect(r.sizes().at(-1)).toEqual({ stream: "s1", ...room });
+    h.input(input);
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }, { stream: "s1", ...room }, { stream: "s1", ...room }]);
+  });
+
+  it("also retries when input arrives while the elsewhere answer is in flight", async () => {
+    const result = Promise.withResolvers<VideoSizeAnswer>();
+    const r = rig([], [result.promise]);
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    h.input(input);
+    result.resolve({ ok: false, reason: "elsewhere" });
+    await settle();
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }, { stream: "s1", ...fit }]);
+  });
+
+  it("keeps playing on an RPC error and waits for the room to change before asking again", async () => {
+    const r = rig([], [new Error("no such method")]);
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    await tick();
+    expect(r.sizes()).toHaveLength(1);
+    expect(h.view().status).toBe("live");
+    h.setGuestSize({ ...fit, width: 1000 });
+    await tick();
+    expect(r.sizes()).toHaveLength(2);
+  });
+
+  it("asks after reopening only if the room changed", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    h.setGuestSize(fit);
+    await settle();
+    r.say(drawn);
+    await tick();
+    r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+    await settle();
+    r.say(drawn);
+    await tick();
+    expect(r.sizes()).toEqual([{ stream: "s1", ...fit }]);
+    r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+    h.setGuestSize({ ...fit, width: 1000 });
+    await settle();
+    await tick();
+    expect(r.sizes()).toHaveLength(1);
+    r.say(drawn);
+    await tick(1);
+    expect(r.sizes().at(-1)).toEqual({ stream: "s3", ...fit, width: 1000 });
+  });
+});
 
 describe("where a stream's socket is, and what a closed one does next", () => {
   it("puts the stream's socket beside the RPC socket, with the ticket and nothing of the old address", () => {
@@ -157,6 +373,32 @@ describe("the window's streams", () => {
     await settle();
     expect(r.posted.at(-1)).toEqual({ t: "open", stream: 1, url: "wss://box.example/video/s2?ticket=t2", drive: true });
     expect(r.posted.filter((m) => m.t === "bind")).toEqual([{ t: "bind", surface: 1, stream: 1 }]);
+  });
+
+  it("reopens resized at once, with its live canvas and all five ordinary retries", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "vm:windows", drive);
+    await settle();
+    h.show(r.canvas());
+    r.say(drawn);
+    for (let i = 0; i <= VIDEO_RETRIES; i++) {
+      r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+      expect(r.opens()).toHaveLength(i + 2);
+      await settle();
+    }
+    expect(h.view()).toEqual({ status: "live", width: 1280, height: 800 });
+    expect(r.posted.at(-1)).toEqual({ t: "open", stream: 1, url: "wss://box.example/video/s7?ticket=t7", drive: true });
+    expect(r.posted.filter((m) => m.t === "bind")).toEqual([{ t: "bind", surface: 1, stream: 1 }]);
+    for (const delay of RETRY_DELAYS_MS) {
+      r.say({ t: "closed", stream: 1, code: 1006 });
+      await tick(delay);
+    }
+    expect(r.opens()).toHaveLength(2 * VIDEO_RETRIES + 2);
+    r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.resized });
+    expect(r.opens()).toHaveLength(2 * VIDEO_RETRIES + 3);
+    await settle();
+    r.say({ t: "closed", stream: 1, code: 1006 });
+    expect(h.view()).toEqual({ status: "over", face: "picture" });
   });
 
   it("switches the worker to watch on hand back and waits for a new ticket before driving again", async () => {

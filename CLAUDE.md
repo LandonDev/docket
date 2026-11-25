@@ -250,7 +250,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   on descriptor 3: Capture/VideoCapture.swift, ComputerService/Video.swift, the flow in
   ComputerServiceKit/FlowControl.swift); a PC's from tc-computer.exe on a named pipe: Windows.Graphics.Capture and
   Media Foundation's H.264 encoder, native/tc-computer-win/src/video and src/platform/video.rs, §30 "The Windows service"); the desktop's worker viewer
-  (lib/video, 24 ms drive hold, fresh keyframe when behind), Computers page (surfaces/ComputersView.tsx)
+  (lib/video, 24 ms drive hold, guest size requests), Computers page (surfaces/ComputersView.tsx)
   and raw pointer input (`VideoInput`); the phone's viewer (ios/TempCodeClient Video/, `LivePicture`). [docs/agents/live-video.md](docs/agents/live-video.md)
 - **Keep awake** — the Mac's display held awake while threads work (server/keepAwake.ts); a passwordless screen saver is not a lock (shared/screenState.ts). [docs/box.md](docs/box.md) "Keep awake"
 - **Background work and watching** — background tasks on the session row, the

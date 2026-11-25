@@ -8,7 +8,8 @@ import { cn } from "@renderer/lib/cn";
 import { CLICK_MARK } from "../../../lib/ease";
 import { useComputerPreview, type PreviewState } from "../../../lib/computerPreview";
 import { loadToast } from "@renderer/components/ui/toaster";
-import { useComputerVideo, type VideoDrive } from "../../../lib/computerVideo";
+import type { Room } from "@server/shared/video/guestSize";
+import { useComputerVideo, type GuestSizeSetting, type VideoDrive } from "../../../lib/computerVideo";
 import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
@@ -348,12 +349,16 @@ export function useLiveStream(
     take = true,
     drive = true,
     inset = 0,
+    room,
+    guestSize,
   }: {
     take?: boolean;
     /** false for a place that only shows it: a tile */
     drive?: boolean;
     /** what the measured element holds around the picture, in CSS pixels (the right panel's section, VIEWPORT_INSETS) */
     inset?: number;
+    room?: Room;
+    guestSize?: GuestSizeSetting;
   } = {},
 ): LiveStream {
   const pictureCanvas = useRef<HTMLCanvasElement>(null);
@@ -391,7 +396,7 @@ export function useLiveStream(
 
   const on = run && !!entry && boxWidth > 0;
   // he drives the page of a row kept for him: its stream is the one his input goes down
-  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner" });
+  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner", room, guestSize });
   const picture = useComputerPreview(entry ?? NO_ENTRY, { run: on && video.gaveWay, boxWidth, canvas: pictureCanvas, box, onClick });
   if (video.gaveWay) return { state: picture.state, retry: picture.retry, canvas: pictureCanvas, ring, mode: "picture", drive: null };
   return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video", drive: video.drive };

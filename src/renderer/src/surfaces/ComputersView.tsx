@@ -12,7 +12,7 @@ import { driveName, handBack, tileKey, useComputers, viewKey, type ComputerTile 
 import { registry } from "../lib/connection/registry";
 import { useDriveHold } from "../lib/driveHold";
 import { previewContext } from "../lib/computerSessions";
-import { offerFullScreen, openFullWindow, screenRectOf } from "../lib/fullWindow";
+import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
@@ -76,7 +76,8 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   // no stream is asked for while the host's link is down: it is asked for again, as a place shown again, when the link is back
-  const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage });
+  const full = useFullWindow();
+  const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage, room: place.stage && !full ? place.room : undefined });
   // the stage's Hand back wears the leave chord: no toast says it again
   useDrivingInput(stream, box, drivenScreen(tile.computer), { chordShown: place.stage });
   useEffect(() => {

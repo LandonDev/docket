@@ -155,6 +155,27 @@ source with no `size` of its own (`VideoSource.size`). Every source answers
 `fixed` takes one of `VIDEO_FIXED_SIZES` (1280×800, 1920×1200, 2560×1600),
 the guest's own pixels.
 
+The desktop sends `video.size` only from a drive stream with a room from
+the Computers stage, full screen or the pop-out. Fit sends the whole room
+in CSS points and the window's device pixel ratio. Those are the inputs
+to `guestSizeFor`, along with the host's cap. The stage uses its layout's
+room, full screen uses the window, and the pop-out uses its own window
+above the bar. The place can pass a `GuestSizeSetting`. It defaults to Fit
+and Sharp. A fixed size goes out once when he takes over, then again if
+he picks a different size or detail. The host's settings will supply the
+choice in a later slice.
+
+When two places show the same drive stream, the last place opened supplies
+the room until he sends input from another. The stage yields its room
+while full screen covers it.
+
+The first Fit ask waits for a frame from the drive stream and for the
+room to settle. A new ticket keeps the last ask, so a reopen by itself
+sends nothing. `unsupported` ends sizing for that stream. `elsewhere`
+leaves the picture on matte and waits for his next input here before
+asking for the current room. Errors are quiet. On success the viewer
+waits for the host's `resized` close.
+
 ## The ticket
 
 `RemoteAuth.mintStreamTicket` and `consumeStreamTicket` (remote/auth.ts): 30
@@ -490,6 +511,8 @@ first wanted; nothing of it is in the first paint.
   at least 250 ms behind the recent low offset between the capture and
   viewer clocks for 500 ms, the viewer drops the queue and reopens at once
   with a fresh ticket and keyframe. The last frame stays on the canvas.
+  A `resized` close (4108) also opens at once with a fresh ticket and
+  keeps that frame on the canvas. It leaves the retry count as it was.
   A drop that named no reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
   the canvas, then the 4 fps picture. A frame drawn in between starts the
