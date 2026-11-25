@@ -229,7 +229,7 @@ export function TodayPageView({
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
         ) : block.kind === "lost" ? (
           // A job's session on another host that is down: said once for the page, with what every section left out.
-          <div key={`lost:${block.failure.environmentId}:${block.failure.down}`} data-today-lost={block.failure.down} className="mt-6 first:mt-0">
+          <div key={`lost:${block.failure.environmentId}:${block.failure.down ?? "connecting"}`} data-today-lost={block.failure.down ?? "connecting"} className="mt-6 first:mt-0">
             <HostLine failure={block.failure} name={hostName(block.failure.environmentId)} />
           </div>
         ) : (
@@ -417,6 +417,8 @@ function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; en
  */
 function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
   if (failure.down) return <LostLine down={failure.down} failure={failure} name={name} />;
+  // A job's session on another host waits on that host's LifeOS: the wait, the computer named, what it left out, no press.
+  if (failure.waits) return <PageLine waits word={connectingWords(name)} note={failure.said} />;
   // The state is the word, whole; what to do about it is the muted detail, which gives way first on a narrow page.
   const [word, detail] = failure.said ? [failure.said] : splitFirst(hostFailureWords(failure.error, name));
   return <PageLine failed word={word!} detail={detail} action={failure.retry ? { label: "Retry", run: failure.retry } : undefined} />;

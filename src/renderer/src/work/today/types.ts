@@ -116,6 +116,11 @@ export type TodayFailure = {
   left?: { job?: string; what: string };
   /** With `down`: the sector of the session that is down, so Retry asks that host for that session alone. */
   sector?: SectorKey | null;
+  /**
+   * In place of `down`: the job's session on another host waits on that host's LifeOS, which said it is connecting. Said
+   * once for the page with what it left out, the computer named, with no press (model.ts `page`).
+   */
+  waits?: true;
   retry?(): void | Promise<void>;
 };
 

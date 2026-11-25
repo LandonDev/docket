@@ -121,7 +121,7 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
     // The same line twice (two sources that say one thing of one host) is drawn once.
     const into = (own ?? sections.get(ALSO.id)!).failed;
     // Two down sessions of one host (a silent one, one kept from this computer) are two facts, never one.
-    for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error && g.down === f.down && g.sector === f.sector)) into.push(f);
+    for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error && g.down === f.down && g.waits === f.waits && g.sector === f.sector)) into.push(f);
     if (away || answer.away) (own ?? sections.get(ALSO.id)!).away = true;
     if (!own) continue;
     if (answer.loading) own.loading = true;
@@ -302,14 +302,14 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
       said = true;
       continue;
     }
-    const lost = section.failed.filter((f) => f.down);
+    const lost = section.failed.filter(lostTo);
     if (lost.length) {
       for (const f of lost) {
-        const key = `${f.environmentId}|${f.down}`;
+        const key = lostKey(f);
         if (!lostAt.has(key)) blocks.push({ kind: "lost", failure: f });
         lostAt.set(key, [...(lostAt.get(key) ?? []), f]);
       }
-      section = { ...section, failed: section.failed.filter((f) => !f.down), left: true };
+      section = { ...section, failed: section.failed.filter((f) => !lostTo(f)), left: true };
     }
     // A session on its way: a LifeOS section that has no rows yet is still to answer.
     const waiting = opts.lifeos === "waiting" && !!section.def.lifeos;
@@ -324,7 +324,7 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   }
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
-    if (block.kind === "lost") blocks[i] = { kind: "lost", failure: lostLine(lostAt.get(`${block.failure.environmentId}|${block.failure.down}`)!) };
+    if (block.kind === "lost") blocks[i] = { kind: "lost", failure: lostLine(lostAt.get(lostKey(block.failure))!) };
   }
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
   // LifeOS out of reach matters only where a section reads it: `said` is set when one gave way.
@@ -343,6 +343,11 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
  * down session (`left`, said by the page's line) or to an offline host the foot names (`away`).
  */
 const bare = (s: ShownSection, footNames: boolean): boolean => s.state === "empty" && s.failed.length === 0 && !s.note && (!!s.left || (s.away && footNames));
+
+/** A read lost to a job's session on another host, said once for the page: down, or waiting on that host's LifeOS. */
+const lostTo = (f: TodayFailure): boolean => !!f.down || !!f.waits;
+/** One line a host and state: a wait is its own state beside the down ones. */
+const lostKey = (f: TodayFailure): string => `${f.environmentId}|${f.down ?? (f.waits ? "connecting" : "")}`;
 
 /** "a", "a and b", "a, b and c". */
 const listed = (items: readonly string[]): string => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
@@ -365,6 +370,7 @@ export function lostLine(failures: readonly TodayFailure[]): TodayFailure {
     environmentId: first.environmentId,
     error: first.error,
     ...(first.down ? { down: first.down } : {}),
+    ...(first.waits ? { waits: true as const } : {}),
     ...(said ? { said } : {}),
     ...(retries.length ? { retry: async () => void (await Promise.all(retries.map((r) => r()))) } : {}),
   };

@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "connecting" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere" | "waits-elsewhere" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "connecting" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -104,6 +104,22 @@ function modelOf(state: State) {
           fed(FILES, {}),
         ],
         opts("ok", [...JOBS.filter((j) => j.sector !== "ref" && j.sector !== "unify"), job("mac", "ref"), job("mac", "unify")]),
+      );
+    }
+    case "waits-elsewhere": {
+      // Council round 12: the Mac's jobs are read through its own session, and the Mac says its LifeOS is connecting.
+      // One named wait for the page, by host, with what every section left out and no press.
+      const waits = (what: string) => ({ environmentId: "mac", error: "", waits: true as const, sector: "ref" as const, said: `${JOB_NAMES.ref!}'s ${what} left out`, left: { job: JOB_NAMES.ref!, what } });
+      const onBox = (r: TodayRow): boolean => r.sector !== "ref";
+      return page(
+        [
+          fed(HELD, { rows: HELD_ROWS.filter(onBox).slice(0, 1) }),
+          fed(MEETINGS, { rows: MEETING_ROWS.slice(2).filter(onBox), failed: [waits("meetings")] }),
+          fed(DUE, { rows: DUE_ROWS.filter(onBox).slice(0, 3), failed: [waits("tasks")] }),
+          fed(WAITING, { rows: [], failed: [waits("mail")] }),
+          fed(FILES, {}),
+        ],
+        opts("ok", [...JOBS.filter((j) => j.sector !== "ref"), job("mac", "ref")]),
       );
     }
     case "refused":

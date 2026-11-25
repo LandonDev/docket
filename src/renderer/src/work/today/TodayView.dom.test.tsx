@@ -491,6 +491,27 @@ describe("Today", () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
+  /** Council round 12 (Sol, Today 1 P2): a job read through another computer whose LifeOS is connecting is named, by host, with no press. */
+  it("says a job's read waiting on another computer's connecting LifeOS once, the computer named, with what it left out and no press", async () => {
+    await loadOutbox();
+    const waits = (what: string): TodaySource => ({
+      id: what,
+      section: { id: what, title: what, order: 60, empty: "None" },
+      use: () => ({ rows: [], failed: [{ environmentId: "mac", error: "", waits: true as const, sector: "ref" as const, left: { job: "Refereeing", what }, said: `Refereeing's ${what} left out` }] }),
+    });
+    resetToday([held, waits("tasks"), waits("meetings")]);
+    render(<View onClose={() => {}} />);
+    const lines = [...document.querySelectorAll<HTMLElement>("[data-today-lost] [data-view-state]")];
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.closest("[data-today-lost]")!.getAttribute("data-today-lost")).toBe("connecting");
+    expect(lines[0]!.getAttribute("data-view-state")).toBe("waits");
+    expect(lines[0]!.textContent).toBe("LifeOS is still connecting on MacRefereeing's tasks and meetings left out");
+    expect(within(lines[0]!).queryByRole("button")).toBeNull();
+    // The sections it emptied draw no heading over nothing, and never say they are empty.
+    expect(document.querySelector('[data-today-section="tasks"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("None");
+  });
+
   it("draws a section's bones in the shape of its rows: two lines, or a tick before one", async () => {
     await loadOutbox();
     const waiting = { loading: true };

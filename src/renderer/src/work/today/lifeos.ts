@@ -5,6 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { lifeosHostName, reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { connectingWords } from "../shell/lifeosWords";
 import { downOf, type LifeosDown } from "../shell/lifeosDown";
+import { useHostLive } from "../shell/lifeosLive";
 import type { LifeosReach } from "./model";
 import { toastUp } from "./store";
 import type { TodayAnswer, TodayEnv, TodayFailure, TodayRow, TodayWorkspace } from "./types";
@@ -69,19 +70,28 @@ export function uncoveredOf(cover: "all" | readonly string[] | null, jobs: reado
   return [...new Set(jobs.map((job) => job.sector).filter((sector) => !cover.includes(sector) && !read.has(sector)))];
 }
 
-type Slot<V> = { query: LifeosQuery<V>; session: LifeosSession } | null;
+type Slot<V> = { query: LifeosQuery<V>; session: LifeosSession; waits: boolean } | null;
 
-/** One sector's slot: its narrowed session and query while the sector is lacking, idle otherwise. Always the same hooks. */
+/**
+ * One sector's slot: its narrowed session and query while the sector is lacking, idle otherwise. Always the same hooks.
+ * `waits`: its host said its LifeOS is connecting and the session has no client yet, so the read waits on it.
+ */
 function useSlot<V>(sector: SectorKey, lacking: ReadonlyMap<SectorKey, string>, name: string, args: Record<string, unknown>): Slot<V> {
   const host = lacking.get(sector) ?? null;
   const session = useLifeosSession(host ?? "", sector);
   const query = useLifeosQuery<V>(host ? session : IDLE, name, host ? { ...args, sector } : args);
+  const live = useHostLive(host ?? "");
+  const waits = !!host && !session.client && live.waits;
   // The same object while the query and the session are the same: what reads it is memoised on it.
-  return useMemo(() => (host ? { query, session } : null), [host, query, session]);
+  return useMemo(() => (host ? { query, session, waits } : null), [host, query, session, waits]);
 }
 
-/** A read some job needs that did not come back: the session's cover (`sector` null), one sector's narrowed read, or a sector no open host's session can read at all. */
-export type Lost = { environmentId: string; sector: SectorKey | null; error: string; down?: LifeosDown | null };
+/**
+ * A read some job needs that did not come back: the session's cover (`sector` null), one sector's narrowed read, or a
+ * sector no open host's session can read at all. `waits`: a narrowed read waiting on a host that said its LifeOS is
+ * connecting (no error, no press).
+ */
+export type Lost = { environmentId: string; sector: SectorKey | null; error: string; down?: LifeosDown | null; waits?: true };
 
 /** What a sector no session covers fails with. */
 export const NOT_COVERED = "No signed-in host can read this job";
@@ -172,6 +182,9 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     }
     each.forEach((slot, at) => {
       const sector = SLOTS[at]!;
+      // A read that waits on a host whose LifeOS said it is connecting is a known state, said with what it leaves out;
+      // once that host is back, the read is out and the section shows its own loading.
+      if (slot?.status === "loading" && [a, b, c, d, e, f][at]?.waits) return void lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: "", waits: true });
       if (slot?.status === "loading") pending = true;
       // A narrowed session that is down keeps its true state, so the line says it by the rule and asks again only where that can help.
       const narrowed = [a, b, c, d, e, f][at]?.session;
@@ -211,6 +224,9 @@ export function answerOf(
     // No session covers the job: asking again reads with the same cover, so the line says the cause and offers no Retry.
     // It goes by itself when a host that can read the job is back.
     if (error === NOT_COVERED) return { environmentId, error, said: `No signed-in host can read ${of}` };
+    // The job's own session, on another host, waits on that host's LifeOS: said once for the page as a wait, with what it
+    // left out, and no press.
+    if (lost.waits) return { environmentId, error, waits: true, sector, left: { ...(job ? { job } : {}), what }, said: `${of.charAt(0).toUpperCase()}${of.slice(1)} left out` };
     // The job's own session, on another host, is down: said once for the page (model.ts `page`), its state by the rule
     // with what it left out; its press is the rule's (`downPress`), and its Retry asks that host for that session alone.
     if (down) return { environmentId, error, down, sector, left: { ...(job ? { job } : {}), what }, said: `${of.charAt(0).toUpperCase()}${of.slice(1)} left out`, retry: () => read.retryLost(lost) };

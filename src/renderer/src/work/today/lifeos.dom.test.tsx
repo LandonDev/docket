@@ -138,6 +138,28 @@ describe("useLifeosRows", () => {
     expect(downPress(failure!.down!)).toBeNull();
   });
 
+  /**
+   * Council round 12 (Sol, Today 1 P2): a job read on another host whose LifeOS says it is connecting was only pending,
+   * so its sections loaded with no word. It is a known wait now, with what it leaves out; once that host is back, the
+   * read is out (pending) and nothing is lost.
+   */
+  it("carries a job's read that waits on another host's connecting LifeOS as a wait, then its loading once that host is back", async () => {
+    const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "mac", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => new Promise(() => {}) } as never);
+    setLifeosStatus("mac", { lifeos: { state: "connecting" }, keys: [] } as never);
+    const env = envOf(fakeSession("box", box), [job("box", "purdue"), job("mac", "ref")]);
+    const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
+    await waitFor(() => expect(result.current.lost).toMatchObject([{ environmentId: "mac", sector: "ref", waits: true }]));
+    expect(result.current.pending).toBe(false);
+    expect(result.current.rows?.map(idOf)).toEqual(["t1"]);
+    const [failure] = answerOf(result.current, [], env.lifeos, "tasks", undefined, (sector) => (sector === "ref" ? "Refereeing" : undefined)).failed!;
+    expect(failure).toEqual({ environmentId: "mac", error: "", waits: true, sector: "ref", left: { job: "Refereeing", what: "tasks" }, said: "Refereeing's tasks left out" });
+    // The host says connected: the session's JWT is out, so the read is pending and nothing is lost.
+    act(() => setLifeosStatus("mac", { lifeos: { state: "connected", ownerId: "owner", since: 1 }, keys: [] }));
+    await waitFor(() => expect(result.current.lost).toEqual([]));
+    expect(result.current.pending).toBe(true);
+  });
+
   /** Council round 8 (Sol, Today 2 P1): Retry on a job's silence line reopened every lost session of the section. */
   it("binds a lost read's Retry to its own host and sector: the box's line asks the box alone, never the computer that withheld", async () => {
     const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
