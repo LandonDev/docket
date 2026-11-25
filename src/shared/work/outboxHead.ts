@@ -31,12 +31,14 @@ const NOUN: Record<ActKind, [string, string, string]> = {
 const MAIL: readonly ActKind[] = ["mail.send", "office.mail.send"];
 
 type Address = { address?: unknown };
-/** Every address a mail goes to, lower case. */
+/** Every address a mail goes to, lower case: a held mail's fields, or an add-on call's own `to`, `cc` and `bcc`. */
 function recipients(item: Pick<HeadItem, "payload">): string[] {
-  const p = (item.payload ?? {}) as { message?: Record<string, unknown> } & Record<string, unknown>;
-  const m = (p.message && typeof p.message === "object" ? p.message : p) as Record<string, unknown>;
-  return ["to", "cc", "bcc"].flatMap((k) => (Array.isArray(m[k]) ? (m[k] as Address[]) : [])).flatMap((a) => (typeof a?.address === "string" ? [a.address.toLowerCase()] : []));
+  const p = (item.payload ?? {}) as { message?: Record<string, unknown>; arguments?: Record<string, unknown> } & Record<string, unknown>;
+  const m = (p.message && typeof p.message === "object" ? p.message : p.arguments && typeof p.arguments === "object" ? p.arguments : p) as Record<string, unknown>;
+  const one = (a: unknown): string[] => (typeof a === "string" && a.includes("@") ? [a.toLowerCase()] : typeof (a as Address)?.address === "string" ? [((a as Address).address as string).toLowerCase()] : []);
+  return ["to", "cc", "bcc"].flatMap((k) => (Array.isArray(m[k]) ? (m[k] as unknown[]) : m[k] !== undefined ? [m[k]] : [])).flatMap(one);
 }
+const peopleWords = (n: number): string => `${n} ${n === 1 ? "person" : "people"}`;
 
 export const joinWords = (parts: readonly string[]): string => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? ""));
 const lower = (s: string): string => s[0]!.toLowerCase() + s.slice(1);
@@ -81,10 +83,12 @@ function groupParts(items: readonly HeadItem[], bare: boolean): string[] {
   return [...groups].map(([key, g], i) => {
     const n = g.items.length;
     if (key.startsWith("addon:") && !bare) {
-      // An add-on's call by what it does, in the tool's and the add-on's own words: "Echo with League, 3 times".
+      // An add-on's call by what it does, in the tool's and the add-on's own words: "Echo with League, 3 times"; one
+      // that names its people says who instead: "Send mail with Purdue mail to 2 people".
       const p = (g.items[0]!.payload ?? {}) as { words?: unknown; tool?: unknown; addon?: unknown };
       const words = String(p.words ?? p.tool ?? "Run");
-      const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${n > 1 ? `, ${n} times` : ""}`;
+      const people = new Set(g.items.flatMap(recipients)).size;
+      const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${people ? ` to ${peopleWords(people)}` : n > 1 ? `, ${n} times` : ""}`;
       return i ? lower(part) : part;
     }
     // An add-on call's verb is its tool's own words: generic, it is the kind's ("Run 2 calls").
@@ -92,7 +96,7 @@ function groupParts(items: readonly HeadItem[], bare: boolean): string[] {
     let part = `${i ? lower(verb) : verb} ${n} ${n === 1 ? g.noun[0] : g.noun[1]}`;
     if (key === "mail" && !bare) {
       const people = new Set(g.items.flatMap(recipients)).size;
-      if (people) part += ` to ${people} ${people === 1 ? "person" : "people"}`;
+      if (people) part += ` to ${peopleWords(people)}`;
     }
     return part;
   });

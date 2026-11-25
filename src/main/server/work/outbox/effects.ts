@@ -15,7 +15,6 @@ const PLAIN = 'Carries this out as you.'
 
 type P = Record<string, unknown> | null
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 
 /** Up to three people by name, then how many more: "Dana Lee, Sam Ortiz and 2 others". */
 export function people(list: readonly unknown[]): string {
@@ -29,39 +28,31 @@ export function people(list: readonly unknown[]): string {
   return `${names.slice(0, 2).join(', ')} and ${names.length - 2} others`
 }
 
-const day = (zone: string, at: number): string => new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' }).format(at)
-const ROLE = { view: 'view', comment: 'comment on', edit: 'edit' } as Record<string, string>
 const GOOGLE_ROLE = { reader: 'view', commenter: 'comment on', writer: 'edit' } as Record<string, string>
-const ANSWER = { accept: 'you will come to', decline: 'you will not come to', tentative: 'you might come to' } as Record<string, string>
+const ANSWER = { accept: 'you will come', decline: 'you will not come', tentative: 'you might come' } as Record<string, string>
 
 const EFFECTS: Partial<Record<ActKind, (p: P, zone: string) => string | undefined>> = {
   // Mail, posts and replies draw their From, To and place right under the sentence: it says only when, and who sees it.
   'mail.send': (p) => (p?.message ? 'Goes as your mail after your undo time.' : undefined),
+  // An invite's title, time and guests are drawn under the sentence: it says who hears it and as whom.
   'calendar.op': (p) => {
-    const title = str(p?.eventTitle) ?? str((p?.payload as P)?.title) ?? 'the event'
     const kind = str(p?.kind)
-    if (kind && ANSWER[kind]) return `Tells the organizer ${ANSWER[kind]} ${title}.`
-    if (kind === 'cancel') return `Cancels ${title} for everyone invited.`
-    if (kind === 'update') return `Changes ${title} for everyone invited.`
-    if (kind === 'propose') return `Asks the organizer to move ${title}.`
-    const guests = arr((p?.payload as P)?.attendees)
-    return `Sends an invite for ${title}${guests.length ? ` to ${people(guests)}` : ''}.`
+    if (kind && ANSWER[kind]) return `Tells the organizer ${ANSWER[kind]}.`
+    if (kind === 'cancel') return 'Cancels it for everyone invited.'
+    if (kind === 'update') return 'Changes it for everyone invited.'
+    if (kind === 'propose') return 'Asks the organizer to move it.'
+    return 'Sends the invite as you; each guest gets it.'
   },
   'office.mail.send': (p) => `${str(p?.replyTo) ? 'Your reply goes' : str(p?.forward) ? 'The forward goes' : 'Goes'} from Outlook as soon as you press.`,
   'office.calendar.op': (p) => {
-    if (p?.op === 'create') {
-      const e = (p.event ?? null) as P
-      return `Sends an Outlook invite for ${str(e?.subject) ?? 'the event'} to ${people(arr(e?.attendees))}.`
-    }
+    if (p?.op === 'create') return 'Sends the Outlook invite as you; each guest gets it.'
     const answer = str(p?.answer)
-    return `Tells ${str(p?.organizer) ?? 'the organizer'} ${(answer && ANSWER[answer]) ?? 'your answer to'} ${str(p?.subject) ?? 'the event'}.`
+    return `Tells ${str(p?.organizer) ?? 'the organizer'} ${(answer && ANSWER[answer]) ?? 'your answer'}.`
   },
   'teams.post': () => 'Posts as you; everyone in the chat sees it.',
   'chat.reply': () => 'Sends as you; everyone in the conversation sees it.',
-  'share.guestLink': (p, zone) => {
-    const until = typeof p?.expiresAt === 'number' ? ` until ${day(zone, p.expiresAt)}` : ''
-    return `Makes a link ${str(p?.name) ?? 'your guest'} opens without signing in. They can ${ROLE[str(p?.role) ?? ''] ?? 'view'} ${str(p?.title) ?? 'it'}${until}.`
-  },
+  // Who, what they can do and until when are its fields: the sentence says what a link means.
+  'share.guestLink': () => 'Anyone with the link opens it without signing in.',
   'share.google': (p) =>
     `Lets ${str(p?.email) ?? 'them'} ${GOOGLE_ROLE[str(p?.role) ?? ''] ?? 'open'} ${str(p?.name) ?? 'the file'} in Google Drive${p?.notify ? ', and Google mails them' : ''}.`,
   'form.publish': (p) => `Publishes ${str(p?.title) ?? 'the form'}: anyone with its link can answer.`,
@@ -82,8 +73,8 @@ const EFFECTS: Partial<Record<ActKind, (p: P, zone: string) => string | undefine
 
 /** The sentence for an item: the kind's own, else the table's, else the plain line; a date on `zone`'s wall clock (his). Never throws. */
 export function effectOf(kind: ActKind, payload: unknown, zone: string, own?: (p: unknown) => string, scheduled = false): string {
-  // A time he set is what decides when it goes: "as soon as you press" would be untrue.
-  if (scheduled) return 'Goes at the time you set, as you.'
+  // The time he set leads the item: the sentence says only as whom ("as soon as you press" would be untrue).
+  if (scheduled) return 'Sends as you.'
   try {
     const said = own?.(payload) ?? EFFECTS[kind]?.((payload ?? null) as P, zone)
     if (said) return said

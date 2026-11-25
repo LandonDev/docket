@@ -96,8 +96,9 @@ digest's tells (`syncTells`) and the phone all read it, and one fixture
 **What a press does.** Every item carries `effect`, one sentence of what
 the fields drawn under it do not say: when it goes and who sees it ("Goes
 as your mail after your undo time.", "Posts as you; everyone in the chat
-sees it."), never the people or the place the fields already name; a
-scheduled item's says "Goes at the time you set, as you.": a kind's own `ActKindDef.effect`, else
+sees it.", "Anyone with the link opens it without signing in."), never the
+people, place, title, time or role the fields already name; a scheduled
+item's says "Sends as you.", its time leading the item: a kind's own `ActKindDef.effect`, else
 work/outbox/effects.ts, else "Carries this out as you." A change to a
 file others can open says only "Changes a file others can open." to a
 caller that cannot press, with no first words and no reason (`seenBy`).

@@ -8,10 +8,10 @@ describe('what a press does, in one sentence', () => {
     const cases: [Parameters<typeof effectOf>[0], unknown, string][] = [
       // the fields under it name who: the sentence says when, and who sees it
       ['mail.send', { message: { from: { address: 'landon@purdue.edu' }, to: [{ name: 'Dana Lee', address: 'dana@x.edu' }], cc: [], bcc: [] } }, 'Goes as your mail after your undo time.'],
-      ['calendar.op', { kind: 'accept', eventTitle: 'Staff sync' }, 'Tells the organizer you will come to Staff sync.'],
-      ['calendar.op', { kind: 'create', payload: { title: 'Scrim', attendees: ['a@x'] } }, 'Sends an invite for Scrim to a@x.'],
+      ['calendar.op', { kind: 'accept', eventTitle: 'Staff sync' }, 'Tells the organizer you will come.'],
+      ['calendar.op', { kind: 'create', payload: { title: 'Scrim', attendees: ['a@x'] } }, 'Sends the invite as you; each guest gets it.'],
       ['office.mail.send', { account: 'me@purdue.edu', to: ['sam@x.edu'], cc: [], bcc: [] }, 'Goes from Outlook as soon as you press.'],
-      ['office.calendar.op', { op: 'answer', subject: 'Budget', answer: 'decline', organizer: 'Pat' }, 'Tells Pat you will not come to Budget.'],
+      ['office.calendar.op', { op: 'answer', subject: 'Budget', answer: 'decline', organizer: 'Pat' }, 'Tells Pat you will not come.'],
       ['teams.post', { chat: 'Esports staff, General', text: 'hi' }, 'Posts as you; everyone in the chat sees it.'],
       ['chat.reply', { source: 'slack', chat: '#ops', text: 'ok' }, 'Sends as you; everyone in the conversation sees it.'],
       ['share.google', { email: 'sam@x.edu', role: 'commenter', name: 'Plan', notify: true }, 'Lets sam@x.edu comment on Plan in Google Drive, and Google mails them.'],
@@ -22,8 +22,8 @@ describe('what a press does, in one sentence', () => {
     for (const [kind, payload, words] of cases) expect(effectOf(kind, payload, 'America/Chicago'), kind).toBe(words)
   })
 
-  it('says a scheduled item goes at the time he set, whatever its kind', () => {
-    expect(effectOf('office.mail.send', { to: ['a@x'] }, 'America/Chicago', undefined, true)).toBe('Goes at the time you set, as you.')
+  it('says of a scheduled item only as whom: its time leads the item, whatever its kind', () => {
+    expect(effectOf('office.mail.send', { to: ['a@x'] }, 'America/Chicago', undefined, true)).toBe('Sends as you.')
   })
 
   it('takes a kind\'s own words first, and never throws on a payload it cannot read', () => {
@@ -32,11 +32,9 @@ describe('what a press does, in one sentence', () => {
     expect(effectOf('office.edit', null, 'America/Chicago')).toBe('Changes the file for everyone who can open it, the moment you press.')
   })
 
-  it("dates a guest link's end on his wall clock, never the host's", () => {
-    // 2026-11-25 03:30 UTC: still Tuesday the 24th in Chicago, Wednesday the 25th in UTC
+  it("says what a guest link means, never its fields again: who, what they can do and its end are drawn under it", () => {
     const link = { name: 'Dana', role: 'edit', title: 'Plan', expiresAt: Date.UTC(2026, 10, 25, 3, 30) }
-    expect(effectOf('share.guestLink', link, 'America/Chicago')).toBe('Makes a link Dana opens without signing in. They can edit Plan until Tue, Nov 24.')
-    expect(effectOf('share.guestLink', link, 'UTC')).toContain('until Wed, Nov 25.')
+    expect(effectOf('share.guestLink', link, 'America/Chicago')).toBe('Anyone with the link opens it without signing in.')
   })
 
   it('names three people, then how many more', () => {
