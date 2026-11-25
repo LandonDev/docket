@@ -186,13 +186,8 @@ export function TypingBox({
       event.preventDefault();
       event.stopPropagation();
     };
-    if (event.key === "Escape") {
-      done();
-      session.cancel();
-      onLeave();
-      return;
-    }
-    if (event.key === "Enter" && modOrCtrl(event) && !event.shiftKey && !event.altKey) {
+    // Escape leaves the box as ⌘↩ does, his words kept, as PowerPoint and Keynote do: a refused send keeps them for Retry.
+    if (event.key === "Escape" || (event.key === "Enter" && modOrCtrl(event) && !event.shiftKey && !event.altKey)) {
       done();
       void session.commit();
       onLeave();

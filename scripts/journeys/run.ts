@@ -63,13 +63,14 @@ import j58 from './J58-chat-starts'
 import j59 from './J59-light-windows'
 import j60 from './J60-browser-canvas'
 import j61 from './J61-task-thread-files'
+import j74 from './J74-slide-escape'
 import { startSandbox } from './lib/lifeos'
 import { SECTOR, ZONE } from './lib/lifeosSeed'
 import { mainCheckout, saveResults, step, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words, type Cleanup } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j35, j36, j37, j38, j39, j40, j41, j42, j43, j44, j45, j46, j47, j48, j49, j50, j51, j52, j53, j54, j55, j56, j57, j58, j59, j60, j61]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j35, j36, j37, j38, j39, j40, j41, j42, j43, j44, j45, j46, j47, j48, j49, j50, j51, j52, j53, j54, j55, j56, j57, j58, j59, j60, j61, j74]
 
 const needsSandbox = ({ id, shapes }: typeof JOURNEYS[number]) => shapes.includes('S') || ['J48', 'J49', 'J59'].includes(id)
 type Job = { spec: typeof JOURNEYS[number]; shape: typeof SHAPES[number] }

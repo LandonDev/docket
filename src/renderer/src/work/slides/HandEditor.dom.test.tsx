@@ -184,7 +184,7 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe("typing on a slide", () => {
-  it("a second press on a picked text shape opens the box over it in its words and look; Escape puts them back", async () => {
+  it("a second press on a picked text shape opens the box over it in its words and look; Escape leaves it", async () => {
     const { press, title, layer } = await stage();
     press(0.5, 0.2);
     expect(title().getAttribute("aria-pressed")).toBe("true");
@@ -205,9 +205,37 @@ describe("typing on a slide", () => {
     // Its outline and handles stay on it.
     expect(layer.querySelector("[data-slide-selection]")).not.toBeNull();
     fireEvent.keyDown(words, { key: "Escape" });
-    expect(layer.querySelector("[data-slide-typing]")).toBeNull();
+    await waitFor(() => expect(layer.querySelector("[data-slide-typing]")).toBeNull());
     expect(document.activeElement).toBe(title());
     expect(edits()).toEqual([]);
+  });
+
+  it("Escape leaves the box and keeps what he typed, as PowerPoint and Keynote do: one runs edit with his words", async () => {
+    const { words, title } = await typing();
+    (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "Who now ";
+    fireEvent.input(words);
+    fireEvent.keyDown(words, { key: "Escape" });
+    expect(document.activeElement).toBe(title());
+    await waitFor(() => expect(edits()).toHaveLength(1));
+    expect(JSON.stringify(edits()[0])).toContain("Who now ");
+  });
+
+  it("Escape after a refused save leaves the box with his words held for Retry, never dropped", async () => {
+    const { words, layer, title } = await typing();
+    deckHost.refuse = "Nothing was written: the deck could not be read.";
+    (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "Who now ";
+    fireEvent.input(words);
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(stateLine()).toContain("Couldn't save your words"));
+    fireEvent.keyDown(layer.querySelector("[data-slide-typing] [role=textbox]")!, { key: "Escape" });
+    expect(document.activeElement).toBe(title());
+    await waitFor(() => expect(layer.querySelector("[data-slide-typing]")?.getAttribute("data-phase")).toBe("typing"));
+    expect(layer.querySelector("[data-slide-typing]")!.textContent).toBe("Who now comes");
+    expect(stateLine()).toContain("Couldn't save your words");
+    deckHost.refuse = null;
+    fireEvent.click(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(stateLine()).toBe(""));
+    expect(JSON.stringify(edits().at(-1))).toContain("Who now ");
   });
 
   it("Return on a picked shape opens it with its words selected, F2 with the caret at their end; a picture takes neither", async () => {
@@ -217,11 +245,13 @@ describe("typing on a slide", () => {
     const words = await found("[data-slide-typing] [role=textbox]");
     expect(document.getSelection()!.toString()).toBe("Who comes");
     fireEvent.keyDown(words, { key: "Escape" });
+    await waitFor(() => expect(layer.querySelector("[data-slide-typing]")).toBeNull());
     fireEvent.keyDown(title(), { key: "F2" });
     await found("[data-slide-typing]");
     const sel = document.getSelection()!;
     expect(sel.isCollapsed).toBe(true);
     fireEvent.keyDown(document.querySelector("[data-slide-typing] [role=textbox]")!, { key: "Escape" });
+    await waitFor(() => expect(layer.querySelector("[data-slide-typing]")).toBeNull());
     const pic = layer.querySelector<HTMLElement>('[data-shape="4"]')!;
     act(() => pic.focus());
     fireEvent.keyDown(pic, { key: "Enter" });

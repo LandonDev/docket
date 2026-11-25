@@ -52,7 +52,6 @@ describe("his hand on a deck", () => {
     write();
     await sending;
     store.view({ ...store.get().view!, hand: undefined });
-    session.cancel();
     expect(session.open(slide, store.get().view!.slides[0].shapes[0], "end")).toBe(false);
   });
 
@@ -99,8 +98,27 @@ describe("his hand on a deck", () => {
     expect(session.get().redo).toBe(true);
     session.redo();
     expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comesab");
-    session.cancel();
-    expect(session.get().box).toBeNull();
+  });
+});
+
+describe("leaving the box keeps his words", () => {
+  it("after a refused save, leaving again keeps them pending for Retry: never dropped, never said saved", async () => {
+    const { host, session, slide, shape } = setUp();
+    session.open(slide, shape, "end");
+    type(session, " today");
+    host.refuse = "Nothing was written: the deck could not be read.";
+    await session.commit();
+    // Escape after the refusal: the same commit, refused again.
+    await session.commit();
+    expect(session.get().box).toMatchObject({ phase: "typing" });
+    expect(session.draftWords()).toBe("Who comes today");
+    expect(session.get().failure?.message).toBe("Nothing was written: the deck could not be read.");
+    expect(session.saved(() => undefined).state).not.toBe("saved");
+    await expect(session.flush()).rejects.toThrow("Nothing was written");
+    host.refuse = null;
+    await session.commit();
+    expect(JSON.stringify(host.calls.filter(([name]) => name === "edit").at(-1)![1])).toContain("Who comes today");
+    expect(session.get().failure).toBeNull();
   });
 });
 
@@ -126,7 +144,7 @@ describe("words in an open box reach the file while he types", () => {
     }
   });
 
-  it("each new word moves the pause on, and Escape puts back only what was typed since the last send", async () => {
+  it("each new word moves the pause on, and leaving the box (Escape, as a press away) sends what was typed since", async () => {
     vi.useFakeTimers();
     try {
       const { host, session, slide, shape } = setUp();
@@ -141,9 +159,11 @@ describe("words in an open box reach the file while he types", () => {
       expect(edits).toHaveLength(1);
       expect(JSON.stringify(edits[0]![1])).toContain("Who comes today");
       type(session, "!");
-      session.cancel();
+      await session.commit();
       await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
-      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+      const sent = host.calls.filter(([name]) => name === "edit");
+      expect(sent).toHaveLength(2);
+      expect(JSON.stringify(sent[1]![1])).toContain("Who comes today!");
     } finally {
       vi.useRealTimers();
     }
@@ -495,8 +515,11 @@ describe("a close while the box's words are on their way", () => {
     const other = store.get().view!.slides[0].shapes[0];
     expect(session.open(store.get().view!.slides[0], other, "all")).toBe(false);
     expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comes today");
-    // Escape puts his words back; then a box opens.
-    session.cancel();
+    // Leaving the box does not drop them; Reload keeps them over the new words, and once they are written a box opens.
+    await session.commit();
+    expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comes today");
+    await session.reload();
+    await session.commit();
     expect(session.open(store.get().view!.slides[0], other, "all")).toBe(true);
   });
 

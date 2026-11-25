@@ -32,8 +32,8 @@ import {
  * edits on their way to the host. The stage, the format row and the bar all
  * read it; the box's page side lives in TypingBox.tsx.
  *
- * The box's life: `typing` (he types; a press outside or ⌘↩ commits, Escape
- * puts the words back), `saving` (the `runs` edit is on its way; the box
+ * The box's life: `typing` (he types; a press outside, ⌘↩ or Escape
+ * commits), `saving` (the `runs` edit is on its way; the box
  * shows his words and takes no pointer), `landing` (the host wrote it; the
  * box stays until the stage has painted the new picture of the slide). A
  * refused edit puts it back to `typing` with his words and says why; a deck
@@ -363,8 +363,8 @@ export class HandSession {
 
   /**
    * Sends the box's words as they stand, the box left open with his caret in it: what is typed in a box reaches the
-   * file within seconds, as everything else he does to a deck does, and never waits on the box being left. Escape after
-   * it puts back only the words typed since. Words over a shape that changed are left for the commit to call a conflict.
+   * file within seconds, as everything else he does to a deck does, and never waits on the box being left. Words over a
+   * shape that changed are left for the commit to call a conflict.
    */
   async keep(): Promise<void> {
     if (this.keepTimer) clearTimeout(this.keepTimer);
@@ -404,8 +404,8 @@ export class HandSession {
     return this.state.box ? modelText(this.state.box.model) : "";
   }
 
-  /** Escape: the words go back as they were when last written; nothing is sent. */
-  cancel(): void {
+  /** The box goes with its words, nothing sent: only once Copy words put them on his clipboard (`SHAPE_GONE`). */
+  drop(): void {
     if (this.keepTimer) clearTimeout(this.keepTimer);
     this.keepTimer = null;
     if (!this.state.box || this.state.box.phase !== "typing") return;

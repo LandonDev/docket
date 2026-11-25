@@ -291,7 +291,7 @@ export function SlidesBody({
   const copyDraft = useCallback(() => {
     const copied = navigator.clipboard?.writeText(session.draftWords()) ?? Promise.reject(new Error("There is no clipboard here."));
     void copied.then(
-      () => session.cancel(),
+      () => session.drop(),
       (e: unknown) => sayError(e, "Couldn't copy your words"),
     );
   }, [session]);

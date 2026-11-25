@@ -491,9 +491,11 @@ the file.
   item; so does a send still unanswered while the box matches its old
   words (his Undo back to them waits behind it). No box opens over words
   not saved yet (a conflict that waits for Reload, a refused send): the
-  press says so, and Escape puts them back. A conflict whose shape another
+  press says so. Escape never drops them: it leaves the box as ⌘↩ does
+  (a commit), and after a refused send the box keeps them for Retry or
+  Reload, the keyboard back on the shape. A conflict whose shape another
   save took off the slide cannot draw its box: the line offers Copy words,
-  which puts them on his clipboard and then lets the box go; a copy that
+  which puts them on his clipboard and then lets the box go (`drop`); a copy that
   fails says so and keeps them. A pause in his
   typing sends them sooner, the box left open (`keep`, below).
 - **A box's edit names the words it was opened on** (`runs`' `was`: the
@@ -1203,7 +1205,8 @@ slide's.
   `rebase`), `edit/dom.test.ts` (drawn and read back, words the browser
   puts in no run, two paragraphs joined, its own last break, places and
   selections) and `HandEditor.dom.test.tsx` (the box's whole life in the
-  real pane: open by a second press, Return and F2, Escape, a look on a
+  real pane: open by a second press, Return and F2, Escape keeping his
+  words and after a refused send holding them for Retry, a look on a
   range, the commit's edit, nothing sent, the old picture kept until the
   new one paints, a refused edit, a conflict and Reload, Return, a line
   break, a paste and the box's own undo, Shift-Tab to the row and Escape
@@ -1561,13 +1564,13 @@ once (`work.slides.edit`), whole or not at all.
   run the paragraph's cut continued, else nothing (the host gives them the
   paragraph's first look). Nothing is sent when the op equals the shape's
   own (`unchanged`). A press anywhere but the box, the row and the row's
-  layers commits, as does ⌘↩, Tab out of it, the tab closing (the body's
+  layers commits, as do Escape and ⌘↩ (Escape keeps his words, as
+  PowerPoint and Keynote do), Tab out of it, the tab closing (the body's
   unmount, which the close awaits) and a show started from it.
 - **His words are kept while he types** (`keep`): a pause of 2 s
   (`TYPING_SAVE_MS`) sends the box's words as the same `runs` edit with
   the box left open and his caret in it; the words written become what the
-  box opened on, so a commit with nothing typed since sends nothing, and
-  Escape puts back only the words typed since the last send. An undo or a
+  box opened on, so a commit with nothing typed since sends nothing. An undo or a
   redo in the box is a change too, sent after the same pause. While words
   in the box are not in the file the deck's saved line says saving, never
   saved. Words over a shape that changed are not kept: the commit calls
