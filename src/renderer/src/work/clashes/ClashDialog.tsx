@@ -24,7 +24,7 @@ import { useMinute } from "../tasks/minute";
 import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { connectingWords } from "../shell/lifeosWords";
 import { downOf } from "../shell/lifeosDown";
-import { DownLine } from "../shell/DownLine";
+import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
@@ -227,7 +227,9 @@ function Body({
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
-  const hostDown = useHostLive(environmentId).down;
+  // The host's own LifeOS runs every way out: down, or still connecting, each is held under its one line.
+  const hostLive = useHostLive(environmentId);
+  const hostLine = hostLive.down || hostLive.waits ? <HostLine data-host-down live={hostLive} className="text-xs" /> : null;
   const [step, setStepState] = useState<Step | null>(null);
   const setStep = (next: Step | null) => {
     setStepState(next);
@@ -332,7 +334,7 @@ function Body({
         refused={refused}
         cleared={cleared}
         lost={lost}
-        down={hostDown ? <DownLine data-host-down session={hostDown} className="text-xs" /> : null}
+        down={hostLine}
         onBack={() => {
           from.current = `${side}:${step.way}`;
           setRefused(null);
@@ -364,12 +366,11 @@ function Body({
     );
   }
 
-  // The host's LifeOS is down: every way out it runs (Decline, a time, This is fine) gives way to one line, which also
-  // says Running late's. Else a session of this window's that is down: Running late, which reads it, is not offered,
-  // and the session's line stands in its place.
-  const lateDown = !hostDown && downOf(session) ? <DownLine data-late-down session={session} className="text-xs" /> : null;
-  const down = hostDown ? <DownLine data-host-down session={hostDown} className="text-xs" /> : null;
-  return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} hostDown={down} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
+  // The host's LifeOS is down or still connecting: every way out it runs (Decline, a time, This is fine) gives way to one
+  // line, which also says Running late's. Else a session of this window's that is down: Running late, which reads it, is
+  // not offered, and the session's line stands in its place.
+  const lateDown = !hostLine && downOf(session) ? <DownLine data-late-down session={session} className="text-xs" /> : null;
+  return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} hostDown={hostLine} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
 }
 
 export { useHostLive } from "../shell/lifeosLive";
@@ -393,7 +394,7 @@ export function Events({
   error: string | null;
   /** The LifeOS session is down: Running late's place holds its line (`DownLine`), and the other ways stay. */
   lateDown?: ReactNode;
-  /** The host's LifeOS is down: no way out and no This is fine; its line (`DownLine`) once, under the events. */
+  /** The host's LifeOS is down or still connecting: no way out and no This is fine; its line (`HostLine`) once, under the events. */
   hostDown?: ReactNode;
   onClose: () => void;
   onFine: () => void;
@@ -479,7 +480,7 @@ export function StepForm({
   cleared?: boolean;
   /** the last Send left and got no answer: it may have gone, so Send is off; Back gives the step afresh once he has looked */
   lost?: boolean;
-  /** the host's LifeOS went down while the step was open: its line (`DownLine`), what he typed kept, Send held until it is back */
+  /** the host's LifeOS went down or is still connecting while the step was open: its line (`HostLine`), what he typed kept, Send held until it is connected */
   down?: ReactNode;
   onBack: () => void;
   onSend: (params: { comment?: string; start?: number; end?: number }) => void;

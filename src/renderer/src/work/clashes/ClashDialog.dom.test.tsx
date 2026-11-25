@@ -846,6 +846,34 @@ describe("the Clash dialog", () => {
     expect(wire.calls).toContainEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "decline", comment: "At a game then" } });
   });
 
+  it("holds every way out while the host's LifeOS is still connecting: the one wait with no press, an open step's text kept and Send held until connected", async () => {
+    // Council round 11 (Sol Tasks 1, P1): connecting goes through the same gate as the down states.
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "At a game then" } });
+    act(() => setLifeosStatus("box", { lifeos: { state: "unreachable" }, keys: [] } as never));
+    // Out of the down state, into connecting: still held, the text kept.
+    act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never));
+    const wait = document.querySelector("[data-clash-step] [data-host-down]")!;
+    expect(wait.textContent).toBe("LifeOS is still connecting on the box");
+    expect(wait.querySelector("button")).toBeNull();
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then");
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.submit(send.closest("form")!);
+    await settle();
+    expect(wire.calls.filter((c) => c.method === "work.clashes.answer")).toEqual([]);
+    // Back to the pair: no way out is offered while it connects.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    for (const name of ["Decline", "Propose new time…", "Move…", "Running late…", "This is fine"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(document.querySelectorAll("[data-host-down]")).toHaveLength(1);
+    expect(document.querySelector("[data-host-down]")?.textContent).toBe("LifeOS is still connecting on the box");
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(document.querySelector("[data-host-down]")).toBeNull();
+  });
+
   it("lets go of Running late when LifeOS never answers: ten seconds on it says so and Close works again", async () => {
     vi.useFakeTimers();
     try {

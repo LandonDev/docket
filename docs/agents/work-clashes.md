@@ -96,9 +96,10 @@ Every call runs on the owner session, so it reads every job.
   Send off; Back gives the step afresh. Both `work.clashes.answer` and
   `work.clashes.waive` run through the host's own LifeOS session
   (`ctx.lifeos.owner()`), so the dialog offers them by the host's state
-  (`useHostDown`, ClashDialog.tsx): while it is down, no way out and no This
-  is fine, one `DownLine` in their place, and an open step keeps what he
-  typed and holds Send until the host is back. A move of an event
+  (`useHostLive`, ClashDialog.tsx): while it is down or still connecting, no
+  way out and no This is fine, one `HostLine` in their place ("LifeOS is
+  still connecting on the box" with no press), and an open step keeps what he
+  typed and holds Send until the host says connected. A move of an event
   that lives only in LifeOS moves a leave-by he set by hand by as much, as
   LifeOS's own event sheet does, and its arrive-by too: the lead the offer
   left is kept, and LifeOS does not refuse the move for a leave-by after
