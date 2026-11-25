@@ -1640,7 +1640,10 @@ once (`work.slides.edit`), whole or not at all.
   it since (the outline keeps a cell's words, not its runs),
   and the crash journal keeps the cell with the words. The box holds the outline's runs as the model (`modelOf`: each run with the
   `[paragraph, run]` it came from and the look it is drawn in), drawn into a
-  contenteditable one span a run (`edit/dom.ts`). He types into it as into
+  contenteditable one span a run (`edit/dom.ts`), in the faces the slide's
+  picture is drawn with: `TypingBox` registers the free twin of each font its
+  words name (`ensureFonts`, work/formats/fonts.ts), so a title keeps its face
+  and width when typing ends (the M11 walk's N4). He types into it as into
   any text; the browser's own words are read back after each keystroke
   (`readModel`), each piece into the run whose span holds it. A look, a
   Return, a line break, a paste and his undo go through the model and the

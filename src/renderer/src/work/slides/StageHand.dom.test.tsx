@@ -13,6 +13,7 @@ import { openMenus } from "../../chrome/menuRows";
 import { resizeCursor } from "./edit/Manipulate";
 import { harness, handView, TITLE } from "./stage.testkit";
 import { boxShape, slide, textShape } from "./testkit";
+import { twinOf } from "work-kit/fonts";
 
 const holder = vi.hoisted(() => ({ current: null as never, pushes: new Set<(push: never) => void>(), opens: new Set<() => void>(), toasts: [] as string[] }));
 vi.mock("../../lib/connection", async (original) => {
@@ -131,6 +132,15 @@ describe("a double-click", () => {
     const box = await t.found("[data-slide-typing] [role=textbox]");
     expect(box.textContent).toBe("Who comes");
     expect(shape(2).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("draws its words in the faces the slide's picture is drawn with, so they keep their face and width when typing ends", async () => {
+    const { layer } = await t.stage();
+    fireEvent.doubleClick(layer, { clientX: 500, clientY: 100 });
+    await t.found("[data-slide-typing] [role=textbox]");
+    // The title's Calibri is drawn with its free twin, as the deck's picture draws it: the face is in the page.
+    const twin = twinOf("Calibri")!.twin;
+    await waitFor(() => expect([...document.head.querySelectorAll("style[data-work-fonts]")].map((el) => el.getAttribute("data-work-fonts")).join(",")).toContain(twin));
   });
 
   it("does nothing on a shape with no words to type", async () => {

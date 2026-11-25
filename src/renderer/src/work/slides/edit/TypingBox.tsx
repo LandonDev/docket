@@ -4,8 +4,9 @@ import { formatKeyOf } from "work-kit/format/keys";
 import { bareKey, modKey, modOrCtrl } from "../../../lib/keys";
 import { IS_MAC } from "../../../lib/platform";
 import { keyAct, type Target } from "./DeckRow";
+import { ensureFonts } from "../../formats/fonts";
 import { paint, placeOf, readModel, readSel, runCss, shrinkToFit, writeSel } from "./dom";
-import type { EditPara } from "./model";
+import type { EditPara, Model } from "./model";
 import type { BoxState, HandSession } from "./session";
 
 /**
@@ -46,6 +47,9 @@ function keepShown(root: HTMLElement | null, box: BoxState | null): void {
   range.setEnd(...placeOf(root, box.sel.to));
   highlights.set(HIGHLIGHT, new Highlight(range));
 }
+
+/** The fonts a box's words name, a run's own or its paragraph's, Calibri where none is named (as `runCss` draws them). */
+const fontsOf = (model: Model): string[] => [...new Set(model.flatMap((p) => [p.look, ...p.runs.map((r) => r.look)].map((l) => l.font ?? "Calibri")))];
 
 export function TypingBox({
   session,
@@ -104,6 +108,14 @@ export function TypingBox({
     else keepShown(el, box);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [box.paint]);
+
+  // His words are drawn in the faces the slide's picture is drawn with (Office names by work-kit's free twins), so
+  // they keep their face and width when typing ends and the picture comes back; a font he picks is added as he picks it.
+  const fonts = fontsOf(box.drawn).join("\n");
+  useEffect(() => {
+    const el = root.current;
+    if (el) void ensureFonts(fonts.split("\n"), el.ownerDocument);
+  }, [fonts]);
 
   // Back from the row: the keyboard and his selection go into the box again.
   useEffect(() => {
