@@ -27,6 +27,9 @@ export interface LiveState {
 }
 
 export const MOST_LOADED = 3;
+/** A guest hidden this long with no show is let go through Word's own unload, whatever the count: a live Office page holds
+ *  hundreds of megabytes, and a tab he left an hour ago does not need it. His next show loads it again. */
+export const HIDDEN_UNLOAD_MS = 10 * 60_000;
 /** Past this the bar says nothing more: the page is shown as it is. */
 export const READY_AFTER_MS = 90_000;
 
@@ -115,6 +118,8 @@ type Bridge = NonNullable<Window["tcLive"]>;
 
 export class LiveLayer {
   private readonly guests = new Map<string, Guest>();
+  /** Each hidden guest's unload timer (HIDDEN_UNLOAD_MS); a show clears it. */
+  private readonly hiddenTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly states = new Map<string, LiveState>();
   private readonly listeners = new Map<string, Set<() => void>>();
   private root: HTMLElement | null = null;
@@ -170,6 +175,7 @@ export class LiveLayer {
       guest = made;
     }
     guest.shownAt = ++this.clock;
+    this.stopHiddenTimer(key);
     guest.anchor = anchor;
     guest.visible = rect.width > 0 && rect.height > 0;
     if (guest.full !== full) {
@@ -186,6 +192,19 @@ export class LiveLayer {
     if (!guest) return;
     guest.visible = false;
     this.paint(guest);
+    this.stopHiddenTimer(key);
+    this.hiddenTimers.set(
+      key,
+      setTimeout(() => {
+        this.hiddenTimers.delete(key);
+        if (this.guests.get(key) === guest && !guest.visible) void this.retire(key, guest);
+      }, HIDDEN_UNLOAD_MS),
+    );
+  }
+
+  private stopHiddenTimer(key: string): void {
+    clearTimeout(this.hiddenTimers.get(key));
+    this.hiddenTimers.delete(key);
   }
 
   focus(key: string): void {
@@ -237,6 +256,7 @@ export class LiveLayer {
     const guest = this.guests.get(key);
     if (!guest) return;
     if (guest.timer) clearTimeout(guest.timer);
+    this.stopHiddenTimer(key);
     guest.el.remove();
     this.guests.delete(key);
     this.states.delete(key);

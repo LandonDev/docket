@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { committed, failedLoad, liveAskKey, liveAskUrl, LiveLayer, MOST_LOADED, navigated, stopped, type LiveState } from "./layer";
+import { committed, failedLoad, HIDDEN_UNLOAD_MS, liveAskKey, liveAskUrl, LiveLayer, MOST_LOADED, navigated, stopped, type LiveState } from "./layer";
 
 const FILE = "https://purdue0-my.sharepoint.com/personal/x/Documents/Plan.docx?web=1";
 const FORM_ID = "DQSIkWdsW0yxEjajBLZtrQAAAAAAAAAAAAN__abc123ZUQ1JUVEhPQ1A4QS4u";
@@ -140,6 +140,29 @@ describe("the layer", () => {
     await flush();
     const [el] = guests();
     expect(el.style.zIndex).toBe("var(--layer-dialog)");
+  });
+
+  it("lets a guest hidden HIDDEN_UNLOAD_MS with no show go, and a show before then keeps it", async () => {
+    vi.useFakeTimers();
+    try {
+      const b = bridge();
+      const layer = new LiveLayer(() => b as never);
+      layer.show("a", FILE, RECT, false);
+      layer.show("k", `${FILE}&k`, RECT, false);
+      await vi.advanceTimersByTimeAsync(0);
+      layer.hide("a");
+      layer.hide("k");
+      await vi.advanceTimersByTimeAsync(HIDDEN_UNLOAD_MS - 1000);
+      layer.show("k", `${FILE}&k`, RECT, false);
+      await vi.advanceTimersByTimeAsync(2000);
+      // The one hidden past the time went (through Word's unload where it has a guest id); the one shown again stays.
+      expect(guests().map((g) => g.getAttribute("data-office-live"))).toEqual(["k"]);
+      layer.hide("k");
+      await vi.advanceTimersByTimeAsync(HIDDEN_UNLOAD_MS + 1);
+      expect(guests()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it(`keeps ${MOST_LOADED} loaded, and lets the one shown least recently go`, async () => {
