@@ -146,7 +146,7 @@ export function Body(props: Props) {
   // A read that failed with nothing to show is the failure, in the body: never "No numbers yet" under a red line.
   if (!view.blocks.length)
     return view.failed ? (
-      <OpenFailed kind="dashboard" why={view.failed} onRetry={() => void host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures"))} />
+      <OpenFailed kind="dashboard" why={view.failed} onRetry={() => host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures", props.env))} />
     ) : (
       <EmptyState title="No numbers yet" line="Ask for one in the thread." />
     );

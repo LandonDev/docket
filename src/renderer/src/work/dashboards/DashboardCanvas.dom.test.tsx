@@ -491,6 +491,22 @@ describe("a dashboard read from LifeOS sheets while LifeOS is down", () => {
     expect(dashHost.refresh).toHaveBeenCalled();
   });
 
+  /** Council round 11 (the walk): back on connected, a canvas open LifeOS could not make said its old cause while it read again. */
+  it("waits in the body's place while it reads again once LifeOS is back, never the old cause", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("local", st("signed-out"));
+    open(page({ blocks: [], asOf: null, failed: NOT_SIGNED_IN }));
+    await found("[data-lifeos-down]");
+    let done!: () => void;
+    dashHost.refresh.mockImplementation(() => new Promise((resolve) => (done = () => resolve({ ...page(), itemId: item.id }))));
+    act(() => setLifeosStatus("local", st("connected")));
+    await found("[data-canvas-again]");
+    expect(document.querySelector("[data-lifeos-down]")).toBeNull();
+    expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
+    await act(async () => done());
+    await waitFor(() => expect(document.querySelectorAll("[data-figure]")).toHaveLength(3));
+  });
+
   it("says it in the body's place when no figures were read, as any canvas open LifeOS could not make", async () => {
     const { setLifeosStatus } = await import("../shell/lifeos");
     setLifeosStatus("local", st("refused"));

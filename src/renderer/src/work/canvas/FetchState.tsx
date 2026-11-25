@@ -1,8 +1,9 @@
 import { createContext, useContext } from "react";
 import type { CanvasKind } from "@shared/work";
 import { Button } from "../../components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../../components/ui/empty";
 import { Progress } from "../../components/ui/progress";
+import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection/registry";
 import { hostName } from "../../lib/threadResources";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -45,7 +46,7 @@ export function useFailedWords(why: string | null | undefined): string {
  * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
  * dropped while the content stays.
  */
-export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first) */ onRetry?: (() => void) | undefined }) {
+export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first); its promise, where it gives one, is the read again under way */ onRetry?: (() => void | Promise<unknown>) | undefined }) {
   const said = useFailedWords(why);
   // An open the pane's host could not make because its LifeOS session is down (a LifeOS document or sheet, a mail's
   // attachment, a dashboard read from a LifeOS sheet) says that session's state by the host's live status, with the
@@ -54,6 +55,15 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
   const saved = env ? savedOfReason(why) : null;
   const lifeos = useLiveDown(saved, saved ? env : null, saved ? onRetry : undefined);
   if (env && saved && (lifeos.down || lifeos.waits)) return <DownEmpty live={lifeos} environmentId={env} onRetry={() => refreshLifeos(env).catch(() => undefined).then(() => onRetry?.())} />;
+  // Back on connected and read again: the wait in the body's place, never the old cause.
+  if (lifeos.again)
+    return (
+      <Empty data-canvas-again role="status" aria-busy aria-label={`Opening this ${kindNoun(kind)}`}>
+        <EmptyMedia>
+          <Spinner className="size-4" />
+        </EmptyMedia>
+      </Empty>
+    );
   return (
     <Empty data-canvas-failed>
       <EmptyHeader>
@@ -61,7 +71,7 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
         {said ? <EmptyDescription>{said}</EmptyDescription> : null}
       </EmptyHeader>
       {onRetry ? (
-        <Button size="sm" variant="secondary" onClick={onRetry}>
+        <Button size="sm" variant="secondary" onClick={() => void onRetry()}>
           Retry
         </Button>
       ) : null}
