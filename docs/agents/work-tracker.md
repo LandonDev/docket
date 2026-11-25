@@ -54,7 +54,7 @@ stand, the read in flight is dropped and every host is asked again. So no all-cl
 for; only the newest read lands, never an older one that answers late. A host
 whose link is not open is not asked: it answers its own line, "The box is connecting." or "The box is not connected."
 (`closedWords`). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
-are asked again; bones show only on the first. `mergeOverviews` makes one job a sector: LifeOS's rows are the same
+are asked again; bones show while it reads and while a pending host leaves the page empty (TrackerPage.tsx). `mergeOverviews` makes one job a sector: LifeOS's rows are the same
 from every host of a sector, so a project's facts come from the first host that read them; its threads live on each
 host, so the counts add up and the most pressing lead wins, with the host it lives on. A job one host failed to read
 stands on the host that read it. A host that did not answer, or is not linked, is one quiet line over the groups; the
