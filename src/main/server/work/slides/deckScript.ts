@@ -30,6 +30,7 @@ verbs as jobs on stdin, one line each (deckResident.ts).
 On failure: one sentence on stderr, exit 1.
 """
 import copy
+import difflib
 import hashlib
 import json
 import math
@@ -877,6 +878,33 @@ def set_paragraphs(txBody, paragraphs):
         txBody.remove(p)
 
 
+def keep_paragraphs(tf, texts):
+    """His words over a text frame's paragraphs, rewriting only what changed: paragraphs matched by their words, one
+    whose words are the same left as it is (its runs' looks, links and fields), one changed rewritten in its own look,
+    one put in taking its neighbour's, one gone removed."""
+    txBody = tf._txBody
+    paras = list(tf.paragraphs)
+    if not paras:
+        return set_paragraphs(txBody, texts)
+    ps = [p._p for p in paras]
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, [p.text for p in paras], texts, autojunk=False).get_opcodes():
+        if tag == 'equal':
+            out.extend(ps[i1:i2])
+            continue
+        for k in range(j2 - j1):
+            if i1 + k < i2:
+                p = ps[i1 + k]
+            else:
+                p = copy.deepcopy(ps[i2 - 1] if i2 > i1 else (out[-1] if out else ps[min(i1, len(ps) - 1)]))
+            set_paragraph(p, texts[j1 + k])
+            out.append(p)
+    for p in ps:
+        txBody.remove(p)
+    for p in out:
+        txBody.append(p)
+
+
 def slide_by_id(prs, sid):
     for el in prs.slides._sldIdLst:
         if el.id == sid:
@@ -964,7 +992,7 @@ def op_notes(prs, op):
     tf = slide.notes_slide.notes_text_frame
     if tf is None:
         raise Fail('the notes page of slide %d has no place for words' % op['slide'])
-    set_paragraphs(tf._txBody, op['text'].split('\n'))
+    keep_paragraphs(tf, op['text'].split('\n'))
 
 
 def op_chart(prs, op):

@@ -1145,6 +1145,12 @@ slide's.
 - PowerPoint needs a slide id below 2^31; the script refuses one above.
 - A `notes` edit on a deck with no notes master adds a notes master and a
   theme: more than one part changes.
+- A `notes` edit sends the notes whole as words, but the script rewrites only
+  the paragraphs whose words changed (`keep_paragraphs`: the paragraphs matched
+  by their words, Python's `difflib`): one with the same words keeps its XML as
+  it was (bold in one run, a link, a slide-number field), a changed one is
+  written in its own look and level, a new one takes its neighbour's, one gone
+  is removed. A key in the field never strips a colleague's looks from the rest.
 
 ### Tests
 

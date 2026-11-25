@@ -256,6 +256,32 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
     expect(await draws(fewer.output)).toEqual([before[0]])
   })
 
+  it("notes: rewrites only the paragraphs whose words changed; the others keep their runs' looks, links and fields", async () => {
+    const pptx = new PptxGenJS()
+    pptx.addSlide().addNotes('Say the budget')
+    pptx.addSlide().addText('Second', { x: 1, y: 1, w: 4, h: 1 })
+    const zip = await JSZip.loadAsync((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
+    const notes = 'ppt/notesSlides/notesSlide1.xml'
+    const rels = 'ppt/notesSlides/_rels/notesSlide1.xml.rels'
+    // "Say the **budget** [source]" over a bulleted second paragraph at level 1, and a slide number field after.
+    const runs = '<a:r><a:rPr lang="en-US" dirty="0"/><a:t>Say the </a:t></a:r><a:r><a:rPr lang="en-US" b="1" dirty="0"/><a:t>budget</a:t></a:r><a:r><a:rPr lang="en-US" dirty="0"/><a:t> </a:t></a:r><a:r><a:rPr lang="en-US" dirty="0"><a:hlinkClick r:id="rIdJump" action="ppaction://hlinksldjump"/></a:rPr><a:t>source</a:t></a:r>'
+    const second = '<a:p><a:pPr lvl="1"><a:buChar char="•"/></a:pPr><a:r><a:rPr lang="en-US" i="1" dirty="0"/><a:t>Thank them</a:t></a:r></a:p>'
+    const third = '<a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>Slide </a:t></a:r><a:fld id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}" type="slidenum"><a:rPr lang="en-US" dirty="0"/><a:t>1</a:t></a:fld></a:p>'
+    zip.file(notes, (await zip.file(notes)!.async('string')).replace('<a:r><a:rPr lang="en-US" dirty="0"/><a:t>Say the budget</a:t></a:r><a:endParaRPr lang="en-US" dirty="0"/></a:p>', `${runs}<a:endParaRPr lang="en-US" dirty="0"/></a:p>${second}${third}`))
+    zip.file(rels, (await zip.file(rels)!.async('string')).replace('</Relationships>', '<Relationship Id="rIdJump" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide2.xml"/></Relationships>'))
+    const input = file(await zip.generateAsync({ type: 'nodebuffer' }))
+    const [first] = (await inspect(input)).slides
+    expect(first.notes).toBe('Say the budget source\nThank them\nSlide 1')
+    // A line put in above "Thank them", and its words changed: the first and the last paragraphs are as they were.
+    const { output } = await apply(input, [{ op: 'notes', slide: first.id, text: 'Say the budget source\nOpen with the dates\nThank them all\nSlide 1' }], true)
+    expect((await inspect(output)).slides[0].notes).toBe('Say the budget source\nOpen with the dates\nThank them all\nSlide 1')
+    const xml = await (await JSZip.loadAsync(readFileSync(output))).file(notes)!.async('string')
+    expect(xml).toContain(runs)
+    expect(xml).toContain('type="slidenum"')
+    // The changed paragraph keeps its own level, bullet and look; nothing else of it moved.
+    expect(xml).toMatch(/<a:p><a:pPr lvl="1"><a:buChar char="•"\/><\/a:pPr><a:r><a:rPr lang="en-US" i="1" dirty="0"\/><a:t>Thank them all<\/a:t><\/a:r><\/a:p>/)
+  })
+
   it('inspects a 12-slide pptxgenjs deck: its slides, layouts, table and chart', async () => {
     const d = await inspect(file(await writeNewDeck({ title: 'Showcase', slides: TWELVE })))
     expect(d.slides).toHaveLength(12)
