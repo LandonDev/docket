@@ -8435,7 +8435,21 @@ public enum Methods {
             }
             public enum Origin: Codable, Hashable, Sendable {
                 public struct Case0: Codable, Hashable, Sendable {
-                    public init() {}
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+
+                        public init(key: String, version: String) {
+                            self.key = key
+                            self.version = version
+                        }
+                    }
+
+                    public let things: [Thing]?
+
+                    public init(things: [Thing]? = nil) {
+                        self.things = things
+                    }
                 }
                 public struct Case1: Codable, Hashable, Sendable {
                     public struct Thing: Codable, Hashable, Sendable {
