@@ -1,13 +1,15 @@
 import { execFileSync, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { BoxXDisplay, DISPLAY_HZ, DISPLAY_SCALE, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, displayPixels, withoutDisplay, xauthorityEntry, xorgArgs, xorgConfig } from './display'
+import { modeInfo, modeName, parseCrtc, parseResources } from './randr'
 import { testVideoTools } from './testTools'
+import { XClient } from './xclient'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
 
 let root: string
@@ -206,7 +208,91 @@ function xHello(display: string, cookie: Buffer | null): Promise<{ ok: boolean; 
   })
 }
 
+describe('a size change by RandR', () => {
+  it('makes a mode with the config’s own small blanking, -hsync +vsync, named by its size', () => {
+    const b = modeInfo({ width: 2560, height: 1600 }, 120, 11)
+    expect(b.length).toBe(32)
+    expect([b.readUInt16LE(4), b.readUInt16LE(6)]).toEqual([2560, 1600])
+    // the same clock as xorgConfig's modeline: 2608 × 1610 × 120
+    expect(b.readUInt32LE(8)).toBe(2608 * 1610 * 120)
+    expect([b.readUInt16LE(12), b.readUInt16LE(14), b.readUInt16LE(16)]).toEqual([2568, 2584, 2608])
+    expect([b.readUInt16LE(20), b.readUInt16LE(22), b.readUInt16LE(24)]).toEqual([1603, 1609, 1610])
+    expect(b.readUInt16LE(26)).toBe(11)
+    expect(b.readUInt32LE(28)).toBe(6)
+    expect(modeName({ width: 2560, height: 1600 })).toBe('tc2560x1600')
+  })
+
+  it('reads the screen’s CRTCs and its modes by name, and a CRTC’s mode and outputs', () => {
+    const names = Buffer.from('mtc2560x1600')
+    const r = Buffer.alloc(32 + 2 * 4 + 1 * 4 + 2 * 32 + names.length)
+    r.writeUInt32LE(77, 12)
+    r.writeUInt16LE(2, 16)
+    r.writeUInt16LE(1, 18)
+    r.writeUInt16LE(2, 20)
+    r.writeUInt32LE(0x40, 32)
+    r.writeUInt32LE(0x41, 36)
+    r.writeUInt32LE(0x50, 40)
+    r.writeUInt32LE(0x60, 44)
+    r.writeUInt16LE(1, 44 + 26)
+    r.writeUInt32LE(0x61, 76)
+    r.writeUInt16LE(11, 76 + 26)
+    names.copy(r, 108)
+    expect(parseResources(r)).toEqual({ configTime: 77, crtcs: [0x40, 0x41], modes: new Map([['m', 0x60], ['tc2560x1600', 0x61]]) })
+    const c = Buffer.alloc(40)
+    c.writeUInt16LE(1280, 16)
+    c.writeUInt16LE(800, 18)
+    c.writeUInt32LE(0x60, 20)
+    c.writeUInt16LE(2, 28)
+    c.writeUInt32LE(0x50, 32)
+    c.writeUInt32LE(0x51, 36)
+    expect(parseCrtc(c)).toEqual({ mode: 0x60, width: 1280, height: 800, outputs: [0x50, 0x51] })
+  })
+
+  it('is never asked of the box’s browser: only the display itself and RandR name it', () => {
+    const dir = 'src/main/server/work/browser/box'
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts') && n !== 'display.ts' && n !== 'randr.ts')) {
+      expect(readFileSync(join(dir, f), 'utf8'), f).not.toMatch(/\.resize\(|resizeDisplay|setScreenSize/)
+    }
+  })
+
+  it('refuses a display that is not running', async () => {
+    await expect(new BoxXDisplay({ root, tools: TOOLS }).resize({ width: 1920, height: 1200 })).rejects.toThrow('not running')
+  })
+})
+
 describe.skipIf(!tools)('the real server, from the installed tools', () => {
+  it('changes size live by RandR, larger and smaller and back, each a size it held before taken again', async () => {
+    const display = new BoxXDisplay({ root, tools: tools!, size: { width: 1280, height: 800 } })
+    const pair = await display.start()
+    const screen = async (): Promise<{ width: number; height: number }> => {
+      const x = await XClient.open(pair)
+      try {
+        const { width, height } = await x.geometry(x.root)
+        return { width, height }
+      } finally {
+        x.close()
+      }
+    }
+    try {
+      for (const size of [
+        { width: 3456, height: 2234 },
+        { width: 4000, height: 2250 },
+        // wider and shorter at once
+        { width: 1920, height: 1200 },
+        { width: 2560, height: 1600 },
+        { width: 1280, height: 800 },
+        { width: 3456, height: 2234 }
+      ]) {
+        await display.resize(size)
+        expect(await screen()).toEqual(size)
+        expect(display.size).toEqual(size)
+      }
+    } finally {
+      await display.stop()
+    }
+  }, 30_000)
+
+
   it('ends a server its folder’s last owner left behind before it starts another', async () => {
     const orphan = new BoxXDisplay({ root, tools: tools! })
     await orphan.start()

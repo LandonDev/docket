@@ -315,6 +315,29 @@ export class XClient {
     return (await this.request(43, 0, Buffer.alloc(0))).readUInt32LE(8)
   }
 
+  /** An extension's major opcode, or null when the server has none by that name (QueryExtension). */
+  async extension(name: string): Promise<number | null> {
+    const text = Buffer.from(name, 'latin1')
+    const body = Buffer.alloc(4 + text.length + pad4(text.length))
+    body.writeUInt16LE(text.length, 0)
+    text.copy(body, 4)
+    const reply = await this.request(98, 0, body)
+    return reply[8] === 1 ? reply[9] : null
+  }
+
+  /** An extension's request that has a reply (randr.ts): its major opcode, its own number, its body. */
+  ask(major: number, minor: number, body: Buffer): Promise<Buffer> {
+    return this.request(major, minor, body)
+  }
+
+  /** An extension's request that has no reply, done once the server answers a round trip after it; a refusal rejects. */
+  async order(major: number, minor: number, body: Buffer): Promise<void> {
+    this.send(major, minor, body)
+    const refused = this.voided()
+    await this.sync()
+    if (await refused) throw new Error('X error')
+  }
+
   /** A round trip: everything asked before it has been done by the server when it answers. */
   async sync(): Promise<void> {
     await this.geometry(this.root)

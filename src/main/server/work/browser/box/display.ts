@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnLowered } from '../../../childPriority'
+import { resizeDisplay } from './randr'
 import type { Readable } from 'node:stream'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
 
@@ -153,6 +154,8 @@ export interface BoxXDisplayOptions {
 export class BoxXDisplay {
   private child: ChildProcess | null = null
   private pair: BoxDisplay | null = null
+  /** the size the last `resize` set */
+  private resized: { width: number; height: number } | null = null
 
   constructor(private readonly opts: BoxXDisplayOptions) {}
 
@@ -161,7 +164,7 @@ export class BoxXDisplay {
   }
   /** The display's own pixels. */
   get size(): { width: number; height: number } {
-    return this.opts.size ?? displayPixels(this.scale)
+    return this.resized ?? this.opts.size ?? displayPixels(this.scale)
   }
   get dir(): string {
     return join(this.opts.root, 'display')
@@ -202,6 +205,7 @@ export class BoxXDisplay {
       detached: true
     })
     this.child = child
+    this.resized = null
     if (child.pid) writeFileSync(join(this.dir, 'pid'), String(child.pid))
     // a host that quits without stopping its browser still ends the display: it is no child of anything by then
     const atExit = (): void => void child.kill('SIGTERM')
@@ -221,6 +225,17 @@ export class BoxXDisplay {
     }
     this.opts.log?.(`box display: ${this.pair.DISPLAY} at ${width}×${height}${this.opts.size ? '' : ` (scale ${this.scale})`}, ${DISPLAY_HZ} Hz (pid ${child.pid})`)
     return this.pair
+  }
+
+  /**
+   * The running display at another size, live, by RandR (randr.ts): the Windows VM's follows the guest's mode. The
+   * box's browser never calls it. Throws when the display is not running or refuses the size; the size is then as it was.
+   */
+  async resize(size: { width: number; height: number }): Promise<void> {
+    if (!this.pair || !this.running) throw new Error('the display is not running')
+    await resizeDisplay(this.pair, size, DISPLAY_HZ)
+    this.resized = { width: size.width, height: size.height }
+    this.opts.log?.(`box display: ${this.pair.DISPLAY} now ${size.width}×${size.height}`)
   }
 
   /** Stops the server and removes its cookie; resolves when it has exited. */
