@@ -344,18 +344,22 @@ export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
   admitOwner(by, r)
   if (!p.auto) return (await saveRow(ctx, r, p))!
   // ⌘S on a file that saves by itself (decision 11): the save its pause would make, made now. It takes its turn with
-  // the host's own (`saving`), so the two never write over each other, and finds nothing to do once one has saved it.
+  // the host's own (`saving`) from the press, before its read of the revision, so the two never run at once, and
+  // finds nothing to do when the Word file already has every word: saved since, or never typed in (its own bytes,
+  // then, stay as they are).
   const key = keyOf(r)
   while (saving.has(key)) await saving.get(key)!.catch(() => undefined)
-  const latest = wordRow(ctx, r.workspace_id, r.host, r.path) ?? r
-  const rev = await liveRev(ctx, latest.doc!).catch(() => null)
-  if (latest.saved_at && rev !== null && rev === (latest.saved_rev ?? latest.base_rev)) return { at: latest.saved_at }
-  const run = saveRow(ctx, latest, { ...p, auto: true })
-  saving.set(key, run)
+  let done!: () => void
+  const turn = new Promise<void>((ok) => (done = ok))
+  saving.set(key, turn)
   try {
-    return (await run)!
+    const latest = wordRow(ctx, r.workspace_id, r.host, r.path) ?? r
+    const rev = await liveRev(ctx, latest.doc!).catch(() => null)
+    if (rev !== null && rev === (latest.saved_rev ?? latest.base_rev)) return { at: latest.saved_at ?? latest.at }
+    return (await saveRow(ctx, latest, { ...p, auto: true }))!
   } finally {
-    if (saving.get(key) === run) saving.delete(key)
+    if (saving.get(key) === turn) saving.delete(key)
+    done()
   }
 }
 

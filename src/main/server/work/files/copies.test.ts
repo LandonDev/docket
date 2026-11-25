@@ -1324,6 +1324,49 @@ describe('a Word file saved by itself', () => {
     expect(writes()).toBe(writes0 + 1)
   })
 
+  it("⌘S with nothing typed writes nothing, even on a file TempCode never saved", async () => {
+    const { path, tabId } = await opened('Untouched.docx', 'their own bytes')
+    await call('work.files.wordAuto', { tabId, on: true })
+    await looks(1_000_000)
+    const writes0 = writes()
+    await call('work.files.wordSave', { tabId, auto: true })
+    expect(writes()).toBe(writes0)
+    expect(readFileSync(path, 'utf8')).toBe('their own bytes')
+  })
+
+  it("⌘S holds the file's turn from the press, so a save by itself the same instant waits and never meets its own bytes as a change", async () => {
+    const { path, tabId } = await opened('Instant.docx', BLANK)
+    await looks(1_000_000)
+    rev = 'r1'
+    await autosaveWords(box.ctx, 2_000_000)
+    // His ⌘S reads the live revision slowly; the look that ends Word's pause comes meanwhile.
+    let release!: () => void
+    const gate = new Promise<void>((ok) => (release = ok))
+    let first = true
+    ;(box.ctx as { service: unknown }).service = {
+      internal: async (route: string) => {
+        if (route !== '/internal/docs/rev') return {}
+        if (first) {
+          first = false
+          await gate
+        }
+        return { rev }
+      }
+    }
+    const writes0 = writes()
+    const pressed = call<{ at?: number; conflict?: unknown }>('work.files.wordSave', { tabId, auto: true })
+    await new Promise((ok) => setTimeout(ok, 20))
+    const look = autosaveWords(box.ctx, 2_005_000)
+    await new Promise((ok) => setTimeout(ok, 50))
+    release()
+    await look
+    expect(await pressed).toMatchObject({ at: expect.any(Number) })
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    // One write: the look found the turn taken and the revision saved.
+    expect(writes()).toBe(writes0 + 1)
+    expect((await tabOf(tabId))?.word?.stopped).toBeUndefined()
+  })
+
   it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {
     const { path, doc, tabId } = await opened('Notes.docx', BLANK)
     const fileTime = statSync(doc).mtimeMs
