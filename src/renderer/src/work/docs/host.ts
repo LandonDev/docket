@@ -182,8 +182,9 @@ export function syncPayload(bytes: Uint8Array): { step: number; payload: Uint8Ar
 
 /**
  * Whether a kept draft's updates (Update frames, base64) take on the document the service holds (`served`, its state
- * vector): each struct they add follows on from what it has of that writer, and each one they hang from (an origin, a
- * parent) is there or in the draft. A document made again since lacks them, and Yjs would hold the draft unseen.
+ * vector): each struct they add follows on from what it has of that writer, each one they hang from (an origin, a
+ * parent) is there or in the draft, and each word they take out is there or in the draft. A document made again since
+ * lacks them, and Yjs would hold the draft unseen: its structs pending, or its deletions.
  */
 export function draftFits(frames: readonly string[], served: ReadonlyMap<number, number>): boolean {
   try {
@@ -194,7 +195,9 @@ export function draftFits(frames: readonly string[], served: ReadonlyMap<number,
     for (const [client, clock] of from) if ((served.get(client) ?? 0) < clock) return false;
     const there = (id: Y.ID | null | string | undefined): boolean =>
       !id || typeof id === "string" || id.clock < (served.get(id.client) ?? 0) || (id.clock >= (from.get(id.client) ?? Infinity) && id.clock < (to.get(id.client) ?? 0));
-    return Y.decodeUpdate(merged).structs.every((struct) => !(struct instanceof Y.Item) || (there(struct.origin) && there(struct.rightOrigin) && there(struct.parent as Y.ID | string | null)));
+    const { structs, ds } = Y.decodeUpdate(merged);
+    for (const [client, items] of ds.clients) for (const { clock, len } of items) if (clock + len > Math.max(served.get(client) ?? 0, to.get(client) ?? 0)) return false;
+    return structs.every((struct) => !(struct instanceof Y.Item) || (there(struct.origin) && there(struct.rightOrigin) && there(struct.parent as Y.ID | string | null)));
   } catch {
     return false;
   }

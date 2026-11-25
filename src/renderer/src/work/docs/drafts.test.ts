@@ -128,6 +128,22 @@ describe("a document's updates the service has not applied", () => {
     expect(draftWords(draft)).toBe(" and staffing");
   });
 
+  it("judges a draft that only took words out by what it deletes: it fits the document it was typed on, not one made again", () => {
+    const { served, remade } = documents();
+    const window = new Y.Doc();
+    Y.applyUpdate(window, Y.encodeStateAsUpdate(served));
+    const before = Y.encodeStateVector(window);
+    window.getText("t").delete(0, 7);
+    const draft = [b64(sync(2, Y.encodeStateAsUpdate(window, before)))];
+    expect(draftFits(draft, Y.decodeStateVector(Y.encodeStateVector(served)))).toBe(true);
+    // Yjs agrees: on the remade document the deletion never shows, held as a pending delete set.
+    const onRemade = new Y.Doc();
+    Y.applyUpdate(onRemade, Y.encodeStateAsUpdate(remade));
+    Y.applyUpdate(onRemade, syncPayload(new Uint8Array(bytesOf(draft[0]!)))!.payload);
+    expect(onRemade.getText("t").toString()).toBe("Budget for the spring LAN");
+    expect(draftFits(draft, Y.decodeStateVector(Y.encodeStateVector(remade)))).toBe(false);
+  });
+
   it("reads a frame as an update only when it carries SyncStep2 or an Update", () => {
     expect([...asUpdate(frame(4, 1, 5, 6))!]).toEqual([...frame(0, 2, 5, 6)]);
     expect(asUpdate(frame(0, 0, 5))).toBeNull(); // SyncStep1 asks; it carries none of his
