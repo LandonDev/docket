@@ -182,6 +182,17 @@ describe("the Projects section", () => {
     act(() => openWorkView(null));
   });
 
+  it("the Projects heading lit under a page closes the page and keeps the list he had open", async () => {
+    const { shell, shellStore } = await import("../../stores/shell");
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    shell.openWorkPlace("today");
+    render(<Section onOpen={() => {}} />);
+    act(() => screen.getByRole("button", { name: "Projects" }).click());
+    expect(shellStore.getState().workPlace).toBeNull();
+    expect(workViewNow()).toEqual({ workspaceId: "w-job", view: "projects" });
+    act(() => openWorkView(null));
+  });
+
   it("opens a project's page from its row, and the job's Projects view from the heading, which then reads as open", () => {
     const opened: string[] = [];
     render(<Section onOpen={(r) => opened.push(r.id)} />);

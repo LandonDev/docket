@@ -11,7 +11,7 @@ import { rowOfView, type WorkViewDef, workColumnViews } from "../views/registry"
 import { openLifeosProject } from "./actions";
 import { setColumnProjects, type ColumnProject } from "./columnProjects";
 import { HOLD, KeptRegion, useKeptRegion, useLifeosQuery, useLifeosSession } from "./lifeos";
-import { shell } from "../../stores/shell";
+import { shell, shellStore, threadsCovered } from "../../stores/shell";
 
 /** The statuses whose projects the column lists: what is still under way. */
 const LISTED = new Set(["backlog", "active", "paused"]);
@@ -131,9 +131,11 @@ function ViewRow({ view, workspace, sector, selected, on, onPick }: { view: Work
       selected={selected}
       // The row again closes it: the threads come back. From a view that stands inside this one (a meeting's page), the row leads back to it.
       onClick={() => {
-        // A view he opens shows: a page over the threads (Today, the Outbox…) leaves first.
+        // A view he opens shows: a page over the threads (Today, the Outbox…) leaves first. A view already open under
+        // that page is what he asked to see: it stays, never toggled shut with the page.
+        const covered = threadsCovered(shellStore.getState());
         shell.closeOverlays();
-        openWorkView(on ? null : { workspaceId: workspace.id, view: view.id });
+        openWorkView(on && !covered ? null : { workspaceId: workspace.id, view: view.id });
         onPick?.();
       }}
       intent={{ onPointerEnter: view.chunk.preload, onFocus: view.chunk.preload }}

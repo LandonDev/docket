@@ -2197,10 +2197,9 @@ export default function App() {
   }, [onSelectProject]);
   // Work's views open a thread here: a routine's run, the thread that set a watch (work/routines).
   const openWorkThread = useCallback((sessionId: string) => {
-    // A thread opened under an overlay is not seen. A pending Files open also yields to this choice.
-    shell.closeOverlays();
-    choose();
-    openWorkView(null);
+    // The history opener claims his choice at the press (a pending Files open yields to it) and clears a Work view or
+    // a page over the threads only when the thread takes the pane, so the thread under them is never uncovered, and
+    // marked read, while this one loads.
     return onSelectHistorySessionRef.current?.(sessionId) ?? Promise.resolve();
   }, []);
   useEffect(() => {

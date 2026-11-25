@@ -56,7 +56,8 @@ describe("opening a hit", () => {
     const r = rig(["purdue"]);
     const archived = hit({ key: "thread:t-old", kind: "thread", detail: "Archived", open: { to: "thread", sessionId: "t-old", archived: true } });
     expect(await openHit(archived, "box", r.deps)).toBe("opened");
-    expect(r.did.slice(0, 3)).toEqual([["restore", "t-old", "box"], ["clear"], ["thread", "t-old", undefined]]);
+    // Nothing is cleared at the press: the page over the threads leaves when the thread takes the pane (App's opener).
+    expect(r.did.slice(0, 2)).toEqual([["restore", "t-old", "box"], ["thread", "t-old", undefined]]);
     const live = rig(["purdue"]);
     await openHit(hit({ key: "thread:t1", kind: "thread", open: { to: "thread", sessionId: "t1" } }), "box", live.deps);
     expect(live.did.some((d) => d[0] === "restore")).toBe(false);
@@ -128,7 +129,7 @@ describe("opening a hit", () => {
     const r = rig();
     expect(await openHit(hit({ key: "thread:t1", kind: "thread", workspaceId: null, open: { to: "thread", sessionId: "t1", seq: 14 } }), "box", r.deps)).toBe("opened");
     // a page over the threads (Today, Review, the Inbox) leaves first, or the thread opens under it
-    expect(r.did).toEqual([["clear"], ["thread", "t1", 14], ["opened", "box", "thread:t1"]]);
+    expect(r.did).toEqual([["thread", "t1", 14], ["opened", "box", "thread:t1"]]);
   });
   it("a file opens as a Files tab of its job through Files' own door, then the Files view; a refusal opens nothing", async () => {
     const ref = { at: "file", host: "box", path: "/w/cosmic/Budget.xlsx" };

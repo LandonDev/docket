@@ -127,8 +127,8 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
       if (!d.stillLatest(mine)) return "kept";
     }
     // A thread carries its own place: the window follows it there. Whatever lies over the threads (Today, Review,
-    // the Inbox, Settings) leaves first, as for every other kind, or the thread would open under it.
-    d.clear();
+    // the Inbox, Settings) leaves when the thread takes the pane (App's history opener), not now, so the thread under
+    // them is never uncovered while this one loads.
     d.thread(open.sessionId, open.seq);
     d.opened(hostId, hit);
     return "opened";

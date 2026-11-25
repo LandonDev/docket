@@ -230,6 +230,9 @@ export function useShell<T>(selector: (state: ShellState) => T): T {
 }
 
 /** True while a full-screen view covers the board. */
+/** A full view or Settings covers the threads (the board's own inert rule). */
+export const threadsCovered = (state: ShellState): boolean => anyViewOpen(state) || state.settingsOpen;
+
 export function anyViewOpen(state: ShellState): boolean {
   return (
     state.searchViewOpen || state.inboxViewOpen || state.outboxViewOpen || state.computersViewOpen || state.workPlace !== null || state.notesViewOpen || state.accountsPage !== null

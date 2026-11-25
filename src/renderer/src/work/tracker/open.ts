@@ -45,6 +45,6 @@ const TRACKER = "projects";
 
 /** A Threads cell's press: the thread, wherever it lives. */
 export function openTrackerThread(sessionId: string): void {
-  shell.closeViews();
+  // The page leaves when the thread takes the pane (App's history opener), never at the press.
   workOpenPort.get()?.(sessionId);
 }

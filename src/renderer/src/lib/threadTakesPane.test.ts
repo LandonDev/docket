@@ -52,3 +52,10 @@ describe("a pane a Work view or page covers", () => {
     expect(app).toMatch(/visible=\{tab\.id === shownTabId\}/);
   });
 });
+
+describe("a thread link in a Work view or page", () => {
+  it("never clears the cover at the press: the Work open port leaves it to the history opener's commit", () => {
+    const port = body("openWorkThread");
+    expect(port).not.toMatch(/closeOverlays|openWorkView\(null\)/);
+  });
+});
