@@ -16,7 +16,8 @@ const data = (bytes: Uint8Array) => {
   const wb = read(bytes)
   return wb.sheets[wb.sheetOrder.find((id) => wb.sheets[id]!.name === 'Data')!]!
 }
-const patched = (edits: FormatEdit[], bytes = base) => patchFormat(bytes, edits).bytes
+// patchFormat takes and answers a plain Uint8Array; the copy keeps the file's own buffer type for the importer.
+const patched = (edits: FormatEdit[], bytes: Uint8Array = base): Uint8Array<ArrayBuffer> => new Uint8Array(patchFormat(bytes, edits).bytes)
 
 test('rows hidden, rows that hold nothing among them, and shown again', () => {
   const bytes = patched([{ kind: 'rowHidden', sheet: 'Data', from: 2, to: 40, hidden: true }])
