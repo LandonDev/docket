@@ -27,7 +27,7 @@ const world = vi.hoisted(() => ({
   /** Starred rows carry where each lives (a LifeOS row in a lens does). */
   starredWhere: false,
   host: null as unknown,
-  toasts: [] as { kind: string; title: string; description?: string; undo?: () => void }[],
+  toasts: [] as { kind: string; title: string; description?: string; undo?: () => void; press?: string }[],
   asked: [] as { title: string; action: string }[],
   /** each question's line under its title, in order */
   bodies: [] as (string | undefined)[],
@@ -77,7 +77,8 @@ vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () 
 vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> , useKindModule: () => null }));
 // What a change says is one toast: here each is kept, with its Undo.
 vi.mock("../../components/ui/toaster", () => {
-  const put = (kind: string) => (title: string, o: { description?: string; action?: { onClick(): void } } = {}) => void world.toasts.push({ kind, title, ...(o.description ? { description: o.description } : {}), ...(o.action ? { undo: o.action.onClick } : {}) });
+  // A toast's one press is kept as `undo` whatever its label, which `press` names.
+  const put = (kind: string) => (title: string, o: { description?: string; action?: { label: string; onClick(): void } } = {}) => void world.toasts.push({ kind, title, ...(o.description ? { description: o.description } : {}), ...(o.action ? { undo: o.action.onClick, press: o.action.label } : {}) });
   return { loadToast: async () => ({ message: put("message"), error: put("error"), success: put("success") }) };
 });
 // A question before a change is the app's own confirm: here it is answered at once, and kept.
@@ -301,10 +302,13 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
         case "attachment.chunk":
           return null;
         case "attachment.commit": {
-          const path = (params.uploadId as string).split(":")[1]!;
+          // Never over anything: a taken name gets the next free one, "Bracket 2.pdf".
+          const asked = (params.uploadId as string).split(":")[1]!;
+          let path = asked;
+          for (let n = 2; disk.has(path); n++) path = asked.replace(/(\.[^./]*)?$/, (ext) => ` ${n}${ext}`);
           disk.set(path, false);
           host.say(parent(path));
-          return { path };
+          return { path, entry: entry(path) };
         }
       }
       throw new Error(`unknown method: ${method}`);
@@ -832,8 +836,8 @@ describe("Move to…", () => {
     expect(calls("work.files.move")[1]).toMatchObject({ refs: [at("/w/Events/Budget.xlsx")], to: { at: "place", id: "folder" } });
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
     expect(world.toasts.at(-1)).toMatchObject({ title: "Moved Budget.xlsx to Dummy Esports" });
-    // The move back is no move to undo again.
-    expect(world.toasts.at(-1)!.undo).toBeUndefined();
+    // The move back is no move to undo again: its press is Show.
+    expect(world.toasts.at(-1)!.press).toBe("Show");
   });
 
   it("makes a folder with New Folder and stands in it, and keeps the folders moved to last under Recent", async () => {
@@ -1005,7 +1009,7 @@ describe("upload and drag", () => {
     await waitFor(() => expect(calls("work.files.copy")).toHaveLength(1));
     // A copy takes nothing away: there is nothing to undo.
     await waitFor(() => expect(world.toasts.at(-1)?.title).toBe("Copied Budget.xlsx to Archive"));
-    expect(world.toasts.at(-1)!.undo).toBeUndefined();
+    expect(world.toasts.at(-1)!.press).toBe("Show");
   });
 
   it("takes files dropped from the desktop on the page into its folder", async () => {
@@ -1018,6 +1022,72 @@ describe("upload and drag", () => {
     fireEvent.drop(body, { dataTransfer });
     await waitFor(() => expect(calls("work.files.upload")).toHaveLength(1));
     expect(calls("work.files.upload")[0]).toMatchObject({ name: "Bracket.pdf" });
+  });
+});
+
+describe("Show and the drop's words", () => {
+  it("offers Show after a copy, going to the folder it went to; a move inside one place keeps Undo", async () => {
+    await mount();
+    fireEvent.contextMenu(row("notes.txt"));
+    fireEvent.click(await menuItem("Copy to…"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByRole("option", { name: "Events" }));
+    await waitFor(() => expect((within(dialog).getByRole("button", { name: "Copy Here" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy Here" }));
+    await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ title: "Copied notes.txt to Events", press: "Show" }));
+    act(() => world.toasts.at(-1)!.undo!());
+    await waitFor(() => expect(rows()).toEqual(["notes.txt", "Poster.png"]));
+  });
+
+  it("offers Show after Put Back, going to the folder it went back to", async () => {
+    await mount();
+    fireEvent.click(row("Poster.png") ?? row("Events"));
+    fireEvent.doubleClick(row("Events"));
+    await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
+    fireEvent.click(row("Poster.png"));
+    fireEvent.keyDown(list(), { key: "Backspace", metaKey: true });
+    await waitFor(() => expect(rows()).toEqual([]));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
+    await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
+    fireEvent.contextMenu(row("Poster.png"));
+    fireEvent.click(await menuItem("Put Back"));
+    await waitFor(() => expect(world.toasts.at(-1)).toMatchObject({ title: "Put back Poster.png", press: "Show" }));
+    act(() => world.toasts.at(-1)!.undo!());
+    await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
+    expect(screen.queryByRole("columnheader", { name: "Was in" })).toBeNull();
+  });
+
+  it("says once that an upload took a free name, and nothing when the name was its own", async () => {
+    await mount();
+    const body = document.querySelector<HTMLElement>("[data-files-body]")!;
+    const drop = (name: string): void => {
+      const dataTransfer = { types: ["Files"], files: [new File(["x"], name)], dropEffect: "" };
+      fireEvent.dragOver(body, { dataTransfer });
+      fireEvent.drop(body, { dataTransfer });
+    };
+    drop("Bracket.pdf");
+    await waitFor(() => expect(rows()).toContain("Bracket.pdf"));
+    expect(world.toasts).toEqual([]);
+    drop("Bracket.pdf");
+    await waitFor(() => expect(world.toasts).toEqual([{ kind: "message", title: "Uploaded as Bracket 2.pdf", description: "Bracket.pdf was taken in that folder." }]));
+  });
+
+  it("draws the wash with where files go, and over a place that refuses its sentence with no drop", async () => {
+    await mount();
+    const dataTransfer = { types: ["Files"], files: [new File(["x"], "Bracket.pdf")], dropEffect: "" };
+    const body = (): HTMLElement => document.querySelector<HTMLElement>("[data-files-body]")!;
+    fireEvent.dragOver(body(), { dataTransfer });
+    expect(document.querySelector("[data-files-drop]")!.textContent).toBe("Drop to upload to Dummy Esports");
+    fireEvent.dragLeave(body(), { relatedTarget: null });
+    expect(document.querySelector("[data-files-drop]")).toBeNull();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Recent" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New" })).toBeNull());
+    const over = createEvent.dragOver(body(), { dataTransfer });
+    fireEvent(body(), over);
+    expect(over.defaultPrevented).toBe(false);
+    expect(document.querySelector("[data-files-drop]")!.textContent).toBe("Recent only shows files. Change one where it lives.");
+    fireEvent.drop(body(), { dataTransfer });
+    expect(calls("work.files.upload")).toEqual([]);
   });
 });
 

@@ -27,8 +27,18 @@ const refOf = (entry: FileEntry): FileRef => (entry.ref ?? entry.folder)!;
 const longWait = (copy: PlaceCopy): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: 120_000 } : {});
 
 const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: workErrorWords(err) || undefined }));
-const said = (title: string, o: { description?: string; undo?: () => void } = {}): void =>
-  void loadToast().then((toast) => toast.message(title, { ...(o.description ? { description: o.description } : {}), ...(o.undo ? { action: { label: "Undo", onClick: o.undo } } : {}) }));
+/** One toast: what went, and its one press, Undo where the act can be undone, else Show where it landed. */
+const said = (title: string, o: { description?: string; undo?: () => void; show?: () => void } = {}): void =>
+  void loadToast().then((toast) =>
+    toast.message(title, { ...(o.description ? { description: o.description } : {}), ...(o.undo ? { action: { label: "Undo", onClick: o.undo } } : o.show ? { action: { label: "Show", onClick: o.show } } : {}) }),
+  );
+
+/** The folder a file lies in, as a page: where a toast's Show goes. Null for a file on no disk. */
+function folderOfRef(ref: FileRef | null | undefined): { at: FolderRef; name: string } | null {
+  if (!ref || ref.at !== "file") return null;
+  const path = ref.path.replace(/[\\/]+[^\\/]*$/, "");
+  return path && path !== ref.path ? { at: { at: "file", host: ref.host, path }, name: path.split(/[\\/]/).pop() || path } : null;
+}
 
 /** What a change's answer says beyond its own toast: the things it could not do. */
 function leftovers(done: FileDone): string | undefined {
@@ -41,6 +51,8 @@ export interface ActsOf {
   home: string;
   /** marks the rows an act is changing, and lets them go; absent, nothing is marked */
   busy?: MarkBusy;
+  /** goes to a folder in the tab he is in: a toast's Show; absent, a toast offers none */
+  show?(page: { at: FolderRef; name: string }): void;
 }
 
 /**
@@ -206,7 +218,9 @@ export async function carryTo(
     const bindable = done.entries.every((e) => e.changed !== undefined);
     const undo = verb === "move" && back && samePlace && bindable ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }, undefined, undefined, true) : undefined;
     if (!done.entries.length) return didNot(new Error(leftovers(done) ?? "The folder took nothing."));
-    said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });
+    // A move inside one place offers Undo; a copy, and a move across places, Show: the folder it went to.
+    const show = of.show ? () => of.show!({ at: to.at, name: to.name }) : undefined;
+    said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : show ? { show } : {}) });
     return true;
   } catch (err) {
     return didNot(err);
@@ -308,7 +322,10 @@ export async function restore(of: ActsOf, link: string, ids: readonly string[]):
   if (!ids.length) return false;
   try {
     const done = await filesLink(link).request<FileDone>("work.files.restore", { workspaceId: of.workspaceId, ids, op: opId() });
-    if (done.entries.length) said(doneWords("Put back", done.entries.map((e) => e.name)), { description: leftovers(done) });
+    // Show goes to the folder they went back to, where they all went back to one.
+    const folders = done.entries.map((e) => folderOfRef(e.ref ?? e.folder));
+    const back = folders[0] && folders.every((f) => f && JSON.stringify(f.at) === JSON.stringify(folders[0]!.at)) ? folders[0] : null;
+    if (done.entries.length) said(doneWords("Put back", done.entries.map((e) => e.name)), { description: leftovers(done), ...(back && of.show ? { show: () => of.show!(back) } : {}) });
     else failed("Nothing was put back", new Error(leftovers(done) ?? "Trash held none of them."));
     return done.entries.length > 0;
   } catch (err) {
@@ -423,6 +440,8 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
   const link = registry.linkOf(copy.link);
   let landed = 0;
   const lost: { name: string; text: string }[] = [];
+  // A file the host saved under a free name, since its own was taken (never over anything): said once, at the end.
+  const renamed: { name: string; as: string }[] = [];
   for (const [index, file] of files.entries()) {
     if (o.signal?.aborted) break;
     let uploadId: string | null = null;
@@ -439,7 +458,8 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
       }
       o.signal?.throwIfAborted();
       try {
-        await link.request("attachment.commit", { uploadId: id });
+        const made = await link.request<{ entry?: { name: string } }>("attachment.commit", { uploadId: id });
+        if (made?.entry?.name && made.entry.name !== file.name) renamed.push({ name: file.name, as: made.entry.name });
       } catch (err) {
         if (!(await landedAfter(link, id, begin, longWait(copy)))) throw err;
       }
@@ -460,6 +480,8 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
     }
   }
   o.onProgress?.(null);
+  if (renamed.length === 1) said(`Uploaded as ${renamed[0]!.as}`, { description: `${renamed[0]!.name} was taken in that folder.` });
+  else if (renamed.length > 1) said(`Uploaded ${renamed.length} under new names`, { description: `${renamed[0]!.name} as ${renamed[0]!.as}, and ${renamed.length - 1} more: their names were taken.` });
   if (lost.length) failed(landed ? `${lost.length} of ${files.length} did not upload` : "Nothing was uploaded", new Error(refusedWords(lost) ?? ""));
   return landed;
 }

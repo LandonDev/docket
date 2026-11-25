@@ -33,6 +33,7 @@ import { DetailsPane, FileBeside, FileGallery, type BesideSeatOf } from "./Looks
 import {
   actsFor,
   shownName,
+  farWhy,
   carryRefusal,
   DEFAULT_TILE,
   GROUP_WORDS,
@@ -1251,9 +1252,12 @@ export function PageView({
     <NoteLine note={down.fix?.kind === "wake" && listing?.asOf ? { ...down, line: `This is the list from ${clockTime(listing.asOf)}.` } : down} fixes={noteFixes} />
   ) : null;
   // Files dropped from the desktop on the page land in its folder; on a folder row, in that folder (the row takes the drop first).
-  const takesFiles = !!acts && !inTrash && canDo(acts.place, "upload");
+  const takesFiles = !!acts && !inTrash && canDo(acts.place, "upload") && !acts.far;
   const [filesOver, setFilesOver] = useState(false);
-  const fromDesktop = (event: DragEvent): boolean => takesFiles && !dragging() && [...event.dataTransfer.types].includes("Files");
+  const desktopFiles = (event: DragEvent): boolean => !!acts && !dragging() && [...event.dataTransfer.types].includes("Files");
+  const fromDesktop = (event: DragEvent): boolean => takesFiles && desktopFiles(event);
+  // Over a folder that takes them the wash says where they go; over a place that refuses, its sentence, and no drop.
+  const dropWords = takesFiles ? `Drop to upload to ${page.name}` : acts ? (acts.far ? farWhy(acts.far) : (refusal(acts.place, "upload")?.text ?? "Nothing can be uploaded here.")) : "";
   return (
     <div
       ref={setRoot}
@@ -1334,12 +1338,14 @@ export function PageView({
         <div
           data-files-body
           data-files-over={filesOver || undefined}
-          className={`@container/files-body relative flex min-h-0 flex-1 flex-col ${filesOver ? "bg-muted/60" : ""}`}
+          className="@container/files-body relative flex min-h-0 flex-1 flex-col"
           onDragOver={(event) => {
-            if (!fromDesktop(event)) return;
+            if (!desktopFiles(event)) return;
+            if (!filesOver) setFilesOver(true);
+            // A place that refuses takes no drop: the pointer says so, and the wash says why.
+            if (!fromDesktop(event)) return void (event.dataTransfer.dropEffect = "none");
             event.preventDefault();
             event.dataTransfer.dropEffect = "copy";
-            if (!filesOver) setFilesOver(true);
           }}
           onDragLeave={(event) => {
             if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -1355,6 +1361,12 @@ export function PageView({
           }}
         >
           {body}
+          {filesOver ? (
+            // The document surface's wash (formats/Import.tsx, canvas/fileDrop.tsx): 12px inside, a hairline, one line.
+            <div data-files-drop aria-live="polite" className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-lg border border-border bg-muted/70 px-6 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none">
+              <span className="max-w-96 text-center text-[13px] text-muted-foreground">{dropWords}</span>
+            </div>
+          ) : null}
           {acts && chosen.length >= 2 ? <BulkBar count={chosen.length} rows={verbs} {...(acts.ask && !inTrash ? { onAsk: () => acts.ask!(chosen) } : {})} onAct={(act) => run(act)} onClear={() => setPicked(NOTHING_PICKED)} /> : null}
         </div>
       </RowsContextMenu>

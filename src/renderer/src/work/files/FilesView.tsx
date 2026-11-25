@@ -578,7 +578,10 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
 
   // What changes files here: each asks the file's own host (acts.ts). The dialog and an upload are the view's own.
-  const of: ActsOf = { workspaceId: workspace.id, home: link, busy: markBusy };
+  // A toast's Show goes to the folder in the tab he is in when he presses it.
+  const goNow = useRef(go);
+  goNow.current = go;
+  const of: ActsOf = { workspaceId: workspace.id, home: link, busy: markBusy, show: (page) => goNow.current(page) };
   const [carrying, setCarrying] = useState<Carrying | null>(null);
   const [uploading, setUploading] = useState<UploadProgress | null>(null);
   const stopUpload = useRef<AbortController | null>(null);

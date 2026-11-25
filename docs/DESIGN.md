@@ -2076,7 +2076,9 @@ Around the canvas:
   refuses. Places is the sidebar's list, its glyphs and teams (a team over
   its channels, one level in), under Recent: the three folders he last
   moved or copied to, as Save As keeps its own. A move inside one place says what
-  went in one toast with Undo, back to the folder it came from. Delete
+  went in one toast with Undo, back to the folder it came from; a copy, a
+  move across places and Put Back say it with Show, which goes to the
+  folder they went to in this tab. Delete
   (⌘⌫, as in Finder; a bare ⌫ moves nothing; on a PC the Delete key)
   goes to Trash and says so in one toast with Undo;
   Trash is a lens, a list alone (no view switch), whose columns are Name,
@@ -2091,9 +2093,15 @@ Around the canvas:
   General"). A drop inside one place moves and into another copies; ⌥
   copies, ⌘ moves. Rows the system carries out to the desktop are let go
   once the window loses focus, so files dragged in from the desktop
-  next upload. Files dropped from the
-  desktop upload into the folder,
-  with one line over the list for the file going, how far, and Cancel.
+  next upload. Files dragged from the desktop over a folder draw the
+  document surface's wash 12px inside the body (`muted` 70%, a hairline,
+  radius 8) with one line, "Drop to upload to Events"; over a place that
+  takes no upload (Recent, Starred, Trash, a far computer) the same wash
+  holds the place's sentence and the drop is refused. Dropped, they upload
+  into the folder,
+  with one line over the list for the file going, how far, and Cancel; one
+  saved under a free name because its own was taken says so once ("Uploaded
+  as Budget 2.xlsx"), and a plain upload says nothing.
   Rows dragged onto the docked chat draw the document surface's wash 12px
   inside it ("Drop to add to the message") and become a file chip each in
   its composer, eight at most.

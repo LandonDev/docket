@@ -1240,6 +1240,12 @@ follows; the title shows the old name until the tab opens again).
   no second upload. An upload the host no longer knows ("unknown upload": it
   started again before the commit, or the id expired) is sent once more
   from the start under a new op.
+- His window says nothing of an upload that went under its own name; one the host saved under a free name (its own
+  was taken) is said once at the end, from the commit's `entry` ("Uploaded as Budget 2.xlsx", or "Uploaded 3 under
+  new names" with the first). Files dragged over a folder from the desktop draw the canvas's wash with "Drop to upload
+  to Events", or, over a place that takes none, its refusal's sentence and no drop (Page.tsx `dropWords`). A copy, a
+  move across places and Put Back end in a toast with Show, which goes to the folder in this tab (`ActsOf.show`); a
+  move inside one place keeps Undo.
 - The caller sends the bytes as `attachment.chunk` and `attachment.commit`
   (or `attachment.abort`) on that id, from the same socket: an upload
   belongs to its owner, this host's window or the key that began it
