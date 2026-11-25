@@ -385,7 +385,7 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
 }
 
 /** Restore points: saved while it sleeps, three kept; going back after a confirm that says what is lost. */
-function PointsDialog({ env, state, points, admin, onClose }: { env: string; state: WinvmState; points: readonly WinvmPoint[]; admin: boolean; onClose: () => void }) {
+export function PointsDialog({ env, state, points, admin, onClose }: { env: string; state: WinvmState; points: readonly WinvmPoint[]; admin: boolean; onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const asleep = state.state === "asleep";

@@ -13,7 +13,7 @@ import { onWindowFullScreen, setPopOutShape } from "../../../lib/native";
 import { POP_OUT_FRAME, closePopOut, usePopOut } from "../../../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
-import { ViewButton } from "./ComputerCaption";
+import { ViewButton } from "./ComputerBar";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
 

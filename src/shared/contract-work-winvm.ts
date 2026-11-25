@@ -41,6 +41,10 @@ export interface WinvmState {
   sleepAfter: WinvmSleepAfter
   /** when `state` last changed */
   since: number
+  /** the usual wake, in ms: the median of the last five; null before one (the page's "6 s of about 13") */
+  wakeMs?: number | null
+  /** asleep by a person's Sleep: the page waits for his Wake rather than waking it by itself */
+  heldAsleep?: boolean
 }
 
 /**

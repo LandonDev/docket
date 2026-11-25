@@ -10,7 +10,7 @@ import { reducedMotion } from "../../../lib/motion";
 import { onWindowFullScreen, setWindowFullScreen } from "../../../lib/native";
 import { drawnPixelated, fitStage, pictureKind, type PictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
-import { ComputerCaption, ViewButton } from "./ComputerCaption";
+import { ComputerBar, ViewButton } from "./ComputerBar";
 import { FullScreenHint } from "./FullScreenHint";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
@@ -104,7 +104,7 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
         className={cn("absolute inset-x-0 top-0 bg-background px-4 py-2 transition-opacity duration-(--dur-base) ease-(--ease-out) has-focus-visible:opacity-100", !captionShown && "opacity-0")}
       >
         {tile ? (
-          <ComputerCaption tile={tile} onOpenSession={onOpenSession} where={tile.where} onTookOver={onTookOver} views={leave} />
+          <ComputerBar tile={tile} onOpenSession={onOpenSession} where={tile.where} onTookOver={onTookOver} views={leave} />
         ) : (
           <div className="flex min-h-9 items-center justify-end">{leave}</div>
         )}

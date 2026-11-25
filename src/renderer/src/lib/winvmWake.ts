@@ -21,10 +21,62 @@ export interface VmState {
   cannot: string | null;
   /** the keeper's last failure, in words */
   error: string | null;
+  /** what it is doing now, in the keeper's words; null when settled */
+  step?: string | null;
+  /** when `state` last changed */
+  since?: number;
+  /** the usual wake, in ms: the keeper's median of its last five; null before one */
+  wakeMs?: number | null;
+  /** asleep by a person's Sleep: the page waits for his Wake */
+  heldAsleep?: boolean;
+  /** the screen's choice, for the bar's Size and Detail; null where the host does not say it */
+  display?: VmDisplay | null;
 }
 
-const vmOf = (s: WinvmState): VmState => ({ state: s.state, cannot: s.cannot ?? null, error: s.error ?? null });
-const same = (a: VmState | undefined, b: VmState): boolean => !!a && a.state === b.state && a.cannot === b.cannot && a.error === b.error;
+/** The bar's Size: Fit to window, or one fixed size of the guest's pixels. */
+export const VM_SCREEN_PICKS = ["fit", "1280x800", "1920x1200", "2560x1600"] as const;
+export type VmScreenPick = (typeof VM_SCREEN_PICKS)[number];
+export type VmDetail = "sharp" | "faster";
+/** What the bar's Size and Detail rows read: the host's choice, and whether Windows takes a new size now (live resize). */
+export interface VmDisplay {
+  screen: VmScreenPick;
+  detail: VmDetail;
+  canResize: boolean;
+}
+
+/**
+ * The host's display as the keeper will say it (plan M3d: `WinvmState.display { device, width, height, scale, fit,
+ * detail, canResize }`). Read by name until the contract carries it; a host that does not say it has no Size or Detail.
+ */
+type DisplayWire = { width?: number; height?: number; fit?: boolean; detail?: VmDetail; canResize?: boolean };
+export function displayOf(s: WinvmState): VmDisplay | null {
+  const d = (s as WinvmState & { display?: DisplayWire }).display;
+  if (!d || typeof d.canResize !== "boolean") return null;
+  const fixed = `${d.width}x${d.height}`;
+  const screen: VmScreenPick = d.fit ? "fit" : ((VM_SCREEN_PICKS as readonly string[]).includes(fixed) ? fixed : "fit") as VmScreenPick;
+  return { screen, detail: d.detail === "faster" ? "faster" : "sharp", canResize: d.canResize };
+}
+
+const vmOf = (s: WinvmState): VmState => ({
+  state: s.state,
+  cannot: s.cannot ?? null,
+  error: s.error ?? null,
+  step: s.step ?? null,
+  since: s.since,
+  wakeMs: s.wakeMs ?? null,
+  heldAsleep: s.heldAsleep === true,
+  display: displayOf(s),
+});
+const same = (a: VmState | undefined, b: VmState): boolean =>
+  !!a &&
+  a.state === b.state &&
+  a.cannot === b.cannot &&
+  a.error === b.error &&
+  a.step === b.step &&
+  a.since === b.since &&
+  a.wakeMs === b.wakeMs &&
+  a.heldAsleep === b.heldAsleep &&
+  JSON.stringify(a.display) === JSON.stringify(b.display);
 
 /** Every Work host's VM, by host; a host with none it could have is left out. */
 export function useVmStates(): Readonly<Record<string, VmState>> {

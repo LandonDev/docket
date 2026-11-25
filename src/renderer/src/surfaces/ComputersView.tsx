@@ -21,7 +21,7 @@ import { IS_MAC } from "../lib/platform";
 import { restingVm, restingVmTiles, useVmStates, wakeVm, WAKING_LINE, type VmState } from "../lib/winvmWake";
 import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
-import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
+import { ComputerBar, ViewButton, tileLine } from "./threads/computer/ComputerBar";
 import { ENDED_WORDS, PIXELATED, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
 import { drivenScreen } from "../lib/video/videoInput";
 
@@ -39,7 +39,7 @@ import { drivenScreen } from "../lib/video/videoInput";
  * tile plays video where a stream is free and the 4 fps picture where not.
  */
 
-export { tileLine } from "./threads/computer/ComputerCaption";
+export { tileLine } from "./threads/computer/ComputerBar";
 
 const tileLabel = (tile: ComputerTile): string => {
   const app = tile.entry.row.apps[0];
@@ -223,7 +223,7 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
     <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", stage ? "gap-2" : "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
       {stage ? (
-        <ComputerCaption
+        <ComputerBar
           tile={tile}
           onOpenSession={onOpenSession}
           where={where}
