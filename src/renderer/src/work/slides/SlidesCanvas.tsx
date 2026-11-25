@@ -158,6 +158,18 @@ export function slideOfChange(view: DeckView, change: SlideChange): DeckSlide | 
 /** A deck can be presented when the host has a picture of the file. */
 export const canPresent = (view: DeckView | null): view is DeckView => !!view && !!view.renders.file && !view.renderError;
 
+/** The host's word for a deck whose file is not where the item says (view.ts `pathOf`, `ItemFileError` 'missing'). */
+export const MISSING = / is not where it was\.$/;
+
+/** Show in Files: the folder the deck was in, as a page tab of the workspace's Files, then Files. */
+async function showFolderOf(env: string, workspaceId: string, source: { host: string; path: string }): Promise<void> {
+  const cut = Math.max(source.path.lastIndexOf("/"), source.path.lastIndexOf("\\"));
+  const folder = cut > 0 ? source.path.slice(0, cut) : source.path.slice(0, cut + 1) || "/";
+  const name = folder.slice(Math.max(folder.lastIndexOf("/"), folder.lastIndexOf("\\")) + 1) || folder;
+  const { openInFiles } = await import("../files/openFrom");
+  await openInFiles({ id: workspaceId, environmentId: env }, { page: { at: { at: "file", host: source.host, path: folder }, name } }).catch((e: unknown) => sayError(e, "Couldn't show it in Files"));
+}
+
 /** Starts a show of the deck's file: from its first slide, or from the slide on the stage when that slide is in the file. */
 export function startPresenting(host: DeckHost, store: DeckStore, ask: PresentAsk, engine?: PdfEngine): void {
   const { view, current } = store.get();
@@ -341,8 +353,11 @@ export function SlidesBody({
   const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
 
   // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
-  // export first has nothing to try again.
-  if (error) return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT ? undefined : retry} />;
+  // export first has nothing to try again, and one moved or taken away offers its folder in Files, which Retry cannot bring back.
+  if (error) {
+    const gone = MISSING.test(error) && item.source.at === "file" && item.workspaceId ? { workspaceId: item.workspaceId, source: item.source } : null;
+    return <OpenFailed kind="slides" why={error} onRetry={error === KEYNOTE_EXPORT || gone ? undefined : retry} instead={gone ? { label: "Show in Files", run: () => showFolderOf(env, gone.workspaceId, gone.source) } : undefined} />;
+  }
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <InPowerPoint itemId={item.id} on={computerOf(source, env)} onRetry={() => openInPowerPoint(item.id, source, env, { again: true })} />;
 

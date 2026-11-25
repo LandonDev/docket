@@ -3658,7 +3658,9 @@ is one toast. More keeps Make a copy to edit, and for Google Read again
 from Google and Open in Google; Save to Google Slides is there for a deck
 of his own, opening the dialog with the same account field as Open from
 Google. A Keynote that cannot be read is the canvas's failed line alone,
-"Export this from Keynote as PowerPoint", with no Retry.
+"Export this from Keynote as PowerPoint", with no Retry. A deck whose file
+is not where it was offers "Show in Files" in Retry's place: the folder it
+was in, as a page tab of Files.
 
 **The show** (`src/renderer/src/work/slides/show/`; the approved page is
 `.temp-code/prototypes/work-editors/present.html`, "Slide and column"). A

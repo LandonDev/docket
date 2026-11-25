@@ -62,6 +62,10 @@ vi.mock("./show/Show", () => ({
   },
 }));
 
+/** Files, as a deck that moved away shows its folder there. */
+const files = vi.hoisted(() => ({ opened: [] as unknown[][] }));
+vi.mock("../files/openFrom", () => ({ openInFiles: async (...args: unknown[]) => void files.opened.push(args) }));
+
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { resetCanvasStore } from "../canvas/store";
 import { noteSlidesOpenedByHand } from "./openShow";
@@ -806,7 +810,7 @@ describe("the slides kind", () => {
       deckHost.review = async () => {
         throw new Error("The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.");
       };
-      deckHost.open = () => Promise.reject(new Error("The deck is not where it was."));
+      deckHost.open = () => Promise.reject(new Error("The deck could not be read."));
       fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
       const line = await found("[data-canvas-failed]");
       await waitFor(() => expect(document.querySelector("[data-slides-stage]")).toBeNull());
@@ -937,10 +941,10 @@ describe("the slides kind", () => {
   it("draws a deck the host could not open as the centred failure with its reason and Retry, with no bones and no state line", async () => {
     let fail = true;
     let held: (() => void) | null = null;
-    open(deckView(), () => (fail ? Promise.reject(new Error("The deck is not where it was.")) : new Promise<DeckView>((yes) => (held = () => yes(deckHost.view)))));
+    open(deckView(), () => (fail ? Promise.reject(new Error("The deck could not be read.")) : new Promise<DeckView>((yes) => (held = () => yes(deckHost.view)))));
     const failed = await found("[data-canvas-failed]");
     expect(failed.textContent).toContain("Couldn't open this deck");
-    expect(failed.textContent).toContain("The deck is not where it was.");
+    expect(failed.textContent).toContain("The deck could not be read.");
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
     expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
     expect(document.querySelector('[data-canvas-bar] [data-slot="skeleton"]')).toBeNull();
@@ -1025,6 +1029,17 @@ describe("slide imports and Google", () => {
     expect(noticeOf({ source: mail, sessionId: "filespane_w1" }, { from: "odp" }, false, async () => {}, async () => {})).toMatchObject({ words: null, press: { label: "Make a copy to edit" } });
     expect(noticeOf({ source: mail, sessionId: "t1" }, { from: "odp" }, false, async () => {}, async () => {})).toMatchObject({ words: "Read only" });
     expect(noticeOf({ source: { at: "file", host: "local", path: "/w/a.pptx" }, sessionId: "t1" }, undefined, false, async () => {}, async () => {})).toBeNull();
+  });
+
+  it("offers a deck moved or taken away its folder in Files, not Retry, which cannot bring it back", async () => {
+    files.opened.length = 0;
+    open(deckView(), async () => {
+      throw new Error("Pitch.pptx is not where it was.");
+    }, undefined, { at: "file", host: "local", path: "/work/Spring/Pitch.pptx" });
+    const failed = await found("[data-canvas-failed]");
+    expect(within(failed).queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(within(failed).getByRole("button", { name: "Show in Files" }));
+    await waitFor(() => expect(files.opened).toEqual([[{ id: "w1", environmentId: "local" }, { page: { at: { at: "file", host: "local", path: "/work/Spring" }, name: "Spring" } }]]));
   });
 
   it("gives the Keynote export instruction by itself, and any other failure its Retry", async () => {

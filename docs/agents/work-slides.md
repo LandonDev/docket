@@ -1297,6 +1297,12 @@ the original changed. A copy he can see in Files has none of these faults.
   failure as its sentence alone, so the one constant is the kind both ends
   know). A missing converter, a machine asleep, a timeout or a stop keep
   their own words and the canvas's Retry.
+- **A deck not where it was.** The host's sentence "… is not where it was."
+  (`ItemFileError` `missing`, matched by `MISSING` in SlidesCanvas.tsx, the
+  same way as `KEYNOTE_EXPORT`) has no Retry, which cannot bring a moved
+  file back: `OpenFailed`'s `instead` is "Show in Files", the folder it was
+  in as a page tab of the item's workspace (`openInFiles`, loaded at the
+  press).
 - **A show file.** A `.pps` or `.ppsx` opens as a deck with Present one press
   away. `noteSlidesOpenedByHand(env, item)` (`openShow.ts`) starts the show
   at the first slide once the deck is ready, but nothing calls it yet: the

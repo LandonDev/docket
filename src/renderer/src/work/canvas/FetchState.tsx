@@ -46,7 +46,19 @@ export function useFailedWords(why: string | null | undefined): string {
  * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
  * dropped while the content stays.
  */
-export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first); its promise, where it gives one, is the read again under way */ onRetry?: (() => void | Promise<unknown>) | undefined }) {
+export function OpenFailed({
+  kind,
+  why,
+  onRetry,
+  instead,
+}: {
+  kind: CanvasKind;
+  why?: string | undefined;
+  /** absent where trying again cannot help (a file he must export first); its promise, where it gives one, is the read again under way */
+  onRetry?: (() => void | Promise<unknown>) | undefined;
+  /** the one press that can help where Retry cannot (a file moved away: Show in Files), in Retry's place */
+  instead?: { label: string; run(): void | Promise<unknown> } | undefined;
+}) {
   const said = useFailedWords(why);
   // An open the pane's host could not make because its LifeOS session is down (a LifeOS document or sheet, a mail's
   // attachment, a dashboard read from a LifeOS sheet) says that session's state by the host's live status, with the
@@ -83,6 +95,18 @@ export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: str
           }}
         >
           <BusyLabel busy={retrying} label="Retry" />
+        </Button>
+      ) : instead ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void Promise.resolve(instead.run()).finally(() => setRetrying(false));
+          }}
+        >
+          <BusyLabel busy={retrying} label={instead.label} />
         </Button>
       ) : null}
     </Empty>
