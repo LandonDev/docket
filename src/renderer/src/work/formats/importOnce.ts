@@ -49,7 +49,8 @@ export function resetImports(): void {
  */
 const LOSSES = "tc.work.importLosses";
 const KEPT_LOSSES = 100;
-const lossKey = (source: ImportAnswer["source"]): string | null => (source.at === "file" ? `${source.host}\n${source.path}` : null);
+// An answer with no source (an older host, a stand-in) keeps no losses.
+const lossKey = (source: ImportAnswer["source"] | undefined): string | null => (source?.at === "file" ? `${source.host}\n${source.path}` : null);
 
 function readLosses(): [string, string[]][] {
   try {

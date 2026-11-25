@@ -11,7 +11,7 @@ const link = {
   request: vi.fn<(method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }) => Promise<unknown>>(),
   onPush: vi.fn(() => () => undefined),
 };
-vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => link } }));
+vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => link, onLink: () => () => {} } }));
 const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 

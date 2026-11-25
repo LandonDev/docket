@@ -390,10 +390,10 @@ describe("the held request and the audit list", () => {
     render(<GuestLinksSection hosts={["box", "mac", "win"]} />);
     await screen.findByText("Sam Ortiz");
     expect(screen.getAllByText("Sam Ortiz")).toHaveLength(1);
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByText("Windows PC did not answer. Try again once it is connected.")).toBeTruthy();
     calls.down.clear();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    await waitFor(() => expect(screen.queryByText("The host did not answer")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Windows PC did not answer. Try again once it is connected.")).toBeNull());
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
   });
 
@@ -402,7 +402,7 @@ describe("the held request and the audit list", () => {
     calls.links = [LINK];
     calls.down.add("win");
     render(<GuestLinksSection hosts={["box", "win"]} />);
-    await screen.findByText("The host did not answer");
+    await screen.findByText("Windows PC did not answer. Try again once it is connected.");
     calls.down.clear();
     let open: () => void = () => {};
     calls.listGate = new Promise((r) => (open = r));

@@ -157,6 +157,8 @@ describe('the sheet host', () => {
     // More while the first is being written: one the engine cannot lay, a row insert, one a guest may not send, a cell
     // made below the row before it was seen, and one more after them.
     const bad = host.apply(REF, 1, [{ id: 'nobody.mutation.at-all', params: {} }], 'owner')
+    // Refused before the test reaches its own expect: caught here, so its rejection is never unhandled.
+    bad.catch(() => {})
     const insert = host.apply(REF, 1, [insertRow('book', 0)], 'guest:L')
     const misfit = host.apply(REF, 1, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'guest:M')
     const below = host.apply(REF, 1, [setCell(2, 1, { v: 2 })], 'guest:M')

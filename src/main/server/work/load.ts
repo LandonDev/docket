@@ -2,6 +2,7 @@ import type { Principal as SocketPrincipal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import { errorText, handled, NOT_HANDLED, type Handled } from '@shared/work/ids'
 import { isWorkMethod } from '@shared/work/wire'
+import type { DatabaseSync } from 'node:sqlite'
 import type { Work, WorkDeps } from './ctx'
 
 /**
@@ -16,13 +17,23 @@ import type { Work, WorkDeps } from './ctx'
 export interface WorkLoader {
   /** Starts Work with the host's handles. Never throws. */
   start(deps: WorkDeps): Work
+  /** Each Word file's kept document in the hidden Word store (files/imports.ts `wordStoreDocs`): the paths a remote
+   *  key may still name, file by file. None when Work did not load; never throws. */
+  keptDocs(db: DatabaseSync, dataDir: string): string[]
 }
 
 export async function loadWork(): Promise<WorkLoader> {
   try {
-    const [{ loadWorkModules }, { startWork }] = await Promise.all([import('./modules'), import('./ctx')])
+    const [{ loadWorkModules }, { startWork }, { wordStoreDocs }] = await Promise.all([import('./modules'), import('./ctx'), import('./files/imports')])
     await loadWorkModules()
     return {
+      keptDocs(db, dataDir) {
+        try {
+          return wordStoreDocs(db, dataDir)
+        } catch {
+          return []
+        }
+      },
       start(deps) {
         try {
           return startWork(deps)
@@ -33,7 +44,7 @@ export async function loadWork(): Promise<WorkLoader> {
     }
   } catch (err) {
     const why = fault('did not load', err)
-    return { start: () => inertWork(why) }
+    return { start: () => inertWork(why), keptDocs: () => [] }
   }
 }
 

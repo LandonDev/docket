@@ -186,7 +186,6 @@ import { startLoopWatch } from './loopWatch'
 import { watchStats } from './treewatch'
 import { watchFailures } from './watchGuard'
 import { folderReader as folderReaderNow } from './work/files/places/winDir'
-import { wordStoreDocs } from './work/files/imports'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -698,8 +697,9 @@ export async function startServer(
   }
   /** What a remote key may name by path: the managed roots, and each Word file's kept document alone, as it was
    *  reached in the workspace's folder before the hidden Word store took it (work/files/wordStore.ts). Nothing else
-   *  of the store or the app's data; the Mac bridge's roots stay `managedRoots`, without them. */
-  const remoteRoots = (): string[] => [...managedRoots(), ...wordStoreDocs(db, options.dataDir ?? dirname(dbPath))]
+   *  of the store or the app's data; the Mac bridge's roots stay `managedRoots`, without them. Read through Work's
+   *  guarded loader (work/load.ts `keptDocs`), so the host imports nothing of Work's files pillar. */
+  const remoteRoots = (): string[] => [...managedRoots(), ...workLoader.keptDocs(db, options.dataDir ?? dirname(dbPath))]
   // Each thread's uploaded attachments (attachmentDir.ts): under its project
   // cwd, else its workspace path, else <userData>/attachments.
   setAttachmentDirContext({
