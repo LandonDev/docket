@@ -2075,7 +2075,8 @@ Around the canvas:
   a row, a tab, a header and a rename field show the name before them, and
   a rename keeps the ending. The new thing is selected
   with its name ready to type; ⌘⇧N makes a folder the same way, as in
-  Finder (the menu's Folder row shows it). A name is typed in place (F2, a slow
+  Finder (the menu's Folder row shows it), only where the page shown makes
+  folders: elsewhere it stays the app's New Window. A name is typed in place (F2, a slow
   second press on the selected name, Rename in the menu): the field
   stands where the name was with the part before the extension selected.
   **A row's menu** (a right-click, the same for one or many) is the

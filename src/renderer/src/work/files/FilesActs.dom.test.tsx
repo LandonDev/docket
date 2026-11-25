@@ -385,8 +385,11 @@ describe("New", () => {
     expect(picked()).toEqual(["Spring LAN"]);
   });
 
-  it("makes a folder on ⌘⇧N and names it in place, as New → Folder does", async () => {
+  it("makes a folder on ⌘⇧N and names it in place, as New → Folder does; where nothing makes one, ⌘⇧N and New Window stay the app's", async () => {
     await mount();
+    const shiftN = (): KeyboardEvent => new KeyboardEvent("keydown", { key: "N", metaKey: true, ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(filesPort.menu("new_window")).toBe("new-folder"));
+    expect(filesPort.chord(shiftN())).toBe("new-folder");
     await act(async () => void filesPort.run("new-folder"));
     await waitFor(() => expect(calls("work.files.make")).toHaveLength(1));
     expect(calls("work.files.make")[0]).toMatchObject({ kind: "folder", at: { at: "place", id: "folder" } });
@@ -396,6 +399,8 @@ describe("New", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "New" })).toBeNull());
     await act(async () => void filesPort.run("new-folder"));
     expect(calls("work.files.make")).toHaveLength(1);
+    expect(filesPort.menu("new_window")).toBeUndefined();
+    expect(filesPort.chord(shiftN())).toBeNull();
   });
 
   it("offers only what a library takes, and no New in Trash", async () => {

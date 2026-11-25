@@ -93,5 +93,23 @@ export const FILES_MENU: Partial<Record<AppCommandId, FilesCommand>> = {
   new_window: "new-folder",
 };
 
-/** What the view gives the port while it is mounted (lib/filesKeys.ts). */
-export const FILES_KEYS: FilesKeys = { owns: filesOwnsFocus, idle: filesIdle, chord: filesChord, menu: FILES_MENU as Readonly<Record<string, FilesCommand>> };
+/**
+ * What the view gives the port while it is mounted (lib/filesKeys.ts). ⌘⇧N and New Window are its New Folder only
+ * while the page shown makes folders (`makesFolder`); in a file tab, Home, Recent, Starred, Trash or a place that
+ * makes none they stay the app's New Window.
+ */
+export function filesKeys(makesFolder: () => boolean): FilesKeys {
+  const { new_window: _folder, ...menu } = FILES_MENU;
+  return {
+    owns: filesOwnsFocus,
+    idle: filesIdle,
+    chord: (e) => {
+      const command = filesChord(e);
+      return command === "new-folder" && !makesFolder() ? null : command;
+    },
+    menu: Object.defineProperty(menu, "new_window", { enumerable: true, get: () => (makesFolder() ? "new-folder" : undefined) }) as Readonly<Record<string, FilesCommand>>,
+  };
+}
+
+/** The keys of a view whose page makes folders. */
+export const FILES_KEYS: FilesKeys = filesKeys(() => true);

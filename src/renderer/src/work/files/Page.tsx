@@ -802,7 +802,7 @@ function UploadLine({ progress, onCancel }: { progress: UploadProgress; onCancel
   );
 }
 
-/** The shown page's answer to the Files commands that act on a folder (⌘⇧N, New Folder), held while it is drawn. */
+/** The shown page's New Folder, set only while it makes folders (null elsewhere: the app's New Window keeps the key). */
 export type PageCommands = { current: ((command: "new-folder") => void) | null };
 
 export function PageView({
@@ -1067,9 +1067,8 @@ export function PageView({
   const makesFolder = !!acts && !inTrash && (acts.place.makes ?? []).includes("folder") && !(listing?.error && !listed.length);
   useEffect(() => {
     if (!commands) return;
-    commands.current = (command) => {
-      if (command === "new-folder" && makesFolder) void acts!.make("folder").then((made) => made && setFresh(made.key));
-    };
+    // Set only while this page makes folders: the view's ⌘⇧N and New Window are New Window wherever it makes none.
+    commands.current = makesFolder ? () => void acts!.make("folder").then((made) => made && setFresh(made.key)) : null;
     return () => {
       commands.current = null;
     };

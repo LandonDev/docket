@@ -40,7 +40,7 @@ import { cutsMiddle, MiddleCut } from "../canvas/TabName";
 import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
-import { closeOf, FILES_KEYS, landFocus } from "./chords";
+import { closeOf, filesKeys, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { marked, type Busy, type MarkBusy } from "./busy";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp } from "./open";
@@ -538,7 +538,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     void goTo(link, workspace.id, tab.id, tab.page, command === "back" ? "back" : "forward").catch(() => undefined);
   };
   useEffect(() => {
-    filesPort.set((command) => act.current(command), FILES_KEYS);
+    filesPort.set((command) => act.current(command), filesKeys(() => pageCommands.current !== null));
     return () => filesPort.set(null);
   }, []);
   useEffect(() => {
