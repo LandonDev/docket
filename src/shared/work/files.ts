@@ -219,6 +219,8 @@ export interface FileEntry {
   revision?: string
   /** who last changed it, where its store says */
   by?: string
+  /** `by` names the Office file's maker, as it names no one who saved it since: no save is read from it */
+  byMaker?: true
   /** false: its bytes are in the cloud until it is opened */
   local?: boolean
   shared?: boolean

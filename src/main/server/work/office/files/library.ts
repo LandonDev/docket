@@ -283,18 +283,30 @@ export function libraryOf(libs: readonly TeamsLibrary[], path: string, o: { real
 export const isLocal = (s: Pick<Stats, 'size' | 'blocks'>): boolean => s.size === 0 || s.blocks > 0
 
 const OFFICE_ZIP = /\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i
-const whoCache = new Map<string, string | null>()
-/** Who last saved an Office file, from its own properties; read only from a file already on disk, so a list never downloads one. */
-export function whoOf(path: string, s: Stats): string | null {
+const whoCache = new Map<string, { saver: string | null; maker: string | null }>()
+/** The names an Office file's own properties give: who last saved it and who made it; read only from a file already on disk. */
+function namesOf(path: string, s: Stats): { saver: string | null; maker: string | null } | null {
   if (!OFFICE_ZIP.test(path) || !isLocal(s)) return null
   const key = `${path}\u0000${s.mtimeMs}\u0000${s.size}`
   if (whoCache.has(key)) return whoCache.get(key)!
   const core = zipEntries(path, ['docProps/core.xml'], 256 * 1024).get('docProps/core.xml')
-  const name = core ? (/<cp:lastModifiedBy>([^<]*)<\/cp:lastModifiedBy>/.exec(core)?.[1] ?? /<dc:creator>([^<]*)<\/dc:creator>/.exec(core)?.[1] ?? null) : null
-  const who = name ? decodeXml(name).trim() || null : null
+  const named = (tag: string): string | null => {
+    const raw = core ? new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(core)?.[1] : undefined
+    return raw ? decodeXml(raw).trim() || null : null
+  }
+  const names = { saver: named('cp:lastModifiedBy'), maker: named('dc:creator') }
   if (whoCache.size > 5000) whoCache.clear()
-  whoCache.set(key, who)
-  return who
+  whoCache.set(key, names)
+  return names
+}
+/** Who last saved an Office file, else who made it, for a row's name: read only from a file already on disk, so a list never downloads one. */
+export function whoOf(path: string, s: Stats): string | null {
+  const names = namesOf(path, s)
+  return names ? (names.saver ?? names.maker) : null
+}
+/** Who last saved an Office file and only that, never its maker: what Edit here reads a save as (office/live/switch.ts). */
+export function saverOf(path: string, s: Stats): string | null {
+  return namesOf(path, s)?.saver ?? null
 }
 
 /** `who: false`: who last saved it is not read (it is read from inside an Office file). */

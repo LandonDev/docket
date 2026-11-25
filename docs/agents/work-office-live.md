@@ -142,8 +142,9 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   so a restamp or a sync touching its time is no change either). The VM's guest gives no clock yet (its helper's
   `files.stat` would answer one, waiting for a VM YES): there the next change seen after the press counts, and a
   change already down before the press is waited for, up to the 60 s. A change the file names as someone else's save
-  (`cp:lastModifiedBy`, read where its bytes are on the holder's disk, here or in his desktop's `work.files.stat`
-  `by`, against his name in Work, `work.ownerName`, by whole words: `sameName`) is a coauthor's, which may have
+  (`cp:lastModifiedBy` alone, `saverOf`, read where its bytes are on the holder's disk, here or in his desktop's
+  `work.files.stat` `by`; never the file's maker, `dc:creator`, which a row's name falls back to and a stat answer
+  marks `byMaker`, against his name in Work, `work.ownerName`, by whole words: `sameName`) is a coauthor's, which may have
   reached Teams before his typing did: it counts only when saved after the press, once Word had let the view go with
   his words saved. Before that it is not taken, and the refusal names whose save it was ("Dana Lee saved Plan.docx
   after your last key, and nothing shows your typing in that save, so it stays live."). A file that names no one

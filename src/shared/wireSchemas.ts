@@ -2133,6 +2133,7 @@ export const FileEntrySchema = z.object({
   changed: z.number().optional(),
   revision: z.string().optional(),
   by: z.string().optional(),
+  byMaker: z.literal(true).optional(),
   local: z.boolean().optional(),
   shared: z.boolean().optional(),
   state: FileEntryStateSchema.optional(),

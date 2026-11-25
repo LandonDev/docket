@@ -12433,6 +12433,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let changed: Double?
     public let revision: String?
     public let by: String?
+    public let byMaker: Bool?
     public let local: Bool?
     public let shared: Bool?
     public let state: State?
@@ -12445,7 +12446,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let unsent: Unsent?
     public let answersTo: AnswersTo?
 
-    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil, unsent: Unsent? = nil, answersTo: AnswersTo? = nil) {
+    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, byMaker: Bool? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil, unsent: Unsent? = nil, answersTo: AnswersTo? = nil) {
         self.key = key
         self.ref = ref
         self.folder = folder
@@ -12455,6 +12456,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         self.changed = changed
         self.revision = revision
         self.by = by
+        self.byMaker = byMaker
         self.local = local
         self.shared = shared
         self.state = state
@@ -12469,7 +12471,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held, unsent, answersTo
+        case key, ref, folder, name, kind, size, changed, revision, by, byMaker, local, shared, state, `where`, project, madeBy, fresh, starred, held, unsent, answersTo
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -12483,6 +12485,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         try container.encodeIfPresent(changed, forKey: .changed)
         try container.encodeIfPresent(revision, forKey: .revision)
         try container.encodeIfPresent(by, forKey: .by)
+        try container.encodeIfPresent(byMaker, forKey: .byMaker)
         try container.encodeIfPresent(local, forKey: .local)
         try container.encodeIfPresent(shared, forKey: .shared)
         try container.encodeIfPresent(state, forKey: .state)

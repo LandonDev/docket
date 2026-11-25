@@ -15,7 +15,7 @@ import { keptDoc, recordWord, wordsAllInFile, type WordRow } from '../../files/w
 import { versionOf } from '../../files/write'
 import type { Caller, WorkCtx } from '../../modules'
 import { ownerName } from '../../files/search'
-import { whoOf } from '../files/library'
+import { saverOf } from '../files/library'
 import { isGuestPath, vmStat } from '../vm/files'
 import { vmState } from '../vm/office'
 import { appOf } from './address'
@@ -158,16 +158,17 @@ async function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): Prom
 /**
  * The file's version on its own computer, by one look; null when it does not answer. Never wakes the VM for it: Edit
  * here does. `now`: the holder's own clock as it looked, which its change time is read against; none from the VM's
- * guest (its helper does not say it yet) or a host a build behind. `by`: who saved it, as the Office file's own
- * properties name them, where its bytes are on the holder's disk.
+ * guest (its helper does not say it yet) or a host a build behind. `by`: who saved it last, as the Office file's own
+ * properties name them (never its maker), where its bytes are on the holder's disk.
  */
 async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, signal?: AbortSignal): Promise<{ word: string; changed: number; now?: number; by?: string } | null> {
   try {
     if (ref.host !== ctx.host) {
       const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(workspaceId), workspaceId }, signal } as never, ref.host)
-      const got = (await far.call('files', 'stat', { workspaceId, refs: [{ at: 'file', host: ref.host, path: ref.path }] })) as { entries: ({ size?: number; changed?: number; by?: string } | null)[]; now?: number }
+      const got = (await far.call('files', 'stat', { workspaceId, refs: [{ at: 'file', host: ref.host, path: ref.path }] })) as { entries: ({ size?: number; changed?: number; by?: string; byMaker?: true } | null)[]; now?: number }
       const e = got.entries[0]
-      return typeof e?.changed === 'number' ? { word: `${e.size ?? 0}:${e.changed}`, changed: e.changed, ...(typeof got.now === 'number' ? { now: got.now } : {}), ...(e.by ? { by: e.by } : {}) } : null
+      // A name that is the file's maker is no saver (`byMaker`).
+      return typeof e?.changed === 'number' ? { word: `${e.size ?? 0}:${e.changed}`, changed: e.changed, ...(typeof got.now === 'number' ? { now: got.now } : {}), ...(e.by && !e.byMaker ? { by: e.by } : {}) } : null
     }
     const at = locate(ctx, HIS, workspaceId, { at: 'file', host: ref.host, path: ref.path }, SET)
     if (at.in === 'library' && at.library.vm) {
@@ -178,7 +179,7 @@ async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string
     if (at.in !== 'library' && at.in !== 'folder') return null
     // By its bytes where this host can hash them: a new time alone (a restamp, a sync touching it) is no change.
     const v = await versionOf(at.path)
-    const by = whoOf(at.path, statSync(at.path))
+    const by = saverOf(at.path, statSync(at.path))
     return { word: v.sha256 ? `sha256:${v.sha256}` : `${v.size}:${Math.round(v.mtimeMs)}`, changed: Math.round(v.mtimeMs), now: Date.now(), ...(by ? { by } : {}) }
   } catch {
     return null

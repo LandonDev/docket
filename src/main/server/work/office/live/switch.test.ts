@@ -552,6 +552,35 @@ describe('Live → Edit here', () => {
     await expect(set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).rejects.toThrow('Dana Lee saved Plan.docx after your last key')
   })
 
+  /** A dummy Word file that names only who made it, and no one who saved it since. */
+  const madeBy = (who: string, words: string): Uint8Array =>
+    zipSync(
+      {
+        'docProps/core.xml': strToU8(`<?xml version="1.0"?><cp:coreProperties xmlns:cp="x" xmlns:dc="y"><dc:creator>${who}</dc:creator></cp:coreProperties>`),
+        'word/document.xml': strToU8(`<w:document>${words}</w:document>`)
+      },
+      { level: 0 }
+    )
+
+  it("after typing, never reads the file's maker as its saver: a file that names no saver keeps the clock's rule", async () => {
+    const { path, tabId } = await liveHere()
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 80, look: 5 })
+    writeFileSync(path, madeBy('Dana Lee', 'her draft and his typing'))
+    shiftMtime(path, -500)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toEqual({ is: 'done' })
+  })
+
+  it("after typing, never reads the maker of a file on his Mac as its saver, read there", async () => {
+    const { path, tabId } = await openFar('Plan.docx', 'word')
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    hisName('Landon')
+    Object.assign(liveTiming, { version: 80, look: 5 })
+    writeFileSync(path, madeBy('Dana Lee', 'her draft and his typing'))
+    shiftMtime(path, -500)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 1000 })).toEqual({ is: 'done' })
+  })
+
   it('reads one person by two names, by whole words', () => {
     expect(sameName('Landon', 'Landon Johnson')).toBe(true)
     expect(sameName('landon johnson', 'Johnson, Landon')).toBe(true)

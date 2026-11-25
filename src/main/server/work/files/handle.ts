@@ -13,7 +13,7 @@ import { sheetImportFormat } from '@shared/work/sheetFormats'
 import { fencedItem, itemPath } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
-import { copyAllowed, fetchFile, rootsOf, whoOf } from '../office/files/library'
+import { copyAllowed, fetchFile, rootsOf, saverOf, whoOf } from '../office/files/library'
 import { driveOf as linkedDrive, probeDrives } from '../office/files/reach'
 import { copyWaits } from './copyKept'
 import { isStay, recordStay, reopenStay, stayDiscarded, staysOf } from './copyStays'
@@ -371,8 +371,10 @@ async function statOne(ctx: WorkCtx, by: Caller, workspaceId: string, ref: FileR
 function withWho(entry: FileEntry, path: string, row: DiskRow): FileEntry {
   if (row.dir || row.local === false) return entry
   try {
-    const who = whoOf(path, statSync(path))
-    return who ? { ...entry, by: who } : entry
+    const s = statSync(path)
+    const who = whoOf(path, s)
+    // A name that is the file's maker, not a saver, says so: Edit here never reads it as a save (office/live/switch.ts).
+    return who ? { ...entry, by: who, ...(saverOf(path, s) ? {} : { byMaker: true as const }) } : entry
   } catch {
     return entry
   }
