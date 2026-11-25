@@ -98,6 +98,14 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       refuseWithheld(ctx, by, at.row.sector)
       return handled(await responsesOf(ctx, at, by))
     }
+    case 'work.msforms.forget': {
+      // His Remove from List: the row and its history go; Forms keeps the form as it is.
+      const { row } = formReach(ctx, by, paramsOf('work.msforms.forget', req))
+      new MsformsStore(ctx.db).remove(row.workspaceId, row.formId)
+      ctx.tell.done(tellKey(row.formId))
+      ctx.push({ push: 'work.msforms', workspaceId: row.workspaceId, formId: row.formId, view: null })
+      return handled({ ok: true as const })
+    }
     case 'work.msforms.refresh':
       return handled(await refreshAnswers(ctx, formReach(ctx, by, paramsOf('work.msforms.refresh', req))))
     case 'work.msforms.survey': {

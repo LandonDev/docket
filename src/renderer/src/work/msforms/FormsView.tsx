@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { FolderRef } from "@shared/work/files";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
 import { Plus } from "../../chrome/icons";
-import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 import { ItemButton } from "../../components/ui/item";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -121,13 +122,26 @@ export function View({ env, workspace }: WorkViewProps) {
     }
   };
 
+  // A Microsoft form's row can leave the list on his press: Forms keeps the form as it is.
+  const forget = async (id: string): Promise<void> => {
+    const form = load.ms.find((f) => f.formId === id);
+    if (!form) return;
+    if (!(await confirmAction({ title: `Remove “${form.title}” from the list?`, body: "It stays in Microsoft Forms.", action: "Remove" }))) return;
+    await registry
+      .linkOf(env)
+      .request("work.msforms.forget", { workspaceId: workspace.id, formId: id })
+      .then(retry, (err: unknown) => sayError(err, "Couldn't remove the form from the list"));
+  };
+
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
-      <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
-        {load.rows.map((row) => (
-          <Row key={`${row.kind}:${row.id}`} row={row} busy={opening === row.id} onPress={() => open(row)} />
-        ))}
-      </ul>
+      <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
+        <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
+          {load.rows.map((row) => (
+            <Row key={`${row.kind}:${row.id}`} row={row} busy={opening === row.id} onPress={() => open(row)} />
+          ))}
+        </ul>
+      </RowsContextMenu>
     </div>
   );
 }
@@ -141,7 +155,7 @@ function Row({ row, busy, onPress }: { row: FormListRow; busy: boolean; onPress(
   );
   const shape = "flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 pr-20";
   return (
-    <li data-forms-row className="relative flex flex-col">
+    <li data-forms-row {...(row.kind === "ms" ? { "data-menu-id": row.id } : {})} className="relative flex flex-col">
       <ItemButton onClick={onPress} className={shape}>
         {words}
       </ItemButton>

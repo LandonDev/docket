@@ -13,12 +13,15 @@ const host = vi.hoisted(() => ({
   reads: 0,
   opened: [] as unknown[],
   fail: false,
+  forgot: [] as unknown[],
 }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => true }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
-    request: async (method: string) => {
+    request: async (method: string, params: { formId?: string } = {}) => {
       if (method === "work.forms.list") return host.ours;
       if (method === "work.msforms.list") return (host.reads++, { forms: host.ms, offered: false });
+      if (method === "work.msforms.forget") return (host.forgot.push(params), (host.ms = host.ms.filter((f) => f.formId !== params.formId)), { ok: true });
       throw new Error(`no ${method}`);
     },
     onPush: () => () => undefined,
@@ -63,6 +66,17 @@ describe("the Forms view", () => {
     render(<View {...props} />);
     fireEvent.click(await screen.findByRole("button", { name: /Spring intramurals/ }));
     await waitFor(() => expect(host.reads).toBe(2));
+  });
+
+  it("takes a Microsoft form off the list on his Remove from List, and asks Forms nothing", async () => {
+    host.ours = [];
+    host.ms = [{ formId: FORM, tenant: "purdue0", title: "TempCode proof gone", state: "draft", count: 0, lastAnswerAt: null, updatedAt: 20 }];
+    render(<View {...props} />);
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /TempCode proof gone/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from List" }));
+    await waitFor(() => expect(host.forgot).toEqual([{ workspaceId: "w1", formId: FORM }]));
+    expect(await screen.findByText("No forms yet")).toBeTruthy();
+    expect(host.opened).toEqual([]);
   });
 
   it("says when there are none", async () => {

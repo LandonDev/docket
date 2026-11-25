@@ -189,6 +189,11 @@ describe("where a file opens", () => {
     expect(openWay(f("call.m4a"), here, ws)).toBe("app");
   });
 
+  it("opens a Microsoft form's row in its tab wherever it is listed, never in an app: it is no file of that computer", () => {
+    const form = { name: "Untitled form", kind: "form" as const, ref: { at: "msform" as const, host: "box", workspaceId: "w", formId: "F", tenant: "purdue0" } };
+    for (const place of [here, vm, far]) for (const copy of [true, false]) expect(openWay(form, place, { ...ws, copy })).toBe("tab");
+  });
+
   it("brings a file of another computer, or of the VM, as a copy only where he allowed one", () => {
     expect(openWay(f("Deck.pdf"), far, ws)).toBe("tab");
     expect(openWay(f("Deck.pdf"), vm, ws)).toBe("tab");

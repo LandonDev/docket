@@ -140,6 +140,12 @@ An agent's make (`msform_create`) is always held as `msform.make`: a form made i
 once. `from` makes the questions from our form, a document, a sheet's header row or a template (msforms/makers,
 work-forms.md "Make this a Microsoft form"); `collect: true` also collects at the same press.
 
+A form's row in a Files folder (the pillar's folder extra) opens in its Files tab like the Forms view's row, never in
+an app on the folder's computer (`openWay`: a row whose ref is no file is a tab): asked of the VM's Office, such an
+open answered "A Teams file is named by its path on its host.", which is what the owner met on his first form.
+His Remove from List on a Forms view row (`work.msforms.forget`, his press alone) drops the row and its history from
+Work; the form stays in Forms as it is.
+
 ## The hold
 
 - `msform.publish` (`collect`, `audience`, `reopen`) and `msform.make` have no matcher: no grant carries them, Away

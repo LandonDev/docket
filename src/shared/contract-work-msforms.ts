@@ -165,6 +165,8 @@ export const MsformsRequestSchemas = [
   request('work.msforms.publish', z.object(both)),
   /** His close (open: false) or reopen. Not held: his own form. */
   request('work.msforms.close', z.object({ ...both, open: z.boolean() })),
+  /** His Remove from List: the row and its history go from Work; nothing changes in Forms. */
+  request('work.msforms.forget', z.object(both)),
   request('work.msforms.mode', z.object({ ...both, mode: z.enum(['suggests', 'writes']) })),
   request('work.msforms.check', z.object({ ...both, every: z.enum(MSFORM_CHECKS) })),
   /** Accept or reject waiting changes by id. */
@@ -196,6 +198,7 @@ export const MSFORMS_OWNER_ONLY: ReadonlySet<string> = new Set([
   'work.msforms.make',
   'work.msforms.publish',
   'work.msforms.close',
+  'work.msforms.forget',
   'work.msforms.mode',
   'work.msforms.check',
   'work.msforms.review',
@@ -212,6 +215,7 @@ export const MSFORMS_CAPS = {
   'work.msforms.make': 'operate',
   'work.msforms.publish': 'approve',
   'work.msforms.close': 'operate',
+  'work.msforms.forget': 'operate',
   'work.msforms.mode': 'operate',
   'work.msforms.check': 'operate',
   'work.msforms.review': 'operate',

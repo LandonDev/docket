@@ -197,7 +197,10 @@ export function trailOf(row: PlaceRow | null, trail: readonly FileCrumb[]): File
  */
 export type OpenWay = "tab" | "app";
 
-export function openWay(entry: Pick<FileEntry, "name" | "kind">, copy: Pick<PlaceCopy, "link" | "place" | "wire">, workspace: { link: string; tabs: boolean; copy: boolean }): OpenWay {
+export function openWay(entry: Pick<FileEntry, "name" | "kind"> & { ref?: FileEntry["ref"] }, copy: Pick<PlaceCopy, "link" | "place" | "wire">, workspace: { link: string; tabs: boolean; copy: boolean }): OpenWay {
+  // A row a pillar lists in a folder that is no file there (a Microsoft form) is seated by that pillar in its tab: no
+  // app on the folder's computer opens it, and asking one answered "A Teams file is named by its path on its host."
+  if (entry.ref && entry.ref.at !== "file") return "tab";
   if (!workspace.tabs) return "app";
   const what = kindOfEntry(entry.name);
   const library = LIBRARY.includes(copy.place.kind);

@@ -177,6 +177,16 @@ describe('the one reach check', () => {
     expect(carrier.calls.filter((c) => c.op === 'make')).toHaveLength(2)
   })
 
+  it("forgets a row on his Remove from List, asks Forms nothing, and refuses a thread's", async () => {
+    const view = await made()
+    await expect(asThread('t1', 'work.msforms.forget', { workspaceId: 'w1', formId: view.formId })).rejects.toThrow('only the owner')
+    const asked = carrier.calls.length
+    await call('work.msforms.forget', { workspaceId: 'w1', formId: view.formId })
+    expect(new MsformsStore(db).list('w1')).toEqual([])
+    expect(carrier.calls.length).toBe(asked)
+    expect(carrier.forms.has(view.formId)).toBe(true)
+  })
+
   it('a thread calling an owner method is refused', async () => {
     const view = await made()
     for (const [method, extra] of [
