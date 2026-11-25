@@ -177,10 +177,9 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     }, `the title "${short(q.title)}"`)
     if (q.type === 'choice') {
       const want = q.options ?? []
-      // Forms redraws an option's row as Tab commits it, and the tree lacks that row until the next press (P5): a count
-      // read then took a second Add option and left Forms' "Option 4" behind, and a wait for the row never ended. So the
-      // fields are never counted: each option goes into the next field still holding Forms' own "Option N", Add option
-      // is pressed only when none shows, and the options are checked at rest, once the question is left.
+      // Each option goes into the next field still holding Forms' own "Option N", Add option is pressed only when none
+      // shows, and the options are checked at rest, once the question is left: a field is never counted (P5: the field
+      // last typed in is a text area, and a count of inputs alone took a second Add option and left "Option 4").
       const placeholders = (x: Screen) => (questionInEdit(x)?.options ?? []).filter((o) => PLACEHOLDER.test((o.value ?? '').trim()))
       // an option asked for in Forms' own words ("Option 2") keeps its field a placeholder: those are passed over
       let kept = 0

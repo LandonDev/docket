@@ -207,18 +207,23 @@ describe('the operations', () => {
     expect(page.log.some((l) => /key (Return|Escape)/.test(l))).toBe(false)
   })
 
-  it("writes a Choice question's options exactly as asked on a page that redraws a committed option and opens a question above on Add new question (P5)", async () => {
+  it("writes a Choice question's options exactly as asked, where Forms draws the field last typed in or added as a text area and Add new question opens one above (P5)", async () => {
     const page = new FakeForms()
-    page.redraws = true
+    page.activeAsTextArea = true
     page.insertsBetween = true
     const { carrier, auth } = rig(page)
     page.add(form())
     const before = structuredClone(page.forms.get('FakeFormId00000000000001')!.questions)
-    const changes = [{ op: 'add' as const, question: { title: 'Which size?', type: 'choice' as const, options: ['Small', 'Medium', 'Large'], required: false } }]
+    const five = ['XS', 'Small', 'Medium', 'Large', 'XL']
+    const changes = [
+      { op: 'add' as const, question: { title: 'Which size?', type: 'choice' as const, options: ['Small', 'Medium', 'Large'], required: false } },
+      { op: 'add' as const, question: { title: 'Which fit?', type: 'choice' as const, options: five, required: false } }
+    ]
     const { read } = await carrier.write(auth('write', { changes, before }), 'FakeFormId00000000000001', changes, before)
     expect(read.questions).toEqual([
       { title: 'Name', type: 'text', required: true },
-      { title: 'Which size?', type: 'choice', options: ['Small', 'Medium', 'Large'], required: false }
+      { title: 'Which size?', type: 'choice', options: ['Small', 'Medium', 'Large'], required: false },
+      { title: 'Which fit?', type: 'choice', options: five, required: false }
     ])
   })
 

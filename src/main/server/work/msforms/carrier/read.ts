@@ -100,7 +100,9 @@ export function questionInEdit(screen: Screen): { title: ScreenElement; options:
   const sw = (name: string) => all(screen).find((e) => (e.role === 'switch' || e.role === 'checkbox') && e.name === name) ?? null
   return {
     title,
-    options: all(screen).filter((e) => e.role === 'input' && /^Choice Option Text\b/i.test(e.name ?? '')),
+    // likewise an option's field: a text area once typed in or just added, the others inputs (P5). Taking inputs alone
+    // lost the field being written: the next option was typed into a stale field and Forms' "Option 4" stayed.
+    options: all(screen).filter((e) => (e.role === 'input' || e.role === 'text area') && /^Choice Option Text\b/i.test(e.name ?? '')),
     required: sw('Required'),
     multiple: sw('Multiple answers'),
     long: sw('Long answer'),
